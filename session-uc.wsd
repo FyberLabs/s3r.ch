@@ -5,6 +5,7 @@ rectangle Services {
   actor AIVerifier
   (SAAS Key Service)
   (REST API)
+  (u2f Auth)
 }
 
 rectangle Client {
@@ -30,6 +31,9 @@ rectangle Client {
 }
 
 (Login API) --> (Session) : decrypts
+(Login API) --> (Group Key Storage) : new auth
+(Group Key Storage) <-> (u2f Auth) : optional
+(Login API) --> (Profile Key Storage) : possible auth?
 (Session) --> (Group Key Storage) : cached key
 (Session) --> (Profile Key Storage) : cached key
 (Profile Key Storage) --> (Profile Templates) : unlock profiles/personas
