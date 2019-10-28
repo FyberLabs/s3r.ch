@@ -1,0 +1,47 @@
+@startuml
+left to right direction
+actor User
+rectangle Services {
+  actor Verifier
+  actor AIVerifier
+}
+actor Viewer
+
+rectangle GunDB {
+    (Data Signing API)
+    (Group Filter)
+
+    frame "User Store" {
+        (Profile Key Storage)
+        (Group Key Storage)
+
+        (Session)
+
+        (User Immutable Data)
+
+        (Profile Templates)
+    }
+    (Group Membership)
+    (Active Profiles)
+    (Group Profile)
+}
+
+User --> (Session) : active login
+(Session) ..> (Profile Key Storage) : unlock profile(s)
+(Profile Key Storage) ..> (Profile Templates) : unlock
+(Group Key Storage) ..> (Group Profile) : Group profile unlock
+(Session) ..> (Group Key Storage) : unlock group(s)
+Viewer --> (Group Filter) : select group
+(Group Membership) ..> (Group Filter) : find group users
+Viewer <-left- (Group Profile) : view profile attributes
+Verifier -down-> (Data Signing API) : verify user
+(Data Signing API) ..> (User Immutable Data) : sign user with group cert
+(Data Signing API) ..> (Group Key Storage) : user added to group key
+Verifier -down-> (Group Membership) : assign/add users
+AIVerifier -down-> (Group Membership) : auto assign certain groups
+(Profile Templates) ..> (Active Profiles) : user select
+(User Immutable Data) ..> (Profile Templates) : filter known attributes
+(User Immutable Data) <.. (Group Membership) : user in group
+(Active Profiles) ..> (Group Profile) : get group profile
+
+@enduml

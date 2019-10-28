@@ -1,0 +1,48 @@
+@startuml
+left to right direction
+actor User
+rectangle Services {
+  actor Verifier
+  actor AIVerifier
+  (SAAS Key Service)
+  (REST API)
+}
+
+rectangle Client {
+    (Login API)
+    rectangle GunDB {
+        (Data Signing API)
+        (Group Filter)
+
+        frame "User Store" {
+            (Profile Key Storage)
+            (Group Key Storage)
+
+            (Session)
+
+            (User Immutable Data)
+
+            (Profile Templates)
+        }
+        (Group Membership)
+        (Active Profiles)
+        (Group Profile)
+    }
+}
+
+(Login API) --> (Session) : decrypts
+(Session) --> (Group Key Storage) : cached key
+(Session) --> (Profile Key Storage) : cached key
+(Profile Key Storage) --> (Profile Templates) : unlock profiles/personas
+(Profile Templates) --> (Group Profile) : User selected
+(REST API) --> (SAAS Key Service) : key escrow
+Verifier --> (REST API) : legacy db
+User --> (Login API) : login
+Verifier --> (Data Signing API) : sign direct on gundb
+AIVerifier --> (Data Signing API) : sign for groups based on verified attributes
+(SAAS Key Service) --> (Data Signing API) : sign
+(Data Signing API) --> (User Immutable Data) : sign/verifies data
+(Data Signing API) --> (Profile Templates) : sign/verifies data
+
+
+@enduml
