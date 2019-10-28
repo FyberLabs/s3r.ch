@@ -34,11 +34,11 @@ rectangle Client {
 (Login API) --> (Group Key Storage) : new auth
 (Group Key Storage) <-> (u2f Auth) : optional
 (Login API) --> (Profile Key Storage) : possible auth?
-(Session) --> (Group Key Storage) : cached key
-(Session) --> (Profile Key Storage) : cached key
-(Profile Key Storage) --> (Profile Templates) : unlock profiles/personas
-(Profile Templates) --> (Group Profile) : User selected
-(REST API) --> (SAAS Key Service) : key escrow
+(Session) ...> (Group Key Storage) : cached key
+(Session) ...> (Profile Key Storage) : cached key
+(Profile Key Storage) .> (Profile Templates) : unlock profiles/personas
+(Profile Templates) ..> (Active Profiles) : user select
+(REST API) ..> (SAAS Key Service) : key escrow
 Verifier --> (REST API) : legacy db
 User --> (Login API) : login
 Verifier --> (Data Signing API) : sign direct on gundb
@@ -46,6 +46,6 @@ AIVerifier --> (Data Signing API) : sign for groups based on verified attributes
 (SAAS Key Service) --> (Data Signing API) : sign
 (Data Signing API) --> (User Immutable Data) : sign/verifies data
 (Data Signing API) --> (Profile Templates) : sign/verifies data
-
+(Active Profiles) ..> (Group Profile) : get group profile
 
 @enduml
