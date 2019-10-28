@@ -30,8 +30,8 @@ User --> (Session) : active login
 (Profile Key Storage) ..> (Profile Templates) : unlock
 (Group Key Storage) ..> (Group Profile) : Group profile unlock
 (Session) ..> (Group Key Storage) : unlock group(s)
-Viewer --> (Group Filter) : select group
-(Group Membership) ..> (Group Filter) : find group users
+Viewer <--> (Group Filter) : select group
+(Group Membership) <..> (Group Filter) : find group users
 Viewer <-left- (Group Profile) : view profile attributes
 Verifier -down-> (Data Signing API) : verify user
 (Data Signing API) ..> (User Immutable Data) : sign user with group cert
@@ -40,7 +40,7 @@ Verifier -down-> (Group Membership) : assign/add users
 AIVerifier -down-> (Group Membership) : auto assign certain groups
 (Profile Templates) ..> (Active Profiles) : user select
 (User Immutable Data) ..> (Profile Templates) : filter known attributes
-(User Immutable Data) <.. (Group Membership) : user in group
+(User Immutable Data) <..> (Group Membership) : user in group
 (Active Profiles) ..> (Group Profile) : get group profile
 
 @enduml
