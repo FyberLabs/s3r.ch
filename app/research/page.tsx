@@ -13,16 +13,14 @@ const diagrams = [
     title: "Session management",
     sourceHref: "/docs/session-uc.wsd",
     sourceName: "session-uc.wsd",
-    image:
-      "https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/FyberLabs/s3r.ch/master/session-uc.wsd&fmt=svg",
+    image: "/docs/session-uc.png",
   },
   {
     id: "group",
     title: "Group selection",
     sourceHref: "/docs/group-uc.wsd",
     sourceName: "group-uc.wsd",
-    image:
-      "https://www.plantuml.com/plantuml/proxy?cache=no&src=https://raw.githubusercontent.com/FyberLabs/s3r.ch/master/group-uc.wsd&fmt=svg",
+    image: "/docs/group-uc.png",
   },
 ];
 

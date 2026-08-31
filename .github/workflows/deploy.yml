@@ -25,7 +25,7 @@ jobs:
     env:
       ENV_TAG: prod
       AZURE_WEBAPP_NAME: s3rch-fyberlabs-prod
-      AZURE_RESOURCE_GROUP: rg-website-fyberlabs-prod
+      AZURE_RESOURCE_GROUP: rg-s3rch-fyberlabs-prod
       HEALTH_URL: https://s3rch-fyberlabs-prod.azurewebsites.net/api/health
     steps:
       - uses: actions/checkout@v5

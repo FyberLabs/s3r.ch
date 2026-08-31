@@ -6,6 +6,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "s3r.ch",
   description: "Research on crypto, contracts, social search, and trust.",
+  icons: { icon: "/favicon.svg" },
   openGraph: {
     title: "s3r.ch",
     description: "Research on crypto, contracts, social search, and trust.",
