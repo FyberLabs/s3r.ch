@@ -41,19 +41,17 @@ export default function Home() {
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link
-              href="/research"
+              href="/feed"
               className="rounded-lg bg-white px-8 py-3 text-base font-semibold text-brand-700 shadow hover:bg-brand-50"
+            >
+              Activity board
+            </Link>
+            <Link
+              href="/research"
+              className="rounded-lg border border-white/50 px-8 py-3 text-base font-semibold text-white hover:bg-white/10"
             >
               2019 research notes
             </Link>
-            <a
-              href="https://fyberlabs.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg border border-white/50 px-8 py-3 text-base font-semibold text-white hover:bg-white/10"
-            >
-              Fyber Labs
-            </a>
           </div>
         </div>
       </section>
@@ -61,12 +59,27 @@ export default function Home() {
       <section className="mx-auto max-w-4xl px-4 py-20">
         <h2 className="text-3xl font-bold tracking-tight">Status</h2>
         <p className="mt-4 text-lg text-gray-600">
-          s3r.ch is research from Chris Hamilton&apos;s lab, Fyber Labs. What
-          remains here is an honest landing and the original PlantUML notes
-          from this repository. There is no search index, account system, or
-          marketplace on this site.
+          s3r.ch is research from Chris Hamilton&apos;s lab, Fyber Labs. This
+          site is an honest landing, a public RSS3 activity board, and the
+          original PlantUML notes from this repository. There is no search
+          index, account system, or marketplace here.
         </p>
-        <div className="mt-12 grid gap-8 sm:grid-cols-2">
+        <div className="mt-12 grid gap-8 sm:grid-cols-3">
+          <div className="rounded-xl border border-brand-100 bg-gradient-to-b from-white to-brand-50/40 p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-brand-900">
+              Activity board
+            </h3>
+            <p className="mt-2 text-sm text-gray-600">
+              Recent public RSS3 social and contract activity, ranked popular
+              vs novel. Research only — not a social network.
+            </p>
+            <Link
+              href="/feed"
+              className="mt-4 inline-block text-sm font-semibold text-brand-700 hover:underline"
+            >
+              Open /feed
+            </Link>
+          </div>
           <div className="rounded-xl border border-brand-100 bg-gradient-to-b from-white to-brand-50/40 p-6 shadow-sm">
             <h3 className="text-lg font-semibold text-brand-900">
               Research notes
@@ -84,11 +97,11 @@ export default function Home() {
           </div>
           <div className="rounded-xl border border-brand-100 bg-gradient-to-b from-white to-brand-50/40 p-6 shadow-sm">
             <h3 className="text-lg font-semibold text-brand-900">
-              Not a product
+              Not a search product
             </h3>
             <p className="mt-2 text-sm text-gray-600">
-              No live search, login, or token. Recovering the public page, not
-              launching a service.
+              No login, token, or search box. RSS3 indexes posts and
+              activities, not query terms.
             </p>
           </div>
         </div>
