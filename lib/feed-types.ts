@@ -31,6 +31,20 @@ export type GunUserNode = {
   ts: number;
 };
 
+/**
+ * Later: a held claim on the identity graph (default private).
+ * Seeing requires CHECK(see, claim, accessor) at now — not implemented here.
+ */
+export type IdentityClaimKind = "wallet" | "rss3" | "ens" | "kyc_attestation" | "email" | "phone";
+
+/** Later grant edge. hopcap 1; privilege-down is immediate. No Check engine in this slice. */
+export type IdentitySeeGrant = {
+  claimId: string;
+  accessor: string;
+  from: number;
+  until: number;
+};
+
 export type SeedReport = {
   items: FeedItem[];
   seededAt: string | null;
