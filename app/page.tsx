@@ -35,8 +35,15 @@ export default function Home() {
           </p>
           <p className="mx-auto mt-6 max-w-2xl text-base text-white/80">
             This domain is being recovered. It is not a live search product.
-            There is no activity board, no 2019 diagrams, and no old contracts
-            here.
+            There are no 2019 diagrams and no old contracts here.
+          </p>
+          <p className="mt-8">
+            <a
+              href="/feed"
+              className="inline-flex rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/30 hover:bg-white/20"
+            >
+              Lab feed
+            </a>
           </p>
         </div>
       </section>
