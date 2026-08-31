@@ -27,7 +27,12 @@ RUN addgroup --system --gid 1001 nodejs \
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/gun-preload.cjs ./gun-preload.cjs
+
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
+ENV GUN_FILE=/app/data/radata
+ENV GUN_SNAPSHOT=/app/data/snapshot.json
 
 USER nextjs
 EXPOSE 8080
-CMD ["node", "server.js"]
+CMD ["node", "-r", "./gun-preload.cjs", "server.js"]

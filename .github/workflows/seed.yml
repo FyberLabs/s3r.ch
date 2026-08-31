@@ -1,0 +1,27 @@
+name: Seed Gun
+
+on:
+  schedule:
+    # Weekday hours, US-friendly (13:00–21:00 UTC, every 2 hours).
+    - cron: "15 13-21/2 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/seed
+        env:
+          SEED_URL: ${{ vars.SEED_URL }}
+          SEED_SECRET: ${{ secrets.SEED_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SEED_SECRET:-}" ]; then
+            echo "SEED_SECRET is not set. Skipping. Add the secret and set SEED_SECRET on the App Service."
+            exit 0
+          fi
+          URL="${SEED_URL:-https://s3rch-fyberlabs-prod.azurewebsites.net/api/seed}"
+          curl -fsS -X POST "$URL" \
+            -H "Authorization: Bearer ${SEED_SECRET}" \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json"
