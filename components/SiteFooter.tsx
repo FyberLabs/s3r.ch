@@ -11,7 +11,7 @@ export function SiteFooter() {
         >
           Fyber Labs
         </a>{" "}
-        research site · Chris Hamilton
+        lab site · Chris Hamilton
       </p>
       <p className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
         <a

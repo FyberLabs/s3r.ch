@@ -3,7 +3,7 @@ const nextConfig = {
   output: "standalone",
   async redirects() {
     return [
-      { source: "/design", destination: "/research", permanent: false },
+      { source: "/design", destination: "/", permanent: false },
     ];
   },
 };

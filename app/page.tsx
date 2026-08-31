@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 const sisters = [
   {
     href: "https://fyberlabs.com",
@@ -27,83 +25,19 @@ export default function Home() {
       <section className="relative overflow-hidden bg-gradient-to-br from-brand-900 via-brand-700 to-brand-500 py-28 text-white">
         <div className="mx-auto max-w-4xl px-4 text-center">
           <p className="text-xs font-medium uppercase tracking-wide text-brand-100">
-            Research / recovering
+            Fyber Labs
           </p>
           <h1 className="mt-3 text-4xl font-extrabold tracking-tight sm:text-6xl">
             s3r.ch
           </h1>
           <p className="mt-6 text-lg text-brand-100 sm:text-xl">
-            Research on crypto, contracts, social search, and trust.
+            A Fyber Labs lab site under development.
           </p>
           <p className="mx-auto mt-6 max-w-2xl text-base text-white/80">
-            A Fyber Labs research note. This domain is being recovered. It is
-            not a live search product.
+            This domain is being recovered. It is not a live search product.
+            There is no activity board, no 2019 diagrams, and no old contracts
+            here.
           </p>
-          <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Link
-              href="/feed"
-              className="rounded-lg bg-white px-8 py-3 text-base font-semibold text-brand-700 shadow hover:bg-brand-50"
-            >
-              Activity board
-            </Link>
-            <Link
-              href="/research"
-              className="rounded-lg border border-white/50 px-8 py-3 text-base font-semibold text-white hover:bg-white/10"
-            >
-              2019 research notes
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-4xl px-4 py-20">
-        <h2 className="text-3xl font-bold tracking-tight">Status</h2>
-        <p className="mt-4 text-lg text-gray-600">
-          s3r.ch is research from Chris Hamilton&apos;s lab, Fyber Labs. This
-          site is an honest landing, a public RSS3 activity board, and the
-          original PlantUML notes from this repository. There is no search
-          index, account system, or marketplace here.
-        </p>
-        <div className="mt-12 grid gap-8 sm:grid-cols-3">
-          <div className="rounded-xl border border-brand-100 bg-gradient-to-b from-white to-brand-50/40 p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-brand-900">
-              Activity board
-            </h3>
-            <p className="mt-2 text-sm text-gray-600">
-              Recent public RSS3 social and contract activity, ranked popular
-              vs novel. Research only — not a social network.
-            </p>
-            <Link
-              href="/feed"
-              className="mt-4 inline-block text-sm font-semibold text-brand-700 hover:underline"
-            >
-              Open /feed
-            </Link>
-          </div>
-          <div className="rounded-xl border border-brand-100 bg-gradient-to-b from-white to-brand-50/40 p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-brand-900">
-              Research notes
-            </h3>
-            <p className="mt-2 text-sm text-gray-600">
-              Session and group selection diagrams from 2019, still in this
-              repo.
-            </p>
-            <Link
-              href="/research"
-              className="mt-4 inline-block text-sm font-semibold text-brand-700 hover:underline"
-            >
-              View the diagrams
-            </Link>
-          </div>
-          <div className="rounded-xl border border-brand-100 bg-gradient-to-b from-white to-brand-50/40 p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-brand-900">
-              Not a search product
-            </h3>
-            <p className="mt-2 text-sm text-gray-600">
-              No login, token, or search box. RSS3 indexes posts and
-              activities, not query terms.
-            </p>
-          </div>
         </div>
       </section>
 
