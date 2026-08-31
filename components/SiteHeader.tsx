@@ -8,12 +8,6 @@ export function SiteHeader() {
           s3r.ch
         </Link>
         <nav className="flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-sm font-medium text-gray-600">
-          <Link href="/feed" className="hover:text-brand-700">
-            Feed
-          </Link>
-          <Link href="/research" className="hover:text-brand-700">
-            Research
-          </Link>
           <a
             href="https://fyberlabs.com"
             target="_blank"
