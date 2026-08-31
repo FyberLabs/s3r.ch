@@ -1,6 +1,6 @@
 /**
- * Shared feed item shape. Gun, the snapshot API, and user overlay
- * all use this. Tabs are typed for later — no tab UI in this slice.
+ * Shared feed item shape. Public cache, snapshot, personal overlay, and
+ * (later) the mesh all use this. Tabs are typed for later — no tab UI here.
  */
 
 export type FeedSource = "rss3" | "rss" | "atom";
