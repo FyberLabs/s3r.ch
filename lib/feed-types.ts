@@ -32,8 +32,8 @@ export type GunUserNode = {
 };
 
 /**
- * Later: a held claim on the identity graph (default private).
- * Seeing requires CHECK(see, claim, accessor) at now — not implemented here.
+ * Later: a held claim in Gun (native SociACL object, default private).
+ * Check is a SociACL adapter outside this app. Fetching a URL is not a grant.
  */
 export type IdentityClaimKind = "wallet" | "rss3" | "ens" | "kyc_attestation" | "email" | "phone";
 
