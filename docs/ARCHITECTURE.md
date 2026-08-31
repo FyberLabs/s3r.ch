@@ -4,7 +4,7 @@ Internal notes for the lab prototype. This is not a public `/research` route, no
 
 s3r.ch is a Fyber Labs lab site. **Gun is the graph.** RSS3 Data Sublayer activity and other allowed sites / crypto-social sources concentrate on that graph. Popular items cache across peers. The same graph is the unique real-time streaming / chat / sharing network — **mostly browser-to-browser**, not a chat server we host.
 
-This slice does **not** ship chat UI, rooms, presence, or WebRTC. Snapshot hydration is **now**. The mesh is **next**. The live `/feed` copy stays a lab prototype and does not claim posting or P2P already work.
+This slice does **not** ship chat UI, rooms, presence, WebRTC, SIWE, or a KYC/passport product. Snapshot hydration is **now**. The mesh is **next**. The live `/feed` copy stays a lab prototype and does not claim posting, P2P, KYC, or uniqueness proofs already work.
 
 ## End-state vs this slice
 
@@ -13,6 +13,7 @@ This slice does **not** ship chat UI, rooms, presence, or WebRTC. Snapshot hydra
 | Who pulls RSS3 and other allowed sources | Lab seeder on the container; `/api/ingest` as a same-origin proxy | Lab **and** users' browsers, writing the same item shape |
 | Where the graph lives | Server Gun + JSON snapshot; client Gun hydrated from `GET /api/feed` | HAM-merged mesh. Browsers are Gun peers. Popular items cache across peers |
 | Azure App Service | Seed peer + bootstrap cache so the graph is not empty | Still a seed peer — **not** the realtime / chat server |
+| Identity | Overlay can pull `GET /decentralized/{account}`; items already carry `author` / `provenance` | Gun user node keyed by wallet, linked public indicators, HAM-merged like feed items |
 | Streaming, chat, sharing | Not built | Gun subscriptions on that mesh, mostly peer-to-peer |
 | Tabs | Type only (`public` / `mine` / `network`) | Split public mesh vs mine. Users do not dump every pull into the public seed by default |
 
@@ -41,6 +42,46 @@ Do not dump every user pull into the public seed by default.
 | **Share-into-mesh** | User chooses to publish an overlay item onto the public graph | Not wired. No UI that claims it | Explicit action. **Network** / public tab reads the mesh, not every private pull |
 
 `FeedTab = "public" | "mine" | "network"` remains a type only. No tab UI in this slice.
+
+Observing a wallet's **public** traces is not the person controlling that wallet dumping private overlay into the public cache. Mine vs public vs explicit share still holds for identity the same way it holds for feed items.
+
+## Identity (KYC alternative that stays in crypto)
+
+A s3r.ch user is **not** an email/password account and **not** government KYC. It is an identity graph assembled from public crypto traces — the same lean as RSS3 and other web3 work that looks for solid KYC alternatives without leaving crypto.
+
+This is **not** AML or legal KYC, **not** PII collection, and **not** "verified human" theater. We do not claim sybil resistance or uniqueness proofs. We do not invent a token or a fake passport product. This slice does not ship WalletConnect, SIWE, a login UI, a KYC form, or a passport upload.
+
+### What a user is
+
+We build a user from the wallets and other **public indicators we can actually pull**.
+
+| Role | Source | This slice |
+| --- | --- | --- |
+| **Primary key** | Wallet address(es) | Not a Gun user node yet. Overlay already accepts an RSS3 account (hex / `name.eth`) |
+| **RSS3 account path** | Documented `GET /decentralized/{account}` | Wired as personal overlay ingest |
+| **ENS / name.eth** | Same account path when the handle is a name we can query | Overlay only; no ENS resolver product |
+| **RSS3 GI activity** | Public lists we already seed; account path for a wallet | Public cache + overlay |
+| **Farcaster, Lens** | Via RSS3 GI platform/network lists we already seed | Public seed tags; not a native Hub/Lens login |
+| **On-chain tx / social tags** | `social`, `transaction`, plus `ethereum`, `base`, `farcaster`, `lens` | Already on feed items |
+| **Later optional attestations** | Only if a real, pullable source exists | Not invented here. No passport, no token |
+
+No Instagram, TikTok, Facebook, or locked-down X as identity sources — we cannot pull them (see the bridge matrix).
+
+### Same graph, not a second database
+
+Feed items already carry `author` and `provenance`. Identity emerges from the **same cache/mesh**, not a parallel store.
+
+**Next schema note** (not implemented in this PR): a Gun user node keyed by wallet, with linked indicator ids, HAM-merged across the mesh like feed items.
+
+```
+gun.get('s3rch').get('users').get(wallet)
+  { id: wallet, indicators: 'ens:name.eth,rss3:…,farcaster:…', provenance, ts }
+```
+
+- Lab seeder already concentrates **public** lists (activity, not a user registry).
+- End-state browsers pull **their own** wallet indicators (through the same CORS proxy / relay / extension gate as feed ingest).
+- Linking those indicators onto the wallet node is HAM-merge, same as items.
+- Putting a wallet's public GI traces in the public cache ≠ publishing that person's private overlay. Explicit share-into-mesh still required.
 
 ## Source of truth (now)
 
@@ -88,11 +129,11 @@ Tags are the filter and engagement primitive for this slice.
 - From RSS/Atom: `rss` or `atom`, plus `user`.
 - Deduped, lowercased, no empty strings.
 
-### Identity and merge
+### Item identity and merge
 
 Dedupe key is `id` if present, otherwise the normalized permalink URL.
 
-Same shape everywhere so a browser peer can HAM-merge without a second schema. Provenance stays on the item (`rss3:gi:…`, `rss:{url}`, `atom:{url}`).
+Same shape everywhere so a browser peer can HAM-merge without a second schema. Provenance stays on the item (`rss3:gi:…`, `rss:{url}`, `atom:{url}`). `author` is a public indicator (handle, owner, from), not a logged-in account.
 
 ## RSS3 seeder (bootstrap cache)
 
@@ -159,6 +200,7 @@ Outbound: `OutboundAdapter` is an interface only. Nothing claims posting works. 
 - `gun/lib/webrtc` so browsers mesh when the seed peer is idle.
 - Browsers pull allowed sources (through proxy / relay / extension) and HAM-merge.
 - Explicit share-into-mesh. Public / Mine / Network tabs.
+- Gun user node keyed by wallet; browsers pull their own public indicators onto it.
 - Streaming, chat, and sharing as Gun subscriptions (no chat UI here).
 - Real ActivityPub / ATProto / Nostr / Farcaster adapters (pull and, where authorized, post).
 - Durable storage is the mesh (and any later durable seed), not the container disk.
@@ -171,3 +213,4 @@ Outbound: `OutboundAdapter` is an interface only. Nothing claims posting works. 
 - 2019 session/group contracts and tokenomics.
 - Azure OIDC / Deploy secrets.
 - Chat UI, rooms, presence, or WebRTC wiring in this slice.
+- WalletConnect / SIWE / login UI, KYC form, passport upload, or claims of legal KYC / sybil resistance / uniqueness.

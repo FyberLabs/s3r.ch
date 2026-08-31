@@ -4,7 +4,7 @@
 
 Sister sites: [Fyber Labs](https://fyberlabs.com), [Hypermesh / Hyperme.sh](https://hyperme.sh), [Tennessee Windage](https://tennesseewindage.com).
 
-The public [lab feed](/feed) is a GunDB graph. This slice’s seeder and `GET /api/feed` snapshot are a bootstrap cache (so the graph is not empty and App Service is not the chat server); the end-state is a mostly browser-to-browser Gun mesh. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The public [lab feed](/feed) is a GunDB graph. This slice’s seeder and `GET /api/feed` snapshot are a bootstrap cache (so the graph is not empty and App Service is not the chat server); the end-state is a mostly browser-to-browser Gun mesh. A user is an identity graph of public wallet traces (not email login, not government KYC). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Stack
 

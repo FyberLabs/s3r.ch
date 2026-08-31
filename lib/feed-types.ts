@@ -20,6 +20,17 @@ export type FeedItem = {
 /** Later: Public / Mine / Network. Do not render tabs from this type yet. */
 export type FeedTab = "public" | "mine" | "network";
 
+/**
+ * Later: Gun user node keyed by wallet, HAM-merged like feed items.
+ * Not implemented in this slice — no SIWE, no KYC UI. See docs/ARCHITECTURE.md.
+ */
+export type GunUserNode = {
+  id: string;
+  indicators: string[];
+  provenance: string;
+  ts: number;
+};
+
 export type SeedReport = {
   items: FeedItem[];
   seededAt: string | null;
