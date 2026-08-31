@@ -16,9 +16,11 @@ Sister sites: [Fyber Labs](https://fyberlabs.com), [Hypermesh / Hyperme.sh](http
 
 The original PlantUML sources (`session-uc.wsd`, `group-uc.wsd`) stay at the repository root. The site also serves copies from `/docs` and renders them on `/research`.
 
+`/feed` is a public RSS3-backed activity board (popular vs novel). It reads documented GI network/platform activities. It is not a social network, not a live search product, and not financial advice. If RSS3 is down, the board stays empty.
+
 ## Stack
 
-- **Next.js 14** (App Router, `output: "standalone"`)
+- **Next.js 15** (App Router, `output: "standalone"`)
 - **TypeScript**
 - **Tailwind CSS**
 - **Node 24** / npm
