@@ -2,20 +2,66 @@
 
 Internal notes for the lab prototype. This is not a public `/research` route, not a protocol spec, and not tokenomics.
 
-s3r.ch is a Fyber Labs lab site. The public feed is a **GunDB graph**. RSS3 Data Sublayer activity is pulled on a cadence and **seeded into Gun**. The browser does not treat a live RSS3 fetch as its data source.
+s3r.ch is a Fyber Labs lab site. **Gun is the graph.** RSS3 Data Sublayer activity and other allowed sites / crypto-social sources concentrate on that graph. Popular items cache across peers. The same graph is the unique real-time streaming / chat / sharing network — **mostly browser-to-browser**, not a chat server we host.
 
-## Source of truth
+This slice does **not** ship chat UI, rooms, presence, or WebRTC. Snapshot hydration is **now**. The mesh is **next**. The live `/feed` copy stays a lab prototype and does not claim posting or P2P already work.
 
-Gun is the graph.
+## End-state vs this slice
 
-- Server process holds a Gun instance (radisk directory on the App Service container disk, plus an in-memory index and a JSON snapshot for restarts).
-- `gun-preload.cjs` attaches a Gun peer to the Node HTTP server (radisk under `/app/data/radata`). Azure App Service WebSockets are optional and not required for the feed to render.
-- The public `/feed` page hydrates a client Gun graph from `GET /api/feed` (a snapshot of the server graph), then subscribes with `gun.get(...).map().on(...)`.
+| | Now (this PR) | Next / end-state |
+| --- | --- | --- |
+| Who pulls RSS3 and other allowed sources | Lab seeder on the container; `/api/ingest` as a same-origin proxy | Lab **and** users' browsers, writing the same item shape |
+| Where the graph lives | Server Gun + JSON snapshot; client Gun hydrated from `GET /api/feed` | HAM-merged mesh. Browsers are Gun peers. Popular items cache across peers |
+| Azure App Service | Seed peer + bootstrap cache so the graph is not empty | Still a seed peer — **not** the realtime / chat server |
+| Streaming, chat, sharing | Not built | Gun subscriptions on that mesh, mostly peer-to-peer |
+| Tabs | Type only (`public` / `mine` / `network`) | Split public mesh vs mine. Users do not dump every pull into the public seed by default |
+
+The lab seeder and `GET /api/feed` are a **bootstrap cache**. They exist so first paint is not an empty graph and so App Service does not have to be the chat server.
+
+```
+now:
+  lab seeder → server Gun (seed peer) → GET /api/feed snapshot → client Gun
+  user overlay → POST /api/ingest (CORS proxy) → client Gun only (not public seed)
+
+next:
+  browsers pull allowed sources → write same item shape → HAM-merge into the mesh
+  /gun (+ WebSockets) is a real seed peer
+  gun/lib/webrtc so browsers talk when the seed peer is idle
+  share-into-mesh is explicit; personal overlay stays mine until shared
+```
+
+## Graphs: public cache, personal overlay, later share-into-mesh
+
+Do not dump every user pull into the public seed by default.
+
+| Graph | Who writes | This slice | Later |
+| --- | --- | --- | --- |
+| **Public cache** | Lab seeder (documented RSS3 GI lists) | Yes. Snapshot + server Gun | Seed peer still caches; browsers HAM-merge public items across the mesh |
+| **Personal overlay** | The user, in their browser | Yes. Same item shape, provenance, dedupe by id/url. Stays local | Tabs: **Mine**. Still not public unless they share |
+| **Share-into-mesh** | User chooses to publish an overlay item onto the public graph | Not wired. No UI that claims it | Explicit action. **Network** / public tab reads the mesh, not every private pull |
+
+`FeedTab = "public" | "mine" | "network"` remains a type only. No tab UI in this slice.
+
+## Source of truth (now)
+
+Gun is already the graph. This slice uses a bootstrap path so Azure does not have to serve every subscription.
+
+- Server process holds a Gun instance (radisk on the App Service container disk, plus an in-memory index and a JSON snapshot for restarts).
+- `gun-preload.cjs` attaches Gun to the Node HTTP server (`listen` patch, radisk under `/app/data/radata`). That is the **seed peer**, not a finished mesh.
+- `/feed` hydrates a client Gun from `GET /api/feed`, then `gun.get(...).map().on(...)`. That is snapshot hydration **now**, so the page works if WebSockets are off.
 - If RSS3 returns nothing, the seeder writes nothing. The feed stays empty. No invented rows.
+
+## Honest gates
+
+These are real constraints. Do not paper over them.
+
+1. **Browser CORS.** RSS3 GI (`https://gi.rss3.io`) and most RSS/Atom feeds will not load cross-origin from `s3r.ch`. `/api/ingest` is the same-origin proxy until a relay or extension exists. Direct browser-to-GI is not magic. The end-state still has browsers pull and write the graph; they do it through a proxy, relay, or extension, not by pretending CORS is gone.
+2. **App Service WebSockets.** This slice hydrates from snapshot because WebSockets may be off on the App Service. Next slice: enable WS so `/gun` is a real peer, then `gun/lib/webrtc` so browsers talk to each other when the seed peer is idle. This PR does not enable WS, wire WebRTC, or claim `/gun` already meshes browsers.
+3. **Ephemeral container disk.** The seed peer is a **cache**, not durable storage. A recycle empties radisk and the snapshot until the next seed, or until a browser peer still holds the graph. Do not treat `/app/data` as the archive.
 
 ## Item shape
 
-Every item in the graph, the snapshot, and the overlay uses the same shape:
+Every item in the public cache, the snapshot, the overlay, and (later) the mesh uses the same shape:
 
 ```ts
 {
@@ -46,18 +92,9 @@ Tags are the filter and engagement primitive for this slice.
 
 Dedupe key is `id` if present, otherwise the normalized permalink URL.
 
-User overlay items use the same shape. They are **merged in the client Gun graph**, not written into the public seed. Provenance distinguishes them (`rss3:gi:/decentralized/{account}`, `rss:{url}`, `atom:{url}`).
+Same shape everywhere so a browser peer can HAM-merge without a second schema. Provenance stays on the item (`rss3:gi:…`, `rss:{url}`, `atom:{url}`).
 
-```
-public seed  →  server Gun  →  GET /api/feed  →  client Gun
-user overlay →  POST /api/ingest (fetch+normalize only)  →  client Gun merge
-```
-
-### Tabs (later)
-
-`FeedTab = "public" | "mine" | "network"` exists as a type only. No tab UI in this slice.
-
-## RSS3 seeder
+## RSS3 seeder (bootstrap cache)
 
 Documented GI base: `https://gi.rss3.io` ([RSS3 Data Sublayer API](https://docs.rss3.io/guide/developer/api)).
 
@@ -86,18 +123,15 @@ Cadence:
 
 ## Azure / process shape
 
-The site is a Next.js standalone container on Azure App Service (port 8080). There is no second Azure service and no Terraform in this repo.
+The site is a Next.js standalone container on Azure App Service (port 8080). There is no second Azure service and no Terraform in this repo. App Service is a **seed peer + bootstrap cache**, not the chat server.
 
 The container runs Next's standalone `server.js` with `node -r ./gun-preload.cjs`:
 
-1. Preload patches `http.createServer` / `listen`.
-2. Gun attaches to that HTTP server (`web: server`, radisk under `/app/data/radata`).
-3. Requests to `/gun` skip Next so the Gun peer can answer.
-4. The process listens on `PORT` / `HOSTNAME` (8080).
+1. Preload patches `http.Server.prototype.listen` and attaches Gun (`web: server`, radisk under `/app/data/radata`).
+2. The process listens on `PORT` / `HOSTNAME` (8080).
+3. `/feed` does not require a live `/gun` WebSocket in this slice.
 
 `/api/health` stays `{ "status": "ok" }` for the existing Deploy smoke test.
-
-Container disk is ephemeral. A recycle loses the Gun file and snapshot until the next seed. That is expected.
 
 ## In / out bridge matrix
 
@@ -105,8 +139,8 @@ Most social networks are walled gardens. This table is the honest matrix. **Yes*
 
 | Network | Pull in | Repost out | This slice |
 | --- | --- | --- | --- |
-| RSS3 Data Sublayer | yes | yes (GI write is not used here) | public seeder + address ingest |
-| RSS / Atom | yes | yes (feed file / ping) | URL ingest, server fetch + normalize |
+| RSS3 Data Sublayer | yes | yes (GI write is not used here) | public seeder + address ingest (proxy) |
+| RSS / Atom | yes | yes (feed file / ping) | URL ingest, same-origin proxy |
 | ActivityPub | yes | yes | not wired |
 | ATProto / Bluesky | yes | yes | not wired |
 | Nostr | yes | yes | not wired |
@@ -119,12 +153,15 @@ Most social networks are walled gardens. This table is the honest matrix. **Yes*
 
 Outbound: `OutboundAdapter` is an interface only. Nothing claims posting works. There is no post button.
 
-## Later
+## Later (not this follow-up)
 
-- Public / Mine / Network tabs.
+- Enable App Service WebSockets; `/gun` as a real seed peer.
+- `gun/lib/webrtc` so browsers mesh when the seed peer is idle.
+- Browsers pull allowed sources (through proxy / relay / extension) and HAM-merge.
+- Explicit share-into-mesh. Public / Mine / Network tabs.
+- Streaming, chat, and sharing as Gun subscriptions (no chat UI here).
 - Real ActivityPub / ATProto / Nostr / Farcaster adapters (pull and, where authorized, post).
-- Durable Gun storage beyond the container disk.
-- Engagement beyond tag chips.
+- Durable storage is the mesh (and any later durable seed), not the container disk.
 
 ## Out of scope (do not restore)
 
@@ -133,3 +170,4 @@ Outbound: `OutboundAdapter` is an interface only. Nothing claims posting works. 
 - Invented GI or search APIs, token, or protocol pages.
 - 2019 session/group contracts and tokenomics.
 - Azure OIDC / Deploy secrets.
+- Chat UI, rooms, presence, or WebRTC wiring in this slice.

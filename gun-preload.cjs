@@ -1,5 +1,6 @@
 /**
- * Attach a same-process Gun peer to Next's HTTP server before listen().
+ * Attach a same-process Gun seed peer to Next's HTTP server before listen().
+ * Bootstrap cache for this slice — not the finished mesh (docs/ARCHITECTURE.md).
  * Used as `node -r ./gun-preload.cjs server.js` in the standalone container.
  */
 const fs = require("node:fs");

@@ -33,8 +33,8 @@ export function FeedStream() {
     (async () => {
       const GunMod = await import("gun/browser");
       const Gun = (GunMod.default ?? GunMod) as unknown as (opts?: object) => GunRef;
-      // Client Gun is the UI graph. Hydrate from the server snapshot; do not
-      // require a live /gun WebSocket (App Service may not have WS enabled).
+      // Now: hydrate from the bootstrap snapshot. Mesh / /gun peers are next
+      // (see docs/ARCHITECTURE.md). Do not require a live WebSocket here.
       const gun = Gun();
 
       let snapshot: FeedSnapshot = {
