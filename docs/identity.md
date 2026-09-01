@@ -15,14 +15,15 @@ Components here are written so they can be extracted into a shared kit later. Th
 - **WebAuthn PRF wrap** of that local pair (recovery / device proof, **not** login). Envelope version 1 in IndexedDB, with ≥2 KEKs (PRF + wallet-bound secondary). Quiet `/feed` controls: wrap / unlock / status.
 - After a SIWE session exists: a **mainnet ENS held claim** on `/feed` when reverse **and** forward match the checksummed session address. ENS is never login and never the session key.
 - After a SIWE session exists: **Farcaster / Lens / RSS3 held claims** on `/feed` when a bidirectional public lookup binds them to the checksummed session address. These are never login (no SIWF, no Lens OAuth, no RSS3 login) and never the session key.
+- **ERC-1271** (and EIP-6492 via the same viem path) so a smart-account wallet can SIWE. Session subject stays the checksummed contract or EOA address.
 
 ## What this slice does not ship
 
 - Passkey as primary login. Session subject stays the checksummed address.
 - Writing the envelope, DEK, KEKs, SIWE signatures, or SEA `priv` / `epriv` to Gun for recovery.
 - Paper-backup UI (the secondary slot accepts a paper string in code; lab UI uses the injected wallet).
-- ERC-1271 / smart accounts (needs an RPC we do not pin; EOA `verifyMessage` only).
-- WalletConnect (needs `NEXT_PUBLIC_WC_PROJECT_ID` we do not have).
+- WalletConnect (needs `NEXT_PUBLIC_WC_PROJECT_ID` we do not have). Do not invent one.
+- Panopticon / Hypermesh Keycloak as an IdP. s3r.ch login stays EIP-4361 SIWE.
 - ENS as login, or writing an ENS / Farcaster / Lens / RSS3 claim onto the public Gun graph.
 - Farcaster SIWF, Lens OAuth, or RSS3 login. Indicators are held claims after SIWE, not session subjects.
 - SociACL Check / certify. Do not import `FyberLabs/SociACL`.
@@ -33,14 +34,15 @@ Components here are written so they can be extracted into a shared kit later. Th
 
 | Lock | Why |
 | --- | --- |
-| Session key is the checksummed address | ENS, fname, Lens handle, RSS3 id, and email are indicators, not the session subject |
+| Session key is the checksummed address | ENS, fname, Lens handle, RSS3 id, email, Keycloak `sub`, and SEA `pub` are never the session subject. EOA or ERC-1271 contract address only |
+| Contract SIWE is mainnet ERC-1271 / EIP-6492 | Local Anvil is EOA-only. Do not send a local contract `eth_call` to mainnet |
 | ENS is a held claim after SIWE | Reverse + forward must checksum-match. Unverified reverse is never shown |
 | Farcaster / Lens / RSS3 are held claims after SIWE | Same bidirectional bar as ENS. Unverified one-way lookups are never shown. A GI miss is a quiet empty RSS3 claim, not a reason to drop the others |
 | Mesh identity is a **local Gun SEA P-256 pair**, not the Ethereum key | Different curves. Ethereum secp256k1 signs SIWE; SEA is for later mesh crypto |
 | Never call `user.recall({ sessionStorage: true })` | Gun would store the plaintext SEA pair. Never `sessionStorage` for this kit. |
 | Never put SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, ENS, Farcaster, Lens, or RSS3 claims on the public Gun graph | Session / device secrets stay in cookies and IndexedDB. Public indicators are read-only this slice |
 | Nonce lives in a **signed cookie**, not an in-memory `Map` | Azure App Service is multi-instance; Redis is not in this slice |
-| OIDC is not primary login | Hypermesh portal can stay Keycloak; this kit is wallet login |
+| OIDC is not primary login | Hypermesh portal can stay Keycloak; s3r.ch does not use Panopticon Keycloak as an IdP |
 | Passkey WebAuthn PRF wrap is recovery | PRF is device proof. It does not become the session subject |
 | `lib/auth.ts` is seed authorize | User identity lives in `lib/identity/` |
 
@@ -51,7 +53,7 @@ Pinned to current majors compatible with Next.js 16, React 19, and Node 24:
 | Package | Role |
 | --- | --- |
 | `siwe` | Construct and parse EIP-4361 messages |
-| `viem` | EOA `verifyMessage` / recover. Checksum via `getAddress`. Mainnet `getEnsName` + `getEnsAddress` |
+| `viem` | EOA `verifyMessage` (local ecrecover, no RPC). Contract verify via mainnet `publicClient.verifyMessage` (ERC-1271 + EIP-6492). Checksum via `getAddress`. Mainnet `getEnsName` + `getEnsAddress` |
 | `wagmi` v3 | Injected connector only. No RainbowKit, no ConnectKit |
 | `@tanstack/react-query` | Required by wagmi |
 | `jose` | Sign nonce and session cookies (HS256) |
@@ -70,7 +72,7 @@ WalletConnect is a documented follow-up. Do not add a WalletConnect project id t
 | `lib/identity/cookies.ts` | `__Host-` on HTTPS, `Host-` on HTTP localhost. HttpOnly, SameSite=Lax, `Path=/` |
 | `lib/identity/nonce.ts` | Random SIWE nonce + signed cookie payload |
 | `lib/identity/session.ts` | Signed session `{ address, chainId, iat, exp }` |
-| `lib/identity/siwe.ts` | Parse, domain/nonce/expiry checks, viem signature verify |
+| `lib/identity/siwe.ts` | Parse, domain/nonce/expiry checks, EOA ecrecover then ERC-1271 / EIP-6492 |
 | `lib/identity/wrap.ts` | Envelope v1 + HKDF-then-AES-GCM wrap/unwrap of the SEA pair |
 | `lib/identity/webauthn-prf.ts` | Native WebAuthn PRF create/get. Refuses to fake a wrap |
 | `lib/identity/sea.ts` | `createSeaPair()` — local P-256 pair. Does not `recall()` |
@@ -132,9 +134,17 @@ Server:
 3. Message `domain` must match the request `Host` / `X-Forwarded-Host`.
 4. Nonce must match the signed nonce cookie.
 5. Honour `expirationTime` / `notBefore` when present.
-6. Verify the signature with viem (`verifyMessage`) for an EOA. Recovered address is checksummed and becomes the session subject.
+6. Verify the signature:
+   - Local EOA `ecrecover` first (viem `verifyMessage` utility, no RPC). Anvil / local keys stay here.
+   - If that fails and SIWE `chainId` is mainnet (`1`), call viem `publicClient.verifyMessage` on a `createPublicClient({ chain: mainnet, transport: http() })` — same unpinned public HTTP as ENS. That path is ERC-1271 (`isValidSignature` magic `0x1626ba7e`) and EIP-6492 (viem's deployless wrapper). Tests inject a mockable client so they never hit live RPC.
+   - Any other `chainId` (including Anvil `31337` / Hardhat `1337`) is EOA-only. Do not send a local contract call to mainnet.
+7. On success, the checksummed message address (EOA or contract) is the session subject. Cookie is still `{ address, chainId, iat, exp }`. Never ENS, email, Keycloak `sub`, or SEA `pub`.
+
+RPC errors and a non-magic / false ERC-1271 result are a quiet invalid signature (401), not a 500 dump.
 
 Reject on domain mismatch. Do not treat ENS names as the session key.
+
+s3r.ch does **not** use Panopticon Keycloak as an IdP and does not federate to hyperme.sh. SociACL Check is grants later, not login.
 
 ## ENS held claim (after SIWE, not login)
 
@@ -243,9 +253,11 @@ Locks that stay:
 
 ## Follow-ups
 
-- WalletConnect injected-or-QR, gated on `NEXT_PUBLIC_WC_PROJECT_ID`.
-- ERC-1271 / EIP-6492 via a pinned RPC.
+- WalletConnect injected-or-QR, gated on `NEXT_PUBLIC_WC_PROJECT_ID` (do not invent one).
 - Paper-backup UI for the secondary slot (code already accepts a paper string).
 - Unstoppable / SNS (not primary; ENS remains mainnet reverse+forward).
-- SociACL Check when sharing needs grants (adapter lives outside this repo).
+- SociACL Check when sharing needs grants (adapter lives outside this repo). Do not import `FyberLabs/SociACL`.
 - Azure Key Vault for `IDENTITY_SESSION_SECRET` (still operator / Azure in this slice).
+- Contract verify on chains other than mainnet (this slice's 1271 RPC allowlist is mainnet only).
+
+This slice ships ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client). s3r.ch does not use Panopticon Keycloak as an IdP.
