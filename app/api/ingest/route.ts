@@ -1,4 +1,5 @@
 import { normalizeRss3Activities } from "@/lib/normalize";
+import { fetchPublic } from "@/lib/public-fetch";
 import { parseRssAtom } from "@/lib/rss-atom";
 import { fetchAccountActivities, GI_BASE, isRss3Account } from "@/lib/rss3";
 import { assertPublicHttpUrl } from "@/lib/url-guard";
@@ -6,7 +7,6 @@ import { assertPublicHttpUrl } from "@/lib/url-guard";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const FETCH_MS = 8_000;
 const MAX_BYTES = 1_000_000;
 
 type IngestBody = {
@@ -61,11 +61,8 @@ async function ingestRss(rawUrl: string) {
   }
 
   try {
-    const response = await fetch(url, {
-      headers: { accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*" },
-      signal: AbortSignal.timeout(FETCH_MS),
-      redirect: "follow",
-      cache: "no-store",
+    const response = await fetchPublic(url, {
+      accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
     });
     if (!response.ok) {
       return Response.json(

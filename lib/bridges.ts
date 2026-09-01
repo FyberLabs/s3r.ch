@@ -17,13 +17,13 @@ export const BRIDGE_MATRIX: NetworkBridge[] = [
     network: "RSS3 Data Sublayer",
     pull: "yes",
     repost: "yes",
-    thisSlice: "public seeder + address ingest",
+    thisSlice: "optional public seeder + address ingest; gi.rss3.io currently has no DNS",
   },
   {
     network: "RSS / Atom",
     pull: "yes",
     repost: "yes",
-    thisSlice: "URL ingest (normalize only)",
+    thisSlice: "public seeder + URL ingest (same-origin proxy)",
   },
   {
     network: "ActivityPub",
@@ -35,7 +35,7 @@ export const BRIDGE_MATRIX: NetworkBridge[] = [
     network: "ATProto / Bluesky",
     pull: "yes",
     repost: "yes",
-    thisSlice: "not wired",
+    thisSlice: "public seeder pull via AppView (no auth)",
   },
   {
     network: "Nostr",
@@ -47,13 +47,13 @@ export const BRIDGE_MATRIX: NetworkBridge[] = [
     network: "Farcaster",
     pull: "yes",
     repost: "yes",
-    thisSlice: "pull via RSS3 only",
+    thisSlice: "public seeder pull via Hubble HTTP (Pinata, no API key)",
   },
   {
     network: "Lens",
     pull: "yes",
     repost: "yes",
-    thisSlice: "pull via RSS3 only",
+    thisSlice: "pull via RSS3 GI only (GI optional / currently no DNS)",
   },
   {
     network: "Instagram",

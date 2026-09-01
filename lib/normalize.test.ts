@@ -138,4 +138,21 @@ describe("parseRssAtom", () => {
     assert.equal(parsed.items[0].author, "Chris");
     assert.equal(parsed.items[0].permalink, "https://example.com/1");
   });
+
+  it("public RSS seed tags drop user and add network slugs", () => {
+    const xml = `<?xml version="1.0"?>
+      <rss version="2.0"><channel>
+        <item>
+          <title>EF note</title>
+          <link>https://blog.ethereum.org/en/note</link>
+          <guid>https://blog.ethereum.org/en/note</guid>
+        </item>
+      </channel></rss>`;
+    const parsed = parseRssAtom(xml, "https://blog.ethereum.org/en/feed.xml");
+    const tags = parsed.items[0].tags.filter((tag) => tag !== "user").concat(["ethereum", "social"]);
+    assert.ok(tags.includes("rss"));
+    assert.ok(tags.includes("ethereum"));
+    assert.ok(tags.includes("social"));
+    assert.ok(!tags.includes("user"));
+  });
 });

@@ -10,7 +10,7 @@ This slice does **not** ship chat UI, rooms, presence, WebRTC, SIWE, a KYC/passp
 
 | | Now (this PR) | Next / end-state |
 | --- | --- | --- |
-| Who pulls RSS3 and other allowed sources | Lab seeder on the container; `/api/ingest` as a same-origin proxy | Lab **and** users' browsers, writing the same item shape |
+| Who pulls Farcaster, ATProto, RSS, and optional RSS3 | Lab seeder on the container; `/api/ingest` as a same-origin proxy | Lab **and** users' browsers, writing the same item shape |
 | Where the graph lives | Server Gun + JSON snapshot; client Gun hydrated from `GET /api/feed` | HAM-merged mesh. Browsers are Gun peers. Popular items cache across peers |
 | Azure App Service | Seed peer + bootstrap cache so the graph is not empty | Still a seed peer — **not** the realtime / chat server |
 | Identity | Overlay can pull `GET /decentralized/{account}`; items already carry `author` / `provenance` | Gun user node keyed by wallet, linked **held claims**, HAM-merged like feed items |
@@ -38,7 +38,7 @@ Do not dump every user pull into the public seed by default.
 
 | Graph | Who writes | This slice | Later |
 | --- | --- | --- | --- |
-| **Public cache** | Lab seeder (documented RSS3 GI lists) | Yes. Snapshot + server Gun | Seed peer still caches; browsers HAM-merge public items across the mesh |
+| **Public cache** | Lab seeder (Farcaster hub FIDs, ATProto AppView, RSS/Atom; RSS3 GI optional) | Yes. Snapshot + server Gun | Seed peer still caches; browsers HAM-merge public items across the mesh |
 | **Personal overlay** | The user, in their browser | Yes. Same item shape, provenance, dedupe by id/url. Stays local | Tabs: **Mine**. Still not public unless they share |
 | **Share-into-mesh** | User chooses to publish an overlay item onto the public graph | Not wired. No UI that claims it | Explicit action. **Network** / public tab reads the mesh, not every private pull |
 
@@ -61,8 +61,10 @@ We build a user from the wallets and other **public indicators we can actually p
 | **Primary key** | Wallet address(es) | Not a Gun user node yet. Overlay already accepts an RSS3 account (hex / `name.eth`) |
 | **RSS3 account path** | Documented `GET /decentralized/{account}` | Wired as personal overlay ingest |
 | **ENS / name.eth** | Same account path when the handle is a name we can query | Overlay only; no ENS resolver product |
-| **RSS3 GI activity** | Public lists we already seed; account path for a wallet | Public cache + overlay |
-| **Farcaster, Lens** | Via RSS3 GI platform/network lists we already seed | Public seed tags; not a native Hub/Lens login |
+| **RSS3 GI activity** | Optional public lists when `RSS3_GI_BASE` resolves; account path for a wallet | Overlay ingest still wired. Public seed skips GI if DNS/HTTP fails |
+| **Farcaster** | Native Hubble HTTP (`castsByFid` on protocol FIDs) | Public seed. Not a Hub login |
+| **ATProto / Bluesky** | Public AppView author + generator feeds | Public seed. No auth |
+| **Lens** | Via RSS3 GI platform lists only, when GI is up | Not a native Lens login |
 | **On-chain tx / social tags** | `social`, `transaction`, plus `ethereum`, `base`, `farcaster`, `lens` | Already on feed items |
 | **Later optional attestations** | Only if a real, pullable source exists | Not invented here. No passport, no token |
 
@@ -90,7 +92,7 @@ We can collect **many proof types** onto the same user node. Holding a proof is 
 
 | Claim kind | What it is | Default visibility |
 | --- | --- | --- |
-| Wallets / public crypto indicators | Already: RSS3 account, ENS/`name.eth`, Farcaster/Lens via GI, on-chain tags | Public **lists** the lab seeder already concentrates stay public cache. A holder's **assembled footprint** (all linked indicators) is overlay until granted |
+| Wallets / public crypto indicators | Already: RSS3 account, ENS/`name.eth`, Farcaster hub FIDs, ATProto handles, Lens via GI when up, on-chain tags | Public **lists** the lab seeder already concentrates stay public cache. A holder's **assembled footprint** (all linked indicators) is overlay until granted |
 | Third-party digital KYC attestations | Later, only if a real issuer exists. Not a s3r.ch passport product | **Private** (held claim) |
 | Old-school email / phone confirmation | Later. Proves the claim **to the holder** | **Private**. Confirming an email does **not** publish it |
 
@@ -154,13 +156,13 @@ Gun is already the graph. This slice uses a bootstrap path so Azure does not hav
 - Server process holds a Gun instance (radisk on the App Service container disk, plus an in-memory index and a JSON snapshot for restarts).
 - `gun-preload.cjs` attaches Gun to the Node HTTP server (`listen` patch, radisk under `/app/data/radata`). That is the **seed peer**, not a finished mesh.
 - `/feed` hydrates a client Gun from `GET /api/feed`, then `gun.get(...).map().on(...)`. That is snapshot hydration **now**, so the page works if WebSockets are off.
-- If RSS3 returns nothing, the seeder writes nothing. The feed stays empty. No invented rows.
+- If every live source fails, the seeder writes nothing. The feed stays empty. No invented rows. A down RSS3 GI host does not empty Farcaster / ATProto / RSS pulls.
 
 ## Honest gates
 
 These are real constraints. Do not paper over them.
 
-1. **Browser CORS.** RSS3 GI (`https://gi.rss3.io`) and most RSS/Atom feeds will not load cross-origin from `s3r.ch`. `/api/ingest` is the same-origin proxy until a relay or extension exists. Direct browser-to-GI is not magic. The end-state still has browsers pull and write the graph; they do it through a proxy, relay, or extension, not by pretending CORS is gone.
+1. **Browser CORS.** Farcaster Hubble, ATProto AppView, RSS3 GI, and most RSS/Atom feeds will not load cross-origin from `s3r.ch`. `/api/ingest` is the same-origin proxy until a relay or extension exists. Direct browser-to-source is not magic. The end-state still has browsers pull and write the graph; they do it through a proxy, relay, or extension, not by pretending CORS is gone.
 2. **App Service WebSockets.** This slice hydrates from snapshot because WebSockets may be off on the App Service. Next slice: enable WS so `/gun` is a real peer, then `gun/lib/webrtc` so browsers talk to each other when the seed peer is idle. This PR does not enable WS, wire WebRTC, or claim `/gun` already meshes browsers.
 3. **Ephemeral container disk.** The seed peer is a **cache**, not durable storage. A recycle empties radisk and the snapshot until the next seed, or until a browser peer still holds the graph. Do not treat `/app/data` as the archive.
 
@@ -171,7 +173,7 @@ Every item in the public cache, the snapshot, the overlay, and (later) the mesh 
 ```ts
 {
   id: string          // canonical activity id, guid, or permalink
-  source: string      // rss3 | rss | atom
+  source: string      // rss3 | rss | atom | farcaster | atproto
   kind: string        // RSS3 tag (social, transaction, …) or rss / atom
   author: string
   body: string
@@ -190,20 +192,71 @@ Tags are the filter and engagement primitive for this slice.
 
 - From RSS3: the activity/action `tag` (`social`, `transaction`, …).
 - Plus platform / network slugs when present (`farcaster`, `lens`, `ethereum`, `base`).
-- From RSS/Atom: `rss` or `atom`, plus `user`.
+- From Farcaster hub: `farcaster`, `social`.
+- From ATProto AppView: `atproto`, `bsky`, `social`.
+- From public RSS/Atom: `rss` or `atom`, plus `ethereum` / `farcaster` / `social` when the feed is that network.
+- Overlay RSS/Atom ingest still adds `user`.
 - Deduped, lowercased, no empty strings.
 
 ### Item identity and merge
 
 Dedupe key is `id` if present, otherwise the normalized permalink URL.
 
-Same shape everywhere so a browser peer can HAM-merge without a second schema. Provenance stays on the item (`rss3:gi:…`, `rss:{url}`, `atom:{url}`). `author` is a public indicator (handle, owner, from), not a logged-in account.
+Same shape everywhere so a browser peer can HAM-merge without a second schema. Provenance names the real URL (`farcaster:hub:…`, `atproto:…`, `rss:{url}`, `atom:{url}`, `rss3:gi:…`). `author` is a public indicator (handle, owner, from), not a logged-in account.
 
-## RSS3 seeder (bootstrap cache)
+## Public seeder (bootstrap cache)
+
+Fetching a URL is an edge handoff, not a grant. Empty or failed sources write nothing. `POST /api/seed` is **503** only when `sourcesOk=0` **and** there is an error. A dead GI host must not empty the other sources.
+
+User-Agent: `s3r.ch-gun-feed/0.1 (Fyber Labs)`. Timeouts are 8s, same as the old GI fetches.
+
+### Farcaster Hubble HTTP (required for a live seed)
+
+Default hub: `https://hub.pinata.cloud` (override `FARCASTER_HUB_BASE`). No API key.
+
+Probed 2026-09-01:
+
+- `GET /v1/info` → 200
+- `GET /v1/castsByFid?fid=1&pageSize=20&reverse=true` (also fid=2, fid=3) → 200 with messages
+- `reverse=1` is **400**; the query must be `reverse=true`
+
+Channel parent URLs returned **empty** messages (`warpcast.com` and `farcaster.xyz` `/~/channel/ethereum`, `/~/channel/farcaster`, and documented FIP-2 `chain://eip155:7777777/erc721:0x00000000fcb935a5ba12c7d4c0d1f0d71538b39c`). We do **not** seed empty channels.
+
+Public seed uses a small documented list of public protocol FIDs that responded with casts: **1** (`farcaster`), **2** (`v`), **3** (`dwr`).
+
+Hub `data.timestamp` is seconds since the Farcaster epoch **2021-01-01 UTC = 1609459200**. Convert to unix seconds by adding that offset. Verified against fid=2 cast `0x532064659e980a9a4c3614f2b1deb3ac63e8cc9a`: hub ts `156796112` → unix `1766255312` (`2025-12-20T18:28:32Z`). Treating the hub ts as unix lands in 1974.
+
+Provenance: `farcaster:hub:{hub}/v1/castsByFid?fid={fid}`.
+
+### ATProto public AppView (no auth)
+
+Default: `https://public.api.bsky.app` (override `ATPROTO_APPVIEW_BASE`). No Neynar or other API-key services.
+
+Documented public set, probed 200 on 2026-09-01:
+
+- `GET /xrpc/app.bsky.feed.getAuthorFeed?actor=ethereum.bsky.social&limit=20`
+- `GET /xrpc/app.bsky.feed.getFeed?feed=at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot&limit=20`
+
+Provenance: `atproto:{url}`.
+
+### RSS / Atom
+
+Parser in `lib/rss-atom.ts` (`MAX_ITEMS` 30). Follow redirects.
+
+- `https://blog.ethereum.org/en/feed.xml` → 200 RSS (`/feed.xml` 301s)
+- `https://github.com/farcasterxyz/protocol/commits/main.atom` → 200 Atom
+
+No Instagram / TikTok / Facebook / X.
+
+Provenance: `rss:{url}` or `atom:{url}`.
+
+### RSS3 GI (optional extra)
 
 Documented GI base: `https://gi.rss3.io` ([RSS3 Data Sublayer API](https://docs.rss3.io/guide/developer/api)).
 
-Public seed pulls **only** these documented list endpoints:
+**`gi.rss3.io` currently has no public DNS** (no A / AAAA / CNAME; confirmed 2026-08-31 and 2026-09-01 via Cloudflare and Google DoH). Keep `lib/rss3.ts`. If `RSS3_GI_BASE` fails DNS or HTTP, count it as a failed source and continue.
+
+When the host works, public seed still pulls only these documented list endpoints:
 
 | Path | Query |
 | --- | --- |
@@ -218,13 +271,14 @@ A user's RSS3 address overlay uses the documented account path:
 
 `GET /decentralized/{account}`
 
-No search-query API. No invented GI routes. Empty or failed sources produce no rows.
+No search-query API. No invented GI routes.
 
 Cadence:
 
 - `POST /api/seed` with `Authorization: Bearer $SEED_SECRET` writes into Gun.
 - GitHub Action `.github/workflows/seed.yml` on a weekday-hours cadence (and `workflow_dispatch`) hits that route on the live container.
 - In production, a missing secret refuses the seed. Locally, an unset secret is allowed so the container can hit itself.
+- The Action prints HTTP status and response body on non-2xx (still fails the job). It does not log `SEED_SECRET`. A missing secret still skips green (`exit 0`).
 
 ## Azure / process shape
 
@@ -244,13 +298,13 @@ Most social networks are walled gardens. This table is the honest matrix. **Yes*
 
 | Network | Pull in | Repost out | This slice |
 | --- | --- | --- | --- |
-| RSS3 Data Sublayer | yes | yes (GI write is not used here) | public seeder + address ingest (proxy) |
-| RSS / Atom | yes | yes (feed file / ping) | URL ingest, same-origin proxy |
+| RSS3 Data Sublayer | yes | yes (GI write is not used here) | optional public seeder + address ingest; `gi.rss3.io` currently has no DNS |
+| RSS / Atom | yes | yes (feed file / ping) | public seeder + URL ingest, same-origin proxy |
 | ActivityPub | yes | yes | not wired |
-| ATProto / Bluesky | yes | yes | not wired |
+| ATProto / Bluesky | yes | yes | public seeder pull via AppView (no auth) |
 | Nostr | yes | yes | not wired |
-| Farcaster | yes (GI + Hub/API) | yes (where APIs exist) | pull via RSS3 only |
-| Lens | yes (GI + Lens API) | yes (where APIs exist) | pull via RSS3 only |
+| Farcaster | yes (Hub HTTP + GI) | yes (where APIs exist) | public seeder pull via Hubble HTTP (Pinata, no API key) |
+| Lens | yes (GI + Lens API) | yes (where APIs exist) | pull via RSS3 GI only (GI optional / currently no DNS) |
 | Instagram | no | no | none |
 | TikTok | no | no | none |
 | Facebook | no | no | none |
@@ -268,7 +322,7 @@ Outbound: `OutboundAdapter` is an interface only. Nothing claims posting works. 
 - SociACL Check on Gun-stored objects via an adapter **outside** this repo. URL fetches remain handoffs; they do not mint `see`. Not Hypermesh Phase 1.
 - Email/phone confirmation and third-party KYC attestations as private claims (prove to holder ≠ publish).
 - Streaming, chat, and sharing as Gun subscriptions (no chat UI here).
-- Real ActivityPub / ATProto / Nostr / Farcaster adapters (pull and, where authorized, post).
+- Real ActivityPub / Nostr adapters, and Farcaster / ATProto **outbound** (pull for seed is wired; posting is not).
 - Durable storage is the mesh (and any later durable seed), not the container disk.
 
 ## Out of scope (do not restore)

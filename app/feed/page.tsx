@@ -18,9 +18,10 @@ export default function FeedPage() {
         Feed
       </h1>
       <p className="mt-4 text-lg text-gray-600">
-        A Fyber Labs prototype. Gun is the graph. Public RSS3 Data Sublayer
-        activity is seeded into Gun on a cadence. This is not a live search
-        product and not financial advice.
+        A Fyber Labs prototype. Gun is the graph. Public Farcaster hub,
+        ATProto AppView, and RSS activity is seeded into Gun on a cadence.
+        RSS3 GI is optional. This is not a live search product and not
+        financial advice.
       </p>
       <p className="mt-3 text-sm text-gray-500">
         One stream, tags first. There are no popular or novel columns. Outbound

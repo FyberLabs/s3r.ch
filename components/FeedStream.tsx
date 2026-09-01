@@ -104,12 +104,12 @@ export function FeedStream() {
         {status}
         {meta?.seededAt ? ` · seeded ${meta.seededAt}` : ""}
         {meta
-          ? ` · GI sources ${meta.sourcesOk} / ${meta.sourcesTried}`
+          ? ` · sources ${meta.sourcesOk} / ${meta.sourcesTried}`
           : ""}
       </p>
       {meta?.error ? (
         <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-900">
-          <p className="font-semibold">RSS3 seed is empty or failed</p>
+          <p className="font-semibold">Seed is empty or failed</p>
           <p className="mt-2">{meta.error}</p>
           <p className="mt-2 text-red-800">
             No rows were invented. The Gun graph only holds what the seeder wrote.
@@ -126,7 +126,7 @@ export function FeedStream() {
       {visible.length === 0 ? (
         <p className="mt-8 rounded-xl border border-brand-100 bg-brand-50/40 p-6 text-sm text-gray-600">
           No items in this Gun graph
-          {selected.length ? " for the selected tags" : ""}. Empty RSS3 stays
+          {selected.length ? " for the selected tags" : ""}. Empty sources stay
           empty.
         </p>
       ) : (
