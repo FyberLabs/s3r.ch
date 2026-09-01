@@ -6,14 +6,19 @@
     "dev": "next dev",
     "build": "next build && node scripts/copy-standalone-assets.cjs",
     "start": "node -r ./gun-preload.cjs .next/standalone/server.js",
-    "test": "tsx --test lib/*.test.ts",
+    "test": "tsx --test lib/*.test.ts lib/identity/*.test.ts",
     "lint": "next lint"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.102.8",
     "gun": "^0.2020.1241",
+    "jose": "^6.2.10",
     "next": "^16.3.3",
     "react": "^19",
-    "react-dom": "^19"
+    "react-dom": "^19",
+    "siwe": "^3.0.0",
+    "viem": "^2.56.1",
+    "wagmi": "^2.19.5"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

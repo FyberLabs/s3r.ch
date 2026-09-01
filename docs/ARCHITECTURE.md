@@ -4,7 +4,7 @@ Internal notes for the lab prototype. This is not a public `/research` route, no
 
 s3r.ch is a Fyber Labs lab site. **Gun is the graph.** RSS3 Data Sublayer activity and other allowed sites / crypto-social sources concentrate on that graph. Popular items cache across peers. The same graph is the unique real-time streaming / chat / sharing network — **mostly browser-to-browser**, not a chat server we host.
 
-This slice does **not** ship chat UI, rooms, presence, WebRTC, SIWE, a KYC/passport product, email/SMS verify, or a Check engine. Snapshot hydration is **now**. The mesh is **next**. The live `/feed` copy stays a lab prototype and does not claim posting, P2P, ACL, KYC, or uniqueness proofs already work.
+This slice **does** ship EIP-4361 SIWE login and a signed cookie session (see [identity.md](identity.md)). It still does **not** ship chat UI, rooms, presence, WebRTC, a KYC/passport product, email/SMS verify, a Check engine, uniqueness proofs, or passkey wrap UI. Snapshot hydration is **now**. The mesh is **next**. The live `/feed` copy stays a lab prototype and does not claim posting, P2P, ACL, KYC, or uniqueness proofs already work.
 
 ## End-state vs this slice
 
@@ -13,7 +13,7 @@ This slice does **not** ship chat UI, rooms, presence, WebRTC, SIWE, a KYC/passp
 | Who pulls Farcaster, ATProto, RSS, and optional RSS3 | Lab seeder on the container; `/api/ingest` as a same-origin proxy | Lab **and** users' browsers, writing the same item shape |
 | Where the graph lives | Server Gun + JSON snapshot; client Gun hydrated from `GET /api/feed` | HAM-merged mesh. Browsers are Gun peers. Popular items cache across peers |
 | Azure App Service | Seed peer + bootstrap cache so the graph is not empty | Still a seed peer — **not** the realtime / chat server |
-| Identity | Overlay can pull `GET /decentralized/{account}`; items already carry `author` / `provenance` | Gun user node keyed by wallet, linked **held claims**, HAM-merged like feed items |
+| Identity | SIWE cookie session binds a checksummed address. Overlay can still pull `GET /decentralized/{account}`; items already carry `author` / `provenance` | Gun user node keyed by wallet, linked **held claims**, HAM-merged like feed items. SEA pair and PRF wrap are stubs |
 | Visibility | No Check engine. Overlay stays local. Public seed is lab lists only | Check on **Gun-stored** objects via SociACL adapter (not this repo). URL fetches stay handoffs |
 | Streaming, chat, sharing | Not built | Gun subscriptions on that mesh, mostly peer-to-peer |
 | Tabs | Type only (`public` / `mine` / `network`) | Split public mesh vs mine. Users do not dump every pull into the public seed by default |
@@ -50,7 +50,7 @@ Observing a wallet's **public** traces is not the person controlling that wallet
 
 A s3r.ch user is **not** an email/password account and **not** government KYC. It is an identity graph assembled from public crypto traces — the same lean as RSS3 and other web3 work that looks for solid KYC alternatives without leaving crypto.
 
-This is **not** AML or legal KYC, **not** PII collection, and **not** "verified human" theater. We do not claim sybil resistance or uniqueness proofs. We do not invent a token or a fake passport product. This slice does not ship WalletConnect, SIWE, a login UI, a KYC form, or a passport upload.
+This is **not** AML or legal KYC, **not** PII collection, and **not** "verified human" theater. We do not claim sybil resistance or uniqueness proofs. We do not invent a token or a fake passport product. This slice ships SIWE + a cookie session on `/feed`. It does not ship WalletConnect, a KYC form, a passport upload, Check, or passkey wrap UI. Login rules live in [identity.md](identity.md). Hypermesh portal stays Keycloak; this kit is s3r.ch login and later a Hypermesh wallet door.
 
 ### What a user is
 
@@ -58,7 +58,7 @@ We build a user from the wallets and other **public indicators we can actually p
 
 | Role | Source | This slice |
 | --- | --- | --- |
-| **Primary key** | Wallet address(es) | Not a Gun user node yet. Overlay already accepts an RSS3 account (hex / `name.eth`) |
+| **Primary key** | Wallet address(es) | SIWE session subject is the checksummed address. Not a Gun user node yet. Overlay already accepts an RSS3 account (hex / `name.eth`) |
 | **RSS3 account path** | Documented `GET /decentralized/{account}` | Wired as personal overlay ingest |
 | **ENS / name.eth** | Same account path when the handle is a name we can query | Overlay only; no ENS resolver product |
 | **RSS3 GI activity** | Optional public lists when `RSS3_GI_BASE` resolves; account path for a wallet | Overlay ingest still wired. Public seed skips GI if DNS/HTTP fails |
@@ -318,7 +318,7 @@ Outbound: `OutboundAdapter` is an interface only. Nothing claims posting works. 
 - `gun/lib/webrtc` so browsers mesh when the seed peer is idle.
 - Browsers pull allowed sources (through proxy / relay / extension) and HAM-merge.
 - Explicit share-into-mesh. Public / Mine / Network tabs.
-- Gun user node keyed by wallet; browsers pull their own indicators as **held claims**.
+- Gun user node keyed by the SIWE address; browsers pull their own indicators as **held claims**. Wire the SEA pair (not `recall` to sessionStorage) and PRF wrap after SIWE is proven.
 - SociACL Check on Gun-stored objects via an adapter **outside** this repo. URL fetches remain handoffs; they do not mint `see`. Not Hypermesh Phase 1.
 - Email/phone confirmation and third-party KYC attestations as private claims (prove to holder ≠ publish).
 - Streaming, chat, and sharing as Gun subscriptions (no chat UI here).
@@ -333,7 +333,7 @@ Outbound: `OutboundAdapter` is an interface only. Nothing claims posting works. 
 - 2019 session/group contracts and tokenomics.
 - Azure OIDC / Deploy secrets.
 - Chat UI, rooms, presence, or WebRTC wiring in this slice.
-- WalletConnect / SIWE / login UI, KYC form, passport upload, email/SMS verify, or claims of legal KYC / sybil resistance / uniqueness / a live ACL.
+- WalletConnect, ERC-1271 / smart accounts, ENS reverse as login, Farcaster SIWF, passkey wrap UI, KYC form, passport upload, email/SMS verify, or claims of legal KYC / sybil resistance / uniqueness / a live ACL.
 - Importing the SociACL Rust core into this Next app, or exposing Elect / wills / devices / Case C on s3r.ch.
 - Treating a seeder or `/api/ingest` fetch as a grant, or copying RSS3/KYC fields into a grant.
 - A hop UI, or claiming ACL already works on live `/feed`.
