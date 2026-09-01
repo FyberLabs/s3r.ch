@@ -398,10 +398,10 @@ function IdentityBarInner() {
     <div className="mt-10 rounded-xl border border-brand-100 bg-brand-50/40 p-5">
       <h2 className="text-sm font-semibold text-brand-900">Session</h2>
       <p className="mt-2 text-sm text-gray-600">
-        Sign in with Ethereum binds this browser to a checksummed address.
-        ENS, Farcaster, Lens, and RSS3 are held claims after sign-in, not the
-        session key. A passkey can wrap the local mesh key on this device. It
-        is not login.
+        Sign in with Ethereum binds this browser to a checksummed address
+        (EOA or ERC-1271 smart account). ENS, Farcaster, Lens, and RSS3 are
+        held claims after sign-in, not the session key. A passkey can wrap
+        the local mesh key on this device. It is not login.
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {session ? (
