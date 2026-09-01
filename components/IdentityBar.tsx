@@ -22,6 +22,16 @@ import {
   lookupEnsHeldClaimForSession,
   type EnsHeldClaim,
 } from "@/lib/identity/ens";
+import {
+  farcasterClaimLine,
+} from "@/lib/identity/farcaster-claim";
+import {
+  emptyIndicators,
+  lookupIndicatorsForSession,
+  type PublicIndicators,
+} from "@/lib/identity/indicators";
+import { lensClaimLine } from "@/lib/identity/lens-claim";
+import { rss3ClaimLine } from "@/lib/identity/rss3-claim";
 import { buildSiweMessage } from "@/lib/identity/siwe";
 import {
   PRF_UNAVAILABLE_MESSAGE,
@@ -66,6 +76,8 @@ function IdentityBarInner() {
   const [prfAvailable, setPrfAvailable] = useState<boolean | null>(null);
   const [ensClaim, setEnsClaim] = useState<string | null>(null);
   const [ensCachedFor, setEnsCachedFor] = useState<string | null>(null);
+  const [indicators, setIndicators] = useState<PublicIndicators>(emptyIndicators);
+  const [indicatorsCachedFor, setIndicatorsCachedFor] = useState<string | null>(null);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -119,6 +131,34 @@ function IdentityBarInner() {
       cancelled = true;
     };
   }, [session, ensCachedFor]);
+
+  useEffect(() => {
+    if (!session) {
+      setIndicators(emptyIndicators());
+      setIndicatorsCachedFor(null);
+      return;
+    }
+    if (indicatorsCachedFor === session.address) return;
+    const sessionAddress = session.address;
+    let cancelled = false;
+    void lookupIndicatorsForSession({
+      session,
+      lookup: (address) => fetchPublicIndicators(address),
+    })
+      .then((claims) => {
+        if (cancelled) return;
+        setIndicators(claims);
+        setIndicatorsCachedFor(sessionAddress);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIndicators(emptyIndicators());
+        setIndicatorsCachedFor(sessionAddress);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session, indicatorsCachedFor]);
 
   useEffect(() => {
     if (!session) return;
@@ -337,6 +377,8 @@ function IdentityBarInner() {
       setUnlocked(false);
       setEnsClaim(null);
       setEnsCachedFor(null);
+      setIndicators(emptyIndicators());
+      setIndicatorsCachedFor(null);
       disconnect();
       // Device mesh key stays in IndexedDB. Do not delete it on sign-out.
     } catch (error) {
@@ -357,8 +399,9 @@ function IdentityBarInner() {
       <h2 className="text-sm font-semibold text-brand-900">Session</h2>
       <p className="mt-2 text-sm text-gray-600">
         Sign in with Ethereum binds this browser to a checksummed address.
-        ENS is a held claim after sign-in, not the session key. A passkey can
-        wrap the local mesh key on this device. It is not login.
+        ENS, Farcaster, Lens, and RSS3 are held claims after sign-in, not the
+        session key. A passkey can wrap the local mesh key on this device. It
+        is not login.
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {session ? (
@@ -426,6 +469,17 @@ function IdentityBarInner() {
       {ensClaimLine(ensClaim) ? (
         <p className="mt-3 text-xs text-gray-500">{ensClaimLine(ensClaim)}</p>
       ) : null}
+      {farcasterClaimLine(indicators.farcaster.name) ? (
+        <p className="mt-3 text-xs text-gray-500">
+          {farcasterClaimLine(indicators.farcaster.name)}
+        </p>
+      ) : null}
+      {lensClaimLine(indicators.lens.name) ? (
+        <p className="mt-3 text-xs text-gray-500">{lensClaimLine(indicators.lens.name)}</p>
+      ) : null}
+      {rss3ClaimLine(indicators.rss3.name) ? (
+        <p className="mt-3 text-xs text-gray-500">{rss3ClaimLine(indicators.rss3.name)}</p>
+      ) : null}
       {showPrfMissing ? (
         <p className="mt-3 text-xs text-gray-500">{PRF_UNAVAILABLE_MESSAGE}</p>
       ) : null}
@@ -464,6 +518,24 @@ async function fetchEnsHeldClaim(address: string): Promise<EnsHeldClaim> {
     return { name: body.name };
   }
   return { name: null };
+}
+
+async function fetchPublicIndicators(address: string): Promise<PublicIndicators> {
+  const response = await fetch(
+    `/api/identity/indicators?address=${encodeURIComponent(address)}`,
+    { cache: "no-store" },
+  );
+  if (!response.ok) return emptyIndicators();
+  const body = (await response.json()) as Partial<PublicIndicators> | null;
+  return {
+    farcaster: { name: claimName(body?.farcaster?.name) },
+    lens: { name: claimName(body?.lens?.name) },
+    rss3: { name: claimName(body?.rss3?.name) },
+  };
+}
+
+function claimName(value: unknown): string | null {
+  return typeof value === "string" && value ? value : null;
 }
 
 function truncateAddress(address: string): string {
