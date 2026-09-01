@@ -10,9 +10,27 @@ import {
 } from "wagmi";
 import { IdentityProviders } from "@/components/IdentityProviders";
 import { SIWE_MESSAGE_TTL_MS } from "@/lib/identity/config";
-import { getMeshKey } from "@/lib/identity/idb";
-import { ensureLocalMeshKey } from "@/lib/identity/mesh";
+import {
+  getMeshKey,
+  isPlaintextMeshKeyRecord,
+  isWrappedMeshKeyRecord,
+  type MeshKeyRecord,
+} from "@/lib/identity/idb";
+import { ensureLocalMeshKey, persistWrappedMeshKey, readLocalMeshPair } from "@/lib/identity/mesh";
 import { buildSiweMessage } from "@/lib/identity/siwe";
+import {
+  PRF_UNAVAILABLE_MESSAGE,
+  PrfUnavailableError,
+  createPrfCredential,
+  detectPrfAvailability,
+  evaluatePrf,
+} from "@/lib/identity/webauthn-prf";
+import {
+  base64UrlToBytes,
+  buildSecondaryWrapStatement,
+  secondaryIkmFromWalletSignature,
+  wrapSeaPair,
+} from "@/lib/identity/wrap";
 
 type SessionPayload = {
   address: string;
@@ -38,6 +56,9 @@ function IdentityBarInner() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [meshLine, setMeshLine] = useState<string | null>(null);
+  const [meshKind, setMeshKind] = useState<"plaintext" | "wrapped" | null>(null);
+  const [unlocked, setUnlocked] = useState(false);
+  const [prfAvailable, setPrfAvailable] = useState<boolean | null>(null);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -59,15 +80,32 @@ function IdentityBarInner() {
   }, [refreshSession]);
 
   useEffect(() => {
-    if (!session || meshLine) return;
+    void detectPrfAvailability().then((result) => {
+      setPrfAvailable(result.available);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
     void getMeshKey(session.address)
       .then((record) => {
-        if (record) setMeshLine("mesh key already present");
+        setMeshKind((current) => {
+          if (current) return current;
+          if (isWrappedMeshKeyRecord(record)) return "wrapped";
+          if (record) return "plaintext";
+          return null;
+        });
+        setMeshLine((current) => {
+          if (current) return current;
+          if (isWrappedMeshKeyRecord(record)) return "mesh key wrapped";
+          if (record) return "mesh key already present";
+          return null;
+        });
       })
       .catch(() => {
         // Private mode / missing IndexedDB — stay quiet.
       });
-  }, [session, meshLine]);
+  }, [session]);
 
   const injected = connectors.find((connector) => connector.id === "injected") ?? connectors[0];
 
@@ -128,12 +166,126 @@ function IdentityBarInner() {
           uri: window.location.origin,
           signMessage: (linkMessage) => signMessageAsync({ message: linkMessage }),
         });
-        setMeshLine(mesh.created ? "mesh key ready" : "mesh key already present");
+        applyMeshRecord(
+          mesh.record,
+          setMeshKind,
+          setMeshLine,
+          mesh.created ? "mesh key ready" : undefined,
+        );
+        setUnlocked(false);
       } catch {
         setMeshLine("mesh key failed");
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onWrapWithPasskey() {
+    if (!session) return;
+    if (prfAvailable === false) {
+      setMessage(PRF_UNAVAILABLE_MESSAGE);
+      return;
+    }
+    if (!isConnected) {
+      setMessage("Connect the injected wallet to wrap the mesh key.");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const existing = await getMeshKey(session.address);
+      if (!existing || !isPlaintextMeshKeyRecord(existing)) {
+        throw new Error("No plaintext mesh key to wrap.");
+      }
+      const prf = await createPrfCredential({
+        address: session.address,
+        host: window.location.host,
+      });
+      const secondarySalt = crypto.getRandomValues(new Uint8Array(32));
+      const statement = buildSecondaryWrapStatement({
+        domain: window.location.host,
+        uri: window.location.origin,
+        address: session.address,
+        secondarySalt,
+      });
+      const secondarySignature = await signMessageAsync({ message: statement });
+      const envelope = await wrapSeaPair({
+        pair: existing.seaPair,
+        address: session.address,
+        rpId: prf.rpId,
+        credentialId: prf.credentialId,
+        prfSalt: prf.prfSalt,
+        prfOutput: prf.prfOutput,
+        secondaryKey: secondaryIkmFromWalletSignature(secondarySignature),
+        secondarySalt,
+        secondaryKind: "wallet",
+      });
+      const wrapped = await persistWrappedMeshKey({
+        address: session.address,
+        envelope,
+      });
+      setMeshKind("wrapped");
+      setMeshLine("mesh key wrapped");
+      setUnlocked(true);
+      if (!isWrappedMeshKeyRecord(wrapped) || "seaPair" in wrapped) {
+        throw new Error("Plaintext seaPair must not remain after wrap.");
+      }
+    } catch (error) {
+      setUnlocked(false);
+      if (error instanceof PrfUnavailableError) {
+        setMessage(error.message);
+        return;
+      }
+      setMessage(error instanceof Error ? error.message : "Wrap failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onUnlockMeshKey() {
+    if (!session) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const existing = await getMeshKey(session.address);
+      if (!existing || !isWrappedMeshKeyRecord(existing)) {
+        throw new Error("No wrapped mesh key to unlock.");
+      }
+      try {
+        const prfOutput = await evaluatePrf({
+          rpId: existing.wrap.rpId,
+          credentialId: base64UrlToBytes(existing.wrap.credentialId),
+          prfSalt: base64UrlToBytes(existing.wrap.prfSalt),
+        });
+        await readLocalMeshPair({ record: existing, prfOutput });
+      } catch (prfError) {
+        if (!isConnected || !existing.wrap.secondarySalt) {
+          throw prfError;
+        }
+        const statement = buildSecondaryWrapStatement({
+          domain: window.location.host,
+          uri: window.location.origin,
+          address: session.address,
+          secondarySalt: base64UrlToBytes(existing.wrap.secondarySalt),
+        });
+        const secondarySignature = await signMessageAsync({ message: statement });
+        await readLocalMeshPair({
+          record: existing,
+          secondaryKey: secondaryIkmFromWalletSignature(secondarySignature),
+        });
+      }
+      setUnlocked(true);
+      setMeshLine("mesh key unlocked");
+    } catch (error) {
+      setUnlocked(false);
+      if (error instanceof PrfUnavailableError) {
+        setMessage(error.message);
+        return;
+      }
+      setMessage(error instanceof Error ? error.message : "Unlock failed.");
     } finally {
       setBusy(false);
     }
@@ -146,6 +298,8 @@ function IdentityBarInner() {
       await fetch("/api/identity/logout", { method: "POST" });
       setSession(null);
       setMeshLine(null);
+      setMeshKind(null);
+      setUnlocked(false);
       disconnect();
       // Device mesh key stays in IndexedDB. Do not delete it on sign-out.
     } catch (error) {
@@ -155,12 +309,18 @@ function IdentityBarInner() {
     }
   }
 
+  const showWrap =
+    Boolean(session) && meshKind === "plaintext" && prfAvailable !== false;
+  const showPrfMissing =
+    Boolean(session) && meshKind === "plaintext" && prfAvailable === false;
+  const showUnlock = Boolean(session) && meshKind === "wrapped" && !unlocked;
+
   return (
     <div className="mt-10 rounded-xl border border-brand-100 bg-brand-50/40 p-5">
       <h2 className="text-sm font-semibold text-brand-900">Session</h2>
       <p className="mt-2 text-sm text-gray-600">
         Sign in with Ethereum binds this browser to a checksummed address.
-        ENS, email, Check, and passkeys are not this slice.
+        A passkey can wrap the local mesh key on this device. It is not login.
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {session ? (
@@ -176,6 +336,26 @@ function IdentityBarInner() {
             >
               Sign out
             </button>
+            {showWrap ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void onWrapWithPasskey()}
+                className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+              >
+                Wrap with passkey
+              </button>
+            ) : null}
+            {showUnlock ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void onUnlockMeshKey()}
+                className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+              >
+                Unlock mesh key
+              </button>
+            ) : null}
           </>
         ) : (
           <>
@@ -205,9 +385,31 @@ function IdentityBarInner() {
         )}
       </div>
       {meshLine ? <p className="mt-3 text-xs text-gray-500">{meshLine}</p> : null}
+      {showPrfMissing ? (
+        <p className="mt-3 text-xs text-gray-500">{PRF_UNAVAILABLE_MESSAGE}</p>
+      ) : null}
       {message ? <p className="mt-3 text-xs text-gray-500">{message}</p> : null}
     </div>
   );
+}
+
+function applyMeshRecord(
+  record: MeshKeyRecord | null,
+  setMeshKind: (kind: "plaintext" | "wrapped" | null) => void,
+  setMeshLine: (line: string | null) => void,
+  createdLine?: string,
+) {
+  if (!record) {
+    setMeshKind(null);
+    return;
+  }
+  if (isWrappedMeshKeyRecord(record)) {
+    setMeshKind("wrapped");
+    setMeshLine(createdLine ?? "mesh key wrapped");
+    return;
+  }
+  setMeshKind("plaintext");
+  setMeshLine(createdLine ?? "mesh key already present");
 }
 
 function truncateAddress(address: string): string {

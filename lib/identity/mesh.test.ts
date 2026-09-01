@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createMemoryMeshKeyStore } from "./idb";
-import { ensureLocalMeshKey } from "./mesh";
+import {
+  createMemoryMeshKeyStore,
+  isPlaintextMeshKeyRecord,
+  isWrappedMeshKeyRecord,
+} from "./idb";
+import { ensureLocalMeshKey, persistWrappedMeshKey, readLocalMeshPair } from "./mesh";
 import type { SeaPair } from "./sea";
+import { wrapSeaPair } from "./wrap";
 
 const ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const OTHER = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
@@ -35,6 +40,7 @@ describe("ensureLocalMeshKey", () => {
     assert.equal(result.record.address, ADDRESS);
     assert.equal(result.record.seaPub, "first-pub");
     assert.equal(result.record.walletSignature, "0xwallet-sig");
+    assert.ok(isPlaintextMeshKeyRecord(result.record));
     assert.match(result.record.signedPayload, /SEA pub: first-pub/);
     assert.match(result.record.signedPayload, /Address: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266/);
     assert.equal(minted, 1);
@@ -72,6 +78,8 @@ describe("ensureLocalMeshKey", () => {
     assert.equal(first.created, true);
     assert.equal(second.created, false);
     assert.equal(second.record.seaPub, first.record.seaPub);
+    assert.ok(isPlaintextMeshKeyRecord(first.record));
+    assert.ok(isPlaintextMeshKeyRecord(second.record));
     assert.equal(second.record.seaPair.priv, first.record.seaPair.priv);
     assert.equal(second.record.walletSignature, first.record.walletSignature);
     assert.equal(minted, 1);
@@ -136,5 +144,63 @@ describe("ensureLocalMeshKey", () => {
     });
     assert.equal(again.created, false);
     assert.equal(again.record.seaPub, "stays");
+  });
+
+  it("reuses a wrapped record and only returns the pair after unwrap", async () => {
+    const store = createMemoryMeshKeyStore();
+    const first = await ensureLocalMeshKey({
+      address: ADDRESS,
+      domain: "localhost:3000",
+      uri: "http://localhost:3000",
+      createPair: async () => fakePair("wrap-me"),
+      signMessage: async () => "0xwrap",
+      store,
+    });
+    assert.ok(isPlaintextMeshKeyRecord(first.record));
+    const prfOutput = crypto.getRandomValues(new Uint8Array(32));
+    const secondaryKey = crypto.getRandomValues(new Uint8Array(32));
+    const envelope = await wrapSeaPair({
+      pair: first.record.seaPair,
+      address: ADDRESS,
+      rpId: "localhost",
+      credentialId: crypto.getRandomValues(new Uint8Array(16)),
+      prfSalt: crypto.getRandomValues(new Uint8Array(32)),
+      prfOutput,
+      secondaryKey,
+      secondaryKind: "wallet",
+    });
+    const wrapped = await persistWrappedMeshKey({
+      address: ADDRESS,
+      envelope,
+      store,
+    });
+    assert.ok(isWrappedMeshKeyRecord(wrapped));
+    assert.equal("seaPair" in wrapped, false);
+    const onDisk = await store.get(ADDRESS);
+    assert.ok(onDisk && isWrappedMeshKeyRecord(onDisk));
+    assert.equal("seaPair" in onDisk, false);
+
+    let minted = 0;
+    const reused = await ensureLocalMeshKey({
+      address: ADDRESS,
+      domain: "localhost:3000",
+      uri: "http://localhost:3000",
+      createPair: async () => {
+        minted += 1;
+        return fakePair("must-not-mint");
+      },
+      signMessage: async () => "0xmust-not-sign",
+      store,
+    });
+    assert.equal(reused.created, false);
+    assert.equal(minted, 0);
+    assert.ok(isWrappedMeshKeyRecord(reused.record));
+
+    await assert.rejects(() => readLocalMeshPair({ record: reused.record }), /passkey PRF|secondary key/);
+    const pair = await readLocalMeshPair({ record: reused.record, prfOutput });
+    assert.equal(pair.pub, "wrap-me");
+    assert.equal(pair.priv, "priv-wrap-me");
+    const viaSecondary = await readLocalMeshPair({ record: reused.record, secondaryKey });
+    assert.equal(viaSecondary.epriv, "epriv-wrap-me");
   });
 });
