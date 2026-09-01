@@ -7,7 +7,10 @@ export class IdentitySecretError extends Error {
   }
 }
 
-type EnvLike = Pick<NodeJS.ProcessEnv, "IDENTITY_SESSION_SECRET" | "NODE_ENV">;
+type EnvLike = {
+  IDENTITY_SESSION_SECRET?: string;
+  NODE_ENV?: string;
+};
 
 /**
  * HMAC key for nonce and session cookies.

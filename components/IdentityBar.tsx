@@ -77,11 +77,7 @@ function IdentityBarInner() {
         throw new Error(nonceBody.error || "Could not issue a nonce.");
       }
 
-      const walletChainId =
-        chainId ??
-        (typeof window !== "undefined" && window.ethereum
-          ? Number(await window.ethereum.request({ method: "eth_chainId" }))
-          : 1);
+      const walletChainId = chainId ?? (await readInjectedChainId()) ?? 1;
 
       const prepared = buildSiweMessage({
         domain: window.location.host,
@@ -184,10 +180,12 @@ function truncateAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
-declare global {
-  interface Window {
-    ethereum?: {
-      request: (args: { method: string }) => Promise<string>;
-    };
+async function readInjectedChainId(): Promise<number | null> {
+  const ethereum = (globalThis as { ethereum?: { request?: (args: { method: string }) => Promise<string> } }).ethereum;
+  if (!ethereum?.request) return null;
+  try {
+    return Number(await ethereum.request({ method: "eth_chainId" }));
+  } catch {
+    return null;
   }
 }
