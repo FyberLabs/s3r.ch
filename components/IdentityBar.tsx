@@ -472,6 +472,10 @@ function IdentityBarInner() {
         setMessage(error.message);
         return;
       }
+      if (error instanceof Error && /Could not unwrap/.test(error.message)) {
+        setMessage("Could not export paper backup.");
+        return;
+      }
       setMessage(error instanceof Error ? error.message : "Export failed.");
     } finally {
       paperKey.fill(0);
