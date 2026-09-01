@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FeedStream } from "@/components/FeedStream";
+import { IdentityBar } from "@/components/IdentityBar";
 
 export const metadata: Metadata = {
   title: "Lab feed — s3r.ch",
@@ -26,6 +27,8 @@ export default function FeedPage() {
         One stream, tags first. There are no popular or novel columns. Outbound
         posting is not enabled.
       </p>
+
+      <IdentityBar />
 
       <FeedStream />
 
