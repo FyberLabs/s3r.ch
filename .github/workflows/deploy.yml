@@ -82,6 +82,8 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            NEXT_PUBLIC_WC_PROJECT_ID=${{ vars.NEXT_PUBLIC_WC_PROJECT_ID }}
           tags: |
             ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_REPO }}:${{ github.sha }}
             ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_REPO }}:${{ env.ENV_TAG }}

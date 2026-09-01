@@ -50,7 +50,7 @@ Observing a wallet's **public** traces is not the person controlling that wallet
 
 A s3r.ch user is **not** an email/password account and **not** government KYC. It is an identity graph assembled from public crypto traces — the same lean as RSS3 and other web3 work that looks for solid KYC alternatives without leaving crypto.
 
-This is **not** AML or legal KYC, **not** PII collection, and **not** "verified human" theater. We do not claim sybil resistance or uniqueness proofs. We do not invent a token or a fake passport product. This slice ships SIWE (EOA + mainnet ERC-1271 / EIP-6492) + a cookie session on `/feed`, plus mainnet ENS / Farcaster / Lens / RSS3 held claims after that session exists. It does not ship WalletConnect, ENS/fname/Lens/RSS3 as login, a KYC form, a passport upload, or Check. s3r.ch does **not** use Panopticon Keycloak as an IdP. Login rules live in [identity.md](identity.md). Hypermesh portal stays Keycloak; this kit is s3r.ch login and later a Hypermesh wallet door.
+This is **not** AML or legal KYC, **not** PII collection, and **not** "verified human" theater. We do not claim sybil resistance or uniqueness proofs. We do not invent a token or a fake passport product. This slice ships SIWE (EOA + mainnet ERC-1271 / EIP-6492) + a cookie session on `/feed`, plus mainnet ENS / Farcaster / Lens / RSS3 held claims after that session exists. WalletConnect is a wagmi connector **gated** on `NEXT_PUBLIC_WC_PROJECT_ID` (empty stays injected-only; it is not a new IdP). It does not ship ENS/fname/Lens/RSS3 as login, a KYC form, a passport upload, or Check. s3r.ch does **not** use Panopticon Keycloak as an IdP. Login rules live in [identity.md](identity.md). Hypermesh portal stays Keycloak; this kit is s3r.ch login and later a Hypermesh wallet door.
 
 ### What a user is
 
@@ -333,7 +333,7 @@ Outbound: `OutboundAdapter` is an interface only. Nothing claims posting works. 
 - 2019 session/group contracts and tokenomics.
 - Azure OIDC / Deploy secrets.
 - Chat UI, rooms, presence, or WebRTC wiring in this slice.
-- WalletConnect, ENS / fname / Lens / RSS3 as login, Farcaster SIWF, KYC form, passport upload, email/SMS verify, or claims of legal KYC / sybil resistance / uniqueness / a live ACL.
+- ENS / fname / Lens / RSS3 as login, Farcaster SIWF, KYC form, passport upload, email/SMS verify, or claims of legal KYC / sybil resistance / uniqueness / a live ACL. WalletConnect is gated on `NEXT_PUBLIC_WC_PROJECT_ID` (see [identity.md](identity.md)); do not invent a project id.
 - Importing the SociACL Rust core into this Next app, or exposing Elect / wills / devices / Case C on s3r.ch.
 - Treating a seeder or `/api/ingest` fetch as a grant, or copying RSS3/KYC fields into a grant.
 - A hop UI, or claiming ACL already works on live `/feed`.
