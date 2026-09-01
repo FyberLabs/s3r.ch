@@ -9,9 +9,10 @@ Components here are written so they can be extracted into a shared kit later. Th
 ## What this slice ships
 
 - EIP-4361 **Sign-In with Ethereum** (SIWE).
-- Signed **HttpOnly cookie session** bound to a **checksummed** Ethereum address (never ENS, never email).
+- Signed **HttpOnly cookie session** bound to a **checksummed** Ethereum address (never ENS, never email, never a SEA pub).
 - Quiet connect / sign-in / sign-out on `/feed` (injected wallet only).
-- Stubs for Gun SEA pair create and WebAuthn PRF wrap (no UI).
+- After the SIWE session is set: a **local Gun SEA P-256 pair** (different curve from Ethereum) plus a **wallet-signed link** (`pub` belongs to this checksummed address), persisted in **origin IndexedDB**.
+- WebAuthn PRF wrap remains a stub (`notImplemented()`). Chris: test wrap after full SIWE; this slice is the mesh key after SIWE.
 
 ## What this slice does not ship
 
@@ -21,8 +22,8 @@ Components here are written so they can be extracted into a shared kit later. Th
 - ENS reverse lookup, Farcaster SIWF, or other public indicators as login.
 - SociACL Check / certify. Do not import `FyberLabs/SociACL`.
 - NextAuth, Keycloak, or email magic link on this app.
-- Writing SIWE signatures or SEA private keys onto the public Gun graph.
-- Changing seed Gun, Cloudflare, or `lib/auth.ts` seed helper (that file is `SEED_SECRET` only).
+- Writing SIWE signatures, SEA `priv` / `epriv`, or the wallet-signed mesh link onto the public Gun graph.
+- Changing seed Gun, Cloudflare, GitHub Actions, or `lib/auth.ts` seed helper (that file is `SEED_SECRET` only).
 
 ## Locks
 
@@ -30,11 +31,11 @@ Components here are written so they can be extracted into a shared kit later. Th
 | --- | --- |
 | Session key is the checksummed address | ENS and email are indicators, not the session subject |
 | Mesh identity is a **local Gun SEA P-256 pair**, not the Ethereum key | Different curves. Ethereum secp256k1 signs SIWE; SEA is for later mesh crypto |
-| Never call `user.recall({ sessionStorage: true })` | Gun would store the plaintext SEA pair |
-| Never put SIWE signatures or SEA `priv` / `epriv` on the public Gun graph | Those are session / device secrets |
+| Never call `user.recall({ sessionStorage: true })` | Gun would store the plaintext SEA pair. Never `sessionStorage` for this kit. |
+| Never put SIWE signatures, SEA `priv` / `epriv`, or the mesh link on the public Gun graph | Those are session / device secrets. IndexedDB is origin-local only. |
 | Nonce lives in a **signed cookie**, not an in-memory `Map` | Azure App Service is multi-instance; Redis is not in this slice |
 | OIDC is not primary login | Hypermesh portal can stay Keycloak; this kit is wallet login |
-| Passkey WebAuthn PRF wrap is recovery | Tested after SIWE works. This PR stubs types only |
+| Passkey WebAuthn PRF wrap is recovery | Test wrap after full SIWE. This slice ships the mesh key; wrap stays stubbed |
 | `lib/auth.ts` is seed authorize | User identity lives in `lib/identity/` |
 
 ## Libraries
@@ -48,7 +49,7 @@ Pinned to current majors compatible with Next.js 16, React 19, and Node 24:
 | `wagmi` v3 | Injected connector only. No RainbowKit, no ConnectKit |
 | `@tanstack/react-query` | Required by wagmi |
 | `jose` | Sign nonce and session cookies (HS256) |
-| `gun` / `gun/sea` | Already a dependency. `createSeaPair()` may call `SEA.pair()`. Not wired to the UI |
+| `gun` / `gun/sea` | Already a dependency. `createSeaPair()` calls `SEA.pair()` after SIWE. Persist in IndexedDB, not `recall()` |
 
 No SimpleWebAuthn in this slice.
 
@@ -64,14 +65,17 @@ WalletConnect is a documented follow-up. Do not add a WalletConnect project id t
 | `lib/identity/nonce.ts` | Random SIWE nonce + signed cookie payload |
 | `lib/identity/session.ts` | Signed session `{ address, chainId, iat, exp }` |
 | `lib/identity/siwe.ts` | Parse, domain/nonce/expiry checks, viem signature verify |
-| `lib/identity/wrap.ts` | PRF envelope types + `notImplemented()` |
-| `lib/identity/sea.ts` | `createSeaPair()` stub. Does not persist keys |
+| `lib/identity/wrap.ts` | PRF envelope types + `notImplemented()` (later; replaces IndexedDB plaintext) |
+| `lib/identity/sea.ts` | `createSeaPair()` — local P-256 pair. Does not `recall()` |
+| `lib/identity/mesh-link.ts` | Domain-bound statement: this SEA `pub` belongs to this address |
+| `lib/identity/idb.ts` | Origin IndexedDB `{ address, seaPub, seaPair, walletSignature, signedPayload }` |
+| `lib/identity/mesh.ts` | After SIWE: reuse or mint pair, wallet-sign the link, persist locally |
 | `lib/identity/wagmi.ts` | Injected-only wagmi config |
 | `app/api/identity/nonce` | `GET` — issue nonce cookie, return `{ nonce }` |
 | `app/api/identity/verify` | `POST` `{ message, signature }` — verify SIWE, set session |
 | `app/api/identity/session` | `GET` — current `{ address, chainId }` or 401 |
 | `app/api/identity/logout` | `POST` — clear identity cookies |
-| `components/IdentityBar.tsx` | Quiet `/feed` connect + SIWE + sign out |
+| `components/IdentityBar.tsx` | Quiet `/feed` connect + SIWE + mesh key + sign out |
 
 ## Cookies
 
@@ -93,7 +97,7 @@ HMAC key for both cookies. **Minimum 32 characters.**
 - **Production:** if missing or too short, `POST /api/identity/verify` (and the other identity routes that sign/read cookies) return **500** and log a clear error. Auth is not silently disabled.
 - **Non-production:** if the env var is unset, a documented local fallback is used so `next dev` works. Do not use that fallback in production.
 
-Operator step (not in this PR): set `IDENTITY_SESSION_SECRET` on the Azure App Service (Key Vault later). Build and CI must not require it.
+Operator step (not in this PR): set `IDENTITY_SESSION_SECRET` on the Azure App Service (Key Vault later). **Still operator / Azure.** Build and CI must not require it and must not fake it.
 
 ## SIWE verify rules
 
@@ -128,15 +132,32 @@ Reject on domain mismatch. Do not treat ENS names as the session key.
 
 `notImplemented()` throws. No passkey button ships here.
 
-## SEA stub
+## Local SEA mesh key (after SIWE)
 
-`createSeaPair()` may call `gun/sea` `SEA.pair()`. That pair is **local mesh identity**, not the SIWE wallet. Do not persist `priv` / `epriv`. Do not `recall()` into `sessionStorage`. The UI does not call this yet.
+After `POST /api/identity/verify` succeeds, the client:
+
+1. Looks up this checksummed address in origin IndexedDB (`s3rch-identity` / `mesh-keys`).
+2. **Reuses** the stored pair + wallet-signed link when present (does not mint a new pair every sign-in).
+3. Otherwise calls `createSeaPair()` (`gun/sea` `SEA.pair()`, P-256, not the Ethereum key), asks the connected wallet to sign a short domain-bound statement that this `pub` belongs to this address, and saves `{ address, seaPub, seaPair, walletSignature, signedPayload }` in IndexedDB.
+
+Lab slice: the SEA pair may be **plaintext in IndexedDB**. That is device-local, not the public Gun graph. **PRF wrap will replace this plaintext later.** Do not treat the current record shape as the long-term envelope.
+
+Sign-out clears the session cookie only. It **must not** delete the IndexedDB pair.
+
+Quiet UI: one line — `mesh key ready` / `mesh key already present`. Do not dump `priv` / `epriv`.
+
+Locks that stay:
+
+- Never `sessionStorage`.
+- Never `user.recall({ sessionStorage: true })`.
+- Never write SIWE signatures, SEA `priv` / `epriv`, or the link onto the public Gun graph.
+- Session subject remains the checksummed address.
 
 ## Follow-ups
 
 - WalletConnect injected-or-QR, gated on `NEXT_PUBLIC_WC_PROJECT_ID`.
 - ERC-1271 / EIP-6492 via a pinned RPC.
-- WebAuthn PRF wrap implementation + UI (after SIWE is proven).
+- WebAuthn PRF wrap implementation + UI (after full SIWE; wrap the IndexedDB pair).
 - Public indicators (ENS reverse, Farcaster) **after** auth, as held claims.
 - SociACL Check when sharing needs grants (adapter lives outside this repo).
 - Azure Key Vault for `IDENTITY_SESSION_SECRET`.

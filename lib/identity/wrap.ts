@@ -5,7 +5,7 @@
  * - rp.id = s3r.ch
  * - WebAuthn PRF extension derives a KEK
  * - A DEK is wrapped by that PRF KEK and by a second KEK
- * - Store the envelope in IndexedDB
+ * - Store the envelope in IndexedDB (replaces today's plaintext seaPair)
  * - Never write the envelope, DEK, or KEKs to a public Gun node
  * - No SimpleWebAuthn dependency yet
  */
