@@ -5,9 +5,14 @@ import {
   isPlaintextMeshKeyRecord,
   isWrappedMeshKeyRecord,
 } from "./idb";
-import { ensureLocalMeshKey, persistWrappedMeshKey, readLocalMeshPair } from "./mesh";
+import {
+  ensureLocalMeshKey,
+  persistRewrappedMeshKey,
+  persistWrappedMeshKey,
+  readLocalMeshPair,
+} from "./mesh";
 import type { SeaPair } from "./sea";
-import { wrapSeaPair } from "./wrap";
+import { randomPaperSecondaryKey, wrapSeaPair } from "./wrap";
 
 const ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const OTHER = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
@@ -202,5 +207,61 @@ describe("ensureLocalMeshKey", () => {
     assert.equal(pair.priv, "priv-wrap-me");
     const viaSecondary = await readLocalMeshPair({ record: reused.record, secondaryKey });
     assert.equal(viaSecondary.epriv, "epriv-wrap-me");
+  });
+
+  it("re-wraps a wallet secondary with paper and rejects the old IKM", async () => {
+    const store = createMemoryMeshKeyStore();
+    const first = await ensureLocalMeshKey({
+      address: ADDRESS,
+      domain: "localhost:3000",
+      uri: "http://localhost:3000",
+      createPair: async () => fakePair("rewrap-me"),
+      signMessage: async () => "0xrewrap",
+      store,
+    });
+    assert.ok(isPlaintextMeshKeyRecord(first.record));
+    const prfOutput = crypto.getRandomValues(new Uint8Array(32));
+    const walletKey = crypto.getRandomValues(new Uint8Array(32));
+    const walletEnvelope = await wrapSeaPair({
+      pair: first.record.seaPair,
+      address: ADDRESS,
+      rpId: "localhost",
+      credentialId: crypto.getRandomValues(new Uint8Array(16)),
+      prfSalt: crypto.getRandomValues(new Uint8Array(32)),
+      prfOutput,
+      secondaryKey: walletKey,
+      secondaryKind: "wallet",
+    });
+    await persistWrappedMeshKey({ address: ADDRESS, envelope: walletEnvelope, store });
+
+    const paperKey = randomPaperSecondaryKey();
+    const paperEnvelope = await wrapSeaPair({
+      pair: first.record.seaPair,
+      address: ADDRESS,
+      rpId: "localhost",
+      credentialId: crypto.getRandomValues(new Uint8Array(16)),
+      prfSalt: crypto.getRandomValues(new Uint8Array(32)),
+      prfOutput,
+      secondaryKey: paperKey,
+      secondaryKind: "paper",
+    });
+    const rewrapped = await persistRewrappedMeshKey({
+      address: ADDRESS,
+      envelope: paperEnvelope,
+      store,
+    });
+    assert.ok(isWrappedMeshKeyRecord(rewrapped));
+    assert.equal(rewrapped.wrap.secondaryKind, "paper");
+    assert.equal("seaPair" in rewrapped, false);
+    const onDisk = await store.get(ADDRESS);
+    assert.ok(onDisk && isWrappedMeshKeyRecord(onDisk));
+    assert.equal("seaPair" in onDisk, false);
+
+    const viaPaper = await readLocalMeshPair({ record: rewrapped, secondaryKey: paperKey });
+    assert.equal(viaPaper.pub, "rewrap-me");
+    await assert.rejects(
+      () => readLocalMeshPair({ record: rewrapped, secondaryKey: walletKey }),
+      /Could not unwrap/,
+    );
   });
 });

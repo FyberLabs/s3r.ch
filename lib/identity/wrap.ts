@@ -30,6 +30,10 @@ export const SEA_WRAP_HKDF_INFO = "s3r.ch/sea-wrap/aes-gcm/v1";
 export const SEA_WRAP_CONTENT_ALG = "AES-256-GCM";
 export const SEA_WRAP_WRAP_ALG = "HKDF-SHA-256+AES-256-GCM";
 export const PAPER_BACKUP_PREFIX = "s3rch-wrap-v1:";
+export const PAPER_BACKUP_INVALID_MESSAGE = "Paper backup is not valid.";
+export const PAPER_BACKUP_UNLOCK_FAILED_MESSAGE =
+  "Could not unlock with that paper backup.";
+const PAPER_SECONDARY_BYTES = 32;
 
 export const SEA_WRAP_ALG = {
   wrap: SEA_WRAP_WRAP_ALG,
@@ -135,6 +139,28 @@ export function decodePaperBackup(value: string): Uint8Array {
   const bytes = base64UrlToBytes(trimmed.slice(PAPER_BACKUP_PREFIX.length));
   assertIkm(bytes, "Paper backup");
   return bytes;
+}
+
+/** Random 32-byte secondary IKM. Do not export a wallet signature as paper. */
+export function randomPaperSecondaryKey(): Uint8Array {
+  return crypto.getRandomValues(new Uint8Array(PAPER_SECONDARY_BYTES));
+}
+
+/**
+ * Quiet UI copy for a paper decode / unwrap failure.
+ * Never echo the paste, DEK, KEKs, or SEA secrets.
+ */
+export function quietPaperBackupError(error: unknown): string {
+  if (error instanceof Error) {
+    if (
+      error.message.includes("Paper backup is not a s3r.ch wrap v1 string") ||
+      error.message.includes("Paper backup is too short") ||
+      error.message.includes("Invalid base64url")
+    ) {
+      return PAPER_BACKUP_INVALID_MESSAGE;
+    }
+  }
+  return PAPER_BACKUP_UNLOCK_FAILED_MESSAGE;
 }
 
 export function buildSecondaryWrapStatement(input: {

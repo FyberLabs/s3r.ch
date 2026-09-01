@@ -10,7 +10,9 @@ import {
   type EnsLookupClient,
 } from "./ens";
 
+// Mainnet 2026-09-01: 0xd8dA… still reverse+forward vitalik.eth.
 const VITALIK = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
+// Well-known Anvil key. No ENS name. Do not treat as a product example.
 const ANVIL = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
 function mockClient(opts: {

@@ -12,6 +12,8 @@ import type { FarcasterHubClient } from "./farcaster-claim";
 import type { LensLookupClient } from "./lens-claim";
 import type { Rss3GiClient } from "./rss3-claim";
 
+// Same live addresses as ens/lens tests (re-checked 2026-09-01). Anvil is a
+// mismatch dummy here — it currently owns Lens handles via key collision.
 const VITALIK = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
 const ANVIL = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const ACCOUNT = "0xe4AaA97cdA406c6AF7C02a5260a8013910bd683C";

@@ -7,6 +7,7 @@ import {
   type Rss3GiClient,
 } from "./rss3-claim";
 
+// GI is still DNS-dead (2026-09-01). These addresses are mock-only here.
 const VITALIK = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
 const ANVIL = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 

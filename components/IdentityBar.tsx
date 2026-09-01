@@ -16,7 +16,12 @@ import {
   isWrappedMeshKeyRecord,
   type MeshKeyRecord,
 } from "@/lib/identity/idb";
-import { ensureLocalMeshKey, persistWrappedMeshKey, readLocalMeshPair } from "@/lib/identity/mesh";
+import {
+  ensureLocalMeshKey,
+  persistRewrappedMeshKey,
+  persistWrappedMeshKey,
+  readLocalMeshPair,
+} from "@/lib/identity/mesh";
 import {
   ensClaimLine,
   lookupEnsHeldClaimForSession,
@@ -43,6 +48,10 @@ import {
 import {
   base64UrlToBytes,
   buildSecondaryWrapStatement,
+  encodePaperBackup,
+  decodePaperBackup,
+  quietPaperBackupError,
+  randomPaperSecondaryKey,
   secondaryIkmFromWalletSignature,
   wrapSeaPair,
 } from "@/lib/identity/wrap";
@@ -78,6 +87,9 @@ function IdentityBarInner() {
   const [ensCachedFor, setEnsCachedFor] = useState<string | null>(null);
   const [indicators, setIndicators] = useState<PublicIndicators>(emptyIndicators);
   const [indicatorsCachedFor, setIndicatorsCachedFor] = useState<string | null>(null);
+  const [wrapWithPaper, setWrapWithPaper] = useState(false);
+  const [paperPaste, setPaperPaste] = useState("");
+  const [paperReveal, setPaperReveal] = useState<string | null>(null);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -159,6 +171,13 @@ function IdentityBarInner() {
       cancelled = true;
     };
   }, [session, indicatorsCachedFor]);
+
+  useEffect(() => {
+    if (session) return;
+    setWrapWithPaper(false);
+    setPaperPaste("");
+    setPaperReveal(null);
+  }, [session]);
 
   useEffect(() => {
     if (!session) return;
@@ -264,12 +283,14 @@ function IdentityBarInner() {
       setMessage(PRF_UNAVAILABLE_MESSAGE);
       return;
     }
-    if (!isConnected) {
+    if (!wrapWithPaper && !isConnected) {
       setMessage("Connect the injected wallet to wrap the mesh key.");
       return;
     }
     setBusy(true);
     setMessage(null);
+    setPaperReveal(null);
+    const paperKey = wrapWithPaper ? randomPaperSecondaryKey() : null;
     try {
       const existing = await getMeshKey(session.address);
       if (!existing || !isPlaintextMeshKeyRecord(existing)) {
@@ -279,14 +300,16 @@ function IdentityBarInner() {
         address: session.address,
         host: window.location.host,
       });
-      const secondarySalt = crypto.getRandomValues(new Uint8Array(32));
-      const statement = buildSecondaryWrapStatement({
-        domain: window.location.host,
-        uri: window.location.origin,
-        address: session.address,
-        secondarySalt,
-      });
-      const secondarySignature = await signMessageAsync({ message: statement });
+      const secondary = paperKey
+        ? {
+            secondaryKey: paperKey,
+            secondaryKind: "paper" as const,
+            paper: encodePaperBackup(paperKey),
+          }
+        : await walletSecondaryForWrap({
+            address: session.address,
+            signMessage: (message) => signMessageAsync({ message }),
+          });
       const envelope = await wrapSeaPair({
         pair: existing.seaPair,
         address: session.address,
@@ -294,9 +317,9 @@ function IdentityBarInner() {
         credentialId: prf.credentialId,
         prfSalt: prf.prfSalt,
         prfOutput: prf.prfOutput,
-        secondaryKey: secondaryIkmFromWalletSignature(secondarySignature),
-        secondarySalt,
-        secondaryKind: "wallet",
+        secondaryKey: secondary.secondaryKey,
+        secondarySalt: "secondarySalt" in secondary ? secondary.secondarySalt : undefined,
+        secondaryKind: secondary.secondaryKind,
       });
       const wrapped = await persistWrappedMeshKey({
         address: session.address,
@@ -305,17 +328,20 @@ function IdentityBarInner() {
       setMeshKind("wrapped");
       setMeshLine("mesh key wrapped");
       setUnlocked(true);
+      if ("paper" in secondary) setPaperReveal(secondary.paper);
       if (!isWrappedMeshKeyRecord(wrapped) || "seaPair" in wrapped) {
         throw new Error("Plaintext seaPair must not remain after wrap.");
       }
     } catch (error) {
       setUnlocked(false);
+      setPaperReveal(null);
       if (error instanceof PrfUnavailableError) {
         setMessage(error.message);
         return;
       }
       setMessage(error instanceof Error ? error.message : "Wrap failed.");
     } finally {
+      paperKey?.fill(0);
       setBusy(false);
     }
   }
@@ -366,6 +392,103 @@ function IdentityBarInner() {
     }
   }
 
+  async function onUnlockWithPaper() {
+    if (!session) return;
+    setBusy(true);
+    setMessage(null);
+    let secondaryKey: Uint8Array | null = null;
+    try {
+      const existing = await getMeshKey(session.address);
+      if (!existing || !isWrappedMeshKeyRecord(existing)) {
+        throw new Error("No wrapped mesh key to unlock.");
+      }
+      try {
+        secondaryKey = decodePaperBackup(paperPaste);
+      } catch (error) {
+        setUnlocked(false);
+        setMessage(quietPaperBackupError(error));
+        return;
+      }
+      await readLocalMeshPair({ record: existing, secondaryKey });
+      setPaperPaste("");
+      setUnlocked(true);
+      setMeshLine("mesh key unlocked");
+    } catch (error) {
+      setUnlocked(false);
+      setMessage(quietPaperBackupError(error));
+    } finally {
+      secondaryKey?.fill(0);
+      setBusy(false);
+    }
+  }
+
+  async function onExportPaperBackup() {
+    if (!session) return;
+    if (prfAvailable === false) {
+      setMessage(PRF_UNAVAILABLE_MESSAGE);
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    setPaperReveal(null);
+    const paperKey = randomPaperSecondaryKey();
+    try {
+      const existing = await getMeshKey(session.address);
+      if (!existing || !isWrappedMeshKeyRecord(existing)) {
+        throw new Error("No wrapped mesh key to export.");
+      }
+      const prfOutput = await evaluatePrf({
+        rpId: existing.wrap.rpId,
+        credentialId: base64UrlToBytes(existing.wrap.credentialId),
+        prfSalt: base64UrlToBytes(existing.wrap.prfSalt),
+      });
+      const pair = await readLocalMeshPair({ record: existing, prfOutput });
+      const paper = encodePaperBackup(paperKey);
+      const envelope = await wrapSeaPair({
+        pair,
+        address: session.address,
+        rpId: existing.wrap.rpId,
+        credentialId: base64UrlToBytes(existing.wrap.credentialId),
+        prfSalt: base64UrlToBytes(existing.wrap.prfSalt),
+        prfOutput,
+        secondaryKey: paperKey,
+        secondaryKind: "paper",
+      });
+      const wrapped = await persistRewrappedMeshKey({
+        address: session.address,
+        envelope,
+      });
+      if (!isWrappedMeshKeyRecord(wrapped) || "seaPair" in wrapped) {
+        throw new Error("Plaintext seaPair must not remain after wrap.");
+      }
+      setMeshKind("wrapped");
+      setMeshLine("mesh key wrapped");
+      setUnlocked(true);
+      setPaperPaste("");
+      setPaperReveal(paper);
+    } catch (error) {
+      setPaperReveal(null);
+      if (error instanceof PrfUnavailableError) {
+        setMessage(error.message);
+        return;
+      }
+      setMessage(error instanceof Error ? error.message : "Export failed.");
+    } finally {
+      paperKey.fill(0);
+      setBusy(false);
+    }
+  }
+
+  async function onCopyPaperReveal() {
+    if (!paperReveal) return;
+    try {
+      await navigator.clipboard.writeText(paperReveal);
+      setMessage("Paper backup copied. Keep it offline.");
+    } catch {
+      setMessage("Copy failed. Select the string and copy it yourself.");
+    }
+  }
+
   async function onSignOut() {
     setBusy(true);
     setMessage(null);
@@ -375,6 +498,9 @@ function IdentityBarInner() {
       setMeshLine(null);
       setMeshKind(null);
       setUnlocked(false);
+      setWrapWithPaper(false);
+      setPaperPaste("");
+      setPaperReveal(null);
       setEnsClaim(null);
       setEnsCachedFor(null);
       setIndicators(emptyIndicators());
@@ -393,6 +519,9 @@ function IdentityBarInner() {
   const showPrfMissing =
     Boolean(session) && meshKind === "plaintext" && prfAvailable === false;
   const showUnlock = Boolean(session) && meshKind === "wrapped" && !unlocked;
+  const showPaperUnlock = Boolean(session) && meshKind === "wrapped" && !unlocked;
+  const showExportPaper =
+    Boolean(session) && meshKind === "wrapped" && prfAvailable !== false;
 
   return (
     <div className="mt-10 rounded-xl border border-brand-100 bg-brand-50/40 p-5">
@@ -401,7 +530,8 @@ function IdentityBarInner() {
         Sign in with Ethereum binds this browser to a checksummed address
         (EOA or ERC-1271 smart account). ENS, Farcaster, Lens, and RSS3 are
         held claims after sign-in, not the session key. A passkey can wrap
-        the local mesh key on this device. It is not login.
+        the local mesh key on this device. A paper backup is recovery, not
+        login.
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {session ? (
@@ -437,6 +567,16 @@ function IdentityBarInner() {
                 Unlock mesh key
               </button>
             ) : null}
+            {showExportPaper ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void onExportPaperBackup()}
+                className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+              >
+                Export paper backup
+              </button>
+            ) : null}
           </>
         ) : (
           <>
@@ -465,6 +605,59 @@ function IdentityBarInner() {
           </>
         )}
       </div>
+      {showWrap ? (
+        <label className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+          <input
+            type="checkbox"
+            checked={wrapWithPaper}
+            disabled={busy}
+            onChange={(event) => setWrapWithPaper(event.target.checked)}
+          />
+          also show a paper backup
+        </label>
+      ) : null}
+      {showPaperUnlock ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={paperPaste}
+            onChange={(event) => setPaperPaste(event.target.value)}
+            placeholder="s3rch-wrap-v1:…"
+            autoComplete="off"
+            spellCheck={false}
+            disabled={busy}
+            className="min-w-[16rem] flex-1 rounded-lg border border-brand-100 bg-white px-3 py-2 font-mono text-xs text-gray-700 disabled:opacity-50"
+          />
+          <button
+            type="button"
+            disabled={busy || !paperPaste.trim()}
+            onClick={() => void onUnlockWithPaper()}
+            className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+          >
+            Unlock with paper
+          </button>
+        </div>
+      ) : null}
+      {paperReveal ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            readOnly
+            value={paperReveal}
+            className="min-w-[16rem] flex-1 rounded-lg border border-brand-100 bg-white px-3 py-2 font-mono text-xs text-gray-700"
+          />
+          <button
+            type="button"
+            onClick={() => void onCopyPaperReveal()}
+            className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800"
+          >
+            Copy
+          </button>
+          <p className="basis-full text-xs text-gray-500">
+            Keep this. It will not be shown again.
+          </p>
+        </div>
+      ) : null}
       {meshLine ? <p className="mt-3 text-xs text-gray-500">{meshLine}</p> : null}
       {ensClaimLine(ensClaim) ? (
         <p className="mt-3 text-xs text-gray-500">{ensClaimLine(ensClaim)}</p>
@@ -486,6 +679,29 @@ function IdentityBarInner() {
       {message ? <p className="mt-3 text-xs text-gray-500">{message}</p> : null}
     </div>
   );
+}
+
+async function walletSecondaryForWrap(input: {
+  address: string;
+  signMessage: (message: string) => Promise<string>;
+}): Promise<{
+  secondaryKey: Uint8Array;
+  secondarySalt: Uint8Array;
+  secondaryKind: "wallet";
+}> {
+  const secondarySalt = crypto.getRandomValues(new Uint8Array(32));
+  const statement = buildSecondaryWrapStatement({
+    domain: window.location.host,
+    uri: window.location.origin,
+    address: input.address,
+    secondarySalt,
+  });
+  const secondarySignature = await input.signMessage(statement);
+  return {
+    secondaryKey: secondaryIkmFromWalletSignature(secondarySignature),
+    secondarySalt,
+    secondaryKind: "wallet",
+  };
 }
 
 function applyMeshRecord(
