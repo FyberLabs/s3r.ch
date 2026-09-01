@@ -17,6 +17,11 @@ import {
   type MeshKeyRecord,
 } from "@/lib/identity/idb";
 import { ensureLocalMeshKey, persistWrappedMeshKey, readLocalMeshPair } from "@/lib/identity/mesh";
+import {
+  ensClaimLine,
+  lookupEnsHeldClaimForSession,
+  type EnsHeldClaim,
+} from "@/lib/identity/ens";
 import { buildSiweMessage } from "@/lib/identity/siwe";
 import {
   PRF_UNAVAILABLE_MESSAGE,
@@ -59,6 +64,8 @@ function IdentityBarInner() {
   const [meshKind, setMeshKind] = useState<"plaintext" | "wrapped" | null>(null);
   const [unlocked, setUnlocked] = useState(false);
   const [prfAvailable, setPrfAvailable] = useState<boolean | null>(null);
+  const [ensClaim, setEnsClaim] = useState<string | null>(null);
+  const [ensCachedFor, setEnsCachedFor] = useState<string | null>(null);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -84,6 +91,34 @@ function IdentityBarInner() {
       setPrfAvailable(result.available);
     });
   }, []);
+
+  useEffect(() => {
+    if (!session) {
+      setEnsClaim(null);
+      setEnsCachedFor(null);
+      return;
+    }
+    if (ensCachedFor === session.address) return;
+    const sessionAddress = session.address;
+    let cancelled = false;
+    void lookupEnsHeldClaimForSession({
+      session,
+      lookup: (address) => fetchEnsHeldClaim(address),
+    })
+      .then((claim) => {
+        if (cancelled) return;
+        setEnsClaim(claim.name);
+        setEnsCachedFor(sessionAddress);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setEnsClaim(null);
+        setEnsCachedFor(sessionAddress);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session, ensCachedFor]);
 
   useEffect(() => {
     if (!session) return;
@@ -300,6 +335,8 @@ function IdentityBarInner() {
       setMeshLine(null);
       setMeshKind(null);
       setUnlocked(false);
+      setEnsClaim(null);
+      setEnsCachedFor(null);
       disconnect();
       // Device mesh key stays in IndexedDB. Do not delete it on sign-out.
     } catch (error) {
@@ -320,7 +357,8 @@ function IdentityBarInner() {
       <h2 className="text-sm font-semibold text-brand-900">Session</h2>
       <p className="mt-2 text-sm text-gray-600">
         Sign in with Ethereum binds this browser to a checksummed address.
-        A passkey can wrap the local mesh key on this device. It is not login.
+        ENS is a held claim after sign-in, not the session key. A passkey can
+        wrap the local mesh key on this device. It is not login.
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {session ? (
@@ -385,6 +423,9 @@ function IdentityBarInner() {
         )}
       </div>
       {meshLine ? <p className="mt-3 text-xs text-gray-500">{meshLine}</p> : null}
+      {ensClaimLine(ensClaim) ? (
+        <p className="mt-3 text-xs text-gray-500">{ensClaimLine(ensClaim)}</p>
+      ) : null}
       {showPrfMissing ? (
         <p className="mt-3 text-xs text-gray-500">{PRF_UNAVAILABLE_MESSAGE}</p>
       ) : null}
@@ -410,6 +451,19 @@ function applyMeshRecord(
   }
   setMeshKind("plaintext");
   setMeshLine(createdLine ?? "mesh key already present");
+}
+
+async function fetchEnsHeldClaim(address: string): Promise<EnsHeldClaim> {
+  const response = await fetch(
+    `/api/identity/ens?address=${encodeURIComponent(address)}`,
+    { cache: "no-store" },
+  );
+  if (!response.ok) return { name: null };
+  const body = (await response.json()) as { name?: string | null };
+  if (typeof body.name === "string" && body.name) {
+    return { name: body.name };
+  }
+  return { name: null };
 }
 
 function truncateAddress(address: string): string {
