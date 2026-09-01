@@ -45,7 +45,7 @@ Pinned to current majors compatible with Next.js 16, React 19, and Node 24:
 | --- | --- |
 | `siwe` | Construct and parse EIP-4361 messages |
 | `viem` | EOA `verifyMessage` / recover. Checksum via `getAddress` |
-| `wagmi` v2 | Injected connector only. No RainbowKit, no ConnectKit |
+| `wagmi` v3 | Injected connector only. No RainbowKit, no ConnectKit |
 | `@tanstack/react-query` | Required by wagmi |
 | `jose` | Sign nonce and session cookies (HS256) |
 | `gun` / `gun/sea` | Already a dependency. `createSeaPair()` may call `SEA.pair()`. Not wired to the UI |
