@@ -52,7 +52,7 @@ function IdentityBarInner() {
 
   async function onConnect() {
     setMessage(null);
-    if (!injected) {
+    if (!injected || !hasInjectedProvider()) {
       setMessage("No injected wallet found.");
       return;
     }
@@ -180,8 +180,17 @@ function truncateAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
+function hasInjectedProvider(): boolean {
+  const ethereum = (globalThis as { ethereum?: unknown }).ethereum;
+  return Boolean(ethereum);
+}
+
 async function readInjectedChainId(): Promise<number | null> {
-  const ethereum = (globalThis as { ethereum?: { request?: (args: { method: string }) => Promise<string> } }).ethereum;
+  const ethereum = (
+    globalThis as {
+      ethereum?: { request?: (args: { method: string }) => Promise<string> };
+    }
+  ).ethereum;
   if (!ethereum?.request) return null;
   try {
     return Number(await ethereum.request({ method: "eth_chainId" }));
