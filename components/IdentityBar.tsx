@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAccount, useConnect, useDisconnect, useSignMessage } from "wagmi";
+import {
+  useConnect,
+  useConnection,
+  useConnectors,
+  useDisconnect,
+  useSignMessage,
+} from "wagmi";
 import { IdentityProviders } from "@/components/IdentityProviders";
 import { SIWE_MESSAGE_TTL_MS } from "@/lib/identity/config";
 import { buildSiweMessage } from "@/lib/identity/siwe";
@@ -20,10 +26,11 @@ export function IdentityBar() {
 }
 
 function IdentityBarInner() {
-  const { address, chainId, isConnected } = useAccount();
-  const { connect, connectors, isPending: connecting } = useConnect();
-  const { disconnect } = useDisconnect();
-  const { signMessageAsync } = useSignMessage();
+  const { address, chainId, isConnected } = useConnection();
+  const { mutateAsync: connect, isPending: connecting } = useConnect();
+  const connectors = useConnectors();
+  const { mutate: disconnect } = useDisconnect();
+  const { mutateAsync: signMessageAsync } = useSignMessage();
 
   const [session, setSession] = useState<SessionPayload | null>(null);
   const [busy, setBusy] = useState(false);
