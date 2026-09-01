@@ -12,16 +12,17 @@ Components here are written so they can be extracted into a shared kit later. Th
 - Signed **HttpOnly cookie session** bound to a **checksummed** Ethereum address (never ENS, never email, never a SEA pub).
 - Quiet connect / sign-in / sign-out on `/feed` (injected wallet only).
 - After the SIWE session is set: a **local Gun SEA P-256 pair** (different curve from Ethereum) plus a **wallet-signed link** (`pub` belongs to this checksummed address), persisted in **origin IndexedDB**.
-- **WebAuthn PRF wrap** of that local pair (recovery / device proof, **not** login). Envelope version 1 in IndexedDB, with ≥2 KEKs (PRF + wallet-bound secondary). Quiet `/feed` controls: wrap / unlock / status.
+- **WebAuthn PRF wrap** of that local pair (recovery / device proof, **not** login). Envelope version 1 in IndexedDB, with ≥2 KEKs (PRF + secondary). Quiet `/feed` controls: wrap / unlock / paper backup / status.
 - After a SIWE session exists: a **mainnet ENS held claim** on `/feed` when reverse **and** forward match the checksummed session address. ENS is never login and never the session key.
 - After a SIWE session exists: **Farcaster / Lens / RSS3 held claims** on `/feed` when a bidirectional public lookup binds them to the checksummed session address. These are never login (no SIWF, no Lens OAuth, no RSS3 login) and never the session key.
 - **ERC-1271** (and EIP-6492 via the same viem path) so a smart-account wallet can SIWE. Session subject stays the checksummed contract or EOA address.
+- **Paper-backup UI** for the wrap secondary KEK (`s3rch-wrap-v1:<base64url>`). Recovery, not login. Random 32-byte paper IKM (not a wallet-signature export). Shown once on wrap/export; paste unlocks.
 
 ## What this slice does not ship
 
 - Passkey as primary login. Session subject stays the checksummed address.
 - Writing the envelope, DEK, KEKs, SIWE signatures, or SEA `priv` / `epriv` to Gun for recovery.
-- Paper-backup UI (the secondary slot accepts a paper string in code; lab UI uses the injected wallet).
+- A paper-only wrap that drops the PRF KEK. Paper replaces the **secondary** IKM only.
 - WalletConnect (needs `NEXT_PUBLIC_WC_PROJECT_ID` we do not have). Do not invent one.
 - Panopticon / Hypermesh Keycloak as an IdP. s3r.ch login stays EIP-4361 SIWE.
 - ENS as login, or writing an ENS / Farcaster / Lens / RSS3 claim onto the public Gun graph.
@@ -44,6 +45,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 | Nonce lives in a **signed cookie**, not an in-memory `Map` | Azure App Service is multi-instance; Redis is not in this slice |
 | OIDC is not primary login | Hypermesh portal can stay Keycloak; s3r.ch does not use Panopticon Keycloak as an IdP |
 | Passkey WebAuthn PRF wrap is recovery | PRF is device proof. It does not become the session subject |
+| Paper backup is recovery | Same wrap slot as wallet secondary. Never login. Never persist the paper string, DEK, KEKs, or SEA `priv` / `epriv` in Gun, cookies, or `sessionStorage` |
 | `lib/auth.ts` is seed authorize | User identity lives in `lib/identity/` |
 
 ## Libraries
@@ -91,7 +93,7 @@ WalletConnect is a documented follow-up. Do not add a WalletConnect project id t
 | `app/api/identity/ens` | `GET ?address=` — session-gated ENS claim for the session address only |
 | `app/api/identity/indicators` | `GET ?address=` — session-gated Farcaster / Lens / RSS3 claims for the session address only |
 | `app/api/identity/logout` | `POST` — clear identity cookies |
-| `components/IdentityBar.tsx` | Quiet `/feed` connect + SIWE + mesh key + wrap/unlock + ENS + public-indicator claims + sign out |
+| `components/IdentityBar.tsx` | Quiet `/feed` connect + SIWE + mesh key + wrap/unlock + paper backup + ENS + public-indicator claims + sign out |
 
 ## Cookies
 
@@ -161,7 +163,7 @@ This slice is **mainnet ENS only**. A `createPublicClient({ chain: mainnet, tran
 
 `GET /api/identity/ens?address=` is session-gated. The query address, when present, must match the session subject. The route does not become an open ENS proxy and does **not** write the claim onto the public Gun graph.
 
-IdentityBar caches the claim in component state for the current session (no Redis). Quiet line: `ENS claim: vitalik.eth` or nothing.
+IdentityBar caches the claim in component state for the current session (no Redis). Quiet line format: `ENS claim: name.eth` or nothing. `vitalik.eth` ↔ `0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` still reverse+forward as of 2026-09-01 and is the documented format example — not a screenshot subject for Anvil.
 
 ## Farcaster / Lens / RSS3 held claims (after SIWE, not login)
 
@@ -199,7 +201,14 @@ Stored in origin IndexedDB only (`s3rch-identity` / `mesh-keys`). When wrapped, 
 - Fields: `rpId`, `credentialId`, PRF salt, optional secondary salt, wrapped DEKs, ciphertext, alg ids, checksummed address + `seaPub` binding.
 - `rp.id` = `s3r.ch` in production. Localhost may use `localhost` (or `127.0.0.1` on that origin). Per-origin. Same host allowlist as SIWE.
 
-Secondary in the lab UI: the injected wallet already in IdentityBar signs a domain-bound statement that includes a stored secondary salt. That signature's bytes are the secondary IKM. A paper export string (`s3rch-wrap-v1:<base64url>`) uses the same wrap slot in code.
+Secondary IKM is either:
+
+- **wallet** (lab default): the injected wallet signs a domain-bound statement that includes a stored secondary salt. Those signature bytes are the secondary IKM.
+- **paper**: a random 32-byte IKM, shown once as `s3rch-wrap-v1:<base64url>`. The user keeps the string. It is never written to Gun, cookies, `sessionStorage`, or IndexedDB.
+
+Do **not** export a wallet signature as paper. Wallet bytes are easy to screenshot and are not a recovery secret people should copy. Wrap-with-paper (checkbox on first wrap) or Export paper backup (re-wrap an existing envelope) uses a fresh random IKM and sets `secondaryKind: "paper"`. The string can unwrap this envelope; a wallet-kind envelope cannot be unlocked with a made-up paper string.
+
+Paper is **recovery**, not login. Session subject stays the checksummed address. Envelope still needs ≥2 KEKs (PRF + secondary). If PRF is unavailable, paper can still unwrap a wrapped record that has a secondary slot. The UI does not fake a PRF wrap.
 
 ### IndexedDB migration
 
@@ -230,9 +239,12 @@ Not credBlob. Not largeBlob.
 After signed-in + mesh key present:
 
 - `Wrap with passkey` when the record is plaintext and PRF is not known-unavailable
-- `Unlock mesh key` / `mesh key wrapped` / `mesh key unlocked` when wrapped
-- Degrade copy when PRF is missing
-- Do not dump `priv` / `epriv`
+- Optional `also show a paper backup` on wrap: PRF + random paper secondary (not wallet)
+- `Unlock mesh key` (PRF, then wallet secondary when present)
+- Paste field + `Unlock with paper` when wrapped and locked; clear the paste after success
+- `Export paper backup` when wrapped and PRF is not known-unavailable: re-wrap with a new paper IKM, show `s3rch-wrap-v1:` once (copyable), then the user keeps it
+- Degrade copy when PRF is missing; paper unlock still works
+- Do not dump `priv` / `epriv`, the paper string as a standing `/feed` hero line, or invalid-paste dumps
 
 ## Local SEA mesh key (after SIWE)
 
@@ -248,16 +260,30 @@ Locks that stay:
 
 - Never `sessionStorage`.
 - Never `user.recall({ sessionStorage: true })`.
-- Never write SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, the link, or ENS / Farcaster / Lens / RSS3 claims onto the public Gun graph.
-- Session subject remains the checksummed address.
+- Never write SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, the paper backup string, the link, or ENS / Farcaster / Lens / RSS3 claims onto the public Gun graph.
+- Session subject remains the checksummed address. Paper backup is recovery, not login.
 
 ## Follow-ups
 
 - WalletConnect injected-or-QR, gated on `NEXT_PUBLIC_WC_PROJECT_ID` (do not invent one).
-- Paper-backup UI for the secondary slot (code already accepts a paper string).
 - Unstoppable / SNS (not primary; ENS remains mainnet reverse+forward).
 - SociACL Check when sharing needs grants (adapter lives outside this repo). Do not import `FyberLabs/SociACL`.
 - Azure Key Vault for `IDENTITY_SESSION_SECRET` (still operator / Azure in this slice).
 - Contract verify on chains other than mainnet (this slice's 1271 RPC allowlist is mainnet only).
 
-This slice ships ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client). s3r.ch does not use Panopticon Keycloak as an IdP.
+This slice ships paper-backup UI for the wrap secondary KEK, and ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client) already on `master`. s3r.ch does not use Panopticon Keycloak as an IdP.
+
+## Live fixtures (re-checked 2026-09-01)
+
+Do not keep a live identity as a fixture unless the public API still confirms it. Dummy `0xcc…cc` is fine when clearly fake.
+
+| Citation | Check | Result |
+| --- | --- | --- |
+| `vitalik.eth` ↔ `0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` | ENS reverse + forward | Still matches. Format example only. |
+| Lens `vitalik` / account `0xe4AaA97cdA406c6AF7C02a5260a8013910bd683C` | `api.lens.xyz/graphql` owned + owner | Still owned by `0xd8dA…`. |
+| Farcaster `0xD7029Bdea1c17493893AAfE29Aad69ef892B8FF2` | Pinata Hubble id-registry | Still fid **188133** custody. USER_DATA empty; tests use a mock fname (`dwr-alt`), not a live username. |
+| Farcaster fid 3 (`dwr`) | Hubble id-registry | Custody is `0x6b0bda3f2ffed5efc83fa8c024acff1dd45793f1`, **not** `0xd702…`. |
+| Anvil `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` | Lens GraphQL | Well-known test key. Currently owns Lens handles (`nr0868889`, …) — **public-key collision**, not a product example. Do not screenshot it as a held claim. No ENS name. |
+| `FARCASTER_HUB_BASE` `https://hub.pinata.cloud` | HTTP `/v1/info` | Live (hub `0.14.2`). |
+| `https://api.lens.xyz/graphql` | GraphQL | Live. |
+| `GI_BASE` `https://gi.rss3.io` | DNS | Still no A/AAAA/CNAME. Keep optional / quiet empty. Do not pretend it is up. |

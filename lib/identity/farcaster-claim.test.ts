@@ -7,6 +7,9 @@ import {
   type FarcasterIdRegistryEvent,
 } from "./farcaster-claim";
 
+// Hubble 2026-09-01: 0xD702… is still fid 188133 custody (reverse + latest
+// id-register `to`). USER_DATA is empty; "dwr-alt" below is a mock fname.
+// Fid 3 (dwr) custody is 0x6b0bda3f2ffed5efc83fa8c024acff1dd45793f1, not this key.
 const DWR_CUSTODY = "0xd7029bdea1c17493893aafe29aad69ef892b8ff2";
 const ANVIL = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const FID = 188133;

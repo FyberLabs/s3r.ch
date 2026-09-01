@@ -130,3 +130,36 @@ export async function persistWrappedMeshKey(
   }
   return stored;
 }
+
+/**
+ * Replace the wrap envelope on an already-wrapped row (paper export / rotate).
+ * Still never both plaintext and wrap. Does not delete the row.
+ */
+export async function persistRewrappedMeshKey(
+  input: PersistWrappedMeshKeyInput,
+): Promise<WrappedMeshKeyRecord> {
+  const store = input.store ?? createIndexedDbMeshKeyStore();
+  const existing = await store.get(input.address);
+  if (!existing || !isWrappedMeshKeyRecord(existing)) {
+    throw new Error("No wrapped mesh key to re-wrap.");
+  }
+  if (
+    input.envelope.address !== existing.address ||
+    input.envelope.seaPub !== existing.seaPub
+  ) {
+    throw new Error("Wrap envelope does not match this mesh key.");
+  }
+  const wrapped: WrappedMeshKeyRecord = {
+    address: existing.address,
+    seaPub: existing.seaPub,
+    walletSignature: existing.walletSignature,
+    signedPayload: existing.signedPayload,
+    wrap: input.envelope,
+  };
+  await store.put(wrapped);
+  const stored = await store.get(input.address);
+  if (!stored || !isWrappedMeshKeyRecord(stored) || "seaPair" in stored) {
+    throw new Error("Rewrapped mesh key did not persist in IndexedDB.");
+  }
+  return stored;
+}

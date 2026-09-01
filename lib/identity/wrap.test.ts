@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import { SECONDARY_WRAP_STATEMENT } from "./config";
 import type { SeaPair } from "./sea";
 import {
+  PAPER_BACKUP_INVALID_MESSAGE,
+  PAPER_BACKUP_UNLOCK_FAILED_MESSAGE,
   SEA_WRAP_HKDF_INFO,
   base64UrlToBytes,
   buildSecondaryWrapStatement,
@@ -10,6 +12,8 @@ import {
   decodePaperBackup,
   encodePaperBackup,
   isPrfWrapEnvelope,
+  quietPaperBackupError,
+  randomPaperSecondaryKey,
   resolveRpId,
   secondaryIkmFromWalletSignature,
   unwrapDek,
@@ -166,14 +170,69 @@ describe("PRF wrap crypto", () => {
   });
 
   it("roundtrips a paper backup string and a wallet-signature IKM", () => {
-    const key = randomBytes(32);
+    const key = randomPaperSecondaryKey();
     const paper = encodePaperBackup(key);
     assert.match(paper, /^s3rch-wrap-v1:/);
     assert.deepEqual(decodePaperBackup(paper), key);
+    assert.equal(key.byteLength, 32);
 
     const sig = `0x${Buffer.from(randomBytes(65)).toString("hex")}`;
     const ikm = secondaryIkmFromWalletSignature(sig);
     assert.equal(ikm.byteLength, 65);
+  });
+
+  it("rejects a garbage paper prefix and invalid payload without echoing secrets", () => {
+    assert.throws(() => decodePaperBackup("not-a-backup"), /not a s3r.ch wrap v1/);
+    assert.throws(() => decodePaperBackup("s3rch-wrap-v1:???"), /Invalid base64url/);
+    assert.throws(() => decodePaperBackup("s3rch-wrap-v1:"), /Invalid base64url/);
+    const short = `s3rch-wrap-v1:${bytesToBase64Url(randomBytes(15))}`;
+    assert.throws(() => decodePaperBackup(short), /too short/);
+    assert.equal(
+      quietPaperBackupError(new Error("Paper backup is not a s3r.ch wrap v1 string.")),
+      PAPER_BACKUP_INVALID_MESSAGE,
+    );
+    assert.equal(
+      quietPaperBackupError(new Error("Invalid base64url.")),
+      PAPER_BACKUP_INVALID_MESSAGE,
+    );
+    const leaked = quietPaperBackupError(new Error("s3rch-wrap-v1:SECRETPRIV"));
+    assert.equal(leaked, PAPER_BACKUP_UNLOCK_FAILED_MESSAGE);
+    assert.doesNotMatch(leaked, /SECRETPRIV|s3rch-wrap-v1/);
+  });
+
+  it("unwraps a paper secondary without PRF and fails quietly on the wrong paper", async () => {
+    const paperKey = randomPaperSecondaryKey();
+    const envelope = await wrapSeaPair({
+      pair: fixturePair(),
+      address: ADDRESS,
+      rpId: "localhost",
+      credentialId: randomBytes(16),
+      prfSalt: randomBytes(32),
+      prfOutput: randomBytes(32),
+      secondaryKey: paperKey,
+      secondaryKind: "paper",
+    });
+    assert.equal(envelope.secondaryKind, "paper");
+
+    const viaPaper = await unwrapSeaPair({
+      envelope,
+      secondaryKey: decodePaperBackup(encodePaperBackup(paperKey)),
+    });
+    assert.deepEqual(viaPaper, fixturePair());
+
+    const wrong = randomPaperSecondaryKey();
+    await assert.rejects(
+      () => unwrapSeaPair({ envelope, secondaryKey: wrong }),
+      /Could not unwrap/,
+    );
+    try {
+      await unwrapSeaPair({ envelope, secondaryKey: wrong });
+      assert.fail("wrong paper must not unwrap");
+    } catch (error) {
+      const quiet = quietPaperBackupError(error);
+      assert.equal(quiet, PAPER_BACKUP_UNLOCK_FAILED_MESSAGE);
+      assert.doesNotMatch(quiet, /sea-priv|epriv|s3rch-wrap-v1/);
+    }
   });
 
   it("builds a domain-bound secondary statement without privkeys", () => {

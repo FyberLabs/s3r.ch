@@ -7,7 +7,10 @@ import {
   type LensLookupClient,
 } from "./lens-claim";
 
+// Lens GraphQL 2026-09-01: 0xd8dA… still owns lens/vitalik at this account.
 const VITALIK = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
+// Anvil currently owns real Lens handles (nr0868889, …) — public-key collision,
+// not a product example. Tests use it only as a mismatch / dummy owner.
 const ANVIL = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const ACCOUNT = "0xe4AaA97cdA406c6AF7C02a5260a8013910bd683C";
 
