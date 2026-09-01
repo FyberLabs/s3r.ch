@@ -14,6 +14,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - After the SIWE session is set: a **local Gun SEA P-256 pair** (different curve from Ethereum) plus a **wallet-signed link** (`pub` belongs to this checksummed address), persisted in **origin IndexedDB**.
 - **WebAuthn PRF wrap** of that local pair (recovery / device proof, **not** login). Envelope version 1 in IndexedDB, with ≥2 KEKs (PRF + wallet-bound secondary). Quiet `/feed` controls: wrap / unlock / status.
 - After a SIWE session exists: a **mainnet ENS held claim** on `/feed` when reverse **and** forward match the checksummed session address. ENS is never login and never the session key.
+- After a SIWE session exists: **Farcaster / Lens / RSS3 held claims** on `/feed` when a bidirectional public lookup binds them to the checksummed session address. These are never login (no SIWF, no Lens OAuth, no RSS3 login) and never the session key.
 
 ## What this slice does not ship
 
@@ -22,8 +23,8 @@ Components here are written so they can be extracted into a shared kit later. Th
 - Paper-backup UI (the secondary slot accepts a paper string in code; lab UI uses the injected wallet).
 - ERC-1271 / smart accounts (needs an RPC we do not pin; EOA `verifyMessage` only).
 - WalletConnect (needs `NEXT_PUBLIC_WC_PROJECT_ID` we do not have).
-- ENS as login, or writing an ENS claim onto the public Gun graph.
-- Farcaster SIWF, Lens, or RSS3 indicator cards (later public-indicator slices).
+- ENS as login, or writing an ENS / Farcaster / Lens / RSS3 claim onto the public Gun graph.
+- Farcaster SIWF, Lens OAuth, or RSS3 login. Indicators are held claims after SIWE, not session subjects.
 - SociACL Check / certify. Do not import `FyberLabs/SociACL`.
 - NextAuth, Keycloak, or email magic link on this app.
 - Changing seed Gun, Cloudflare, GitHub Actions, or `lib/auth.ts` seed helper (that file is `SEED_SECRET` only).
@@ -32,11 +33,12 @@ Components here are written so they can be extracted into a shared kit later. Th
 
 | Lock | Why |
 | --- | --- |
-| Session key is the checksummed address | ENS and email are indicators, not the session subject |
+| Session key is the checksummed address | ENS, fname, Lens handle, RSS3 id, and email are indicators, not the session subject |
 | ENS is a held claim after SIWE | Reverse + forward must checksum-match. Unverified reverse is never shown |
+| Farcaster / Lens / RSS3 are held claims after SIWE | Same bidirectional bar as ENS. Unverified one-way lookups are never shown. A GI miss is a quiet empty RSS3 claim, not a reason to drop the others |
 | Mesh identity is a **local Gun SEA P-256 pair**, not the Ethereum key | Different curves. Ethereum secp256k1 signs SIWE; SEA is for later mesh crypto |
 | Never call `user.recall({ sessionStorage: true })` | Gun would store the plaintext SEA pair. Never `sessionStorage` for this kit. |
-| Never put SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, or ENS claims on the public Gun graph | Session / device secrets stay in cookies and IndexedDB. ENS is a read-only indicator this slice |
+| Never put SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, ENS, Farcaster, Lens, or RSS3 claims on the public Gun graph | Session / device secrets stay in cookies and IndexedDB. Public indicators are read-only this slice |
 | Nonce lives in a **signed cookie**, not an in-memory `Map` | Azure App Service is multi-instance; Redis is not in this slice |
 | OIDC is not primary login | Hypermesh portal can stay Keycloak; this kit is wallet login |
 | Passkey WebAuthn PRF wrap is recovery | PRF is device proof. It does not become the session subject |
@@ -77,12 +79,17 @@ WalletConnect is a documented follow-up. Do not add a WalletConnect project id t
 | `lib/identity/mesh.ts` | After SIWE: reuse or mint pair; persist wrap; unwrap for use |
 | `lib/identity/wagmi.ts` | Injected-only wagmi config |
 | `lib/identity/ens.ts` | Mainnet ENS reverse + forward held claim. Mockable public-client surface |
+| `lib/identity/farcaster-claim.ts` | Hubble custody reverse + FID registry forward. Display fname or `fid:N` |
+| `lib/identity/lens-claim.ts` | Public Lens GraphQL owned-account reverse + owner forward |
+| `lib/identity/rss3-claim.ts` | Optional GI overlay reverse + owner forward. Quiet label, not a feed |
+| `lib/identity/indicators.ts` | Session-gated Farcaster / Lens / RSS3 in one trip. Isolates GI misses |
 | `app/api/identity/nonce` | `GET` — issue nonce cookie, return `{ nonce }` |
 | `app/api/identity/verify` | `POST` `{ message, signature }` — verify SIWE, set session |
 | `app/api/identity/session` | `GET` — current `{ address, chainId }` or 401 |
 | `app/api/identity/ens` | `GET ?address=` — session-gated ENS claim for the session address only |
+| `app/api/identity/indicators` | `GET ?address=` — session-gated Farcaster / Lens / RSS3 claims for the session address only |
 | `app/api/identity/logout` | `POST` — clear identity cookies |
-| `components/IdentityBar.tsx` | Quiet `/feed` connect + SIWE + mesh key + wrap/unlock + ENS claim + sign out |
+| `components/IdentityBar.tsx` | Quiet `/feed` connect + SIWE + mesh key + wrap/unlock + ENS + public-indicator claims + sign out |
 
 ## Cookies
 
@@ -146,7 +153,25 @@ This slice is **mainnet ENS only**. A `createPublicClient({ chain: mainnet, tran
 
 IdentityBar caches the claim in component state for the current session (no Redis). Quiet line: `ENS claim: vitalik.eth` or nothing.
 
-Farcaster / Lens / RSS3 indicator cards remain follow-ups.
+## Farcaster / Lens / RSS3 held claims (after SIWE, not login)
+
+Show these only **after** the SIWE cookie session exists. The session subject stays the checksummed address. No Farcaster SIWF, no Lens OAuth, no RSS3 login.
+
+Require a **bidirectional** check before treating anything as a held claim (same bar as ENS). Unverified one-way lookups are never shown. Hub / GraphQL / GI errors are swallowed — never dumped into the `/feed` hero.
+
+| Source | Reverse | Forward | Quiet line |
+| --- | --- | --- | --- |
+| **Farcaster** | Hubble `onChainIdRegistryEventByAddress` (current custody → FID) | Hubble `onChainEventsByFid` latest id-registry `to` checksum-equals the session | `Farcaster claim: fname` or `fid:N` from USER_DATA |
+| **Lens** | Public `https://api.lens.xyz/graphql` `accountsAvailable` **AccountOwned** | `account(request: { address })` `owner` checksum-equals the session | `Lens claim: handle` |
+| **RSS3** | Optional GI `GET /decentralized/{account}` | At least one activity `owner` checksum-equals the session | `RSS3 claim: footprint` or a short platform set |
+
+Public HTTP only. Reuse the feed's Pinata Hubble base (`FARCASTER_HUB_BASE`) and optional `GI_BASE`. No Neynar, no Alchemy/Infura, no Azure RPC secret, no Redis. Seeders (`lib/farcaster.ts`, `lib/rss3.ts`) stay seeders — identity does not turn them into a login path or write their payloads onto Gun.
+
+Hubble reverse is **custody**. A verified-only ETH address with no current id-registry record is a quiet empty (no paid reverse index).
+
+RSS3 GI (`https://gi.rss3.io`) is optional / currently DNS-dead. A GI miss is a quiet empty RSS3 claim, **not** a reason to drop Farcaster or Lens. Do not dump GI account activity, casts, or tx graphs as identity.
+
+`GET /api/identity/indicators?address=` is session-gated. The query address, when present, must match the session subject. The route does not become an open Farcaster / Lens / RSS3 proxy. ENS stays on `GET /api/identity/ens` (unchanged verification rules). IdentityBar fetches ENS and this one indicators route after session — not three extra uncoordinated trips — and caches results in component state (no Redis).
 
 ## WebAuthn PRF wrap (recovery, not login)
 
@@ -213,7 +238,7 @@ Locks that stay:
 
 - Never `sessionStorage`.
 - Never `user.recall({ sessionStorage: true })`.
-- Never write SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, the link, or ENS claims onto the public Gun graph.
+- Never write SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, the link, or ENS / Farcaster / Lens / RSS3 claims onto the public Gun graph.
 - Session subject remains the checksummed address.
 
 ## Follow-ups
@@ -221,7 +246,6 @@ Locks that stay:
 - WalletConnect injected-or-QR, gated on `NEXT_PUBLIC_WC_PROJECT_ID`.
 - ERC-1271 / EIP-6492 via a pinned RPC.
 - Paper-backup UI for the secondary slot (code already accepts a paper string).
-- Farcaster / Lens / RSS3 public-indicator cards **after** auth, as held claims.
-- Unstoppable / SNS (not primary; this slice is mainnet ENS only).
+- Unstoppable / SNS (not primary; ENS remains mainnet reverse+forward).
 - SociACL Check when sharing needs grants (adapter lives outside this repo).
 - Azure Key Vault for `IDENTITY_SESSION_SECRET` (still operator / Azure in this slice).
