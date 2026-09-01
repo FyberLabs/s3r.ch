@@ -3,7 +3,19 @@
  * (later) the mesh all use this. Tabs are typed for later — no tab UI here.
  */
 
-export type FeedSource = "rss3" | "rss" | "atom";
+export type FeedSource = "rss3" | "rss" | "atom" | "farcaster" | "atproto";
+
+export const FEED_SOURCES: readonly FeedSource[] = [
+  "rss3",
+  "rss",
+  "atom",
+  "farcaster",
+  "atproto",
+];
+
+export function isFeedSource(value: unknown): value is FeedSource {
+  return typeof value === "string" && (FEED_SOURCES as readonly string[]).includes(value);
+}
 
 export type FeedItem = {
   id: string;
@@ -15,6 +27,14 @@ export type FeedItem = {
   permalink: string;
   tags: string[];
   provenance: string;
+};
+
+/** One public seed pull (hub FID, AppView feed, RSS URL, or GI list). */
+export type SourcePull = {
+  items: FeedItem[];
+  sourcesOk: number;
+  sourcesTried: number;
+  error: string | null;
 };
 
 /** Later: Public / Mine / Network. Do not render tabs from this type yet. */
@@ -94,7 +114,7 @@ export function fromGunNode(node: Partial<GunFeedNode> | null | undefined): Feed
     return null;
   }
   const source = node.source;
-  if (source !== "rss3" && source !== "rss" && source !== "atom") {
+  if (!isFeedSource(source)) {
     return null;
   }
   return {

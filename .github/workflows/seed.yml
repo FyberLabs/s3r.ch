@@ -21,7 +21,22 @@ jobs:
             exit 0
           fi
           URL="${SEED_URL:-https://s3rch-fyberlabs-prod.azurewebsites.net/api/seed}"
-          curl -fsS -X POST "$URL" \
-            -H "Authorization: Bearer ${SEED_SECRET}" \
-            -H "Accept: application/json" \
-            -H "Content-Type: application/json"
+          body="$(mktemp)"
+          # Do not print SEED_SECRET or the Authorization header.
+          set +e
+          http_code="$(
+            curl -sS -o "$body" -w "%{http_code}" -X POST "$URL" \
+              -H "Authorization: Bearer ${SEED_SECRET}" \
+              -H "Accept: application/json" \
+              -H "Content-Type: application/json"
+          )"
+          curl_exit=$?
+          set -e
+          if [ "$curl_exit" -ne 0 ] || [ "$http_code" -lt 200 ] || [ "$http_code" -gt 299 ]; then
+            echo "POST ${URL} failed (curl_exit=${curl_exit} http=${http_code})"
+            cat "$body"
+            echo
+            exit 1
+          fi
+          cat "$body"
+          echo

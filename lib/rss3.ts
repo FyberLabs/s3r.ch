@@ -1,15 +1,20 @@
 /**
  * Documented RSS3 Global Indexer paths only.
- * https://gi.rss3.io  https://docs.rss3.io/guide/developer/api
+ * Default host https://gi.rss3.io currently has no public DNS A/AAAA/CNAME
+ * (confirmed 2026-08-31 / 2026-09-01 via Cloudflare and Google DoH).
+ * Public seed treats GI as optional: a DNS or HTTP failure is a failed
+ * source, not a reason to drop Farcaster / ATProto / RSS pulls.
+ * https://docs.rss3.io/guide/developer/api
  *
  * Public lists: GET /decentralized/network/{network}
  *               GET /decentralized/platform/{platform}
  * Account overlay: GET /decentralized/{account}
  */
 
+import { fetchPublic, PUBLIC_USER_AGENT } from "./public-fetch";
+
 export const GI_BASE = process.env.RSS3_GI_BASE ?? "https://gi.rss3.io";
-export const GI_USER_AGENT = "s3r.ch-gun-feed/0.1 (Fyber Labs)";
-const FETCH_MS = 8_000;
+export const GI_USER_AGENT = PUBLIC_USER_AGENT;
 const LIMIT = 50;
 
 export type Rss3Source = {
@@ -17,7 +22,7 @@ export type Rss3Source = {
   tag: string;
 };
 
-/** Public seed. Same documented network/platform lists the previous client used. */
+/** Optional public seed lists. Used only when GI_BASE responds. */
 export const PUBLIC_SOURCES: Rss3Source[] = [
   { path: "/decentralized/network/ethereum", tag: "social" },
   { path: "/decentralized/network/ethereum", tag: "transaction" },
@@ -110,11 +115,7 @@ async function fetchActivities(path: string, tag: string): Promise<RawActivity[]
   url.searchParams.set("action_limit", "10");
   if (tag) url.searchParams.set("tag", tag);
 
-  const response = await fetch(url, {
-    headers: { accept: "application/json", "user-agent": GI_USER_AGENT },
-    signal: AbortSignal.timeout(FETCH_MS),
-    cache: "no-store",
-  });
+  const response = await fetchPublic(url);
 
   if (!response.ok) {
     throw new Error(`${path} HTTP ${response.status}`);

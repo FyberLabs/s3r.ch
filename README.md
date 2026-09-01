@@ -4,7 +4,7 @@
 
 Sister sites: [Fyber Labs](https://fyberlabs.com), [Hypermesh / Hyperme.sh](https://hyperme.sh), [Tennessee Windage](https://tennesseewindage.com).
 
-The public [lab feed](/feed) is a GunDB graph. This slice’s seeder and `GET /api/feed` snapshot are a bootstrap cache (so the graph is not empty and App Service is not the chat server); the end-state is a mostly browser-to-browser Gun mesh. Gun-stored items and claims are native SociACL objects (Check lives in SociACL, not this Next app); RSS3/RSS fetches are URL handoffs, not grants. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The public [lab feed](/feed) is a GunDB graph. This slice’s seeder and `GET /api/feed` snapshot are a bootstrap cache (so the graph is not empty and App Service is not the chat server); the end-state is a mostly browser-to-browser Gun mesh. The public seeder pulls live Farcaster Hubble HTTP, ATProto AppView, and RSS/Atom. RSS3 Global Indexer (`gi.rss3.io`) is optional and currently has no public DNS — a GI failure does not empty the other sources or invent rows. Gun-stored items and claims are native SociACL objects (Check lives in SociACL, not this Next app); URL fetches are handoffs, not grants. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Stack
 
@@ -41,7 +41,7 @@ npm run build
 PORT=8080 HOSTNAME=0.0.0.0 npm start
 ```
 
-Seed the public graph (writes into Gun, does not invent rows):
+Seed the public graph (writes into Gun from live public sources, does not invent rows):
 
 ```bash
 curl -X POST http://localhost:8080/api/seed \
