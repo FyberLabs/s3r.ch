@@ -31,11 +31,10 @@ export default function Home() {
             s3r.ch
           </h1>
           <p className="mt-6 text-lg text-brand-100 sm:text-xl">
-            A Fyber Labs lab site under development.
+            A Fyber Labs lab site with a tagged social lab feed.
           </p>
           <p className="mx-auto mt-6 max-w-2xl text-base text-white/80">
-            This domain is being recovered. It is not a live search product.
-            There are no 2019 diagrams and no old contracts here.
+            Gun-backed, under development.
           </p>
           <p className="mt-8">
             <a

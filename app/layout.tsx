@@ -5,11 +5,13 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "s3r.ch",
-  description: "A Fyber Labs lab site under development. Not a live search product.",
+  description:
+    "A Fyber Labs lab site with a tagged social lab feed. Gun-backed, under development.",
   icons: { icon: "/favicon.svg" },
   openGraph: {
     title: "s3r.ch",
-    description: "A Fyber Labs lab site under development. Not a live search product.",
+    description:
+      "A Fyber Labs lab site with a tagged social lab feed. Gun-backed, under development.",
     url: "https://s3r.ch",
     siteName: "s3r.ch",
     type: "website",
