@@ -5,7 +5,7 @@ import { FeedStream } from "@/components/FeedStream";
 export const metadata: Metadata = {
   title: "Lab feed — s3r.ch",
   description:
-    "Fyber Labs prototype feed on GunDB. Not a live search product, not financial advice.",
+    "Tagged social lab feed from Fyber Labs. Gun-backed, under development.",
 };
 
 export default function FeedPage() {
@@ -18,10 +18,9 @@ export default function FeedPage() {
         Feed
       </h1>
       <p className="mt-4 text-lg text-gray-600">
-        A Fyber Labs prototype. Gun is the graph. Public Farcaster hub,
+        A Fyber Labs lab feed. Gun is the graph. Public Farcaster hub,
         ATProto AppView, and RSS activity is seeded into Gun on a cadence.
-        RSS3 GI is optional. This is not a live search product and not
-        financial advice.
+        RSS3 GI is optional.
       </p>
       <p className="mt-3 text-sm text-gray-500">
         One stream, tags first. There are no popular or novel columns. Outbound
