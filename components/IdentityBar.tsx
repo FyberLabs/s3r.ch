@@ -10,6 +10,8 @@ import {
 } from "wagmi";
 import { IdentityProviders } from "@/components/IdentityProviders";
 import { SIWE_MESSAGE_TTL_MS } from "@/lib/identity/config";
+import { getMeshKey } from "@/lib/identity/idb";
+import { ensureLocalMeshKey } from "@/lib/identity/mesh";
 import { buildSiweMessage } from "@/lib/identity/siwe";
 
 type SessionPayload = {
@@ -35,6 +37,7 @@ function IdentityBarInner() {
   const [session, setSession] = useState<SessionPayload | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [meshLine, setMeshLine] = useState<string | null>(null);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -54,6 +57,17 @@ function IdentityBarInner() {
   useEffect(() => {
     void refreshSession();
   }, [refreshSession]);
+
+  useEffect(() => {
+    if (!session || meshLine) return;
+    void getMeshKey(session.address)
+      .then((record) => {
+        if (record) setMeshLine("mesh key already present");
+      })
+      .catch(() => {
+        // Private mode / missing IndexedDB — stay quiet.
+      });
+  }, [session, meshLine]);
 
   const injected = connectors.find((connector) => connector.id === "injected") ?? connectors[0];
 
@@ -107,6 +121,17 @@ function IdentityBarInner() {
       }
       setSession({ address: verifyBody.address, chainId: verifyBody.chainId });
       setMessage(null);
+      try {
+        const mesh = await ensureLocalMeshKey({
+          address: verifyBody.address,
+          domain: window.location.host,
+          uri: window.location.origin,
+          signMessage: (linkMessage) => signMessageAsync({ message: linkMessage }),
+        });
+        setMeshLine(mesh.created ? "mesh key ready" : "mesh key already present");
+      } catch {
+        setMeshLine("mesh key failed");
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign-in failed.");
     } finally {
@@ -120,7 +145,9 @@ function IdentityBarInner() {
     try {
       await fetch("/api/identity/logout", { method: "POST" });
       setSession(null);
+      setMeshLine(null);
       disconnect();
+      // Device mesh key stays in IndexedDB. Do not delete it on sign-out.
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign-out failed.");
     } finally {
@@ -177,6 +204,7 @@ function IdentityBarInner() {
           </>
         )}
       </div>
+      {meshLine ? <p className="mt-3 text-xs text-gray-500">{meshLine}</p> : null}
       {message ? <p className="mt-3 text-xs text-gray-500">{message}</p> : null}
     </div>
   );

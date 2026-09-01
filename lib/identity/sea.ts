@@ -1,9 +1,11 @@
 /**
  * Local Gun SEA P-256 pair. This is mesh identity, not the Ethereum SIWE key
- * (different curves). Do not persist privkeys. Do not call
- * `user.recall({ sessionStorage: true })` — that stores the plaintext pair.
- * Do not put `priv` / `epriv` on the public Gun graph.
- * Not wired into the UI in this slice.
+ * (different curves). After SIWE, persist the pair in origin IndexedDB only
+ * (see idb.ts). Lab slice may store plaintext on-device; WebAuthn PRF wrap
+ * replaces that later (wrap.ts).
+ *
+ * Never call `user.recall({ sessionStorage: true })`.
+ * Never write `priv` / `epriv` onto the public Gun graph.
  */
 
 export type SeaPair = {
@@ -33,7 +35,7 @@ async function loadSea(): Promise<{ pair: () => Promise<SeaPair> }> {
     }
   }
   throw new Error(
-    `TODO: gun/sea import is not available in this runtime (${String(last)}). createSeaPair is not wired to the UI.`,
+    `gun/sea import is not available in this runtime (${String(last)}).`,
   );
 }
 

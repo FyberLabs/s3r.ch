@@ -1,6 +1,10 @@
 /** Quiet SIWE statement. Do not turn this into recovery or KYC copy. */
 export const SIWE_STATEMENT = "Sign in to s3r.ch";
 
+/** Wallet-signed link: this SEA pub belongs to this checksummed address. */
+export const MESH_LINK_STATEMENT =
+  "s3r.ch binds this Gun SEA pub to this Ethereum address.";
+
 export const NONCE_TTL_SECONDS = 5 * 60;
 export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 export const SIWE_MESSAGE_TTL_MS = 10 * 60 * 1000;
