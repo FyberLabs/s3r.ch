@@ -1,40 +1,43 @@
 import { getAddress } from "viem";
-import type { SeaPair } from "./sea";
+import { isSeaPair, type SeaPair } from "./sea";
+import { isPrfWrapEnvelope, type PrfWrapEnvelope } from "./wrap";
 
 /**
  * Origin-scoped IndexedDB for the local Gun SEA pair + wallet-signed link.
  *
- * Lab slice: the SEA pair is stored plaintext on this device. That is
- * device-local only — never sessionStorage, never `user.recall`, never the
- * public Gun graph. WebAuthn PRF wrap (wrap.ts) will replace this plaintext
- * later. Do not write SIWE signatures, SEA `priv` / `epriv`, or the link
- * onto a public Gun node.
+ * Records are either legacy lab plaintext (`seaPair`) or a PRF wrap envelope
+ * (`wrap`). Never both. Never sessionStorage, never `user.recall`, never the
+ * public Gun graph. Do not write SIWE signatures, SEA `priv` / `epriv`, the
+ * envelope, DEK, or KEKs onto a public Gun node.
  */
 export const MESH_IDB_NAME = "s3rch-identity";
 export const MESH_IDB_VERSION = 1;
 export const MESH_STORE_NAME = "mesh-keys";
 
-export type MeshKeyRecord = {
+export type MeshKeyRecordBase = {
   /** Checksummed Ethereum address. Session subject. Never ENS/email/SEA pub. */
   address: string;
   seaPub: string;
-  /**
-   * Lab plaintext pair. Device-local IndexedDB only.
-   * PRF wrap will replace this field later — do not treat as the long-term shape.
-   */
-  seaPair: SeaPair;
   walletSignature: string;
   signedPayload: string;
 };
+
+export type PlaintextMeshKeyRecord = MeshKeyRecordBase & {
+  seaPair: SeaPair;
+};
+
+export type WrappedMeshKeyRecord = MeshKeyRecordBase & {
+  wrap: PrfWrapEnvelope;
+};
+
+export type MeshKeyRecord = PlaintextMeshKeyRecord | WrappedMeshKeyRecord;
 
 export type MeshKeyStore = {
   get(address: string): Promise<MeshKeyRecord | null>;
   put(record: MeshKeyRecord): Promise<void>;
 };
 
-export function isMeshKeyRecord(value: unknown): value is MeshKeyRecord {
-  if (!value || typeof value !== "object") return false;
-  const record = value as Record<string, unknown>;
+function hasBaseFields(record: Record<string, unknown>): boolean {
   if (typeof record.address !== "string") return false;
   if (typeof record.seaPub !== "string" || record.seaPub.length === 0) return false;
   if (typeof record.walletSignature !== "string" || record.walletSignature.length === 0) {
@@ -43,12 +46,6 @@ export function isMeshKeyRecord(value: unknown): value is MeshKeyRecord {
   if (typeof record.signedPayload !== "string" || record.signedPayload.length === 0) {
     return false;
   }
-  const pair = record.seaPair;
-  if (!pair || typeof pair !== "object") return false;
-  const sea = pair as Record<string, unknown>;
-  if (typeof sea.pub !== "string" || sea.pub !== record.seaPub) return false;
-  if (typeof sea.priv !== "string" || typeof sea.epub !== "string") return false;
-  if (typeof sea.epriv !== "string") return false;
   try {
     getAddress(record.address);
   } catch {
@@ -57,8 +54,84 @@ export function isMeshKeyRecord(value: unknown): value is MeshKeyRecord {
   return true;
 }
 
+export function isPlaintextMeshKeyRecord(value: unknown): value is PlaintextMeshKeyRecord {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  if (!hasBaseFields(record)) return false;
+  if (record.wrap != null) return false;
+  if (!isSeaPair(record.seaPair)) return false;
+  return record.seaPair.pub === record.seaPub;
+}
+
+export function isWrappedMeshKeyRecord(value: unknown): value is WrappedMeshKeyRecord {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  if (!hasBaseFields(record)) return false;
+  if (record.seaPair != null) return false;
+  if (!isPrfWrapEnvelope(record.wrap)) return false;
+  try {
+    return (
+      record.wrap.address === getAddress(String(record.address)) &&
+      record.wrap.seaPub === record.seaPub
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isMeshKeyRecord(value: unknown): value is MeshKeyRecord {
+  return isPlaintextMeshKeyRecord(value) || isWrappedMeshKeyRecord(value);
+}
+
+/** Half-written wrap/plaintext hybrid — reject, do not persist or treat as valid. */
+export function isHalfWrittenMeshKeyRecord(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (isMeshKeyRecord(value)) return false;
+  const record = value as Record<string, unknown>;
+  const hasPair = record.seaPair != null;
+  const hasWrap = record.wrap != null;
+  if (hasPair && hasWrap) return true;
+  if (hasWrap) return true;
+  if (hasPair) return true;
+  return hasBaseFields(record);
+}
+
+export function assertCompleteMeshKeyRecord(value: unknown): MeshKeyRecord {
+  if (isHalfWrittenMeshKeyRecord(value)) {
+    throw new Error("Incomplete mesh key record (half-written wrap).");
+  }
+  if (!isMeshKeyRecord(value)) {
+    throw new Error("Invalid mesh key record.");
+  }
+  return value;
+}
+
+export function meshKeyStorageKind(record: MeshKeyRecord): "plaintext" | "wrapped" {
+  return isWrappedMeshKeyRecord(record) ? "wrapped" : "plaintext";
+}
+
 export function checksumMeshAddress(address: string): string {
   return getAddress(address);
+}
+
+function normalizeRecord(record: MeshKeyRecord): MeshKeyRecord {
+  const address = checksumMeshAddress(record.address);
+  if (isWrappedMeshKeyRecord(record)) {
+    return {
+      address,
+      seaPub: record.seaPub,
+      walletSignature: record.walletSignature,
+      signedPayload: record.signedPayload,
+      wrap: record.wrap,
+    };
+  }
+  return {
+    address,
+    seaPub: record.seaPub,
+    walletSignature: record.walletSignature,
+    signedPayload: record.signedPayload,
+    seaPair: record.seaPair,
+  };
 }
 
 /** In-memory store for node tests. Same contract as IndexedDB. No sessionStorage. */
@@ -67,8 +140,9 @@ export function createMemoryMeshKeyStore(
 ): MeshKeyStore {
   const map = new Map<string, MeshKeyRecord>();
   for (const record of seed) {
-    const address = checksumMeshAddress(record.address);
-    map.set(address, { ...record, address });
+    assertCompleteMeshKeyRecord(record);
+    const stored = normalizeRecord(record);
+    map.set(stored.address, stored);
   }
   return {
     async get(address: string) {
@@ -82,12 +156,9 @@ export function createMemoryMeshKeyStore(
       return found && isMeshKeyRecord(found) ? found : null;
     },
     async put(record: MeshKeyRecord) {
-      const address = checksumMeshAddress(record.address);
-      const stored = { ...record, address };
-      if (!isMeshKeyRecord(stored)) {
-        throw new Error("Invalid mesh key record.");
-      }
-      map.set(address, stored);
+      assertCompleteMeshKeyRecord(record);
+      const stored = normalizeRecord(record);
+      map.set(stored.address, stored);
     },
   };
 }
@@ -107,11 +178,8 @@ export function createIndexedDbMeshKeyStore(
       return isMeshKeyRecord(raw) && raw.address === checksum ? raw : null;
     },
     async put(record: MeshKeyRecord) {
-      const address = checksumMeshAddress(record.address);
-      const stored = { ...record, address };
-      if (!isMeshKeyRecord(stored)) {
-        throw new Error("Invalid mesh key record.");
-      }
+      assertCompleteMeshKeyRecord(record);
+      const stored = normalizeRecord(record);
       await idbRequest(factory, "readwrite", (store) => store.put(stored));
     },
   };

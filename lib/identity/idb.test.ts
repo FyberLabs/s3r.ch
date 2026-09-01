@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  assertCompleteMeshKeyRecord,
   createIndexedDbMeshKeyStore,
   createMemoryMeshKeyStore,
+  isHalfWrittenMeshKeyRecord,
   isMeshKeyRecord,
+  isPlaintextMeshKeyRecord,
+  isWrappedMeshKeyRecord,
   MESH_IDB_NAME,
   MESH_STORE_NAME,
-  type MeshKeyRecord,
+  type PlaintextMeshKeyRecord,
 } from "./idb";
 import type { SeaPair } from "./sea";
+import { wrapSeaPair, type PrfWrapEnvelope } from "./wrap";
 
 const ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
@@ -16,7 +21,7 @@ function fixturePair(pub = "sea-pub-1"): SeaPair {
   return { pub, priv: "sea-priv-1", epub: "sea-epub-1", epriv: "sea-epriv-1" };
 }
 
-function fixtureRecord(overrides: Partial<MeshKeyRecord> = {}): MeshKeyRecord {
+function fixtureRecord(overrides: Partial<PlaintextMeshKeyRecord> = {}): PlaintextMeshKeyRecord {
   const seaPair = overrides.seaPair ?? fixturePair();
   return {
     address: ADDRESS,
@@ -28,6 +33,20 @@ function fixtureRecord(overrides: Partial<MeshKeyRecord> = {}): MeshKeyRecord {
   };
 }
 
+async function fixtureEnvelope(): Promise<PrfWrapEnvelope> {
+  return wrapSeaPair({
+    pair: fixturePair(),
+    address: ADDRESS,
+    rpId: "localhost",
+    credentialId: crypto.getRandomValues(new Uint8Array(16)),
+    prfSalt: crypto.getRandomValues(new Uint8Array(32)),
+    prfOutput: crypto.getRandomValues(new Uint8Array(32)),
+    secondaryKey: crypto.getRandomValues(new Uint8Array(32)),
+    secondarySalt: crypto.getRandomValues(new Uint8Array(32)),
+    secondaryKind: "wallet",
+  });
+}
+
 describe("mesh key record guard", () => {
   it("accepts a complete record and rejects secrets-only garbage", () => {
     assert.equal(isMeshKeyRecord(fixtureRecord()), true);
@@ -36,6 +55,35 @@ describe("mesh key record guard", () => {
       isMeshKeyRecord(fixtureRecord({ seaPub: "other", seaPair: fixturePair("sea-pub-1") })),
       false,
     );
+  });
+
+  it("rejects half-written wrap records", async () => {
+    const wrap = await fixtureEnvelope();
+    const both = { ...fixtureRecord(), wrap };
+    const neither = {
+      address: ADDRESS,
+      seaPub: "sea-pub-1",
+      walletSignature: "0xsig",
+      signedPayload: "payload",
+    };
+    const wrapOnlyBroken = {
+      ...neither,
+      wrap: { version: 1, rpId: "localhost" },
+    };
+    const mismatch = { ...neither, wrap: { ...wrap, address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" } };
+
+    assert.equal(isHalfWrittenMeshKeyRecord(both), true);
+    assert.equal(isMeshKeyRecord(both), false);
+    assert.equal(isHalfWrittenMeshKeyRecord(neither), true);
+    assert.equal(isHalfWrittenMeshKeyRecord(wrapOnlyBroken), true);
+    assert.equal(isHalfWrittenMeshKeyRecord(mismatch), true);
+    assert.throws(() => assertCompleteMeshKeyRecord(both), /half-written wrap/);
+    assert.throws(() => assertCompleteMeshKeyRecord(neither), /half-written wrap/);
+
+    const complete = { ...neither, wrap };
+    assert.equal(isWrappedMeshKeyRecord(complete), true);
+    assert.equal(isPlaintextMeshKeyRecord(complete), false);
+    assert.equal(isHalfWrittenMeshKeyRecord(complete), false);
   });
 });
 
@@ -47,7 +95,36 @@ describe("memory mesh key store (node fake)", () => {
     assert.ok(found);
     assert.equal(found.address, ADDRESS);
     assert.equal(found.seaPub, "sea-pub-1");
+    assert.ok(isPlaintextMeshKeyRecord(found));
     assert.equal(found.seaPair.priv, "sea-priv-1");
+  });
+
+  it("roundtrips a wrapped record without keeping plaintext seaPair", async () => {
+    const store = createMemoryMeshKeyStore();
+    const wrap = await fixtureEnvelope();
+    await store.put({
+      address: ADDRESS,
+      seaPub: wrap.seaPub,
+      walletSignature: "0xsig",
+      signedPayload: "payload",
+      wrap,
+    });
+    const found = await store.get(ADDRESS);
+    assert.ok(found);
+    assert.ok(isWrappedMeshKeyRecord(found));
+    assert.equal("seaPair" in found, false);
+    await assert.rejects(
+      () =>
+        store.put({
+          address: ADDRESS,
+          seaPub: wrap.seaPub,
+          walletSignature: "0xsig",
+          signedPayload: "payload",
+          seaPair: fixturePair(),
+          wrap,
+        } as unknown as PlaintextMeshKeyRecord),
+      /half-written wrap/,
+    );
   });
 
   it("returns null when missing", async () => {
@@ -84,7 +161,8 @@ describe("IndexedDB mesh key helper (node fake factory)", () => {
 
     const again = createIndexedDbMeshKeyStore(factory);
     const reused = await again.get(ADDRESS.toLowerCase());
-    assert.equal(reused?.seaPair.epriv, "sea-epriv-1");
+    assert.ok(reused && isPlaintextMeshKeyRecord(reused));
+    assert.equal(reused.seaPair.epriv, "sea-epriv-1");
   });
 
   it("returns null for an empty store", async () => {

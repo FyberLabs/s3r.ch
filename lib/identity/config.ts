@@ -5,6 +5,10 @@ export const SIWE_STATEMENT = "Sign in to s3r.ch";
 export const MESH_LINK_STATEMENT =
   "s3r.ch binds this Gun SEA pub to this Ethereum address.";
 
+/** Wallet-signed secondary wrap: this device DEK wrap is bound to the address. */
+export const SECONDARY_WRAP_STATEMENT =
+  "s3r.ch secondary wrap of this device mesh key.";
+
 export const NONCE_TTL_SECONDS = 5 * 60;
 export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 export const SIWE_MESSAGE_TTL_MS = 10 * 60 * 1000;
