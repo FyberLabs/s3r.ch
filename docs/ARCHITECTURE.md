@@ -179,7 +179,7 @@ Gun is already the graph. This slice uses a bootstrap path so Azure does not hav
 
 - Server process holds a Gun instance (radisk on the App Service container disk, plus an in-memory index and a JSON snapshot for restarts).
 - `gun-preload.cjs` attaches Gun to the Node HTTP server (`listen` patch, radisk under `/app/data/radata`, WebSocket path `/gun`). That is the **seed peer**, not a finished mesh.
-- `/feed` constructs browser Gun with `peers: [same-origin /gun]` (`lib/gun-peer.ts`) and still hydrates from `GET /api/feed`, then `gun.get(...).map().on(...)`. Snapshot hydration is the fallback so the page works if WebSockets are off. Status says **seed peer (ws)** vs **snapshot only**. That is not a P2P mesh.
+- `/feed` constructs browser Gun with `peers: [same-origin /gun]` (`lib/gun-peer.ts`) and still hydrates from `GET /api/feed`, then `gun.get(...).map().on(...)`. Snapshot items are painted into React state first so Public is not empty if the socket (or `localStorage: false`) cannot echo those puts. Status says **seed peer (ws)** vs **snapshot only**. That is not a P2P mesh.
 - Shared native posts / rooms `put` still go to `gun.get('s3rch')…` after admit. Once the socket is up those puts can reach the seed. Mine until share.
 - If every live source fails, the seeder writes nothing. The feed stays empty. No invented rows. A down RSS3 GI host does not empty Farcaster / ATProto / RSS pulls.
 

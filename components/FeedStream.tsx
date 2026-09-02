@@ -111,7 +111,11 @@ export function FeedStream() {
         sourcesTried: snapshot.sourcesTried,
         error: snapshot.error,
       });
-      await hydrate(gun, snapshot.items ?? []);
+      // Snapshot paints even if /gun WS never comes up (localStorage off +
+      // a down peer must not leave Public empty). map().on still merges.
+      const snapItems = snapshot.items ?? [];
+      setSeed((prev) => mergeItems(prev, snapItems));
+      await hydrate(gun, snapItems);
 
       const listener = gun.get("s3rch").get("items").map().on((data) => {
         const item = fromGunNode(
