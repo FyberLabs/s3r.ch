@@ -26,11 +26,18 @@ import { RoomsList } from "@/components/RoomsList";
 import { TagChips } from "@/components/TagChips";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
+import {
+  attachSeedPeerStatus,
+  browserGunOptions,
+  peerStatusLine,
+  TRYING_SEED_COPY,
+} from "@/lib/gun-peer";
 
 type GunRef = {
   get: (key: string) => GunRef;
   put: (data: unknown) => GunRef;
   map: () => { on: (cb: (data: unknown, key: string) => void) => { off?: () => void } };
+  on?: (event: string, cb: (peer?: unknown) => void) => unknown;
 };
 
 export function FeedStream() {
@@ -42,7 +49,7 @@ export function FeedStream() {
   const [selected, setSelected] = useState<string[]>([]);
   const [tab, setTab] = useState<Exclude<FeedTab, "network">>("public");
   const [meta, setMeta] = useState<Omit<FeedSnapshot, "items"> | null>(null);
-  const [status, setStatus] = useState("Opening Gun…");
+  const [status, setStatus] = useState(TRYING_SEED_COPY);
   const [sharedIds, setSharedIds] = useState<string[]>([]);
   const [confirmShareId, setConfirmShareId] = useState<string | null>(null);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
@@ -69,10 +76,19 @@ export function FeedStream() {
     (async () => {
       const GunMod = await import("gun/browser");
       const Gun = (GunMod.default ?? GunMod) as unknown as (opts?: object) => GunRef;
-      // Now: hydrate from the bootstrap snapshot. Mesh / /gun peers are next
-      // (see docs/ARCHITECTURE.md). Do not require a live WebSocket here.
-      const gun = Gun();
+      // Same-origin /gun seed peer. Snapshot hydration stays. Fail open if
+      // the socket is down (Cloudflare + Azure ARR). No webrtc, no ICE,
+      // no user.recall. See docs/ARCHITECTURE.md.
+      const gun = Gun(browserGunOptions(window.location.origin));
       gunRef.current = gun;
+      let seedWsUp = false;
+      const onPeer = gun.on;
+      if (typeof onPeer === "function") {
+        attachSeedPeerStatus({ on: onPeer.bind(gun) }, (up) => {
+          seedWsUp = up;
+          if (!cancelled) setStatus(peerStatusLine(up));
+        });
+      }
 
       let snapshot: FeedSnapshot = {
         items: [],
@@ -95,7 +111,11 @@ export function FeedStream() {
         sourcesTried: snapshot.sourcesTried,
         error: snapshot.error,
       });
-      await hydrate(gun, snapshot.items ?? []);
+      // Snapshot paints even if /gun WS never comes up (localStorage off +
+      // a down peer must not leave Public empty). map().on still merges.
+      const snapItems = snapshot.items ?? [];
+      setSeed((prev) => mergeItems(prev, snapItems));
+      await hydrate(gun, snapItems);
 
       const listener = gun.get("s3rch").get("items").map().on((data) => {
         const item = fromGunNode(
@@ -120,9 +140,11 @@ export function FeedStream() {
 
       if (!cancelled) {
         setStatus(
-          snapshot.items?.length
-            ? "Subscribed to Gun."
-            : "Gun is empty. Nothing was invented.",
+          seedWsUp
+            ? peerStatusLine(true)
+            : snapshot.items?.length
+              ? peerStatusLine(false)
+              : `${peerStatusLine(false)}. Gun is empty. Nothing was invented.`,
         );
       }
     })();
@@ -465,8 +487,8 @@ function RoomThreadHeader({
         </button>
       </div>
       <p className="mt-3 text-xs text-gray-500">
-        Posts belong by tag. Live chat / presence / WebRTC is later. This-tab
-        Gun is the current graph.
+        Posts belong by tag. Live chat / presence / WebRTC is later. Trying
+        seed peer; snapshot if the socket is down.
       </p>
       {mine && owned && sessionAddress ? (
         <div className="mt-3 border-t border-brand-100 pt-3">

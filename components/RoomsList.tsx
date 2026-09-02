@@ -31,8 +31,8 @@ export function RoomsList({
       <h2 className="text-sm font-semibold text-brand-900">Rooms</h2>
       <p className="mt-2 text-xs text-gray-500">
         Gun threads. Mine until you share the room node. Live chat, presence,
-        and WebRTC are later. Room state in this tab is this-tab Gun until
-        WS/mesh.
+        and WebRTC are later. Trying seed peer; snapshot if the socket is
+        down.
       </p>
       {canCreate ? (
         <NewRoomForm onCreated={onCreated} />

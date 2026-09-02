@@ -413,7 +413,7 @@ Quiet `/feed` IdentityBar: grant see + revoke after SIWE on held claims. Quiet G
 
 ## Follow-ups
 
-- App Service WebSockets + `/gun` seed peer, `gun/lib/webrtc`, live mesh delivery, meetings/streams, Network tab. Long-term low/no server footprint, TURN-class relays, Panopticon-hosted needed services, oracles/validators, versioned Gun `v`, and later crypto (or optional fiat) payments: [ARCHITECTURE.md — Steering locks (2026-09-02)](ARCHITECTURE.md#steering-locks-2026-09-02). Do not grow s3r.ch Azure into that service in this PR.
+- Operator: App Service WebSockets + HTTP/2 so the already-wired same-origin `/gun` peer can stay up (Cloudflare + Azure ARR can still drop the socket; snapshot stays). Then `gun/lib/webrtc`, live mesh delivery, meetings/streams, Network tab. Google STUN ≠ TURN; needed TURN later is Panopticon. Long-term low/no server footprint, TURN-class relays, Panopticon-hosted needed services, oracles/validators, versioned Gun `v`, and later crypto (or optional fiat) payments: [ARCHITECTURE.md — Steering locks (2026-09-02)](ARCHITECTURE.md#steering-locks-2026-09-02). Do not grow s3r.ch Azure into that service in this PR.
 - SNS / Solana names (not this slice; ENS remains primary mainnet reverse+forward. Unstoppable is a held claim after SIWE, not login).
 - More Check verbs, Social Light hop (may factor a Check later; it cannot mint a grant), friend-of-friend. Do not import `FyberLabs/SociACL`.
 - Azure Key Vault for `IDENTITY_SESSION_SECRET` and later `UNSTOPPABLE_API_KEY` (still operator / Azure in this slice).
