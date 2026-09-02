@@ -1,0 +1,65 @@
+name: Bug
+description: Something on s3r.ch broke or behaved wrongly.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        s3r.ch is a Fyber Labs lab domain — a security-oriented social-attack product, not a live search product and not a social-network costume.
+
+        Hypermesh is the live commercial product. Questions about Hypermesh belong at [https://hyperme.sh](https://hyperme.sh), not here.
+
+        Do not paste SIWE signatures, Gun SEA private keys, session cookies, or personal data. Signed-in is yes/no only.
+
+        Security reports are not public issues. See [SECURITY.md](https://github.com/FyberLabs/s3r.ch/blob/master/SECURITY.md).
+  - type: textarea
+    id: what-broke
+    attributes:
+      label: What broke
+      description: What you were doing and what went wrong. No credentials or cookies.
+      placeholder: I opened /feed, signed in with an injected wallet, and the Public tab stayed empty after the snapshot loaded.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What should have happened. This lab is not a live search product — do not expect Hypermesh or a hosted social datastore.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+      description: What happened instead. Do not invent stack traces. Redact secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps. Include the path or URL if it is a page on s3r.ch.
+      placeholder: |
+        1. Open https://s3r.ch/feed
+        2. …
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Browser and wallet only (for example Firefox 131, injected MetaMask). No keys, no cookie values, no SEA pair.
+      placeholder: Browser version, wallet type (injected / Coinbase Smart Wallet / WalletConnect if a project id is set)
+    validations:
+      required: true
+  - type: dropdown
+    id: signed-in
+    attributes:
+      label: Were you signed in?
+      description: SIWE session yes or no. Do not attach the signature, the address unless needed for repro of a public claim, cookies, or keys.
+      options:
+        - "Yes"
+        - "No"
+    validations:
+      required: true

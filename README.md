@@ -6,6 +6,10 @@ Sister sites: [Fyber Labs](https://fyberlabs.com), [Hypermesh / Hyperme.sh](http
 
 The public [lab feed](/feed) is a GunDB graph. This slice’s seeder and `GET /api/feed` snapshot are a bootstrap cache (so the graph is not empty and App Service is not the chat server). The browser tries the same-origin `/gun` seed peer over WebSocket and fails open to the snapshot if the socket is down (Cloudflare + Azure ARR). That is not a P2P mesh. The end-state is a mostly browser-to-browser Gun mesh. The public seeder pulls live Farcaster Hubble HTTP, ATProto AppView, and RSS/Atom. RSS3 Global Indexer (`gi.rss3.io`) is optional and currently has no public DNS — a GI failure does not empty the other sources or invent rows. Gun-stored items and claims are native SociACL objects. This app reimplements light Check see-grants in the browser ([docs/s3rch-check.md](docs/s3rch-check.md)); it does not import FyberLabs/SociACL. URL fetches are handoffs, not grants. `/feed` can Sign in with Ethereum (SIWE + cookie session). After sign-in, verified mainnet ENS, Unstoppable, Farcaster, Lens, and RSS3 indicators may show as held claims (not the session key), and the holder can grant or revoke `see` on claims and on own native posts. Native posts stay on **Mine** until an explicit share to public; a see-grant is not that share and is not delivery. Rooms are Gun threads (Mine by default; share the room node separately). Check is grants, not login. Outbound bridges are not enabled. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/identity.md](docs/identity.md).
 
+## Issues and review
+
+Public intake is [GitHub Issues](https://github.com/FyberLabs/s3r.ch/issues/new/choose) (structured forms only). How to file, including the AI review path, is in [CONTRIBUTING.md](CONTRIBUTING.md). Hypermesh questions go to [https://hyperme.sh](https://hyperme.sh), not this backlog.
+
 ## Stack
 
 - **Next.js 16** + **React 19** (App Router, `output: "standalone"`)
