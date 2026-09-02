@@ -214,12 +214,6 @@ export function FeedStream() {
 
       <TagChips tags={tags} selected={selected} onChange={setSelected} />
 
-      {tab === "mine" ? (
-        <IngestForm
-          onItems={(next) => setOverlay((prev) => mergeItems(prev, next))}
-        />
-      ) : null}
-
       {shareMessage && tab === "mine" ? (
         <p className="mt-3 text-xs text-gray-500">{shareMessage}</p>
       ) : null}
@@ -244,6 +238,12 @@ export function FeedStream() {
           ))}
         </ul>
       )}
+
+      {tab === "mine" ? (
+        <IngestForm
+          onItems={(next) => setOverlay((prev) => mergeItems(prev, next))}
+        />
+      ) : null}
     </div>
   );
 }
