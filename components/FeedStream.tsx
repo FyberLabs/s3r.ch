@@ -31,15 +31,13 @@ import {
   feedStatusLine,
   listenThenConnectSeedPeer,
   TRYING_SEED_COPY,
+  type SeedPeerEmitter,
 } from "@/lib/gun-peer";
 
-type GunRef = {
+type GunRef = SeedPeerEmitter & {
   get: (key: string) => GunRef;
   put: (data: unknown) => GunRef;
   map: () => { on: (cb: (data: unknown, key: string) => void) => { off?: () => void } };
-  on?: (event: string, cb: (peer?: unknown) => void) => unknown;
-  opt?: (opts: { peers: string[] }) => unknown;
-  _?: { on?: (event: string, cb: (peer?: unknown) => void) => unknown };
 };
 
 export function FeedStream() {

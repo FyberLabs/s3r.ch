@@ -105,12 +105,13 @@ export function meshHiByeOn(
     return rootOnto.bind(gun._);
   }
   const root = typeof gun.back === "function" ? gun.back(-1) : undefined;
-  const viaBack =
+  const viaRoot =
     root && typeof root === "object" && "_" in root
-      ? (root as SeedPeerEmitter)._.on
+      ? (root as SeedPeerEmitter)._
       : undefined;
+  const viaBack = viaRoot?.on;
   if (typeof viaBack === "function") {
-    return viaBack.bind((root as SeedPeerEmitter)._);
+    return viaBack.bind(viaRoot);
   }
   if (typeof gun.on === "function") {
     return gun.on.bind(gun);
