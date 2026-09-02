@@ -4,7 +4,7 @@ Internal notes for the lab prototype. This is not a public `/research` route, no
 
 s3r.ch is a Fyber Labs lab site. **Gun is the graph.** RSS3 Data Sublayer activity and other allowed sites / crypto-social sources concentrate on that graph. Popular items cache across peers. The same graph is the unique real-time streaming / chat / sharing network — **mostly browser-to-browser**, not a chat server we host.
 
-This slice **does** ship EIP-4361 SIWE login (EOA ecrecover plus mainnet ERC-1271 / EIP-6492 for smart accounts), a signed cookie session, mainnet ENS / Unstoppable / Farcaster / Lens / RSS3 held claims after auth, light SociACL **Check see-grants** in the browser (see [identity.md](identity.md) and [s3rch-check.md](s3rch-check.md)), **native s3r.ch posts** (mine by default), **rooms as Gun threads** (Mine by default, Check on the room object, explicit share of the room node), **Public / Mine** tabs, Check on those post objects, **explicit share-into-mesh** of an admitted native post or room node, a **tags-first then recency** ranker, and a browser Gun that **tries the same-origin `/gun` seed peer** over WebSocket. Check is **grants**, not login. A see-grant is **not** delivery and **not** share-into-mesh. Sharing a room is **not** sharing every Mine post inside it. It still does **not** ship chat UI, presence, WebRTC, meetings, live streams, a KYC/passport product, email/SMS verify, uniqueness proofs, ENS/Unstoppable/fname/Lens/RSS3-as-login, outbound bridges, a working Network tab, Popular/Novel, or an invented search API. Snapshot `GET /api/feed` hydration stays. If the socket is down, fail open to snapshot. The live `/feed` copy stays a lab prototype and does not claim P2P mesh, KYC, uniqueness, outbound bridges, or that App Service WebSockets already work until the sibling infra PR is applied.
+This slice **does** ship EIP-4361 SIWE login (EOA ecrecover plus mainnet ERC-1271 / EIP-6492 for smart accounts), a signed cookie session, mainnet ENS / Unstoppable / Farcaster / Lens / RSS3 held claims after auth, light SociACL **Check see-grants** in the browser (see [identity.md](identity.md) and [s3rch-check.md](s3rch-check.md)), **native s3r.ch posts** (mine by default), **rooms as Gun threads** (Mine by default, Check on the room object, explicit share of the room node), **Public / Mine** tabs, Check on those post objects, **explicit share-into-mesh** of an admitted native post or room node, a **tags-first then recency** ranker, and a browser Gun that **tries the same-origin `/gun` seed peer** over WebSocket. Check is **grants**, not login. A see-grant is **not** delivery and **not** share-into-mesh. Sharing a room is **not** sharing every Mine post inside it. It still does **not** ship chat UI, presence, WebRTC, meetings, live streams, a KYC/passport product, email/SMS verify, uniqueness proofs, ENS/Unstoppable/fname/Lens/RSS3-as-login, outbound bridges, a working Network tab, Popular/Novel, or an invented search API. Snapshot `GET /api/feed` hydration stays. If the socket is down, fail open to snapshot. The live `/feed` copy stays a lab prototype and does not claim P2P mesh, KYC, uniqueness, or outbound bridges.
 
 ## Steering locks (2026-09-02)
 
@@ -39,8 +39,8 @@ The lab seeder and `GET /api/feed` are a **bootstrap cache**. They exist so firs
 ```
 now:
   lab seeder → server Gun (seed peer) → GET /api/feed snapshot → client Gun
-  browser Gun({ peers: [same-origin /gun] }) — seed peer (ws) when the socket is up
-  snapshot hydration if Cloudflare / Azure ARR drops WS — fail open
+  browser Gun listen-then-opt same-origin /gun — seed peer (ws) when hi fires
+  snapshot hydration if the /gun socket is down — fail open
   user overlay → POST /api/ingest (CORS proxy) → Mine only (not public seed)
   native compose → admitFeedNode → Mine overlay
   compose room → admitRoomNode → Mine rooms list
@@ -179,7 +179,7 @@ Gun is already the graph. This slice uses a bootstrap path so Azure does not hav
 
 - Server process holds a Gun instance (radisk on the App Service container disk, plus an in-memory index and a JSON snapshot for restarts).
 - `gun-preload.cjs` attaches Gun to the Node HTTP server (`listen` patch, radisk under `/app/data/radata`, WebSocket path `/gun`). That is the **seed peer**, not a finished mesh.
-- `/feed` constructs browser Gun with `peers: [same-origin /gun]` (`lib/gun-peer.ts`) and still hydrates from `GET /api/feed`, then `gun.get(...).map().on(...)`. Snapshot items are painted into React state first so Public is not empty if the socket (or `localStorage: false`) cannot echo those puts. Status says **seed peer (ws)** vs **snapshot only**. That is not a P2P mesh.
+- `/feed` constructs browser Gun with `localStorage: false` and no peers, subscribes to mesh hi/bye on `gun._.on`, then `opt({ peers: [same-origin /gun] })` (`lib/gun-peer.ts`) so a live `hi` is not missed. It still hydrates from `GET /api/feed`, then `gun.get(...).map().on(...)`. Snapshot items are painted into React state first so Public is not empty if the socket (or `localStorage: false`) cannot echo those puts. Status says **seed peer (ws)** vs **snapshot only**. That is not a P2P mesh.
 - Shared native posts / rooms `put` still go to `gun.get('s3rch')…` after admit. Once the socket is up those puts can reach the seed. Mine until share.
 - If every live source fails, the seeder writes nothing. The feed stays empty. No invented rows. A down RSS3 GI host does not empty Farcaster / ATProto / RSS pulls.
 
@@ -188,7 +188,7 @@ Gun is already the graph. This slice uses a bootstrap path so Azure does not hav
 These are real constraints. Do not paper over them.
 
 1. **Browser CORS.** Farcaster Hubble, ATProto AppView, RSS3 GI, and most RSS/Atom feeds will not load cross-origin from `s3r.ch`. `/api/ingest` is the same-origin proxy until a relay or extension exists. Direct browser-to-source is not magic. The end-state still has browsers pull and write the graph; they do it through a proxy, relay, or extension, not by pretending CORS is gone.
-2. **App Service WebSockets + HTTP/2.** This slice wires the browser to same-origin `/gun`. The socket only works when App Service WebSockets and HTTP/2 are on (operator work; sibling infra PR: `websockets_enabled` + `http2_enabled`). Cloudflare proxy + Azure ARR HTTP/2 / sockets proxy can still drop WS. Snapshot remains. Fail open. This PR does not change Terraform, does not enable `gun/lib/webrtc`, and does not claim browsers already mesh.
+2. **App Service WebSockets + HTTP/2.** This slice wires the browser to same-origin `/gun`. Cloudflare already passes `/gun` 101 Switching Protocols and Gun DAM (orange-cloud and straight to App Service); the previous “CF/ARR drop WS” line is not the live diagnosis. Snapshot remains the fallback if the socket dies. No Cloudflare terraform in this repo. This PR does not enable `gun/lib/webrtc`, and does not claim browsers already mesh.
 3. **STUN is not TURN.** Google public `stun.l.google.com:19302` is **STUN**, not TURN. Do not document Google as a free TURN server. Needed TURN later is Panopticon (open product). No ICE config in this slice.
 4. **Ephemeral container disk.** The seed peer is a **cache**, not durable storage. A recycle empties radisk and the snapshot until the next seed, or until a browser peer still holds the graph. Do not treat `/app/data` as the archive.
 
@@ -356,7 +356,7 @@ Outbound: `OutboundAdapter` is an interface only. Native s3r.ch compose is **not
 
 ## Later (not this follow-up)
 
-- Operator: enable App Service WebSockets + HTTP/2 (`websockets_enabled` + `http2_enabled`; sibling infra PR). The client already peers `/gun`. Do not change Terraform in this repo.
+- App Service WebSockets + HTTP/2 are already on. The client listens for mesh `hi` before opening `/gun`. Do not change Terraform in this repo.
 - `gun/lib/webrtc` so browsers mesh when the seed peer is idle. No ICE / TURN in this slice. Google STUN ≠ TURN; TURN later is Panopticon.
 - Live mesh delivery of granted objects. Meetings / streams. Network tab. Unshare / HAM-delete.
 - Browsers pull allowed sources (through proxy / relay / extension) and HAM-merge.
