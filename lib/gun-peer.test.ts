@@ -15,10 +15,18 @@ import {
   SEED_PEER_WS_STATUS,
   SNAPSHOT_ONLY_STATUS,
   TRYING_SEED_COPY,
+  type SeedPeerOnto,
 } from "./gun-peer";
 
 function helperSource(): string {
   return readFileSync(new URL("./gun-peer.ts", import.meta.url), "utf8");
+}
+
+/** SeedPeerOnto's second arg is subscribe-or-emit; tests only keep the listener. */
+function ontoListener(
+  arg: Parameters<SeedPeerOnto>[1],
+): ((peer?: unknown) => void) | undefined {
+  return typeof arg === "function" ? (arg as (peer?: unknown) => void) : undefined;
 }
 
 describe("sameOriginGunPeerUrl", () => {
@@ -117,7 +125,9 @@ describe("peer status copy", () => {
     const listeners = new Map<string, Array<(peer?: unknown) => void>>();
     const fake = {
       _: {
-        on(event: string, cb: (peer?: unknown) => void) {
+        on(event: string, arg?: Parameters<SeedPeerOnto>[1]) {
+          const cb = ontoListener(arg);
+          if (!cb) return fake._;
           const list = listeners.get(event) ?? [];
           list.push(cb);
           listeners.set(event, list);
@@ -152,6 +162,25 @@ describe("peer status copy", () => {
     const bound = meshHiByeOn(fake);
     assert.equal(typeof bound, "function");
   });
+
+  it("falls back to gun.back(-1)._.on when gun._ is missing", () => {
+    const onto: string[] = [];
+    const root = {
+      _: {
+        on(event: string, arg?: Parameters<SeedPeerOnto>[1]) {
+          if (typeof arg === "function") onto.push(event);
+          return root._;
+        },
+      },
+    };
+    const fake = {
+      back() {
+        return root;
+      },
+    };
+    attachSeedPeerStatus(fake, () => {});
+    assert.deepEqual(onto, ["hi", "bye"]);
+  });
 });
 
 describe("listenThenConnectSeedPeer", () => {
@@ -162,13 +191,14 @@ describe("listenThenConnectSeedPeer", () => {
     let opted: string[] | undefined;
     const fake = {
       _: {
-        on(event: string, arg?: ((peer?: unknown) => void) | object) {
-          if (typeof arg !== "function") {
+        on(event: string, arg?: Parameters<SeedPeerOnto>[1]) {
+          const cb = ontoListener(arg);
+          if (!cb) {
             outs.push(arg);
             return fake._;
           }
           const list = listeners.get(event) ?? [];
-          list.push(arg);
+          list.push(cb);
           listeners.set(event, list);
           return fake._;
         },
@@ -190,7 +220,9 @@ describe("listenThenConnectSeedPeer", () => {
     const listeners = new Map<string, Array<(peer?: unknown) => void>>();
     const fake = {
       _: {
-        on(event: string, cb: (peer?: unknown) => void) {
+        on(event: string, arg?: Parameters<SeedPeerOnto>[1]) {
+          const cb = ontoListener(arg);
+          if (!cb) return fake._;
           const list = listeners.get(event) ?? [];
           list.push(cb);
           listeners.set(event, list);
