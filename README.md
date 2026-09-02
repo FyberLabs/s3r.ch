@@ -27,9 +27,12 @@ SEED_SECRET=dev-seed
 GUN_FILE=./data/radata
 GUN_SNAPSHOT=./data/snapshot.json
 IDENTITY_SESSION_SECRET=local-dev-identity-session-secret-32
+NEXT_PUBLIC_WC_PROJECT_ID=
 ```
 
-`IDENTITY_SESSION_SECRET` must be at least 32 characters. It is required in production (verify returns 500 if missing). Locally, an unset secret falls back to a documented default — see [docs/identity.md](docs/identity.md). Operator step: set it on App Service (Key Vault later). Do not add a WalletConnect project id.
+`IDENTITY_SESSION_SECRET` must be at least 32 characters. It is required in production (verify returns 500 if missing). Locally, an unset secret falls back to a documented default — see [docs/identity.md](docs/identity.md). Operator step: set it on App Service (Key Vault later).
+
+`NEXT_PUBLIC_WC_PROJECT_ID` is optional. Empty (default) keeps `/feed` injected-wallet-only. Next.js inlines it at build time — see [docs/identity.md](docs/identity.md). Do not invent or commit a Reown project id.
 
 ## Development
 

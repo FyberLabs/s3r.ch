@@ -202,6 +202,10 @@ function IdentityBarInner() {
   }, [session]);
 
   const injected = connectors.find((connector) => connector.id === "injected") ?? connectors[0];
+  const walletConnectConnector = connectors.find(
+    (connector) => connector.id === "walletConnect",
+  );
+  const wcConfigured = Boolean(walletConnectConnector);
 
   async function onConnect() {
     setMessage(null);
@@ -216,9 +220,21 @@ function IdentityBarInner() {
     }
   }
 
+  async function onWalletConnect() {
+    setMessage(null);
+    if (!walletConnectConnector) return;
+    try {
+      await connect({ connector: walletConnectConnector });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Connect failed.");
+    }
+  }
+
   async function onSignIn() {
     if (!address) {
-      setMessage("Connect an injected wallet first.");
+      setMessage(
+        wcConfigured ? "Connect a wallet first." : "Connect an injected wallet first.",
+      );
       return;
     }
     setBusy(true);
@@ -284,7 +300,11 @@ function IdentityBarInner() {
       return;
     }
     if (!wrapWithPaper && !isConnected) {
-      setMessage("Connect the injected wallet to wrap the mesh key.");
+      setMessage(
+        wcConfigured
+          ? "Connect a wallet to wrap the mesh key."
+          : "Connect the injected wallet to wrap the mesh key.",
+      );
       return;
     }
     setBusy(true);
@@ -536,6 +556,9 @@ function IdentityBarInner() {
         held claims after sign-in, not the session key. A passkey can wrap
         the local mesh key on this device. A paper backup is recovery, not
         login.
+        {wcConfigured
+          ? " WalletConnect is a wallet connector (QR / mobile), not a separate identity provider."
+          : ""}
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {session ? (
@@ -585,14 +608,26 @@ function IdentityBarInner() {
         ) : (
           <>
             {!isConnected ? (
-              <button
-                type="button"
-                disabled={connecting || busy}
-                onClick={() => void onConnect()}
-                className="rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-              >
-                Connect wallet
-              </button>
+              <>
+                <button
+                  type="button"
+                  disabled={connecting || busy}
+                  onClick={() => void onConnect()}
+                  className="rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                >
+                  Connect wallet
+                </button>
+                {wcConfigured ? (
+                  <button
+                    type="button"
+                    disabled={connecting || busy}
+                    onClick={() => void onWalletConnect()}
+                    className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+                  >
+                    WalletConnect
+                  </button>
+                ) : null}
+              </>
             ) : (
               <p className="text-xs text-gray-500">
                 Wallet {truncateAddress(address ?? "")} · not signed in

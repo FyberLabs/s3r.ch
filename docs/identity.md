@@ -10,7 +10,8 @@ Components here are written so they can be extracted into a shared kit later. Th
 
 - EIP-4361 **Sign-In with Ethereum** (SIWE).
 - Signed **HttpOnly cookie session** bound to a **checksummed** Ethereum address (never ENS, never email, never a SEA pub).
-- Quiet connect / sign-in / sign-out on `/feed` (injected wallet only).
+- Quiet connect / sign-in / sign-out on `/feed` (injected wallet by default).
+- **WalletConnect** (QR / mobile) as a second wagmi connector, **gated** on `NEXT_PUBLIC_WC_PROJECT_ID` at **build time**. Empty / unset stays injected-only. WalletConnect is a connector, not a new identity provider. Sign-in is still SIWE after a session address exists.
 - After the SIWE session is set: a **local Gun SEA P-256 pair** (different curve from Ethereum) plus a **wallet-signed link** (`pub` belongs to this checksummed address), persisted in **origin IndexedDB**.
 - **WebAuthn PRF wrap** of that local pair (recovery / device proof, **not** login). Envelope version 1 in IndexedDB, with ≥2 KEKs (PRF + secondary). Quiet `/feed` controls: wrap / unlock / paper backup / status.
 - After a SIWE session exists: a **mainnet ENS held claim** on `/feed` when reverse **and** forward match the checksummed session address. ENS is never login and never the session key.
@@ -23,7 +24,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - Passkey as primary login. Session subject stays the checksummed address.
 - Writing the envelope, DEK, KEKs, SIWE signatures, or SEA `priv` / `epriv` to Gun for recovery.
 - A paper-only wrap that drops the PRF KEK. Paper replaces the **secondary** IKM only.
-- WalletConnect (needs `NEXT_PUBLIC_WC_PROJECT_ID` we do not have). Do not invent one.
+- A Reown Cloud project id invented in this repo. Empty `NEXT_PUBLIC_WC_PROJECT_ID` stays injected-only.
 - Panopticon / Hypermesh Keycloak as an IdP. s3r.ch login stays EIP-4361 SIWE.
 - ENS as login, or writing an ENS / Farcaster / Lens / RSS3 claim onto the public Gun graph.
 - Farcaster SIWF, Lens OAuth, or RSS3 login. Indicators are held claims after SIWE, not session subjects.
@@ -56,14 +57,15 @@ Pinned to current majors compatible with Next.js 16, React 19, and Node 24:
 | --- | --- |
 | `siwe` | Construct and parse EIP-4361 messages |
 | `viem` | EOA `verifyMessage` (local ecrecover, no RPC). Contract verify via mainnet `publicClient.verifyMessage` (ERC-1271 + EIP-6492). Checksum via `getAddress`. Mainnet `getEnsName` + `getEnsAddress` |
-| `wagmi` v3 | Injected connector only. No RainbowKit, no ConnectKit |
+| `wagmi` v3 | Injected connector always. `walletConnect` only when `NEXT_PUBLIC_WC_PROJECT_ID` is set. No RainbowKit, no ConnectKit |
+| `@walletconnect/ethereum-provider` | Optional peer for the wagmi WalletConnect connector. Unused at runtime when the project id is empty |
 | `@tanstack/react-query` | Required by wagmi |
 | `jose` | Sign nonce and session cookies (HS256) |
 | `gun` / `gun/sea` | Already a dependency. `createSeaPair()` calls `SEA.pair()` after SIWE. Persist in IndexedDB, not `recall()` |
 
 No SimpleWebAuthn. The PRF helper uses native `navigator.credentials.create` / `get` with `extensions.prf`.
 
-WalletConnect is a documented follow-up. Do not add a WalletConnect project id to CI or the Dockerfile.
+WalletConnect is **gated**. Do not invent a Reown project id in this repo or in CI. An empty `NEXT_PUBLIC_WC_PROJECT_ID` (the default) keeps the Docker image injected-only.
 
 ## Module map
 
@@ -81,7 +83,7 @@ WalletConnect is a documented follow-up. Do not add a WalletConnect project id t
 | `lib/identity/mesh-link.ts` | Domain-bound statement: this SEA `pub` belongs to this address |
 | `lib/identity/idb.ts` | Origin IndexedDB: plaintext **or** wrapped record. Rejects half-written rows |
 | `lib/identity/mesh.ts` | After SIWE: reuse or mint pair; persist wrap; unwrap for use |
-| `lib/identity/wagmi.ts` | Injected-only wagmi config |
+| `lib/identity/wagmi.ts` | Injected wagmi config; `walletConnect` only when `walletConnectProjectId()` is non-null |
 | `lib/identity/ens.ts` | Mainnet ENS reverse + forward held claim. Mockable public-client surface |
 | `lib/identity/farcaster-claim.ts` | Hubble custody reverse + FID registry forward. Display fname or `fid:N` |
 | `lib/identity/lens-claim.ts` | Public Lens GraphQL owned-account reverse + owner forward |
@@ -93,7 +95,7 @@ WalletConnect is a documented follow-up. Do not add a WalletConnect project id t
 | `app/api/identity/ens` | `GET ?address=` — session-gated ENS claim for the session address only |
 | `app/api/identity/indicators` | `GET ?address=` — session-gated Farcaster / Lens / RSS3 claims for the session address only |
 | `app/api/identity/logout` | `POST` — clear identity cookies |
-| `components/IdentityBar.tsx` | Quiet `/feed` connect + SIWE + mesh key + wrap/unlock + paper backup + ENS + public-indicator claims + sign out |
+| `components/IdentityBar.tsx` | Quiet `/feed` connect + optional WalletConnect + SIWE + mesh key + wrap/unlock + paper backup + ENS + public-indicator claims + sign out |
 
 ## Cookies
 
@@ -236,6 +238,8 @@ Not credBlob. Not largeBlob.
 
 ### Quiet UI (`/feed` IdentityBar)
 
+Signed-out: **Connect wallet** (injected). When `NEXT_PUBLIC_WC_PROJECT_ID` is set at build time, a quiet second **WalletConnect** control appears. Sign in with Ethereum still runs after a session address exists.
+
 After signed-in + mesh key present:
 
 - `Wrap with passkey` when the record is plaintext and PRF is not known-unavailable
@@ -263,15 +267,32 @@ Locks that stay:
 - Never write SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, the paper backup string, the link, or ENS / Farcaster / Lens / RSS3 claims onto the public Gun graph.
 - Session subject remains the checksummed address. Paper backup is recovery, not login.
 
+## WalletConnect (gated connector, not an IdP)
+
+This slice ships WalletConnect **gated** on `NEXT_PUBLIC_WC_PROJECT_ID`. Injected stays the default. If the env is unset or empty, `/feed` is exactly as before (Connect wallet + "No injected wallet found."). If it is set (non-empty) at **build time**, IdentityBar shows a quiet second **WalletConnect** control. Sign-in is still SIWE after a wagmi session address exists (injected or WalletConnect). Session subject stays the checksummed address. No Keycloak, no RainbowKit, no ConnectKit.
+
+Next.js inlines `NEXT_PUBLIC_*` at `next build`. s3r.ch builds inside Docker (`Dockerfile` builder stage). App Service **runtime** env will not inject this into the client bundle. The Dockerfile takes `ARG NEXT_PUBLIC_WC_PROJECT_ID` and sets `ENV` **before** `npm run build`. Deploy passes `build-args: NEXT_PUBLIC_WC_PROJECT_ID=${{ vars.NEXT_PUBLIC_WC_PROJECT_ID }}` (GitHub **variable**, not secret — this id is public, same class as `SEED_URL`). A missing variable must not fail the build (empty ARG → injected-only).
+
+Local: copy `.env.example` to `.env.local`. `next dev` reads `.env.local`. Do not commit a real id.
+
+### Operator path (do not invent an id)
+
+1. Create a Reown Cloud project at https://cloud.reown.com named `s3r.ch`.
+2. Allow `https://s3r.ch` and `http://localhost:3000`.
+3. Copy the Project ID.
+4. Put it in FyberLabs/infra `config/infra.yaml` `apps.s3rch_wc_project_id` (public, same class as `stripe_publishable_key`). Sync with `python3 scripts/sync-github-secrets.py --repo-only --apply` so GitHub variable `NEXT_PUBLIC_WC_PROJECT_ID` lands on FyberLabs/s3r.ch.
+5. Local: `.env.local`. Prod: redeploy so Docker rebuilds with the build-arg.
+
+A sibling infra PR will add the variable mapping. Until that id exists, leave the env empty.
+
 ## Follow-ups
 
-- WalletConnect injected-or-QR, gated on `NEXT_PUBLIC_WC_PROJECT_ID` (do not invent one).
 - Unstoppable / SNS (not primary; ENS remains mainnet reverse+forward).
 - SociACL Check when sharing needs grants (adapter lives outside this repo). Do not import `FyberLabs/SociACL`.
 - Azure Key Vault for `IDENTITY_SESSION_SECRET` (still operator / Azure in this slice).
 - Contract verify on chains other than mainnet (this slice's 1271 RPC allowlist is mainnet only).
 
-This slice ships paper-backup UI for the wrap secondary KEK, and ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client) already on `master`. s3r.ch does not use Panopticon Keycloak as an IdP.
+This slice ships paper-backup UI for the wrap secondary KEK, ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client), and WalletConnect gated on `NEXT_PUBLIC_WC_PROJECT_ID`. s3r.ch does not use Panopticon Keycloak as an IdP.
 
 ## Live fixtures (re-checked 2026-09-01)
 
