@@ -2,12 +2,109 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #111827;
+/*
+  Locked palette from FyberLabs/hypermesh-docs brand.md.
+  Do not invent brand hex. Ground / ink swap on data-ground.
+  Status green/red are pass/fail only, never the identity accent.
+  Text on signal is always #0E0F0C, never paper --ground.
+*/
+
+:root,
+html[data-ground="dark"] {
+  --ground: #0e0f0c;
+  --ink: #e8e6dc;
+  --signal: #f5c400;
+  --status-pass: oklch(0.52 0.12 145);
+  --status-fail: oklch(0.5 0.14 25);
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
+html[data-ground="light"] {
+  /* Paper is ink mixed with locked ground. Not a new hex. Not lamp-bright. */
+  --ground: color-mix(in srgb, #e8e6dc 68%, #0e0f0c);
+  --ink: #0e0f0c;
+  --signal: #f5c400;
+  --status-pass: oklch(0.42 0.11 145);
+  --status-fail: oklch(0.44 0.14 25);
+}
+
+:root {
+  --ink-muted: color-mix(in srgb, var(--ink) 64%, var(--ground));
+  --rule: color-mix(in srgb, var(--ink) 14%, var(--ground));
+  --panel: color-mix(in srgb, var(--ink) 5%, var(--ground));
+  --panel-strong: color-mix(in srgb, var(--ink) 8%, var(--ground));
+  --signal-soft: color-mix(in srgb, var(--signal) 14%, var(--ground));
+  --on-signal: #0e0f0c;
+  --background: var(--ground);
+  --foreground: var(--ink);
+}
+
+@layer utilities {
+  .font-data {
+    font-variation-settings: "MONO" 1, "CASL" 0, "CRSV" 0;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+  }
+}
+
+@layer base {
+  html {
+    background: var(--ground);
+    color: var(--ink);
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-recursive), "IBM Plex Sans", ui-sans-serif, sans-serif;
+    font-variation-settings: "MONO" 0, "CASL" 0, "CRSV" 0;
+    font-feature-settings: "kern" 1;
+  }
+
+  html[data-reader="ai"] body {
+    font-variation-settings: "MONO" 0.12, "CASL" 0, "CRSV" 0;
+  }
+
+  html[data-reader="ai"] .landing-hero {
+    padding-top: 2.5rem;
+    padding-bottom: 2.5rem;
+  }
+
+  html[data-reader="ai"] .landing-sisters {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+  }
+}
+
+.brand-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-variation-settings: "MONO" 1, "CASL" 0, "CRSV" 0;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+.brand-table th,
+.brand-table td {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.brand-table th {
+  color: var(--ink-muted);
+  font-size: 0.7rem;
+  font-weight: 560;
+  letter-spacing: 0.02em;
+}
+
+.brand-table td {
+  font-size: 0.8rem;
+}
+
+html[data-reader="ai"] .brand-table th,
+html[data-reader="ai"] .brand-table td {
+  padding: 0.28rem 0.45rem;
 }

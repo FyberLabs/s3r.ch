@@ -33,6 +33,13 @@ import {
   TRYING_SEED_COPY,
   type SeedPeerEmitter,
 } from "@/lib/gun-peer";
+import {
+  btnSecondary,
+  btnTabOff,
+  btnTabOn,
+  failPanel,
+  panel,
+} from "@/lib/brand-ui";
 
 type GunRef = SeedPeerEmitter & {
   get: (key: string) => GunRef;
@@ -278,7 +285,7 @@ export function FeedStream() {
 
   return (
     <div>
-      <p className="mt-6 text-xs text-gray-400">
+      <p className="mt-6 text-xs text-ink-muted">
         {status}
         {meta?.seededAt ? ` · seeded ${meta.seededAt}` : ""}
         {meta
@@ -286,10 +293,10 @@ export function FeedStream() {
           : ""}
       </p>
       {meta?.error ? (
-        <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-900">
+        <div className={`mt-6 ${failPanel}`}>
           <p className="font-semibold">Seed is empty or failed</p>
           <p className="mt-2">{meta.error}</p>
-          <p className="mt-2 text-red-800">
+          <p className="mt-2">
             No rows were invented. The Gun graph only holds what the seeder wrote.
           </p>
         </div>
@@ -305,22 +312,14 @@ export function FeedStream() {
         <button
           type="button"
           onClick={() => selectTab("public")}
-          className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-            tab === "public"
-              ? "border-brand-700 bg-brand-700 text-white"
-              : "border-brand-100 bg-white text-brand-900 hover:border-brand-500"
-          }`}
+          className={tab === "public" ? btnTabOn : btnTabOff}
         >
           Public
         </button>
         <button
           type="button"
           onClick={() => selectTab("mine")}
-          className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-            tab === "mine"
-              ? "border-brand-700 bg-brand-700 text-white"
-              : "border-brand-100 bg-white text-brand-900 hover:border-brand-500"
-          }`}
+          className={tab === "mine" ? btnTabOn : btnTabOff}
         >
           Mine
         </button>
@@ -328,11 +327,11 @@ export function FeedStream() {
           type="button"
           disabled
           title="later — mesh"
-          className="rounded-lg border border-brand-100 px-3 py-2 text-xs font-semibold text-gray-400"
+          className="border border-rule px-3 py-2 text-xs font-semibold text-ink-muted disabled:opacity-50"
         >
           Network
         </button>
-        <span className="text-xs text-gray-400">later — mesh</span>
+        <span className="text-xs text-ink-muted">later — mesh</span>
       </div>
 
       <RoomsList
@@ -379,11 +378,11 @@ export function FeedStream() {
       <TagChips tags={tags} selected={selected} onChange={setSelected} />
 
       {shareMessage && tab === "mine" ? (
-        <p className="mt-3 text-xs text-gray-500">{shareMessage}</p>
+        <p className="mt-3 text-xs text-ink-muted">{shareMessage}</p>
       ) : null}
 
       {visible.length === 0 ? (
-        <p className="mt-8 rounded-xl border border-brand-100 bg-brand-50/40 p-6 text-sm text-gray-600">
+        <p className="mt-8 border border-rule bg-panel p-6 text-sm text-ink-muted">
           {emptyCopy(tab, Boolean(session), selected.length > 0, Boolean(openRoom))}
         </p>
       ) : (
@@ -463,39 +462,39 @@ function RoomThreadHeader({
   onShare: () => void;
 }) {
   return (
-    <div className="mt-6 rounded-xl border border-brand-100 bg-gradient-to-b from-white to-brand-50/40 p-5">
+    <div className={`mt-6 ${panel}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-brand-700">
+          <p className="text-xs font-medium uppercase tracking-wide text-signal">
             Room thread
           </p>
-          <h2 className="mt-1 text-base font-semibold text-brand-900">
+          <h2 className="mt-1 text-base font-semibold text-ink">
             {room.title}
           </h2>
-          <p className="mt-1 text-xs text-gray-500">{room.tags.join(" · ")}</p>
+          <p className="mt-1 text-xs text-ink-muted">{room.tags.join(" · ")}</p>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="rounded-lg border border-brand-100 px-3 py-2 text-xs font-semibold text-brand-800"
+          className={btnSecondary}
         >
           Close thread
         </button>
       </div>
-      <p className="mt-3 text-xs text-gray-500">
+      <p className="mt-3 text-xs text-ink-muted">
         Posts belong by tag. Live chat / presence / WebRTC is later. Trying
         seed peer; snapshot if the socket is down.
       </p>
       {mine && owned && sessionAddress ? (
-        <div className="mt-3 border-t border-brand-100 pt-3">
+        <div className="mt-3 border-t border-rule pt-3">
           {shared ? (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-ink-muted">
               This room node is on the public graph. Posts inside stay Mine
               until you share those posts. Publish is one-way here.
             </p>
           ) : (
             <>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-ink-muted">
                 Share to public publishes this room node onto the public rooms
                 graph. It does not publish Mine posts inside it. A see-grant is
                 not this. Publish is one-way here.
@@ -503,14 +502,14 @@ function RoomThreadHeader({
               <button
                 type="button"
                 onClick={onShare}
-                className="mt-2 rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800"
+                className={`mt-2 ${btnSecondary}`}
               >
                 {confirmShare ? "Confirm share" : "Share to public"}
               </button>
             </>
           )}
           {shareMessage ? (
-            <p className="mt-2 text-xs text-gray-500">{shareMessage}</p>
+            <p className="mt-2 text-xs text-ink-muted">{shareMessage}</p>
           ) : null}
           <RoomSeeGrantControls address={sessionAddress} roomId={room.id} />
         </div>
@@ -541,15 +540,15 @@ function FeedCard({
   const inner = (
     <>
       <div className="flex items-start justify-between gap-3">
-        <h2 className="text-base font-semibold text-brand-900">
+        <h2 className="text-base font-semibold text-ink">
           {item.author || item.kind}
         </h2>
-        <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-brand-700">
+        <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-signal">
           {item.kind}
         </span>
       </div>
-      <p className="mt-1 text-sm text-gray-600">{item.body}</p>
-      <p className="mt-2 text-xs text-gray-500">
+      <p className="mt-1 text-sm text-ink-muted">{item.body}</p>
+      <p className="mt-2 text-xs text-ink-muted">
         {item.tags.join(" · ")}
         {when ? ` · ${when}` : ""}
         {item.provenance ? ` · ${item.provenance}` : ""}
@@ -557,27 +556,27 @@ function FeedCard({
     </>
   );
   const className =
-    "block rounded-xl border border-brand-100 bg-gradient-to-b from-white to-brand-50/40 p-5 shadow-sm";
+    "block border border-rule bg-panel p-5";
 
   if (ownNative && sessionAddress) {
     return (
       <div className={className}>
         {inner}
-        <div className="mt-3 border-t border-brand-100 pt-3">
+        <div className="mt-3 border-t border-rule pt-3">
           {shared ? (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-ink-muted">
               On the public graph. Publish is one-way here.
             </p>
           ) : (
             <>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-ink-muted">
                 Share to public publishes this item onto the public graph. A
                 see-grant is not this. Publish is one-way here.
               </p>
               <button
                 type="button"
                 onClick={onShare}
-                className="mt-2 rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800"
+                className={`mt-2 ${btnSecondary}`}
               >
                 {confirmShare ? "Confirm share" : "Share to public"}
               </button>
@@ -595,7 +594,7 @@ function FeedCard({
         href={item.permalink}
         target="_blank"
         rel="noopener noreferrer"
-        className={`${className} hover:border-brand-500`}
+        className={`${className} hover:border-signal`}
       >
         {inner}
       </a>

@@ -7,6 +7,7 @@ import { splitTags } from "@/lib/feed-types";
 import { roomTag } from "@/lib/rooms";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
+import { btnPrimary, field, panel } from "@/lib/brand-ui";
 
 export function ComposeForm({
   onItem,
@@ -24,7 +25,7 @@ export function ComposeForm({
 
   if (!session) {
     return (
-      <p className="mt-10 text-xs text-gray-500">
+      <p className="mt-10 text-xs text-ink-muted">
         Sign in with Ethereum to post.
       </p>
     );
@@ -68,32 +69,32 @@ export function ComposeForm({
   }
 
   return (
-    <div className="mt-10 rounded-xl border border-brand-100 bg-brand-50/40 p-5">
-      <h2 className="text-sm font-semibold text-brand-900">
+    <div className={`mt-10 ${panel}`}>
+      <h2 className="text-sm font-semibold text-ink">
         {roomId ? "Compose into this room" : "Compose"}
       </h2>
-      <p className="mt-2 text-sm text-gray-600">
+      <p className="mt-2 text-sm text-ink-muted">
         {roomId
           ? "Native s3r.ch post tagged to this room. Stays on Mine until you share this post. Sharing the room does not publish this post. A see-grant is not that share."
           : "Native s3r.ch post. Stays on Mine until you share to public. A see-grant is not that share. This is not an outbound bridge."}
       </p>
-      <label className="mt-4 block text-sm text-gray-700">
+      <label className="mt-4 block text-sm text-ink">
         Body
         <textarea
           value={body}
           onChange={(event) => setBody(event.target.value)}
           rows={3}
-          className="mt-1 w-full rounded-lg border border-brand-100 bg-white px-3 py-2 text-sm"
+          className={`mt-1 w-full ${field}`}
         />
       </label>
-      <label className="mt-3 block text-sm text-gray-700">
+      <label className="mt-3 block text-sm text-ink">
         Tags
         <input
           type="text"
           value={tagsInput}
           onChange={(event) => setTagsInput(event.target.value)}
           placeholder="optional, comma-separated"
-          className="mt-1 w-full rounded-lg border border-brand-100 bg-white px-3 py-2 text-sm"
+          className={`mt-1 w-full ${field}`}
         />
       </label>
       <div className="mt-3">
@@ -101,12 +102,12 @@ export function ComposeForm({
           type="button"
           disabled={busy || !body.trim()}
           onClick={() => void submit()}
-          className="rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+          className={btnPrimary}
         >
           Post to Mine
         </button>
       </div>
-      {message ? <p className="mt-3 text-xs text-gray-500">{message}</p> : null}
+      {message ? <p className="mt-3 text-xs text-ink-muted">{message}</p> : null}
     </div>
   );
 }

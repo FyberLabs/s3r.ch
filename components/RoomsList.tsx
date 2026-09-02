@@ -10,6 +10,7 @@ import {
 } from "@/lib/rooms";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
+import { btnPrimary, btnTabOff, btnTabOn, field, panel } from "@/lib/brand-ui";
 
 export function RoomsList({
   rooms,
@@ -27,9 +28,9 @@ export function RoomsList({
   onCreated: (room: Room) => void;
 }) {
   return (
-    <div className="mt-8 rounded-xl border border-brand-100 bg-brand-50/40 p-5">
-      <h2 className="text-sm font-semibold text-brand-900">Rooms</h2>
-      <p className="mt-2 text-xs text-gray-500">
+    <div className={`mt-8 ${panel}`}>
+      <h2 className="text-sm font-semibold text-ink">Rooms</h2>
+      <p className="mt-2 text-xs text-ink-muted">
         Gun threads. Mine until you share the room node. Live chat, presence,
         and WebRTC are later. Trying seed peer; snapshot if the socket is
         down.
@@ -37,12 +38,12 @@ export function RoomsList({
       {canCreate ? (
         <NewRoomForm onCreated={onCreated} />
       ) : showCreateHint ? (
-        <p className="mt-3 text-xs text-gray-500">
+        <p className="mt-3 text-xs text-ink-muted">
           Sign in with Ethereum to create a room.
         </p>
       ) : null}
       {rooms.length === 0 ? (
-        <p className="mt-3 text-xs text-gray-500">
+        <p className="mt-3 text-xs text-ink-muted">
           {canCreate
             ? "No rooms yet. Title a new room to put it on Mine."
             : "No shared rooms on this graph."}
@@ -56,14 +57,14 @@ export function RoomsList({
                 <button
                   type="button"
                   onClick={() => onSelect(open ? null : room)}
-                  className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${
-                    open
-                      ? "border-brand-700 bg-white text-brand-900"
-                      : "border-brand-100 bg-white text-brand-900 hover:border-brand-500"
-                  }`}
+                  className={`w-full text-left ${open ? btnTabOn : btnTabOff}`}
                 >
                   <span className="font-semibold">{room.title}</span>
-                  <span className="mt-1 block text-xs text-gray-500">
+                  <span
+                    className={`mt-1 block text-xs ${
+                      open ? "text-on-signal" : "text-ink-muted"
+                    }`}
+                  >
                     {room.tags.join(" · ")}
                   </span>
                 </button>
@@ -122,7 +123,7 @@ function NewRoomForm({ onCreated }: { onCreated: (room: Room) => void }) {
 
   return (
     <div className="mt-4">
-      <label className="block text-sm text-gray-700">
+      <label className="block text-sm text-ink">
         New room
         <input
           type="text"
@@ -130,17 +131,17 @@ function NewRoomForm({ onCreated }: { onCreated: (room: Room) => void }) {
           maxLength={ROOM_TITLE_MAX}
           onChange={(event) => setTitle(event.target.value)}
           placeholder="title"
-          className="mt-1 w-full rounded-lg border border-brand-100 bg-white px-3 py-2 text-sm"
+          className={`mt-1 w-full ${field}`}
         />
       </label>
-      <label className="mt-3 block text-sm text-gray-700">
+      <label className="mt-3 block text-sm text-ink">
         Tags
         <input
           type="text"
           value={tagsInput}
           onChange={(event) => setTagsInput(event.target.value)}
           placeholder="optional, comma-separated"
-          className="mt-1 w-full rounded-lg border border-brand-100 bg-white px-3 py-2 text-sm"
+          className={`mt-1 w-full ${field}`}
         />
       </label>
       <div className="mt-3">
@@ -148,12 +149,12 @@ function NewRoomForm({ onCreated }: { onCreated: (room: Room) => void }) {
           type="button"
           disabled={busy || !title.trim()}
           onClick={() => void submit()}
-          className="rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+          className={btnPrimary}
         >
           New room
         </button>
       </div>
-      {message ? <p className="mt-3 text-xs text-gray-500">{message}</p> : null}
+      {message ? <p className="mt-3 text-xs text-ink-muted">{message}</p> : null}
     </div>
   );
 }

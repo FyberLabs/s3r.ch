@@ -18,6 +18,7 @@ import {
   type MemorySeeAcl,
 } from "@/lib/identity/see-acl";
 import { useSeeAcl } from "@/components/SeeAclProvider";
+import { btnSecondary, field, fieldMono } from "@/lib/brand-ui";
 
 type Props = {
   address: string;
@@ -169,14 +170,14 @@ export function SeeGrantControls({
   if (!claims.length) return null;
 
   return (
-    <div className="mt-4 border-t border-brand-100 pt-4">
-      <p className="text-xs text-gray-500">{SEE_GRANT_COPY}</p>
+    <div className="mt-4 border-t border-rule pt-4">
+      <p className="text-xs text-ink-muted">{SEE_GRANT_COPY}</p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <select
           value={claimId}
           onChange={(event) => setClaimId(event.target.value)}
           disabled={busy}
-          className="rounded-lg border border-brand-100 bg-white px-3 py-2 text-xs text-gray-700 disabled:opacity-50"
+          className={field}
         >
           {claims.map((claim) => (
             <option key={claim.id} value={claim.id}>
@@ -192,7 +193,7 @@ export function SeeGrantControls({
           autoComplete="off"
           spellCheck={false}
           disabled={busy}
-          className="min-w-[12rem] flex-1 rounded-lg border border-brand-100 bg-white px-3 py-2 font-mono text-xs text-gray-700 disabled:opacity-50"
+          className={`min-w-[12rem] flex-1 ${fieldMono}`}
         />
         <input
           type="number"
@@ -202,14 +203,14 @@ export function SeeGrantControls({
           onChange={(event) => setHoursInput(event.target.value)}
           disabled={busy}
           aria-label="Hours"
-          className="w-16 rounded-lg border border-brand-100 bg-white px-3 py-2 text-xs text-gray-700 disabled:opacity-50"
+          className={`w-16 ${field}`}
         />
-        <span className="text-xs text-gray-500">hours</span>
+        <span className="text-xs text-ink-muted">hours</span>
         <button
           type="button"
           disabled={busy}
           onClick={() => void onGrant()}
-          className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+          className={btnSecondary}
         >
           Grant see
         </button>
@@ -219,7 +220,7 @@ export function SeeGrantControls({
           {grants.map((grant) => (
             <li
               key={`${grant.claimId}:${grant.accessor}:${grant.from}:${grant.until}`}
-              className="flex flex-wrap items-center gap-2 text-xs text-gray-500"
+              className="flex flex-wrap items-center gap-2 text-xs text-ink-muted"
             >
               <span>
                 {grant.claimId} → {truncateAddress(grant.accessor)} until{" "}
@@ -229,7 +230,7 @@ export function SeeGrantControls({
                 type="button"
                 disabled={busy}
                 onClick={() => void onRevoke(grant)}
-                className="rounded-lg border border-brand-700 px-2 py-1 text-xs font-semibold text-brand-800 disabled:opacity-50"
+                className={btnSecondary}
               >
                 Revoke
               </button>
@@ -237,7 +238,7 @@ export function SeeGrantControls({
           ))}
         </ul>
       ) : null}
-      {message ? <p className="mt-3 text-xs text-gray-500">{message}</p> : null}
+      {message ? <p className="mt-3 text-xs text-ink-muted">{message}</p> : null}
     </div>
   );
 }

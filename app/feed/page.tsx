@@ -13,19 +13,19 @@ export const metadata: Metadata = {
 export default function FeedPage() {
   return (
     <section className="mx-auto max-w-3xl px-4 py-16">
-      <p className="text-xs font-medium uppercase tracking-wide text-brand-700">
+      <p className="text-xs font-medium uppercase tracking-wide text-signal">
         Lab prototype
       </p>
-      <h1 className="mt-2 text-3xl font-bold tracking-tight text-brand-900">
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-ink">
         Feed
       </h1>
-      <p className="mt-4 text-lg text-gray-600">
+      <p className="mt-4 text-lg text-ink-muted">
         A Fyber Labs lab feed. Gun is the graph. Public Farcaster hub,
         ATProto AppView, and RSS activity is seeded into Gun on a cadence.
         RSS3 GI is optional. Signed-in, you can compose a native post onto
         Mine, or open a room thread. Share to public is explicit.
       </p>
-      <p className="mt-3 text-sm text-gray-500">
+      <p className="mt-3 text-sm text-ink-muted">
         Public and Mine tabs. Rooms are Gun objects, Mine by default. Tags
         first, then recency. There are no popular or novel columns. A
         see-grant is not delivery and not share-into-mesh. Sharing a room
@@ -40,8 +40,8 @@ export default function FeedPage() {
         <FeedStream />
       </SeeAclProvider>
 
-      <p className="mt-10 text-sm text-gray-500">
-        <Link href="/" className="font-semibold text-brand-700 hover:underline">
+      <p className="mt-10 text-sm text-ink-muted">
+        <Link href="/" className="font-semibold text-ink hover:text-signal">
           Back to s3r.ch
         </Link>
         <span className="mx-2" aria-hidden="true">
@@ -51,7 +51,7 @@ export default function FeedPage() {
           href="https://docs.rss3.io/guide/developer/api"
           target="_blank"
           rel="noopener noreferrer"
-          className="font-semibold text-brand-700 hover:underline"
+          className="font-semibold text-ink hover:text-signal"
         >
           RSS3 Data Sublayer
         </a>

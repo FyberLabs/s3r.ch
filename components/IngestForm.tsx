@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { FeedItem } from "@/lib/feed-types";
+import { btnPrimary, field, panel } from "@/lib/brand-ui";
 
 export function IngestForm({
   onItems,
@@ -45,15 +46,15 @@ export function IngestForm({
   }
 
   return (
-    <div className="mt-10 rounded-xl border border-brand-100 bg-brand-50/40 p-5">
-      <h2 className="text-sm font-semibold text-brand-900">Your overlay</h2>
-      <p className="mt-2 text-sm text-gray-600">
+    <div className={`mt-10 ${panel}`}>
+      <h2 className="text-sm font-semibold text-ink">Your overlay</h2>
+      <p className="mt-2 text-sm text-ink-muted">
         Pull a public RSS/Atom URL or an RSS3 address. Items are normalized to
         the same shape and merged in your browser Gun graph. They are not
         written into the public seed.
       </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <label className="block text-sm text-gray-700">
+        <label className="block text-sm text-ink">
           RSS / Atom URL
           <div className="mt-1 flex gap-2">
             <input
@@ -61,19 +62,19 @@ export function IngestForm({
               value={rssUrl}
               onChange={(event) => setRssUrl(event.target.value)}
               placeholder="https://example.com/feed.xml"
-              className="w-full rounded-lg border border-brand-100 bg-white px-3 py-2 text-sm"
+              className={`w-full ${field}`}
             />
             <button
               type="button"
               disabled={busy || !rssUrl.trim()}
               onClick={() => submit("rss")}
-              className="shrink-0 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+              className={`shrink-0 ${btnPrimary}`}
             >
               Pull
             </button>
           </div>
         </label>
-        <label className="block text-sm text-gray-700">
+        <label className="block text-sm text-ink">
           RSS3 address
           <div className="mt-1 flex gap-2">
             <input
@@ -81,20 +82,20 @@ export function IngestForm({
               value={rss3Account}
               onChange={(event) => setRss3Account(event.target.value)}
               placeholder="0x… or name.eth"
-              className="w-full rounded-lg border border-brand-100 bg-white px-3 py-2 text-sm"
+              className={`w-full ${field}`}
             />
             <button
               type="button"
               disabled={busy || !rss3Account.trim()}
               onClick={() => submit("rss3")}
-              className="shrink-0 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+              className={`shrink-0 ${btnPrimary}`}
             >
               Pull
             </button>
           </div>
         </label>
       </div>
-      {message ? <p className="mt-3 text-xs text-gray-500">{message}</p> : null}
+      {message ? <p className="mt-3 text-xs text-ink-muted">{message}</p> : null}
     </div>
   );
 }
