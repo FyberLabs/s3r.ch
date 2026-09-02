@@ -1,0 +1,39 @@
+name: Comment
+description: A question or comment that is not a bug or a feature request.
+title: "[Comment] "
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for docs confusion, review notes, or other comments that are not a bug or a feature ask.
+
+        s3r.ch is a Fyber Labs lab domain / security-oriented social-attack product, not a live search product. Hypermesh remains the live commercial product — [https://hyperme.sh](https://hyperme.sh).
+
+        Do not paste SIWE signatures, Gun SEA private keys, session cookies, or personal data. Security reports are not public comments; see [SECURITY.md](https://github.com/FyberLabs/s3r.ch/blob/master/SECURITY.md).
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Docs confusion
+        - Review note
+        - Question
+        - Other comment
+    validations:
+      required: true
+  - type: textarea
+    id: comment
+    attributes:
+      label: Comment
+      description: What you want to say. Cite a docs path if this is about the written model (docs/ARCHITECTURE.md, docs/identity.md, docs/s3rch-check.md).
+    validations:
+      required: true
+  - type: input
+    id: about
+    attributes:
+      label: About
+      description: Optional URL, commit, or docs path this refers to.
+      placeholder: docs/ARCHITECTURE.md
+    validations:
+      required: false

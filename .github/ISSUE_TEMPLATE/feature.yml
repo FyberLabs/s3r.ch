@@ -1,0 +1,47 @@
+name: Feature request
+description: Ask for a change on this s3r.ch lab slice.
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        s3r.ch is a Fyber Labs lab domain, not the Hypermesh backlog. Gun is the client graph; Azure App Service is a seed peer / bootstrap, not the product datastore. Auth is SIWE. Native SociACL applies to Gun data; URL fetches are handoffs, not grants.
+
+        Do not file Hypermesh, Panopticon, or AKS work here. Product questions for Hypermesh go to [https://hyperme.sh](https://hyperme.sh).
+  - type: textarea
+    id: ask
+    attributes:
+      label: Ask
+      description: What you want this lab slice to do.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: Why it matters on s3r.ch. This is not a live search product.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      description: Which part of this lab you mean.
+      options:
+        - feed
+        - identity / SIWE
+        - Check / grants
+        - rooms
+        - crypto news feeds
+        - oracle / search APIs
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Extra notes
+      description: Optional. No SIWE signatures, Gun SEA keys, cookies, or personal data.
+    validations:
+      required: false

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security
+    url: mailto:github@fyberlabs.com
+    about: Private vulnerability reports only. Do not file security issues on this public backlog.
+  - name: Hypermesh
+    url: https://hyperme.sh
+    about: Live commercial product. Do not file Hypermesh questions on this lab backlog.
+  - name: SociACL
+    url: https://github.com/FyberLabs/SociACL
+    about: Native SociACL crate and protocol. This lab reimplements light Check only.

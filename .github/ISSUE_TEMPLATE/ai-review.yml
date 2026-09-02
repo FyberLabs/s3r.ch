@@ -1,0 +1,72 @@
+name: AI review
+description: For other AIs and reviewers — one cluster of related findings.
+title: "[AI review] "
+labels: [ai-review]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One cluster of related findings per issue. Cite paths you actually read. Do not invent stack traces. Do not dump secrets, SIWE signatures, Gun SEA private keys, cookies, or personal data.
+
+        Do not file Hypermesh, Panopticon, or AKS infra here. This lab is not a live search product. Hypermesh questions go to [https://hyperme.sh](https://hyperme.sh).
+
+        Humans should use Bug, Feature, or Comment instead.
+  - type: input
+    id: model
+    attributes:
+      label: Model / product name
+      description: What ran this review (model or product name only).
+      placeholder: e.g. Cursor Grok, Claude, Copilot
+    validations:
+      required: true
+  - type: textarea
+    id: reviewed
+    attributes:
+      label: What was reviewed
+      description: URL, commit SHA, and/or docs path. Prefer docs/ARCHITECTURE.md, docs/identity.md, docs/s3rch-check.md when those are the source.
+      placeholder: |
+        commit …
+        docs/ARCHITECTURE.md
+        https://s3r.ch/feed
+    validations:
+      required: true
+  - type: dropdown
+    id: method
+    attributes:
+      label: How you reviewed
+      options:
+        - Ran the app
+        - Docs only
+        - Ran the app and read docs
+    validations:
+      required: true
+  - type: textarea
+    id: findings
+    attributes:
+      label: Findings
+      description: One related cluster. No invented stack traces. No secrets or keys.
+      value: |
+        <!-- s3rch-template: ai-review -->
+
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Suggested priority
+      options:
+        - low
+        - medium
+        - high
+        - security (private report instead if this is a vulnerability)
+    validations:
+      required: true
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: I did not invent stack traces or dump credentials, SIWE signatures, Gun SEA keys, cookies, or PII.
+          required: true
+        - label: This is about s3r.ch, not Hypermesh/Panopticon infra.
+          required: true
