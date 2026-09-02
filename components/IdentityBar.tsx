@@ -28,6 +28,11 @@ import {
   type EnsHeldClaim,
 } from "@/lib/identity/ens";
 import {
+  lookupUnstoppableHeldClaimForSession,
+  unstoppableClaimLine,
+  type UnstoppableHeldClaim,
+} from "@/lib/identity/unstoppable";
+import {
   farcasterClaimLine,
 } from "@/lib/identity/farcaster-claim";
 import {
@@ -85,6 +90,10 @@ function IdentityBarInner() {
   const [prfAvailable, setPrfAvailable] = useState<boolean | null>(null);
   const [ensClaim, setEnsClaim] = useState<string | null>(null);
   const [ensCachedFor, setEnsCachedFor] = useState<string | null>(null);
+  const [unstoppableClaim, setUnstoppableClaim] = useState<string | null>(null);
+  const [unstoppableCachedFor, setUnstoppableCachedFor] = useState<string | null>(
+    null,
+  );
   const [indicators, setIndicators] = useState<PublicIndicators>(emptyIndicators);
   const [indicatorsCachedFor, setIndicatorsCachedFor] = useState<string | null>(null);
   const [wrapWithPaper, setWrapWithPaper] = useState(false);
@@ -143,6 +152,34 @@ function IdentityBarInner() {
       cancelled = true;
     };
   }, [session, ensCachedFor]);
+
+  useEffect(() => {
+    if (!session) {
+      setUnstoppableClaim(null);
+      setUnstoppableCachedFor(null);
+      return;
+    }
+    if (unstoppableCachedFor === session.address) return;
+    const sessionAddress = session.address;
+    let cancelled = false;
+    void lookupUnstoppableHeldClaimForSession({
+      session,
+      lookup: (address) => fetchUnstoppableHeldClaim(address),
+    })
+      .then((claim) => {
+        if (cancelled) return;
+        setUnstoppableClaim(claim.name);
+        setUnstoppableCachedFor(sessionAddress);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setUnstoppableClaim(null);
+        setUnstoppableCachedFor(sessionAddress);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session, unstoppableCachedFor]);
 
   useEffect(() => {
     if (!session) {
@@ -527,6 +564,8 @@ function IdentityBarInner() {
       setPaperReveal(null);
       setEnsClaim(null);
       setEnsCachedFor(null);
+      setUnstoppableClaim(null);
+      setUnstoppableCachedFor(null);
       setIndicators(emptyIndicators());
       setIndicatorsCachedFor(null);
       disconnect();
@@ -552,8 +591,8 @@ function IdentityBarInner() {
       <h2 className="text-sm font-semibold text-brand-900">Session</h2>
       <p className="mt-2 text-sm text-gray-600">
         Sign in with Ethereum binds this browser to a checksummed address
-        (EOA or ERC-1271 smart account). ENS, Farcaster, Lens, and RSS3 are
-        held claims after sign-in, not the session key. A passkey can wrap
+        (EOA or ERC-1271 smart account). ENS, Unstoppable, Farcaster, Lens, and
+        RSS3 are held claims after sign-in, not the session key. A passkey can wrap
         the local mesh key on this device. A paper backup is recovery, not
         login.
         {wcConfigured
@@ -701,6 +740,11 @@ function IdentityBarInner() {
       {ensClaimLine(ensClaim) ? (
         <p className="mt-3 text-xs text-gray-500">{ensClaimLine(ensClaim)}</p>
       ) : null}
+      {unstoppableClaimLine(unstoppableClaim) ? (
+        <p className="mt-3 text-xs text-gray-500">
+          {unstoppableClaimLine(unstoppableClaim)}
+        </p>
+      ) : null}
       {farcasterClaimLine(indicators.farcaster.name) ? (
         <p className="mt-3 text-xs text-gray-500">
           {farcasterClaimLine(indicators.farcaster.name)}
@@ -760,6 +804,21 @@ function applyMeshRecord(
   }
   setMeshKind("plaintext");
   setMeshLine(createdLine ?? "mesh key already present");
+}
+
+async function fetchUnstoppableHeldClaim(
+  address: string,
+): Promise<UnstoppableHeldClaim> {
+  const response = await fetch(
+    `/api/identity/unstoppable?address=${encodeURIComponent(address)}`,
+    { cache: "no-store" },
+  );
+  if (!response.ok) return { name: null };
+  const body = (await response.json()) as { name?: string | null };
+  if (typeof body.name === "string" && body.name) {
+    return { name: body.name };
+  }
+  return { name: null };
 }
 
 async function fetchEnsHeldClaim(address: string): Promise<EnsHeldClaim> {

@@ -15,6 +15,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - After the SIWE session is set: a **local Gun SEA P-256 pair** (different curve from Ethereum) plus a **wallet-signed link** (`pub` belongs to this checksummed address), persisted in **origin IndexedDB**.
 - **WebAuthn PRF wrap** of that local pair (recovery / device proof, **not** login). Envelope version 1 in IndexedDB, with ≥2 KEKs (PRF + secondary). Quiet `/feed` controls: wrap / unlock / paper backup / status.
 - After a SIWE session exists: a **mainnet ENS held claim** on `/feed` when reverse **and** forward match the checksummed session address. ENS is never login and never the session key.
+- After a SIWE session exists: a **Polygon UNS Unstoppable held claim** on `/feed` when reverse **and** forward checksum-match the session address. Unstoppable is never login and never the session key. SNS / Solana names are not this slice.
 - After a SIWE session exists: **Farcaster / Lens / RSS3 held claims** on `/feed` when a bidirectional public lookup binds them to the checksummed session address. These are never login (no SIWF, no Lens OAuth, no RSS3 login) and never the session key.
 - **ERC-1271** (and EIP-6492 via the same viem path) so a smart-account wallet can SIWE. Session subject stays the checksummed contract or EOA address.
 - **Paper-backup UI** for the wrap secondary KEK (`s3rch-wrap-v1:<base64url>`). Recovery, not login. Random 32-byte paper IKM (not a wallet-signature export). Shown once on wrap/export; paste unlocks.
@@ -26,7 +27,8 @@ Components here are written so they can be extracted into a shared kit later. Th
 - A paper-only wrap that drops the PRF KEK. Paper replaces the **secondary** IKM only.
 - A Reown Cloud project id invented in this repo. Empty `NEXT_PUBLIC_WC_PROJECT_ID` stays injected-only.
 - Panopticon / Hypermesh Keycloak as an IdP. s3r.ch login stays EIP-4361 SIWE.
-- ENS as login, or writing an ENS / Farcaster / Lens / RSS3 claim onto the public Gun graph.
+- ENS or Unstoppable as login, or writing an ENS / Unstoppable / Farcaster / Lens / RSS3 claim onto the public Gun graph.
+- A UD partner key in `NEXT_PUBLIC_*`, a browser call to `api.unstoppabledomains.com/resolve`, or Key Vault for `UNSTOPPABLE_API_KEY`.
 - Farcaster SIWF, Lens OAuth, or RSS3 login. Indicators are held claims after SIWE, not session subjects.
 - SociACL Check / certify. Do not import `FyberLabs/SociACL`.
 - NextAuth, Keycloak, or email magic link on this app.
@@ -36,13 +38,14 @@ Components here are written so they can be extracted into a shared kit later. Th
 
 | Lock | Why |
 | --- | --- |
-| Session key is the checksummed address | ENS, fname, Lens handle, RSS3 id, email, Keycloak `sub`, and SEA `pub` are never the session subject. EOA or ERC-1271 contract address only |
+| Session key is the checksummed address | ENS, Unstoppable name, fname, Lens handle, RSS3 id, email, Keycloak `sub`, and SEA `pub` are never the session subject. EOA or ERC-1271 contract address only |
 | Contract SIWE is mainnet ERC-1271 / EIP-6492 | Local Anvil is EOA-only. Do not send a local contract `eth_call` to mainnet |
 | ENS is a held claim after SIWE | Reverse + forward must checksum-match. Unverified reverse is never shown |
+| Unstoppable is a held claim after SIWE | Same bidirectional bar as ENS, on Polygon UNS. Never login. Empty `UNSTOPPABLE_API_KEY` is a quiet empty when on-chain misses, not a reason to drop ENS or other claims |
 | Farcaster / Lens / RSS3 are held claims after SIWE | Same bidirectional bar as ENS. Unverified one-way lookups are never shown. A GI miss is a quiet empty RSS3 claim, not a reason to drop the others |
 | Mesh identity is a **local Gun SEA P-256 pair**, not the Ethereum key | Different curves. Ethereum secp256k1 signs SIWE; SEA is for later mesh crypto |
 | Never call `user.recall({ sessionStorage: true })` | Gun would store the plaintext SEA pair. Never `sessionStorage` for this kit. |
-| Never put SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, ENS, Farcaster, Lens, or RSS3 claims on the public Gun graph | Session / device secrets stay in cookies and IndexedDB. Public indicators are read-only this slice |
+| Never put SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, ENS, Unstoppable, Farcaster, Lens, or RSS3 claims on the public Gun graph | Session / device secrets stay in cookies and IndexedDB. Public indicators are read-only this slice |
 | Nonce lives in a **signed cookie**, not an in-memory `Map` | Azure App Service is multi-instance; Redis is not in this slice |
 | OIDC is not primary login | Hypermesh portal can stay Keycloak; s3r.ch does not use Panopticon Keycloak as an IdP |
 | Passkey WebAuthn PRF wrap is recovery | PRF is device proof. It does not become the session subject |
@@ -56,7 +59,7 @@ Pinned to current majors compatible with Next.js 16, React 19, and Node 24:
 | Package | Role |
 | --- | --- |
 | `siwe` | Construct and parse EIP-4361 messages |
-| `viem` | EOA `verifyMessage` (local ecrecover, no RPC). Contract verify via mainnet `publicClient.verifyMessage` (ERC-1271 + EIP-6492). Checksum via `getAddress`. Mainnet `getEnsName` + `getEnsAddress` |
+| `viem` | EOA `verifyMessage` (local ecrecover, no RPC). Contract verify via mainnet `publicClient.verifyMessage` (ERC-1271 + EIP-6492). Checksum via `getAddress`. Mainnet `getEnsName` + `getEnsAddress`. Polygon UNS `reverseNameOf` + `get("crypto.ETH.address")` |
 | `wagmi` v3 | Injected connector always. `walletConnect` only when `NEXT_PUBLIC_WC_PROJECT_ID` is set. No RainbowKit, no ConnectKit |
 | `@walletconnect/ethereum-provider` | Optional peer for the wagmi WalletConnect connector. Unused at runtime when the project id is empty |
 | `@tanstack/react-query` | Required by wagmi |
@@ -85,6 +88,7 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `lib/identity/mesh.ts` | After SIWE: reuse or mint pair; persist wrap; unwrap for use |
 | `lib/identity/wagmi.ts` | Injected wagmi config; `walletConnect` only when `walletConnectProjectId()` is non-null |
 | `lib/identity/ens.ts` | Mainnet ENS reverse + forward held claim. Mockable public-client surface |
+| `lib/identity/unstoppable.ts` | Polygon UNS Unstoppable reverse + forward held claim. Mockable client (on-chain + optional Resolution fallback) |
 | `lib/identity/farcaster-claim.ts` | Hubble custody reverse + FID registry forward. Display fname or `fid:N` |
 | `lib/identity/lens-claim.ts` | Public Lens GraphQL owned-account reverse + owner forward |
 | `lib/identity/rss3-claim.ts` | Optional GI overlay reverse + owner forward. Quiet label, not a feed |
@@ -93,9 +97,10 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `app/api/identity/verify` | `POST` `{ message, signature }` — verify SIWE, set session |
 | `app/api/identity/session` | `GET` — current `{ address, chainId }` or 401 |
 | `app/api/identity/ens` | `GET ?address=` — session-gated ENS claim for the session address only |
+| `app/api/identity/unstoppable` | `GET ?address=` — session-gated Unstoppable claim for the session address only |
 | `app/api/identity/indicators` | `GET ?address=` — session-gated Farcaster / Lens / RSS3 claims for the session address only |
 | `app/api/identity/logout` | `POST` — clear identity cookies |
-| `components/IdentityBar.tsx` | Quiet `/feed` connect + optional WalletConnect + SIWE + mesh key + wrap/unlock + paper backup + ENS + public-indicator claims + sign out |
+| `components/IdentityBar.tsx` | Quiet `/feed` connect + optional WalletConnect + SIWE + mesh key + wrap/unlock + paper backup + ENS + Unstoppable + public-indicator claims + sign out |
 
 ## Cookies
 
@@ -161,11 +166,55 @@ Require **forward + reverse** before treating a name as a held claim:
 
 If either lookup fails or the forward address mismatches, show nothing (quiet empty / no ENS claim). Do **not** display an unverified reverse. Do not dump RPC errors into the `/feed` hero.
 
-This slice is **mainnet ENS only**. A `createPublicClient({ chain: mainnet, transport: http() })` uses the same default public HTTP transport as `lib/identity/wagmi.ts`. No Alchemy / Infura / Azure secret. If that default flakes in the lab, pin a public HTTP URL in `createMainnetEnsClient()` — do not invent Unstoppable or SNS as primary.
+This slice is **mainnet ENS only**. A `createPublicClient({ chain: mainnet, transport: http() })` uses the same default public HTTP transport as `lib/identity/wagmi.ts`. No Alchemy / Infura / Azure secret. If that default flakes in the lab, pin a public HTTP URL in `createMainnetEnsClient()`. Unstoppable is a separate held claim (below), not a replacement for ENS. SNS is not this slice.
 
 `GET /api/identity/ens?address=` is session-gated. The query address, when present, must match the session subject. The route does not become an open ENS proxy and does **not** write the claim onto the public Gun graph.
 
 IdentityBar caches the claim in component state for the current session (no Redis). Quiet line format: `ENS claim: name.eth` or nothing. `vitalik.eth` ↔ `0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` still reverse+forward as of 2026-09-01 and is the documented format example — not a screenshot subject for Anvil.
+
+## Unstoppable held claim (after SIWE, not login)
+
+Show a Polygon UNS Unstoppable name only **after** the SIWE cookie session exists. The session subject stays the checksummed address. Unstoppable is **never login** and never the session key. Same bar as ENS.
+
+Require **forward + reverse** before treating a name as a held claim:
+
+1. Reverse: session address → name (`ProxyReader.reverseNameOf`).
+2. Forward: that name → `crypto.ETH.address` must be **checksum-equal** to the session address.
+
+If either lookup fails or the forward address mismatches, show nothing (quiet empty / no Unstoppable claim). Do **not** display an unverified reverse. Do not dump RPC or Resolution Service errors into the `/feed` hero. An empty Unstoppable claim must not drop ENS / Farcaster / Lens / RSS3.
+
+### On-chain (preferred, no partner key)
+
+`createPublicClient({ chain: polygon, transport: http() })` — same unpinned public HTTP pattern as ENS on mainnet. No Alchemy / Infura / Azure secret. No UD partner key.
+
+Official current Polygon (chain 137) addresses, from Unstoppable `uns-config.json` v0.9.11 (resolution `src/config`, re-checked 2026-09-02) and the [UNS reverse-resolve docs](https://docs.unstoppabledomains.com/web3/smart-contracts/quick-start/reverse-resolve-domains):
+
+| Contract | Address | Role |
+| --- | --- | --- |
+| **ProxyReader** (current) | `0x91EDd8708062bd4233f4Dd0FCE15A7cb4d500091` | `reverseNameOf` + `get` |
+| **UNSRegistry** | `0xa9a6A3626993D487d2Dbda3173cf58cA1a9D9e9f` | IReverseRegistry lives here; no separate ReverseResolution deployment in current UNS config |
+| ProxyReader (legacy) | `0x423F2531bd5d3C3D4EF7C318c2D1d9BEDE67c680` | Still cited in UD docs; listed as `legacyAddresses`. Do not call it |
+
+If the default Polygon public HTTP flakes in the lab, pin a public HTTP URL in `createPolygonUnstoppableClient()` — do not invent a partner key or put one in `NEXT_PUBLIC_*`.
+
+Hosted Resolution Service (`api.unstoppabledomains.com/resolve`) requires a Bearer API key and is **not** for the browser (CORS + key).
+
+### Session-gated route + optional Resolution fallback
+
+`GET /api/identity/unstoppable?address=` is session-gated. The query address, when present, must match the session subject. The route does not become an open UD proxy and does **not** write the claim onto the public Gun graph.
+
+If on-chain reverse/forward **throws** (RPC miss), the route may fall back to Resolution Service **only** when `UNSTOPPABLE_API_KEY` is set on the server. A successful empty reverse is final — do not shop a second source. Empty / unset key = quiet empty (same class as an RSS3 GI miss). Never send the key to the client. Do not add Key Vault in this slice.
+
+IdentityBar fetches after the SIWE session (separate from ENS / indicators) and caches the claim in component state (no Redis). Quiet line format: `Unstoppable claim: name.crypto` (or whatever TLD the verified name uses) or nothing. Tests use a dummy `0xCcCC…cccC`. `brad.x` ↔ `0x8aaD44321A86b170879d7A244c1e8d360c99DdA8` still reverse+forwards on Polygon ProxyReader as of 2026-09-02 and is the documented format example — not a screenshot subject. The UD docs wallet `0x88bc…` still reverse-resolves `jim-unstoppable.x` but its `crypto.ETH.address` does **not** checksum-match, so it is not a fixture.
+
+### Operator path (`UNSTOPPABLE_API_KEY`, optional)
+
+1. Create a Resolution Service API key from the Unstoppable partner / API panel (backend key, not a browser key).
+2. Set `UNSTOPPABLE_API_KEY` on the Azure App Service **runtime** env (not `NEXT_PUBLIC_*`, not Docker build-arg). Local: `.env.local`.
+3. Leave it empty if you do not have a key. On-chain stays the preferred path; a miss stays quiet.
+4. Key Vault later — not this PR.
+
+SNS / Solana names are **not** this slice.
 
 ## Farcaster / Lens / RSS3 held claims (after SIWE, not login)
 
@@ -185,7 +234,7 @@ Hubble reverse is **custody**. A verified-only ETH address with no current id-re
 
 RSS3 GI (`https://gi.rss3.io`) is optional / currently DNS-dead. A GI miss is a quiet empty RSS3 claim, **not** a reason to drop Farcaster or Lens. Do not dump GI account activity, casts, or tx graphs as identity.
 
-`GET /api/identity/indicators?address=` is session-gated. The query address, when present, must match the session subject. The route does not become an open Farcaster / Lens / RSS3 proxy. ENS stays on `GET /api/identity/ens` (unchanged verification rules). IdentityBar fetches ENS and this one indicators route after session — not three extra uncoordinated trips — and caches results in component state (no Redis).
+`GET /api/identity/indicators?address=` is session-gated. The query address, when present, must match the session subject. The route does not become an open Farcaster / Lens / RSS3 proxy. ENS stays on `GET /api/identity/ens` and Unstoppable stays on `GET /api/identity/unstoppable` (unchanged verification rules). IdentityBar fetches ENS, Unstoppable, and this one indicators route after session — not three extra uncoordinated indicator trips — and caches results in component state (no Redis).
 
 ## WebAuthn PRF wrap (recovery, not login)
 
@@ -248,6 +297,7 @@ After signed-in + mesh key present:
 - Paste field + `Unlock with paper` when wrapped and locked; clear the paste after success
 - `Export paper backup` when wrapped and PRF is not known-unavailable: re-wrap with a new paper IKM, show `s3rch-wrap-v1:` once (copyable), then the user keeps it
 - Degrade copy when PRF is missing; paper unlock still works
+- After SIWE: quiet `ENS claim:` / `Unstoppable claim:` / indicator lines when verified. Empty Unstoppable does not drop the others
 - Do not dump `priv` / `epriv`, the paper string as a standing `/feed` hero line, or invalid-paste dumps
 
 ## Local SEA mesh key (after SIWE)
@@ -264,7 +314,7 @@ Locks that stay:
 
 - Never `sessionStorage`.
 - Never `user.recall({ sessionStorage: true })`.
-- Never write SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, the paper backup string, the link, or ENS / Farcaster / Lens / RSS3 claims onto the public Gun graph.
+- Never write SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, the paper backup string, the link, or ENS / Unstoppable / Farcaster / Lens / RSS3 claims onto the public Gun graph.
 - Session subject remains the checksummed address. Paper backup is recovery, not login.
 
 ## WalletConnect (gated connector, not an IdP)
@@ -287,12 +337,12 @@ A sibling infra PR will add the variable mapping. Until that id exists, leave th
 
 ## Follow-ups
 
-- Unstoppable / SNS (not primary; ENS remains mainnet reverse+forward).
+- SNS / Solana names (not this slice; ENS remains primary mainnet reverse+forward. Unstoppable is a held claim after SIWE, not login).
 - SociACL Check when sharing needs grants (adapter lives outside this repo). Do not import `FyberLabs/SociACL`.
-- Azure Key Vault for `IDENTITY_SESSION_SECRET` (still operator / Azure in this slice).
+- Azure Key Vault for `IDENTITY_SESSION_SECRET` and later `UNSTOPPABLE_API_KEY` (still operator / Azure in this slice).
 - Contract verify on chains other than mainnet (this slice's 1271 RPC allowlist is mainnet only).
 
-This slice ships paper-backup UI for the wrap secondary KEK, ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client), and WalletConnect gated on `NEXT_PUBLIC_WC_PROJECT_ID`. s3r.ch does not use Panopticon Keycloak as an IdP.
+This slice ships an Unstoppable held claim after SIWE (Polygon on-chain reverse+forward; optional server-only Resolution key), paper-backup UI for the wrap secondary KEK, ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client), and WalletConnect gated on `NEXT_PUBLIC_WC_PROJECT_ID`. s3r.ch does not use Panopticon Keycloak as an IdP. Unstoppable is never login.
 
 ## Live fixtures (re-checked 2026-09-01)
 
@@ -301,6 +351,7 @@ Do not keep a live identity as a fixture unless the public API still confirms it
 | Citation | Check | Result |
 | --- | --- | --- |
 | `vitalik.eth` ↔ `0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` | ENS reverse + forward | Still matches. Format example only. |
+| `brad.x` ↔ `0x8aaD44321A86b170879d7A244c1e8d360c99DdA8` | Polygon UNS reverse + `crypto.ETH.address` (ProxyReader `0x91EDd…091`, 2026-09-02) | Still matches. Format example only. Do not screenshot. |
 | Lens `vitalik` / account `0xe4AaA97cdA406c6AF7C02a5260a8013910bd683C` | `api.lens.xyz/graphql` owned + owner | Still owned by `0xd8dA…`. |
 | Farcaster `0xD7029Bdea1c17493893AAfE29Aad69ef892B8FF2` | Pinata Hubble id-registry | Still fid **188133** custody. USER_DATA empty; tests use a mock fname (`dwr-alt`), not a live username. |
 | Farcaster fid 3 (`dwr`) | Hubble id-registry | Custody is `0x6b0bda3f2ffed5efc83fa8c024acff1dd45793f1`, **not** `0xd702…`. |
