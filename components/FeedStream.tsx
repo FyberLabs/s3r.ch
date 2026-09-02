@@ -82,8 +82,9 @@ export function FeedStream() {
       const gun = Gun(browserGunOptions(window.location.origin));
       gunRef.current = gun;
       let seedWsUp = false;
-      if (typeof gun.on === "function") {
-        attachSeedPeerStatus(gun, (up) => {
+      const onPeer = gun.on;
+      if (typeof onPeer === "function") {
+        attachSeedPeerStatus({ on: onPeer.bind(gun) }, (up) => {
           seedWsUp = up;
           if (!cancelled) setStatus(peerStatusLine(up));
         });
