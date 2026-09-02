@@ -7,6 +7,7 @@ import { fromGunNode, toGunNode, type FeedItem, type GunFeedNode } from "@/lib/f
 import {
   acceptHint,
   admitFeedNode,
+  admitRoomNode,
   applySeeGrant,
   cancelSee,
   checkSee,
@@ -15,6 +16,7 @@ import {
   grantLiveAt,
   itemSoul,
   metaSoul,
+  roomSoul,
   userSoul,
   type HandoffHint,
   type SeeGraph,
@@ -65,12 +67,14 @@ describe("consume contract artifact", () => {
       "UrlLeaf",
       "encodeKey",
       "s3rch/items",
+      "s3rch/rooms",
       "s3rch/users",
       "s3rch/meta",
       "checkSee",
       "checkSeeGrant",
       "acceptHint",
       "admitFeedNode",
+      "admitRoomNode",
       "cancelSee",
       "hopcap",
     ]) {
@@ -117,6 +121,7 @@ describe("locked Gun souls", () => {
     assert.equal(encodeKey("rss3:act/1#x"), "rss3:act/1_x");
     assert.equal(encodeKey("a.b#$[c]"), "a_b___c_");
     assert.equal(itemSoul("rss3:act/1#x"), "s3rch/items/rss3:act/1_x");
+    assert.equal(roomSoul("s3rch:room:0xabc:1:aa"), "s3rch/rooms/s3rch:room:0xabc:1:aa");
     assert.equal(userSoul(ALICE), `s3rch/users/${ALICE}`);
     assert.equal(metaSoul(), "s3rch/meta");
   });
@@ -243,6 +248,30 @@ describe("CHECK(see, object, accessor) consume laws", () => {
     assert.deepEqual(admitted, { object: itemSoul(node.id) });
     assert.equal(checkSee(acl, itemSoul(node.id), ALICE, NOW).allowed, true);
     assert.equal(checkSee(acl, itemSoul(node.id), BOB, NOW, urlHint).allowed, false);
+  });
+
+  it("admitRoomNode requires dest re-auth; hint / URL fetch is not authorization", () => {
+    const acl = createMemorySeeAcl();
+    const node = {
+      id: `s3rch:room:${ALICE}:${NOW}:aa`,
+      title: "Lab",
+      owner: ALICE,
+      tags: "room,s3rch",
+      ts: NOW,
+      provenance: `s3rch:room:${ALICE}`,
+    };
+    const urlHint = hint({
+      context: "https://example.com/room",
+      target: roomSoul(node.id),
+    });
+    const garbage = admitRoomNode(acl, { ...node, id: "", title: "" }, ALICE, urlHint);
+    assert.deepEqual(garbage, { denied: true });
+    assert.equal(acl.hasObject(roomSoul(node.id)), false);
+
+    const admitted = admitRoomNode(acl, node, ALICE, urlHint);
+    assert.deepEqual(admitted, { object: roomSoul(node.id) });
+    assert.equal(checkSee(acl, roomSoul(node.id), ALICE, NOW).allowed, true);
+    assert.equal(checkSee(acl, roomSoul(node.id), BOB, NOW, urlHint).allowed, false);
   });
 
   it("live IdentitySeeGrant names the pair and now ∈ [from, until)", () => {

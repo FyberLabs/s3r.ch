@@ -5,6 +5,7 @@
 
 import { getAddress } from "viem";
 import {
+  GUN_PROTOCOL_V,
   normalizeTags,
   toGunNode,
   type FeedItem,
@@ -75,6 +76,7 @@ export function composeNativePost(input: ComposeNativeInput): FeedItem | null {
     permalink: "",
     tags: normalizeTags([...(input.tags ?? []), "user", "s3rch"]),
     provenance: `s3rch:native:${author}`,
+    v: GUN_PROTOCOL_V,
   };
 }
 

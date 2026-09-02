@@ -18,6 +18,9 @@ export function isFeedSource(value: unknown): value is FeedSource {
   return typeof value === "string" && (FEED_SOURCES as readonly string[]).includes(value);
 }
 
+/** Protocol version on Gun nodes. This slice writes `1`. */
+export const GUN_PROTOCOL_V = 1;
+
 export type FeedItem = {
   id: string;
   source: FeedSource;
@@ -28,6 +31,8 @@ export type FeedItem = {
   permalink: string;
   tags: string[];
   provenance: string;
+  /** Missing on old seed rows; readers treat that as v1. */
+  v?: number;
 };
 
 /** One public seed pull (hub FID, AppView feed, RSS URL, or GI list). */
@@ -94,7 +99,19 @@ export type GunFeedNode = {
   permalink: string;
   tags: string;
   provenance: string;
+  /** Missing on old seed rows; treat as v1. Unknown versions fail closed. */
+  v?: number;
 };
+
+export function protocolVersionOf(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") {
+    return GUN_PROTOCOL_V;
+  }
+  if (typeof value === "number" && Number.isInteger(value) && value === GUN_PROTOCOL_V) {
+    return GUN_PROTOCOL_V;
+  }
+  return null;
+}
 
 export function toGunNode(item: FeedItem): GunFeedNode {
   return {
@@ -107,6 +124,7 @@ export function toGunNode(item: FeedItem): GunFeedNode {
     permalink: item.permalink,
     tags: item.tags.join(","),
     provenance: item.provenance,
+    v: item.v ?? GUN_PROTOCOL_V,
   };
 }
 
@@ -116,6 +134,10 @@ export function fromGunNode(node: Partial<GunFeedNode> | null | undefined): Feed
   }
   const source = node.source;
   if (!isFeedSource(source)) {
+    return null;
+  }
+  const v = protocolVersionOf(node.v);
+  if (v === null) {
     return null;
   }
   return {
@@ -128,6 +150,7 @@ export function fromGunNode(node: Partial<GunFeedNode> | null | undefined): Feed
     permalink: asText(node.permalink),
     tags: splitTags(node.tags),
     provenance: asText(node.provenance),
+    v,
   };
 }
 

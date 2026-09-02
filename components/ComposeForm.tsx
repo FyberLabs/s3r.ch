@@ -4,13 +4,16 @@ import { useState } from "react";
 import { admitNativePost, composeNativePost } from "@/lib/compose";
 import type { FeedItem } from "@/lib/feed-types";
 import { splitTags } from "@/lib/feed-types";
+import { roomTag } from "@/lib/rooms";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
 
 export function ComposeForm({
   onItem,
+  roomId,
 }: {
   onItem: (item: FeedItem) => void;
+  roomId?: string;
 }) {
   const session = useIdentitySession();
   const see = useSeeAcl();
@@ -36,7 +39,10 @@ export function ComposeForm({
       const item = composeNativePost({
         body,
         address: sessionAddress,
-        tags: splitTags(tagsInput),
+        tags: [
+          ...splitTags(tagsInput),
+          ...(roomId ? [roomTag(roomId)] : []),
+        ],
       });
       if (!item) {
         setMessage("Write something first.");
@@ -63,10 +69,13 @@ export function ComposeForm({
 
   return (
     <div className="mt-10 rounded-xl border border-brand-100 bg-brand-50/40 p-5">
-      <h2 className="text-sm font-semibold text-brand-900">Compose</h2>
+      <h2 className="text-sm font-semibold text-brand-900">
+        {roomId ? "Compose into this room" : "Compose"}
+      </h2>
       <p className="mt-2 text-sm text-gray-600">
-        Native s3r.ch post. Stays on Mine until you share to public. A see-grant
-        is not that share. This is not an outbound bridge.
+        {roomId
+          ? "Native s3r.ch post tagged to this room. Stays on Mine until you share this post. Sharing the room does not publish this post. A see-grant is not that share."
+          : "Native s3r.ch post. Stays on Mine until you share to public. A see-grant is not that share. This is not an outbound bridge."}
       </p>
       <label className="mt-4 block text-sm text-gray-700">
         Body

@@ -14,7 +14,7 @@ The Next app runs Check **in the browser** on the Gun mesh. It does **not** impo
 
 | Name | Meaning |
 | --- | --- |
-| `object` | `GunFeedNode` at `s3rch/items/<encodeKey(id)>`, or a Gun-native claim linked from `s3rch/users/{wallet}` |
+| `object` | `GunFeedNode` at `s3rch/items/<encodeKey(id)>`, `GunRoomNode` at `s3rch/rooms/<encodeKey(id)>`, or a Gun-native claim linked from `s3rch/users/{wallet}` |
 | `accessor` | wallet / Gun peer (`s3rch/users/{wallet}`) |
 | `see` | dest Check `read` |
 | grant | jointly stated `IdentitySeeGrant`; hopcap **1** (no friend-of-friend) |
@@ -30,6 +30,7 @@ Later, on request: more verbs on the TS spec for granted distribution. Not this 
 
 ```
 gun.get('s3rch').get('items').get(encodeKey(id))  → GunFeedNode
+gun.get('s3rch').get('rooms').get(encodeKey(id))  → GunRoomNode
 gun.get('s3rch').get('meta')                     → seed meta (not a Check object)
 gun.get('s3rch').get('users').get(wallet)        → GunUserNode
 ```

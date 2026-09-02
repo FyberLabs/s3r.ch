@@ -8,9 +8,21 @@ import { rankFeedItems } from "@/lib/feed-rank";
 import { itemsForTab } from "@/lib/feed-tabs";
 import { ownsNativePost, prepareShareIntoMesh } from "@/lib/compose";
 import { encodeKey } from "@/lib/identity/check";
+import {
+  fromGunRoomNode,
+  itemsInRoom,
+  mergeRooms,
+  ownsRoom,
+  prepareShareRoomIntoMesh,
+  rankRooms,
+  roomsForTab,
+  type Room,
+} from "@/lib/rooms";
 import { ComposeForm } from "@/components/ComposeForm";
 import { IngestForm } from "@/components/IngestForm";
 import { PostSeeGrantControls } from "@/components/PostSeeGrantControls";
+import { RoomSeeGrantControls } from "@/components/RoomSeeGrantControls";
+import { RoomsList } from "@/components/RoomsList";
 import { TagChips } from "@/components/TagChips";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
@@ -34,6 +46,14 @@ export function FeedStream() {
   const [sharedIds, setSharedIds] = useState<string[]>([]);
   const [confirmShareId, setConfirmShareId] = useState<string | null>(null);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
+  const [mineRooms, setMineRooms] = useState<Room[]>([]);
+  const [publicRooms, setPublicRooms] = useState<Room[]>([]);
+  const [openRoomId, setOpenRoomId] = useState<string | null>(null);
+  const [sharedRoomIds, setSharedRoomIds] = useState<string[]>([]);
+  const [confirmShareRoomId, setConfirmShareRoomId] = useState<string | null>(
+    null,
+  );
+  const [roomShareMessage, setRoomShareMessage] = useState<string | null>(null);
 
   const hydrate = useCallback(async (gun: GunRef, items: FeedItem[]) => {
     for (const item of items) {
@@ -44,6 +64,7 @@ export function FeedStream() {
   useEffect(() => {
     let cancelled = false;
     let off: (() => void) | undefined;
+    let offRooms: (() => void) | undefined;
 
     (async () => {
       const GunMod = await import("gun/browser");
@@ -85,6 +106,18 @@ export function FeedStream() {
       });
       off = typeof listener?.off === "function" ? () => listener.off?.() : undefined;
 
+      const roomsListener = gun.get("s3rch").get("rooms").map().on((data) => {
+        const room = fromGunRoomNode(
+          data as Parameters<typeof fromGunRoomNode>[0],
+        );
+        if (!room || cancelled) return;
+        setPublicRooms((prev) => mergeRooms(prev, [room]));
+      });
+      offRooms =
+        typeof roomsListener?.off === "function"
+          ? () => roomsListener.off?.()
+          : undefined;
+
       if (!cancelled) {
         setStatus(
           snapshot.items?.length
@@ -97,21 +130,45 @@ export function FeedStream() {
     return () => {
       cancelled = true;
       off?.();
+      offRooms?.();
     };
   }, [hydrate]);
 
+  const tabRooms = useMemo(
+    () => roomsForTab(tab, publicRooms, mineRooms),
+    [tab, publicRooms, mineRooms],
+  );
+  const listedRooms = useMemo(
+    () => rankRooms(tabRooms, selected),
+    [tabRooms, selected],
+  );
+  const openRoom = useMemo(
+    () =>
+      listedRooms.find((room) => room.id === openRoomId) ??
+      tabRooms.find((room) => room.id === openRoomId) ??
+      null,
+    [listedRooms, tabRooms, openRoomId],
+  );
+
   const tabItems = useMemo(() => itemsForTab(tab, seed, overlay), [tab, seed, overlay]);
+  const threadItems = useMemo(
+    () => (openRoom ? itemsInRoom(tabItems, openRoom.id) : tabItems),
+    [openRoom, tabItems],
+  );
   const tags = useMemo(() => {
     const set = new Set<string>();
-    for (const item of tabItems) {
+    for (const item of threadItems) {
       for (const tag of item.tags) set.add(tag);
     }
+    for (const room of tabRooms) {
+      for (const tag of room.tags) set.add(tag);
+    }
     return Array.from(set).sort();
-  }, [tabItems]);
+  }, [threadItems, tabRooms]);
 
   const visible = useMemo(
-    () => rankFeedItems(tabItems, selected),
-    [tabItems, selected],
+    () => rankFeedItems(threadItems, selected),
+    [threadItems, selected],
   );
 
   const published = useMemo(() => {
@@ -120,11 +177,20 @@ export function FeedStream() {
     return ids;
   }, [seed, sharedIds]);
 
+  const publishedRooms = useMemo(() => {
+    const ids = new Set(sharedRoomIds);
+    for (const room of publicRooms) ids.add(room.id);
+    return ids;
+  }, [publicRooms, sharedRoomIds]);
+
   function selectTab(next: Exclude<FeedTab, "network">) {
     setTab(next);
     setSelected([]);
     setShareMessage(null);
     setConfirmShareId(null);
+    setOpenRoomId(null);
+    setRoomShareMessage(null);
+    setConfirmShareRoomId(null);
   }
 
   async function shareToPublic(item: FeedItem) {
@@ -155,6 +221,43 @@ export function FeedStream() {
     await see.persist();
   }
 
+  async function shareRoomToPublic(room: Room) {
+    setRoomShareMessage(null);
+    if (!session || !see?.acl) {
+      setRoomShareMessage("Could not share this room.");
+      return;
+    }
+    if (confirmShareRoomId !== room.id) {
+      setConfirmShareRoomId(room.id);
+      return;
+    }
+    const prepared = prepareShareRoomIntoMesh(see.acl, room, session.address);
+    if ("denied" in prepared) {
+      setRoomShareMessage("Could not admit this room.");
+      setConfirmShareRoomId(null);
+      return;
+    }
+    const gun = gunRef.current;
+    if (!gun) {
+      setRoomShareMessage("Gun is not open yet.");
+      return;
+    }
+    gun.get("s3rch").get("rooms").get(prepared.key).put(prepared.node);
+    setSharedRoomIds((prev) =>
+      prev.includes(room.id) ? prev : [...prev, room.id],
+    );
+    setConfirmShareRoomId(null);
+    setRoomShareMessage(
+      "Published this room node to the public graph. Posts inside stay Mine until you share those posts. One-way here.",
+    );
+    await see.persist();
+  }
+
+  const composeRoomId =
+    tab === "mine" && openRoom && ownsRoom(openRoom, session?.address)
+      ? openRoom.id
+      : undefined;
+
   return (
     <div>
       <p className="mt-6 text-xs text-gray-400">
@@ -174,9 +277,11 @@ export function FeedStream() {
         </div>
       ) : null}
 
-      <ComposeForm
-        onItem={(next) => setOverlay((prev) => mergeItems(prev, [next]))}
-      />
+      {!composeRoomId ? (
+        <ComposeForm
+          onItem={(next) => setOverlay((prev) => mergeItems(prev, [next]))}
+        />
+      ) : null}
 
       <div className="mt-8 flex flex-wrap items-center gap-2">
         <button
@@ -212,6 +317,47 @@ export function FeedStream() {
         <span className="text-xs text-gray-400">later — mesh</span>
       </div>
 
+      <RoomsList
+        rooms={listedRooms}
+        selectedId={openRoomId}
+        onSelect={(room) => {
+          setOpenRoomId(room?.id ?? null);
+          setRoomShareMessage(null);
+          setConfirmShareRoomId(null);
+        }}
+        canCreate={tab === "mine" && Boolean(session)}
+        showCreateHint={tab === "mine" && !session}
+        onCreated={(room) => {
+          setMineRooms((prev) => mergeRooms(prev, [room]));
+          setOpenRoomId(room.id);
+        }}
+      />
+
+      {openRoom ? (
+        <RoomThreadHeader
+          room={openRoom}
+          mine={tab === "mine"}
+          owned={ownsRoom(openRoom, session?.address)}
+          shared={publishedRooms.has(openRoom.id)}
+          confirmShare={confirmShareRoomId === openRoom.id}
+          shareMessage={roomShareMessage}
+          sessionAddress={session?.address ?? null}
+          onClose={() => {
+            setOpenRoomId(null);
+            setRoomShareMessage(null);
+            setConfirmShareRoomId(null);
+          }}
+          onShare={() => void shareRoomToPublic(openRoom)}
+        />
+      ) : null}
+
+      {composeRoomId ? (
+        <ComposeForm
+          roomId={composeRoomId}
+          onItem={(next) => setOverlay((prev) => mergeItems(prev, [next]))}
+        />
+      ) : null}
+
       <TagChips tags={tags} selected={selected} onChange={setSelected} />
 
       {shareMessage && tab === "mine" ? (
@@ -220,7 +366,7 @@ export function FeedStream() {
 
       {visible.length === 0 ? (
         <p className="mt-8 rounded-xl border border-brand-100 bg-brand-50/40 p-6 text-sm text-gray-600">
-          {emptyCopy(tab, Boolean(session), selected.length > 0)}
+          {emptyCopy(tab, Boolean(session), selected.length > 0, Boolean(openRoom))}
         </p>
       ) : (
         <ul className="mt-8 space-y-3">
@@ -248,7 +394,22 @@ export function FeedStream() {
   );
 }
 
-function emptyCopy(tab: FeedTab, signedIn: boolean, tagged: boolean): string {
+function emptyCopy(
+  tab: FeedTab,
+  signedIn: boolean,
+  tagged: boolean,
+  inRoom: boolean,
+): string {
+  if (inRoom && tab === "mine") {
+    return tagged
+      ? "No Mine posts in this room for the selected tags."
+      : "This room has no Mine posts yet. Compose into it. Sharing the room does not publish these posts.";
+  }
+  if (inRoom) {
+    return tagged
+      ? "No public posts in this room for the selected tags."
+      : "This shared room has no public posts yet. Sharing the room does not publish Mine posts inside it.";
+  }
   if (tab === "mine" && !signedIn) {
     return "Mine is empty until you sign in. Overlay ingest and native posts stay here; they are not the public seed.";
   }
@@ -260,6 +421,84 @@ function emptyCopy(tab: FeedTab, signedIn: boolean, tagged: boolean): string {
   return tagged
     ? "No items in this Gun graph for the selected tags. Empty sources stay empty."
     : "No items in this Gun graph. Empty sources stay empty.";
+}
+
+function RoomThreadHeader({
+  room,
+  mine,
+  owned,
+  shared,
+  confirmShare,
+  shareMessage,
+  sessionAddress,
+  onClose,
+  onShare,
+}: {
+  room: Room;
+  mine: boolean;
+  owned: boolean;
+  shared: boolean;
+  confirmShare: boolean;
+  shareMessage: string | null;
+  sessionAddress: string | null;
+  onClose: () => void;
+  onShare: () => void;
+}) {
+  return (
+    <div className="mt-6 rounded-xl border border-brand-100 bg-gradient-to-b from-white to-brand-50/40 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-brand-700">
+            Room thread
+          </p>
+          <h2 className="mt-1 text-base font-semibold text-brand-900">
+            {room.title}
+          </h2>
+          <p className="mt-1 text-xs text-gray-500">{room.tags.join(" · ")}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg border border-brand-100 px-3 py-2 text-xs font-semibold text-brand-800"
+        >
+          Close thread
+        </button>
+      </div>
+      <p className="mt-3 text-xs text-gray-500">
+        Posts belong by tag. Live chat / presence / WebRTC is later. This-tab
+        Gun is the current graph.
+      </p>
+      {mine && owned && sessionAddress ? (
+        <div className="mt-3 border-t border-brand-100 pt-3">
+          {shared ? (
+            <p className="text-xs text-gray-500">
+              This room node is on the public graph. Posts inside stay Mine
+              until you share those posts. Publish is one-way here.
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-gray-500">
+                Share to public publishes this room node onto the public rooms
+                graph. It does not publish Mine posts inside it. A see-grant is
+                not this. Publish is one-way here.
+              </p>
+              <button
+                type="button"
+                onClick={onShare}
+                className="mt-2 rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800"
+              >
+                {confirmShare ? "Confirm share" : "Share to public"}
+              </button>
+            </>
+          )}
+          {shareMessage ? (
+            <p className="mt-2 text-xs text-gray-500">{shareMessage}</p>
+          ) : null}
+          <RoomSeeGrantControls address={sessionAddress} roomId={room.id} />
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function FeedCard({

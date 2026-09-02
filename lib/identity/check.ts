@@ -9,6 +9,7 @@
 
 import {
   fromGunNode,
+  protocolVersionOf,
   toGunNode,
   type GunFeedNode,
   type IdentitySeeGrant,
@@ -29,8 +30,24 @@ export type S3rchRoot = "s3rch";
 
 export const S3RCH_ROOT = "s3rch" as const;
 export const S3RCH_ITEMS = "items" as const;
+export const S3RCH_ROOMS = "rooms" as const;
 export const S3RCH_USERS = "users" as const;
 export const S3RCH_META = "meta" as const;
+
+/**
+ * gun.get('s3rch').get('rooms').get(encodeKey(id))
+ * Gun cannot store arrays: `tags` is a comma-separated string.
+ */
+export type GunRoomNode = {
+  id: string;
+  title: string;
+  owner: string;
+  tags: string;
+  ts: number;
+  provenance: string;
+  /** Missing on older nodes; treat as v1. Unknown versions fail closed. */
+  v?: number;
+};
 
 /**
  * Untrusted edge handoff (ingest / seeder / URL cross).
@@ -101,6 +118,11 @@ export function encodeKey(id: string): string {
 /** s3rch/items/<encodeKey(id)> */
 export function itemSoul(id: string): string {
   return `${S3RCH_ROOT}/${S3RCH_ITEMS}/${encodeKey(id)}`;
+}
+
+/** s3rch/rooms/<encodeKey(id)> */
+export function roomSoul(id: string): string {
+  return `${S3RCH_ROOT}/${S3RCH_ROOMS}/${encodeKey(id)}`;
 }
 
 /** s3rch/users/<wallet> */
@@ -174,6 +196,7 @@ export function grantNamesObject(
   if (!claimId) return false;
   if (claimId === object) return true;
   if (itemSoul(claimId) === object) return true;
+  if (roomSoul(claimId) === object) return true;
   if (encodeKey(claimId) === object) return true;
   return false;
 }
@@ -290,6 +313,37 @@ export function admitFeedNode(
   return { object };
 }
 
+function roomNodeAdmitted(node: GunRoomNode): string | null {
+  if (!node || typeof node.id !== "string" || !node.id.trim()) return null;
+  if (typeof node.title !== "string" || !node.title.trim()) return null;
+  if (protocolVersionOf(node.v) === null) return null;
+  return node.id.trim();
+}
+
+/**
+ * Destination re-authorizes, then may put a GunRoomNode into rooms.
+ * Hint / URL fetch is not authorization. meta and UrlLeaf fail closed.
+ */
+export function admitRoomNode(
+  acl: SeeAcl,
+  node: GunRoomNode,
+  owner: AccessorId,
+  hint?: HandoffHint,
+): { object: CheckObjectId } | { denied: true } {
+  void hint;
+  const dest = destOwner(owner);
+  const id = roomNodeAdmitted(node);
+  if (!dest || !id) {
+    return { denied: true };
+  }
+  const object = roomSoul(id);
+  if (isMetaId(object) || isUrlLeafId(object)) {
+    return { denied: true };
+  }
+  acl.putObject(object, dest);
+  return { object };
+}
+
 function resolveGrantObject(
   acl: SeeAcl,
   grant: IdentitySeeGrant,
@@ -297,8 +351,10 @@ function resolveGrantObject(
   const claimId = grant.claimId.trim();
   if (!claimId || isUrlLeafId(claimId) || isMetaId(claimId)) return undefined;
   if (acl.hasObject(claimId)) return claimId;
-  const soul = itemSoul(claimId);
-  if (acl.hasObject(soul)) return soul;
+  const item = itemSoul(claimId);
+  if (acl.hasObject(item)) return item;
+  const room = roomSoul(claimId);
+  if (acl.hasObject(room)) return room;
   return undefined;
 }
 
