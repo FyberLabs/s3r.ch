@@ -9,6 +9,7 @@ import {
   useSignMessage,
 } from "wagmi";
 import { IdentityProviders } from "@/components/IdentityProviders";
+import { SeeGrantControls } from "@/components/SeeGrantControls";
 import { SIWE_MESSAGE_TTL_MS } from "@/lib/identity/config";
 import {
   getMeshKey,
@@ -755,6 +756,16 @@ function IdentityBarInner() {
       ) : null}
       {rss3ClaimLine(indicators.rss3.name) ? (
         <p className="mt-3 text-xs text-gray-500">{rss3ClaimLine(indicators.rss3.name)}</p>
+      ) : null}
+      {session ? (
+        <SeeGrantControls
+          address={session.address}
+          ens={ensClaim}
+          unstoppable={unstoppableClaim}
+          farcaster={indicators.farcaster.name}
+          lens={indicators.lens.name}
+          rss3={indicators.rss3.name}
+        />
       ) : null}
       {showPrfMissing ? (
         <p className="mt-3 text-xs text-gray-500">{PRF_UNAVAILABLE_MESSAGE}</p>

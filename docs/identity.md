@@ -19,6 +19,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - After a SIWE session exists: **Farcaster / Lens / RSS3 held claims** on `/feed` when a bidirectional public lookup binds them to the checksummed session address. These are never login (no SIWF, no Lens OAuth, no RSS3 login) and never the session key.
 - **ERC-1271** (and EIP-6492 via the same viem path) so a smart-account wallet can SIWE. Session subject stays the checksummed contract or EOA address.
 - **Paper-backup UI** for the wrap secondary KEK (`s3rch-wrap-v1:<base64url>`). Recovery, not login. Random 32-byte paper IKM (not a wallet-signature export). Shown once on wrap/export; paste unlocks.
+- Light SociACL **Check see-grants** in the browser (`CHECK(see, object, accessor)` at `now`). Quiet `/feed` grant / revoke after SIWE. Grants are `IdentitySeeGrant` records on an in-memory / IndexedDB dest ACL. Not login.
 
 ## What this slice does not ship
 
@@ -30,7 +31,8 @@ Components here are written so they can be extracted into a shared kit later. Th
 - ENS or Unstoppable as login, or writing an ENS / Unstoppable / Farcaster / Lens / RSS3 claim onto the public Gun graph.
 - A UD partner key in `NEXT_PUBLIC_*`, a browser call to `api.unstoppabledomains.com/resolve`, or Key Vault for `UNSTOPPABLE_API_KEY`.
 - Farcaster SIWF, Lens OAuth, or RSS3 login. Indicators are held claims after SIWE, not session subjects.
-- SociACL Check / certify. Do not import `FyberLabs/SociACL`.
+- Importing `FyberLabs/SociACL` as a crate, NAPI, WASM, or npm package. Light Check is re-typed from the consume contract (`docs/s3rch-check.d.ts`).
+- Friend-of-friend, Social Light hop UI, Elect / wills / Case C, or any verb beyond `see`.
 - NextAuth, Keycloak, or email magic link on this app.
 - Changing seed Gun, Cloudflare, GitHub Actions, or `lib/auth.ts` seed helper (that file is `SEED_SECRET` only).
 
@@ -51,6 +53,8 @@ Components here are written so they can be extracted into a shared kit later. Th
 | Passkey WebAuthn PRF wrap is recovery | PRF is device proof. It does not become the session subject |
 | Paper backup is recovery | Same wrap slot as wallet secondary. Never login. Never persist the paper string, DEK, KEKs, or SEA `priv` / `epriv` in Gun, cookies, or `sessionStorage` |
 | `lib/auth.ts` is seed authorize | User identity lives in `lib/identity/` |
+| Check is grants, not login | Session subject stays the checksummed address. A live `IdentitySeeGrant` is not a session. hopcap 1. Revoke is immediate. URL 200 / ingest / seeder fetch is not `see` |
+| Dest ACL is local | See-grants live in memory / origin IndexedDB. Never write SIWE signatures, SEA `priv` / `epriv`, wrap envelopes, or paper strings onto public Gun |
 
 ## Libraries
 
@@ -93,6 +97,9 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `lib/identity/lens-claim.ts` | Public Lens GraphQL owned-account reverse + owner forward |
 | `lib/identity/rss3-claim.ts` | Optional GI overlay reverse + owner forward. Quiet label, not a feed |
 | `lib/identity/indicators.ts` | Session-gated Farcaster / Lens / RSS3 in one trip. Isolates GI misses |
+| `lib/identity/check.ts` | Consume-contract Check: `checkSee`, `checkSeeGrant`, `applySeeGrant`, `cancelSee`, `admitFeedNode`, `acceptHint`, souls |
+| `lib/identity/see-acl.ts` | Lab dest ACL (memory + IndexedDB). `IdentitySeeGrant` records only |
+| `lib/identity/held-claims.ts` | Claim ids linked from the user node (`ens:name.eth`, `unstoppable:brad.x`). Not `s3rch/users/{wallet}/claims/…` |
 | `app/api/identity/nonce` | `GET` — issue nonce cookie, return `{ nonce }` |
 | `app/api/identity/verify` | `POST` `{ message, signature }` — verify SIWE, set session |
 | `app/api/identity/session` | `GET` — current `{ address, chainId }` or 401 |
@@ -100,7 +107,8 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `app/api/identity/unstoppable` | `GET ?address=` — session-gated Unstoppable claim for the session address only |
 | `app/api/identity/indicators` | `GET ?address=` — session-gated Farcaster / Lens / RSS3 claims for the session address only |
 | `app/api/identity/logout` | `POST` — clear identity cookies |
-| `components/IdentityBar.tsx` | Quiet `/feed` connect + optional WalletConnect + SIWE + mesh key + wrap/unlock + paper backup + ENS + Unstoppable + public-indicator claims + sign out |
+| `components/IdentityBar.tsx` | Quiet `/feed` connect + optional WalletConnect + SIWE + mesh key + wrap/unlock + paper backup + ENS + Unstoppable + public-indicator claims + see-grant / revoke + sign out |
+| `components/SeeGrantControls.tsx` | Signed-in grant see / revoke of a held claim (wallet / ENS / Unstoppable / FC / Lens / RSS3). Copy: this is a grant, not login. No hop UI |
 
 ## Cookies
 
@@ -153,7 +161,7 @@ RPC errors and a non-magic / false ERC-1271 result are a quiet invalid signature
 
 Reject on domain mismatch. Do not treat ENS names as the session key.
 
-s3r.ch does **not** use Panopticon Keycloak as an IdP and does not federate to hyperme.sh. SociACL Check is grants later, not login.
+s3r.ch does **not** use Panopticon Keycloak as an IdP and does not federate to hyperme.sh. SociACL Check is **grants**, not login. The session subject stays the checksummed address. See [s3rch-check.md](s3rch-check.md).
 
 ## ENS held claim (after SIWE, not login)
 
@@ -299,6 +307,7 @@ After signed-in + mesh key present:
 - Degrade copy when PRF is missing; paper unlock still works
 - After SIWE: quiet `ENS claim:` / `Unstoppable claim:` / indicator lines when verified. Empty Unstoppable does not drop the others
 - Do not dump `priv` / `epriv`, the paper string as a standing `/feed` hero line, or invalid-paste dumps
+- After SIWE: quiet **Grant see** / **Revoke** for a held claim (wallet / ENS / Unstoppable / …) to another checksummed address and a time window. Copy: this is a grant, not login. No hop UI
 
 ## Local SEA mesh key (after SIWE)
 
@@ -335,14 +344,35 @@ Local: copy `.env.example` to `.env.local`. `next dev` reads `.env.local`. Do no
 
 A sibling infra PR will add the variable mapping. Until that id exists, leave the env empty.
 
+## Light Check see-grants (grants, not login)
+
+After SIWE, the holder can grant `see` of a held claim (wallet, ENS, Unstoppable, Farcaster, Lens, RSS3) to another checksummed address for a time window, and revoke immediately. Session subject stays the checksummed address. Copy: **this is a grant, not login.**
+
+Source of truth: [s3rch-check.md](s3rch-check.md) / [s3rch-check.d.ts](s3rch-check.d.ts), matching FyberLabs/SociACL `crates/sociacl-gun` consume contract. Do not import that crate.
+
+`CHECK(see, object, accessor)` at `now`:
+
+- Owner sees their object.
+- Else a live `IdentitySeeGrant` must name the pair and `now ∈ [from, until)` (`until` exclusive).
+- Hint never sets `allowed`. hopcap **1** — do not walk friend edges.
+- `meta` and `UrlLeaf` fail closed. A URL 200 is not `see`.
+- `admitFeedNode` re-authorizes at dest before `put` into `items`.
+- Privilege-down (`cancelSee`) is immediate.
+
+Dest ACL is lab-local (memory / IndexedDB). Grants are `IdentitySeeGrant` records only. Public mesh vs mine still applies: a grant is not share-into-mesh and is not written onto public Gun.
+
+Claim object id is the claim id, linked from the user node (`ens:name.eth`). Do not invent `s3rch/users/{wallet}/claims/…`.
+
+Quiet `/feed` IdentityBar: grant see + revoke after SIWE. No hop UI. No Elect / wills / Case C. Social Light hop is not this slice (it can factor a Check later; it cannot mint a grant).
+
 ## Follow-ups
 
 - SNS / Solana names (not this slice; ENS remains primary mainnet reverse+forward. Unstoppable is a held claim after SIWE, not login).
-- SociACL Check when sharing needs grants (adapter lives outside this repo). Do not import `FyberLabs/SociACL`.
+- More Check verbs, Social Light hop (may factor a Check later; it cannot mint a grant), friend-of-friend. Do not import `FyberLabs/SociACL`.
 - Azure Key Vault for `IDENTITY_SESSION_SECRET` and later `UNSTOPPABLE_API_KEY` (still operator / Azure in this slice).
 - Contract verify on chains other than mainnet (this slice's 1271 RPC allowlist is mainnet only).
 
-This slice ships an Unstoppable held claim after SIWE (Polygon on-chain reverse+forward; optional server-only Resolution key), paper-backup UI for the wrap secondary KEK, ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client), and WalletConnect gated on `NEXT_PUBLIC_WC_PROJECT_ID`. s3r.ch does not use Panopticon Keycloak as an IdP. Unstoppable is never login.
+This slice ships an Unstoppable held claim after SIWE (Polygon on-chain reverse+forward; optional server-only Resolution key), paper-backup UI for the wrap secondary KEK, ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client), WalletConnect gated on `NEXT_PUBLIC_WC_PROJECT_ID`, and light SociACL Check see-grants (consume contract in [s3rch-check.md](s3rch-check.md)). Check is grants, not login. Unstoppable is never login. s3r.ch does not use Panopticon Keycloak as an IdP.
 
 ## Live fixtures (re-checked 2026-09-01)
 
