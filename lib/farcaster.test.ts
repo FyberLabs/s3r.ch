@@ -129,6 +129,6 @@ describe("fromGunNode farcaster", () => {
     );
     assert.ok(item);
     const recovered = fromGunNode(toGunNode(item));
-    assert.deepEqual(recovered, item);
+    assert.deepEqual(recovered, { ...item, v: 1 });
   });
 });

@@ -49,7 +49,7 @@ describe("normalizeAtprotoPost", () => {
       "atproto:test",
     );
     assert.ok(item);
-    assert.deepEqual(fromGunNode(toGunNode(item)), item);
+    assert.deepEqual(fromGunNode(toGunNode(item)), { ...item, v: 1 });
   });
 });
 

@@ -9,7 +9,7 @@
  * Reference implementation (Rust, this repo): crates/sociacl-gun.
  *
  * CHECK(see, object, accessor) at now.
- *   object   = GunFeedNode | Gun-native claim on s3rch/users/{wallet}
+ *   object   = GunFeedNode | GunRoomNode | Gun-native claim on s3rch/users/{wallet}
  *   accessor = wallet / Gun peer
  *   hopcap 1, jointly stated grants, revoke immediate
  */
@@ -34,6 +34,8 @@ export type GunFeedNode = {
   permalink: string;
   tags: string;
   provenance: string;
+  /** Missing on old seed rows; treat as v1. Unknown versions fail closed. */
+  v?: number;
 };
 
 /**
@@ -50,6 +52,23 @@ export type FeedItem = {
   permalink: string;
   tags: string[];
   provenance: string;
+  v?: number;
+};
+
+/**
+ * In-graph room node. Native Check object.
+ * gun.get('s3rch').get('rooms').get(encodeKey(id))
+ * Gun cannot store arrays: `tags` is a comma-separated string.
+ */
+export type GunRoomNode = {
+  id: string;
+  title: string;
+  owner: string;
+  tags: string;
+  ts: number;
+  provenance: string;
+  /** Missing on older nodes; treat as v1. Unknown versions fail closed. */
+  v?: number;
 };
 
 /**
@@ -152,6 +171,9 @@ export function encodeKey(id: string): string;
 /** s3rch/items/<encodeKey(id)> */
 export function itemSoul(id: string): string;
 
+/** s3rch/rooms/<encodeKey(id)> */
+export function roomSoul(id: string): string;
+
 /** s3rch/users/<wallet> */
 export function userSoul(wallet: string): string;
 
@@ -202,6 +224,17 @@ export function checkSeeGrant(
 export function admitFeedNode(
   acl: SeeAcl,
   node: GunFeedNode,
+  owner: AccessorId,
+  hint?: HandoffHint,
+): { object: CheckObjectId } | { denied: true };
+
+/**
+ * Destination re-authorizes, then may put a GunRoomNode into rooms.
+ * Hint / URL fetch is not authorization.
+ */
+export function admitRoomNode(
+  acl: SeeAcl,
+  node: GunRoomNode,
   owner: AccessorId,
   hint?: HandoffHint,
 ): { object: CheckObjectId } | { denied: true };

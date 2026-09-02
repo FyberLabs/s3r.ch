@@ -23,12 +23,15 @@ export default function FeedPage() {
         A Fyber Labs lab feed. Gun is the graph. Public Farcaster hub,
         ATProto AppView, and RSS activity is seeded into Gun on a cadence.
         RSS3 GI is optional. Signed-in, you can compose a native post onto
-        Mine. Share to public is explicit.
+        Mine, or open a room thread. Share to public is explicit.
       </p>
       <p className="mt-3 text-sm text-gray-500">
-        Public and Mine tabs. Tags first, then recency. There are no popular
-        or novel columns. A see-grant is not delivery and not share-into-mesh.
-        Outbound bridges are not enabled. Network is later.
+        Public and Mine tabs. Rooms are Gun objects, Mine by default. Tags
+        first, then recency. There are no popular or novel columns. A
+        see-grant is not delivery and not share-into-mesh. Sharing a room
+        does not publish the posts inside it. Live chat / presence / WebRTC
+        is later; room state in this slice is this-tab Gun. Outbound bridges
+        are not enabled. Network is later.
       </p>
 
       <SeeAclProvider>

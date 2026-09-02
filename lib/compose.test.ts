@@ -65,8 +65,16 @@ describe("FeedSource s3rch", () => {
     const node = toGunNode(item);
     assert.equal(node.source, "s3rch");
     assert.equal(node.tags, "lab,user,s3rch");
+    assert.equal(node.v, 1);
     const back = fromGunNode(node);
     assert.deepEqual(back, item);
+    assert.equal(fromGunNode({ ...node, v: undefined })?.id, item.id);
+    assert.equal(fromGunNode({ ...node, v: 2 }), null);
+    const kept = [fromGunNode(node), fromGunNode({ ...node, v: 2 })].filter(
+      (row): row is NonNullable<typeof row> => row !== null,
+    );
+    assert.equal(kept.length, 1);
+    assert.equal(kept[0]?.id, item.id);
   });
 });
 
@@ -89,6 +97,7 @@ describe("composeNativePost", () => {
     assert.equal(item.provenance, `s3rch:native:${ALICE}`);
     assert.equal(item.id, `s3rch:post:${ALICE}:${NOW}:deadbeef`);
     assert.deepEqual(item.tags, ["mesh", "user", "s3rch"]);
+    assert.equal(item.v, 1);
   });
 
   it("rejects an empty body", () => {
