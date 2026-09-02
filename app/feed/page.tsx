@@ -30,8 +30,8 @@ export default function FeedPage() {
         first, then recency. There are no popular or novel columns. A
         see-grant is not delivery and not share-into-mesh. Sharing a room
         does not publish the posts inside it. Live chat / presence / WebRTC
-        is later; room state in this slice is this-tab Gun. Outbound bridges
-        are not enabled. Network is later.
+        is later. Trying seed peer; snapshot if the socket is down. That is
+        not a P2P mesh. Outbound bridges are not enabled. Network is later.
       </p>
 
       <SeeAclProvider>
