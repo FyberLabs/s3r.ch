@@ -1,5 +1,7 @@
 "use client";
 
+import { chipOff, chipOn } from "@/lib/brand-ui";
+
 export function TagChips({
   tags,
   selected,
@@ -21,18 +23,14 @@ export function TagChips({
 
   return (
     <div className="mt-8">
-      <p className="text-xs font-medium uppercase tracking-wide text-brand-700">
+      <p className="text-xs font-medium uppercase tracking-wide text-signal">
         Tags
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => onChange([])}
-          className={`rounded-full border px-3 py-1 text-xs font-medium ${
-            selected.length === 0
-              ? "border-brand-700 bg-brand-700 text-white"
-              : "border-brand-100 bg-white text-brand-900 hover:border-brand-500"
-          }`}
+          className={selected.length === 0 ? chipOn : chipOff}
         >
           All
         </button>
@@ -43,11 +41,7 @@ export function TagChips({
               key={tag}
               type="button"
               onClick={() => toggle(tag)}
-              className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                active
-                  ? "border-brand-700 bg-brand-700 text-white"
-                  : "border-brand-100 bg-white text-brand-900 hover:border-brand-500"
-              }`}
+              className={active ? chipOn : chipOff}
             >
               {tag}
             </button>

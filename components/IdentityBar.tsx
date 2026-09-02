@@ -61,6 +61,7 @@ import {
   secondaryIkmFromWalletSignature,
   wrapSeaPair,
 } from "@/lib/identity/wrap";
+import { btnPrimary, btnSecondary, fieldMono, panel } from "@/lib/brand-ui";
 
 type SessionPayload = {
   address: string;
@@ -599,9 +600,9 @@ function IdentityBarInner() {
     Boolean(session) && meshKind === "wrapped" && prfAvailable !== false;
 
   return (
-    <div className="mt-10 rounded-xl border border-brand-100 bg-brand-50/40 p-5">
-      <h2 className="text-sm font-semibold text-brand-900">Session</h2>
-      <p className="mt-2 text-sm text-gray-600">
+    <div className={`mt-10 ${panel}`}>
+      <h2 className="text-sm font-semibold text-ink">Session</h2>
+      <p className="mt-2 text-sm text-ink-muted">
         Sign in with Ethereum binds this browser to a checksummed address
         (EOA or ERC-1271 smart account). A Passkey wallet creates or opens a
         Coinbase Smart Wallet so you can get an address; sign-in is still SIWE,
@@ -616,14 +617,14 @@ function IdentityBarInner() {
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {session ? (
           <>
-            <p className="text-sm font-medium text-brand-900">
+            <p className="text-sm font-medium text-ink">
               {truncateAddress(session.address)}
             </p>
             <button
               type="button"
               disabled={busy}
               onClick={() => void onSignOut()}
-              className="rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+              className={btnPrimary}
             >
               Sign out
             </button>
@@ -632,7 +633,7 @@ function IdentityBarInner() {
                 type="button"
                 disabled={busy}
                 onClick={() => void onWrapWithPasskey()}
-                className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+                className={btnSecondary}
               >
                 Wrap with passkey
               </button>
@@ -642,7 +643,7 @@ function IdentityBarInner() {
                 type="button"
                 disabled={busy}
                 onClick={() => void onUnlockMeshKey()}
-                className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+                className={btnSecondary}
               >
                 Unlock mesh key
               </button>
@@ -652,7 +653,7 @@ function IdentityBarInner() {
                 type="button"
                 disabled={busy}
                 onClick={() => void onExportPaperBackup()}
-                className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+                className={btnSecondary}
               >
                 Export paper backup
               </button>
@@ -666,7 +667,7 @@ function IdentityBarInner() {
                   type="button"
                   disabled={connecting || busy}
                   onClick={() => void onConnect()}
-                  className="rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                  className={btnPrimary}
                 >
                   Connect wallet
                 </button>
@@ -675,7 +676,7 @@ function IdentityBarInner() {
                     type="button"
                     disabled={connecting || busy}
                     onClick={() => void onWalletConnect()}
-                    className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+                    className={btnSecondary}
                   >
                     WalletConnect
                   </button>
@@ -685,14 +686,14 @@ function IdentityBarInner() {
                     type="button"
                     disabled={connecting || busy}
                     onClick={() => void onPasskeyWallet()}
-                    className="rounded-lg border border-brand-200 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+                    className={btnSecondary}
                   >
                     Passkey wallet
                   </button>
                 ) : null}
               </>
             ) : (
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-ink-muted">
                 Wallet {truncateAddress(address ?? "")} · not signed in
               </p>
             )}
@@ -700,7 +701,7 @@ function IdentityBarInner() {
               type="button"
               disabled={busy || !isConnected}
               onClick={() => void onSignIn()}
-              className="rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+              className={btnPrimary}
             >
               Sign in with Ethereum
             </button>
@@ -708,7 +709,7 @@ function IdentityBarInner() {
         )}
       </div>
       {showWrap ? (
-        <label className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+        <label className="mt-3 flex items-center gap-2 text-xs text-ink-muted">
           <input
             type="checkbox"
             checked={wrapWithPaper}
@@ -728,13 +729,13 @@ function IdentityBarInner() {
             autoComplete="off"
             spellCheck={false}
             disabled={busy}
-            className="min-w-[16rem] flex-1 rounded-lg border border-brand-100 bg-white px-3 py-2 font-mono text-xs text-gray-700 disabled:opacity-50"
+            className={`min-w-[16rem] flex-1 ${fieldMono}`}
           />
           <button
             type="button"
             disabled={busy || !paperPaste.trim()}
             onClick={() => void onUnlockWithPaper()}
-            className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+            className={btnSecondary}
           >
             Unlock with paper
           </button>
@@ -746,39 +747,39 @@ function IdentityBarInner() {
             type="text"
             readOnly
             value={paperReveal}
-            className="min-w-[16rem] flex-1 rounded-lg border border-brand-100 bg-white px-3 py-2 font-mono text-xs text-gray-700"
+            className={`min-w-[16rem] flex-1 ${fieldMono}`}
           />
           <button
             type="button"
             onClick={() => void onCopyPaperReveal()}
-            className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800"
+            className={btnSecondary}
           >
             Copy
           </button>
-          <p className="basis-full text-xs text-gray-500">
+          <p className="basis-full text-xs text-ink-muted">
             Keep this. It will not be shown again.
           </p>
         </div>
       ) : null}
-      {meshLine ? <p className="mt-3 text-xs text-gray-500">{meshLine}</p> : null}
+      {meshLine ? <p className="mt-3 text-xs text-ink-muted">{meshLine}</p> : null}
       {ensClaimLine(ensClaim) ? (
-        <p className="mt-3 text-xs text-gray-500">{ensClaimLine(ensClaim)}</p>
+        <p className="mt-3 text-xs text-ink-muted">{ensClaimLine(ensClaim)}</p>
       ) : null}
       {unstoppableClaimLine(unstoppableClaim) ? (
-        <p className="mt-3 text-xs text-gray-500">
+        <p className="mt-3 text-xs text-ink-muted">
           {unstoppableClaimLine(unstoppableClaim)}
         </p>
       ) : null}
       {farcasterClaimLine(indicators.farcaster.name) ? (
-        <p className="mt-3 text-xs text-gray-500">
+        <p className="mt-3 text-xs text-ink-muted">
           {farcasterClaimLine(indicators.farcaster.name)}
         </p>
       ) : null}
       {lensClaimLine(indicators.lens.name) ? (
-        <p className="mt-3 text-xs text-gray-500">{lensClaimLine(indicators.lens.name)}</p>
+        <p className="mt-3 text-xs text-ink-muted">{lensClaimLine(indicators.lens.name)}</p>
       ) : null}
       {rss3ClaimLine(indicators.rss3.name) ? (
-        <p className="mt-3 text-xs text-gray-500">{rss3ClaimLine(indicators.rss3.name)}</p>
+        <p className="mt-3 text-xs text-ink-muted">{rss3ClaimLine(indicators.rss3.name)}</p>
       ) : null}
       {session ? (
         <SeeGrantControls
@@ -791,9 +792,9 @@ function IdentityBarInner() {
         />
       ) : null}
       {showPrfMissing ? (
-        <p className="mt-3 text-xs text-gray-500">{PRF_UNAVAILABLE_MESSAGE}</p>
+        <p className="mt-3 text-xs text-ink-muted">{PRF_UNAVAILABLE_MESSAGE}</p>
       ) : null}
-      {message ? <p className="mt-3 text-xs text-gray-500">{message}</p> : null}
+      {message ? <p className="mt-3 text-xs text-ink-muted">{message}</p> : null}
     </div>
   );
 }

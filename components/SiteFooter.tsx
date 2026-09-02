@@ -1,13 +1,13 @@
 export function SiteFooter() {
   return (
-    <footer className="mt-20 border-t border-gray-200 py-10 text-center text-sm text-gray-400">
+    <footer className="mt-20 border-t border-rule py-10 text-center text-sm text-ink-muted">
       <p>
         A{" "}
         <a
           href="https://fyberlabs.com"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-gray-500 hover:text-gray-600"
+          className="text-ink hover:text-signal"
         >
           Fyber Labs
         </a>{" "}
@@ -18,7 +18,7 @@ export function SiteFooter() {
           href="https://fyberlabs.com"
           target="_blank"
           rel="noopener noreferrer"
-          className="hover:text-gray-600"
+          className="hover:text-ink"
         >
           Fyber Labs
         </a>
@@ -27,7 +27,7 @@ export function SiteFooter() {
           href="https://hyperme.sh"
           target="_blank"
           rel="noopener noreferrer"
-          className="hover:text-gray-600"
+          className="hover:text-ink"
         >
           Hypermesh / Hyperme.sh
         </a>
@@ -36,7 +36,7 @@ export function SiteFooter() {
           href="https://tennesseewindage.com"
           target="_blank"
           rel="noopener noreferrer"
-          className="hover:text-gray-600"
+          className="hover:text-ink"
         >
           Tennessee Windage
         </a>

@@ -9,6 +9,7 @@ import {
 } from "@/lib/identity/held-claims";
 import { grantsOwnedBy } from "@/lib/identity/see-acl";
 import { useSeeAcl } from "@/components/SeeAclProvider";
+import { btnSecondary, field, fieldMono } from "@/lib/brand-ui";
 
 export const ROOM_SEE_GRANT_COPY =
   "This is a grant, not login, and not share-into-mesh. Grant is not delivery. The accessor may see; they do not receive the room until it is on a graph they can read.";
@@ -92,8 +93,8 @@ export function RoomSeeGrantControls({
   if (!see?.ready) return null;
 
   return (
-    <div className="mt-3 border-t border-brand-100 pt-3">
-      <p className="text-xs text-gray-500">{ROOM_SEE_GRANT_COPY}</p>
+    <div className="mt-3 border-t border-rule pt-3">
+      <p className="text-xs text-ink-muted">{ROOM_SEE_GRANT_COPY}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <input
           type="text"
@@ -103,7 +104,7 @@ export function RoomSeeGrantControls({
           autoComplete="off"
           spellCheck={false}
           disabled={busy}
-          className="min-w-[12rem] flex-1 rounded-lg border border-brand-100 bg-white px-3 py-2 font-mono text-xs text-gray-700 disabled:opacity-50"
+          className={`min-w-[12rem] flex-1 ${fieldMono}`}
         />
         <input
           type="number"
@@ -113,14 +114,14 @@ export function RoomSeeGrantControls({
           onChange={(event) => setHoursInput(event.target.value)}
           disabled={busy}
           aria-label="Hours"
-          className="w-16 rounded-lg border border-brand-100 bg-white px-3 py-2 text-xs text-gray-700 disabled:opacity-50"
+          className={`w-16 ${field}`}
         />
-        <span className="text-xs text-gray-500">hours</span>
+        <span className="text-xs text-ink-muted">hours</span>
         <button
           type="button"
           disabled={busy}
           onClick={() => void onGrant()}
-          className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+          className={btnSecondary}
         >
           Grant see
         </button>
@@ -130,7 +131,7 @@ export function RoomSeeGrantControls({
           {grants.map((grant) => (
             <li
               key={`${grant.claimId}:${grant.accessor}:${grant.from}:${grant.until}`}
-              className="flex flex-wrap items-center gap-2 text-xs text-gray-500"
+              className="flex flex-wrap items-center gap-2 text-xs text-ink-muted"
             >
               <span>
                 see → {truncateAddress(grant.accessor)} until {formatUntil(grant.until)}
@@ -139,7 +140,7 @@ export function RoomSeeGrantControls({
                 type="button"
                 disabled={busy}
                 onClick={() => void onRevoke(grant)}
-                className="rounded-lg border border-brand-700 px-2 py-1 text-xs font-semibold text-brand-800 disabled:opacity-50"
+                className={btnSecondary}
               >
                 Revoke
               </button>
@@ -147,7 +148,7 @@ export function RoomSeeGrantControls({
           ))}
         </ul>
       ) : null}
-      {message ? <p className="mt-2 text-xs text-gray-500">{message}</p> : null}
+      {message ? <p className="mt-2 text-xs text-ink-muted">{message}</p> : null}
     </div>
   );
 }
