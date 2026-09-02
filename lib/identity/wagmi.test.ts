@@ -16,21 +16,22 @@ describe("walletConnectProjectId", () => {
 });
 
 describe("identityConnectors WalletConnect gate", () => {
-  it("is injected-only when the project id is missing", () => {
+  it("includes injected and Coinbase Smart Wallet when the project id is missing", () => {
     const connectors = identityConnectors(null);
-    assert.equal(connectors.length, 1);
-    assert.equal(connectorId(connectors[0]), "injected");
-    assert.equal(
-      connectors.some((connector) => connectorId(connector) === "walletConnect"),
-      false,
-    );
+    const ids = connectors.map((connector) => connectorId(connector));
+    assert.ok(ids.includes("injected"));
+    assert.ok(ids.includes("coinbaseWalletSDK"));
+    assert.equal(ids.includes("walletConnect"), false);
+    assert.equal(connectors.length, 2);
   });
 
   it("adds walletConnect when a project id is set (no live Reown project)", () => {
     const connectors = identityConnectors("unit-test-not-a-reown-project");
     const ids = connectors.map((connector) => connectorId(connector));
     assert.ok(ids.includes("injected"));
+    assert.ok(ids.includes("coinbaseWalletSDK"));
     assert.ok(ids.includes("walletConnect"));
+    assert.equal(connectors.length, 3);
   });
 });
 

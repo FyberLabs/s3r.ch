@@ -11,7 +11,8 @@ Components here are written so they can be extracted into a shared kit later. Th
 - EIP-4361 **Sign-In with Ethereum** (SIWE).
 - Signed **HttpOnly cookie session** bound to a **checksummed** Ethereum address (never ENS, never email, never a SEA pub).
 - Quiet connect / sign-in / sign-out on `/feed` (injected wallet by default).
-- **WalletConnect** (QR / mobile) as a second wagmi connector, **gated** on `NEXT_PUBLIC_WC_PROJECT_ID` at **build time**. Empty / unset stays injected-only. WalletConnect is a connector, not a new identity provider. Sign-in is still SIWE after a session address exists.
+- **Coinbase Smart Wallet onramp** (wagmi `coinbaseWallet` with `preference.options: "smartWalletOnly"`). Ungated — no project id. Creates or opens a passkey smart account so someone not in crypto yet can get an address, then SIWE as today. Not a second IdP. Not email/phone login. Not `@coinbase/cdp-wagmi`.
+- **WalletConnect** (QR / mobile) as a wagmi connector, **gated** on `NEXT_PUBLIC_WC_PROJECT_ID` at **build time**. Empty / unset keeps injected + Smart Wallet (no WalletConnect). WalletConnect is a connector, not a new identity provider. Sign-in is still SIWE after a session address exists.
 - After the SIWE session is set: a **local Gun SEA P-256 pair** (different curve from Ethereum) plus a **wallet-signed link** (`pub` belongs to this checksummed address), persisted in **origin IndexedDB**.
 - **WebAuthn PRF wrap** of that local pair (recovery / device proof, **not** login). Envelope version 1 in IndexedDB, with ≥2 KEKs (PRF + secondary). Quiet `/feed` controls: wrap / unlock / paper backup / status.
 - After a SIWE session exists: a **mainnet ENS held claim** on `/feed` when reverse **and** forward match the checksummed session address. ENS is never login and never the session key.
@@ -26,7 +27,8 @@ Components here are written so they can be extracted into a shared kit later. Th
 - Passkey as primary login. Session subject stays the checksummed address.
 - Writing the envelope, DEK, KEKs, SIWE signatures, or SEA `priv` / `epriv` to Gun for recovery.
 - A paper-only wrap that drops the PRF KEK. Paper replaces the **secondary** IKM only.
-- A Reown Cloud project id invented in this repo. Empty `NEXT_PUBLIC_WC_PROJECT_ID` stays injected-only.
+- A Reown Cloud project id invented in this repo. Empty `NEXT_PUBLIC_WC_PROJECT_ID` stays injected + Smart Wallet (no WalletConnect).
+- Coinbase CDP Embedded Wallet (`@coinbase/cdp-wagmi`), a CDP Project ID, email/phone magic link, Privy, Dynamic, Web3Auth, or Magic as the session. Those are email-login-as-IdP. Onramp is Smart Wallet then SIWE.
 - Panopticon / Hypermesh Keycloak as an IdP. s3r.ch login stays EIP-4361 SIWE.
 - ENS or Unstoppable as login, or writing an ENS / Unstoppable / Farcaster / Lens / RSS3 claim onto the public Gun graph.
 - A UD partner key in `NEXT_PUBLIC_*`, a browser call to `api.unstoppabledomains.com/resolve`, or Key Vault for `UNSTOPPABLE_API_KEY`.
@@ -50,7 +52,8 @@ Components here are written so they can be extracted into a shared kit later. Th
 | Never put SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, ENS, Unstoppable, Farcaster, Lens, or RSS3 claims on the public Gun graph | Session / device secrets stay in cookies and IndexedDB. Public indicators are read-only this slice |
 | Nonce lives in a **signed cookie**, not an in-memory `Map` | Azure App Service is multi-instance; Redis is not in this slice |
 | OIDC is not primary login | Hypermesh portal can stay Keycloak; s3r.ch does not use Panopticon Keycloak as an IdP |
-| Passkey WebAuthn PRF wrap is recovery | PRF is device proof. It does not become the session subject |
+| Passkey WebAuthn PRF wrap is recovery | PRF is device proof for the Gun SEA pair. It does not become the session subject. Distinct from a Coinbase Smart Wallet passkey (onramp to an address, then SIWE) |
+| Smart Wallet is an onramp, not an IdP | Coinbase Smart Wallet (passkey popup) creates or opens an address. Session is still EIP-4361 SIWE on the checksummed address. Not email login. Not Keycloak. Not `@coinbase/cdp-wagmi` |
 | Paper backup is recovery | Same wrap slot as wallet secondary. Never login. Never persist the paper string, DEK, KEKs, or SEA `priv` / `epriv` in Gun, cookies, or `sessionStorage` |
 | `lib/auth.ts` is seed authorize | User identity lives in `lib/identity/` |
 | Check is grants, not login | Session subject stays the checksummed address. A live `IdentitySeeGrant` is not a session. hopcap 1. Revoke is immediate. URL 200 / ingest / seeder fetch is not `see` |
@@ -64,7 +67,8 @@ Pinned to current majors compatible with Next.js 16, React 19, and Node 24:
 | --- | --- |
 | `siwe` | Construct and parse EIP-4361 messages |
 | `viem` | EOA `verifyMessage` (local ecrecover, no RPC). Contract verify via mainnet `publicClient.verifyMessage` (ERC-1271 + EIP-6492). Checksum via `getAddress`. Mainnet `getEnsName` + `getEnsAddress`. Polygon UNS `reverseNameOf` + `get("crypto.ETH.address")` |
-| `wagmi` v3 | Injected connector always. `walletConnect` only when `NEXT_PUBLIC_WC_PROJECT_ID` is set. No RainbowKit, no ConnectKit |
+| `wagmi` v3 | Injected always. `coinbaseWallet` Smart Wallet always (`smartWalletOnly`). `walletConnect` only when `NEXT_PUBLIC_WC_PROJECT_ID` is set. No RainbowKit, no ConnectKit, no `@coinbase/cdp-wagmi` |
+| `@coinbase/wallet-sdk` | Peer for the wagmi Coinbase Smart Wallet connector. Ungated — no CDP / Reown project id |
 | `@walletconnect/ethereum-provider` | Optional peer for the wagmi WalletConnect connector. Unused at runtime when the project id is empty |
 | `@tanstack/react-query` | Required by wagmi |
 | `jose` | Sign nonce and session cookies (HS256) |
@@ -72,7 +76,7 @@ Pinned to current majors compatible with Next.js 16, React 19, and Node 24:
 
 No SimpleWebAuthn. The PRF helper uses native `navigator.credentials.create` / `get` with `extensions.prf`.
 
-WalletConnect is **gated**. Do not invent a Reown project id in this repo or in CI. An empty `NEXT_PUBLIC_WC_PROJECT_ID` (the default) keeps the Docker image injected-only.
+WalletConnect is **gated**. Do not invent a Reown project id in this repo or in CI. An empty `NEXT_PUBLIC_WC_PROJECT_ID` (the default) keeps the Docker image without WalletConnect; injected + Smart Wallet still ship. Smart Wallet is **ungated** and does not use a CDP Project ID.
 
 ## Module map
 
@@ -90,7 +94,7 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `lib/identity/mesh-link.ts` | Domain-bound statement: this SEA `pub` belongs to this address |
 | `lib/identity/idb.ts` | Origin IndexedDB: plaintext **or** wrapped record. Rejects half-written rows |
 | `lib/identity/mesh.ts` | After SIWE: reuse or mint pair; persist wrap; unwrap for use |
-| `lib/identity/wagmi.ts` | Injected wagmi config; `walletConnect` only when `walletConnectProjectId()` is non-null |
+| `lib/identity/wagmi.ts` | Injected + Coinbase Smart Wallet always; `walletConnect` only when `walletConnectProjectId()` is non-null |
 | `lib/identity/ens.ts` | Mainnet ENS reverse + forward held claim. Mockable public-client surface |
 | `lib/identity/unstoppable.ts` | Polygon UNS Unstoppable reverse + forward held claim. Mockable client (on-chain + optional Resolution fallback) |
 | `lib/identity/farcaster-claim.ts` | Hubble custody reverse + FID registry forward. Display fname or `fid:N` |
@@ -107,7 +111,7 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `app/api/identity/unstoppable` | `GET ?address=` — session-gated Unstoppable claim for the session address only |
 | `app/api/identity/indicators` | `GET ?address=` — session-gated Farcaster / Lens / RSS3 claims for the session address only |
 | `app/api/identity/logout` | `POST` — clear identity cookies |
-| `components/IdentityBar.tsx` | Quiet `/feed` connect + optional WalletConnect + SIWE + mesh key + wrap/unlock + paper backup + ENS + Unstoppable + public-indicator claims + see-grant / revoke + sign out |
+| `components/IdentityBar.tsx` | Quiet `/feed` connect + Passkey wallet (Smart Wallet onramp) + optional WalletConnect + SIWE + mesh key + wrap/unlock + paper backup + ENS + Unstoppable + public-indicator claims + see-grant / revoke + sign out |
 | `components/SeeGrantControls.tsx` | Signed-in grant see / revoke of a held claim (wallet / ENS / Unstoppable / FC / Lens / RSS3). Copy: this is a grant, not login. No hop UI |
 
 ## Cookies
@@ -295,7 +299,7 @@ Not credBlob. Not largeBlob.
 
 ### Quiet UI (`/feed` IdentityBar)
 
-Signed-out: **Connect wallet** (injected). When `NEXT_PUBLIC_WC_PROJECT_ID` is set at build time, a quiet second **WalletConnect** control appears. Sign in with Ethereum still runs after a session address exists.
+Signed-out: **Connect wallet** (injected). A quiet **Passkey wallet** control opens Coinbase Smart Wallet (`smartWalletOnly`) so someone without an extension can get an address. When `NEXT_PUBLIC_WC_PROJECT_ID` is set at build time, a quiet **WalletConnect** control appears. Sign in with Ethereum still runs after a session address exists. Passkey wallet is an onramp, not a separate identity provider. Do not dump Coinbase branding as a new login product. The Smart Wallet passkey is not the WebAuthn PRF wrap of the Gun SEA pair.
 
 After signed-in + mesh key present:
 
@@ -328,7 +332,7 @@ Locks that stay:
 
 ## WalletConnect (gated connector, not an IdP)
 
-This slice ships WalletConnect **gated** on `NEXT_PUBLIC_WC_PROJECT_ID`. Injected stays the default. If the env is unset or empty, `/feed` is exactly as before (Connect wallet + "No injected wallet found."). If it is set (non-empty) at **build time**, IdentityBar shows a quiet second **WalletConnect** control. Sign-in is still SIWE after a wagmi session address exists (injected or WalletConnect). Session subject stays the checksummed address. No Keycloak, no RainbowKit, no ConnectKit.
+This slice ships WalletConnect **gated** on `NEXT_PUBLIC_WC_PROJECT_ID`. Injected stays the default Connect wallet control. If the env is unset or empty, Connect wallet still shows "No injected wallet found." when no extension is present; **Passkey wallet** (Smart Wallet) remains available. If it is set (non-empty) at **build time**, IdentityBar shows a quiet **WalletConnect** control. Sign-in is still SIWE after a wagmi session address exists (injected, Smart Wallet, or WalletConnect). Session subject stays the checksummed address. No Keycloak, no RainbowKit, no ConnectKit.
 
 Next.js inlines `NEXT_PUBLIC_*` at `next build`. s3r.ch builds inside Docker (`Dockerfile` builder stage). App Service **runtime** env will not inject this into the client bundle. The Dockerfile takes `ARG NEXT_PUBLIC_WC_PROJECT_ID` and sets `ENV` **before** `npm run build`. Deploy passes `build-args: NEXT_PUBLIC_WC_PROJECT_ID=${{ vars.NEXT_PUBLIC_WC_PROJECT_ID }}` (GitHub **variable**, not secret — this id is public, same class as `SEED_URL`). A missing variable must not fail the build (empty ARG → injected-only).
 
@@ -343,6 +347,30 @@ Local: copy `.env.example` to `.env.local`. `next dev` reads `.env.local`. Do no
 5. Local: `.env.local`. Prod: redeploy so Docker rebuilds with the build-arg.
 
 A sibling infra PR will add the variable mapping. Until that id exists, leave the env empty.
+
+## Coinbase Smart Wallet onramp (not an IdP)
+
+People not in crypto yet still need an address before they can SIWE. This slice ships wagmi v3 `coinbaseWallet` from `wagmi/connectors` with Smart Wallet only:
+
+```ts
+coinbaseWallet({
+  appName: "s3r.ch",
+  appLogoUrl: "https://s3r.ch/favicon.ico",
+  preference: { options: "smartWalletOnly" },
+})
+```
+
+That popup is a **passkey smart account**. After connect, IdentityBar **Sign in with Ethereum** is unchanged. Mainnet ERC-1271 already verifies contract wallets. Session subject stays the checksummed address.
+
+This is **not** a second identity provider:
+
+- Login stays EIP-4361 SIWE. No email/phone magic link. No Keycloak.
+- Do **not** add Coinbase CDP Embedded Wallet (`@coinbase/cdp-wagmi`). That path is email-login-as-IdP. Do **not** invent a CDP Project ID.
+- No RainbowKit, ConnectKit, Privy, Dynamic, Web3Auth, or Magic as the session.
+- Smart Wallet is **ungated** (no project id). WalletConnect stays gated on `NEXT_PUBLIC_WC_PROJECT_ID`.
+- The Coinbase Smart Wallet **passkey** is not the WebAuthn **PRF wrap** of the local Gun SEA pair. PRF wrap stays recovery.
+
+Quiet `/feed` copy: Passkey wallet creates or opens a Coinbase Smart Wallet. Sign-in is still SIWE. It is not a separate identity provider. Do not dump Coinbase branding as a new login product.
 
 ## Light Check see-grants (grants, not login)
 
@@ -372,7 +400,7 @@ Quiet `/feed` IdentityBar: grant see + revoke after SIWE. No hop UI. No Elect / 
 - Azure Key Vault for `IDENTITY_SESSION_SECRET` and later `UNSTOPPABLE_API_KEY` (still operator / Azure in this slice).
 - Contract verify on chains other than mainnet (this slice's 1271 RPC allowlist is mainnet only).
 
-This slice ships an Unstoppable held claim after SIWE (Polygon on-chain reverse+forward; optional server-only Resolution key), paper-backup UI for the wrap secondary KEK, ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client), WalletConnect gated on `NEXT_PUBLIC_WC_PROJECT_ID`, and light SociACL Check see-grants (consume contract in [s3rch-check.md](s3rch-check.md)). Check is grants, not login. Unstoppable is never login. s3r.ch does not use Panopticon Keycloak as an IdP.
+This slice ships an Unstoppable held claim after SIWE (Polygon on-chain reverse+forward; optional server-only Resolution key), paper-backup UI for the wrap secondary KEK, ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client), WalletConnect gated on `NEXT_PUBLIC_WC_PROJECT_ID`, Coinbase Smart Wallet as an **onramp then SIWE** (not email login, not Keycloak, not `@coinbase/cdp-wagmi`), and light SociACL Check see-grants (consume contract in [s3rch-check.md](s3rch-check.md)). Check is grants, not login. Unstoppable is never login. s3r.ch does not use Panopticon Keycloak as an IdP.
 
 ## Live fixtures (re-checked 2026-09-01)
 
