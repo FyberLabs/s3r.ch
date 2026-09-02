@@ -4,7 +4,7 @@
 
 Sister sites: [Fyber Labs](https://fyberlabs.com), [Hypermesh / Hyperme.sh](https://hyperme.sh), [Tennessee Windage](https://tennesseewindage.com).
 
-The public [lab feed](/feed) is a GunDB graph. This slice’s seeder and `GET /api/feed` snapshot are a bootstrap cache (so the graph is not empty and App Service is not the chat server); the end-state is a mostly browser-to-browser Gun mesh. The public seeder pulls live Farcaster Hubble HTTP, ATProto AppView, and RSS/Atom. RSS3 Global Indexer (`gi.rss3.io`) is optional and currently has no public DNS — a GI failure does not empty the other sources or invent rows. Gun-stored items and claims are native SociACL objects (Check lives in SociACL, not this Next app); URL fetches are handoffs, not grants. `/feed` can Sign in with Ethereum (SIWE + cookie session). After sign-in, verified mainnet ENS, Farcaster, Lens, and RSS3 indicators may show as held claims (not the session key). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/identity.md](docs/identity.md).
+The public [lab feed](/feed) is a GunDB graph. This slice’s seeder and `GET /api/feed` snapshot are a bootstrap cache (so the graph is not empty and App Service is not the chat server); the end-state is a mostly browser-to-browser Gun mesh. The public seeder pulls live Farcaster Hubble HTTP, ATProto AppView, and RSS/Atom. RSS3 Global Indexer (`gi.rss3.io`) is optional and currently has no public DNS — a GI failure does not empty the other sources or invent rows. Gun-stored items and claims are native SociACL objects (Check lives in SociACL, not this Next app); URL fetches are handoffs, not grants. `/feed` can Sign in with Ethereum (SIWE + cookie session). After sign-in, verified mainnet ENS, Unstoppable, Farcaster, Lens, and RSS3 indicators may show as held claims (not the session key). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/identity.md](docs/identity.md).
 
 ## Stack
 
@@ -28,11 +28,14 @@ GUN_FILE=./data/radata
 GUN_SNAPSHOT=./data/snapshot.json
 IDENTITY_SESSION_SECRET=local-dev-identity-session-secret-32
 NEXT_PUBLIC_WC_PROJECT_ID=
+UNSTOPPABLE_API_KEY=
 ```
 
 `IDENTITY_SESSION_SECRET` must be at least 32 characters. It is required in production (verify returns 500 if missing). Locally, an unset secret falls back to a documented default — see [docs/identity.md](docs/identity.md). Operator step: set it on App Service (Key Vault later).
 
 `NEXT_PUBLIC_WC_PROJECT_ID` is optional. Empty (default) keeps `/feed` injected-wallet-only. Next.js inlines it at build time — see [docs/identity.md](docs/identity.md). Do not invent or commit a Reown project id.
+
+`UNSTOPPABLE_API_KEY` is optional and **server-side only**. Empty keeps Polygon on-chain Unstoppable lookup; a miss is a quiet empty claim. Never put it in `NEXT_PUBLIC_*`. Do not invent or commit a UD partner key.
 
 ## Development
 
