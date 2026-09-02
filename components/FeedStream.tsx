@@ -27,9 +27,9 @@ import { TagChips } from "@/components/TagChips";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
 import {
-  attachSeedPeerStatus,
   browserGunOptions,
-  peerStatusLine,
+  feedStatusLine,
+  listenThenConnectSeedPeer,
   TRYING_SEED_COPY,
 } from "@/lib/gun-peer";
 
@@ -38,6 +38,8 @@ type GunRef = {
   put: (data: unknown) => GunRef;
   map: () => { on: (cb: (data: unknown, key: string) => void) => { off?: () => void } };
   on?: (event: string, cb: (peer?: unknown) => void) => unknown;
+  opt?: (opts: { peers: string[] }) => unknown;
+  _?: { on?: (event: string, cb: (peer?: unknown) => void) => unknown };
 };
 
 export function FeedStream() {
@@ -76,19 +78,18 @@ export function FeedStream() {
     (async () => {
       const GunMod = await import("gun/browser");
       const Gun = (GunMod.default ?? GunMod) as unknown as (opts?: object) => GunRef;
-      // Same-origin /gun seed peer. Snapshot hydration stays. Fail open if
-      // the socket is down (Cloudflare + Azure ARR). No webrtc, no ICE,
-      // no user.recall. See docs/ARCHITECTURE.md.
-      const gun = Gun(browserGunOptions(window.location.origin));
+      // Listen for mesh hi/bye on gun._.on, then opt the same-origin /gun
+      // peer. Constructing with peers can fire hi before the listener.
+      // Snapshot hydration stays. Fail open if the socket is down. No
+      // webrtc, no ICE, no user.recall. See docs/ARCHITECTURE.md.
+      const gun = Gun(browserGunOptions());
       gunRef.current = gun;
       let seedWsUp = false;
-      const onPeer = gun.on;
-      if (typeof onPeer === "function") {
-        attachSeedPeerStatus({ on: onPeer.bind(gun) }, (up) => {
-          seedWsUp = up;
-          if (!cancelled) setStatus(peerStatusLine(up));
-        });
-      }
+      let snapshotEmpty = true;
+      listenThenConnectSeedPeer(gun, window.location.origin, (up) => {
+        seedWsUp = up;
+        if (!cancelled) setStatus(feedStatusLine(up, snapshotEmpty));
+      });
 
       let snapshot: FeedSnapshot = {
         items: [],
@@ -114,6 +115,7 @@ export function FeedStream() {
       // Snapshot paints even if /gun WS never comes up (localStorage off +
       // a down peer must not leave Public empty). map().on still merges.
       const snapItems = snapshot.items ?? [];
+      snapshotEmpty = snapItems.length === 0;
       setSeed((prev) => mergeItems(prev, snapItems));
       await hydrate(gun, snapItems);
 
@@ -138,14 +140,10 @@ export function FeedStream() {
           ? () => roomsListener.off?.()
           : undefined;
 
+      // seedWsUp stays source of truth. A later hi must not be clobbered
+      // by this snapshot paint; an earlier hi already set it.
       if (!cancelled) {
-        setStatus(
-          seedWsUp
-            ? peerStatusLine(true)
-            : snapshot.items?.length
-              ? peerStatusLine(false)
-              : `${peerStatusLine(false)}. Gun is empty. Nothing was invented.`,
-        );
+        setStatus(feedStatusLine(seedWsUp, snapshotEmpty));
       }
     })();
 
