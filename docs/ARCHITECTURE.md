@@ -1,10 +1,10 @@
-# s3r.ch architecture (2026-08-31)
+# s3r.ch architecture (2026-09-02)
 
 Internal notes for the lab prototype. This is not a public `/research` route, not a protocol spec, and not tokenomics.
 
 s3r.ch is a Fyber Labs lab site. **Gun is the graph.** RSS3 Data Sublayer activity and other allowed sites / crypto-social sources concentrate on that graph. Popular items cache across peers. The same graph is the unique real-time streaming / chat / sharing network — **mostly browser-to-browser**, not a chat server we host.
 
-This slice **does** ship EIP-4361 SIWE login (EOA ecrecover plus mainnet ERC-1271 / EIP-6492 for smart accounts), a signed cookie session, mainnet ENS / Unstoppable / Farcaster / Lens / RSS3 held claims after auth, and light SociACL **Check see-grants** in the browser (see [identity.md](identity.md) and [s3rch-check.md](s3rch-check.md)). Check is **grants**, not login. It still does **not** ship chat UI, rooms, presence, WebRTC, a KYC/passport product, email/SMS verify, uniqueness proofs, or ENS/Unstoppable/fname/Lens/RSS3-as-login. Snapshot hydration is **now**. The mesh is **next**. The live `/feed` copy stays a lab prototype and does not claim posting, P2P, KYC, or uniqueness proofs already work.
+This slice **does** ship EIP-4361 SIWE login (EOA ecrecover plus mainnet ERC-1271 / EIP-6492 for smart accounts), a signed cookie session, mainnet ENS / Unstoppable / Farcaster / Lens / RSS3 held claims after auth, light SociACL **Check see-grants** in the browser (see [identity.md](identity.md) and [s3rch-check.md](s3rch-check.md)), **native s3r.ch posts** (mine by default), **Public / Mine** tabs, Check on those post objects, **explicit share-into-mesh** of an admitted native post, and a **tags-first then recency** ranker. Check is **grants**, not login. A see-grant is **not** delivery and **not** share-into-mesh. It still does **not** ship chat UI, rooms, presence, WebRTC, a KYC/passport product, email/SMS verify, uniqueness proofs, ENS/Unstoppable/fname/Lens/RSS3-as-login, outbound bridges, a working Network tab, or Popular/Novel columns. Snapshot hydration is **now**. The mesh is **next**. The live `/feed` copy stays a lab prototype and does not claim P2P mesh, KYC, uniqueness, or outbound bridges already work.
 
 ## End-state vs this slice
 
@@ -14,16 +14,18 @@ This slice **does** ship EIP-4361 SIWE login (EOA ecrecover plus mainnet ERC-127
 | Where the graph lives | Server Gun + JSON snapshot; client Gun hydrated from `GET /api/feed` | HAM-merged mesh. Browsers are Gun peers. Popular items cache across peers |
 | Azure App Service | Seed peer + bootstrap cache so the graph is not empty | Still a seed peer — **not** the realtime / chat server |
 | Identity | SIWE cookie session binds a checksummed address (EOA or ERC-1271 smart account). After auth, mainnet ENS, Polygon Unstoppable, plus Farcaster / Lens / RSS3 are held claims on `/feed` when bidirectional public lookups match (not login, not written to Gun). Overlay can still pull `GET /decentralized/{account}`; items already carry `author` / `provenance` | Gun user node keyed by wallet, linked **held claims**, HAM-merged like feed items |
-| Visibility | Light Check see-grants on the lab dest ACL (memory / IndexedDB). hopcap 1. Public seed is still lab lists only. A grant is not share-into-mesh | Same Check on **Gun-stored** objects across the mesh. URL fetches stay handoffs |
-| Streaming, chat, sharing | Not built | Gun subscriptions on that mesh, mostly peer-to-peer |
-| Tabs | Type only (`public` / `mine` / `network`) | Split public mesh vs mine. Users do not dump every pull into the public seed by default |
+| Visibility | Light Check see-grants on the lab dest ACL (memory / IndexedDB), including native post objects. hopcap 1. Public seed is still lab lists plus **explicitly shared** native posts. A grant is not share-into-mesh and is not delivery | Same Check on **Gun-stored** objects across the mesh. URL fetches stay handoffs. Mesh **delivery** of a granted object is later |
+| Streaming, chat, sharing | Native compose + explicit share-into-mesh of an admitted GunFeedNode onto `s3rch/items`. No chat | Gun subscriptions on that mesh, mostly peer-to-peer |
+| Tabs | **Public** (seed / shared) and **Mine** (overlay + native). Network is type-only | Network tab reads the mesh. Users do not dump every pull into the public seed by default |
 
 The lab seeder and `GET /api/feed` are a **bootstrap cache**. They exist so first paint is not an empty graph and so App Service does not have to be the chat server.
 
 ```
 now:
   lab seeder → server Gun (seed peer) → GET /api/feed snapshot → client Gun
-  user overlay → POST /api/ingest (CORS proxy) → client Gun only (not public seed)
+  user overlay → POST /api/ingest (CORS proxy) → Mine only (not public seed)
+  native compose → admitFeedNode → Mine overlay
+  explicit share-into-mesh → admit again → gun.get('s3rch').get('items') put
 
 next:
   browsers pull allowed sources → write same item shape → HAM-merge into the mesh
@@ -39,10 +41,10 @@ Do not dump every user pull into the public seed by default.
 | Graph | Who writes | This slice | Later |
 | --- | --- | --- | --- |
 | **Public cache** | Lab seeder (Farcaster hub FIDs, ATProto AppView, RSS/Atom; RSS3 GI optional) | Yes. Snapshot + server Gun | Seed peer still caches; browsers HAM-merge public items across the mesh |
-| **Personal overlay** | The user, in their browser | Yes. Same item shape, provenance, dedupe by id/url. Stays local | Tabs: **Mine**. Still not public unless they share |
-| **Share-into-mesh** | User chooses to publish an overlay item onto the public graph | Not wired. No UI that claims it | Explicit action. **Network** / public tab reads the mesh, not every private pull |
+| **Personal overlay** | The user, in their browser | Yes. Same item shape. Ingest + native posts. **Mine** tab. Stays local | Still not public unless they share |
+| **Share-into-mesh** | User chooses to publish an **admitted** native post onto `gun.get('s3rch').get('items')` | Wired for own native posts (confirm + put). Not unshare. Not OutboundAdapter | Network tab / live mesh delivery. Overlay ingest still stays mine unless a later share lands |
 
-`FeedTab = "public" | "mine" | "network"` remains a type only. No tab UI in this slice.
+`FeedTab = "public" | "mine" | "network"` — Public and Mine render. Network stays later (disabled copy: mesh).
 
 Observing a wallet's **public** traces is not the person controlling that wallet dumping private overlay into the public cache. Mine vs public vs explicit share still holds for identity the same way it holds for feed items.
 
@@ -174,7 +176,7 @@ Every item in the public cache, the snapshot, the overlay, and (later) the mesh 
 ```ts
 {
   id: string          // canonical activity id, guid, or permalink
-  source: string      // rss3 | rss | atom | farcaster | atproto
+  source: string      // rss3 | rss | atom | farcaster | atproto | s3rch
   kind: string        // RSS3 tag (social, transaction, …) or rss / atom
   author: string
   body: string
@@ -197,7 +199,9 @@ Tags are the filter and engagement primitive for this slice.
 - From ATProto AppView: `atproto`, `bsky`, `social`.
 - From public RSS/Atom: `rss` or `atom`, plus `ethereum` / `farcaster` / `social` when the feed is that network.
 - Overlay RSS/Atom ingest still adds `user`.
+- Native s3r.ch posts add `user` and `s3rch`.
 - Deduped, lowercased, no empty strings.
+- Filter primitive: TagChips any-match on the **active tab**. Ranker: more matching tags first, then `ts` desc. No engagement scores. No Popular / Novel columns.
 
 ### Item identity and merge
 
@@ -311,14 +315,14 @@ Most social networks are walled gardens. This table is the honest matrix. **Yes*
 | Facebook | no | no | none |
 | X (locked-down) | no | no | none |
 
-Outbound: `OutboundAdapter` is an interface only. Nothing claims posting works. There is no post button.
+Outbound: `OutboundAdapter` is an interface only. Native s3r.ch compose is **not** a Farcaster / ATProto / RSS bridge. Nothing claims posting-to-those-networks works.
 
 ## Later (not this follow-up)
 
 - Enable App Service WebSockets; `/gun` as a real seed peer.
 - `gun/lib/webrtc` so browsers mesh when the seed peer is idle.
 - Browsers pull allowed sources (through proxy / relay / extension) and HAM-merge.
-- Explicit share-into-mesh. Public / Mine / Network tabs.
+- Live mesh delivery of granted objects. Network tab. Unshare / HAM-delete.
 - Gun user node keyed by the SIWE address; browsers pull their own indicators as **held claims**. Wire the SEA pair (not `recall` to sessionStorage) and PRF wrap after SIWE is proven.
 - Mesh-wide Check on Gun-stored objects (this slice is the lab dest ACL). URL fetches remain handoffs; they do not mint `see`. Not Hypermesh Phase 1. Social Light hop can factor a Check later; it cannot mint a grant.
 - Email/phone confirmation and third-party KYC attestations as private claims (prove to holder ≠ publish).

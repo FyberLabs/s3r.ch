@@ -17,6 +17,7 @@ import {
   persistSeeAcl,
   type MemorySeeAcl,
 } from "@/lib/identity/see-acl";
+import { useSeeAcl } from "@/components/SeeAclProvider";
 
 type Props = {
   address: string;
@@ -35,8 +36,11 @@ export function SeeGrantControls({
   lens,
   rss3,
 }: Props) {
-  const [acl] = useState<MemorySeeAcl>(() => createMemorySeeAcl());
-  const [ready, setReady] = useState(false);
+  const shared = useSeeAcl();
+  const [localAcl] = useState<MemorySeeAcl>(() => createMemorySeeAcl());
+  const acl = shared?.acl ?? localAcl;
+  const [localReady, setLocalReady] = useState(false);
+  const ready = shared ? shared.ready : localReady;
   const [grants, setGrants] = useState<IdentitySeeGrant[]>([]);
   const [accessorInput, setAccessorInput] = useState("");
   const [hoursInput, setHoursInput] = useState("24");
@@ -54,6 +58,7 @@ export function SeeGrantControls({
   }, [acl, address]);
 
   useEffect(() => {
+    if (shared) return;
     let cancelled = false;
     void hydrateSeeAcl(acl)
       .catch(() => acl)
@@ -63,22 +68,34 @@ export function SeeGrantControls({
           acl.putObject(claim.id, address);
         }
         refreshGrants();
-        setReady(true);
+        setLocalReady(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [acl, address, claims, refreshGrants]);
+  }, [acl, address, claims, refreshGrants, shared]);
+
+  useEffect(() => {
+    if (!shared?.ready) return;
+    for (const claim of claims) {
+      acl.putObject(claim.id, address);
+    }
+    refreshGrants();
+  }, [acl, address, claims, refreshGrants, shared]);
 
   useEffect(() => {
     if (!ready) return;
     for (const claim of claims) {
       acl.putObject(claim.id, address);
     }
+    if (shared) {
+      void shared.persist();
+      return;
+    }
     void persistSeeAcl(acl).catch(() => {
       // Private mode / missing IndexedDB — stay in memory.
     });
-  }, [acl, address, claims, ready]);
+  }, [acl, address, claims, ready, shared]);
 
   useEffect(() => {
     if (!claimId && claims[0]) setClaimId(claims[0].id);
@@ -89,6 +106,10 @@ export function SeeGrantControls({
 
   async function persistAndRefresh() {
     refreshGrants();
+    if (shared) {
+      await shared.persist();
+      return;
+    }
     try {
       await persistSeeAcl(acl);
     } catch {

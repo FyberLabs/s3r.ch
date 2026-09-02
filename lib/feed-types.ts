@@ -1,9 +1,9 @@
 /**
  * Shared feed item shape. Public cache, snapshot, personal overlay, and
- * (later) the mesh all use this. Tabs are typed for later — no tab UI here.
+ * (later) the mesh all use this. Public / Mine tabs render; Network is later.
  */
 
-export type FeedSource = "rss3" | "rss" | "atom" | "farcaster" | "atproto";
+export type FeedSource = "rss3" | "rss" | "atom" | "farcaster" | "atproto" | "s3rch";
 
 export const FEED_SOURCES: readonly FeedSource[] = [
   "rss3",
@@ -11,6 +11,7 @@ export const FEED_SOURCES: readonly FeedSource[] = [
   "atom",
   "farcaster",
   "atproto",
+  "s3rch",
 ];
 
 export function isFeedSource(value: unknown): value is FeedSource {
@@ -37,7 +38,7 @@ export type SourcePull = {
   error: string | null;
 };
 
-/** Later: Public / Mine / Network. Do not render tabs from this type yet. */
+/** Public / Mine render. Network stays type-only (later — mesh). */
 export type FeedTab = "public" | "mine" | "network";
 
 /**
