@@ -243,6 +243,9 @@ function IdentityBarInner() {
   const walletConnectConnector = connectors.find(
     (connector) => connector.id === "walletConnect",
   );
+  const smartWalletConnector = connectors.find(
+    (connector) => connector.id === "coinbaseWalletSDK",
+  );
   const wcConfigured = Boolean(walletConnectConnector);
 
   async function onConnect() {
@@ -268,11 +271,19 @@ function IdentityBarInner() {
     }
   }
 
+  async function onPasskeyWallet() {
+    setMessage(null);
+    if (!smartWalletConnector) return;
+    try {
+      await connect({ connector: smartWalletConnector });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Connect failed.");
+    }
+  }
+
   async function onSignIn() {
     if (!address) {
-      setMessage(
-        wcConfigured ? "Connect a wallet first." : "Connect an injected wallet first.",
-      );
+      setMessage("Connect a wallet first.");
       return;
     }
     setBusy(true);
@@ -592,10 +603,12 @@ function IdentityBarInner() {
       <h2 className="text-sm font-semibold text-brand-900">Session</h2>
       <p className="mt-2 text-sm text-gray-600">
         Sign in with Ethereum binds this browser to a checksummed address
-        (EOA or ERC-1271 smart account). ENS, Unstoppable, Farcaster, Lens, and
-        RSS3 are held claims after sign-in, not the session key. A passkey can wrap
-        the local mesh key on this device. A paper backup is recovery, not
-        login.
+        (EOA or ERC-1271 smart account). A Passkey wallet creates or opens a
+        Coinbase Smart Wallet so you can get an address; sign-in is still SIWE,
+        not a separate identity provider. ENS, Unstoppable, Farcaster, Lens, and
+        RSS3 are held claims after sign-in, not the session key. A passkey can
+        wrap the local mesh key on this device (recovery, not login — different
+        from a Smart Wallet passkey). A paper backup is recovery, not login.
         {wcConfigured
           ? " WalletConnect is a wallet connector (QR / mobile), not a separate identity provider."
           : ""}
@@ -665,6 +678,16 @@ function IdentityBarInner() {
                     className="rounded-lg border border-brand-700 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
                   >
                     WalletConnect
+                  </button>
+                ) : null}
+                {smartWalletConnector ? (
+                  <button
+                    type="button"
+                    disabled={connecting || busy}
+                    onClick={() => void onPasskeyWallet()}
+                    className="rounded-lg border border-brand-200 px-3 py-2 text-xs font-semibold text-brand-800 disabled:opacity-50"
+                  >
+                    Passkey wallet
                   </button>
                 ) : null}
               </>
