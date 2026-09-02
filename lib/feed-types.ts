@@ -41,8 +41,8 @@ export type SourcePull = {
 export type FeedTab = "public" | "mine" | "network";
 
 /**
- * Later: Gun user node keyed by wallet, HAM-merged like feed items.
- * Not implemented in this slice — no SIWE, no KYC UI. See docs/ARCHITECTURE.md.
+ * Later user node. gun.get('s3rch').get('users').get(wallet)
+ * On the Gun wire, indicators are a comma-separated string.
  */
 export type GunUserNode = {
   id: string;
@@ -51,13 +51,13 @@ export type GunUserNode = {
   ts: number;
 };
 
-/**
- * Later: a held claim in Gun (native SociACL object, default private).
- * Check is a SociACL adapter outside this app. Fetching a URL is not a grant.
- */
+/** Issuers prove a claim to the holder. They are not grants. */
 export type IdentityClaimKind = "wallet" | "rss3" | "ens" | "kyc_attestation" | "email" | "phone";
 
-/** Later grant edge. hopcap 1; privilege-down is immediate. No Check engine in this slice. */
+/**
+ * Jointly stated see grant. hopcap 1. Privilege-down is immediate.
+ * `from` inclusive, `until` exclusive.
+ */
 export type IdentitySeeGrant = {
   claimId: string;
   accessor: string;
