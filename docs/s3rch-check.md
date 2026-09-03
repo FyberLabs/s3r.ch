@@ -14,13 +14,13 @@ The Next app runs Check **in the browser** on the Gun mesh. It does **not** impo
 
 | Name | Meaning |
 | --- | --- |
-| `object` | `GunFeedNode` at `s3rch/items/<encodeKey(id)>`, `GunRoomNode` at `s3rch/rooms/<encodeKey(id)>`, or a Gun-native claim linked from `s3rch/users/{wallet}` |
+| `object` | `GunFeedNode` at `s3rch/items/<encodeKey(id)>`, `GunRoomNode` at `s3rch/rooms/<encodeKey(id)>`, `GunChatNode` at `s3rch/rooms/<encodeKey(room)>/chat/<encodeKey(id)>`, or a Gun-native claim linked from `s3rch/users/{wallet}` |
 | `accessor` | wallet / Gun peer (`s3rch/users/{wallet}`) |
 | `see` | dest Check `read` |
 | grant | jointly stated `IdentitySeeGrant`; hopcap **1** (no friend-of-friend) |
 | revoke | immediate privilege-down on the dest object (`cancelSee`) |
 | hint | `HandoffHint` — untrusted; never a grant |
-| admit | dest re-authorizes **before** `put()` into `items` |
+| admit | dest re-authorizes **before** `put()` into `items`, `rooms`, or that room `chat` set |
 
 `s3rch/meta` is seed cache. It is not a Check object. A permalink / RSS3 / RSS / issuer URL is a `UrlLeaf`, not a node and not a grant.
 
@@ -31,6 +31,7 @@ Later, on request: more verbs on the TS spec for granted distribution. Not this 
 ```
 gun.get('s3rch').get('items').get(encodeKey(id))  → GunFeedNode
 gun.get('s3rch').get('rooms').get(encodeKey(id))  → GunRoomNode
+gun.get('s3rch').get('rooms').get(encodeKey(id)).get('chat').get(encodeKey(mid))  → GunChatNode
 gun.get('s3rch').get('meta')                     → seed meta (not a Check object)
 gun.get('s3rch').get('users').get(wallet)        → GunUserNode
 ```

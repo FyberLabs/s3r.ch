@@ -9,7 +9,7 @@
  * Reference implementation (Rust, this repo): crates/sociacl-gun.
  *
  * CHECK(see, object, accessor) at now.
- *   object   = GunFeedNode | GunRoomNode | Gun-native claim on s3rch/users/{wallet}
+ *   object   = GunFeedNode | GunRoomNode | GunChatNode | Gun-native claim on s3rch/users/{wallet}
  *   accessor = wallet / Gun peer
  *   hopcap 1, jointly stated grants, revoke immediate
  */
@@ -67,6 +67,20 @@ export type GunRoomNode = {
   tags: string;
   ts: number;
   provenance: string;
+  /** Missing on older nodes; treat as v1. Unknown versions fail closed. */
+  v?: number;
+};
+
+/**
+ * In-graph chat node. Native Check object.
+ * gun.get('s3rch').get('rooms').get(encodeKey(room)).get('chat').get(encodeKey(id))
+ */
+export type GunChatNode = {
+  id: string;
+  room: string;
+  author: string;
+  body: string;
+  ts: number;
   /** Missing on older nodes; treat as v1. Unknown versions fail closed. */
   v?: number;
 };
@@ -174,6 +188,9 @@ export function itemSoul(id: string): string;
 /** s3rch/rooms/<encodeKey(id)> */
 export function roomSoul(id: string): string;
 
+/** s3rch/rooms/<encodeKey(roomId)>/chat/<encodeKey(id)> */
+export function chatSoul(roomId: string, messageId: string): string;
+
 /** s3rch/users/<wallet> */
 export function userSoul(wallet: string): string;
 
@@ -235,6 +252,17 @@ export function admitFeedNode(
 export function admitRoomNode(
   acl: SeeAcl,
   node: GunRoomNode,
+  owner: AccessorId,
+  hint?: HandoffHint,
+): { object: CheckObjectId } | { denied: true };
+
+/**
+ * Destination re-authorizes, then may put a GunChatNode onto room chat.
+ * Hint / URL fetch is not authorization.
+ */
+export function admitChatNode(
+  acl: SeeAcl,
+  node: GunChatNode,
   owner: AccessorId,
   hint?: HandoffHint,
 ): { object: CheckObjectId } | { denied: true };

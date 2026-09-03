@@ -18,10 +18,18 @@ import {
   roomsForTab,
   type Room,
 } from "@/lib/rooms";
+import {
+  fromGunChatNode,
+  mergeChat,
+  messagesInRoom,
+  preparePublishRoomChat,
+  type ChatMessage,
+} from "@/lib/chat";
 import { ComposeForm } from "@/components/ComposeForm";
 import { IngestForm } from "@/components/IngestForm";
 import { PostSeeGrantControls } from "@/components/PostSeeGrantControls";
 import { RoomSeeGrantControls } from "@/components/RoomSeeGrantControls";
+import { RoomChat } from "@/components/RoomChat";
 import { RoomsList } from "@/components/RoomsList";
 import { TagChips } from "@/components/TagChips";
 import { useSeeAcl } from "@/components/SeeAclProvider";
@@ -68,6 +76,10 @@ export function FeedStream() {
     null,
   );
   const [roomShareMessage, setRoomShareMessage] = useState<string | null>(null);
+  const [overlayChat, setOverlayChat] = useState<ChatMessage[]>([]);
+  const [graphChat, setGraphChat] = useState<ChatMessage[]>([]);
+  const [gunReady, setGunReady] = useState(false);
+  const [seedWsUp, setSeedWsUp] = useState(false);
 
   const hydrate = useCallback(async (gun: GunRef, items: FeedItem[]) => {
     for (const item of items) {
@@ -89,11 +101,15 @@ export function FeedStream() {
       // webrtc, no ICE, no user.recall. See docs/ARCHITECTURE.md.
       const gun = Gun(browserGunOptions());
       gunRef.current = gun;
+      if (!cancelled) setGunReady(true);
       let seedWsUp = false;
       let snapshotEmpty = true;
       listenThenConnectSeedPeer(gun, window.location.origin, (up) => {
         seedWsUp = up;
-        if (!cancelled) setStatus(feedStatusLine(up, snapshotEmpty));
+        if (!cancelled) {
+          setSeedWsUp(up);
+          setStatus(feedStatusLine(up, snapshotEmpty));
+        }
       });
 
       let snapshot: FeedSnapshot = {
@@ -148,6 +164,7 @@ export function FeedStream() {
       // seedWsUp stays source of truth. A later hi must not be clobbered
       // by this snapshot paint; an earlier hi already set it.
       if (!cancelled) {
+        setSeedWsUp(seedWsUp);
         setStatus(feedStatusLine(seedWsUp, snapshotEmpty));
       }
     })();
@@ -207,6 +224,37 @@ export function FeedStream() {
     for (const room of publicRooms) ids.add(room.id);
     return ids;
   }, [publicRooms, sharedRoomIds]);
+
+  const openRoomIsPublic = Boolean(openRoomId && publishedRooms.has(openRoomId));
+
+  useEffect(() => {
+    const gun = gunRef.current;
+    if (!gun || !gunReady || !openRoomId || !openRoomIsPublic) return;
+    const roomId = openRoomId;
+    let cancelled = false;
+    const listener = gun
+      .get("s3rch")
+      .get("rooms")
+      .get(encodeKey(roomId))
+      .get("chat")
+      .map()
+      .on((data) => {
+        const message = fromGunChatNode(
+          data as Parameters<typeof fromGunChatNode>[0],
+        );
+        if (!message || cancelled || message.room !== roomId) return;
+        setGraphChat((prev) => mergeChat(prev, [message]));
+      });
+    return () => {
+      cancelled = true;
+      if (typeof listener?.off === "function") listener.off();
+    };
+  }, [gunReady, openRoomId, openRoomIsPublic]);
+
+  const openRoomChat = useMemo(() => {
+    if (!openRoomId) return [];
+    return messagesInRoom(mergeChat(graphChat, overlayChat), openRoomId);
+  }, [openRoomId, graphChat, overlayChat]);
 
   function selectTab(next: Exclude<FeedTab, "network">) {
     setTab(next);
@@ -271,6 +319,25 @@ export function FeedStream() {
     setSharedRoomIds((prev) =>
       prev.includes(room.id) ? prev : [...prev, room.id],
     );
+    const publicIds = new Set(publishedRooms);
+    publicIds.add(room.id);
+    for (const row of overlayChat) {
+      if (row.room !== room.id) continue;
+      const preparedChat = preparePublishRoomChat(
+        see.acl,
+        row,
+        session.address,
+        publicIds,
+      );
+      if ("denied" in preparedChat) continue;
+      gun
+        .get("s3rch")
+        .get("rooms")
+        .get(preparedChat.roomKey)
+        .get("chat")
+        .get(preparedChat.key)
+        .put(preparedChat.node);
+    }
     setConfirmShareRoomId(null);
     setRoomShareMessage(
       "Published this room node to the public graph. Posts inside stay Mine until you share those posts. One-way here.",
@@ -365,6 +432,35 @@ export function FeedStream() {
             setConfirmShareRoomId(null);
           }}
           onShare={() => void shareRoomToPublic(openRoom)}
+        />
+      ) : null}
+
+      {openRoom ? (
+        <RoomChat
+          roomId={openRoom.id}
+          messages={openRoomChat}
+          onPublicGraph={openRoomIsPublic}
+          seedWsUp={seedWsUp}
+          onComposed={(next, putOnGun) => {
+            setOverlayChat((prev) => mergeChat(prev, [next]));
+            if (!putOnGun || !see?.acl || !session) return;
+            const gun = gunRef.current;
+            if (!gun) return;
+            const prepared = preparePublishRoomChat(
+              see.acl,
+              next,
+              session.address,
+              publishedRooms,
+            );
+            if ("denied" in prepared) return;
+            gun
+              .get("s3rch")
+              .get("rooms")
+              .get(prepared.roomKey)
+              .get("chat")
+              .get(prepared.key)
+              .put(prepared.node);
+          }}
         />
       ) : null}
 
@@ -482,8 +578,9 @@ function RoomThreadHeader({
         </button>
       </div>
       <p className="mt-3 text-xs text-ink-muted">
-        Posts belong by tag. Live chat / presence / WebRTC is later. Trying
-        seed peer; snapshot if the socket is down.
+        Posts belong by tag. Live chat is this pass (Gun subscribe on the
+        room). Presence and WebRTC are later. Trying seed peer; snapshot if
+        the socket is down. Snapshot is not a chat log.
       </p>
       {mine && owned && sessionAddress ? (
         <div className="mt-3 border-t border-rule pt-3">

@@ -29,9 +29,11 @@ export default function FeedPage() {
         Public and Mine tabs. Rooms are Gun objects, Mine by default. Tags
         first, then recency. There are no popular or novel columns. A
         see-grant is not delivery and not share-into-mesh. Sharing a room
-        does not publish the posts inside it. Live chat / presence / WebRTC
-        is later. Trying seed peer; snapshot if the socket is down. That is
-        not a P2P mesh. Outbound bridges are not enabled. Network is later.
+        does not publish the posts inside it. Live chat is Gun subscriptions
+        on a room you can already see. Presence and WebRTC are later. Trying
+        seed peer; snapshot if the socket is down. Snapshot is not a chat
+        log. That is not a P2P mesh. Outbound bridges are not enabled.
+        Network is later.
       </p>
 
       <SeeAclProvider>
