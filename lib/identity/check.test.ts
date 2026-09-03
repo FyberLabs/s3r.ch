@@ -6,12 +6,14 @@ import { fileURLToPath } from "node:url";
 import { fromGunNode, toGunNode, type FeedItem, type GunFeedNode } from "@/lib/feed-types";
 import {
   acceptHint,
+  admitChatNode,
   admitFeedNode,
   admitRoomNode,
   applySeeGrant,
   cancelSee,
   checkSee,
   checkSeeGrant,
+  chatSoul,
   encodeKey,
   grantLiveAt,
   itemSoul,
@@ -61,6 +63,7 @@ describe("consume contract artifact", () => {
     for (const needle of [
       "CHECK(see, object, accessor)",
       "GunFeedNode",
+      "GunChatNode",
       "GunUserNode",
       "IdentitySeeGrant",
       "HandoffHint",
@@ -75,6 +78,7 @@ describe("consume contract artifact", () => {
       "acceptHint",
       "admitFeedNode",
       "admitRoomNode",
+      "admitChatNode",
       "cancelSee",
       "hopcap",
     ]) {
@@ -122,6 +126,10 @@ describe("locked Gun souls", () => {
     assert.equal(encodeKey("a.b#$[c]"), "a_b___c_");
     assert.equal(itemSoul("rss3:act/1#x"), "s3rch/items/rss3:act/1_x");
     assert.equal(roomSoul("s3rch:room:0xabc:1:aa"), "s3rch/rooms/s3rch:room:0xabc:1:aa");
+    assert.equal(
+      chatSoul("s3rch:room:0xabc:1:aa", "s3rch:chat:0xabc:1:bb"),
+      "s3rch/rooms/s3rch:room:0xabc:1:aa/chat/s3rch:chat:0xabc:1:bb",
+    );
     assert.equal(userSoul(ALICE), `s3rch/users/${ALICE}`);
     assert.equal(metaSoul(), "s3rch/meta");
   });
@@ -272,6 +280,33 @@ describe("CHECK(see, object, accessor) consume laws", () => {
     assert.deepEqual(admitted, { object: roomSoul(node.id) });
     assert.equal(checkSee(acl, roomSoul(node.id), ALICE, NOW).allowed, true);
     assert.equal(checkSee(acl, roomSoul(node.id), BOB, NOW, urlHint).allowed, false);
+  });
+
+  it("admitChatNode requires dest re-auth; unknown v fails closed", () => {
+    const acl = createMemorySeeAcl();
+    const node = {
+      id: `s3rch:chat:${ALICE}:${NOW}:aa`,
+      room: `s3rch:room:${ALICE}:${NOW}:aa`,
+      author: ALICE,
+      body: "ping",
+      ts: NOW,
+    };
+    const urlHint = hint({
+      context: "https://example.com/chat",
+      target: chatSoul(node.room, node.id),
+    });
+    const garbage = admitChatNode(acl, { ...node, id: "", body: "" }, ALICE, urlHint);
+    assert.deepEqual(garbage, { denied: true });
+    assert.equal(acl.hasObject(chatSoul(node.room, node.id)), false);
+
+    const future = admitChatNode(acl, { ...node, v: 2 }, ALICE, urlHint);
+    assert.deepEqual(future, { denied: true });
+    assert.equal(acl.hasObject(chatSoul(node.room, node.id)), false);
+
+    const admitted = admitChatNode(acl, node, ALICE, urlHint);
+    assert.deepEqual(admitted, { object: chatSoul(node.room, node.id) });
+    assert.equal(checkSee(acl, chatSoul(node.room, node.id), ALICE, NOW).allowed, true);
+    assert.equal(checkSee(acl, chatSoul(node.room, node.id), BOB, NOW, urlHint).allowed, false);
   });
 
   it("live IdentitySeeGrant names the pair and now ∈ [from, until)", () => {
