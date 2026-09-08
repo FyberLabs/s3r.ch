@@ -7,6 +7,7 @@
  * `allowed`. Privilege-down (`cancelSee`) is immediate.
  */
 
+import { getAddress } from "viem";
 import {
   fromGunNode,
   protocolVersionOf,
@@ -32,6 +33,7 @@ export const S3RCH_ROOT = "s3rch" as const;
 export const S3RCH_ITEMS = "items" as const;
 export const S3RCH_ROOMS = "rooms" as const;
 export const S3RCH_CHAT = "chat" as const;
+export const S3RCH_PRESENCE = "presence" as const;
 export const S3RCH_USERS = "users" as const;
 export const S3RCH_META = "meta" as const;
 
@@ -59,6 +61,18 @@ export type GunChatNode = {
   room: string;
   author: string;
   body: string;
+  ts: number;
+  /** Missing on older nodes; treat as v1. Unknown versions fail closed. */
+  v?: number;
+};
+
+/**
+ * gun.get('s3rch').get('rooms').get(encodeKey(room)).get('presence').get(encodeKey(address))
+ * Soft-TTL heartbeat. Native Check object. No signatures or held claims on the node.
+ */
+export type GunPresenceNode = {
+  room: string;
+  address: string;
   ts: number;
   /** Missing on older nodes; treat as v1. Unknown versions fail closed. */
   v?: number;
@@ -145,6 +159,11 @@ export function chatSoul(roomId: string, messageId: string): string {
   return `${roomSoul(roomId)}/${S3RCH_CHAT}/${encodeKey(messageId)}`;
 }
 
+/** s3rch/rooms/<encodeKey(roomId)>/presence/<encodeKey(address)> */
+export function presenceSoul(roomId: string, address: string): string {
+  return `${roomSoul(roomId)}/${S3RCH_PRESENCE}/${encodeKey(address)}`;
+}
+
 /** s3rch/users/<wallet> */
 export function userSoul(wallet: string): string {
   return `${S3RCH_ROOT}/${S3RCH_USERS}/${wallet.trim()}`;
@@ -219,6 +238,7 @@ export function grantNamesObject(
   if (roomSoul(claimId) === object) return true;
   if (encodeKey(claimId) === object) return true;
   if (object.endsWith(`/${S3RCH_CHAT}/${encodeKey(claimId)}`)) return true;
+  if (object.endsWith(`/${S3RCH_PRESENCE}/${encodeKey(claimId)}`)) return true;
   return false;
 }
 
@@ -350,6 +370,34 @@ function chatNodeAdmitted(node: GunChatNode): { id: string; room: string } | nul
   return { id: node.id.trim(), room: node.room.trim() };
 }
 
+function samePresenceOwner(dest: AccessorId, address: string): boolean {
+  if (sameAccessor(dest, address)) return true;
+  try {
+    const destWallet = dest.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)
+      ? dest.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length)
+      : dest;
+    return getAddress(destWallet) === getAddress(address);
+  } catch {
+    return false;
+  }
+}
+
+function presenceNodeAdmitted(
+  node: GunPresenceNode,
+): { room: string; address: string } | null {
+  if (!node || typeof node.room !== "string" || !node.room.trim()) return null;
+  if (typeof node.address !== "string" || !node.address.trim()) return null;
+  if (typeof node.ts !== "number" || !Number.isFinite(node.ts)) return null;
+  if (protocolVersionOf(node.v) === null) return null;
+  let address: string;
+  try {
+    address = getAddress(node.address);
+  } catch {
+    return null;
+  }
+  return { room: node.room.trim(), address };
+}
+
 /**
  * Destination re-authorizes, then may put a GunRoomNode into rooms.
  * Hint / URL fetch is not authorization. meta and UrlLeaf fail closed.
@@ -402,6 +450,35 @@ export function admitChatNode(
   return { object };
 }
 
+/**
+ * Destination re-authorizes, then may put a GunPresenceNode onto a room's presence set.
+ * Hint / URL fetch is not authorization. meta and UrlLeaf fail closed.
+ * Owner must be the address on the node. A grant is not delivery.
+ * Putting onto a Mine-only room path is the caller's gate.
+ */
+export function admitPresenceNode(
+  acl: SeeAcl,
+  node: GunPresenceNode,
+  owner: AccessorId,
+  hint?: HandoffHint,
+): { object: CheckObjectId } | { denied: true } {
+  void hint;
+  const dest = destOwner(owner);
+  const admitted = presenceNodeAdmitted(node);
+  if (!dest || !admitted) {
+    return { denied: true };
+  }
+  if (!samePresenceOwner(dest, admitted.address)) {
+    return { denied: true };
+  }
+  const object = presenceSoul(admitted.room, admitted.address);
+  if (isMetaId(object) || isUrlLeafId(object)) {
+    return { denied: true };
+  }
+  acl.putObject(object, dest);
+  return { object };
+}
+
 function resolveGrantObject(
   acl: SeeAcl,
   grant: IdentitySeeGrant,
@@ -414,6 +491,7 @@ function resolveGrantObject(
   const room = roomSoul(claimId);
   if (acl.hasObject(room)) return room;
   if (claimId.includes(`/${S3RCH_CHAT}/`) && acl.hasObject(claimId)) return claimId;
+  if (claimId.includes(`/${S3RCH_PRESENCE}/`) && acl.hasObject(claimId)) return claimId;
   return undefined;
 }
 

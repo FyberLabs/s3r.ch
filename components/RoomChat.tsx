@@ -31,9 +31,10 @@ export function RoomChat({
     <div className={`mt-6 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Live chat</h2>
       <p className="mt-2 text-xs text-ink-muted">
-        Short messages on this room thread. Presence and WebRTC are later.
-        Trying seed peer; if the socket is down this list can be empty or
-        local only. There is no hosted transcript.
+        Short messages on this room thread. Presence is this pass; WebRTC,
+        meetings, and streams are later. Trying seed peer; if the socket is
+        down this list can be empty or local only. There is no hosted
+        transcript.
         {onPublicGraph
           ? seedWsUp
             ? " This room node is on the public graph. New messages go through the seed peer when the socket is up."

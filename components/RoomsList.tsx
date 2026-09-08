@@ -31,9 +31,10 @@ export function RoomsList({
     <div className={`mt-8 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Rooms</h2>
       <p className="mt-2 text-xs text-ink-muted">
-        Gun threads. Mine until you share the room node. Live chat is this
-        pass. Presence and WebRTC are later. Trying seed peer; snapshot if
-        the socket is down. Snapshot is not a chat log.
+        Gun threads. Mine until you share the room node. Live chat and
+        presence are this pass. WebRTC, meetings, and streams are later.
+        Trying seed peer; snapshot if the socket is down. Snapshot is not a
+        chat log or a presence list.
       </p>
       {canCreate ? (
         <NewRoomForm onCreated={onCreated} />

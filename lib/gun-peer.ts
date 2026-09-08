@@ -1,7 +1,7 @@
 /**
  * Same-origin Gun seed peer for the browser. Azure App Service is a seed
- * peer + bootstrap cache, not the chat server. WebRTC / ICE / TURN are not
- * this slice. Do not call user.recall({ sessionStorage: true }).
+ * peer + bootstrap cache, not the chat or presence server. WebRTC / ICE /
+ * TURN are not this slice. Do not call user.recall({ sessionStorage: true }).
  *
  * Gun 0.2020.1241 mesh emits hi/bye on the root onto (`gun._.on`), not the
  * graph `.on`. `Gun({ peers })` starts the wire immediately (websocket.js
