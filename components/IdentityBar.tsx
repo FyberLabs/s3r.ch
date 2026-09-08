@@ -56,7 +56,7 @@ import {
 } from "@/lib/identity/wrap";
 import { btnPrimary, btnSecondary, fieldMono, panel } from "@/lib/brand-ui";
 
-const WRAP_UNAVAILABLE_COPY = "Passkey wrap is not available in this browser.";
+const WRAP_UNAVAILABLE_COPY = "Save with passkey is not available in this browser.";
 
 type SessionPayload = {
   address: string;
@@ -225,8 +225,8 @@ function IdentityBarInner() {
         });
         setMeshLine((current) => {
           if (current) return current;
-          if (isWrappedMeshKeyRecord(record)) return "Key locked";
-          if (record) return "Key ready";
+          if (isWrappedMeshKeyRecord(record)) return "Saved";
+          if (record) return "Ready";
           return null;
         });
       })
@@ -325,11 +325,11 @@ function IdentityBarInner() {
           mesh.record,
           setMeshKind,
           setMeshLine,
-          mesh.created ? "Key ready" : undefined,
+          mesh.created ? "Ready" : undefined,
         );
         setUnlocked(false);
       } catch {
-        setMeshLine("Key failed");
+        setMeshLine("Failed");
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign-in failed.");
@@ -347,8 +347,8 @@ function IdentityBarInner() {
     if (!wrapWithPaper && !isConnected) {
       setMessage(
         wcConfigured
-          ? "Connect a wallet to wrap."
-          : "Connect a wallet to wrap.",
+          ? "Connect a wallet to save."
+          : "Connect a wallet to save.",
       );
       return;
     }
@@ -359,7 +359,7 @@ function IdentityBarInner() {
     try {
       const existing = await getMeshKey(session.address);
       if (!existing || !isPlaintextMeshKeyRecord(existing)) {
-        throw new Error("Nothing to wrap.");
+        throw new Error("Nothing to save.");
       }
       const prf = await createPrfCredential({
         address: session.address,
@@ -391,7 +391,7 @@ function IdentityBarInner() {
         envelope,
       });
       setMeshKind("wrapped");
-      setMeshLine("Key locked");
+      setMeshLine("Saved");
       setUnlocked(true);
       if ("paper" in secondary) setPaperReveal(secondary.paper);
       if (!isWrappedMeshKeyRecord(wrapped) || "seaPair" in wrapped) {
@@ -404,7 +404,7 @@ function IdentityBarInner() {
         setMessage(WRAP_UNAVAILABLE_COPY);
         return;
       }
-      setMessage(error instanceof Error ? error.message : "Wrap failed.");
+      setMessage(error instanceof Error ? error.message : "Save failed.");
     } finally {
       paperKey?.fill(0);
       setBusy(false);
@@ -444,7 +444,7 @@ function IdentityBarInner() {
         });
       }
       setUnlocked(true);
-      setMeshLine("Key unlocked");
+      setMeshLine("Unlocked");
     } catch (error) {
       setUnlocked(false);
       if (error instanceof PrfUnavailableError) {
@@ -477,7 +477,7 @@ function IdentityBarInner() {
       await readLocalMeshPair({ record: existing, secondaryKey });
       setPaperPaste("");
       setUnlocked(true);
-      setMeshLine("Key unlocked");
+      setMeshLine("Unlocked");
     } catch (error) {
       setUnlocked(false);
       setMessage(quietPaperBackupError(error));
@@ -527,7 +527,7 @@ function IdentityBarInner() {
         throw new Error("Plaintext seaPair must not remain after wrap.");
       }
       setMeshKind("wrapped");
-      setMeshLine("Key locked");
+      setMeshLine("Saved");
       setUnlocked(true);
       setPaperPaste("");
       setPaperReveal(paper);
@@ -618,7 +618,7 @@ function IdentityBarInner() {
                 onClick={() => void onWrapWithPasskey()}
                 className={btnSecondary}
               >
-                Wrap
+                Save with passkey
               </button>
             ) : null}
             {showUnlock ? (
@@ -823,11 +823,11 @@ function applyMeshRecord(
   }
   if (isWrappedMeshKeyRecord(record)) {
     setMeshKind("wrapped");
-    setMeshLine(createdLine ?? "Key locked");
+    setMeshLine(createdLine ?? "Saved");
     return;
   }
   setMeshKind("plaintext");
-  setMeshLine(createdLine ?? "Key ready");
+  setMeshLine(createdLine ?? "Ready");
 }
 
 async function fetchUnstoppableHeldClaim(
