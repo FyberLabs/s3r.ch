@@ -98,14 +98,17 @@ export type GunPresenceNode = {
 };
 
 /**
- * Later user node. gun.get('s3rch').get('users').get(wallet)
+ * In-graph user node. Native Check object.
+ * gun.get('s3rch').get('users').get(wallet)
  * On the Gun wire, indicators are a comma-separated string.
  */
 export type GunUserNode = {
   id: string;
-  indicators: string[];
+  indicators: string;
   provenance: string;
   ts: number;
+  /** Missing on older nodes; treat as v1. Unknown versions fail closed. */
+  v?: number;
 };
 
 /** Issuers prove a claim to the holder. They are not grants. */
@@ -289,6 +292,17 @@ export function admitChatNode(
 export function admitPresenceNode(
   acl: SeeAcl,
   node: GunPresenceNode,
+  owner: AccessorId,
+  hint?: HandoffHint,
+): { object: CheckObjectId } | { denied: true };
+
+/**
+ * Destination re-authorizes, then may put a GunUserNode into users.
+ * Hint / URL fetch is not authorization.
+ */
+export function admitUserNode(
+  acl: SeeAcl,
+  node: GunUserNode,
   owner: AccessorId,
   hint?: HandoffHint,
 ): { object: CheckObjectId } | { denied: true };

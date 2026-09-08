@@ -42,8 +42,10 @@ import {
   presenceInRoom,
   type PresenceEntry,
 } from "@/lib/presence";
+import { fromGunUserNode, mergeUsers, type User } from "@/lib/users";
 import { ComposeForm } from "@/components/ComposeForm";
 import { DiscoverPanel } from "@/components/DiscoverPanel";
+import { useGunPeer, type FeedGun } from "@/components/GunPeerProvider";
 import { IngestForm } from "@/components/IngestForm";
 import { PostSeeGrantControls } from "@/components/PostSeeGrantControls";
 import { RoomSeeGrantControls } from "@/components/RoomSeeGrantControls";
@@ -98,7 +100,11 @@ function writeDiscoverTagQuery(tags: readonly string[]): void {
 export function FeedStream() {
   const session = useIdentitySession();
   const see = useSeeAcl();
+  const gunPeer = useGunPeer();
+  const registerGun = gunPeer?.register;
   const gunRef = useRef<GunRef | null>(null);
+  const registerGunRef = useRef(registerGun);
+  registerGunRef.current = registerGun;
   const [seed, setSeed] = useState<FeedItem[]>([]);
   const [overlay, setOverlay] = useState<FeedItem[]>([]);
   const [meshItems, setMeshItems] = useState<FeedItem[]>([]);
@@ -122,6 +128,7 @@ export function FeedStream() {
   const [graphChat, setGraphChat] = useState<ChatMessage[]>([]);
   const [overlayPresence, setOverlayPresence] = useState<PresenceEntry[]>([]);
   const [graphPresence, setGraphPresence] = useState<PresenceEntry[]>([]);
+  const [meshUsers, setMeshUsers] = useState<User[]>([]);
   const [gunReady, setGunReady] = useState(false);
   const [seedWsUp, setSeedWsUp] = useState(false);
   const seedWsUpRef = useRef(false);
@@ -138,6 +145,7 @@ export function FeedStream() {
     let cancelled = false;
     let off: (() => void) | undefined;
     let offRooms: (() => void) | undefined;
+    let offUsers: (() => void) | undefined;
 
     (async () => {
       const GunMod = await import("gun/browser");
@@ -150,6 +158,7 @@ export function FeedStream() {
       const webrtcAttempted = await attachGunWebrtcLib(Gun);
       const gun = Gun(browserGunOptions());
       gunRef.current = gun;
+      registerGunRef.current?.(gun as unknown as FeedGun);
       if (!cancelled) setGunReady(true);
       let seedWsUp = false;
       let snapshotEmpty = true;
@@ -220,6 +229,18 @@ export function FeedStream() {
           ? () => roomsListener.off?.()
           : undefined;
 
+      const usersListener = gun.get("s3rch").get("users").map().on((data) => {
+        const user = fromGunUserNode(
+          data as Parameters<typeof fromGunUserNode>[0],
+        );
+        if (!user || cancelled) return;
+        setMeshUsers((prev) => mergeUsers(prev, [user]));
+      });
+      offUsers =
+        typeof usersListener?.off === "function"
+          ? () => usersListener.off?.()
+          : undefined;
+
       // seedWsUp stays source of truth. A later hi must not be clobbered
       // by this snapshot paint; an earlier hi already set it.
       if (!cancelled) {
@@ -233,6 +254,8 @@ export function FeedStream() {
       cancelled = true;
       off?.();
       offRooms?.();
+      offUsers?.();
+      registerGunRef.current?.(null);
     };
   }, [hydrate]);
 
@@ -591,6 +614,7 @@ export function FeedStream() {
         <DiscoverPanel
           tags={discovery.tags}
           rooms={discovery.rooms}
+          users={meshUsers}
           selected={selected}
           selectedRoomId={openRoomId}
           onChange={applyDiscoverTags}

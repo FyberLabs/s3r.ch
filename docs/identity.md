@@ -18,6 +18,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - After a SIWE session exists: a **mainnet ENS held claim** on `/feed` when reverse **and** forward match the checksummed session address. ENS is never login and never the session key.
 - After a SIWE session exists: a **Polygon UNS Unstoppable held claim** on `/feed` when reverse **and** forward checksum-match the session address. Unstoppable is never login and never the session key. SNS / Solana names are not this slice.
 - After a SIWE session exists: **Farcaster / Lens / RSS3 held claims** on `/feed` when a bidirectional public lookup binds them to the checksummed session address. These are never login (no SIWF, no Lens OAuth, no RSS3 login) and never the session key.
+- After a SIWE session exists: a **Gun user node** (`GunUserNode` on `s3rch/users/<wallet>`, `v: 1`). Verified held indicators link as claim ids on that node. Default is **Mine / private**. Explicit share-into-mesh of the user node or of an individual claim is confirm + admit + put — same pattern as a native post or room. Holding a claim is not publishing it. Unshare is later.
 - **ERC-1271** (and EIP-6492 via the same viem path) so a smart-account wallet can SIWE. Session subject stays the checksummed contract or EOA address.
 - **Paper-backup UI** for the wrap secondary KEK (`s3rch-wrap-v1:<base64url>`). Recovery, not login. Random 32-byte paper IKM (not a wallet-signature export). Shown once on wrap/export; paste unlocks.
 - Light SociACL **Check see-grants** in the browser (`CHECK(see, object, accessor)` at `now`). Quiet `/feed` grant / revoke after SIWE on **held claims** and on **own native posts**. Grants are `IdentitySeeGrant` records on an in-memory / IndexedDB dest ACL. Not login. Not share-into-mesh. Not delivery.
@@ -26,7 +27,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - **Live room chat** (`GunChatNode` on `s3rch/rooms/<id>/chat`). Admit via `admitChatNode` (Check). SIWE required to send. Mine-only chat stays on the overlay until that room node is shared. Shared public-room chat HAM-merges through the same-origin `/gun` seed peer. Unsigned visitors can **read** public-room chat; they cannot send. A see-grant is not delivery. Chat is not WebRTC.
 - **Room presence** (`GunPresenceNode` on `s3rch/rooms/<id>/presence/<address>`). Admit via `admitPresenceNode` (Check). SIWE required to announce. Soft TTL (heartbeat ~25s, expire ~75s). Mine-only presence stays on the overlay until that room node is shared. Shared public-room presence HAM-merges through the same-origin `/gun` seed peer. Unsigned visitors can **see** presence on a public room; they cannot announce. A see-grant is not delivery. Presence is not WebRTC.
 - **Public / Mine / Network** tabs. Public keeps snapshot hydrate + shared. Network is the live Gun mesh (`s3rch/items`, `s3rch/rooms` via `.map().on`) — not Mine overlay, not ingest, not the snapshot. Tags-first then recency ranker (rooms reuse the same idea). No Popular / Novel. No search API.
-- **Explicit share-into-mesh** on the holder's own native post: admit, then put the node onto `gun.get('s3rch').get('items')`. Same confirm pattern for an owned room node onto `s3rch/rooms`. A see-grant is not this. Room share ≠ post share.
+- **Explicit share-into-mesh** on the holder's own native post: admit, then put the node onto `gun.get('s3rch').get('items')`. Same confirm pattern for an owned room node onto `s3rch/rooms`, and for the holder's user node / a selected held claim onto `s3rch/users/<wallet>`. A see-grant is not this. Room share ≠ post share. User-node share ≠ dumping every held claim.
 - **Browser WebRTC** (`gun/lib/webrtc` after `gun/browser`, STUN-only ICE). Additive to the same-origin `/gun` seed peer. If ICE fails, seed / snapshot like today. STUN ≠ TURN. Chat and presence stay Gun subscriptions.
 
 ## What this slice does not ship
@@ -37,7 +38,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - A Reown Cloud project id invented in this repo. Empty `NEXT_PUBLIC_WC_PROJECT_ID` stays injected + Smart Wallet (no WalletConnect).
 - Coinbase CDP Embedded Wallet (`@coinbase/cdp-wagmi`), a CDP Project ID, email/phone magic link, Privy, Dynamic, Web3Auth, or Magic as the session. Those are email-login-as-IdP. Onramp is Smart Wallet then SIWE.
 - Panopticon / Hypermesh Keycloak as an IdP. s3r.ch login stays EIP-4361 SIWE.
-- ENS or Unstoppable as login, or writing an ENS / Unstoppable / Farcaster / Lens / RSS3 claim onto the public Gun graph.
+- ENS or Unstoppable as login, or dumping an ENS / Unstoppable / Farcaster / Lens / RSS3 claim onto the public Gun graph without an explicit share. Unshare / HAM-delete.
 - A UD partner key in `NEXT_PUBLIC_*`, a browser call to `api.unstoppabledomains.com/resolve`, or Key Vault for `UNSTOPPABLE_API_KEY`.
 - Farcaster SIWF, Lens OAuth, or RSS3 login. Indicators are held claims after SIWE, not session subjects.
 - Importing `FyberLabs/SociACL` as a crate, NAPI, WASM, or npm package. Light Check is re-typed from the consume contract (`docs/s3rch-check.d.ts`).
@@ -60,7 +61,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 | Farcaster / Lens / RSS3 are held claims after SIWE | Same bidirectional bar as ENS. Unverified one-way lookups are never shown. A GI miss is a quiet empty RSS3 claim, not a reason to drop the others |
 | Mesh identity is a **local Gun SEA P-256 pair**, not the Ethereum key | Different curves. Ethereum secp256k1 signs SIWE; SEA is for later mesh crypto |
 | Never call `user.recall({ sessionStorage: true })` | Gun would store the plaintext SEA pair. Never `sessionStorage` for this kit. |
-| Never put SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, ENS, Unstoppable, Farcaster, Lens, or RSS3 claims on the public Gun graph | Session / device secrets stay in cookies and IndexedDB. Public indicators are read-only this slice |
+| Never put SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs on a Gun node | Session / device secrets stay in cookies and IndexedDB. Held claims go on `s3rch/users/<wallet>` only after explicit share. `fromGunUserNode` fails closed on those secret keys |
 | Nonce lives in a **signed cookie**, not an in-memory `Map` | Azure App Service is multi-instance; Redis is not in this slice |
 | OIDC is not primary login | Hypermesh portal can stay Keycloak; s3r.ch does not use Panopticon Keycloak as an IdP |
 | Passkey WebAuthn PRF wrap is recovery | PRF is device proof for the Gun SEA pair. It does not become the session subject. Distinct from a Coinbase Smart Wallet passkey (onramp to an address, then SIWE) |
@@ -112,9 +113,12 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `lib/identity/lens-claim.ts` | Public Lens GraphQL owned-account reverse + owner forward |
 | `lib/identity/rss3-claim.ts` | Optional GI overlay reverse + owner forward. Quiet label, not a feed |
 | `lib/identity/indicators.ts` | Session-gated Farcaster / Lens / RSS3 in one trip. Isolates GI misses |
-| `lib/identity/check.ts` | Consume-contract Check: `checkSee`, `checkSeeGrant`, `applySeeGrant`, `cancelSee`, `admitFeedNode`, `admitRoomNode`, `admitChatNode`, `admitPresenceNode`, `acceptHint`, souls (`itemSoul`, `roomSoul`, `chatSoul`, `presenceSoul`) |
+| `lib/identity/check.ts` | Consume-contract Check: `checkSee`, `checkSeeGrant`, `applySeeGrant`, `cancelSee`, `admitFeedNode`, `admitRoomNode`, `admitChatNode`, `admitPresenceNode`, `admitUserNode`, `acceptHint`, souls (`itemSoul`, `roomSoul`, `chatSoul`, `presenceSoul`, `userSoul`) |
+| `lib/users.ts` | User node builder, GunUserNode csv indicators, admit-before-overlay / admit-before-share of the user node or an individual claim. Mine overlay until explicit put. No `/api/users` |
 | `lib/identity/see-acl.ts` | Lab dest ACL (memory + IndexedDB). `IdentitySeeGrant` records only |
 | `lib/identity/held-claims.ts` | Claim ids linked from the user node (`ens:name.eth`, `unstoppable:brad.x`). Not `s3rch/users/{wallet}/claims/…` |
+| `components/UserNodeControls.tsx` | Signed-in publish user node / share claim (confirm + admit + put). Copy: holding ≠ publishing; grant is not share. One-way here |
+| `components/GunPeerProvider.tsx` | Thin `/feed` Gun handle so IdentityBar can put a user node on the same browser Gun FeedStream constructed |
 | `lib/compose.ts` | Native post builder + admit-before-overlay / admit-before-share. Empty body rejected |
 | `lib/rooms.ts` | Room builder, GunRoomNode csv tags, admit-before-overlay / admit-before-share of the room node, `roomTag`, `roomsForTab`, `itemsInRoom`, `rankRooms` |
 | `lib/chat.ts` | Room chat builder, GunChatNode, admit-before-overlay / admit-before-put on the room chat path, Mine overlay until the room is on `s3rch/rooms` |
@@ -130,11 +134,11 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `app/api/identity/unstoppable` | `GET ?address=` — session-gated Unstoppable claim for the session address only |
 | `app/api/identity/indicators` | `GET ?address=` — session-gated Farcaster / Lens / RSS3 claims for the session address only |
 | `app/api/identity/logout` | `POST` — clear identity cookies |
-| `components/IdentityBar.tsx` | Quiet `/feed` connect + Passkey wallet (Smart Wallet onramp) + optional WalletConnect + SIWE + mesh key + wrap/unlock + paper backup + ENS + Unstoppable + public-indicator claims + see-grant / revoke + sign out |
+| `components/IdentityBar.tsx` | Quiet `/feed` connect + Passkey wallet (Smart Wallet onramp) + optional WalletConnect + SIWE + mesh key + wrap/unlock + paper backup + ENS + Unstoppable + public-indicator claims + publish user node / share claim + see-grant / revoke + sign out |
 | `components/SeeGrantControls.tsx` | Signed-in grant see / revoke of a held claim (wallet / ENS / Unstoppable / FC / Lens / RSS3). Copy: this is a grant, not login. No hop UI |
 | `components/ComposeForm.tsx` | Signed-in native compose onto Mine. Optional `roomId` adds the room membership tag. Signed-out: one-line SIWE hint, not a second IdP |
 | `components/PostSeeGrantControls.tsx` | Grant see / revoke on an owned native post (`claimId` = post id / item soul). Dest ACL only |
-| `components/DiscoverPanel.tsx` | Discover on Public / Network: tags already on seed + shared rooms + live mesh, inventory counts, matching shared rooms. Same ranker. Not search / Popular / Mine |
+| `components/DiscoverPanel.tsx` | Discover on Public / Network: tags already on seed + shared rooms + live mesh, inventory counts, matching shared rooms, quiet shared-user provenance. Same ranker. Not search / Popular / Mine |
 | `components/RoomsList.tsx` | Quiet Mine / Public / Network rooms list + New room (SIWE, Mine only). Network rooms = shared `s3rch/rooms`. Public / Network rows may show a short owner snippet (provenance). Not a `/rooms` landing. Copy: live chat and presence are this pass; WebRTC attempted over STUN; meetings / streams still later |
 | `components/RoomChat.tsx` | Live chat pane on an open room. Gun `.map().on` / put when the room is on `s3rch/rooms`; overlay while Mine-only. SIWE to send. Unsigned read on public rooms. Copy: presence is this pass; meetings / streams still later |
 | `components/RoomPresence.tsx` | Quiet who-is-here line on an open room. Gun `.map().on` / put when the room is on `s3rch/rooms`; overlay while Mine-only. SIWE to announce. Unsigned read on public rooms |
@@ -354,7 +358,7 @@ Locks that stay:
 
 - Never `sessionStorage`.
 - Never `user.recall({ sessionStorage: true })`.
-- Never write SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, the paper backup string, the link, or ENS / Unstoppable / Farcaster / Lens / RSS3 claims onto the public Gun graph.
+- Never write SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs, the paper backup string, or the wallet-signed link onto the public Gun graph. Held claims go on the user node only after explicit share.
 - Session subject remains the checksummed address. Paper backup is recovery, not login.
 
 ## WalletConnect (gated connector, not an IdP)
@@ -401,7 +405,7 @@ Quiet `/feed` copy: Passkey wallet creates or opens a Coinbase Smart Wallet. Sig
 
 ## Light Check see-grants (grants, not login)
 
-After SIWE, the holder can grant `see` of a held claim (wallet, ENS, Unstoppable, Farcaster, Lens, RSS3), **an owned native post**, or **an owned room** to another checksummed address for a time window, and revoke immediately. Chat messages and presence heartbeats that live in Gun are dest-ACL objects (`admitChatNode`, `admitPresenceNode`); a see-grant on them is not delivery and not a public put. Session subject stays the checksummed address. Copy: **this is a grant, not login, and not share-into-mesh.** The accessor does not receive the post body until the item is on a graph they can read.
+After SIWE, the holder can grant `see` of a held claim (wallet, ENS, Unstoppable, Farcaster, Lens, RSS3), **an owned native post**, **an owned room**, or **their user node** to another checksummed address for a time window, and revoke immediately. Chat messages and presence heartbeats that live in Gun are dest-ACL objects (`admitChatNode`, `admitPresenceNode`); a see-grant on them is not delivery and not a public put. Session subject stays the checksummed address. Copy: **this is a grant, not login, and not share-into-mesh.** The accessor does not receive the post body until the item is on a graph they can read. Holding a claim is not publishing it.
 
 Source of truth: [s3rch-check.md](s3rch-check.md) / [s3rch-check.d.ts](s3rch-check.d.ts), matching FyberLabs/SociACL `crates/sociacl-gun` consume contract. Do not import that crate.
 
@@ -415,23 +419,24 @@ Source of truth: [s3rch-check.md](s3rch-check.md) / [s3rch-check.d.ts](s3rch-che
 - `admitRoomNode` re-authorizes at dest before `put` into `rooms`.
 - `admitChatNode` re-authorizes at dest before overlay register or `put` onto a room `chat` set.
 - `admitPresenceNode` re-authorizes at dest before overlay register or `put` onto a room `presence` set. Owner must be the address on the node.
+- `admitUserNode` re-authorizes at dest before overlay register or `put` onto `s3rch/users/<wallet>`. Owner must be the wallet on the node. Linked indicators are claim ids.
 - Privilege-down (`cancelSee`) is immediate.
 
-Dest ACL is lab-local (memory / IndexedDB). Grants are `IdentitySeeGrant` records only. Public mesh vs mine still applies: a grant is not share-into-mesh, is not delivery, and is not written onto public Gun. Share-into-mesh is a separate confirm + `items.put` of an already-admitted GunFeedNode, or `rooms.put` of an already-admitted GunRoomNode.
+Dest ACL is lab-local (memory / IndexedDB). Grants are `IdentitySeeGrant` records only. Public mesh vs mine still applies: a grant is not share-into-mesh, is not delivery, and is not written onto public Gun. Share-into-mesh is a separate confirm + `items.put` of an already-admitted GunFeedNode, `rooms.put` of an already-admitted GunRoomNode, or `users.put` of an already-admitted GunUserNode (full node or a selected claim). Unshare is later.
 
 Claim object id is the claim id, linked from the user node (`ens:name.eth`). Do not invent `s3rch/users/{wallet}/claims/…`.
 
-Quiet `/feed` IdentityBar: grant see + revoke after SIWE on held claims. Quiet Grant see / Revoke on own Mine native posts and own Mine rooms. No hop UI. No Elect / wills / Case C. Social Light hop is not this slice (it can factor a Check later; it cannot mint a grant). Compose, new room, sending chat, and announcing presence require a live SIWE cookie session. Login stays EIP-4361. No email login, no Keycloak, no second IdP.
+Quiet `/feed` IdentityBar: grant see + revoke after SIWE on held claims. Publish user node / share claim after SIWE (confirm + admit + put). Quiet Grant see / Revoke on own Mine native posts and own Mine rooms. No hop UI. No Elect / wills / Case C. Social Light hop is not this slice (it can factor a Check later; it cannot mint a grant). Compose, new room, sending chat, announcing presence, and writing a user node require a live SIWE cookie session. Login stays EIP-4361. No email login, no Keycloak, no second IdP.
 
 ## Follow-ups
 
-- Operator: App Service WebSockets + HTTP/2 so the already-wired same-origin `/gun` peer can stay up (Cloudflare + Azure ARR can still drop the socket; snapshot stays on Public). `gun/lib/webrtc` + STUN and the Network tab already ship. Still later: TURN / Panopticon, live mesh delivery of granted objects, meetings/streams, unshare. Room presence already ships. Google STUN ≠ TURN; needed TURN later is Panopticon. Long-term low/no server footprint, TURN-class relays, Panopticon-hosted needed services, oracles/validators, versioned Gun `v`, and later crypto (or optional fiat) payments: [ARCHITECTURE.md — Steering locks (2026-09-02)](ARCHITECTURE.md#steering-locks-2026-09-02). Do not grow s3r.ch Azure into that service in this PR.
+- Operator: App Service WebSockets + HTTP/2 so the already-wired same-origin `/gun` peer can stay up (Cloudflare + Azure ARR can still drop the socket; snapshot stays on Public). `gun/lib/webrtc` + STUN, the Network tab, and the Gun user node already ship. Still later: TURN / Panopticon, live mesh delivery of granted objects, meetings/streams, unshare. Room presence already ships. Google STUN ≠ TURN; needed TURN later is Panopticon. Long-term low/no server footprint, TURN-class relays, Panopticon-hosted needed services, oracles/validators, versioned Gun `v`, and later crypto (or optional fiat) payments: [ARCHITECTURE.md — Steering locks (2026-09-02)](ARCHITECTURE.md#steering-locks-2026-09-02). Do not grow s3r.ch Azure into that service in this PR.
 - SNS / Solana names (not this slice; ENS remains primary mainnet reverse+forward. Unstoppable is a held claim after SIWE, not login).
 - More Check verbs, Social Light hop (may factor a Check later; it cannot mint a grant), friend-of-friend. Do not import `FyberLabs/SociACL`.
 - Azure Key Vault for `IDENTITY_SESSION_SECRET` and later `UNSTOPPABLE_API_KEY` (still operator / Azure in this slice).
 - Contract verify on chains other than mainnet (this slice's 1271 RPC allowlist is mainnet only).
 
-This slice ships an Unstoppable held claim after SIWE (Polygon on-chain reverse+forward; optional server-only Resolution key), paper-backup UI for the wrap secondary KEK, ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client), WalletConnect gated on `NEXT_PUBLIC_WC_PROJECT_ID`, Coinbase Smart Wallet as an **onramp then SIWE** (not email login, not Keycloak, not `@coinbase/cdp-wagmi`), light SociACL Check see-grants (consume contract in [s3rch-check.md](s3rch-check.md)), native s3r.ch posts (mine by default), rooms as Gun threads (Mine by default, Check on rooms, explicit share of the room node, tags discovery), live room chat and presence over Gun subscriptions (Mine overlay until the room is shared; SIWE to send or announce), Public / Mine / Network tabs, a Discover browse of tags already on Public and the live Network mesh (not Mine overlay, not search, not Popular/Novel), Check on those post objects, explicit share-into-mesh, tags-first recency ranking, and `gun/lib/webrtc` with STUN-only ICE. Check is grants, not login. A grant is not delivery and not share-into-mesh. Room share ≠ post share. Chat in a visible room is the live thread; it is not dumping Mine posts. Presence is who is in that room now; it is not WebRTC. Network is the live mesh view via seed peer / WebRTC; it is not a finished P2P mesh. STUN is not TURN. Unstoppable is never login. s3r.ch does not use Panopticon Keycloak as an IdP. Gun user node, mesh-wide held-claim publish, and unshare are later.
+This slice ships an Unstoppable held claim after SIWE (Polygon on-chain reverse+forward; optional server-only Resolution key), paper-backup UI for the wrap secondary KEK, ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client), WalletConnect gated on `NEXT_PUBLIC_WC_PROJECT_ID`, Coinbase Smart Wallet as an **onramp then SIWE** (not email login, not Keycloak, not `@coinbase/cdp-wagmi`), light SociACL Check see-grants (consume contract in [s3rch-check.md](s3rch-check.md)), a Gun user node keyed by the SIWE address (Mine until explicit share of the node or of a held claim), native s3r.ch posts (mine by default), rooms as Gun threads (Mine by default, Check on rooms, explicit share of the room node, tags discovery), live room chat and presence over Gun subscriptions (Mine overlay until the room is shared; SIWE to send or announce), Public / Mine / Network tabs, a Discover browse of tags already on Public and the live Network mesh plus shared-user provenance (not Mine overlay, not search, not Popular/Novel), Check on those post objects, explicit share-into-mesh, tags-first recency ranking, and `gun/lib/webrtc` with STUN-only ICE. Check is grants, not login. A grant is not delivery and not share-into-mesh. Holding a claim is not publishing it. Room share ≠ post share. Chat in a visible room is the live thread; it is not dumping Mine posts. Presence is who is in that room now; it is not WebRTC. Network is the live mesh view via seed peer / WebRTC; it is not a finished P2P mesh. STUN is not TURN. Unstoppable is never login. s3r.ch does not use Panopticon Keycloak as an IdP. Unshare is later.
 
 ## Live fixtures (re-checked 2026-09-01)
 

@@ -20,7 +20,7 @@ The Next app runs Check **in the browser** on the Gun mesh. It does **not** impo
 | grant | jointly stated `IdentitySeeGrant`; hopcap **1** (no friend-of-friend) |
 | revoke | immediate privilege-down on the dest object (`cancelSee`) |
 | hint | `HandoffHint` — untrusted; never a grant |
-| admit | dest re-authorizes **before** `put()` into `items`, `rooms`, that room `chat` set, or that room `presence` set |
+| admit | dest re-authorizes **before** `put()` into `items`, `rooms`, that room `chat` set, that room `presence` set, or `users` |
 
 `s3rch/meta` is seed cache. It is not a Check object. A permalink / RSS3 / RSS / issuer URL is a `UrlLeaf`, not a node and not a grant.
 

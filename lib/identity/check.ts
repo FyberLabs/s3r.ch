@@ -13,6 +13,7 @@ import {
   protocolVersionOf,
   toGunNode,
   type GunFeedNode,
+  type GunUserNode,
   type IdentitySeeGrant,
 } from "@/lib/feed-types";
 
@@ -164,9 +165,14 @@ export function presenceSoul(roomId: string, address: string): string {
   return `${roomSoul(roomId)}/${S3RCH_PRESENCE}/${encodeKey(address)}`;
 }
 
-/** s3rch/users/<wallet> */
+/** s3rch/users/<wallet> — checksum when the key is an address. */
 export function userSoul(wallet: string): string {
-  return `${S3RCH_ROOT}/${S3RCH_USERS}/${wallet.trim()}`;
+  const trimmed = wallet.trim();
+  try {
+    return `${S3RCH_ROOT}/${S3RCH_USERS}/${getAddress(trimmed)}`;
+  } catch {
+    return `${S3RCH_ROOT}/${S3RCH_USERS}/${trimmed}`;
+  }
 }
 
 /** s3rch/meta — not a Check object. */
@@ -239,7 +245,23 @@ export function grantNamesObject(
   if (encodeKey(claimId) === object) return true;
   if (object.endsWith(`/${S3RCH_CHAT}/${encodeKey(claimId)}`)) return true;
   if (object.endsWith(`/${S3RCH_PRESENCE}/${encodeKey(claimId)}`)) return true;
+  const user = userObjectId(claimId);
+  if (user && user === object) return true;
   return false;
+}
+
+/** Wallet claim or existing user soul → locked `s3rch/users/<wallet>`. */
+export function userObjectId(claimId: string): CheckObjectId | undefined {
+  const trimmed = claimId.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)) return userSoul(
+    trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length),
+  );
+  try {
+    return userSoul(getAddress(trimmed));
+  } catch {
+    return undefined;
+  }
 }
 
 export function grantNamesAccessor(
@@ -321,6 +343,55 @@ export function checkSeeGrant(
     return { allowed: false, reason };
   }
   return dest;
+}
+
+const USER_NODE_FORBIDDEN_KEYS = [
+  "priv",
+  "epriv",
+  "signature",
+  "siwe",
+  "seaPair",
+  "wrap",
+  "paper",
+  "dek",
+  "kek",
+  "walletSignature",
+] as const;
+
+function userNodeHasForbiddenSecrets(node: object): boolean {
+  return USER_NODE_FORBIDDEN_KEYS.some((key) => key in node);
+}
+
+function splitUserIndicators(value: unknown): string[] {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const trimmed = item.trim();
+    if (!trimmed || isUrlLeafId(trimmed) || isMetaId(trimmed)) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+function userNodeAdmitted(node: GunUserNode): string | null {
+  if (!node || typeof node !== "object") return null;
+  if (userNodeHasForbiddenSecrets(node)) return null;
+  if (typeof node.id !== "string" || !node.id.trim()) return null;
+  if (protocolVersionOf(node.v) === null) return null;
+  try {
+    return getAddress(node.id);
+  } catch {
+    return null;
+  }
 }
 
 function destOwner(owner: AccessorId): AccessorId | null {
@@ -479,6 +550,41 @@ export function admitPresenceNode(
   return { object };
 }
 
+/**
+ * Destination re-authorizes, then may put a GunUserNode into users.
+ * Hint / URL fetch is not authorization. meta and UrlLeaf fail closed.
+ * Owner must be the wallet on the node. Linked indicators are claim ids
+ * (`ens:name.eth`), not `s3rch/users/{wallet}/claims/…`.
+ * A grant is not share-into-mesh. Putting onto the public path is the
+ * caller's explicit share gate.
+ */
+export function admitUserNode(
+  acl: SeeAcl,
+  node: GunUserNode,
+  owner: AccessorId,
+  hint?: HandoffHint,
+): { object: CheckObjectId } | { denied: true } {
+  void hint;
+  const dest = destOwner(owner);
+  const admitted = userNodeAdmitted(node);
+  if (!dest || !admitted) {
+    return { denied: true };
+  }
+  if (!samePresenceOwner(dest, admitted)) {
+    return { denied: true };
+  }
+  const object = userSoul(admitted);
+  if (isMetaId(object) || isUrlLeafId(object)) {
+    return { denied: true };
+  }
+  acl.putObject(object, dest);
+  acl.putObject(admitted, dest);
+  for (const claim of splitUserIndicators(node.indicators)) {
+    acl.putObject(claim, dest);
+  }
+  return { object };
+}
+
 function resolveGrantObject(
   acl: SeeAcl,
   grant: IdentitySeeGrant,
@@ -492,6 +598,8 @@ function resolveGrantObject(
   if (acl.hasObject(room)) return room;
   if (claimId.includes(`/${S3RCH_CHAT}/`) && acl.hasObject(claimId)) return claimId;
   if (claimId.includes(`/${S3RCH_PRESENCE}/`) && acl.hasObject(claimId)) return claimId;
+  const user = userObjectId(claimId);
+  if (user && acl.hasObject(user)) return user;
   return undefined;
 }
 

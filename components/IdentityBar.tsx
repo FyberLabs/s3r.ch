@@ -10,6 +10,7 @@ import {
 } from "wagmi";
 import { IdentityProviders } from "@/components/IdentityProviders";
 import { SeeGrantControls } from "@/components/SeeGrantControls";
+import { UserNodeControls } from "@/components/UserNodeControls";
 import { SIWE_MESSAGE_TTL_MS } from "@/lib/identity/config";
 import {
   getMeshKey,
@@ -607,9 +608,11 @@ function IdentityBarInner() {
         (EOA or ERC-1271 smart account). A Passkey wallet creates or opens a
         Coinbase Smart Wallet so you can get an address; sign-in is still SIWE,
         not a separate identity provider. ENS, Unstoppable, Farcaster, Lens, and
-        RSS3 are held claims after sign-in, not the session key. A passkey can
-        wrap the local mesh key on this device (recovery, not login — different
-        from a Smart Wallet passkey). A paper backup is recovery, not login.
+        RSS3 are held claims after sign-in, not the session key. Held claims
+        stay Mine until you share the user node or a claim onto the public
+        graph. A passkey can wrap the local mesh key on this device
+        (recovery, not login — different from a Smart Wallet passkey). A
+        paper backup is recovery, not login.
         {wcConfigured
           ? " WalletConnect is a wallet connector (QR / mobile), not a separate identity provider."
           : ""}
@@ -782,14 +785,24 @@ function IdentityBarInner() {
         <p className="mt-3 text-xs text-ink-muted">{rss3ClaimLine(indicators.rss3.name)}</p>
       ) : null}
       {session ? (
-        <SeeGrantControls
-          address={session.address}
-          ens={ensClaim}
-          unstoppable={unstoppableClaim}
-          farcaster={indicators.farcaster.name}
-          lens={indicators.lens.name}
-          rss3={indicators.rss3.name}
-        />
+        <>
+          <UserNodeControls
+            address={session.address}
+            ens={ensClaim}
+            unstoppable={unstoppableClaim}
+            farcaster={indicators.farcaster.name}
+            lens={indicators.lens.name}
+            rss3={indicators.rss3.name}
+          />
+          <SeeGrantControls
+            address={session.address}
+            ens={ensClaim}
+            unstoppable={unstoppableClaim}
+            farcaster={indicators.farcaster.name}
+            lens={indicators.lens.name}
+            rss3={indicators.rss3.name}
+          />
+        </>
       ) : null}
       {showPrfMissing ? (
         <p className="mt-3 text-xs text-ink-muted">{PRF_UNAVAILABLE_MESSAGE}</p>

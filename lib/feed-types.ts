@@ -47,14 +47,17 @@ export type SourcePull = {
 export type FeedTab = "public" | "mine" | "network";
 
 /**
- * Later user node. gun.get('s3rch').get('users').get(wallet)
+ * gun.get('s3rch').get('users').get(wallet)
  * On the Gun wire, indicators are a comma-separated string.
+ * Missing `v` reads as v1. Unknown future `v` fails closed.
  */
 export type GunUserNode = {
   id: string;
-  indicators: string[];
+  indicators: string;
   provenance: string;
   ts: number;
+  /** Missing on older nodes; treat as v1. Unknown versions fail closed. */
+  v?: number;
 };
 
 /** Issuers prove a claim to the holder. They are not grants. */
