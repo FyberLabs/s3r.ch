@@ -1,6 +1,6 @@
 /**
  * Shared feed item shape. Public cache, snapshot, personal overlay, and
- * (later) the mesh all use this. Public / Mine tabs render; Network is later.
+ * the live Gun mesh all use this. Public / Mine / Network tabs render.
  */
 
 export type FeedSource = "rss3" | "rss" | "atom" | "farcaster" | "atproto" | "s3rch";
@@ -43,7 +43,7 @@ export type SourcePull = {
   error: string | null;
 };
 
-/** Public / Mine render. Network stays type-only (later — mesh). */
+/** Public (snapshot + shared), Mine (overlay), Network (live Gun mesh). */
 export type FeedTab = "public" | "mine" | "network";
 
 /**
