@@ -33,13 +33,13 @@ export const ALLOWED_SOURCE_CLASSES = [
 export type AllowedSourceClass = (typeof ALLOWED_SOURCE_CLASSES)[number];
 
 export const BROWSER_CORS_COPY =
-  "Direct browser-to-source still fails CORS. This pull uses the same-origin /api/ingest proxy. A relay or extension is later. Azure is still a seed peer, not a second datastore.";
+  "This pull uses this site as a proxy.";
 
 export const BROWSER_PULL_MINE_COPY =
-  "Pulled onto Mine. Not the public seed until you share into the mesh.";
+  "Pulled onto Mine. Share if you want it public.";
 
 export const BROWSER_PULL_SHARE_COPY =
-  "Share into mesh HAM-merges these admitted items onto s3rch/items. It does not dump every future pull. A see-grant is not this.";
+  "Share these items to public.";
 
 export const ALLOWED_SOURCE_LABELS: Record<AllowedSourceClass, string> = {
   farcaster: "Farcaster",

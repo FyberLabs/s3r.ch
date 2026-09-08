@@ -21,7 +21,7 @@ import { useSeeAcl } from "@/components/SeeAclProvider";
 import { btnSecondary, field, fieldMono } from "@/lib/brand-ui";
 
 export const POST_SEE_GRANT_COPY =
-  "This is a grant, not login, and not share-into-mesh. Granting delivers this Gun post to the accessor Granted inbox (mesh delay is ok). Revoke is immediate on dest ACL. It does not publish to Public.";
+  "Let another address see this post. Revoke anytime.";
 
 export function PostSeeGrantControls({
   address,
@@ -91,7 +91,7 @@ export function PostSeeGrantControls({
         Math.floor(Date.now() / 1000),
       );
       if ("denied" in prepared) {
-        setMessage("Granted on dest ACL. Delivery needs a Gun-stored native post.");
+        setMessage("Granted. Delivery needs a public post.");
       } else if (!peer?.gun) {
         setMessage(GRANT_DELIVERY_WAIT_COPY);
       } else {
@@ -132,7 +132,6 @@ export function PostSeeGrantControls({
 
   return (
     <div className="mt-3 border-t border-rule pt-3">
-      <p className="text-xs text-ink-muted">{POST_SEE_GRANT_COPY}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <input
           type="text"

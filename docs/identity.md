@@ -141,14 +141,14 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `app/api/identity/indicators` | `GET ?address=` — session-gated Farcaster / Lens / RSS3 claims for the session address only |
 | `app/api/identity/logout` | `POST` — clear identity cookies |
 | `components/IdentityBar.tsx` | Quiet `/feed` connect + Passkey wallet (Smart Wallet onramp) + optional WalletConnect + SIWE + mesh key + wrap/unlock + paper backup + ENS + Unstoppable + public-indicator claims + publish user node / share claim + see-grant / revoke + sign out |
-| `components/SeeGrantControls.tsx` | Signed-in grant see / revoke of a held claim (wallet / ENS / Unstoppable / FC / Lens / RSS3). Dest ACL + grant-inbox put. Copy: this is a grant, not login. No hop UI |
+| `components/SeeGrantControls.tsx` | Signed-in grant see / revoke of a held claim (wallet / ENS / Unstoppable / FC / Lens / RSS3). Dest ACL + grant-inbox put. Public copy is a short UX hint. No hop UI |
 | `components/ComposeForm.tsx` | Signed-in native compose onto Mine. Optional `roomId` adds the room membership tag. Signed-out: one-line SIWE hint, not a second IdP |
 | `components/PostSeeGrantControls.tsx` | Grant see / revoke on an owned native post (`claimId` = post id / item soul). Dest ACL + grant-inbox put |
-| `components/DiscoverPanel.tsx` | Discover on Public / Network: tags already on seed + shared rooms + live mesh, inventory counts, matching shared rooms, quiet shared-user provenance. Same ranker. Not search / Popular / Mine |
-| `components/RoomsList.tsx` | Quiet Mine / Public / Network rooms list + New room (SIWE, Mine only). Network rooms = shared `s3rch/rooms`. Public / Network rows may show a short owner snippet (provenance). Not a `/rooms` landing. Copy: live chat and presence are this pass; WebRTC attempted over STUN; meetings / streams still later |
-| `components/RoomChat.tsx` | Live chat pane on an open room. Gun `.map().on` / put when the room is on `s3rch/rooms`; overlay while Mine-only. SIWE to send. Unsigned read on public rooms. Copy: presence is this pass; meetings / streams still later |
+| `components/DiscoverPanel.tsx` | Discover on Public / Network: tags already on seed + shared rooms + live mesh, inventory counts, matching shared rooms, quiet shared-user provenance. Same ranker. Not search / Popular / Mine. Public copy is a short UX hint |
+| `components/RoomsList.tsx` | Quiet Mine / Public / Network rooms list + New room (SIWE, Mine only). Network rooms = shared `s3rch/rooms`. Public / Network rows may show a short owner snippet (provenance). Not a `/rooms` landing. Public copy is a short UX hint |
+| `components/RoomChat.tsx` | Live chat pane on an open room. Gun `.map().on` / put when the room is on `s3rch/rooms`; overlay while Mine-only. SIWE to send. Unsigned read on public rooms. Public copy is a short UX hint |
 | `components/RoomPresence.tsx` | Quiet who-is-here line on an open room. Gun `.map().on` / put when the room is on `s3rch/rooms`; overlay while Mine-only. SIWE to announce. Unsigned read on public rooms |
-| `components/RoomSeeGrantControls.tsx` | Grant see / revoke on an owned Mine room (`claimId` = room id / room soul). Dest ACL + grant-inbox put. Copy: grant is not login, not share |
+| `components/RoomSeeGrantControls.tsx` | Grant see / revoke on an owned Mine room (`claimId` = room id / room soul). Dest ACL + grant-inbox put. Public copy is a short UX hint |
 | `components/SeeAclProvider.tsx` | Shared dest ACL for IdentityBar claims and feed post objects |
 
 ## Cookies

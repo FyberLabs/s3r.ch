@@ -34,10 +34,7 @@ export default function Home() {
             s3r.ch
           </h1>
           <p className="mt-6 text-lg text-ink-muted sm:text-xl">
-            A Fyber Labs lab site with a tagged social lab feed.
-          </p>
-          <p className="mt-6 max-w-2xl text-base text-ink-muted">
-            Gun-backed, under development.
+            Tagged posts and rooms.
           </p>
           <p className="mt-8">
             <a href="/feed" className={`inline-flex ${btnPrimary}`}>

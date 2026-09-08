@@ -47,23 +47,9 @@ export function RoomPresence({
   return (
     <div className={`mt-6 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">In this room</h2>
-      <p className="mt-2 text-xs text-ink-muted">
-        Who is in this room now. Presence is this pass; it is not WebRTC.
-        Meetings and streams are later. WebRTC is attempted over STUN when
-        ICE works; if it fails, seed peer / snapshot like today. STUN is
-        not TURN. Trying seed peer; if the socket is down this list can be
-        empty or local only. There is no hosted presence server.
-        {onPublicGraph
-          ? seedWsUp
-            ? " This room node is on the public graph. Heartbeats go through the seed peer when the socket is up."
-            : " This room node is on the public graph. Snapshot is not a presence list."
-          : " This room is Mine. Presence stays on your overlay until you share the room node. Sharing the room does not publish Mine posts inside it."}
-      </p>
       {listed.length === 0 ? (
         <p className="mt-3 text-xs text-ink-muted">
-          {onPublicGraph
-            ? "No one in this room on this graph yet."
-            : "No local presence in this room yet."}
+          No one here yet.
         </p>
       ) : (
         reader === "ai" ? (
@@ -186,16 +172,10 @@ function PresenceAnnounce({
   if (!session) {
     return (
       <p className="mt-3 text-xs text-ink-muted">
-        Sign in with Ethereum to announce. Unsigned visitors can see presence
-        when this room node is on the public graph. A see-grant is not
-        delivery.
+        Sign in to appear.
       </p>
     );
   }
 
-  return (
-    <p className="mt-3 text-xs text-ink-muted">
-      Signed-in presence announces while this room is open.
-    </p>
-  );
+  return null;
 }

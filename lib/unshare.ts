@@ -38,16 +38,16 @@ export type UnshareResult =
   | { denied: true };
 
 export const UNSHARE_COPY =
-  "Unshare retracts the mesh put when peers observe the tombstone. It is not instant everywhere. It is not a see-grant revoke.";
+  "Unshare removes this from public. It can take a moment for others.";
 
 export const ROOM_UNSHARE_COPY =
-  "Unshare retracts this room node only. Mine posts inside stay Mine. Public chat and presence then become local or empty for readers who observe the tombstone. Not instant everywhere. Not a see-grant revoke.";
+  "Unshare removes this room from public. Your posts stay on Mine.";
 
 export const USER_UNSHARE_COPY =
-  "Unshare retracts this user node from the public graph when peers observe the tombstone. Held claims stay on Mine. It is not instant everywhere. It is not a see-grant revoke.";
+  "Unshare removes this from public.";
 
 export const CLAIM_UNSHARE_COPY =
-  "Unshare republishes the user node without this claim. It is not instant everywhere. It is not a see-grant revoke.";
+  "Unshare removes this name from public.";
 
 export function soulKeyMatches(id: string, needle: string): boolean {
   const a = id.trim();

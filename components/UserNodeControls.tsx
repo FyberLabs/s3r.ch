@@ -23,7 +23,7 @@ import {
 } from "@/lib/users";
 
 export const USER_SHARE_COPY =
-  "Held claims stay Mine until you share. A see-grant is not this share — delivery lands on Granted. Unshare retracts a prior share; it is not a grant revoke.";
+  "Share your public name. Claims stay private until you share them.";
 
 type Props = {
   address: string;
@@ -112,7 +112,7 @@ export function UserNodeControls({
   async function shareUser() {
     setMessage(null);
     if (!see?.acl || !overlay) {
-      setMessage("Could not share this user node.");
+      setMessage("Could not share.");
       return;
     }
     if (!confirmUser) {
@@ -126,28 +126,26 @@ export function UserNodeControls({
       sharedIndicators,
     );
     if ("denied" in prepared) {
-      setMessage("Could not admit this user node.");
+      setMessage("Could not publish.");
       setConfirmUser(false);
       return;
     }
     const gun = peer?.gun;
     if (!gun) {
-      setMessage("Gun is not open yet.");
+      setMessage("Not ready yet.");
       return;
     }
     gun.get("s3rch").get("users").get(prepared.key).put(prepared.node);
     setPublished(true);
     setConfirmUser(false);
-    setMessage(
-      `Published this user node to the public graph. Claims stay Mine until you share those claims. ${USER_UNSHARE_COPY}`,
-    );
+    setMessage("Listed. Claims stay private until you share them.");
     await see.persist();
   }
 
   async function unshareUser() {
     setMessage(null);
     if (!see?.acl || !overlay) {
-      setMessage("Could not unshare this user node.");
+      setMessage("Could not unshare.");
       return;
     }
     if (!confirmUnshareUser) {
@@ -157,13 +155,13 @@ export function UserNodeControls({
     }
     const prepared = prepareUnshareUserFromMesh(see.acl, overlay, address);
     if ("denied" in prepared) {
-      setMessage("Could not unshare this user node.");
+      setMessage("Could not unshare.");
       setConfirmUnshareUser(false);
       return;
     }
     const gun = peer?.gun;
     if (!gun) {
-      setMessage("Gun is not open yet.");
+      setMessage("Not ready yet.");
       return;
     }
     gun.get("s3rch").get("users").get(prepared.key).put(prepared.tombstone);
@@ -192,13 +190,13 @@ export function UserNodeControls({
       sharedIndicators,
     );
     if ("denied" in prepared) {
-      setMessage("Could not admit this claim.");
+      setMessage("Could not share.");
       setConfirmClaimId(null);
       return;
     }
     const gun = peer?.gun;
     if (!gun) {
-      setMessage("Gun is not open yet.");
+      setMessage("Not ready yet.");
       return;
     }
     gun.get("s3rch").get("users").get(prepared.key).put(prepared.node);
@@ -209,9 +207,7 @@ export function UserNodeControls({
         : [...sharedIndicators, claimId],
     );
     setConfirmClaimId(null);
-    setMessage(
-      `Published this claim on your user node. ${CLAIM_UNSHARE_COPY}`,
-    );
+    setMessage("Shared.");
     await see.persist();
   }
 
@@ -240,7 +236,7 @@ export function UserNodeControls({
     }
     const gun = peer?.gun;
     if (!gun) {
-      setMessage("Gun is not open yet.");
+      setMessage("Not ready yet.");
       return;
     }
     if ("tombstone" in prepared) {
@@ -262,36 +258,23 @@ export function UserNodeControls({
 
   return (
     <div className="mt-4 border-t border-rule pt-4">
-      <p className="text-xs text-ink-muted">{USER_SHARE_COPY}</p>
       <div className="mt-3">
         {published ? (
-          <>
-            <p className="text-xs text-ink-muted">
-              User node is on the public graph. Claims stay Mine until you
-              share those claims. {USER_UNSHARE_COPY}
-            </p>
-            <button
-              type="button"
-              onClick={() => void unshareUser()}
-              className={`mt-2 ${btnSecondary}`}
-            >
-              {confirmUnshareUser ? "Confirm unshare" : "Unshare user node"}
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => void unshareUser()}
+            className={btnSecondary}
+          >
+            {confirmUnshareUser ? "Confirm unshare" : "Unshare"}
+          </button>
         ) : (
-          <>
-            <p className="text-xs text-ink-muted">
-              Publish user node puts your wallet on `s3rch/users`. It does
-              not dump held claims. A see-grant is not this.
-            </p>
-            <button
-              type="button"
-              onClick={() => void shareUser()}
-              className={`mt-2 ${btnSecondary}`}
-            >
-              {confirmUser ? "Confirm publish" : "Publish user node"}
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => void shareUser()}
+            className={btnSecondary}
+          >
+            {confirmUser ? "Confirm publish" : "Publish name"}
+          </button>
         )}
       </div>
       {indicators.length > 0 ? (
@@ -303,10 +286,10 @@ export function UserNodeControls({
                 key={claimId}
                 className="flex flex-wrap items-center gap-2 text-xs text-ink-muted"
               >
-                <span>{claimId}</span>
+                <span>{claimId.replace(/^[a-z]+:/i, "")}</span>
                 {shared ? (
                   <>
-                    <span>On the public graph.</span>
+                    <span>Public.</span>
                     <button
                       type="button"
                       onClick={() => void unshareClaim(claimId)}
@@ -314,7 +297,7 @@ export function UserNodeControls({
                     >
                       {confirmUnshareClaimId === claimId
                         ? "Confirm unshare"
-                        : "Unshare claim"}
+                        : "Unshare"}
                     </button>
                   </>
                 ) : (
@@ -325,7 +308,7 @@ export function UserNodeControls({
                   >
                     {confirmClaimId === claimId
                       ? "Confirm share"
-                      : "Share claim"}
+                      : "Share"}
                   </button>
                 )}
               </li>

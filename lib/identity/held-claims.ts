@@ -13,7 +13,7 @@ export type HeldClaimOption = {
 };
 
 export const SEE_GRANT_COPY =
-  "This is a grant, not login, and not share-into-mesh. Granting delivers that Gun claim to the accessor Granted inbox (mesh delay is ok). Revoke is immediate on dest ACL.";
+  "Let another address see this. Revoke anytime.";
 
 export function ensClaimId(name: string): string {
   return `ens:${name.trim()}`;
@@ -54,23 +54,23 @@ export function heldClaimOptions(input: {
     return [];
   }
   const options: HeldClaimOption[] = [
-    { id: walletClaimId(checksum), label: `wallet ${checksum}` },
+    { id: walletClaimId(checksum), label: checksum },
   ];
-  if (input.ens) options.push({ id: ensClaimId(input.ens), label: `ENS ${input.ens}` });
+  if (input.ens) options.push({ id: ensClaimId(input.ens), label: input.ens });
   if (input.unstoppable) {
     options.push({
       id: unstoppableClaimId(input.unstoppable),
-      label: `Unstoppable ${input.unstoppable}`,
+      label: input.unstoppable,
     });
   }
   if (input.farcaster) {
     options.push({
       id: farcasterClaimId(input.farcaster),
-      label: `Farcaster ${input.farcaster}`,
+      label: input.farcaster,
     });
   }
-  if (input.lens) options.push({ id: lensClaimId(input.lens), label: `Lens ${input.lens}` });
-  if (input.rss3) options.push({ id: rss3ClaimId(input.rss3), label: `RSS3 ${input.rss3}` });
+  if (input.lens) options.push({ id: lensClaimId(input.lens), label: input.lens });
+  if (input.rss3) options.push({ id: rss3ClaimId(input.rss3), label: input.rss3 });
   return options;
 }
 

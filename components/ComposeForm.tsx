@@ -26,7 +26,7 @@ export function ComposeForm({
   if (!session) {
     return (
       <p className="mt-10 text-xs text-ink-muted">
-        Sign in with Ethereum to post.
+        Sign in to post.
       </p>
     );
   }
@@ -50,19 +50,19 @@ export function ComposeForm({
         return;
       }
       if (!see?.acl) {
-        setMessage("Could not admit this post.");
+        setMessage("Could not save this post.");
         return;
       }
       const admitted = admitNativePost(see.acl, item, sessionAddress);
       if ("denied" in admitted) {
-        setMessage("Could not admit this post.");
+        setMessage("Could not save this post.");
         return;
       }
       onItem(admitted.item);
       await see.persist();
       setBody("");
       setTagsInput("");
-      setMessage("On Mine. Not public until you share.");
+      setMessage("Saved.");
     } finally {
       setBusy(false);
     }
@@ -73,11 +73,6 @@ export function ComposeForm({
       <h2 className="text-sm font-semibold text-ink">
         {roomId ? "Compose into this room" : "Compose"}
       </h2>
-      <p className="mt-2 text-sm text-ink-muted">
-        {roomId
-          ? "Native s3r.ch post tagged to this room. Stays on Mine until you share this post. Sharing the room does not publish this post. A see-grant is not that share."
-          : "Native s3r.ch post. Stays on Mine until you share to public. A see-grant is not that share. This is not an outbound bridge."}
-      </p>
       <label className="mt-4 block text-sm text-ink">
         Body
         <textarea

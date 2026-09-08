@@ -70,13 +70,13 @@ export { grantedSoul, S3RCH_GRANTED };
 export type { GrantInboxKind };
 
 export const GRANT_DELIVERED_COPY =
-  "Granted. Delivery is on the mesh (can wait). Revoke is immediate on dest ACL. Not a public share.";
+  "Granted. It can take a moment to arrive.";
 
 export const GRANT_DELIVERY_WAIT_COPY =
-  "Granted on dest ACL. Delivery waits until the seed peer or WebRTC is up.";
+  "Granted. Waiting for a live connection.";
 
 export const GRANT_REVOKED_COPY =
-  "Revoked. Dest ACL is immediate; the mesh retract can wait.";
+  "Revoked.";
 
 export type GrantDeliveryKind = "item" | "room" | "user";
 
