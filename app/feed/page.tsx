@@ -24,9 +24,12 @@ export default function FeedPage() {
         A Fyber Labs lab feed. Gun is the graph. Public Farcaster hub,
         ATProto AppView, and RSS activity is seeded into Gun on a cadence.
         RSS3 GI is optional. Signed-in, you can compose a native post onto
-        Mine, or open a room thread, or publish a user node. Share to
-        public is explicit. A see-grant delivers that Gun object to
-        Granted. Held claims stay Mine until you share them.
+        Mine, pull the same documented public sources the seeder uses
+        (through `/api/ingest` — direct browser-to-source still fails
+        CORS), or open a room thread, or publish a user node. Share to
+        public is explicit. A pull stays on Mine until you share it into
+        the mesh. A see-grant delivers that Gun object to Granted. Held
+        claims stay Mine until you share them.
       </p>
       <p className="mt-3 text-sm text-ink-muted">
         Public, Mine, Network, and Granted tabs. Public keeps the snapshot
@@ -52,7 +55,7 @@ export default function FeedPage() {
         presence then become local or empty for readers who observe
         that retract. Live chat and presence are Gun subscriptions on
         a room you can already see. STUN is not TURN. Meetings, streams,
-        browser pull, durable graph, and TURN are later. Trying seed
+        durable graph, and TURN are later. Trying seed
         peer; snapshot if the socket is down (Public still paints).
         Network and Granted need the seed peer or WebRTC. Snapshot is
         not a chat log or a presence list. That is not a finished P2P

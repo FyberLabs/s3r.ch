@@ -17,13 +17,13 @@ export const BRIDGE_MATRIX: NetworkBridge[] = [
     network: "RSS3 Data Sublayer",
     pull: "yes",
     repost: "yes",
-    thisSlice: "optional public seeder + address ingest; gi.rss3.io currently has no DNS",
+    thisSlice: "optional public seeder + address ingest + signed-in rss3-gi pull; gi.rss3.io currently has no DNS",
   },
   {
     network: "RSS / Atom",
     pull: "yes",
     repost: "yes",
-    thisSlice: "public seeder + URL ingest (same-origin proxy)",
+    thisSlice: "public seeder + URL ingest + signed-in documented-feed pull (same-origin proxy)",
   },
   {
     network: "ActivityPub",
@@ -35,7 +35,7 @@ export const BRIDGE_MATRIX: NetworkBridge[] = [
     network: "ATProto / Bluesky",
     pull: "yes",
     repost: "yes",
-    thisSlice: "public seeder pull via AppView (no auth)",
+    thisSlice: "public seeder + signed-in browser pull via AppView (no auth); /api/ingest CORS proxy",
   },
   {
     network: "Nostr",
@@ -47,7 +47,7 @@ export const BRIDGE_MATRIX: NetworkBridge[] = [
     network: "Farcaster",
     pull: "yes",
     repost: "yes",
-    thisSlice: "public seeder pull via Hubble HTTP (Pinata, no API key)",
+    thisSlice: "public seeder + signed-in browser pull via Hubble HTTP (Pinata, no API key); /api/ingest CORS proxy",
   },
   {
     network: "Lens",

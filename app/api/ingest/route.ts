@@ -1,51 +1,73 @@
+import { parseIngestRequest } from "@/lib/browser-pull";
 import { normalizeRss3Activities } from "@/lib/normalize";
 import { fetchPublic } from "@/lib/public-fetch";
 import { parseRssAtom } from "@/lib/rss-atom";
 import { fetchAccountActivities, GI_BASE, isRss3Account } from "@/lib/rss3";
+import { pullAllowedSource } from "@/lib/seed";
 import { assertPublicHttpUrl } from "@/lib/url-guard";
+import type { SourcePull } from "@/lib/feed-types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const MAX_BYTES = 1_000_000;
 
-type IngestBody = {
-  rssUrl?: unknown;
-  rss3Account?: unknown;
-};
-
 /**
  * Fetch + normalize only. Does not write the public Gun seed.
- * The client merges returned items onto its local graph.
+ * The client admits returned items onto Mine (GunFeedNode v: 1) and
+ * HAM-merges. Explicit share-into-mesh is a separate client put.
+ * Same-origin CORS proxy — direct browser-to-source still fails.
  */
 export async function POST(request: Request) {
-  let body: IngestBody;
+  let body: unknown;
   try {
-    body = (await request.json()) as IngestBody;
+    body = await request.json();
   } catch {
     return Response.json({ error: "Expected JSON." }, { status: 400 });
   }
 
-  const rssUrl = typeof body.rssUrl === "string" ? body.rssUrl.trim() : "";
-  const rss3Account =
-    typeof body.rss3Account === "string" ? body.rss3Account.trim() : "";
+  const parsed = parseIngestRequest(body);
+  if (parsed.kind === "invalid") {
+    return Response.json({ error: parsed.error }, { status: 400 });
+  }
+  if (parsed.kind === "rssUrl") {
+    return ingestRss(parsed.rssUrl);
+  }
+  if (parsed.kind === "rss3Account") {
+    return ingestRss3Account(parsed.rss3Account);
+  }
+  return ingestAllowedSource(parsed.allowedSource);
+}
 
-  if (rssUrl && rss3Account) {
+async function ingestAllowedSource(kind: Parameters<typeof pullAllowedSource>[0]) {
+  try {
+    const pulled = await pullAllowedSource(kind);
+    return sourcePullResponse(pulled);
+  } catch (error) {
     return Response.json(
-      { error: "Send either rssUrl or rss3Account, not both." },
-      { status: 400 },
+      {
+        items: [],
+        source: kind,
+        error: error instanceof Error ? error.message : "Allowed source pull failed.",
+      },
+      { status: 502 },
     );
   }
+}
 
-  if (rssUrl) {
-    return ingestRss(rssUrl);
-  }
-  if (rss3Account) {
-    return ingestRss3Account(rss3Account);
-  }
+function sourcePullResponse(pulled: SourcePull) {
+  const error =
+    pulled.items.length === 0
+      ? pulled.error || "Source contained no entries."
+      : pulled.error;
   return Response.json(
-    { error: "Send rssUrl or rss3Account." },
-    { status: 400 },
+    {
+      items: pulled.items,
+      sourcesOk: pulled.sourcesOk,
+      sourcesTried: pulled.sourcesTried,
+      error,
+    },
+    { status: pulled.sourcesOk === 0 ? 502 : 200 },
   );
 }
 
