@@ -8,7 +8,8 @@
  *
  * ICE here is **STUN only**. Google public `stun.l.google.com:19302` is
  * STUN, not TURN. Do not document Google as free TURN. Do not stand up
- * TURN on App Service. Needed TURN later is Panopticon.
+ * TURN on App Service. Requirements (lab infra vs Panopticon): 
+ * `docs/durable-graph-and-turn.md`. Do not put TURN secrets on Gun.
  *
  * WebRTC is additive to `listenThenConnectSeedPeer`. If ICE fails, the
  * feed falls open to the same-origin `/gun` seed peer / snapshot.
