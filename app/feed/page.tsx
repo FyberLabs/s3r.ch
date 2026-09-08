@@ -29,16 +29,18 @@ export default function FeedPage() {
         Public, Mine, and Network tabs. Public keeps the snapshot plus
         shared posts. Network is the live mesh via the seed peer and
         WebRTC when ICE works — not Mine overlay, not ingest, not the
-        snapshot. Rooms are Gun objects, Mine by default; Network rooms
-        are shared rooms from Gun. Tags first, then recency. There are
-        no popular or novel columns. A see-grant is not delivery and not
-        share-into-mesh. Sharing a room does not publish the posts inside
-        it. Live chat and presence are Gun subscriptions on a room you
-        can already see. STUN is not TURN. Meetings and streams are
-        later. Trying seed peer; snapshot if the socket is down (Public
-        still paints). Network needs the seed peer or WebRTC. Snapshot
-        is not a chat log or a presence list. That is not a finished P2P
-        mesh. Outbound bridges are not enabled.
+        snapshot. Discover browses tags already on Public and that live
+        Network mesh. Click a tag to filter rooms and posts. Mine overlay
+        is not that list. Rooms are Gun objects, Mine by default; Network
+        rooms are shared rooms from Gun. Tags first, then recency. There
+        are no popular or novel columns and no search API. A see-grant is
+        not delivery and not share-into-mesh. Sharing a room does not
+        publish the posts inside it. Live chat and presence are Gun
+        subscriptions on a room you can already see. STUN is not TURN.
+        Meetings and streams are later. Trying seed peer; snapshot if the
+        socket is down (Public still paints). Network needs the seed peer
+        or WebRTC. Snapshot is not a chat log or a presence list. That is
+        not a finished P2P mesh. Outbound bridges are not enabled.
       </p>
 
       <SeeAclProvider>

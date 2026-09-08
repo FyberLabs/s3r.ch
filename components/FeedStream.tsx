@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FeedItem, FeedSnapshot, FeedTab } from "@/lib/feed-types";
 import { fromGunNode, toGunNode } from "@/lib/feed-types";
 import { mergeItems } from "@/lib/merge";
+import {
+  aggregateDiscoverTags,
+  discoverCorpus,
+  formatDiscoverTagQuery,
+  parseDiscoverTagQuery,
+} from "@/lib/feed-discover";
 import { rankFeedItems } from "@/lib/feed-rank";
 import {
   acceptLiveMeshWrite,
@@ -37,6 +43,7 @@ import {
   type PresenceEntry,
 } from "@/lib/presence";
 import { ComposeForm } from "@/components/ComposeForm";
+import { DiscoverPanel } from "@/components/DiscoverPanel";
 import { IngestForm } from "@/components/IngestForm";
 import { PostSeeGrantControls } from "@/components/PostSeeGrantControls";
 import { RoomSeeGrantControls } from "@/components/RoomSeeGrantControls";
@@ -67,6 +74,26 @@ type GunRef = SeedPeerEmitter & {
   put: (data: unknown) => GunRef;
   map: () => { on: (cb: (data: unknown, key: string) => void) => { off?: () => void } };
 };
+
+function readDiscoverTagQuery(): string[] {
+  if (typeof window === "undefined") return [];
+  return parseDiscoverTagQuery(
+    new URLSearchParams(window.location.search).get("tag"),
+  );
+}
+
+function writeDiscoverTagQuery(tags: readonly string[]): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  const formatted = formatDiscoverTagQuery(tags);
+  if (formatted) url.searchParams.set("tag", formatted);
+  else url.searchParams.delete("tag");
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (next !== current) {
+    window.history.replaceState(null, "", next);
+  }
+}
 
 export function FeedStream() {
   const session = useIdentitySession();
@@ -217,6 +244,10 @@ export function FeedStream() {
     setMeshRooms(heardRoomsRef.current);
   }, [seedWsUp]);
 
+  useEffect(() => {
+    setSelected(readDiscoverTagQuery());
+  }, []);
+
   const tabRooms = useMemo(
     () => roomsForTab(tab, publicRooms, mineRooms, meshRooms),
     [tab, publicRooms, mineRooms, meshRooms],
@@ -252,6 +283,19 @@ export function FeedStream() {
     }
     return Array.from(set).sort();
   }, [threadItems, tabRooms]);
+
+  const discovery = useMemo(() => {
+    const corpus = discoverCorpus({
+      publicItems: itemsForTab("public", seed, overlay, meshItems),
+      publicRooms: roomsForTab("public", publicRooms, mineRooms, meshRooms),
+      networkItems: itemsForTab("network", seed, overlay, meshItems),
+      networkRooms: roomsForTab("network", publicRooms, mineRooms, meshRooms),
+    });
+    return {
+      tags: aggregateDiscoverTags(corpus.items, corpus.rooms),
+      rooms: rankRooms(corpus.rooms, selected),
+    };
+  }, [seed, overlay, meshItems, publicRooms, mineRooms, meshRooms, selected]);
 
   const visible = useMemo(
     () => rankFeedItems(threadItems, selected),
@@ -369,11 +413,21 @@ export function FeedStream() {
   function selectTab(next: FeedTab) {
     setTab(next);
     setSelected([]);
+    writeDiscoverTagQuery([]);
     setShareMessage(null);
     setConfirmShareId(null);
     setOpenRoomId(null);
     setRoomShareMessage(null);
     setConfirmShareRoomId(null);
+  }
+
+  function applyDiscoverTags(next: string[]) {
+    setSelected(next);
+    writeDiscoverTagQuery(next);
+    setOpenRoomId(null);
+    setRoomShareMessage(null);
+    setConfirmShareRoomId(null);
+    if (tab === "mine") setTab("public");
   }
 
   async function shareToPublic(item: FeedItem) {
@@ -533,6 +587,21 @@ export function FeedStream() {
         </p>
       ) : null}
 
+      {tab !== "mine" ? (
+        <DiscoverPanel>
+          tags={discovery.tags}
+          rooms={discovery.rooms}
+          selected={selected}
+          selectedRoomId={openRoomId}
+          onChange={applyDiscoverTags}
+          onOpenRoom={(room) => {
+            setOpenRoomId((current) => (current === room.id ? null : room.id));
+            setRoomShareMessage(null);
+            setConfirmShareRoomId(null);
+          }}
+        />
+      ) : null}
+
       <RoomsList
         rooms={listedRooms}
         selectedId={openRoomId}
@@ -555,6 +624,7 @@ export function FeedStream() {
               : "No shared rooms on the live mesh."
             : undefined
         }
+        showOwner={tab === "public" || tab === "network"}
         onCreated={(room) => {
           setMineRooms((prev) => mergeRooms(prev, [room]));
           setOpenRoomId(room.id);
@@ -626,7 +696,9 @@ export function FeedStream() {
         />
       ) : null}
 
-      <TagChips tags={tags} selected={selected} onChange={setSelected} />
+      {tab === "mine" ? (
+        <TagChips tags={tags} selected={selected} onChange={setSelected} />
+      ) : null}
 
       {shareMessage && tab === "mine" ? (
         <p className="mt-3 text-xs text-ink-muted">{shareMessage}</p>

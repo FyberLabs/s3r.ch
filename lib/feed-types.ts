@@ -43,7 +43,7 @@ export type SourcePull = {
   error: string | null;
 };
 
-/** Public (snapshot + shared), Mine (overlay), Network (live Gun mesh). */
+/** Public (snapshot + shared), Mine (overlay), Network (live Gun mesh). Discover reads Public + Network. */
 export type FeedTab = "public" | "mine" | "network";
 
 /**
