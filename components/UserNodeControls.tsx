@@ -23,7 +23,7 @@ import {
 } from "@/lib/users";
 
 export const USER_SHARE_COPY =
-  "Held claims stay Mine until you share. A see-grant is not this. Unshare retracts a prior share; it is not a grant revoke.";
+  "Held claims stay Mine until you share. A see-grant is not this share — delivery lands on Granted. Unshare retracts a prior share; it is not a grant revoke.";
 
 type Props = {
   address: string;
