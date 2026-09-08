@@ -8,10 +8,12 @@ import {
   type DiscoverTag,
 } from "@/lib/feed-discover";
 import type { Room } from "@/lib/rooms";
+import { userProvenanceLine, type User } from "@/lib/users";
 
 export function DiscoverPanel({
   tags,
   rooms,
+  users = [],
   selected,
   selectedRoomId,
   onChange,
@@ -19,6 +21,7 @@ export function DiscoverPanel({
 }: {
   tags: DiscoverTag[];
   rooms: Room[];
+  users?: User[];
   selected: string[];
   selectedRoomId: string | null;
   onChange: (next: string[]) => void;
@@ -35,6 +38,8 @@ export function DiscoverPanel({
         mesh. Mine overlay is not here. Counts are how many posts and
         shared rooms already carry the tag — not a popularity score.
         Any-match, then recency. Not search. No Popular / Novel.
+        Shared user nodes are provenance (truncated address plus
+        shared indicators), not a profile list.
       </p>
       {tags.length === 0 ? (
         <p className="mt-3 text-xs text-ink-muted">
@@ -52,6 +57,20 @@ export function DiscoverPanel({
           />
         </div>
       )}
+      {users.length > 0 ? (
+        <div className="mt-4 border-t border-rule pt-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-signal">
+            Shared users
+          </p>
+          <ul className="mt-2 space-y-1">
+            {users.map((user) => (
+              <li key={user.id} className="text-xs text-ink-muted">
+                {userProvenanceLine(user)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {tagged ? (
         <div className="mt-4 border-t border-rule pt-3">
           <p className="text-xs font-medium uppercase tracking-wide text-signal">

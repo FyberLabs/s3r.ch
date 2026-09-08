@@ -10,6 +10,7 @@ import {
   admitFeedNode,
   admitPresenceNode,
   admitRoomNode,
+  admitUserNode,
   applySeeGrant,
   cancelSee,
   checkSee,
@@ -83,6 +84,7 @@ describe("consume contract artifact", () => {
       "admitRoomNode",
       "admitChatNode",
       "admitPresenceNode",
+      "admitUserNode",
       "cancelSee",
       "hopcap",
     ]) {
@@ -354,6 +356,44 @@ describe("CHECK(see, object, accessor) consume laws", () => {
       checkSee(acl, presenceSoul(node.room, node.address), BOB, NOW, urlHint).allowed,
       false,
     );
+  });
+
+  it("admitUserNode requires dest re-auth; unknown v and secrets fail closed", () => {
+    const acl = createMemorySeeAcl();
+    const node = {
+      id: ALICE,
+      indicators: "ens:vitalik.eth,farcaster:dwr",
+      provenance: `s3rch:user:${ALICE}`,
+      ts: NOW,
+    };
+    const urlHint = hint({
+      context: "https://example.com/user",
+      target: userSoul(ALICE),
+    });
+    const garbage = admitUserNode(acl, { ...node, id: "" }, ALICE, urlHint);
+    assert.deepEqual(garbage, { denied: true });
+    assert.equal(acl.hasObject(userSoul(ALICE)), false);
+
+    const future = admitUserNode(acl, { ...node, v: 2 }, ALICE, urlHint);
+    assert.deepEqual(future, { denied: true });
+
+    const secret = admitUserNode(
+      acl,
+      { ...node, priv: "nope" } as typeof node & { priv: string },
+      ALICE,
+      urlHint,
+    );
+    assert.deepEqual(secret, { denied: true });
+
+    const other = admitUserNode(acl, { ...node, id: BOB }, ALICE, urlHint);
+    assert.deepEqual(other, { denied: true });
+
+    const admitted = admitUserNode(acl, node, ALICE, urlHint);
+    assert.deepEqual(admitted, { object: userSoul(ALICE) });
+    assert.equal(checkSee(acl, userSoul(ALICE), ALICE, NOW).allowed, true);
+    assert.equal(checkSee(acl, CLAIM, ALICE, NOW).allowed, true);
+    assert.equal(checkSee(acl, userSoul(ALICE), BOB, NOW, urlHint).allowed, false);
+    assert.equal(checkSee(acl, CLAIM, BOB, NOW, urlHint).allowed, false);
   });
 
   it("live IdentitySeeGrant names the pair and now ∈ [from, until)", () => {
