@@ -25,11 +25,19 @@ import {
   preparePublishRoomChat,
   type ChatMessage,
 } from "@/lib/chat";
+import {
+  fromGunPresenceNode,
+  mergePresence,
+  preparePublishRoomPresence,
+  presenceInRoom,
+  type PresenceEntry,
+} from "@/lib/presence";
 import { ComposeForm } from "@/components/ComposeForm";
 import { IngestForm } from "@/components/IngestForm";
 import { PostSeeGrantControls } from "@/components/PostSeeGrantControls";
 import { RoomSeeGrantControls } from "@/components/RoomSeeGrantControls";
 import { RoomChat } from "@/components/RoomChat";
+import { RoomPresence } from "@/components/RoomPresence";
 import { RoomsList } from "@/components/RoomsList";
 import { TagChips } from "@/components/TagChips";
 import { useSeeAcl } from "@/components/SeeAclProvider";
@@ -78,6 +86,8 @@ export function FeedStream() {
   const [roomShareMessage, setRoomShareMessage] = useState<string | null>(null);
   const [overlayChat, setOverlayChat] = useState<ChatMessage[]>([]);
   const [graphChat, setGraphChat] = useState<ChatMessage[]>([]);
+  const [overlayPresence, setOverlayPresence] = useState<PresenceEntry[]>([]);
+  const [graphPresence, setGraphPresence] = useState<PresenceEntry[]>([]);
   const [gunReady, setGunReady] = useState(false);
   const [seedWsUp, setSeedWsUp] = useState(false);
 
@@ -251,10 +261,75 @@ export function FeedStream() {
     };
   }, [gunReady, openRoomId, openRoomIsPublic]);
 
+  useEffect(() => {
+    const gun = gunRef.current;
+    if (!gun || !gunReady || !openRoomId || !openRoomIsPublic) return;
+    const roomId = openRoomId;
+    let cancelled = false;
+    const listener = gun
+      .get("s3rch")
+      .get("rooms")
+      .get(encodeKey(roomId))
+      .get("presence")
+      .map()
+      .on((data) => {
+        const row = fromGunPresenceNode(
+          data as Parameters<typeof fromGunPresenceNode>[0],
+        );
+        if (!row || cancelled || row.room !== roomId) return;
+        setGraphPresence((prev) => mergePresence(prev, [row]));
+      });
+    return () => {
+      cancelled = true;
+      if (typeof listener?.off === "function") listener.off();
+    };
+  }, [gunReady, openRoomId, openRoomIsPublic]);
+
   const openRoomChat = useMemo(() => {
     if (!openRoomId) return [];
     return messagesInRoom(mergeChat(graphChat, overlayChat), openRoomId);
   }, [openRoomId, graphChat, overlayChat]);
+
+  const openRoomPresence = useMemo(() => {
+    if (!openRoomId) return [];
+    return presenceInRoom(
+      mergePresence(graphPresence, overlayPresence),
+      openRoomId,
+    );
+  }, [openRoomId, graphPresence, overlayPresence]);
+
+  const seeRef = useRef(see);
+  seeRef.current = see;
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const publishedRoomsRef = useRef(publishedRooms);
+  publishedRoomsRef.current = publishedRooms;
+
+  const announcePresence = useCallback(
+    (entry: PresenceEntry, putOnGun: boolean) => {
+      setOverlayPresence((prev) => mergePresence(prev, [entry]));
+      if (!putOnGun) return;
+      const acl = seeRef.current?.acl;
+      const address = sessionRef.current?.address;
+      const gun = gunRef.current;
+      if (!acl || !address || !gun) return;
+      const prepared = preparePublishRoomPresence(
+        acl,
+        entry,
+        address,
+        publishedRoomsRef.current,
+      );
+      if ("denied" in prepared) return;
+      gun
+        .get("s3rch")
+        .get("rooms")
+        .get(prepared.roomKey)
+        .get("presence")
+        .get(prepared.key)
+        .put(prepared.node);
+    },
+    [],
+  );
 
   function selectTab(next: Exclude<FeedTab, "network">) {
     setTab(next);
@@ -337,6 +412,23 @@ export function FeedStream() {
         .get("chat")
         .get(preparedChat.key)
         .put(preparedChat.node);
+    }
+    for (const row of overlayPresence) {
+      if (row.room !== room.id) continue;
+      const preparedPresence = preparePublishRoomPresence(
+        see.acl,
+        row,
+        session.address,
+        publicIds,
+      );
+      if ("denied" in preparedPresence) continue;
+      gun
+        .get("s3rch")
+        .get("rooms")
+        .get(preparedPresence.roomKey)
+        .get("presence")
+        .get(preparedPresence.key)
+        .put(preparedPresence.node);
     }
     setConfirmShareRoomId(null);
     setRoomShareMessage(
@@ -432,6 +524,16 @@ export function FeedStream() {
             setConfirmShareRoomId(null);
           }}
           onShare={() => void shareRoomToPublic(openRoom)}
+        />
+      ) : null}
+
+      {openRoom ? (
+        <RoomPresence
+          roomId={openRoom.id}
+          entries={openRoomPresence}
+          onPublicGraph={openRoomIsPublic}
+          seedWsUp={seedWsUp}
+          onAnnounced={announcePresence}
         />
       ) : null}
 
@@ -578,9 +680,10 @@ function RoomThreadHeader({
         </button>
       </div>
       <p className="mt-3 text-xs text-ink-muted">
-        Posts belong by tag. Live chat is this pass (Gun subscribe on the
-        room). Presence and WebRTC are later. Trying seed peer; snapshot if
-        the socket is down. Snapshot is not a chat log.
+        Posts belong by tag. Live chat and presence are this pass (Gun
+        subscribe on the room). WebRTC, meetings, and streams are later.
+        Trying seed peer; snapshot if the socket is down. Snapshot is not a
+        chat log or a presence list.
       </p>
       {mine && owned && sessionAddress ? (
         <div className="mt-3 border-t border-rule pt-3">
