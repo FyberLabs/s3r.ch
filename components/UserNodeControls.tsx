@@ -5,6 +5,11 @@ import { useGunPeer } from "@/components/GunPeerProvider";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { btnSecondary } from "@/lib/brand-ui";
 import {
+  CLAIM_UNSHARE_COPY,
+  USER_UNSHARE_COPY,
+  isUnsharePut,
+} from "@/lib/unshare";
+import {
   admitComposedUser,
   claimIsShared,
   composeUser,
@@ -13,10 +18,12 @@ import {
   namedHeldIndicators,
   prepareShareClaimIntoMesh,
   prepareShareUserIntoMesh,
+  prepareUnshareClaimFromMesh,
+  prepareUnshareUserFromMesh,
 } from "@/lib/users";
 
 export const USER_SHARE_COPY =
-  "Held claims stay Mine until you share. A see-grant is not this. Publish is one-way here.";
+  "Held claims stay Mine until you share. A see-grant is not this. Unshare retracts a prior share; it is not a grant revoke.";
 
 type Props = {
   address: string;
@@ -38,7 +45,11 @@ export function UserNodeControls({
   const see = useSeeAcl();
   const peer = useGunPeer();
   const [confirmUser, setConfirmUser] = useState(false);
+  const [confirmUnshareUser, setConfirmUnshareUser] = useState(false);
   const [confirmClaimId, setConfirmClaimId] = useState<string | null>(null);
+  const [confirmUnshareClaimId, setConfirmUnshareClaimId] = useState<
+    string | null
+  >(null);
   const [message, setMessage] = useState<string | null>(null);
   const [published, setPublished] = useState(false);
   const [sharedIndicators, setSharedIndicators] = useState<string[]>([]);
@@ -57,7 +68,9 @@ export function UserNodeControls({
     setPublished(false);
     setSharedIndicators([]);
     setConfirmUser(false);
+    setConfirmUnshareUser(false);
     setConfirmClaimId(null);
+    setConfirmUnshareClaimId(null);
     setMessage(null);
   }, [address]);
 
@@ -77,10 +90,16 @@ export function UserNodeControls({
       .get("users")
       .get(address)
       .on((data: unknown) => {
+        if (cancelled) return;
+        if (isUnsharePut(data)) {
+          setPublished(false);
+          setSharedIndicators([]);
+          return;
+        }
         const user = fromGunUserNode(
           data as Parameters<typeof fromGunUserNode>[0],
         );
-        if (!user || cancelled) return;
+        if (!user) return;
         setPublished(true);
         setSharedIndicators(user.indicators);
       });
@@ -120,8 +139,38 @@ export function UserNodeControls({
     setPublished(true);
     setConfirmUser(false);
     setMessage(
-      "Published this user node to the public graph. Claims stay Mine until you share those claims. One-way here.",
+      `Published this user node to the public graph. Claims stay Mine until you share those claims. ${USER_UNSHARE_COPY}`,
     );
+    await see.persist();
+  }
+
+  async function unshareUser() {
+    setMessage(null);
+    if (!see?.acl || !overlay) {
+      setMessage("Could not unshare this user node.");
+      return;
+    }
+    if (!confirmUnshareUser) {
+      setConfirmUnshareUser(true);
+      setConfirmUser(false);
+      return;
+    }
+    const prepared = prepareUnshareUserFromMesh(see.acl, overlay, address);
+    if ("denied" in prepared) {
+      setMessage("Could not unshare this user node.");
+      setConfirmUnshareUser(false);
+      return;
+    }
+    const gun = peer?.gun;
+    if (!gun) {
+      setMessage("Gun is not open yet.");
+      return;
+    }
+    gun.get("s3rch").get("users").get(prepared.key).put(prepared.tombstone);
+    setPublished(false);
+    setSharedIndicators([]);
+    setConfirmUnshareUser(false);
+    setMessage(USER_UNSHARE_COPY);
     await see.persist();
   }
 
@@ -161,8 +210,51 @@ export function UserNodeControls({
     );
     setConfirmClaimId(null);
     setMessage(
-      "Published this claim on your user node. Publish is one-way here.",
+      `Published this claim on your user node. ${CLAIM_UNSHARE_COPY}`,
     );
+    await see.persist();
+  }
+
+  async function unshareClaim(claimId: string) {
+    setMessage(null);
+    if (!see?.acl || !overlay) {
+      setMessage("Could not unshare this claim.");
+      return;
+    }
+    if (confirmUnshareClaimId !== claimId) {
+      setConfirmUnshareClaimId(claimId);
+      setConfirmClaimId(null);
+      return;
+    }
+    const prepared = prepareUnshareClaimFromMesh(
+      see.acl,
+      overlay,
+      address,
+      claimId,
+      sharedIndicators,
+    );
+    if ("denied" in prepared) {
+      setMessage("Could not unshare this claim.");
+      setConfirmUnshareClaimId(null);
+      return;
+    }
+    const gun = peer?.gun;
+    if (!gun) {
+      setMessage("Gun is not open yet.");
+      return;
+    }
+    if ("tombstone" in prepared) {
+      gun.get("s3rch").get("users").get(prepared.key).put(prepared.tombstone);
+      setPublished(false);
+      setSharedIndicators([]);
+    } else {
+      gun.get("s3rch").get("users").get(prepared.key).put(prepared.node);
+      setSharedIndicators((prev) =>
+        prev.filter((row) => row.toLowerCase() !== claimId.toLowerCase()),
+      );
+    }
+    setConfirmUnshareClaimId(null);
+    setMessage(CLAIM_UNSHARE_COPY);
     await see.persist();
   }
 
@@ -173,10 +265,19 @@ export function UserNodeControls({
       <p className="text-xs text-ink-muted">{USER_SHARE_COPY}</p>
       <div className="mt-3">
         {published ? (
-          <p className="text-xs text-ink-muted">
-            User node is on the public graph. Claims stay Mine until you
-            share those claims. Publish is one-way here.
-          </p>
+          <>
+            <p className="text-xs text-ink-muted">
+              User node is on the public graph. Claims stay Mine until you
+              share those claims. {USER_UNSHARE_COPY}
+            </p>
+            <button
+              type="button"
+              onClick={() => void unshareUser()}
+              className={`mt-2 ${btnSecondary}`}
+            >
+              {confirmUnshareUser ? "Confirm unshare" : "Unshare user node"}
+            </button>
+          </>
         ) : (
           <>
             <p className="text-xs text-ink-muted">
@@ -204,7 +305,18 @@ export function UserNodeControls({
               >
                 <span>{claimId}</span>
                 {shared ? (
-                  <span>On the public graph.</span>
+                  <>
+                    <span>On the public graph.</span>
+                    <button
+                      type="button"
+                      onClick={() => void unshareClaim(claimId)}
+                      className={btnSecondary}
+                    >
+                      {confirmUnshareClaimId === claimId
+                        ? "Confirm unshare"
+                        : "Unshare claim"}
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"

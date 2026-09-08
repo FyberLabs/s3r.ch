@@ -17,6 +17,8 @@ import {
   ownsUser,
   prepareShareClaimIntoMesh,
   prepareShareUserIntoMesh,
+  prepareUnshareClaimFromMesh,
+  prepareUnshareUserFromMesh,
   splitIndicators,
   toGunUserNode,
   userProvenanceLine,
@@ -56,6 +58,8 @@ describe("GunUserNode csv indicators", () => {
     assert.deepEqual(back, built);
     assert.equal(fromGunUserNode({ ...node, v: undefined })?.id, built.id);
     assert.equal(fromGunUserNode({ ...node, v: 2 }), null);
+    assert.equal(fromGunUserNode({ ...node, unshared: 1 }), null);
+    assert.equal(fromGunUserNode({ ...node, unshared: 2 }), null);
   });
 
   it("fromGunUserNode rejects a bad id, secrets, or empty id", () => {
@@ -143,6 +147,7 @@ describe("admit before overlay / share", () => {
     assert.equal(share.node.id, ALICE);
     assert.equal(share.node.indicators, "");
     assert.equal(share.node.v, 1);
+    assert.equal(share.node.unshared, null);
   });
 });
 
@@ -212,6 +217,53 @@ describe("Mine-until-share held claims", () => {
     const publicPut = prepareShareUserIntoMesh(acl, built, ALICE, []);
     assert.ok(!("denied" in publicPut));
     assert.equal(publicPut.node.indicators, "");
+  });
+
+  it("unshare user node is a tombstone; unshare claim republishes without that indicator", () => {
+    const acl = createMemorySeeAcl();
+    const built = user();
+    admitComposedUser(acl, built, ALICE);
+    applySeeGrant(acl, ALICE, {
+      claimId: "ens:vitalik.eth",
+      accessor: BOB,
+      from: 0,
+      until: NOW + 1,
+    });
+    assert.equal(checkSee(acl, "ens:vitalik.eth", BOB, NOW).allowed, true);
+
+    assert.deepEqual(prepareUnshareUserFromMesh(acl, built, BOB), { denied: true });
+    const shared = prepareShareClaimIntoMesh(
+      acl,
+      built,
+      ALICE,
+      "ens:vitalik.eth",
+      [],
+      NOW + 1,
+    );
+    assert.ok(!("denied" in shared));
+    const claimUnshare = prepareUnshareClaimFromMesh(
+      acl,
+      built,
+      ALICE,
+      "ens:vitalik.eth",
+      ["ens:vitalik.eth"],
+      NOW + 2,
+    );
+    assert.ok(!("denied" in claimUnshare));
+    assert.ok("node" in claimUnshare);
+    assert.equal(claimUnshare.node.indicators, "");
+    assert.equal(claimUnshare.node.unshared, null);
+    assert.equal(claimUnshare.node.ts, NOW + 2);
+    assert.deepEqual(
+      prepareUnshareClaimFromMesh(acl, built, ALICE, "farcaster:dwr", ["ens:vitalik.eth"]),
+      { denied: true },
+    );
+
+    const nodeUnshare = prepareUnshareUserFromMesh(acl, built, ALICE, NOW + 3);
+    assert.ok(!("denied" in nodeUnshare));
+    assert.equal(nodeUnshare.tombstone.unshared, 1);
+    assert.equal(fromGunUserNode(nodeUnshare.tombstone), null);
+    assert.equal(checkSee(acl, "ens:vitalik.eth", BOB, NOW).allowed, true);
   });
 });
 

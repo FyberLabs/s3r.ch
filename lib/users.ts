@@ -3,15 +3,21 @@
  * Held claims link by claim id (`ens:name.eth`). Default visibility is mine.
  * Share-into-mesh is a separate explicit put of the user node and/or
  * individual claims. Holding a claim is not publishing it.
- * Unshare is not this slice.
+ * Unshare retracts the user node (tombstone) or republishes without one claim.
  */
 
 import { getAddress } from "viem";
 import {
   GUN_PROTOCOL_V,
+  isUnsharePut,
   protocolVersionOf,
   type GunUserNode,
 } from "./feed-types";
+import {
+  dropById,
+  userUnshareTombstone,
+  type UnshareResult,
+} from "./unshare";
 import {
   ensClaimId,
   farcasterClaimId,
@@ -121,9 +127,10 @@ export function toGunUserNode(user: User): GunUserNode {
 }
 
 export function fromGunUserNode(
-  node: (Partial<GunUserNode> & Record<string, unknown>) | null | undefined,
+  node: (Partial<GunUserNode> & Record<string, unknown>) | Record<string, unknown> | null | undefined,
 ): User | null {
   if (!node || typeof node !== "object") return null;
+  if (isUnsharePut(node)) return null;
   if (userNodeHasForbiddenSecrets(node)) return null;
   if (typeof node.id !== "string" || !node.id.trim()) return null;
   let id: string;
@@ -199,16 +206,20 @@ export function prepareShareUserIntoMesh(
   user: User,
   owner: string,
   sharedIndicators: readonly string[] = [],
+  nowSeconds?: number,
 ): ShareUserResult {
   const published = composeUser({
     address: user.id,
     indicators: sharedIntersection(user, sharedIndicators),
-    nowSeconds: user.ts,
+    nowSeconds:
+      typeof nowSeconds === "number" && Number.isFinite(nowSeconds)
+        ? Math.floor(nowSeconds)
+        : user.ts,
   });
   if (!published) return { denied: true };
   const admitted = admitComposedUser(acl, published, owner);
   if ("denied" in admitted) return { denied: true };
-  return { node: toGunUserNode(published), key: published.id };
+  return { node: { ...toGunUserNode(published), unshared: null }, key: published.id };
 }
 
 /**
@@ -256,7 +267,63 @@ export function prepareShareClaimIntoMesh(
   if (!published) return { denied: true };
   const admitted = admitComposedUser(acl, published, owner);
   if ("denied" in admitted) return { denied: true };
-  return { node: toGunUserNode(published), key: published.id };
+  return { node: { ...toGunUserNode(published), unshared: null }, key: published.id };
+}
+
+/**
+ * Prepare an explicit unshare tombstone for a previously shared user node.
+ * Own-only. Does not revoke see-grants. Overlay claims stay Mine.
+ */
+export function prepareUnshareUserFromMesh(
+  acl: SeeAcl,
+  user: User,
+  owner: string,
+  nowSeconds?: number,
+): UnshareResult {
+  if (!ownsUser(user, owner)) return { denied: true };
+  const admitted = admitComposedUser(acl, user, owner);
+  if ("denied" in admitted) return { denied: true };
+  return {
+    tombstone: userUnshareTombstone(user.id, nowSeconds),
+    key: user.id,
+  };
+}
+
+/**
+ * Unshare one held claim by republishing the user node without that indicator.
+ * Symmetric to prepareShareClaimIntoMesh. Wallet claim unshares the whole node.
+ * A claim that is not currently shared is denied.
+ */
+export function prepareUnshareClaimFromMesh(
+  acl: SeeAcl,
+  user: User,
+  owner: string,
+  claimId: string,
+  alreadyShared: readonly string[] = [],
+  nowSeconds?: number,
+): ShareUserResult | UnshareResult {
+  const claim = claimId.trim();
+  if (!claim) return { denied: true };
+  if (!ownsUser(user, owner)) return { denied: true };
+
+  if (isWalletClaimId(claim, user.id)) {
+    return prepareUnshareUserFromMesh(acl, user, owner, nowSeconds);
+  }
+
+  const held = user.indicators.some(
+    (row) => row.toLowerCase() === claim.toLowerCase(),
+  );
+  if (!held) return { denied: true };
+  if (!claimIsShared(claim, alreadyShared)) return { denied: true };
+
+  const nextShared = alreadyShared.filter(
+    (row) => row.trim().toLowerCase() !== claim.toLowerCase(),
+  );
+  return prepareShareUserIntoMesh(acl, user, owner, nextShared, nowSeconds);
+}
+
+export function dropUsers(users: readonly User[], idOrKey: string): User[] {
+  return dropById(users, idOrKey);
 }
 
 export function ownsUser(

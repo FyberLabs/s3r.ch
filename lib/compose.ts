@@ -1,6 +1,7 @@
 /**
  * Native s3r.ch posts. Same FeedItem / GunFeedNode shape as seed and overlay.
  * Default visibility is mine. Share-into-mesh is a separate explicit put.
+ * Unshare is an own-only tombstone put of a prior share — not a grant revoke.
  */
 
 import { getAddress } from "viem";
@@ -12,6 +13,10 @@ import {
   type GunFeedNode,
 } from "./feed-types";
 import { admitFeedNode, encodeKey, type SeeAcl } from "./identity/check";
+import {
+  itemUnshareTombstone,
+  type UnshareResult,
+} from "./unshare";
 
 export const NATIVE_KIND = "post";
 export const NATIVE_SOURCE = "s3rch" as const;
@@ -95,6 +100,7 @@ export function admitNativePost(
 /**
  * Prepare an explicit share-into-mesh put.
  * Does not grant see. Does not call OutboundAdapter.
+ * Clears a prior `unshared` marker so a re-share HAM-wins over a tombstone.
  */
 export function prepareShareIntoMesh(
   acl: SeeAcl,
@@ -103,7 +109,26 @@ export function prepareShareIntoMesh(
 ): ShareIntoMeshResult {
   const admitted = admitNativePost(acl, item, owner);
   if ("denied" in admitted) return { denied: true };
-  return { node: toGunNode(item), key: encodeKey(item.id) };
+  return { node: { ...toGunNode(item), unshared: null }, key: encodeKey(item.id) };
+}
+
+/**
+ * Prepare an explicit unshare tombstone for a previously shared native post.
+ * Own-only. Does not revoke see-grants. Does not delete the Mine overlay row.
+ */
+export function prepareUnshareIntoMesh(
+  acl: SeeAcl,
+  item: FeedItem,
+  owner: string,
+  nowSeconds?: number,
+): UnshareResult {
+  if (!ownsNativePost(item, owner)) return { denied: true };
+  const admitted = admitNativePost(acl, item, owner);
+  if ("denied" in admitted) return { denied: true };
+  return {
+    tombstone: itemUnshareTombstone(item.id, nowSeconds),
+    key: encodeKey(item.id),
+  };
 }
 
 export function isNativePost(item: Pick<FeedItem, "source" | "kind">): boolean {
