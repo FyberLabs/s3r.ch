@@ -188,6 +188,20 @@ describe("Public / Mine filters", () => {
 
     const afterShare = itemsForTab("public", [...seed, native], overlay);
     assert.equal(afterShare.some((row) => row.id === native.id), true);
+
+    assert.equal(itemsForTab("network", seed, overlay, []).length, 0);
+    assert.equal(
+      itemsForTab("network", [...seed, native], overlay, [native]).some(
+        (row) => row.id === native.id,
+      ),
+      true,
+    );
+    assert.equal(
+      itemsForTab("network", [...seed, native], overlay, [native]).some(
+        (row) => row.id === ingestItem().id,
+      ),
+      false,
+    );
   });
 });
 

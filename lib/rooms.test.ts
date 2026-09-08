@@ -145,13 +145,22 @@ describe("admit before overlay / share", () => {
   });
 });
 
-describe("Public / Mine room lists", () => {
+describe("Public / Mine / Network room lists", () => {
   it("Public rooms list excludes unshared rooms", () => {
     const mineOnly = room({ title: "still mine", entropy: "aabbcc" });
     const shared = room({ title: "published", entropy: "ddeeff" });
     const pub = roomsForTab("public", [shared], [mineOnly, shared]);
     assert.equal(pub.some((row) => row.id === mineOnly.id), false);
     assert.equal(pub.some((row) => row.id === shared.id), true);
+  });
+
+  it("Network rooms are the live shared set, not Mine-only rooms", () => {
+    const mineOnly = room({ title: "still mine", entropy: "aabbcc" });
+    const shared = room({ title: "published", entropy: "ddeeff" });
+    const mesh = roomsForTab("network", [shared], [mineOnly, shared], [shared]);
+    assert.equal(mesh.some((row) => row.id === mineOnly.id), false);
+    assert.equal(mesh.some((row) => row.id === shared.id), true);
+    assert.deepEqual(roomsForTab("network", [shared], [mineOnly]), []);
   });
 
   it("Mine rooms include owned rooms", () => {
@@ -272,7 +281,9 @@ describe("room thread filter and share isolation", () => {
     const overlay = [post];
 
     assert.equal(roomsForTab("public", publicRooms, [built]).some((row) => row.id === built.id), true);
+    assert.equal(roomsForTab("network", publicRooms, [built], publicRooms).some((row) => row.id === built.id), true);
     assert.equal(itemsForTab("public", seed, overlay).some((row) => row.id === post.id), false);
+    assert.equal(itemsForTab("network", seed, overlay, []).some((row) => row.id === post.id), false);
     assert.equal(itemsForTab("mine", seed, overlay)[0]?.id, post.id);
   });
 

@@ -18,6 +18,7 @@ export function RoomsList({
   onSelect,
   canCreate,
   showCreateHint,
+  emptyHint,
   onCreated,
 }: {
   rooms: Room[];
@@ -25,17 +26,18 @@ export function RoomsList({
   onSelect: (room: Room | null) => void;
   canCreate: boolean;
   showCreateHint: boolean;
+  emptyHint?: string;
   onCreated: (room: Room) => void;
 }) {
   return (
     <div className={`mt-8 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Rooms</h2>
       <p className="mt-2 text-xs text-ink-muted">
-        Gun threads. Mine until you share the room node. Live chat and
-        presence are this pass. WebRTC is attempted over STUN (not TURN)
-        when ICE works; seed peer / snapshot if it does not. Meetings and
-        streams are later. Trying seed peer; snapshot if the socket is
-        down. Snapshot is not a chat log or a presence list.
+        Gun threads. Mine until you share the room node. Network lists
+        shared rooms from the live Gun mesh (seed peer / WebRTC), not
+        Mine-only rooms. Live chat and presence are this pass. WebRTC is
+        attempted over STUN (not TURN) when ICE works. Meetings and
+        streams are later. Snapshot is not a chat log or a presence list.
       </p>
       {canCreate ? (
         <NewRoomForm onCreated={onCreated} />
@@ -46,9 +48,11 @@ export function RoomsList({
       ) : null}
       {rooms.length === 0 ? (
         <p className="mt-3 text-xs text-ink-muted">
-          {canCreate
-            ? "No rooms yet. Title a new room to put it on Mine."
-            : "No shared rooms on this graph."}
+          {emptyHint
+            ? emptyHint
+            : canCreate
+              ? "No rooms yet. Title a new room to put it on Mine."
+              : "No shared rooms on this graph."}
         </p>
       ) : (
         <ul className="mt-3 space-y-2">

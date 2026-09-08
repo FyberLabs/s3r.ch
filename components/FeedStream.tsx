@@ -5,7 +5,11 @@ import type { FeedItem, FeedSnapshot, FeedTab } from "@/lib/feed-types";
 import { fromGunNode, toGunNode } from "@/lib/feed-types";
 import { mergeItems } from "@/lib/merge";
 import { rankFeedItems } from "@/lib/feed-rank";
-import { itemsForTab } from "@/lib/feed-tabs";
+import {
+  acceptLiveMeshWrite,
+  emptyNetworkCopy,
+  itemsForTab,
+} from "@/lib/feed-tabs";
 import { ownsNativePost, prepareShareIntoMesh } from "@/lib/compose";
 import { encodeKey } from "@/lib/identity/check";
 import {
@@ -70,8 +74,9 @@ export function FeedStream() {
   const gunRef = useRef<GunRef | null>(null);
   const [seed, setSeed] = useState<FeedItem[]>([]);
   const [overlay, setOverlay] = useState<FeedItem[]>([]);
+  const [meshItems, setMeshItems] = useState<FeedItem[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
-  const [tab, setTab] = useState<Exclude<FeedTab, "network">>("public");
+  const [tab, setTab] = useState<FeedTab>("public");
   const [meta, setMeta] = useState<Omit<FeedSnapshot, "items"> | null>(null);
   const [status, setStatus] = useState(TRYING_SEED_COPY);
   const [sharedIds, setSharedIds] = useState<string[]>([]);
@@ -79,6 +84,7 @@ export function FeedStream() {
   const [shareMessage, setShareMessage] = useState<string | null>(null);
   const [mineRooms, setMineRooms] = useState<Room[]>([]);
   const [publicRooms, setPublicRooms] = useState<Room[]>([]);
+  const [meshRooms, setMeshRooms] = useState<Room[]>([]);
   const [openRoomId, setOpenRoomId] = useState<string | null>(null);
   const [sharedRoomIds, setSharedRoomIds] = useState<string[]>([]);
   const [confirmShareRoomId, setConfirmShareRoomId] = useState<string | null>(
@@ -91,6 +97,9 @@ export function FeedStream() {
   const [graphPresence, setGraphPresence] = useState<PresenceEntry[]>([]);
   const [gunReady, setGunReady] = useState(false);
   const [seedWsUp, setSeedWsUp] = useState(false);
+  const seedWsUpRef = useRef(false);
+  const heardItemsRef = useRef<FeedItem[]>([]);
+  const heardRoomsRef = useRef<Room[]>([]);
 
   const hydrate = useCallback(async (gun: GunRef, items: FeedItem[]) => {
     for (const item of items) {
@@ -119,6 +128,7 @@ export function FeedStream() {
       let snapshotEmpty = true;
       listenThenConnectSeedPeer(gun, window.location.origin, (up) => {
         seedWsUp = up;
+        seedWsUpRef.current = up;
         if (!cancelled) {
           setSeedWsUp(up);
           setStatus(feedStatusLine(up, snapshotEmpty, webrtcAttempted));
@@ -146,8 +156,9 @@ export function FeedStream() {
         sourcesTried: snapshot.sourcesTried,
         error: snapshot.error,
       });
-      // Snapshot paints even if /gun WS never comes up (localStorage off +
-      // a down peer must not leave Public empty). map().on still merges.
+      // Snapshot paints Public even if /gun WS never comes up. Network
+      // does not take these rows — only Gun .map().on while the seed
+      // peer is up (keep last mesh rows after a brief bye).
       const snapItems = snapshot.items ?? [];
       snapshotEmpty = snapItems.length === 0;
       setSeed((prev) => mergeItems(prev, snapItems));
@@ -159,6 +170,10 @@ export function FeedStream() {
         );
         if (!item || cancelled) return;
         setSeed((prev) => mergeItems(prev, [item]));
+        heardItemsRef.current = mergeItems(heardItemsRef.current, [item]);
+        if (acceptLiveMeshWrite(seedWsUpRef.current)) {
+          setMeshItems(heardItemsRef.current);
+        }
       });
       off = typeof listener?.off === "function" ? () => listener.off?.() : undefined;
 
@@ -168,6 +183,10 @@ export function FeedStream() {
         );
         if (!room || cancelled) return;
         setPublicRooms((prev) => mergeRooms(prev, [room]));
+        heardRoomsRef.current = mergeRooms(heardRoomsRef.current, [room]);
+        if (acceptLiveMeshWrite(seedWsUpRef.current)) {
+          setMeshRooms(heardRoomsRef.current);
+        }
       });
       offRooms =
         typeof roomsListener?.off === "function"
@@ -177,6 +196,7 @@ export function FeedStream() {
       // seedWsUp stays source of truth. A later hi must not be clobbered
       // by this snapshot paint; an earlier hi already set it.
       if (!cancelled) {
+        seedWsUpRef.current = seedWsUp;
         setSeedWsUp(seedWsUp);
         setStatus(feedStatusLine(seedWsUp, snapshotEmpty, webrtcAttempted));
       }
@@ -189,9 +209,17 @@ export function FeedStream() {
     };
   }, [hydrate]);
 
+  useEffect(() => {
+    seedWsUpRef.current = seedWsUp;
+    if (!acceptLiveMeshWrite(seedWsUp)) return;
+    // Promote Gun-heard rows (not snapshot-only seed) once the wire is up.
+    setMeshItems(heardItemsRef.current);
+    setMeshRooms(heardRoomsRef.current);
+  }, [seedWsUp]);
+
   const tabRooms = useMemo(
-    () => roomsForTab(tab, publicRooms, mineRooms),
-    [tab, publicRooms, mineRooms],
+    () => roomsForTab(tab, publicRooms, mineRooms, meshRooms),
+    [tab, publicRooms, mineRooms, meshRooms],
   );
   const listedRooms = useMemo(
     () => rankRooms(tabRooms, selected),
@@ -205,7 +233,11 @@ export function FeedStream() {
     [listedRooms, tabRooms, openRoomId],
   );
 
-  const tabItems = useMemo(() => itemsForTab(tab, seed, overlay), [tab, seed, overlay]);
+  const tabItems = useMemo(
+    () => itemsForTab(tab, seed, overlay, meshItems),
+    [tab, seed, overlay, meshItems],
+  );
+  const hasMeshRows = meshItems.length > 0 || meshRooms.length > 0;
   const threadItems = useMemo(
     () => (openRoom ? itemsInRoom(tabItems, openRoom.id) : tabItems),
     [openRoom, tabItems],
@@ -334,7 +366,7 @@ export function FeedStream() {
     [],
   );
 
-  function selectTab(next: Exclude<FeedTab, "network">) {
+  function selectTab(next: FeedTab) {
     setTab(next);
     setSelected([]);
     setShareMessage(null);
@@ -464,7 +496,7 @@ export function FeedStream() {
         </div>
       ) : null}
 
-      {!composeRoomId ? (
+      {tab !== "network" && !composeRoomId ? (
         <ComposeForm
           onItem={(next) => setOverlay((prev) => mergeItems(prev, [next]))}
         />
@@ -487,14 +519,19 @@ export function FeedStream() {
         </button>
         <button
           type="button"
-          disabled
-          title="later — mesh"
-          className="border border-rule px-3 py-2 text-xs font-semibold text-ink-muted disabled:opacity-50"
+          onClick={() => selectTab("network")}
+          className={tab === "network" ? btnTabOn : btnTabOff}
         >
           Network
         </button>
-        <span className="text-xs text-ink-muted">later — mesh</span>
       </div>
+      {tab === "network" ? (
+        <p className="mt-2 text-xs text-ink-muted">
+          Live mesh via the seed peer and WebRTC when ICE works. STUN is
+          not TURN. This is not a finished P2P mesh. Meetings and streams
+          are later. Mine overlay and ingest stay off this tab.
+        </p>
+      ) : null}
 
       <RoomsList
         rooms={listedRooms}
@@ -506,6 +543,18 @@ export function FeedStream() {
         }}
         canCreate={tab === "mine" && Boolean(session)}
         showCreateHint={tab === "mine" && !session}
+        emptyHint={
+          tab === "network"
+            ? !seedWsUp && !hasMeshRows
+              ? emptyNetworkCopy({
+                  tagged: false,
+                  inRoom: false,
+                  seedWsUp,
+                  hasMeshRows,
+                })
+              : "No shared rooms on the live mesh."
+            : undefined
+        }
         onCreated={(room) => {
           setMineRooms((prev) => mergeRooms(prev, [room]));
           setOpenRoomId(room.id);
@@ -516,6 +565,7 @@ export function FeedStream() {
         <RoomThreadHeader
           room={openRoom}
           mine={tab === "mine"}
+          network={tab === "network"}
           owned={ownsRoom(openRoom, session?.address)}
           shared={publishedRooms.has(openRoom.id)}
           confirmShare={confirmShareRoomId === openRoom.id}
@@ -584,7 +634,14 @@ export function FeedStream() {
 
       {visible.length === 0 ? (
         <p className="mt-8 border border-rule bg-panel p-6 text-sm text-ink-muted">
-          {emptyCopy(tab, Boolean(session), selected.length > 0, Boolean(openRoom))}
+          {emptyCopy(
+            tab,
+            Boolean(session),
+            selected.length > 0,
+            Boolean(openRoom),
+            seedWsUp,
+            hasMeshRows,
+          )}
         </p>
       ) : (
         <ul className="mt-8 space-y-3">
@@ -617,7 +674,12 @@ function emptyCopy(
   signedIn: boolean,
   tagged: boolean,
   inRoom: boolean,
+  seedWsUp: boolean,
+  hasMeshRows: boolean,
 ): string {
+  if (tab === "network") {
+    return emptyNetworkCopy({ tagged, inRoom, seedWsUp, hasMeshRows });
+  }
   if (inRoom && tab === "mine") {
     return tagged
       ? "No Mine posts in this room for the selected tags."
@@ -644,6 +706,7 @@ function emptyCopy(
 function RoomThreadHeader({
   room,
   mine,
+  network,
   owned,
   shared,
   confirmShare,
@@ -654,6 +717,7 @@ function RoomThreadHeader({
 }: {
   room: Room;
   mine: boolean;
+  network: boolean;
   owned: boolean;
   shared: boolean;
   confirmShare: boolean;
@@ -685,9 +749,10 @@ function RoomThreadHeader({
       <p className="mt-3 text-xs text-ink-muted">
         Posts belong by tag. Live chat and presence are this pass (Gun
         subscribe on the room). WebRTC is attempted over STUN when ICE
-        works; seed peer / snapshot if it does not. STUN is not TURN.
-        Meetings and streams are later. Trying seed peer; snapshot if the
-        socket is down. Snapshot is not a chat log or a presence list.
+        works; STUN is not TURN. Meetings and streams are later.
+        {network
+          ? " Network is the live mesh view via the seed peer / WebRTC — not the snapshot."
+          : " Trying seed peer; snapshot if the socket is down. Snapshot is not a chat log or a presence list."}
       </p>
       {mine && owned && sessionAddress ? (
         <div className="mt-3 border-t border-rule pt-3">
