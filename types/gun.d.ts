@@ -31,3 +31,6 @@ declare module "gun/sea.js" {
   };
   export default SEA;
 }
+
+/** Side-effect IIFE. Import after `gun/browser` sets `window.Gun`. */
+declare module "gun/lib/webrtc" {}

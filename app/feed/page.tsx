@@ -30,10 +30,12 @@ export default function FeedPage() {
         first, then recency. There are no popular or novel columns. A
         see-grant is not delivery and not share-into-mesh. Sharing a room
         does not publish the posts inside it. Live chat and presence are Gun
-        subscriptions on a room you can already see. WebRTC, meetings, and
-        streams are later. Trying seed peer; snapshot if the socket is down.
-        Snapshot is not a chat log or a presence list. That is not a P2P
-        mesh. Outbound bridges are not enabled. Network is later.
+        subscriptions on a room you can already see. WebRTC is attempted
+        over STUN when ICE works; if it fails, seed peer / snapshot like
+        today. STUN is not TURN. Meetings, streams, and Network are later.
+        Trying seed peer; snapshot if the socket is down. Snapshot is not a
+        chat log or a presence list. That is not a finished P2P mesh.
+        Outbound bridges are not enabled.
       </p>
 
       <SeeAclProvider>

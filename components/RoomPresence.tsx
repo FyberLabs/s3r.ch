@@ -46,9 +46,11 @@ export function RoomPresence({
     <div className={`mt-6 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">In this room</h2>
       <p className="mt-2 text-xs text-ink-muted">
-        Who is in this room now. Presence is this pass; WebRTC, meetings, and
-        streams are later. Trying seed peer; if the socket is down this list
-        can be empty or local only. There is no hosted presence server.
+        Who is in this room now. Presence is this pass; it is not WebRTC.
+        Meetings and streams are later. WebRTC is attempted over STUN when
+        ICE works; if it fails, seed peer / snapshot like today. STUN is
+        not TURN. Trying seed peer; if the socket is down this list can be
+        empty or local only. There is no hosted presence server.
         {onPublicGraph
           ? seedWsUp
             ? " This room node is on the public graph. Heartbeats go through the seed peer when the socket is up."
