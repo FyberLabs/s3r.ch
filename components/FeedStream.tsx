@@ -35,8 +35,6 @@ import {
 import {
   dropFeedItems,
   readUnshareId,
-  ROOM_UNSHARE_COPY,
-  UNSHARE_COPY,
 } from "@/lib/unshare";
 import {
   fromGunChatNode,
@@ -73,9 +71,7 @@ import { useSeeAcl } from "@/components/SeeAclProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
 import {
   browserGunOptions,
-  feedStatusLine,
   listenThenConnectSeedPeer,
-  TRYING_SEED_COPY,
   type SeedPeerEmitter,
 } from "@/lib/gun-peer";
 import { attachGunWebrtcLib } from "@/lib/gun-webrtc";
@@ -131,7 +127,6 @@ export function FeedStream() {
   const [selected, setSelected] = useState<string[]>([]);
   const [tab, setTab] = useState<FeedTab>("public");
   const [meta, setMeta] = useState<Omit<FeedSnapshot, "items"> | null>(null);
-  const [status, setStatus] = useState(TRYING_SEED_COPY);
   const [sharedIds, setSharedIds] = useState<string[]>([]);
   const [confirmShareId, setConfirmShareId] = useState<string | null>(null);
   const [confirmUnshareId, setConfirmUnshareId] = useState<string | null>(null);
@@ -182,19 +177,17 @@ export function FeedStream() {
       // Listen for mesh hi/bye on gun._.on, then opt the same-origin /gun
       // peer. Constructing with peers can fire hi before the listener.
       // No user.recall. See docs/ARCHITECTURE.md.
-      const webrtcAttempted = await attachGunWebrtcLib(Gun);
+      await attachGunWebrtcLib(Gun);
       const gun = Gun(browserGunOptions());
       gunRef.current = gun;
       registerGunRef.current?.(gun as unknown as FeedGun);
       if (!cancelled) setGunReady(true);
       let seedWsUp = false;
-      let snapshotEmpty = true;
       listenThenConnectSeedPeer(gun, window.location.origin, (up) => {
         seedWsUp = up;
         seedWsUpRef.current = up;
         if (!cancelled) {
           setSeedWsUp(up);
-          setStatus(feedStatusLine(up, snapshotEmpty, webrtcAttempted));
         }
       });
 
@@ -209,7 +202,7 @@ export function FeedStream() {
         const response = await fetch("/api/feed", { cache: "no-store" });
         snapshot = (await response.json()) as FeedSnapshot;
       } catch {
-        snapshot.error = "Could not read the Gun snapshot.";
+        snapshot.error = "Could not load the feed.";
       }
       if (cancelled) return;
 
@@ -223,7 +216,6 @@ export function FeedStream() {
       // does not take these rows — only Gun .map().on while the seed
       // peer is up (keep last mesh rows after a brief bye).
       const snapItems = snapshot.items ?? [];
-      snapshotEmpty = snapItems.length === 0;
       setSeed((prev) => mergeItems(prev, snapItems));
       await hydrate(gun, snapItems);
 
@@ -307,7 +299,6 @@ export function FeedStream() {
       if (!cancelled) {
         seedWsUpRef.current = seedWsUp;
         setSeedWsUp(seedWsUp);
-        setStatus(feedStatusLine(seedWsUp, snapshotEmpty, webrtcAttempted));
       }
     })();
 
@@ -614,15 +605,13 @@ export function FeedStream() {
     }
     const gun = gunRef.current;
     if (!gun) {
-      setShareMessage("Gun is not open yet.");
+      setShareMessage("Not ready yet.");
       return;
     }
     gun.get("s3rch").get("items").get(prepared.key).put(prepared.node);
     setSharedIds((prev) => (prev.includes(item.id) ? prev : [...prev, item.id]));
     setConfirmShareId(null);
-    setShareMessage(
-      `Published to the public graph. ${UNSHARE_COPY}`,
-    );
+    setShareMessage("Published. Unshare removes this from public.");
     await see.persist();
   }
 
@@ -645,7 +634,7 @@ export function FeedStream() {
     }
     const gun = gunRef.current;
     if (!gun) {
-      setShareMessage("Gun is not open yet.");
+      setShareMessage("Not ready yet.");
       return;
     }
     gun.get("s3rch").get("items").get(prepared.key).put(prepared.tombstone);
@@ -654,7 +643,7 @@ export function FeedStream() {
     heardItemsRef.current = dropFeedItems(heardItemsRef.current, item.id);
     setMeshItems(heardItemsRef.current);
     setConfirmUnshareId(null);
-    setShareMessage(UNSHARE_COPY);
+    setShareMessage("Unshare removes this from public.");
   }
 
   async function shareRoomToPublic(room: Room) {
@@ -675,7 +664,7 @@ export function FeedStream() {
     }
     const gun = gunRef.current;
     if (!gun) {
-      setRoomShareMessage("Gun is not open yet.");
+      setRoomShareMessage("Not ready yet.");
       return;
     }
     gun.get("s3rch").get("rooms").get(prepared.key).put(prepared.node);
@@ -720,7 +709,7 @@ export function FeedStream() {
     }
     setConfirmShareRoomId(null);
     setRoomShareMessage(
-      `Published this room node to the public graph. Posts inside stay Mine until you share those posts. ${ROOM_UNSHARE_COPY}`,
+      "Published. Posts inside stay on Mine until you share them.",
     );
     await see.persist();
   }
@@ -744,7 +733,7 @@ export function FeedStream() {
     }
     const gun = gunRef.current;
     if (!gun) {
-      setRoomShareMessage("Gun is not open yet.");
+      setRoomShareMessage("Not ready yet.");
       return;
     }
     gun.get("s3rch").get("rooms").get(prepared.key).put(prepared.tombstone);
@@ -755,7 +744,7 @@ export function FeedStream() {
     setGraphChat((prev) => prev.filter((row) => row.room !== room.id));
     setGraphPresence((prev) => prev.filter((row) => row.room !== room.id));
     setConfirmUnshareRoomId(null);
-    setRoomShareMessage(ROOM_UNSHARE_COPY);
+    setRoomShareMessage("Unshare removes this room from public.");
   }
 
   const composeRoomId =
@@ -765,20 +754,15 @@ export function FeedStream() {
 
   return (
     <div>
-      <p className="mt-6 text-xs text-ink-muted">
-        {status}
-        {meta?.seededAt ? ` · seeded ${meta.seededAt}` : ""}
-        {meta
-          ? ` · sources ${meta.sourcesOk} / ${meta.sourcesTried}`
-          : ""}
-      </p>
+      {meta?.seededAt ? (
+        <p className="mt-6 text-xs text-ink-muted">
+          Updated {meta.seededAt}
+        </p>
+      ) : null}
       {meta?.error ? (
         <div className={`mt-6 ${failPanel}`}>
-          <p className="font-semibold">Seed is empty or failed</p>
+          <p className="font-semibold">Feed is empty or failed</p>
           <p className="mt-2">{meta.error}</p>
-          <p className="mt-2">
-            No rows were invented. The Gun graph only holds what the seeder wrote.
-          </p>
         </div>
       ) : null}
 
@@ -820,18 +804,12 @@ export function FeedStream() {
       </div>
       {tab === "network" ? (
         <p className="mt-2 text-xs text-ink-muted">
-          Live mesh via the seed peer and WebRTC when ICE works. STUN is
-          not TURN. This is not a finished P2P mesh. Meetings and streams
-          are later. Mine overlay and ingest stay off this tab.
+          Live posts and rooms from the network.
         </p>
       ) : null}
       {tab === "granted" ? (
         <p className="mt-2 text-xs text-ink-muted">
-          Objects delivered to you by a live see-grant. Gun-stored posts,
-          rooms, and claims only — URL fetches stay handoffs. Not Public,
-          not Network, not search. First delivery can wait on the mesh.
-          Revoke is immediate on dest ACL. Unshare tombstones still hide
-          retracted public puts; this inbox does not write those paths.
+          Posts and rooms shared with you.
         </p>
       ) : null}
 
@@ -839,8 +817,7 @@ export function FeedStream() {
         <div className={`mt-6 ${panel}`}>
           <h2 className="text-sm font-semibold text-ink">Granted claims</h2>
           <p className="mt-2 text-xs text-ink-muted">
-            User-node claims delivered to you. Not a Popular list and not
-            the holder&apos;s private footprint.
+            Names shared with you.
           </p>
           <ul className="mt-3 space-y-2 text-xs text-ink-muted">
             {grantedUsers.map((user) => (
@@ -887,11 +864,11 @@ export function FeedStream() {
                   seedWsUp,
                   hasMeshRows,
                 })
-              : "No shared rooms on the live mesh."
+              : "No shared rooms yet."
             : tab === "granted"
               ? !session
-                ? "Sign in to receive granted rooms."
-                : "No granted rooms yet. Granting a room does not deliver Mine posts inside it."
+                ? "Sign in to see rooms shared with you."
+                : "No rooms shared with you yet."
               : undefined
         }
         showOwner={tab === "public" || tab === "network" || tab === "granted"}
@@ -1008,11 +985,11 @@ export function FeedStream() {
           onItems={(next) => setOverlay((prev) => mergeItems(prev, next))}
           onShareIntoMesh={async (items) => {
             if (!session || !see?.acl) {
-              throw new Error("Sign in to share into the mesh.");
+              throw new Error("Sign in to share.");
             }
             const gun = gunRef.current;
             if (!gun) {
-              throw new Error("Gun is not open yet.");
+              throw new Error("Not ready yet.");
             }
             let shared = 0;
             for (const item of items) {
@@ -1026,7 +1003,7 @@ export function FeedStream() {
               shared += 1;
             }
             if (!shared) {
-              throw new Error("Could not admit those items onto the mesh.");
+              throw new Error("Could not share those items.");
             }
             await see.persist();
           }}
@@ -1059,25 +1036,25 @@ function emptyCopy(
   }
   if (inRoom && tab === "mine") {
     return tagged
-      ? "No Mine posts in this room for the selected tags."
-      : "This room has no Mine posts yet. Compose into it. Sharing the room does not publish these posts.";
+      ? "No posts in this room for these tags."
+      : "No posts in this room yet.";
   }
   if (inRoom) {
     return tagged
-      ? "No public posts in this room for the selected tags."
-      : "This shared room has no public posts yet. Sharing the room does not publish Mine posts inside it.";
+      ? "No posts in this room for these tags."
+      : "No posts in this room yet.";
   }
   if (tab === "mine" && !signedIn) {
-    return "Mine is empty until you sign in. Overlay ingest and native posts stay here; they are not the public seed.";
+    return "Sign in to see your posts.";
   }
   if (tab === "mine") {
     return tagged
-      ? "No Mine items for the selected tags."
-      : "Mine is empty. Compose a native post or pull a URL or an allowed lab source into your overlay. Nothing was invented.";
+      ? "No posts for these tags."
+      : "Nothing here yet. Write a post or pull a feed.";
   }
   return tagged
-    ? "No items in this Gun graph for the selected tags. Empty sources stay empty."
-    : "No items in this Gun graph. Empty sources stay empty.";
+    ? "No posts for these tags."
+    : "Nothing here yet.";
 }
 
 function RoomThreadHeader({
@@ -1130,22 +1107,20 @@ function RoomThreadHeader({
         </button>
       </div>
       <p className="mt-3 text-xs text-ink-muted">
-        Posts belong by tag. Live chat and presence are this pass (Gun
-        subscribe on the room). WebRTC is attempted over STUN when ICE
-        works; STUN is not TURN. Meetings and streams are later.
+        Posts in this room.
         {granted
-          ? " This room was delivered by a see-grant. It is not Public. Chat and presence stay on the public room graph only if that room was shared."
+          ? " Shared with you."
           : network
-            ? " Network is the live mesh view via the seed peer / WebRTC — not the snapshot."
-            : " Trying seed peer; snapshot if the socket is down. Snapshot is not a chat log or a presence list."}
+            ? " From the network."
+            : ""}
       </p>
       {mine && owned && sessionAddress ? (
         <div className="mt-3 border-t border-rule pt-3">
           {shared ? (
             <>
               <p className="text-xs text-ink-muted">
-                This room node is on the public graph. Posts inside stay Mine
-                until you share those posts. {ROOM_UNSHARE_COPY}
+                This room is public. Posts inside stay on Mine until you
+                share them.
               </p>
               <button
                 type="button"
@@ -1158,9 +1133,8 @@ function RoomThreadHeader({
           ) : (
             <>
               <p className="text-xs text-ink-muted">
-                Share to public publishes this room node onto the public rooms
-                graph. It does not publish Mine posts inside it. A see-grant is
-                not this. {ROOM_UNSHARE_COPY}
+                Share this room. Posts inside stay on Mine until you share
+                them.
               </p>
               <button
                 type="button"
@@ -1359,7 +1333,7 @@ function FeedCard({
           {shared ? (
             <>
               <p className="text-xs text-ink-muted">
-                On the public graph. {UNSHARE_COPY}
+                This post is public.
               </p>
               <button
                 type="button"
@@ -1372,8 +1346,7 @@ function FeedCard({
           ) : (
             <>
               <p className="text-xs text-ink-muted">
-                Share to public publishes this item onto the public graph. A
-                see-grant is not this. {UNSHARE_COPY}
+                Share this post to make it public.
               </p>
               <button
                 type="button"

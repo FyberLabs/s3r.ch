@@ -40,11 +40,7 @@ export function RoomsList({
     <div className={`mt-8 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Rooms</h2>
       <p className="mt-2 text-xs text-ink-muted">
-        Gun threads. Mine until you share the room node. Network lists
-        shared rooms from the live Gun mesh (seed peer / WebRTC), not
-        Mine-only rooms. Live chat and presence are this pass. WebRTC is
-        attempted over STUN (not TURN) when ICE works. Meetings and
-        streams are later. Snapshot is not a chat log or a presence list.
+        Open a room for its posts and chat.
       </p>
       {canCreate ? (
         <NewRoomForm onCreated={onCreated} />
@@ -59,7 +55,7 @@ export function RoomsList({
             ? emptyHint
             : canCreate
               ? "No rooms yet. Title a new room to put it on Mine."
-              : "No shared rooms on this graph."}
+              : "No rooms yet."}
         </p>
       ) : (
         reader === "ai" ? (

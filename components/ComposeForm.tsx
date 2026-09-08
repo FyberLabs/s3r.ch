@@ -75,8 +75,8 @@ export function ComposeForm({
       </h2>
       <p className="mt-2 text-sm text-ink-muted">
         {roomId
-          ? "Native s3r.ch post tagged to this room. Stays on Mine until you share this post. Sharing the room does not publish this post. A see-grant is not that share."
-          : "Native s3r.ch post. Stays on Mine until you share to public. A see-grant is not that share. This is not an outbound bridge."}
+          ? "This post stays on Mine until you share it."
+          : "Posts stay on Mine until you share them."}
       </p>
       <label className="mt-4 block text-sm text-ink">
         Body

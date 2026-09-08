@@ -2,7 +2,6 @@ export function SiteFooter() {
   return (
     <footer className="mt-20 border-t border-rule py-10 text-center text-sm text-ink-muted">
       <p>
-        A{" "}
         <a
           href="https://fyberlabs.com"
           target="_blank"
@@ -11,7 +10,7 @@ export function SiteFooter() {
         >
           Fyber Labs
         </a>{" "}
-        lab site · Chris Hamilton
+        · Chris Hamilton
       </p>
       <p className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
         <a

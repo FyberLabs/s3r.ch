@@ -33,17 +33,10 @@ export function RoomChat({
     <div className={`mt-6 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Live chat</h2>
       <p className="mt-2 text-xs text-ink-muted">
-        Short messages on this room thread. Presence is this pass; it is
-        not WebRTC. Meetings and streams are later. WebRTC is attempted
-        over STUN when ICE works; if it fails, seed peer / snapshot like
-        today. STUN is not TURN. Trying seed peer; if the socket is down
-        this list can be empty or local only. There is no hosted
-        transcript.
+        Messages in this room.
         {onPublicGraph
-          ? seedWsUp
-            ? " This room node is on the public graph. New messages go through the seed peer when the socket is up."
-            : " This room node is on the public graph. Snapshot is not a chat log."
-          : " This room is Mine. Chat stays on your overlay until you share the room node. Sharing the room does not publish Mine posts inside it."}
+          ? ""
+          : " Private until you share the room."}
       </p>
       {listed.length === 0 ? (
         <p className="mt-3 text-xs text-ink-muted">
@@ -116,8 +109,7 @@ function ChatCompose({
   if (!session) {
     return (
       <p className="mt-3 text-xs text-ink-muted">
-        Sign in with Ethereum to send. Unsigned visitors can read chat when
-        this room node is on the public graph. A see-grant is not delivery.
+        Sign in with Ethereum to send.
       </p>
     );
   }

@@ -36,16 +36,11 @@ export function DiscoverPanel({
     <div className={`mt-8 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Discover</h2>
       <p className="mt-2 text-xs text-ink-muted">
-        Tags already on Public (seed + shared rooms) and the live Network
-        mesh. Mine overlay is not here. Counts are how many posts and
-        shared rooms already carry the tag — not a popularity score.
-        Any-match, then recency. Not search. No Popular / Novel.
-        Shared user nodes are provenance (truncated address plus
-        shared indicators), not a profile list.
+        Tags on public posts and rooms. Select one to filter.
       </p>
       {tags.length === 0 ? (
         <p className="mt-3 text-xs text-ink-muted">
-          No tags on Public or the live mesh yet. Empty sources stay empty.
+          No tags yet.
         </p>
       ) : (
         <div className="mt-3">
@@ -166,8 +161,7 @@ export function DiscoverPanel({
         </div>
       ) : (
         <p className="mt-3 text-xs text-ink-muted">
-          Select a tag to list matching shared rooms and rank posts. Owner
-          lines are provenance, not a profile.
+          Select a tag to list matching rooms.
         </p>
       )}
     </div>

@@ -161,7 +161,7 @@ describe("emptyNetworkCopy", () => {
         seedWsUp: false,
         hasMeshRows: true,
       }),
-      "The live mesh has no items yet. Public still has the snapshot if the seeder wrote any.",
+      "Nothing on the network yet.",
     );
     assert.equal(
       emptyNetworkCopy({
@@ -170,7 +170,7 @@ describe("emptyNetworkCopy", () => {
         seedWsUp: true,
         hasMeshRows: true,
       }),
-      "No live mesh items for the selected tags.",
+      "No posts for these tags.",
     );
     assert.equal(
       emptyNetworkCopy({
@@ -179,7 +179,7 @@ describe("emptyNetworkCopy", () => {
         seedWsUp: true,
         hasMeshRows: true,
       }),
-      "This shared room has no live mesh posts yet. Sharing the room does not publish Mine posts.",
+      "No posts in this room yet.",
     );
   });
 });

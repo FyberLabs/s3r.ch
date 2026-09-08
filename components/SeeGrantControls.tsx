@@ -176,7 +176,7 @@ export function SeeGrantControls({
           Math.floor(Date.now() / 1000),
         );
         if ("denied" in prepared) {
-          setMessage("Granted on dest ACL. Delivery needs a Gun-stored claim.");
+          setMessage("Granted. Delivery needs a listed name.");
         } else if (!peer?.gun) {
           setMessage(GRANT_DELIVERY_WAIT_COPY);
         } else {

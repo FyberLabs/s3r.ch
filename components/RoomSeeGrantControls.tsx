@@ -22,7 +22,7 @@ import { btnSecondary, field, fieldMono } from "@/lib/brand-ui";
 import type { Room } from "@/lib/rooms";
 
 export const ROOM_SEE_GRANT_COPY =
-  "This is a grant, not login, and not share-into-mesh. Granting delivers this room node to the accessor Granted inbox (mesh delay is ok). Revoke is immediate on dest ACL. It does not publish the room or the posts inside it.";
+  "Let another address see this room. Revoke anytime.";
 
 export function RoomSeeGrantControls({
   address,
@@ -92,7 +92,7 @@ export function RoomSeeGrantControls({
         Math.floor(Date.now() / 1000),
       );
       if ("denied" in prepared) {
-        setMessage("Granted on dest ACL. Delivery needs a Gun-stored room.");
+        setMessage("Granted. Delivery needs a public room.");
       } else if (!peer?.gun) {
         setMessage(GRANT_DELIVERY_WAIT_COPY);
       } else {

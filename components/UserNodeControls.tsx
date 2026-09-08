@@ -23,7 +23,7 @@ import {
 } from "@/lib/users";
 
 export const USER_SHARE_COPY =
-  "Held claims stay Mine until you share. A see-grant is not this share — delivery lands on Granted. Unshare retracts a prior share; it is not a grant revoke.";
+  "Share your public name. Claims stay private until you share them.";
 
 type Props = {
   address: string;
@@ -132,15 +132,13 @@ export function UserNodeControls({
     }
     const gun = peer?.gun;
     if (!gun) {
-      setMessage("Gun is not open yet.");
+      setMessage("Not ready yet.");
       return;
     }
     gun.get("s3rch").get("users").get(prepared.key).put(prepared.node);
     setPublished(true);
     setConfirmUser(false);
-    setMessage(
-      `Published this user node to the public graph. Claims stay Mine until you share those claims. ${USER_UNSHARE_COPY}`,
-    );
+    setMessage("Listed. Claims stay private until you share them.");
     await see.persist();
   }
 
@@ -163,7 +161,7 @@ export function UserNodeControls({
     }
     const gun = peer?.gun;
     if (!gun) {
-      setMessage("Gun is not open yet.");
+      setMessage("Not ready yet.");
       return;
     }
     gun.get("s3rch").get("users").get(prepared.key).put(prepared.tombstone);
@@ -198,7 +196,7 @@ export function UserNodeControls({
     }
     const gun = peer?.gun;
     if (!gun) {
-      setMessage("Gun is not open yet.");
+      setMessage("Not ready yet.");
       return;
     }
     gun.get("s3rch").get("users").get(prepared.key).put(prepared.node);
@@ -209,9 +207,7 @@ export function UserNodeControls({
         : [...sharedIndicators, claimId],
     );
     setConfirmClaimId(null);
-    setMessage(
-      `Published this claim on your user node. ${CLAIM_UNSHARE_COPY}`,
-    );
+    setMessage("Shared.");
     await see.persist();
   }
 
@@ -240,7 +236,7 @@ export function UserNodeControls({
     }
     const gun = peer?.gun;
     if (!gun) {
-      setMessage("Gun is not open yet.");
+      setMessage("Not ready yet.");
       return;
     }
     if ("tombstone" in prepared) {
@@ -267,8 +263,8 @@ export function UserNodeControls({
         {published ? (
           <>
             <p className="text-xs text-ink-muted">
-              User node is on the public graph. Claims stay Mine until you
-              share those claims. {USER_UNSHARE_COPY}
+              Your public name is listed. Claims stay private until you
+              share them.
             </p>
             <button
               type="button"
@@ -281,8 +277,7 @@ export function UserNodeControls({
         ) : (
           <>
             <p className="text-xs text-ink-muted">
-              Publish user node puts your wallet on `s3rch/users`. It does
-              not dump held claims. A see-grant is not this.
+              List a public name for this wallet.
             </p>
             <button
               type="button"
@@ -306,7 +301,7 @@ export function UserNodeControls({
                 <span>{claimId}</span>
                 {shared ? (
                   <>
-                    <span>On the public graph.</span>
+                    <span>Public.</span>
                     <button
                       type="button"
                       onClick={() => void unshareClaim(claimId)}

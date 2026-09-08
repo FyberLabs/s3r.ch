@@ -604,18 +604,7 @@ function IdentityBarInner() {
     <div className={`mt-10 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Session</h2>
       <p className="mt-2 text-sm text-ink-muted">
-        Sign in with Ethereum binds this browser to a checksummed address
-        (EOA or ERC-1271 smart account). A Passkey wallet creates or opens a
-        Coinbase Smart Wallet so you can get an address; sign-in is still SIWE,
-        not a separate identity provider. ENS, Unstoppable, Farcaster, Lens, and
-        RSS3 are held claims after sign-in, not the session key. Held claims
-        stay Mine until you share the user node or a claim onto the public
-        graph. A passkey can wrap the local mesh key on this device
-        (recovery, not login — different from a Smart Wallet passkey). A
-        paper backup is recovery, not login.
-        {wcConfigured
-          ? " WalletConnect is a wallet connector (QR / mobile), not a separate identity provider."
-          : ""}
+        Sign in with Ethereum to post, share, and open rooms.
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {session ? (

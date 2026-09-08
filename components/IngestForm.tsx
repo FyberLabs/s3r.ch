@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   ALLOWED_SOURCE_CLASSES,
   ALLOWED_SOURCE_LABELS,
-  BROWSER_CORS_COPY,
   BROWSER_PULL_MINE_COPY,
   BROWSER_PULL_SHARE_COPY,
   admitPulledItems,
@@ -53,7 +52,7 @@ export function IngestForm({
       const items = payload.items ?? [];
       if (items.length) {
         onItems(items);
-        setMessage(`Merged ${items.length} item${items.length === 1 ? "" : "s"} onto your local Gun graph.`);
+        setMessage(`Pulled ${items.length} item${items.length === 1 ? "" : "s"} onto Mine.`);
       } else {
         setMessage(payload.error || "Nothing to merge.");
       }
@@ -117,9 +116,9 @@ export function IngestForm({
     try {
       await onShareIntoMesh(lastAdmitted);
       setConfirmShare(false);
-      setMessage(`Shared ${lastAdmitted.length} admitted item${lastAdmitted.length === 1 ? "" : "s"} into the mesh.`);
+      setMessage(`Shared ${lastAdmitted.length} item${lastAdmitted.length === 1 ? "" : "s"}.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Share into mesh failed.");
+      setMessage(error instanceof Error ? error.message : "Share failed.");
     } finally {
       setBusy(false);
     }
@@ -129,9 +128,7 @@ export function IngestForm({
     <div className={`mt-10 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Your overlay</h2>
       <p className="mt-2 text-sm text-ink-muted">
-        Pull a public RSS/Atom URL or an RSS3 address. Items are normalized to
-        the same shape and merged in your browser Gun graph. They are not
-        written into the public seed.
+        Pull a public feed onto Mine. Share if you want it public.
       </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="block text-sm text-ink">
@@ -179,9 +176,7 @@ export function IngestForm({
       <div className="mt-6 border-t border-rule pt-4">
         <h3 className="text-sm font-semibold text-ink">Allowed lab sources</h3>
         <p className="mt-2 text-sm text-ink-muted">
-          The same documented public Farcaster hub FIDs, ATProto AppView
-          feeds, and RSS/Atom URLs the lab seeder uses. RSS3 GI is
-          optional and stays empty if DNS or HTTP fails. {BROWSER_CORS_COPY}
+          Pull the same public sources the lab feed uses.
         </p>
         {session ? (
           <>
@@ -207,16 +202,14 @@ export function IngestForm({
                   onClick={() => void shareLastPull()}
                   className={`mt-2 ${btnSecondary}`}
                 >
-                  {confirmShare ? "Confirm share into mesh" : "Share into mesh"}
+                  {confirmShare ? "Confirm share" : "Share to public"}
                 </button>
               </div>
             ) : null}
           </>
         ) : (
           <p className="mt-3 text-xs text-ink-muted">
-            Sign in with Ethereum to pull those sources onto Mine. A
-            see-grant is not this. Direct browser-to-source still fails
-            CORS.
+            Sign in with Ethereum to pull those sources.
           </p>
         )}
       </div>
