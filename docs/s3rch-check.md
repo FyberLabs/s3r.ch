@@ -24,7 +24,7 @@ The Next app runs Check **in the browser** on the Gun mesh. It does **not** impo
 
 `s3rch/meta` is seed cache. It is not a Check object. A permalink / RSS3 / RSS / issuer URL is a `UrlLeaf`, not a node and not a grant.
 
-Grant **delivery** of a Gun-stored object the dest Check already allows is a holder-initiated put onto `s3rch/granted/<accessor>/{items|rooms|users}`. That path is the accessor inbox — not share-into-mesh and not a public row. Chat / presence / URL fetches are not grant-delivered. Privilege-down stays `cancelSee` on dest ACL (immediate). First delivery can wait on the mesh.
+Grant **delivery** of a Gun-stored object the dest Check already allows is a holder-initiated put onto `s3rch/granted/<accessor>/{items|rooms|users}`. That path is the accessor inbox — not share-into-mesh and not a public row. Chat / presence / URL fetches are not grant-delivered. Privilege-down stays `cancelSee` on dest ACL (immediate). First delivery can wait on the mesh. Inbox rows die with the ephemeral seed today; dest ACL in IndexedDB does not. Durable-graph / TURN requirements: [durable-graph-and-turn.md](durable-graph-and-turn.md). Do not put SIWE / SEA / TURN secrets on a grant envelope.
 
 Later, on request: more verbs on the TS spec. Not this cut.
 
