@@ -588,7 +588,7 @@ export function FeedStream() {
       ) : null}
 
       {tab !== "mine" ? (
-        <DiscoverPanel>
+        <DiscoverPanel
           tags={discovery.tags}
           rooms={discovery.rooms}
           selected={selected}
