@@ -599,7 +599,7 @@ export function FeedStream() {
     }
     const prepared = prepareShareIntoMesh(see.acl, item, session.address);
     if ("denied" in prepared) {
-      setShareMessage("Could not admit this post.");
+      setShareMessage("Could not share.");
       setConfirmShareId(null);
       return;
     }
@@ -658,7 +658,7 @@ export function FeedStream() {
     }
     const prepared = prepareShareRoomIntoMesh(see.acl, room, session.address);
     if ("denied" in prepared) {
-      setRoomShareMessage("Could not admit this room.");
+      setRoomShareMessage("Could not share.");
       setConfirmShareRoomId(null);
       return;
     }
@@ -754,11 +754,6 @@ export function FeedStream() {
 
   return (
     <div>
-      {meta?.seededAt ? (
-        <p className="mt-6 text-xs text-ink-muted">
-          Updated {meta.seededAt}
-        </p>
-      ) : null}
       {meta?.error ? (
         <div className={`mt-6 ${failPanel}`}>
           <p className="font-semibold">Feed is empty or failed</p>
@@ -802,23 +797,9 @@ export function FeedStream() {
           Granted
         </button>
       </div>
-      {tab === "network" ? (
-        <p className="mt-2 text-xs text-ink-muted">
-          Live posts and rooms from the network.
-        </p>
-      ) : null}
-      {tab === "granted" ? (
-        <p className="mt-2 text-xs text-ink-muted">
-          Posts and rooms shared with you.
-        </p>
-      ) : null}
-
       {tab === "granted" && grantedUsers.length > 0 ? (
         <div className={`mt-6 ${panel}`}>
-          <h2 className="text-sm font-semibold text-ink">Granted claims</h2>
-          <p className="mt-2 text-xs text-ink-muted">
-            Names shared with you.
-          </p>
+          <h2 className="text-sm font-semibold text-ink">Names</h2>
           <ul className="mt-3 space-y-2 text-xs text-ink-muted">
             {grantedUsers.map((user) => (
               <li key={user.id}>{userProvenanceLine(user)}</li>
@@ -867,8 +848,8 @@ export function FeedStream() {
               : "No shared rooms yet."
             : tab === "granted"
               ? !session
-                ? "Sign in to see rooms shared with you."
-                : "No rooms shared with you yet."
+                ? "Sign in to see rooms."
+                : "No rooms yet."
               : undefined
         }
         showOwner={tab === "public" || tab === "network" || tab === "granted"}
@@ -1048,20 +1029,14 @@ function emptyCopy(
     return "Sign in to see your posts.";
   }
   if (tab === "mine") {
-    return tagged
-      ? "No posts for these tags."
-      : "Nothing here yet. Write a post or pull a feed.";
+    return tagged ? "No posts for these tags." : "Nothing here yet.";
   }
-  return tagged
-    ? "No posts for these tags."
-    : "Nothing here yet.";
+  return tagged ? "No posts for these tags." : "Nothing here yet.";
 }
 
 function RoomThreadHeader({
   room,
   mine,
-  network,
-  granted,
   owned,
   shared,
   confirmShare,
@@ -1106,21 +1081,12 @@ function RoomThreadHeader({
           Close thread
         </button>
       </div>
-      <p className="mt-3 text-xs text-ink-muted">
-        Posts in this room.
-        {granted
-          ? " Shared with you."
-          : network
-            ? " From the network."
-            : ""}
-      </p>
       {mine && owned && sessionAddress ? (
         <div className="mt-3 border-t border-rule pt-3">
           {shared ? (
             <>
               <p className="text-xs text-ink-muted">
-                This room is public. Posts inside stay on Mine until you
-                share them.
+                This room is public.
               </p>
               <button
                 type="button"
@@ -1133,8 +1099,7 @@ function RoomThreadHeader({
           ) : (
             <>
               <p className="text-xs text-ink-muted">
-                Share this room. Posts inside stay on Mine until you share
-                them.
+                Share this room.
               </p>
               <button
                 type="button"
@@ -1191,7 +1156,7 @@ function FeedItems({
               <th scope="col">body</th>
               <th scope="col">tags</th>
               <th scope="col">ts</th>
-              <th scope="col">provenance</th>
+              <th scope="col">source</th>
               <th scope="col">permalink</th>
               {mine ? <th scope="col">share</th> : null}
             </tr>
@@ -1318,7 +1283,6 @@ function FeedCard({
       <p className="mt-2 text-xs text-ink-muted">
         {item.tags.join(" · ")}
         {when ? ` · ${when}` : ""}
-        {item.provenance ? ` · ${item.provenance}` : ""}
       </p>
     </>
   );

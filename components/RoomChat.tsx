@@ -32,17 +32,9 @@ export function RoomChat({
   return (
     <div className={`mt-6 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Live chat</h2>
-      <p className="mt-2 text-xs text-ink-muted">
-        Messages in this room.
-        {onPublicGraph
-          ? ""
-          : " Private until you share the room."}
-      </p>
       {listed.length === 0 ? (
         <p className="mt-3 text-xs text-ink-muted">
-          {onPublicGraph
-            ? "No chat in this room yet."
-            : "No local chat in this room yet."}
+          No messages yet.
         </p>
       ) : (
         reader === "ai" ? (
@@ -109,7 +101,7 @@ function ChatCompose({
   if (!session) {
     return (
       <p className="mt-3 text-xs text-ink-muted">
-        Sign in with Ethereum to send.
+        Sign in to send.
       </p>
     );
   }
@@ -130,22 +122,18 @@ function ChatCompose({
         return;
       }
       if (!see?.acl) {
-        setMessage("Could not admit this message.");
+        setMessage("Could not send.");
         return;
       }
       const admitted = admitComposedChat(see.acl, next, sessionAddress);
       if ("denied" in admitted) {
-        setMessage("Could not admit this message.");
+        setMessage("Could not send.");
         return;
       }
       onComposed(admitted.message, onPublicGraph);
       await see.persist();
       setBody("");
-      setMessage(
-        onPublicGraph
-          ? "On this room thread. Seed peer when the socket is up."
-          : "On Mine overlay. Not on the public graph until you share this room.",
-      );
+      setMessage("Sent.");
     } finally {
       setBusy(false);
     }

@@ -39,14 +39,11 @@ export function RoomsList({
   return (
     <div className={`mt-8 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Rooms</h2>
-      <p className="mt-2 text-xs text-ink-muted">
-        Open a room for its posts and chat.
-      </p>
       {canCreate ? (
         <NewRoomForm onCreated={onCreated} />
       ) : showCreateHint ? (
         <p className="mt-3 text-xs text-ink-muted">
-          Sign in with Ethereum to create a room.
+          Sign in to create a room.
         </p>
       ) : null}
       {rooms.length === 0 ? (
@@ -138,7 +135,7 @@ function NewRoomForm({ onCreated }: { onCreated: (room: Room) => void }) {
     setMessage(null);
     try {
       if (!session) {
-        setMessage("Sign in with Ethereum to create a room.");
+        setMessage("Sign in to create a room.");
         return;
       }
       const room = composeRoom({
@@ -151,19 +148,19 @@ function NewRoomForm({ onCreated }: { onCreated: (room: Room) => void }) {
         return;
       }
       if (!see?.acl) {
-        setMessage("Could not admit this room.");
+        setMessage("Could not create this room.");
         return;
       }
       const admitted = admitComposedRoom(see.acl, room, session);
       if ("denied" in admitted) {
-        setMessage("Could not admit this room.");
+        setMessage("Could not create this room.");
         return;
       }
       onCreated(admitted.room);
       await see.persist();
       setTitle("");
       setTagsInput("");
-      setMessage("On Mine. Not public until you share this room.");
+      setMessage("Saved.");
     } finally {
       setBusy(false);
     }

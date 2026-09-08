@@ -11,11 +11,9 @@
 
 import type { FeedItem, FeedTab } from "./feed-types";
 
-export const NETWORK_NEEDS_PEER_COPY =
-  "Network is empty until a live connection comes up.";
+export const NETWORK_NEEDS_PEER_COPY = "Nothing here yet.";
 
-export const GRANTED_NEEDS_PEER_COPY =
-  "Granted is empty until a live connection comes up.";
+export const GRANTED_NEEDS_PEER_COPY = "Nothing here yet.";
 
 export function itemsForTab(
   tab: FeedTab,
@@ -56,7 +54,7 @@ export function emptyNetworkCopy(opts: {
   }
   return opts.tagged
     ? "No posts for these tags."
-    : "Nothing on the network yet.";
+    : "Nothing here yet.";
 }
 
 export function emptyGrantedCopy(opts: {
@@ -67,7 +65,7 @@ export function emptyGrantedCopy(opts: {
   hasGrantedRows: boolean;
 }): string {
   if (!opts.signedIn) {
-    return "Sign in to see posts shared with you.";
+    return "Sign in to see posts.";
   }
   if (opts.inRoom) {
     return opts.tagged
@@ -79,5 +77,5 @@ export function emptyGrantedCopy(opts: {
   }
   return opts.tagged
     ? "No posts for these tags."
-    : "Nothing shared with you yet.";
+    : "Nothing here yet.";
 }

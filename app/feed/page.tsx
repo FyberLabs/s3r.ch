@@ -32,17 +32,6 @@ export default function FeedPage() {
         <Link href="/" className="font-semibold text-ink hover:text-signal">
           Back to s3r.ch
         </Link>
-        <span className="mx-2" aria-hidden="true">
-          ·
-        </span>
-        <a
-          href="https://docs.rss3.io/guide/developer/api"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-semibold text-ink hover:text-signal"
-        >
-          RSS3 Data Sublayer
-        </a>
       </p>
     </section>
   );

@@ -133,7 +133,6 @@ export function RoomSeeGrantControls({
 
   return (
     <div className="mt-3 border-t border-rule pt-3">
-      <p className="text-xs text-ink-muted">{ROOM_SEE_GRANT_COPY}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <input
           type="text"

@@ -112,7 +112,7 @@ export function UserNodeControls({
   async function shareUser() {
     setMessage(null);
     if (!see?.acl || !overlay) {
-      setMessage("Could not share this user node.");
+      setMessage("Could not share.");
       return;
     }
     if (!confirmUser) {
@@ -126,7 +126,7 @@ export function UserNodeControls({
       sharedIndicators,
     );
     if ("denied" in prepared) {
-      setMessage("Could not admit this user node.");
+      setMessage("Could not publish.");
       setConfirmUser(false);
       return;
     }
@@ -145,7 +145,7 @@ export function UserNodeControls({
   async function unshareUser() {
     setMessage(null);
     if (!see?.acl || !overlay) {
-      setMessage("Could not unshare this user node.");
+      setMessage("Could not unshare.");
       return;
     }
     if (!confirmUnshareUser) {
@@ -155,7 +155,7 @@ export function UserNodeControls({
     }
     const prepared = prepareUnshareUserFromMesh(see.acl, overlay, address);
     if ("denied" in prepared) {
-      setMessage("Could not unshare this user node.");
+      setMessage("Could not unshare.");
       setConfirmUnshareUser(false);
       return;
     }
@@ -190,7 +190,7 @@ export function UserNodeControls({
       sharedIndicators,
     );
     if ("denied" in prepared) {
-      setMessage("Could not admit this claim.");
+      setMessage("Could not share.");
       setConfirmClaimId(null);
       return;
     }
@@ -258,35 +258,23 @@ export function UserNodeControls({
 
   return (
     <div className="mt-4 border-t border-rule pt-4">
-      <p className="text-xs text-ink-muted">{USER_SHARE_COPY}</p>
       <div className="mt-3">
         {published ? (
-          <>
-            <p className="text-xs text-ink-muted">
-              Your public name is listed. Claims stay private until you
-              share them.
-            </p>
-            <button
-              type="button"
-              onClick={() => void unshareUser()}
-              className={`mt-2 ${btnSecondary}`}
-            >
-              {confirmUnshareUser ? "Confirm unshare" : "Unshare user node"}
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => void unshareUser()}
+            className={btnSecondary}
+          >
+            {confirmUnshareUser ? "Confirm unshare" : "Unshare"}
+          </button>
         ) : (
-          <>
-            <p className="text-xs text-ink-muted">
-              List a public name for this wallet.
-            </p>
-            <button
-              type="button"
-              onClick={() => void shareUser()}
-              className={`mt-2 ${btnSecondary}`}
-            >
-              {confirmUser ? "Confirm publish" : "Publish user node"}
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => void shareUser()}
+            className={btnSecondary}
+          >
+            {confirmUser ? "Confirm publish" : "Publish name"}
+          </button>
         )}
       </div>
       {indicators.length > 0 ? (
@@ -298,7 +286,7 @@ export function UserNodeControls({
                 key={claimId}
                 className="flex flex-wrap items-center gap-2 text-xs text-ink-muted"
               >
-                <span>{claimId}</span>
+                <span>{claimId.replace(/^[a-z]+:/i, "")}</span>
                 {shared ? (
                   <>
                     <span>Public.</span>
@@ -309,7 +297,7 @@ export function UserNodeControls({
                     >
                       {confirmUnshareClaimId === claimId
                         ? "Confirm unshare"
-                        : "Unshare claim"}
+                        : "Unshare"}
                     </button>
                   </>
                 ) : (
@@ -320,7 +308,7 @@ export function UserNodeControls({
                   >
                     {confirmClaimId === claimId
                       ? "Confirm share"
-                      : "Share claim"}
+                      : "Share"}
                   </button>
                 )}
               </li>

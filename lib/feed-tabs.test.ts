@@ -161,7 +161,7 @@ describe("emptyNetworkCopy", () => {
         seedWsUp: false,
         hasMeshRows: true,
       }),
-      "Nothing on the network yet.",
+      "Nothing here yet.",
     );
     assert.equal(
       emptyNetworkCopy({

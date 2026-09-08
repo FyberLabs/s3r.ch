@@ -47,15 +47,9 @@ export function RoomPresence({
   return (
     <div className={`mt-6 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">In this room</h2>
-      <p className="mt-2 text-xs text-ink-muted">
-        Who is here now.
-        {onPublicGraph ? "" : " Private until you share the room."}
-      </p>
       {listed.length === 0 ? (
         <p className="mt-3 text-xs text-ink-muted">
-          {onPublicGraph
-            ? "No one in this room on this graph yet."
-            : "No local presence in this room yet."}
+          No one here yet.
         </p>
       ) : (
         reader === "ai" ? (
@@ -178,14 +172,10 @@ function PresenceAnnounce({
   if (!session) {
     return (
       <p className="mt-3 text-xs text-ink-muted">
-        Sign in with Ethereum to appear here.
+        Sign in to appear.
       </p>
     );
   }
 
-  return (
-    <p className="mt-3 text-xs text-ink-muted">
-      Signed-in presence announces while this room is open.
-    </p>
-  );
+  return null;
 }

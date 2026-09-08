@@ -25,28 +25,20 @@ import {
   readLocalMeshPair,
 } from "@/lib/identity/mesh";
 import {
-  ensClaimLine,
   lookupEnsHeldClaimForSession,
   type EnsHeldClaim,
 } from "@/lib/identity/ens";
 import {
   lookupUnstoppableHeldClaimForSession,
-  unstoppableClaimLine,
   type UnstoppableHeldClaim,
 } from "@/lib/identity/unstoppable";
-import {
-  farcasterClaimLine,
-} from "@/lib/identity/farcaster-claim";
 import {
   emptyIndicators,
   lookupIndicatorsForSession,
   type PublicIndicators,
 } from "@/lib/identity/indicators";
-import { lensClaimLine } from "@/lib/identity/lens-claim";
-import { rss3ClaimLine } from "@/lib/identity/rss3-claim";
 import { buildSiweMessage } from "@/lib/identity/siwe";
 import {
-  PRF_UNAVAILABLE_MESSAGE,
   PrfUnavailableError,
   createPrfCredential,
   detectPrfAvailability,
@@ -63,6 +55,8 @@ import {
   wrapSeaPair,
 } from "@/lib/identity/wrap";
 import { btnPrimary, btnSecondary, fieldMono, panel } from "@/lib/brand-ui";
+
+const WRAP_UNAVAILABLE_COPY = "Passkey wrap is not available in this browser.";
 
 type SessionPayload = {
   address: string;
@@ -231,8 +225,8 @@ function IdentityBarInner() {
         });
         setMeshLine((current) => {
           if (current) return current;
-          if (isWrappedMeshKeyRecord(record)) return "mesh key wrapped";
-          if (record) return "mesh key already present";
+          if (isWrappedMeshKeyRecord(record)) return "Key locked";
+          if (record) return "Key ready";
           return null;
         });
       })
@@ -331,11 +325,11 @@ function IdentityBarInner() {
           mesh.record,
           setMeshKind,
           setMeshLine,
-          mesh.created ? "mesh key ready" : undefined,
+          mesh.created ? "Key ready" : undefined,
         );
         setUnlocked(false);
       } catch {
-        setMeshLine("mesh key failed");
+        setMeshLine("Key failed");
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign-in failed.");
@@ -347,14 +341,14 @@ function IdentityBarInner() {
   async function onWrapWithPasskey() {
     if (!session) return;
     if (prfAvailable === false) {
-      setMessage(PRF_UNAVAILABLE_MESSAGE);
+      setMessage(WRAP_UNAVAILABLE_COPY);
       return;
     }
     if (!wrapWithPaper && !isConnected) {
       setMessage(
         wcConfigured
-          ? "Connect a wallet to wrap the mesh key."
-          : "Connect the injected wallet to wrap the mesh key.",
+          ? "Connect a wallet to wrap."
+          : "Connect a wallet to wrap.",
       );
       return;
     }
@@ -365,7 +359,7 @@ function IdentityBarInner() {
     try {
       const existing = await getMeshKey(session.address);
       if (!existing || !isPlaintextMeshKeyRecord(existing)) {
-        throw new Error("No plaintext mesh key to wrap.");
+        throw new Error("Nothing to wrap.");
       }
       const prf = await createPrfCredential({
         address: session.address,
@@ -397,7 +391,7 @@ function IdentityBarInner() {
         envelope,
       });
       setMeshKind("wrapped");
-      setMeshLine("mesh key wrapped");
+      setMeshLine("Key locked");
       setUnlocked(true);
       if ("paper" in secondary) setPaperReveal(secondary.paper);
       if (!isWrappedMeshKeyRecord(wrapped) || "seaPair" in wrapped) {
@@ -407,7 +401,7 @@ function IdentityBarInner() {
       setUnlocked(false);
       setPaperReveal(null);
       if (error instanceof PrfUnavailableError) {
-        setMessage(error.message);
+        setMessage(WRAP_UNAVAILABLE_COPY);
         return;
       }
       setMessage(error instanceof Error ? error.message : "Wrap failed.");
@@ -424,7 +418,7 @@ function IdentityBarInner() {
     try {
       const existing = await getMeshKey(session.address);
       if (!existing || !isWrappedMeshKeyRecord(existing)) {
-        throw new Error("No wrapped mesh key to unlock.");
+        throw new Error("Nothing to unlock.");
       }
       try {
         const prfOutput = await evaluatePrf({
@@ -450,11 +444,11 @@ function IdentityBarInner() {
         });
       }
       setUnlocked(true);
-      setMeshLine("mesh key unlocked");
+      setMeshLine("Key unlocked");
     } catch (error) {
       setUnlocked(false);
       if (error instanceof PrfUnavailableError) {
-        setMessage(error.message);
+        setMessage(WRAP_UNAVAILABLE_COPY);
         return;
       }
       setMessage(error instanceof Error ? error.message : "Unlock failed.");
@@ -471,7 +465,7 @@ function IdentityBarInner() {
     try {
       const existing = await getMeshKey(session.address);
       if (!existing || !isWrappedMeshKeyRecord(existing)) {
-        throw new Error("No wrapped mesh key to unlock.");
+        throw new Error("Nothing to unlock.");
       }
       try {
         secondaryKey = decodePaperBackup(paperPaste);
@@ -483,7 +477,7 @@ function IdentityBarInner() {
       await readLocalMeshPair({ record: existing, secondaryKey });
       setPaperPaste("");
       setUnlocked(true);
-      setMeshLine("mesh key unlocked");
+      setMeshLine("Key unlocked");
     } catch (error) {
       setUnlocked(false);
       setMessage(quietPaperBackupError(error));
@@ -496,7 +490,7 @@ function IdentityBarInner() {
   async function onExportPaperBackup() {
     if (!session) return;
     if (prfAvailable === false) {
-      setMessage(PRF_UNAVAILABLE_MESSAGE);
+      setMessage(WRAP_UNAVAILABLE_COPY);
       return;
     }
     setBusy(true);
@@ -506,7 +500,7 @@ function IdentityBarInner() {
     try {
       const existing = await getMeshKey(session.address);
       if (!existing || !isWrappedMeshKeyRecord(existing)) {
-        throw new Error("No wrapped mesh key to export.");
+        throw new Error("Nothing to export.");
       }
       const prfOutput = await evaluatePrf({
         rpId: existing.wrap.rpId,
@@ -533,18 +527,18 @@ function IdentityBarInner() {
         throw new Error("Plaintext seaPair must not remain after wrap.");
       }
       setMeshKind("wrapped");
-      setMeshLine("mesh key wrapped");
+      setMeshLine("Key locked");
       setUnlocked(true);
       setPaperPaste("");
       setPaperReveal(paper);
     } catch (error) {
       setPaperReveal(null);
       if (error instanceof PrfUnavailableError) {
-        setMessage(error.message);
+        setMessage(WRAP_UNAVAILABLE_COPY);
         return;
       }
       if (error instanceof Error && /Could not unwrap/.test(error.message)) {
-        setMessage("Could not export paper backup.");
+        setMessage("Could not export backup.");
         return;
       }
       setMessage(error instanceof Error ? error.message : "Export failed.");
@@ -558,7 +552,7 @@ function IdentityBarInner() {
     if (!paperReveal) return;
     try {
       await navigator.clipboard.writeText(paperReveal);
-      setMessage("Paper backup copied. Keep it offline.");
+      setMessage("Copied. Keep it offline.");
     } catch {
       setMessage("Copy failed. Select the string and copy it yourself.");
     }
@@ -603,9 +597,6 @@ function IdentityBarInner() {
   return (
     <div className={`mt-10 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Session</h2>
-      <p className="mt-2 text-sm text-ink-muted">
-        Sign in with Ethereum to post, share, and open rooms.
-      </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {session ? (
           <>
@@ -627,7 +618,7 @@ function IdentityBarInner() {
                 onClick={() => void onWrapWithPasskey()}
                 className={btnSecondary}
               >
-                Wrap with passkey
+                Wrap
               </button>
             ) : null}
             {showUnlock ? (
@@ -637,7 +628,7 @@ function IdentityBarInner() {
                 onClick={() => void onUnlockMeshKey()}
                 className={btnSecondary}
               >
-                Unlock mesh key
+                Unlock
               </button>
             ) : null}
             {showExportPaper ? (
@@ -647,7 +638,7 @@ function IdentityBarInner() {
                 onClick={() => void onExportPaperBackup()}
                 className={btnSecondary}
               >
-                Export paper backup
+                Backup
               </button>
             ) : null}
           </>
@@ -695,7 +686,7 @@ function IdentityBarInner() {
               onClick={() => void onSignIn()}
               className={btnPrimary}
             >
-              Sign in with Ethereum
+              Sign in with wallet
             </button>
           </>
         )}
@@ -708,7 +699,7 @@ function IdentityBarInner() {
             disabled={busy}
             onChange={(event) => setWrapWithPaper(event.target.checked)}
           />
-          also show a paper backup
+          also show a backup
         </label>
       ) : null}
       {showPaperUnlock ? (
@@ -729,7 +720,7 @@ function IdentityBarInner() {
             onClick={() => void onUnlockWithPaper()}
             className={btnSecondary}
           >
-            Unlock with paper
+            Unlock backup
           </button>
         </div>
       ) : null}
@@ -754,24 +745,20 @@ function IdentityBarInner() {
         </div>
       ) : null}
       {meshLine ? <p className="mt-3 text-xs text-ink-muted">{meshLine}</p> : null}
-      {ensClaimLine(ensClaim) ? (
-        <p className="mt-3 text-xs text-ink-muted">{ensClaimLine(ensClaim)}</p>
+      {ensClaim ? (
+        <p className="mt-3 text-xs text-ink-muted">{ensClaim}</p>
       ) : null}
-      {unstoppableClaimLine(unstoppableClaim) ? (
-        <p className="mt-3 text-xs text-ink-muted">
-          {unstoppableClaimLine(unstoppableClaim)}
-        </p>
+      {unstoppableClaim ? (
+        <p className="mt-3 text-xs text-ink-muted">{unstoppableClaim}</p>
       ) : null}
-      {farcasterClaimLine(indicators.farcaster.name) ? (
-        <p className="mt-3 text-xs text-ink-muted">
-          {farcasterClaimLine(indicators.farcaster.name)}
-        </p>
+      {indicators.farcaster.name ? (
+        <p className="mt-3 text-xs text-ink-muted">{indicators.farcaster.name}</p>
       ) : null}
-      {lensClaimLine(indicators.lens.name) ? (
-        <p className="mt-3 text-xs text-ink-muted">{lensClaimLine(indicators.lens.name)}</p>
+      {indicators.lens.name ? (
+        <p className="mt-3 text-xs text-ink-muted">{indicators.lens.name}</p>
       ) : null}
-      {rss3ClaimLine(indicators.rss3.name) ? (
-        <p className="mt-3 text-xs text-ink-muted">{rss3ClaimLine(indicators.rss3.name)}</p>
+      {indicators.rss3.name ? (
+        <p className="mt-3 text-xs text-ink-muted">{indicators.rss3.name}</p>
       ) : null}
       {session ? (
         <>
@@ -794,7 +781,7 @@ function IdentityBarInner() {
         </>
       ) : null}
       {showPrfMissing ? (
-        <p className="mt-3 text-xs text-ink-muted">{PRF_UNAVAILABLE_MESSAGE}</p>
+        <p className="mt-3 text-xs text-ink-muted">{WRAP_UNAVAILABLE_COPY}</p>
       ) : null}
       {message ? <p className="mt-3 text-xs text-ink-muted">{message}</p> : null}
     </div>
@@ -836,11 +823,11 @@ function applyMeshRecord(
   }
   if (isWrappedMeshKeyRecord(record)) {
     setMeshKind("wrapped");
-    setMeshLine(createdLine ?? "mesh key wrapped");
+    setMeshLine(createdLine ?? "Key locked");
     return;
   }
   setMeshKind("plaintext");
-  setMeshLine(createdLine ?? "mesh key already present");
+  setMeshLine(createdLine ?? "Key ready");
 }
 
 async function fetchUnstoppableHeldClaim(

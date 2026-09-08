@@ -4,8 +4,6 @@ import { useState } from "react";
 import {
   ALLOWED_SOURCE_CLASSES,
   ALLOWED_SOURCE_LABELS,
-  BROWSER_PULL_MINE_COPY,
-  BROWSER_PULL_SHARE_COPY,
   admitPulledItems,
   type AllowedSourceClass,
 } from "@/lib/browser-pull";
@@ -54,10 +52,10 @@ export function IngestForm({
         onItems(items);
         setMessage(`Pulled ${items.length} item${items.length === 1 ? "" : "s"} onto Mine.`);
       } else {
-        setMessage(payload.error || "Nothing to merge.");
+        setMessage(payload.error || "Nothing to pull.");
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Ingest failed.");
+        setMessage(error instanceof Error ? error.message : "Pull failed.");
     } finally {
       setBusy(false);
     }
@@ -70,7 +68,7 @@ export function IngestForm({
     setLastAdmitted([]);
     try {
       if (!session || !see?.acl) {
-        setMessage("Sign in with Ethereum to pull allowed sources.");
+        setMessage("Sign in to pull.");
         return;
       }
       const response = await fetch("/api/ingest", {
@@ -84,19 +82,19 @@ export function IngestForm({
       };
       const items = payload.items ?? [];
       if (!items.length) {
-        setMessage(payload.error || "Nothing to merge.");
+        setMessage(payload.error || "Nothing to pull.");
         return;
       }
       const admitted = admitPulledItems(see.acl, items, session.address);
       if (!admitted.length) {
-        setMessage("Could not admit those items.");
+        setMessage("Could not pull those items.");
         return;
       }
       onItems(admitted);
       setLastAdmitted(admitted);
       await see.persist();
       setMessage(
-        `Merged ${admitted.length} item${admitted.length === 1 ? "" : "s"} onto Mine. ${BROWSER_PULL_MINE_COPY}`,
+        `Pulled ${admitted.length} item${admitted.length === 1 ? "" : "s"}.`,
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Pull failed.");
@@ -126,13 +124,10 @@ export function IngestForm({
 
   return (
     <div className={`mt-10 ${panel}`}>
-      <h2 className="text-sm font-semibold text-ink">Your overlay</h2>
-      <p className="mt-2 text-sm text-ink-muted">
-        Pull a public feed onto Mine. Share if you want it public.
-      </p>
+      <h2 className="text-sm font-semibold text-ink">Pull</h2>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="block text-sm text-ink">
-          RSS / Atom URL
+          Feed URL
           <div className="mt-1 flex gap-2">
             <input
               type="url"
@@ -152,7 +147,7 @@ export function IngestForm({
           </div>
         </label>
         <label className="block text-sm text-ink">
-          RSS3 address
+          Address
           <div className="mt-1 flex gap-2">
             <input
               type="text"
@@ -174,10 +169,7 @@ export function IngestForm({
       </div>
 
       <div className="mt-6 border-t border-rule pt-4">
-        <h3 className="text-sm font-semibold text-ink">Allowed lab sources</h3>
-        <p className="mt-2 text-sm text-ink-muted">
-          Pull the same public sources the lab feed uses.
-        </p>
+        <h3 className="text-sm font-semibold text-ink">Sources</h3>
         {session ? (
           <>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -195,7 +187,6 @@ export function IngestForm({
             </div>
             {lastAdmitted.length && onShareIntoMesh ? (
               <div className="mt-3">
-                <p className="text-xs text-ink-muted">{BROWSER_PULL_SHARE_COPY}</p>
                 <button
                   type="button"
                   disabled={busy}
@@ -209,7 +200,7 @@ export function IngestForm({
           </>
         ) : (
           <p className="mt-3 text-xs text-ink-muted">
-            Sign in with Ethereum to pull those sources.
+            Sign in to pull.
           </p>
         )}
       </div>

@@ -15,7 +15,6 @@ import {
   grantWindowFromHours,
   heldClaimOptions,
   parseGrantAccessor,
-  SEE_GRANT_COPY,
   type HeldClaimOption,
 } from "@/lib/identity/held-claims";
 import {
@@ -217,7 +216,6 @@ export function SeeGrantControls({
 
   return (
     <div className="mt-4 border-t border-rule pt-4">
-      <p className="text-xs text-ink-muted">{SEE_GRANT_COPY}</p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <select
           value={claimId}
