@@ -18,7 +18,8 @@ export const metadata: Metadata = {
   title: "s3r.ch",
   description:
     "A Fyber Labs lab site with a tagged social lab feed. Gun-backed, under development.",
-  icons: { icon: "/favicon.svg" },
+  metadataBase: new URL("https://s3r.ch"),
+  icons: { icon: "/favicon.svg", apple: "/favicon.svg" },
   openGraph: {
     title: "s3r.ch",
     description:
@@ -26,6 +27,14 @@ export const metadata: Metadata = {
     url: "https://s3r.ch",
     siteName: "s3r.ch",
     type: "website",
+    images: [{ url: "/og.svg", width: 1200, height: 630, alt: "s3r.ch" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "s3r.ch",
+    description:
+      "A Fyber Labs lab site with a tagged social lab feed. Gun-backed, under development.",
+    images: ["/og.svg"],
   },
 };
 

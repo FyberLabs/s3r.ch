@@ -1,5 +1,6 @@
 "use client";
 
+import { useBrand } from "@/components/brand";
 import { TagChips } from "@/components/TagChips";
 import { btnTabOff, btnTabOn, panel } from "@/lib/brand-ui";
 import {
@@ -29,6 +30,7 @@ export function DiscoverPanel({
 }) {
   const counts = discoverTagCounts(tags);
   const tagged = selected.length > 0;
+  const { reader } = useBrand();
 
   return (
     <div className={`mt-8 ${panel}`}>
@@ -62,13 +64,34 @@ export function DiscoverPanel({
           <p className="text-xs font-medium uppercase tracking-wide text-signal">
             Shared users
           </p>
-          <ul className="mt-2 space-y-1">
-            {users.map((user) => (
-              <li key={user.id} className="text-xs text-ink-muted">
-                {userProvenanceLine(user)}
-              </li>
-            ))}
-          </ul>
+          {reader === "ai" ? (
+            <div className="mt-2 overflow-x-auto">
+              <table className="brand-table">
+                <thead>
+                  <tr>
+                    <th scope="col">id</th>
+                    <th scope="col">provenance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id}>
+                      <td className="font-data">{user.id}</td>
+                      <td className="whitespace-normal">{userProvenanceLine(user)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <ul className="mt-2 space-y-1">
+              {users.map((user) => (
+                <li key={user.id} className="text-xs text-ink-muted">
+                  {userProvenanceLine(user)}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ) : null}
       {tagged ? (
@@ -80,6 +103,40 @@ export function DiscoverPanel({
             <p className="mt-2 text-xs text-ink-muted">
               No shared rooms for the selected tags.
             </p>
+          ) : reader === "ai" ? (
+            <div className="mt-2 overflow-x-auto">
+              <table className="brand-table">
+                <thead>
+                  <tr>
+                    <th scope="col">title</th>
+                    <th scope="col">owner</th>
+                    <th scope="col">tags</th>
+                    <th scope="col">open</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rooms.map((room) => {
+                    const open = selectedRoomId === room.id;
+                    return (
+                      <tr key={room.id}>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() => onOpenRoom(room)}
+                            className="text-ink hover:text-signal"
+                          >
+                            {room.title}
+                          </button>
+                        </td>
+                        <td className="font-data">{shortenOwner(room.owner)}</td>
+                        <td className="whitespace-normal">{room.tags.join(",")}</td>
+                        <td className="font-data">{open ? "true" : "false"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <ul className="mt-2 space-y-2">
               {rooms.map((room) => {

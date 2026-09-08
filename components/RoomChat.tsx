@@ -8,6 +8,7 @@ import {
   rankChatMessages,
   type ChatMessage,
 } from "@/lib/chat";
+import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
 import { btnPrimary, field, panel } from "@/lib/brand-ui";
@@ -26,6 +27,7 @@ export function RoomChat({
   onComposed: (message: ChatMessage, putOnGun: boolean) => void;
 }) {
   const listed = rankChatMessages(messages);
+  const { reader } = useBrand();
 
   return (
     <div className={`mt-6 ${panel}`}>
@@ -50,19 +52,46 @@ export function RoomChat({
             : "No local chat in this room yet."}
         </p>
       ) : (
-        <ul className="mt-3 space-y-2">
-          {listed.map((row) => (
-            <li key={row.id} className="border border-rule bg-ground px-3 py-2">
-              <p className="text-sm text-ink">{row.body}</p>
-              <p className="mt-1 text-xs text-ink-muted">
-                {shortAuthor(row.author)}
-                {row.ts
-                  ? ` · ${new Date(row.ts * 1000).toISOString().replace(".000Z", "Z")}`
-                  : ""}
-              </p>
-            </li>
-          ))}
-        </ul>
+        reader === "ai" ? (
+          <div className="mt-3 overflow-x-auto">
+            <table className="brand-table">
+              <thead>
+                <tr>
+                  <th scope="col">author</th>
+                  <th scope="col">body</th>
+                  <th scope="col">ts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {listed.map((row) => (
+                  <tr key={row.id}>
+                    <td className="font-data">{shortAuthor(row.author)}</td>
+                    <td className="whitespace-normal">{row.body}</td>
+                    <td className="font-data">
+                      {row.ts
+                        ? new Date(row.ts * 1000).toISOString().replace(".000Z", "Z")
+                        : ""}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {listed.map((row) => (
+              <li key={row.id} className="border border-rule bg-ground px-3 py-2">
+                <p className="text-sm text-ink">{row.body}</p>
+                <p className="mt-1 text-xs text-ink-muted">
+                  {shortAuthor(row.author)}
+                  {row.ts
+                    ? ` · ${new Date(row.ts * 1000).toISOString().replace(".000Z", "Z")}`
+                    : ""}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )
       )}
       <ChatCompose roomId={roomId} onPublicGraph={onPublicGraph} onComposed={onComposed} />
     </div>
