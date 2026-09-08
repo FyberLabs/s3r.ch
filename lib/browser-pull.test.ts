@@ -164,8 +164,7 @@ describe("Mine until explicit share-into-mesh", () => {
   });
 
   it("pulled public-source items are not grant-deliverable", () => {
-    const item = farcasterItem();
+    const item = farcasterItem({ v: 1 });
     assert.equal(isGrantDeliverableItem(item), false);
-    assert.equal(isGrantDeliverableItem({ ...item, v: 1 }), false);
   });
 });

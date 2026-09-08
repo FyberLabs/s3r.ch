@@ -1279,7 +1279,7 @@ function FeedItems({
                 <PostSeeGrantControls
                   key={`grant-${item.id}`}
                   address={sessionAddress}
-                  itemId={item.id}
+                  item={item}
                 />
               ))
           : null}
