@@ -58,6 +58,11 @@ export type GunUserNode = {
   ts: number;
   /** Missing on older nodes; treat as v1. Unknown versions fail closed. */
   v?: number;
+  /**
+   * HAM unshare marker. `1` means retract. Missing / null is live.
+   * Any other present value fails closed (readers drop).
+   */
+  unshared?: number | null;
 };
 
 /** Issuers prove a claim to the holder. They are not grants. */
@@ -104,7 +109,60 @@ export type GunFeedNode = {
   provenance: string;
   /** Missing on old seed rows; treat as v1. Unknown versions fail closed. */
   v?: number;
+  /**
+   * HAM unshare marker. `1` means retract. Missing / null is live.
+   * Any other present value fails closed (readers drop).
+   */
+  unshared?: number | null;
 };
+
+/** Explicit mesh retract. This slice writes `1`. */
+export const UNSHARE_MARKER = 1 as const;
+
+/**
+ * A present `unshared` field that is not cleared (`null` / `""`).
+ * Unknown future values fail closed — treat as retract.
+ */
+export function isUnshareMarker(value: unknown): boolean {
+  if (value === undefined || value === null || value === "") return false;
+  return true;
+}
+
+/**
+ * Gun `null` put or a node with an unshare marker.
+ * `undefined` is ignored (not a retract) so a brief empty sync does not drop rows.
+ */
+export function isUnsharePut(data: unknown): boolean {
+  if (data === null) return true;
+  if (!data || typeof data !== "object") return false;
+  return isUnshareMarker((data as { unshared?: unknown }).unshared);
+}
+
+/** Tombstone `id`, else the Gun map key. */
+export function unshareIdOf(data: unknown, gunKey?: string): string | null {
+  if (data && typeof data === "object") {
+    const id = (data as { id?: unknown }).id;
+    if (typeof id === "string" && id.trim()) return id.trim();
+  }
+  if (typeof gunKey === "string" && gunKey.trim()) return gunKey.trim();
+  return null;
+}
+
+export function toUnshareTombstone(
+  id: string,
+  nowSeconds?: number,
+): { id: string; unshared: typeof UNSHARE_MARKER; ts: number; v: number } {
+  const ts =
+    typeof nowSeconds === "number" && Number.isFinite(nowSeconds)
+      ? Math.floor(nowSeconds)
+      : Math.floor(Date.now() / 1000);
+  return {
+    id,
+    unshared: UNSHARE_MARKER,
+    ts,
+    v: GUN_PROTOCOL_V,
+  };
+}
 
 export function protocolVersionOf(value: unknown): number | null {
   if (value === undefined || value === null || value === "") {
@@ -132,7 +190,9 @@ export function toGunNode(item: FeedItem): GunFeedNode {
 }
 
 export function fromGunNode(node: Partial<GunFeedNode> | null | undefined): FeedItem | null {
-  if (!node || typeof node.id !== "string" || !node.id.trim()) {
+  if (!node || typeof node !== "object") return null;
+  if (isUnsharePut(node)) return null;
+  if (typeof node.id !== "string" || !node.id.trim()) {
     return null;
   }
   const source = node.source;

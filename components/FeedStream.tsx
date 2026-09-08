@@ -16,18 +16,26 @@ import {
   emptyNetworkCopy,
   itemsForTab,
 } from "@/lib/feed-tabs";
-import { ownsNativePost, prepareShareIntoMesh } from "@/lib/compose";
+import { ownsNativePost, prepareShareIntoMesh, prepareUnshareIntoMesh } from "@/lib/compose";
 import { encodeKey } from "@/lib/identity/check";
 import {
+  dropRooms,
   fromGunRoomNode,
   itemsInRoom,
   mergeRooms,
   ownsRoom,
   prepareShareRoomIntoMesh,
+  prepareUnshareRoomIntoMesh,
   rankRooms,
   roomsForTab,
   type Room,
 } from "@/lib/rooms";
+import {
+  dropFeedItems,
+  readUnshareId,
+  ROOM_UNSHARE_COPY,
+  UNSHARE_COPY,
+} from "@/lib/unshare";
 import {
   fromGunChatNode,
   mergeChat,
@@ -42,7 +50,7 @@ import {
   presenceInRoom,
   type PresenceEntry,
 } from "@/lib/presence";
-import { fromGunUserNode, mergeUsers, type User } from "@/lib/users";
+import { dropUsers, fromGunUserNode, mergeUsers, type User } from "@/lib/users";
 import { ComposeForm } from "@/components/ComposeForm";
 import { DiscoverPanel } from "@/components/DiscoverPanel";
 import { useGunPeer, type FeedGun } from "@/components/GunPeerProvider";
@@ -114,6 +122,7 @@ export function FeedStream() {
   const [status, setStatus] = useState(TRYING_SEED_COPY);
   const [sharedIds, setSharedIds] = useState<string[]>([]);
   const [confirmShareId, setConfirmShareId] = useState<string | null>(null);
+  const [confirmUnshareId, setConfirmUnshareId] = useState<string | null>(null);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
   const [mineRooms, setMineRooms] = useState<Room[]>([]);
   const [publicRooms, setPublicRooms] = useState<Room[]>([]);
@@ -121,6 +130,9 @@ export function FeedStream() {
   const [openRoomId, setOpenRoomId] = useState<string | null>(null);
   const [sharedRoomIds, setSharedRoomIds] = useState<string[]>([]);
   const [confirmShareRoomId, setConfirmShareRoomId] = useState<string | null>(
+    null,
+  );
+  const [confirmUnshareRoomId, setConfirmUnshareRoomId] = useState<string | null>(
     null,
   );
   const [roomShareMessage, setRoomShareMessage] = useState<string | null>(null);
@@ -200,11 +212,24 @@ export function FeedStream() {
       setSeed((prev) => mergeItems(prev, snapItems));
       await hydrate(gun, snapItems);
 
-      const listener = gun.get("s3rch").get("items").map().on((data) => {
+      const listener = gun.get("s3rch").get("items").map().on((data, key) => {
+        if (cancelled) return;
+        const unsharedId = readUnshareId(data, key);
+        if (unsharedId) {
+          setSeed((prev) => dropFeedItems(prev, unsharedId));
+          heardItemsRef.current = dropFeedItems(heardItemsRef.current, unsharedId);
+          if (acceptLiveMeshWrite(seedWsUpRef.current)) {
+            setMeshItems(heardItemsRef.current);
+          }
+          setSharedIds((prev) =>
+            prev.filter((id) => id !== unsharedId && id !== key),
+          );
+          return;
+        }
         const item = fromGunNode(
           data as Parameters<typeof fromGunNode>[0],
         );
-        if (!item || cancelled) return;
+        if (!item) return;
         setSeed((prev) => mergeItems(prev, [item]));
         heardItemsRef.current = mergeItems(heardItemsRef.current, [item]);
         if (acceptLiveMeshWrite(seedWsUpRef.current)) {
@@ -213,11 +238,26 @@ export function FeedStream() {
       });
       off = typeof listener?.off === "function" ? () => listener.off?.() : undefined;
 
-      const roomsListener = gun.get("s3rch").get("rooms").map().on((data) => {
+      const roomsListener = gun.get("s3rch").get("rooms").map().on((data, key) => {
+        if (cancelled) return;
+        const unsharedId = readUnshareId(data, key);
+        if (unsharedId) {
+          setPublicRooms((prev) => dropRooms(prev, unsharedId));
+          heardRoomsRef.current = dropRooms(heardRoomsRef.current, unsharedId);
+          if (acceptLiveMeshWrite(seedWsUpRef.current)) {
+            setMeshRooms(heardRoomsRef.current);
+          }
+          setSharedRoomIds((prev) =>
+            prev.filter((id) => id !== unsharedId && id !== key),
+          );
+          setGraphChat((prev) => prev.filter((row) => row.room !== unsharedId));
+          setGraphPresence((prev) => prev.filter((row) => row.room !== unsharedId));
+          return;
+        }
         const room = fromGunRoomNode(
           data as Parameters<typeof fromGunRoomNode>[0],
         );
-        if (!room || cancelled) return;
+        if (!room) return;
         setPublicRooms((prev) => mergeRooms(prev, [room]));
         heardRoomsRef.current = mergeRooms(heardRoomsRef.current, [room]);
         if (acceptLiveMeshWrite(seedWsUpRef.current)) {
@@ -229,11 +269,17 @@ export function FeedStream() {
           ? () => roomsListener.off?.()
           : undefined;
 
-      const usersListener = gun.get("s3rch").get("users").map().on((data) => {
+      const usersListener = gun.get("s3rch").get("users").map().on((data, key) => {
+        if (cancelled) return;
+        const unsharedId = readUnshareId(data, key);
+        if (unsharedId) {
+          setMeshUsers((prev) => dropUsers(prev, unsharedId));
+          return;
+        }
         const user = fromGunUserNode(
           data as Parameters<typeof fromGunUserNode>[0],
         );
-        if (!user || cancelled) return;
+        if (!user) return;
         setMeshUsers((prev) => mergeUsers(prev, [user]));
       });
       offUsers =
@@ -439,9 +485,11 @@ export function FeedStream() {
     writeDiscoverTagQuery([]);
     setShareMessage(null);
     setConfirmShareId(null);
+    setConfirmUnshareId(null);
     setOpenRoomId(null);
     setRoomShareMessage(null);
     setConfirmShareRoomId(null);
+    setConfirmUnshareRoomId(null);
   }
 
   function applyDiscoverTags(next: string[]) {
@@ -450,6 +498,7 @@ export function FeedStream() {
     setOpenRoomId(null);
     setRoomShareMessage(null);
     setConfirmShareRoomId(null);
+    setConfirmUnshareRoomId(null);
     if (tab === "mine") setTab("public");
   }
 
@@ -477,8 +526,41 @@ export function FeedStream() {
     gun.get("s3rch").get("items").get(prepared.key).put(prepared.node);
     setSharedIds((prev) => (prev.includes(item.id) ? prev : [...prev, item.id]));
     setConfirmShareId(null);
-    setShareMessage("Published to the public graph. One-way here.");
+    setShareMessage(
+      `Published to the public graph. ${UNSHARE_COPY}`,
+    );
     await see.persist();
+  }
+
+  async function unshareFromPublic(item: FeedItem) {
+    setShareMessage(null);
+    if (!session || !see?.acl) {
+      setShareMessage("Could not unshare this post.");
+      return;
+    }
+    if (confirmUnshareId !== item.id) {
+      setConfirmUnshareId(item.id);
+      setConfirmShareId(null);
+      return;
+    }
+    const prepared = prepareUnshareIntoMesh(see.acl, item, session.address);
+    if ("denied" in prepared) {
+      setShareMessage("Could not unshare this post.");
+      setConfirmUnshareId(null);
+      return;
+    }
+    const gun = gunRef.current;
+    if (!gun) {
+      setShareMessage("Gun is not open yet.");
+      return;
+    }
+    gun.get("s3rch").get("items").get(prepared.key).put(prepared.tombstone);
+    setSharedIds((prev) => prev.filter((id) => id !== item.id));
+    setSeed((prev) => dropFeedItems(prev, item.id));
+    heardItemsRef.current = dropFeedItems(heardItemsRef.current, item.id);
+    setMeshItems(heardItemsRef.current);
+    setConfirmUnshareId(null);
+    setShareMessage(UNSHARE_COPY);
   }
 
   async function shareRoomToPublic(room: Room) {
@@ -544,9 +626,42 @@ export function FeedStream() {
     }
     setConfirmShareRoomId(null);
     setRoomShareMessage(
-      "Published this room node to the public graph. Posts inside stay Mine until you share those posts. One-way here.",
+      `Published this room node to the public graph. Posts inside stay Mine until you share those posts. ${ROOM_UNSHARE_COPY}`,
     );
     await see.persist();
+  }
+
+  async function unshareRoomFromPublic(room: Room) {
+    setRoomShareMessage(null);
+    if (!session || !see?.acl) {
+      setRoomShareMessage("Could not unshare this room.");
+      return;
+    }
+    if (confirmUnshareRoomId !== room.id) {
+      setConfirmUnshareRoomId(room.id);
+      setConfirmShareRoomId(null);
+      return;
+    }
+    const prepared = prepareUnshareRoomIntoMesh(see.acl, room, session.address);
+    if ("denied" in prepared) {
+      setRoomShareMessage("Could not unshare this room.");
+      setConfirmUnshareRoomId(null);
+      return;
+    }
+    const gun = gunRef.current;
+    if (!gun) {
+      setRoomShareMessage("Gun is not open yet.");
+      return;
+    }
+    gun.get("s3rch").get("rooms").get(prepared.key).put(prepared.tombstone);
+    setSharedRoomIds((prev) => prev.filter((id) => id !== room.id));
+    setPublicRooms((prev) => dropRooms(prev, room.id));
+    heardRoomsRef.current = dropRooms(heardRoomsRef.current, room.id);
+    setMeshRooms(heardRoomsRef.current);
+    setGraphChat((prev) => prev.filter((row) => row.room !== room.id));
+    setGraphPresence((prev) => prev.filter((row) => row.room !== room.id));
+    setConfirmUnshareRoomId(null);
+    setRoomShareMessage(ROOM_UNSHARE_COPY);
   }
 
   const composeRoomId =
@@ -622,6 +737,7 @@ export function FeedStream() {
             setOpenRoomId((current) => (current === room.id ? null : room.id));
             setRoomShareMessage(null);
             setConfirmShareRoomId(null);
+            setConfirmUnshareRoomId(null);
           }}
         />
       ) : null}
@@ -633,6 +749,7 @@ export function FeedStream() {
           setOpenRoomId(room?.id ?? null);
           setRoomShareMessage(null);
           setConfirmShareRoomId(null);
+          setConfirmUnshareRoomId(null);
         }}
         canCreate={tab === "mine" && Boolean(session)}
         showCreateHint={tab === "mine" && !session}
@@ -663,14 +780,17 @@ export function FeedStream() {
           owned={ownsRoom(openRoom, session?.address)}
           shared={publishedRooms.has(openRoom.id)}
           confirmShare={confirmShareRoomId === openRoom.id}
+          confirmUnshare={confirmUnshareRoomId === openRoom.id}
           shareMessage={roomShareMessage}
           sessionAddress={session?.address ?? null}
           onClose={() => {
             setOpenRoomId(null);
             setRoomShareMessage(null);
             setConfirmShareRoomId(null);
+            setConfirmUnshareRoomId(null);
           }}
           onShare={() => void shareRoomToPublic(openRoom)}
+          onUnshare={() => void unshareRoomFromPublic(openRoom)}
         />
       ) : null}
 
@@ -749,7 +869,9 @@ export function FeedStream() {
                 sessionAddress={session?.address ?? null}
                 shared={published.has(item.id)}
                 confirmShare={confirmShareId === item.id}
+                confirmUnshare={confirmUnshareId === item.id}
                 onShare={() => void shareToPublic(item)}
+                onUnshare={() => void unshareFromPublic(item)}
               />
             </li>
           ))}
@@ -806,10 +928,12 @@ function RoomThreadHeader({
   owned,
   shared,
   confirmShare,
+  confirmUnshare,
   shareMessage,
   sessionAddress,
   onClose,
   onShare,
+  onUnshare,
 }: {
   room: Room;
   mine: boolean;
@@ -817,10 +941,12 @@ function RoomThreadHeader({
   owned: boolean;
   shared: boolean;
   confirmShare: boolean;
+  confirmUnshare: boolean;
   shareMessage: string | null;
   sessionAddress: string | null;
   onClose: () => void;
   onShare: () => void;
+  onUnshare: () => void;
 }) {
   return (
     <div className={`mt-6 ${panel}`}>
@@ -853,16 +979,25 @@ function RoomThreadHeader({
       {mine && owned && sessionAddress ? (
         <div className="mt-3 border-t border-rule pt-3">
           {shared ? (
-            <p className="text-xs text-ink-muted">
-              This room node is on the public graph. Posts inside stay Mine
-              until you share those posts. Publish is one-way here.
-            </p>
+            <>
+              <p className="text-xs text-ink-muted">
+                This room node is on the public graph. Posts inside stay Mine
+                until you share those posts. {ROOM_UNSHARE_COPY}
+              </p>
+              <button
+                type="button"
+                onClick={onUnshare}
+                className={`mt-2 ${btnSecondary}`}
+              >
+                {confirmUnshare ? "Confirm unshare" : "Unshare from public"}
+              </button>
+            </>
           ) : (
             <>
               <p className="text-xs text-ink-muted">
                 Share to public publishes this room node onto the public rooms
                 graph. It does not publish Mine posts inside it. A see-grant is
-                not this. Publish is one-way here.
+                not this. {ROOM_UNSHARE_COPY}
               </p>
               <button
                 type="button"
@@ -889,14 +1024,18 @@ function FeedCard({
   sessionAddress,
   shared,
   confirmShare,
+  confirmUnshare,
   onShare,
+  onUnshare,
 }: {
   item: FeedItem;
   mine: boolean;
   sessionAddress: string | null;
   shared: boolean;
   confirmShare: boolean;
+  confirmUnshare: boolean;
   onShare: () => void;
+  onUnshare: () => void;
 }) {
   const when = item.ts
     ? new Date(item.ts * 1000).toISOString().replace(".000Z", "Z")
@@ -929,14 +1068,23 @@ function FeedCard({
         {inner}
         <div className="mt-3 border-t border-rule pt-3">
           {shared ? (
-            <p className="text-xs text-ink-muted">
-              On the public graph. Publish is one-way here.
-            </p>
+            <>
+              <p className="text-xs text-ink-muted">
+                On the public graph. {UNSHARE_COPY}
+              </p>
+              <button
+                type="button"
+                onClick={onUnshare}
+                className={`mt-2 ${btnSecondary}`}
+              >
+                {confirmUnshare ? "Confirm unshare" : "Unshare from public"}
+              </button>
+            </>
           ) : (
             <>
               <p className="text-xs text-ink-muted">
                 Share to public publishes this item onto the public graph. A
-                see-grant is not this. Publish is one-way here.
+                see-grant is not this. {UNSHARE_COPY}
               </p>
               <button
                 type="button"

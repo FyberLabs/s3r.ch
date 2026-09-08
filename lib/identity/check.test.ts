@@ -377,6 +377,9 @@ describe("CHECK(see, object, accessor) consume laws", () => {
     const future = admitUserNode(acl, { ...node, v: 2 }, ALICE, urlHint);
     assert.deepEqual(future, { denied: true });
 
+    const tombstone = admitUserNode(acl, { ...node, unshared: 1 }, ALICE, urlHint);
+    assert.deepEqual(tombstone, { denied: true });
+
     const secret = admitUserNode(
       acl,
       { ...node, priv: "nope" } as typeof node & { priv: string },

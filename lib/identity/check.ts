@@ -10,6 +10,7 @@
 import { getAddress } from "viem";
 import {
   fromGunNode,
+  isUnsharePut,
   protocolVersionOf,
   toGunNode,
   type GunFeedNode,
@@ -51,6 +52,11 @@ export type GunRoomNode = {
   provenance: string;
   /** Missing on older nodes; treat as v1. Unknown versions fail closed. */
   v?: number;
+  /**
+   * HAM unshare marker. `1` means retract. Missing / null is live.
+   * Any other present value fails closed (readers drop).
+   */
+  unshared?: number | null;
 };
 
 /**
@@ -384,6 +390,7 @@ function splitUserIndicators(value: unknown): string[] {
 
 function userNodeAdmitted(node: GunUserNode): string | null {
   if (!node || typeof node !== "object") return null;
+  if (isUnsharePut(node)) return null;
   if (userNodeHasForbiddenSecrets(node)) return null;
   if (typeof node.id !== "string" || !node.id.trim()) return null;
   if (protocolVersionOf(node.v) === null) return null;
@@ -426,7 +433,9 @@ export function admitFeedNode(
 }
 
 function roomNodeAdmitted(node: GunRoomNode): string | null {
-  if (!node || typeof node.id !== "string" || !node.id.trim()) return null;
+  if (!node || typeof node !== "object") return null;
+  if (isUnsharePut(node)) return null;
+  if (typeof node.id !== "string" || !node.id.trim()) return null;
   if (typeof node.title !== "string" || !node.title.trim()) return null;
   if (protocolVersionOf(node.v) === null) return null;
   return node.id.trim();

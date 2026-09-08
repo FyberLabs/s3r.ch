@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { composeNativePost, admitNativePost, prepareShareIntoMesh } from "./compose";
+import {
+  composeNativePost,
+  admitNativePost,
+  prepareShareIntoMesh,
+  prepareUnshareIntoMesh,
+} from "./compose";
 import { fromGunNode, toGunNode, isFeedSource, FEED_SOURCES, type FeedItem } from "./feed-types";
 import {
   admitFeedNode,
   applySeeGrant,
+  cancelSee,
   checkSee,
   itemSoul,
 } from "./identity/check";
@@ -70,6 +76,8 @@ describe("FeedSource s3rch", () => {
     assert.deepEqual(back, item);
     assert.equal(fromGunNode({ ...node, v: undefined })?.id, item.id);
     assert.equal(fromGunNode({ ...node, v: 2 }), null);
+    assert.equal(fromGunNode({ ...node, unshared: 1 }), null);
+    assert.equal(fromGunNode({ ...node, unshared: 2 }), null);
     const kept = [fromGunNode(node), fromGunNode({ ...node, v: 2 })].filter(
       (row): row is NonNullable<typeof row> => row !== null,
     );
@@ -147,6 +155,40 @@ describe("admit before overlay / share", () => {
     assert.equal(share.key, item.id.replace(/[.#$[\]]/g, "_"));
     assert.equal(share.node.source, "s3rch");
     assert.equal(share.node.body, item.body);
+    assert.equal(share.node.unshared, null);
+  });
+
+  it("prepareUnshareIntoMesh is own-only and does not revoke see", () => {
+    const acl = createMemorySeeAcl();
+    const item = composeNativePost({
+      body: "retract me",
+      address: ALICE,
+      nowSeconds: NOW,
+      entropy: "unsh1",
+    });
+    assert.ok(item);
+    admitNativePost(acl, item, ALICE);
+    applySeeGrant(acl, ALICE, {
+      claimId: item.id,
+      accessor: BOB,
+      from: 0,
+      until: NOW + 60,
+    });
+    assert.equal(checkSee(acl, itemSoul(item.id), BOB, NOW).allowed, true);
+
+    const denied = prepareUnshareIntoMesh(acl, item, BOB);
+    assert.deepEqual(denied, { denied: true });
+
+    const unshare = prepareUnshareIntoMesh(acl, item, ALICE, NOW + 5);
+    assert.ok(!("denied" in unshare));
+    assert.equal(unshare.key, item.id.replace(/[.#$[\]]/g, "_"));
+    assert.equal(unshare.tombstone.unshared, 1);
+    assert.equal(unshare.tombstone.v, 1);
+    assert.equal(unshare.tombstone.body, null);
+    assert.equal(fromGunNode(unshare.tombstone), null);
+    assert.equal(checkSee(acl, itemSoul(item.id), BOB, NOW).allowed, true);
+    cancelSee(acl, ALICE, BOB, itemSoul(item.id));
+    assert.equal(checkSee(acl, itemSoul(item.id), BOB, NOW).allowed, false);
   });
 
   it("direct admitFeedNode still gates a native node", () => {

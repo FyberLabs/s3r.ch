@@ -39,9 +39,13 @@ export default function FeedPage() {
         not delivery and not share-into-mesh. Sharing a room does not
         publish the posts inside it. A shared user node on the public
         graph is truncated address plus shared indicators — not a
-        profile and not the private footprint. Unshare is later. Live
-        chat and presence are Gun subscriptions on a room you can
-        already see. STUN is not TURN.
+        profile and not the private footprint. Unshare retracts a prior
+        mesh put when peers observe the tombstone — not instant
+        everywhere, and not a see-grant revoke. Unsharing a room node
+        does not delete Mine posts inside it; public chat and presence
+        then become local or empty for readers who observe that
+        retract. Live chat and presence are Gun subscriptions on a
+        room you can already see. STUN is not TURN.
         Meetings and streams are later. Trying seed peer; snapshot if the
         socket is down (Public still paints). Network needs the seed peer
         or WebRTC. Snapshot is not a chat log or a presence list. That is

@@ -18,6 +18,7 @@ import {
   itemsInRoom,
   ownedRooms,
   prepareShareRoomIntoMesh,
+  prepareUnshareRoomIntoMesh,
   rankRooms,
   roomsForTab,
   roomTag,
@@ -71,6 +72,8 @@ describe("GunRoomNode csv tags", () => {
     assert.deepEqual(back, built);
     assert.equal(fromGunRoomNode({ ...node, v: undefined })?.id, built.id);
     assert.equal(fromGunRoomNode({ ...node, v: 2 }), null);
+    assert.equal(fromGunRoomNode({ ...node, unshared: 1 }), null);
+    assert.equal(fromGunRoomNode({ ...node, unshared: 2 }), null);
   });
 
   it("fromGunRoomNode rejects empty title or bad owner", () => {
@@ -142,6 +145,36 @@ describe("admit before overlay / share", () => {
     assert.equal(share.key, built.id.replace(/[.#$[\]]/g, "_"));
     assert.equal(share.node.title, built.title);
     assert.equal(share.node.owner, ALICE);
+    assert.equal(share.node.unshared, null);
+  });
+
+  it("prepareUnshareRoomIntoMesh is own-only and does not move Mine posts", () => {
+    const acl = createMemorySeeAcl();
+    const built = room({ entropy: "unshroom" });
+    admitComposedRoom(acl, built, ALICE);
+    const post = composeNativePostInRoom({
+      body: "still mine after room unshare",
+      address: ALICE,
+      roomId: built.id,
+      nowSeconds: NOW,
+      entropy: "keep",
+    });
+    assert.ok(post);
+    admitNativePost(acl, post, ALICE);
+
+    assert.deepEqual(prepareUnshareRoomIntoMesh(acl, built, BOB), { denied: true });
+    const unshare = prepareUnshareRoomIntoMesh(acl, built, ALICE, NOW + 2);
+    assert.ok(!("denied" in unshare));
+    assert.equal(unshare.tombstone.unshared, 1);
+    assert.equal(unshare.tombstone.title, null);
+    assert.equal(fromGunRoomNode(unshare.tombstone), null);
+
+    const publicRooms: Room[] = [];
+    const overlay = [post];
+    assert.equal(itemsForTab("public", [], overlay).some((row) => row.id === post.id), false);
+    assert.equal(itemsForTab("mine", [], overlay)[0]?.id, post.id);
+    assert.equal(roomsForTab("public", publicRooms, [built]).length, 0);
+    assert.equal(roomsForTab("mine", publicRooms, [built])[0]?.id, built.id);
   });
 });
 

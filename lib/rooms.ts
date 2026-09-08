@@ -3,18 +3,22 @@
  * Posts belong by tag (`room:{slug}`), same FeedItem / GunFeedNode shape.
  * Default visibility is mine. Share-into-mesh is a separate explicit put
  * of the room node only — it does not publish Mine posts inside the room.
+ * Unshare retracts the room node only. It is not a grant revoke and does
+ * not delete Mine posts inside the room.
  */
 
 import { getAddress } from "viem";
 import { composeNativePost, type ComposeNativeInput } from "./compose";
 import {
   GUN_PROTOCOL_V,
+  isUnsharePut,
   normalizeTags,
   protocolVersionOf,
   splitTags,
   type FeedItem,
   type FeedTab,
 } from "./feed-types";
+import { dropById, roomUnshareTombstone, type UnshareResult } from "./unshare";
 import {
   admitRoomNode,
   encodeKey,
@@ -87,7 +91,9 @@ export function toGunRoomNode(room: Room): GunRoomNode {
 export function fromGunRoomNode(
   node: Partial<GunRoomNode> | null | undefined,
 ): Room | null {
-  if (!node || typeof node.id !== "string" || !node.id.trim()) {
+  if (!node || typeof node !== "object") return null;
+  if (isUnsharePut(node)) return null;
+  if (typeof node.id !== "string" || !node.id.trim()) {
     return null;
   }
   const title = typeof node.title === "string" ? node.title.trim() : "";
@@ -168,7 +174,31 @@ export function prepareShareRoomIntoMesh(
 ): ShareRoomResult {
   const admitted = admitComposedRoom(acl, room, owner);
   if ("denied" in admitted) return { denied: true };
-  return { node: toGunRoomNode(room), key: encodeKey(room.id) };
+  return { node: { ...toGunRoomNode(room), unshared: null }, key: encodeKey(room.id) };
+}
+
+/**
+ * Prepare an explicit unshare tombstone for a previously shared room node.
+ * Own-only. Does not share or delete Mine posts inside. Does not revoke see.
+ * Public chat / presence then become local or empty for readers who observe it.
+ */
+export function prepareUnshareRoomIntoMesh(
+  acl: SeeAcl,
+  room: Room,
+  owner: string,
+  nowSeconds?: number,
+): UnshareResult {
+  if (!ownsRoom(room, owner)) return { denied: true };
+  const admitted = admitComposedRoom(acl, room, owner);
+  if ("denied" in admitted) return { denied: true };
+  return {
+    tombstone: roomUnshareTombstone(room.id, nowSeconds),
+    key: encodeKey(room.id),
+  };
+}
+
+export function dropRooms(rooms: readonly Room[], idOrKey: string): Room[] {
+  return dropById(rooms, idOrKey);
 }
 
 export function ownsRoom(
