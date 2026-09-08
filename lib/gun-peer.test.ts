@@ -7,6 +7,7 @@ import {
   feedStatusLine,
   GUN_EMPTY_COPY,
   GUN_PEER_PATH,
+  isSeedWirePeer,
   listenThenConnectSeedPeer,
   meshHiByeOn,
   peerStatusLine,
@@ -17,6 +18,11 @@ import {
   TRYING_SEED_COPY,
   type SeedPeerOnto,
 } from "./gun-peer";
+import {
+  GOOGLE_STUN_URL,
+  isStunOnlyIceServer,
+  WEBRTC_ATTEMPTED_HINT,
+} from "./gun-webrtc";
 
 function helperSource(): string {
   return readFileSync(new URL("./gun-peer.ts", import.meta.url), "utf8");
@@ -74,15 +80,20 @@ describe("browserGunOptions", () => {
     assert.equal("peers" in opts, false);
     assert.equal("sessionStorage" in opts, false);
     assert.equal("webrtc" in opts, false);
-    assert.equal("ice" in opts, false);
-    assert.equal("iceServers" in opts, false);
+    assert.deepEqual(opts.rtc.iceServers, [{ urls: GOOGLE_STUN_URL }]);
+    assert.equal(isStunOnlyIceServer(opts.rtc.iceServers[0]), true);
   });
 
-  it("does not enable webrtc, ICE, or user.recall", () => {
+  it("adds STUN-only rtc and still forbids recall and TURN", () => {
     const src = helperSource();
-    assert.equal(src.includes("iceServers"), false);
-    assert.equal(src.includes("gun/lib/webrtc"), false);
+    assert.equal(src.includes("stunOnlyRtcOptions"), true);
     assert.equal(src.includes("user.recall({ sessionStorage: true })"), true);
+    assert.equal(/urls:\s*['"]turns?:/.test(src), false);
+    const webrtcSrc = readFileSync(
+      new URL("./gun-webrtc.ts", import.meta.url),
+      "utf8",
+    );
+    assert.equal(webrtcSrc.includes("gun/lib/webrtc"), true);
   });
 });
 
@@ -120,6 +131,20 @@ describe("peer status copy", () => {
     assert.equal(GUN_EMPTY_COPY, "Gun is empty. Nothing was invented.");
   });
 
+  it("appends a quiet WebRTC-attempted hint without claiming a mesh", () => {
+    assert.equal(
+      feedStatusLine(true, false, true),
+      `${SEED_PEER_WS_STATUS} · ${WEBRTC_ATTEMPTED_HINT}`,
+    );
+    assert.equal(
+      feedStatusLine(false, false, true),
+      `${SNAPSHOT_ONLY_STATUS} · ${WEBRTC_ATTEMPTED_HINT}`,
+    );
+    assert.equal(feedStatusLine(true, false, false), SEED_PEER_WS_STATUS);
+    assert.equal(feedStatusLine(true, false, true).toLowerCase().includes("mesh"), false);
+    assert.equal(feedStatusLine(true, false, true).toLowerCase().includes("p2p"), false);
+  });
+
   it("notifies hi/bye on mesh onto without opening a live socket", () => {
     const seen: boolean[] = [];
     const listeners = new Map<string, Array<(peer?: unknown) => void>>();
@@ -136,9 +161,36 @@ describe("peer status copy", () => {
       },
     };
     attachSeedPeerStatus(fake, (up) => seen.push(up));
-    listeners.get("hi")?.forEach((cb) => cb({}));
-    listeners.get("bye")?.forEach((cb) => cb({}));
+    listeners.get("hi")?.forEach((cb) => cb({ url: "https://s3r.ch/gun" }));
+    listeners.get("bye")?.forEach((cb) => cb({ url: "https://s3r.ch/gun" }));
     assert.deepEqual(seen, [true, false]);
+  });
+
+  it("ignores WebRTC mesh hi/bye so seed peer (ws) stays the socket", () => {
+    const seen: boolean[] = [];
+    const listeners = new Map<string, Array<(peer?: unknown) => void>>();
+    const fake = {
+      _: {
+        on(event: string, arg?: Parameters<SeedPeerOnto>[1]) {
+          const cb = ontoListener(arg);
+          if (!cb) return fake._;
+          const list = listeners.get(event) ?? [];
+          list.push(cb);
+          listeners.set(event, list);
+          return fake._;
+        },
+      },
+    };
+    attachSeedPeerStatus(fake, (up) => seen.push(up));
+    listeners.get("hi")?.forEach((cb) => cb({ createDataChannel() {} }));
+    listeners.get("hi")?.forEach((cb) => cb({ url: "https://s3r.ch/gun" }));
+    listeners.get("bye")?.forEach((cb) => cb({ createDataChannel() {} }));
+    assert.deepEqual(seen, [true]);
+    listeners.get("bye")?.forEach((cb) => cb({ url: "https://s3r.ch/gun" }));
+    assert.deepEqual(seen, [true, false]);
+    assert.equal(isSeedWirePeer({ url: "https://s3r.ch/gun" }), true);
+    assert.equal(isSeedWirePeer({}), false);
+    assert.equal(isSeedWirePeer({ createDataChannel() {} }), false);
   });
 
   it("prefers gun._.on (mesh onto) over graph gun.on", () => {

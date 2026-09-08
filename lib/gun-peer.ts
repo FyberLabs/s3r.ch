@@ -1,17 +1,25 @@
 /**
  * Same-origin Gun seed peer for the browser. Azure App Service is a seed
- * peer + bootstrap cache, not the chat or presence server. WebRTC / ICE /
- * TURN are not this slice. Do not call user.recall({ sessionStorage: true }).
+ * peer + bootstrap cache, not a mesh hub, not a TURN server, and not the
+ * chat or presence server. WebRTC is additive (`gun/lib/webrtc` + STUN
+ * only). Do not call user.recall({ sessionStorage: true }).
  *
  * Gun 0.2020.1241 mesh emits hi/bye on the root onto (`gun._.on`), not the
  * graph `.on`. `Gun({ peers })` starts the wire immediately (websocket.js
  * `onopen` → `mesh.hi` → `root.on('hi', peer)`), so `/feed` must listen
- * before `opt({ peers })`.
+ * before `opt({ peers })`. WebRTC data channels also call `mesh.hi` —
+ * only peers with a `/gun` URL count as the seed WebSocket.
  *
  * Gun's HTTP `web` adapter serves WebSocket at `/gun` (see gun/lib/ws.js
  * `ws.path = ws.path || '/gun'`). The browser mesh replaces `http` with `ws`
  * on the peer URL, so the path must stay `/gun`.
  */
+
+import {
+  stunOnlyRtcOptions,
+  withWebrtcHint,
+  type StunOnlyRtcOptions,
+} from "./gun-webrtc";
 
 export const GUN_PEER_PATH = "/gun";
 
@@ -24,6 +32,7 @@ export const GUN_EMPTY_COPY = "Gun is empty. Nothing was invented.";
 
 export type BrowserGunOptions = {
   localStorage: false;
+  rtc: StunOnlyRtcOptions;
 };
 
 export type SeedPeerConnectOptions = {
@@ -58,11 +67,13 @@ export function sameOriginGunPeerUrl(origin: string): string {
 /**
  * Constructor options for `gun/browser`. No peers — listen for mesh hi/bye
  * first, then `opt` the same-origin `/gun` URL. Radisk stays at Gun's
- * browser default.
+ * browser default. `rtc` is STUN-only ICE for `gun/lib/webrtc` (imported
+ * before construct). localStorage stays off.
  */
 export function browserGunOptions(_origin?: string): BrowserGunOptions {
   return {
     localStorage: false,
+    rtc: stunOnlyRtcOptions(),
   };
 }
 
@@ -73,6 +84,17 @@ export function seedPeerConnectOptions(origin: string): SeedPeerConnectOptions {
   };
 }
 
+/**
+ * Gun websocket peers carry the `/gun` URL. WebRTC peers from
+ * `gun/lib/webrtc` call `mesh.hi` without that URL — they must not flip
+ * **seed peer (ws)**.
+ */
+export function isSeedWirePeer(peer?: unknown): boolean {
+  if (!peer || typeof peer !== "object") return false;
+  const url = (peer as { url?: unknown }).url;
+  return typeof url === "string" && url.includes(GUN_PEER_PATH);
+}
+
 export function peerStatusLine(seedWsUp: boolean): string {
   return seedWsUp ? SEED_PEER_WS_STATUS : SNAPSHOT_ONLY_STATUS;
 }
@@ -81,14 +103,17 @@ export function peerStatusLine(seedWsUp: boolean): string {
  * `/feed` status after the snapshot returns. `seedWsUp` stays source of
  * truth: a live wire is **seed peer (ws)** even when the graph is empty.
  * Empty snapshot without a wire still says nothing was invented.
+ * Optional quiet hint that WebRTC was attempted — not "P2P mesh live".
  */
 export function feedStatusLine(
   seedWsUp: boolean,
   snapshotEmpty: boolean,
+  webrtcAttempted = false,
 ): string {
-  if (seedWsUp) return SEED_PEER_WS_STATUS;
-  if (snapshotEmpty) return `${SNAPSHOT_ONLY_STATUS}. ${GUN_EMPTY_COPY}`;
-  return SNAPSHOT_ONLY_STATUS;
+  let line = SNAPSHOT_ONLY_STATUS;
+  if (seedWsUp) line = SEED_PEER_WS_STATUS;
+  else if (snapshotEmpty) line = `${SNAPSHOT_ONLY_STATUS}. ${GUN_EMPTY_COPY}`;
+  return withWebrtcHint(line, webrtcAttempted);
 }
 
 /**
@@ -123,6 +148,7 @@ export function meshHiByeOn(
  * Subscribe to Gun mesh hi/bye on the onto mesh.js actually emits.
  * Does not open a socket — the caller owns connect. Used so `/feed` can
  * say seed peer (ws) vs snapshot only without claiming a P2P mesh.
+ * WebRTC `mesh.hi` / `mesh.bye` are ignored.
  */
 export function attachSeedPeerStatus(
   gun: SeedPeerEmitter,
@@ -130,8 +156,12 @@ export function attachSeedPeerStatus(
 ): void {
   const on = meshHiByeOn(gun);
   if (typeof on !== "function") return;
-  on("hi", () => onStatus(true));
-  on("bye", () => onStatus(false));
+  on("hi", (peer) => {
+    if (isSeedWirePeer(peer)) onStatus(true);
+  });
+  on("bye", (peer) => {
+    if (isSeedWirePeer(peer)) onStatus(false);
+  });
 }
 
 /**
@@ -150,7 +180,7 @@ export function kickSeedPeerWire(gun: SeedPeerEmitter): void {
  * Listen for mesh hi/bye, then open the same-origin `/gun` peer.
  * `opt({ peers })` is how this Gun version adds peers after create
  * (`test/panic/s2s-all-delayed-peer-add.js`). A hi that fires inside
- * `opt` is still heard.
+ * `opt` is still heard. WebRTC does not replace this.
  */
 export function listenThenConnectSeedPeer(
   gun: SeedPeerEmitter,

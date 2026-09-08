@@ -32,9 +32,10 @@ export function RoomsList({
       <h2 className="text-sm font-semibold text-ink">Rooms</h2>
       <p className="mt-2 text-xs text-ink-muted">
         Gun threads. Mine until you share the room node. Live chat and
-        presence are this pass. WebRTC, meetings, and streams are later.
-        Trying seed peer; snapshot if the socket is down. Snapshot is not a
-        chat log or a presence list.
+        presence are this pass. WebRTC is attempted over STUN (not TURN)
+        when ICE works; seed peer / snapshot if it does not. Meetings and
+        streams are later. Trying seed peer; snapshot if the socket is
+        down. Snapshot is not a chat log or a presence list.
       </p>
       {canCreate ? (
         <NewRoomForm onCreated={onCreated} />

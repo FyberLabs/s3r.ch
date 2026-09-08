@@ -49,6 +49,7 @@ import {
   TRYING_SEED_COPY,
   type SeedPeerEmitter,
 } from "@/lib/gun-peer";
+import { attachGunWebrtcLib } from "@/lib/gun-webrtc";
 import {
   btnSecondary,
   btnTabOff,
@@ -105,10 +106,12 @@ export function FeedStream() {
     (async () => {
       const GunMod = await import("gun/browser");
       const Gun = (GunMod.default ?? GunMod) as unknown as (opts?: object) => GunRef;
+      // gun/lib/webrtc hooks Gun.on('opt') and must load before construct.
+      // STUN only. If RTC is missing or ICE fails, seed / snapshot stay.
       // Listen for mesh hi/bye on gun._.on, then opt the same-origin /gun
       // peer. Constructing with peers can fire hi before the listener.
-      // Snapshot hydration stays. Fail open if the socket is down. No
-      // webrtc, no ICE, no user.recall. See docs/ARCHITECTURE.md.
+      // No user.recall. See docs/ARCHITECTURE.md.
+      const webrtcAttempted = await attachGunWebrtcLib(Gun);
       const gun = Gun(browserGunOptions());
       gunRef.current = gun;
       if (!cancelled) setGunReady(true);
@@ -118,7 +121,7 @@ export function FeedStream() {
         seedWsUp = up;
         if (!cancelled) {
           setSeedWsUp(up);
-          setStatus(feedStatusLine(up, snapshotEmpty));
+          setStatus(feedStatusLine(up, snapshotEmpty, webrtcAttempted));
         }
       });
 
@@ -175,7 +178,7 @@ export function FeedStream() {
       // by this snapshot paint; an earlier hi already set it.
       if (!cancelled) {
         setSeedWsUp(seedWsUp);
-        setStatus(feedStatusLine(seedWsUp, snapshotEmpty));
+        setStatus(feedStatusLine(seedWsUp, snapshotEmpty, webrtcAttempted));
       }
     })();
 
@@ -681,9 +684,10 @@ function RoomThreadHeader({
       </div>
       <p className="mt-3 text-xs text-ink-muted">
         Posts belong by tag. Live chat and presence are this pass (Gun
-        subscribe on the room). WebRTC, meetings, and streams are later.
-        Trying seed peer; snapshot if the socket is down. Snapshot is not a
-        chat log or a presence list.
+        subscribe on the room). WebRTC is attempted over STUN when ICE
+        works; seed peer / snapshot if it does not. STUN is not TURN.
+        Meetings and streams are later. Trying seed peer; snapshot if the
+        socket is down. Snapshot is not a chat log or a presence list.
       </p>
       {mine && owned && sessionAddress ? (
         <div className="mt-3 border-t border-rule pt-3">
