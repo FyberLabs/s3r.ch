@@ -189,7 +189,9 @@ export function toGunNode(item: FeedItem): GunFeedNode {
   };
 }
 
-export function fromGunNode(node: Partial<GunFeedNode> | null | undefined): FeedItem | null {
+export function fromGunNode(
+  node: Partial<GunFeedNode> | Record<string, unknown> | null | undefined,
+): FeedItem | null {
   if (!node || typeof node !== "object") return null;
   if (isUnsharePut(node)) return null;
   if (typeof node.id !== "string" || !node.id.trim()) {

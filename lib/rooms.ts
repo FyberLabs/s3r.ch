@@ -89,7 +89,7 @@ export function toGunRoomNode(room: Room): GunRoomNode {
 }
 
 export function fromGunRoomNode(
-  node: Partial<GunRoomNode> | null | undefined,
+  node: Partial<GunRoomNode> | Record<string, unknown> | null | undefined,
 ): Room | null {
   if (!node || typeof node !== "object") return null;
   if (isUnsharePut(node)) return null;

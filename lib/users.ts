@@ -127,7 +127,7 @@ export function toGunUserNode(user: User): GunUserNode {
 }
 
 export function fromGunUserNode(
-  node: (Partial<GunUserNode> & Record<string, unknown>) | null | undefined,
+  node: (Partial<GunUserNode> & Record<string, unknown>) | Record<string, unknown> | null | undefined,
 ): User | null {
   if (!node || typeof node !== "object") return null;
   if (isUnsharePut(node)) return null;
