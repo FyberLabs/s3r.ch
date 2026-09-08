@@ -175,7 +175,7 @@ export function SeeGrantControls({
           Math.floor(Date.now() / 1000),
         );
         if ("denied" in prepared) {
-          setMessage("Granted. Delivery needs a listed name.");
+          setMessage("Granted. Needs a listed name to receive.");
         } else if (!peer?.gun) {
           setMessage(GRANT_DELIVERY_WAIT_COPY);
         } else {

@@ -91,7 +91,7 @@ export function PostSeeGrantControls({
         Math.floor(Date.now() / 1000),
       );
       if ("denied" in prepared) {
-        setMessage("Granted. Delivery needs a public post.");
+        setMessage("Granted. Needs a public post to receive.");
       } else if (!peer?.gun) {
         setMessage(GRANT_DELIVERY_WAIT_COPY);
       } else {
