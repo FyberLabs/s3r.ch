@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { shortenOwner } from "@/lib/feed-discover";
 import { splitTags } from "@/lib/feed-types";
 import {
   admitComposedRoom,
@@ -20,6 +21,7 @@ export function RoomsList({
   showCreateHint,
   emptyHint,
   onCreated,
+  showOwner = false,
 }: {
   rooms: Room[];
   selectedId: string | null;
@@ -28,6 +30,8 @@ export function RoomsList({
   showCreateHint: boolean;
   emptyHint?: string;
   onCreated: (room: Room) => void;
+  /** Public / Network provenance snippet. Not a user profile. */
+  showOwner?: boolean;
 }) {
   return (
     <div className={`mt-8 ${panel}`}>
@@ -71,6 +75,7 @@ export function RoomsList({
                       open ? "text-on-signal" : "text-ink-muted"
                     }`}
                   >
+                    {showOwner ? `${shortenOwner(room.owner)} · ` : ""}
                     {room.tags.join(" · ")}
                   </span>
                 </button>

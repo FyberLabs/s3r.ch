@@ -3,6 +3,7 @@
  * Mine = overlay (ingest + native posts). Unshared native stays mine.
  * Network = live Gun mesh (`s3rch/items` via `.map().on`), not snapshot
  * hydrate and not Mine overlay / ingest.
+ * Discover (`lib/feed-discover.ts`) uses Public + Network only — never Mine.
  */
 
 import type { FeedItem, FeedTab } from "./feed-types";
