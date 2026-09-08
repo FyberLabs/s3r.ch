@@ -1,13 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { BrandControls } from "@/components/brand";
 
 export function SiteHeader() {
-  const pathname = usePathname();
-  const showBrandControls = pathname === "/";
-
   return (
     <header className="sticky top-0 z-50 border-b border-rule bg-ground">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -27,7 +23,7 @@ export function SiteHeader() {
           >
             Fyber Labs
           </a>
-          {showBrandControls ? <BrandControls /> : null}
+          <BrandControls />
         </nav>
       </div>
     </header>

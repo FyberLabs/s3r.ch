@@ -28,7 +28,7 @@ export const field =
 export const fieldMono =
   "border border-rule bg-ground px-3 py-2 font-mono text-xs text-ink disabled:opacity-50";
 
-export const panel = "border border-rule bg-panel p-5";
+export const panel = "instrument-panel border border-rule bg-panel p-5";
 
 export const failPanel =
   "border border-status-fail bg-[color-mix(in_srgb,var(--status-fail)_12%,var(--ground))] p-6 text-sm text-ink";

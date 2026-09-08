@@ -50,6 +50,15 @@ html[data-ground="light"] {
   html {
     background: var(--ground);
     color: var(--ink);
+    accent-color: var(--signal);
+  }
+
+  html[data-ground="dark"] {
+    color-scheme: dark;
+  }
+
+  html[data-ground="light"] {
+    color-scheme: light;
   }
 
   body {
@@ -72,6 +81,15 @@ html[data-ground="light"] {
   html[data-reader="ai"] .landing-sisters {
     padding-top: 2rem;
     padding-bottom: 2rem;
+  }
+
+  html[data-reader="ai"] .feed-instrument {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+  }
+
+  html[data-reader="ai"] .instrument-panel {
+    padding: 0.85rem;
   }
 }
 

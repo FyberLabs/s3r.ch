@@ -9,6 +9,7 @@ import {
   ROOM_TITLE_MAX,
   type Room,
 } from "@/lib/rooms";
+import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
 import { btnPrimary, btnTabOff, btnTabOn, field, panel } from "@/lib/brand-ui";
@@ -33,6 +34,8 @@ export function RoomsList({
   /** Public / Network provenance snippet. Not a user profile. */
   showOwner?: boolean;
 }) {
+  const { reader } = useBrand();
+
   return (
     <div className={`mt-8 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Rooms</h2>
@@ -59,30 +62,68 @@ export function RoomsList({
               : "No shared rooms on this graph."}
         </p>
       ) : (
-        <ul className="mt-3 space-y-2">
-          {rooms.map((room) => {
-            const open = selectedId === room.id;
-            return (
-              <li key={room.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(open ? null : room)}
-                  className={`w-full text-left ${open ? btnTabOn : btnTabOff}`}
-                >
-                  <span className="font-semibold">{room.title}</span>
-                  <span
-                    className={`mt-1 block text-xs ${
-                      open ? "text-on-signal" : "text-ink-muted"
-                    }`}
+        reader === "ai" ? (
+          <div className="mt-3 overflow-x-auto">
+            <table className="brand-table">
+              <thead>
+                <tr>
+                  <th scope="col">title</th>
+                  {showOwner ? <th scope="col">owner</th> : null}
+                  <th scope="col">tags</th>
+                  <th scope="col">open</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rooms.map((room) => {
+                  const open = selectedId === room.id;
+                  return (
+                    <tr key={room.id}>
+                      <td>
+                        <button
+                          type="button"
+                          onClick={() => onSelect(open ? null : room)}
+                          className="text-ink hover:text-signal"
+                        >
+                          {room.title}
+                        </button>
+                      </td>
+                      {showOwner ? (
+                        <td className="font-data">{shortenOwner(room.owner)}</td>
+                      ) : null}
+                      <td className="whitespace-normal">{room.tags.join(",")}</td>
+                      <td className="font-data">{open ? "true" : "false"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {rooms.map((room) => {
+              const open = selectedId === room.id;
+              return (
+                <li key={room.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(open ? null : room)}
+                    className={`w-full text-left ${open ? btnTabOn : btnTabOff}`}
                   >
-                    {showOwner ? `${shortenOwner(room.owner)} · ` : ""}
-                    {room.tags.join(" · ")}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                    <span className="font-semibold">{room.title}</span>
+                    <span
+                      className={`mt-1 block text-xs ${
+                        open ? "text-on-signal" : "text-ink-muted"
+                      }`}
+                    >
+                      {showOwner ? `${shortenOwner(room.owner)} · ` : ""}
+                      {room.tags.join(" · ")}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )
       )}
     </div>
   );

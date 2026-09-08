@@ -61,6 +61,7 @@ import { RoomChat } from "@/components/RoomChat";
 import { RoomPresence } from "@/components/RoomPresence";
 import { RoomsList } from "@/components/RoomsList";
 import { TagChips } from "@/components/TagChips";
+import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
 import {
@@ -860,22 +861,16 @@ export function FeedStream() {
           )}
         </p>
       ) : (
-        <ul className="mt-8 space-y-3">
-          {visible.map((item) => (
-            <li key={item.id}>
-              <FeedCard
-                item={item}
-                mine={tab === "mine"}
-                sessionAddress={session?.address ?? null}
-                shared={published.has(item.id)}
-                confirmShare={confirmShareId === item.id}
-                confirmUnshare={confirmUnshareId === item.id}
-                onShare={() => void shareToPublic(item)}
-                onUnshare={() => void unshareFromPublic(item)}
-              />
-            </li>
-          ))}
-        </ul>
+        <FeedItems
+          items={visible}
+          mine={tab === "mine"}
+          sessionAddress={session?.address ?? null}
+          published={published}
+          confirmShareId={confirmShareId}
+          confirmUnshareId={confirmUnshareId}
+          onShare={(item) => void shareToPublic(item)}
+          onUnshare={(item) => void unshareFromPublic(item)}
+        />
       )}
 
       {tab === "mine" ? (
@@ -1015,6 +1010,132 @@ function RoomThreadHeader({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function formatIso(ts: number): string {
+  if (!ts) return "";
+  return new Date(ts * 1000).toISOString().replace(".000Z", "Z");
+}
+
+function FeedItems({
+  items,
+  mine,
+  sessionAddress,
+  published,
+  confirmShareId,
+  confirmUnshareId,
+  onShare,
+  onUnshare,
+}: {
+  items: FeedItem[];
+  mine: boolean;
+  sessionAddress: string | null;
+  published: Set<string>;
+  confirmShareId: string | null;
+  confirmUnshareId: string | null;
+  onShare: (item: FeedItem) => void;
+  onUnshare: (item: FeedItem) => void;
+}) {
+  const { reader } = useBrand();
+  if (reader === "ai") {
+    return (
+      <div className="mt-8 overflow-x-auto">
+        <table className="brand-table">
+          <thead>
+            <tr>
+              <th scope="col">author</th>
+              <th scope="col">kind</th>
+              <th scope="col">body</th>
+              <th scope="col">tags</th>
+              <th scope="col">ts</th>
+              <th scope="col">provenance</th>
+              <th scope="col">permalink</th>
+              {mine ? <th scope="col">share</th> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => {
+              const ownNative = mine && ownsNativePost(item, sessionAddress);
+              const shared = published.has(item.id);
+              return (
+                <tr key={item.id}>
+                  <td className="font-data">{item.author || ""}</td>
+                  <td>{item.kind}</td>
+                  <td className="whitespace-normal">{item.body}</td>
+                  <td className="whitespace-normal">{item.tags.join(",")}</td>
+                  <td className="font-data">{formatIso(item.ts)}</td>
+                  <td className="whitespace-normal">{item.provenance}</td>
+                  <td>
+                    {item.permalink ? (
+                      <a
+                        href={item.permalink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-ink hover:text-signal"
+                      >
+                        href
+                      </a>
+                    ) : (
+                      ""
+                    )}
+                  </td>
+                  {mine ? (
+                    <td>
+                      {ownNative && sessionAddress ? (
+                        <button
+                          type="button"
+                          onClick={() => (shared ? onUnshare(item) : onShare(item))}
+                          className={btnSecondary}
+                        >
+                          {shared
+                            ? confirmUnshareId === item.id
+                              ? "Confirm unshare"
+                              : "Unshare"
+                            : confirmShareId === item.id
+                              ? "Confirm share"
+                              : "Share"}
+                        </button>
+                      ) : null}
+                    </td>
+                  ) : null}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {mine && sessionAddress
+          ? items
+              .filter((item) => ownsNativePost(item, sessionAddress))
+              .map((item) => (
+                <PostSeeGrantControls
+                  key={`grant-${item.id}`}
+                  address={sessionAddress}
+                  itemId={item.id}
+                />
+              ))
+          : null}
+      </div>
+    );
+  }
+
+  return (
+    <ul className="mt-8 space-y-3">
+      {items.map((item) => (
+        <li key={item.id}>
+          <FeedCard
+            item={item}
+            mine={mine}
+            sessionAddress={sessionAddress}
+            shared={published.has(item.id)}
+            confirmShare={confirmShareId === item.id}
+            confirmUnshare={confirmUnshareId === item.id}
+            onShare={() => onShare(item)}
+            onUnshare={() => onUnshare(item)}
+          />
+        </li>
+      ))}
+    </ul>
   );
 }
 

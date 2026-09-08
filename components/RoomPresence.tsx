@@ -10,6 +10,7 @@ import {
   PRESENCE_HEARTBEAT_MS,
   type PresenceEntry,
 } from "@/lib/presence";
+import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
 import { panel } from "@/lib/brand-ui";
@@ -34,6 +35,7 @@ export function RoomPresence({
     Math.floor(Date.now() / 1000),
   );
   const listed = livePresence(entries, nowSeconds);
+  const { reader } = useBrand();
 
   useEffect(() => {
     const tick = window.setInterval(() => {
@@ -64,13 +66,40 @@ export function RoomPresence({
             : "No local presence in this room yet."}
         </p>
       ) : (
-        <p className="mt-3 text-xs text-ink">
-          {listed
-            .map((row) =>
-              presenceDisplayName(row.address, knownClaims?.[row.address]),
-            )
-            .join(" · ")}
-        </p>
+        reader === "ai" ? (
+          <div className="mt-3 overflow-x-auto">
+            <table className="brand-table">
+              <thead>
+                <tr>
+                  <th scope="col">address</th>
+                  <th scope="col">label</th>
+                  <th scope="col">ts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {listed.map((row) => (
+                  <tr key={row.address}>
+                    <td className="font-data">{row.address}</td>
+                    <td>
+                      {presenceDisplayName(row.address, knownClaims?.[row.address])}
+                    </td>
+                    <td className="font-data">
+                      {new Date(row.ts * 1000).toISOString().replace(".000Z", "Z")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-ink">
+            {listed
+              .map((row) =>
+                presenceDisplayName(row.address, knownClaims?.[row.address]),
+              )
+              .join(" · ")}
+          </p>
+        )
       )}
       <PresenceAnnounce
         roomId={roomId}

@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function FeedPage() {
   return (
-    <section className="mx-auto max-w-3xl px-4 py-16">
+    <section className="feed-instrument mx-auto max-w-6xl px-4 py-16">
       <p className="text-xs font-medium uppercase tracking-wide text-signal">
         Lab prototype
       </p>
