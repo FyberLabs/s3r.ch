@@ -19,6 +19,7 @@ import {
   encodeKey,
   presenceSoul,
   grantLiveAt,
+  grantedSoul,
   itemSoul,
   metaSoul,
   roomSoul,
@@ -76,6 +77,7 @@ describe("consume contract artifact", () => {
       "s3rch/items",
       "s3rch/rooms",
       "s3rch/users",
+      "s3rch/granted",
       "s3rch/meta",
       "checkSee",
       "checkSeeGrant",
@@ -85,6 +87,7 @@ describe("consume contract artifact", () => {
       "admitChatNode",
       "admitPresenceNode",
       "admitUserNode",
+      "grantedSoul",
       "cancelSee",
       "hopcap",
     ]) {
@@ -141,6 +144,10 @@ describe("locked Gun souls", () => {
       `s3rch/rooms/s3rch:room:0xabc:1:aa/presence/${ALICE}`,
     );
     assert.equal(userSoul(ALICE), `s3rch/users/${ALICE}`);
+    assert.equal(
+      grantedSoul(BOB, "items", "s3rch:post:1"),
+      `s3rch/granted/${BOB}/items/s3rch:post:1`,
+    );
     assert.equal(metaSoul(), "s3rch/meta");
   });
 

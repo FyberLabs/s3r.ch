@@ -4,8 +4,8 @@
  *
  * Not a search API. Not Popular / Novel. Counts are inventory — how many
  * items and rooms already carry the tag — not an engagement score.
- * Mine overlay is never a Discover source. Same TagChips any-match
- * ranker (`rankFeedItems` / `rankRooms`).
+ * Mine overlay and the Granted inbox are never Discover sources. Same
+ * TagChips any-match ranker (`rankFeedItems` / `rankRooms`).
  */
 
 import { mergeItems } from "./merge";

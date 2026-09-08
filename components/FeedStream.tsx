@@ -13,6 +13,7 @@ import {
 import { rankFeedItems } from "@/lib/feed-rank";
 import {
   acceptLiveMeshWrite,
+  emptyGrantedCopy,
   emptyNetworkCopy,
   itemsForTab,
 } from "@/lib/feed-tabs";
@@ -50,7 +51,12 @@ import {
   presenceInRoom,
   type PresenceEntry,
 } from "@/lib/presence";
-import { dropUsers, fromGunUserNode, mergeUsers, type User } from "@/lib/users";
+import {
+  acceptGrantDelivery,
+  grantInboxRef,
+  type GrantInboxKind,
+} from "@/lib/grant-delivery";
+import { dropUsers, fromGunUserNode, mergeUsers, userProvenanceLine, type User } from "@/lib/users";
 import { ComposeForm } from "@/components/ComposeForm";
 import { DiscoverPanel } from "@/components/DiscoverPanel";
 import { useGunPeer, type FeedGun } from "@/components/GunPeerProvider";
@@ -111,6 +117,10 @@ export function FeedStream() {
   const gunPeer = useGunPeer();
   const registerGun = gunPeer?.register;
   const gunRef = useRef<GunRef | null>(null);
+  const seeRef = useRef(see);
+  seeRef.current = see;
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
   const registerGunRef = useRef(registerGun);
   registerGunRef.current = registerGun;
   const [seed, setSeed] = useState<FeedItem[]>([]);
@@ -141,6 +151,9 @@ export function FeedStream() {
   const [overlayPresence, setOverlayPresence] = useState<PresenceEntry[]>([]);
   const [graphPresence, setGraphPresence] = useState<PresenceEntry[]>([]);
   const [meshUsers, setMeshUsers] = useState<User[]>([]);
+  const [grantedItems, setGrantedItems] = useState<FeedItem[]>([]);
+  const [grantedRooms, setGrantedRooms] = useState<Room[]>([]);
+  const [grantedUsers, setGrantedUsers] = useState<User[]>([]);
   const [gunReady, setGunReady] = useState(false);
   const [seedWsUp, setSeedWsUp] = useState(false);
   const seedWsUpRef = useRef(false);
@@ -314,12 +327,93 @@ export function FeedStream() {
   }, [seedWsUp]);
 
   useEffect(() => {
+    const gun = gunRef.current;
+    const address = session?.address;
+    if (!gun || !gunReady || !address || !see?.ready) {
+      setGrantedItems([]);
+      setGrantedRooms([]);
+      setGrantedUsers([]);
+      return;
+    }
+    let cancelled = false;
+    const kinds: GrantInboxKind[] = ["items", "rooms", "users"];
+    const offs: Array<() => void> = [];
+
+    const ingest = (kind: GrantInboxKind, data: unknown, key: string) => {
+      const acl = seeRef.current?.acl;
+      const who = sessionRef.current?.address;
+      if (!acl || !who || cancelled) return;
+      const now = Math.floor(Date.now() / 1000);
+      if (data == null) {
+        if (kind === "items") {
+          setGrantedItems((prev) => prev.filter((row) => encodeKey(row.id) !== key));
+        } else if (kind === "rooms") {
+          setGrantedRooms((prev) => prev.filter((row) => encodeKey(row.id) !== key));
+        } else {
+          setGrantedUsers((prev) =>
+            prev.filter(
+              (row) =>
+                encodeKey(row.id) !== key &&
+                !row.indicators.some((claim) => encodeKey(claim) === key),
+            ),
+          );
+        }
+        return;
+      }
+      const accepted = acceptGrantDelivery(acl, data, who, now);
+      if ("denied" in accepted) return;
+      void seeRef.current?.persist();
+      if ("retracted" in accepted) {
+        if (accepted.kind === "item") {
+          setGrantedItems((prev) =>
+            prev.filter((row) => row.id !== accepted.objectId),
+          );
+        } else if (accepted.kind === "room") {
+          setGrantedRooms((prev) =>
+            prev.filter((row) => row.id !== accepted.objectId),
+          );
+        } else {
+          setGrantedUsers((prev) =>
+            prev.filter(
+              (row) =>
+                row.id !== accepted.objectId &&
+                !row.indicators.some((claim) => claim === accepted.objectId),
+            ),
+          );
+        }
+        return;
+      }
+      if (accepted.kind === "item") {
+        setGrantedItems((prev) => mergeItems(prev, [accepted.item]));
+      } else if (accepted.kind === "room") {
+        setGrantedRooms((prev) => mergeRooms(prev, [accepted.room]));
+      } else {
+        setGrantedUsers((prev) => mergeUsers(prev, [accepted.user]));
+      }
+    };
+
+    for (const kind of kinds) {
+      const inbox = grantInboxRef(gun, address, kind);
+      if (!inbox) continue;
+      const listener = inbox.map?.().on((data, key) => ingest(kind, data, key));
+      if (typeof listener?.off === "function") {
+        offs.push(() => listener.off?.());
+      }
+    }
+
+    return () => {
+      cancelled = true;
+      for (const off of offs) off();
+    };
+  }, [gunReady, session?.address, see?.ready]);
+
+  useEffect(() => {
     setSelected(readDiscoverTagQuery());
   }, []);
 
   const tabRooms = useMemo(
-    () => roomsForTab(tab, publicRooms, mineRooms, meshRooms),
-    [tab, publicRooms, mineRooms, meshRooms],
+    () => roomsForTab(tab, publicRooms, mineRooms, meshRooms, grantedRooms),
+    [tab, publicRooms, mineRooms, meshRooms, grantedRooms],
   );
   const listedRooms = useMemo(
     () => rankRooms(tabRooms, selected),
@@ -334,10 +428,12 @@ export function FeedStream() {
   );
 
   const tabItems = useMemo(
-    () => itemsForTab(tab, seed, overlay, meshItems),
-    [tab, seed, overlay, meshItems],
+    () => itemsForTab(tab, seed, overlay, meshItems, grantedItems),
+    [tab, seed, overlay, meshItems, grantedItems],
   );
   const hasMeshRows = meshItems.length > 0 || meshRooms.length > 0;
+  const hasGrantedRows =
+    grantedItems.length > 0 || grantedRooms.length > 0 || grantedUsers.length > 0;
   const threadItems = useMemo(
     () => (openRoom ? itemsInRoom(tabItems, openRoom.id) : tabItems),
     [openRoom, tabItems],
@@ -446,10 +542,6 @@ export function FeedStream() {
     );
   }, [openRoomId, graphPresence, overlayPresence]);
 
-  const seeRef = useRef(see);
-  seeRef.current = see;
-  const sessionRef = useRef(session);
-  sessionRef.current = session;
   const publishedRoomsRef = useRef(publishedRooms);
   publishedRoomsRef.current = publishedRooms;
 
@@ -688,7 +780,7 @@ export function FeedStream() {
         </div>
       ) : null}
 
-      {tab !== "network" && !composeRoomId ? (
+      {tab !== "network" && tab !== "granted" && !composeRoomId ? (
         <ComposeForm
           onItem={(next) => setOverlay((prev) => mergeItems(prev, [next]))}
         />
@@ -716,6 +808,13 @@ export function FeedStream() {
         >
           Network
         </button>
+        <button
+          type="button"
+          onClick={() => selectTab("granted")}
+          className={tab === "granted" ? btnTabOn : btnTabOff}
+        >
+          Granted
+        </button>
       </div>
       {tab === "network" ? (
         <p className="mt-2 text-xs text-ink-muted">
@@ -724,8 +823,32 @@ export function FeedStream() {
           are later. Mine overlay and ingest stay off this tab.
         </p>
       ) : null}
+      {tab === "granted" ? (
+        <p className="mt-2 text-xs text-ink-muted">
+          Objects delivered to you by a live see-grant. Gun-stored posts,
+          rooms, and claims only — URL fetches stay handoffs. Not Public,
+          not Network, not search. First delivery can wait on the mesh.
+          Revoke is immediate on dest ACL. Unshare tombstones still hide
+          retracted public puts; this inbox does not write those paths.
+        </p>
+      ) : null}
 
-      {tab !== "mine" ? (
+      {tab === "granted" && grantedUsers.length > 0 ? (
+        <div className={`mt-6 ${panel}`}>
+          <h2 className="text-sm font-semibold text-ink">Granted claims</h2>
+          <p className="mt-2 text-xs text-ink-muted">
+            User-node claims delivered to you. Not a Popular list and not
+            the holder&apos;s private footprint.
+          </p>
+          <ul className="mt-3 space-y-2 text-xs text-ink-muted">
+            {grantedUsers.map((user) => (
+              <li key={user.id}>{userProvenanceLine(user)}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {tab !== "mine" && tab !== "granted" ? (
         <DiscoverPanel
           tags={discovery.tags}
           rooms={discovery.rooms}
@@ -763,9 +886,13 @@ export function FeedStream() {
                   hasMeshRows,
                 })
               : "No shared rooms on the live mesh."
-            : undefined
+            : tab === "granted"
+              ? !session
+                ? "Sign in to receive granted rooms."
+                : "No granted rooms yet. Granting a room does not deliver Mine posts inside it."
+              : undefined
         }
-        showOwner={tab === "public" || tab === "network"}
+        showOwner={tab === "public" || tab === "network" || tab === "granted"}
         onCreated={(room) => {
           setMineRooms((prev) => mergeRooms(prev, [room]));
           setOpenRoomId(room.id);
@@ -775,8 +902,9 @@ export function FeedStream() {
       {openRoom ? (
         <RoomThreadHeader
           room={openRoom}
-          mine={tab === "mine"}
-          network={tab === "network"}
+        mine={tab === "mine"}
+        network={tab === "network"}
+        granted={tab === "granted"}
           owned={ownsRoom(openRoom, session?.address)}
           shared={publishedRooms.has(openRoom.id)}
           confirmShare={confirmShareRoomId === openRoom.id}
@@ -840,7 +968,7 @@ export function FeedStream() {
         />
       ) : null}
 
-      {tab === "mine" ? (
+      {tab === "mine" || tab === "granted" ? (
         <TagChips tags={tags} selected={selected} onChange={setSelected} />
       ) : null}
 
@@ -857,6 +985,7 @@ export function FeedStream() {
             Boolean(openRoom),
             seedWsUp,
             hasMeshRows,
+            hasGrantedRows,
           )}
         </p>
       ) : (
@@ -894,7 +1023,17 @@ function emptyCopy(
   inRoom: boolean,
   seedWsUp: boolean,
   hasMeshRows: boolean,
+  hasGrantedRows: boolean,
 ): string {
+  if (tab === "granted") {
+    return emptyGrantedCopy({
+      signedIn,
+      tagged,
+      inRoom,
+      seedWsUp,
+      hasGrantedRows,
+    });
+  }
   if (tab === "network") {
     return emptyNetworkCopy({ tagged, inRoom, seedWsUp, hasMeshRows });
   }
@@ -925,6 +1064,7 @@ function RoomThreadHeader({
   room,
   mine,
   network,
+  granted,
   owned,
   shared,
   confirmShare,
@@ -938,6 +1078,7 @@ function RoomThreadHeader({
   room: Room;
   mine: boolean;
   network: boolean;
+  granted?: boolean;
   owned: boolean;
   shared: boolean;
   confirmShare: boolean;
@@ -972,9 +1113,11 @@ function RoomThreadHeader({
         Posts belong by tag. Live chat and presence are this pass (Gun
         subscribe on the room). WebRTC is attempted over STUN when ICE
         works; STUN is not TURN. Meetings and streams are later.
-        {network
-          ? " Network is the live mesh view via the seed peer / WebRTC — not the snapshot."
-          : " Trying seed peer; snapshot if the socket is down. Snapshot is not a chat log or a presence list."}
+        {granted
+          ? " This room was delivered by a see-grant. It is not Public. Chat and presence stay on the public room graph only if that room was shared."
+          : network
+            ? " Network is the live mesh view via the seed peer / WebRTC — not the snapshot."
+            : " Trying seed peer; snapshot if the socket is down. Snapshot is not a chat log or a presence list."}
       </p>
       {mine && owned && sessionAddress ? (
         <div className="mt-3 border-t border-rule pt-3">
@@ -1011,7 +1154,7 @@ function RoomThreadHeader({
           {shareMessage ? (
             <p className="mt-2 text-xs text-ink-muted">{shareMessage}</p>
           ) : null}
-          <RoomSeeGrantControls address={sessionAddress} roomId={room.id} />
+          <RoomSeeGrantControls address={sessionAddress} room={room} />
         </div>
       ) : null}
     </div>
@@ -1096,7 +1239,7 @@ function FeedCard({
             </>
           )}
         </div>
-        <PostSeeGrantControls address={sessionAddress} itemId={item.id} />
+        <PostSeeGrantControls address={sessionAddress} item={item} />
       </div>
     );
   }

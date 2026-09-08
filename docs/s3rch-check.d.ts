@@ -101,6 +101,8 @@ export type GunPresenceNode = {
  * In-graph user node. Native Check object.
  * gun.get('s3rch').get('users').get(wallet)
  * On the Gun wire, indicators are a comma-separated string.
+ * Grant delivery of this node (or one named claim) uses
+ * s3rch/granted/<accessor>/users — not this public path.
  */
 export type GunUserNode = {
   id: string;
@@ -211,6 +213,17 @@ export function presenceSoul(roomId: string, address: string): string;
 
 /** s3rch/users/<wallet> */
 export function userSoul(wallet: string): string;
+
+/**
+ * s3rch/granted/<accessor>/{items|rooms|users}/<encodeKey(id)>
+ * Holder-initiated delivery inbox. Not share-into-mesh. Not a Check object
+ * of its own — dest Check gates the put / accept.
+ */
+export function grantedSoul(
+  accessor: AccessorId,
+  kind: "items" | "rooms" | "users",
+  objectId: string,
+): string;
 
 /** s3rch/meta — not a Check object. */
 export function metaSoul(): string;

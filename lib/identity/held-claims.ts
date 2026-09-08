@@ -12,7 +12,8 @@ export type HeldClaimOption = {
   label: string;
 };
 
-export const SEE_GRANT_COPY = "This is a grant, not login.";
+export const SEE_GRANT_COPY =
+  "This is a grant, not login, and not share-into-mesh. Granting delivers that Gun claim to the accessor Granted inbox (mesh delay is ok). Revoke is immediate on dest ACL.";
 
 export function ensClaimId(name: string): string {
   return `ens:${name.trim()}`;

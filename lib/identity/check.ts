@@ -37,6 +37,7 @@ export const S3RCH_ROOMS = "rooms" as const;
 export const S3RCH_CHAT = "chat" as const;
 export const S3RCH_PRESENCE = "presence" as const;
 export const S3RCH_USERS = "users" as const;
+export const S3RCH_GRANTED = "granted" as const;
 export const S3RCH_META = "meta" as const;
 
 /**
@@ -179,6 +180,30 @@ export function userSoul(wallet: string): string {
   } catch {
     return `${S3RCH_ROOT}/${S3RCH_USERS}/${trimmed}`;
   }
+}
+
+export type GrantInboxKind = "items" | "rooms" | "users";
+
+/**
+ * Grant-delivery inbox. Not share-into-mesh.
+ * gun.get('s3rch').get('granted').get(accessor).get(kind).get(encodeKey(id))
+ */
+export function grantedSoul(
+  accessor: AccessorId,
+  kind: GrantInboxKind,
+  objectId: string,
+): string {
+  const trimmed = accessor.trim();
+  let wallet = trimmed;
+  if (trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)) {
+    wallet = trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length);
+  }
+  try {
+    wallet = getAddress(wallet);
+  } catch {
+    wallet = wallet.trim();
+  }
+  return `${S3RCH_ROOT}/${S3RCH_GRANTED}/${wallet}/${kind}/${encodeKey(objectId)}`;
 }
 
 /** s3rch/meta — not a Check object. */
@@ -505,7 +530,7 @@ export function admitRoomNode(
 /**
  * Destination re-authorizes, then may put a GunChatNode onto a room's chat set.
  * Hint / URL fetch is not authorization. meta and UrlLeaf fail closed.
- * A grant is not delivery. Putting onto a Mine-only room path is the caller's gate.
+ * A grant is not a public put. Chat is not grant-delivered in this slice.
  */
 export function admitChatNode(
   acl: SeeAcl,
@@ -533,8 +558,8 @@ export function admitChatNode(
 /**
  * Destination re-authorizes, then may put a GunPresenceNode onto a room's presence set.
  * Hint / URL fetch is not authorization. meta and UrlLeaf fail closed.
- * Owner must be the address on the node. A grant is not delivery.
- * Putting onto a Mine-only room path is the caller's gate.
+ * Owner must be the address on the node. Presence is not grant-delivered
+ * in this slice. Putting onto a Mine-only room path is the caller's gate.
  */
 export function admitPresenceNode(
   acl: SeeAcl,

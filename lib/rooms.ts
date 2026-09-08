@@ -224,6 +224,7 @@ export function ownedRooms(
  * Public = rooms explicitly put onto s3rch/rooms (client Gun; not snapshot).
  * Mine = owned overlay rooms.
  * Network = live shared rooms from Gun `.map().on` on `s3rch/rooms`.
+ * Granted = rooms delivered onto `s3rch/granted/<accessor>/rooms`.
  * Not Mine-only rooms. Same Room shape / rankRooms as Public.
  */
 export function roomsForTab(
@@ -231,10 +232,12 @@ export function roomsForTab(
   publicRooms: readonly Room[],
   mineRooms: readonly Room[],
   meshRooms: readonly Room[] = [],
+  grantedRooms: readonly Room[] = [],
 ): Room[] {
   if (tab === "mine") return mineRooms.slice();
   if (tab === "public") return publicRooms.slice();
   if (tab === "network") return meshRooms.slice();
+  if (tab === "granted") return grantedRooms.slice();
   return [];
 }
 

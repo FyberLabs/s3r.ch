@@ -24,7 +24,9 @@ The Next app runs Check **in the browser** on the Gun mesh. It does **not** impo
 
 `s3rch/meta` is seed cache. It is not a Check object. A permalink / RSS3 / RSS / issuer URL is a `UrlLeaf`, not a node and not a grant.
 
-Later, on request: more verbs on the TS spec for granted distribution. Not this cut.
+Grant **delivery** of a Gun-stored object the dest Check already allows is a holder-initiated put onto `s3rch/granted/<accessor>/{items|rooms|users}`. That path is the accessor inbox — not share-into-mesh and not a public row. Chat / presence / URL fetches are not grant-delivered. Privilege-down stays `cancelSee` on dest ACL (immediate). First delivery can wait on the mesh.
+
+Later, on request: more verbs on the TS spec. Not this cut.
 
 ## Locked Gun paths (do not fork)
 
@@ -35,6 +37,8 @@ gun.get('s3rch').get('rooms').get(encodeKey(id)).get('chat').get(encodeKey(mid))
 gun.get('s3rch').get('rooms').get(encodeKey(id)).get('presence').get(encodeKey(address))  → GunPresenceNode
 gun.get('s3rch').get('meta')                     → seed meta (not a Check object)
 gun.get('s3rch').get('users').get(wallet)        → GunUserNode
+gun.get('s3rch').get('granted').get(accessor).get('items'|'rooms'|'users').get(encodeKey(id))
+                                                 → grant-delivery envelope (not a public row)
 ```
 
 `encodeKey`: `id.replace(/[.#$\[\]]/g, '_')`.

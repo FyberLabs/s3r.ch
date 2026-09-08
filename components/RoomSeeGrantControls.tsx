@@ -2,26 +2,38 @@
 
 import { useMemo, useState } from "react";
 import type { IdentitySeeGrant } from "@/lib/feed-types";
+import {
+  GRANT_DELIVERED_COPY,
+  GRANT_DELIVERY_WAIT_COPY,
+  GRANT_REVOKED_COPY,
+  prepareGrantRetract,
+  prepareGrantRoomDelivery,
+  putGrantDelivery,
+} from "@/lib/grant-delivery";
 import { applySeeGrant, cancelSee, grantNamesObject, roomSoul } from "@/lib/identity/check";
 import {
   grantWindowFromHours,
   parseGrantAccessor,
 } from "@/lib/identity/held-claims";
 import { grantsOwnedBy } from "@/lib/identity/see-acl";
+import { useGunPeer } from "@/components/GunPeerProvider";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { btnSecondary, field, fieldMono } from "@/lib/brand-ui";
+import type { Room } from "@/lib/rooms";
 
 export const ROOM_SEE_GRANT_COPY =
-  "This is a grant, not login, and not share-into-mesh. Grant is not delivery. The accessor may see; they do not receive the room until it is on a graph they can read.";
+  "This is a grant, not login, and not share-into-mesh. Granting delivers this room node to the accessor Granted inbox (mesh delay is ok). Revoke is immediate on dest ACL. It does not publish the room or the posts inside it.";
 
 export function RoomSeeGrantControls({
   address,
-  roomId,
+  room,
 }: {
   address: string;
-  roomId: string;
+  room: Room;
 }) {
+  const roomId = room.id;
   const see = useSeeAcl();
+  const peer = useGunPeer();
   const [accessorInput, setAccessorInput] = useState("");
   const [hoursInput, setHoursInput] = useState("24");
   const [message, setMessage] = useState<string | null>(null);
@@ -65,12 +77,28 @@ export function RoomSeeGrantControls({
     }
     setBusy(true);
     try {
-      applySeeGrant(see.acl, address, {
+      const grant = {
         claimId: roomId,
         accessor,
         from: window.from,
         until: window.until,
-      });
+      };
+      applySeeGrant(see.acl, address, grant);
+      const prepared = prepareGrantRoomDelivery(
+        see.acl,
+        room,
+        address,
+        grant,
+        Math.floor(Date.now() / 1000),
+      );
+      if ("denied" in prepared) {
+        setMessage("Granted on dest ACL. Delivery needs a Gun-stored room.");
+      } else if (!peer?.gun) {
+        setMessage(GRANT_DELIVERY_WAIT_COPY);
+      } else {
+        putGrantDelivery(peer.gun, prepared);
+        setMessage(GRANT_DELIVERED_COPY);
+      }
       setAccessorInput("");
       await persistAndRefresh();
     } finally {
@@ -84,6 +112,17 @@ export function RoomSeeGrantControls({
     setMessage(null);
     try {
       cancelSee(see.acl, address, grant.accessor, grant.claimId);
+      const retract = prepareGrantRetract(
+        address,
+        grant,
+        "room",
+        roomId,
+        Math.floor(Date.now() / 1000),
+      );
+      if (!("denied" in retract) && peer?.gun) {
+        putGrantDelivery(peer.gun, retract);
+      }
+      setMessage(GRANT_REVOKED_COPY);
       await persistAndRefresh();
     } finally {
       setBusy(false);

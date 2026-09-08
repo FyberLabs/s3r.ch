@@ -43,8 +43,12 @@ export type SourcePull = {
   error: string | null;
 };
 
-/** Public (snapshot + shared), Mine (overlay), Network (live Gun mesh). Discover reads Public + Network. */
-export type FeedTab = "public" | "mine" | "network";
+/**
+ * Public (snapshot + shared), Mine (overlay), Network (live shared mesh),
+ * Granted (see-grant delivery inbox). Discover reads Public + Network —
+ * never Mine or Granted.
+ */
+export type FeedTab = "public" | "mine" | "network" | "granted";
 
 /**
  * gun.get('s3rch').get('users').get(wallet)

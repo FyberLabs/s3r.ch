@@ -2,6 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { IdentitySeeGrant } from "@/lib/feed-types";
+import {
+  GRANT_DELIVERED_COPY,
+  GRANT_DELIVERY_WAIT_COPY,
+  GRANT_REVOKED_COPY,
+  prepareGrantRetract,
+  prepareGrantUserDelivery,
+  putGrantDelivery,
+} from "@/lib/grant-delivery";
 import { applySeeGrant, cancelSee } from "@/lib/identity/check";
 import {
   grantWindowFromHours,
@@ -17,6 +25,8 @@ import {
   persistSeeAcl,
   type MemorySeeAcl,
 } from "@/lib/identity/see-acl";
+import { composeUser } from "@/lib/users";
+import { useGunPeer } from "@/components/GunPeerProvider";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { btnSecondary, field, fieldMono } from "@/lib/brand-ui";
 
@@ -38,6 +48,7 @@ export function SeeGrantControls({
   rss3,
 }: Props) {
   const shared = useSeeAcl();
+  const peer = useGunPeer();
   const [localAcl] = useState<MemorySeeAcl>(() => createMemorySeeAcl());
   const acl = shared?.acl ?? localAcl;
   const [localReady, setLocalReady] = useState(false);
@@ -142,13 +153,37 @@ export function SeeGrantControls({
     }
     setBusy(true);
     try {
-      acl.putObject(selected.id, address);
-      applySeeGrant(acl, address, {
+      const grant = {
         claimId: selected.id,
         accessor,
         from: window.from,
         until: window.until,
+      };
+      acl.putObject(selected.id, address);
+      applySeeGrant(acl, address, grant);
+      const user = composeUser({
+        address,
+        indicators: claims
+          .map((claim) => claim.id)
+          .filter((id) => id.toLowerCase() !== address.toLowerCase()),
       });
+      if (user) {
+        const prepared = prepareGrantUserDelivery(
+          acl,
+          user,
+          address,
+          grant,
+          Math.floor(Date.now() / 1000),
+        );
+        if ("denied" in prepared) {
+          setMessage("Granted on dest ACL. Delivery needs a Gun-stored claim.");
+        } else if (!peer?.gun) {
+          setMessage(GRANT_DELIVERY_WAIT_COPY);
+        } else {
+          putGrantDelivery(peer.gun, prepared);
+          setMessage(GRANT_DELIVERED_COPY);
+        }
+      }
       setAccessorInput("");
       await persistAndRefresh();
     } finally {
@@ -161,6 +196,17 @@ export function SeeGrantControls({
     setMessage(null);
     try {
       cancelSee(acl, address, grant.accessor, grant.claimId);
+      const retract = prepareGrantRetract(
+        address,
+        grant,
+        "user",
+        grant.claimId,
+        Math.floor(Date.now() / 1000),
+      );
+      if (!("denied" in retract) && peer?.gun) {
+        putGrantDelivery(peer.gun, retract);
+      }
+      setMessage(GRANT_REVOKED_COPY);
       await persistAndRefresh();
     } finally {
       setBusy(false);

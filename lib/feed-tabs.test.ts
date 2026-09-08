@@ -3,7 +3,9 @@ import { describe, it } from "node:test";
 import { composeNativePost } from "./compose";
 import {
   acceptLiveMeshWrite,
+  emptyGrantedCopy,
   emptyNetworkCopy,
+  GRANTED_NEEDS_PEER_COPY,
   itemsForTab,
   NETWORK_NEEDS_PEER_COPY,
 } from "./feed-tabs";
@@ -102,6 +104,24 @@ describe("itemsForTab Public / Mine / Network", () => {
     assert.equal(itemsForTab("network", seed, overlay, mesh).some((row) => row.id === native.id), false);
     assert.equal(itemsForTab("network", seed, overlay, mesh)[0]?.id, shared.id);
   });
+
+  it("Granted is the delivery inbox and does not leak into Public or Network", () => {
+    const native = composeNativePost({
+      body: "granted to me",
+      address: ALICE,
+      nowSeconds: NOW,
+      entropy: "bb22",
+    });
+    assert.ok(native);
+    const seed = [seedItem()];
+    const overlay = [ingestItem()];
+    const mesh = [seedItem()];
+    const granted = [native];
+    assert.equal(itemsForTab("granted", seed, overlay, mesh, granted)[0]?.id, native.id);
+    assert.equal(itemsForTab("public", seed, overlay, mesh, granted).some((row) => row.id === native.id), false);
+    assert.equal(itemsForTab("network", seed, overlay, mesh, granted).some((row) => row.id === native.id), false);
+    assert.equal(itemsForTab("mine", seed, overlay, mesh, granted).some((row) => row.id === native.id), false);
+  });
 });
 
 describe("acceptLiveMeshWrite", () => {
@@ -160,6 +180,31 @@ describe("emptyNetworkCopy", () => {
         hasMeshRows: true,
       }),
       "This shared room has no live mesh posts yet. Sharing the room does not publish Mine posts.",
+    );
+  });
+});
+
+describe("emptyGrantedCopy", () => {
+  it("asks for SIWE when signed out and names the down-peer case", () => {
+    assert.match(
+      emptyGrantedCopy({
+        signedIn: false,
+        tagged: false,
+        inRoom: false,
+        seedWsUp: false,
+        hasGrantedRows: false,
+      }),
+      /sign in/i,
+    );
+    assert.equal(
+      emptyGrantedCopy({
+        signedIn: true,
+        tagged: false,
+        inRoom: false,
+        seedWsUp: false,
+        hasGrantedRows: false,
+      }),
+      GRANTED_NEEDS_PEER_COPY,
     );
   });
 });

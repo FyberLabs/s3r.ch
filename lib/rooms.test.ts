@@ -196,6 +196,16 @@ describe("Public / Mine / Network room lists", () => {
     assert.deepEqual(roomsForTab("network", [shared], [mineOnly]), []);
   });
 
+  it("Granted rooms stay off Public and Network", () => {
+    const mineOnly = room({ title: "still mine", entropy: "aabbcc" });
+    assert.equal(
+      roomsForTab("granted", [], [], [], [mineOnly])[0]?.id,
+      mineOnly.id,
+    );
+    assert.equal(roomsForTab("public", [], [], [], [mineOnly]).length, 0);
+    assert.equal(roomsForTab("network", [], [], [], [mineOnly]).length, 0);
+  });
+
   it("Mine rooms include owned rooms", () => {
     const aliceRoom = room({ title: "alice", entropy: "111111" });
     const bobRoom = composeRoom({
