@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { ALLOWED_SOURCE_CLASSES } from "./browser-pull";
 import { fromGunNode } from "./feed-types";
 import type { FeedItem, SourcePull } from "./feed-types";
-import { combinePulls } from "./seed";
+import { combinePulls, pullAllowedSource } from "./seed";
 
 function item(partial: Partial<FeedItem> & Pick<FeedItem, "id" | "source">): FeedItem {
   return {
@@ -77,5 +78,17 @@ describe("combinePulls", () => {
 describe("fromGunNode", () => {
   it("drops unknown sources", () => {
     assert.equal(fromGunNode({ id: "x", source: "neynar", kind: "social", tags: "" }), null);
+  });
+});
+
+describe("pullAllowedSource", () => {
+  it("is wired for every documented seeder class", () => {
+    assert.equal(typeof pullAllowedSource, "function");
+    assert.deepEqual([...ALLOWED_SOURCE_CLASSES], [
+      "farcaster",
+      "atproto",
+      "rss",
+      "rss3-gi",
+    ]);
   });
 });

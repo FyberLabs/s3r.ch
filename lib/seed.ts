@@ -1,3 +1,4 @@
+import type { AllowedSourceClass } from "./browser-pull";
 import type { FeedItem, SeedReport, SourcePull } from "./feed-types";
 import { fetchPublicAtproto } from "./atproto";
 import { fetchPublicCasts } from "./farcaster";
@@ -6,6 +7,22 @@ import { canonicalKey } from "./merge";
 import { normalizeRss3Activities } from "./normalize";
 import { fetchPublicRss } from "./rss-atom";
 import { fetchPublicActivities, GI_BASE } from "./rss3";
+
+/** Same documented classes the lab seeder pulls. Empty/failed write nothing. */
+export async function pullAllowedSource(
+  kind: AllowedSourceClass,
+): Promise<SourcePull> {
+  switch (kind) {
+    case "farcaster":
+      return fetchPublicCasts();
+    case "atproto":
+      return fetchPublicAtproto();
+    case "rss":
+      return fetchPublicRss();
+    case "rss3-gi":
+      return fetchOptionalGi();
+  }
+}
 
 export async function seedPublicGraph(): Promise<SeedReport> {
   const pulled = combinePulls(

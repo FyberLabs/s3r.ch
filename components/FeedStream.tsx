@@ -17,6 +17,7 @@ import {
   emptyNetworkCopy,
   itemsForTab,
 } from "@/lib/feed-tabs";
+import { prepareSharePulledIntoMesh } from "@/lib/browser-pull";
 import { ownsNativePost, prepareShareIntoMesh, prepareUnshareIntoMesh } from "@/lib/compose";
 import { encodeKey } from "@/lib/identity/check";
 import {
@@ -1005,6 +1006,30 @@ export function FeedStream() {
       {tab === "mine" ? (
         <IngestForm
           onItems={(next) => setOverlay((prev) => mergeItems(prev, next))}
+          onShareIntoMesh={async (items) => {
+            if (!session || !see?.acl) {
+              throw new Error("Sign in to share into the mesh.");
+            }
+            const gun = gunRef.current;
+            if (!gun) {
+              throw new Error("Gun is not open yet.");
+            }
+            let shared = 0;
+            for (const item of items) {
+              const prepared = prepareSharePulledIntoMesh(
+                see.acl,
+                item,
+                session.address,
+              );
+              if ("denied" in prepared) continue;
+              gun.get("s3rch").get("items").get(prepared.key).put(prepared.node);
+              shared += 1;
+            }
+            if (!shared) {
+              throw new Error("Could not admit those items onto the mesh.");
+            }
+            await see.persist();
+          }}
         />
       ) : null}
     </div>
@@ -1048,7 +1073,7 @@ function emptyCopy(
   if (tab === "mine") {
     return tagged
       ? "No Mine items for the selected tags."
-      : "Mine is empty. Compose a native post or pull a URL into your overlay. Nothing was invented.";
+      : "Mine is empty. Compose a native post or pull a URL or an allowed lab source into your overlay. Nothing was invented.";
   }
   return tagged
     ? "No items in this Gun graph for the selected tags. Empty sources stay empty."
