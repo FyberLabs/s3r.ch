@@ -53,7 +53,7 @@ KYC_ISSUER_URL=
 
 `UNSTOPPABLE_API_KEY` is optional and **server-side only**. Empty keeps Polygon on-chain Unstoppable lookup; a miss is a quiet empty claim. Never put it in `NEXT_PUBLIC_*`. Do not invent or commit a UD partner key.
 
-`PANOPTICON_TURN_BASE`, `PANOPTICON_TENANT_ID`, and `PANOPTICON_API_KEY` are optional and **server-side only**. All three required to hop `POST /api/v1/turn/allocate`. Empty (default) keeps STUN-only ICE. Never put them in `NEXT_PUBLIC_*`. Never Gun. Do not commit a real key.
+`PANOPTICON_TURN_BASE`, `PANOPTICON_TENANT_ID`, and `PANOPTICON_API_KEY` are optional and **server-side only**. All three App Service application settings are required for live TURN; empty or any missing keeps STUN + `/gun` (no error theater on `/feed`). `PANOPTICON_TURN_BASE` is the allocate origin (or origin+/api/v1[/turn]); Next hops `POST /api/v1/turn/allocate`. Operator / infra: Research sets them in FyberLabs/infra `terraform/s3rch` — hold the API key in Key Vault (`kv-fyber-cg47`, same habit as `SEED_SECRET` / `IDENTITY_SESSION_SECRET`); TF wires secret → App Setting. Never `NEXT_PUBLIC_*`, never Gun, never the browser, never git. This repo does not deploy coturn (Path A consume only). Contract: FyberLabs/panopticon `products/turn/docs/turn-allocate-v0.md`. Checklist: [docs/durable-graph-and-turn.md](docs/durable-graph-and-turn.md#operator--infra-habit-live-turn).
 
 `CONFIRM_SEND_URL` is optional and **server-side only**. Empty keeps live email/SMS send as honest "not configured". Non-production uses lab fixture code `000000` unless `CONFIRM_FIXTURE=0`. Confirming an email or phone is a private held claim after SIWE — not login, and not a public Gun put until the holder shares that claim id.
 
