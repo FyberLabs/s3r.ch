@@ -6,17 +6,23 @@ import { fileURLToPath } from "node:url";
 import { fromGunNode, toGunNode, type FeedItem, type GunFeedNode } from "@/lib/feed-types";
 import {
   acceptHint,
+  acceptHop,
   admitChatNode,
   admitFeedNode,
   admitPresenceNode,
   admitRoomNode,
   admitUserNode,
   applySeeGrant,
+  aclKey,
+  aclPrincipalKey,
+  aclSoul,
   cancelSee,
   checkSee,
   checkSeeGrant,
   chatSoul,
+  decodeHop,
   encodeKey,
+  grantSoul,
   presenceSoul,
   grantLiveAt,
   grantedSoul,
@@ -25,6 +31,7 @@ import {
   roomSoul,
   userSoul,
   type HandoffHint,
+  type HopFactor,
   type SeeGraph,
 } from "./check";
 import { createMemorySeeAcl } from "./see-acl";
@@ -61,6 +68,47 @@ function hint(overrides: Partial<HandoffHint> = {}): HandoffHint {
   };
 }
 
+function encodeSlhp(
+  channel: string,
+  attestation: Uint8Array,
+  shareToken?: string,
+): Uint8Array {
+  const enc = new TextEncoder();
+  const channelBytes = enc.encode(channel);
+  const tokenBytes = shareToken !== undefined ? enc.encode(shareToken) : undefined;
+  const payloadLen =
+    4 +
+    channelBytes.length +
+    4 +
+    attestation.length +
+    1 +
+    (tokenBytes ? 4 + tokenBytes.length : 0);
+  const out = new Uint8Array(10 + payloadLen);
+  const view = new DataView(out.buffer);
+  out.set(enc.encode("SLHP"), 0);
+  view.setUint16(4, 1, true);
+  view.setUint32(6, payloadLen, true);
+  let offset = 10;
+  view.setUint32(offset, channelBytes.length, true);
+  offset += 4;
+  out.set(channelBytes, offset);
+  offset += channelBytes.length;
+  view.setUint32(offset, attestation.length, true);
+  offset += 4;
+  out.set(attestation, offset);
+  offset += attestation.length;
+  if (tokenBytes) {
+    out[offset] = 1;
+    offset += 1;
+    view.setUint32(offset, tokenBytes.length, true);
+    offset += 4;
+    out.set(tokenBytes, offset);
+  } else {
+    out[offset] = 0;
+  }
+  return out;
+}
+
 describe("consume contract artifact", () => {
   it("covers light Check names and stays off the other plane", () => {
     const dts = readFileSync(join(HERE, "../../docs/s3rch-check.d.ts"), "utf8");
@@ -90,6 +138,14 @@ describe("consume contract artifact", () => {
       "grantedSoul",
       "cancelSee",
       "hopcap",
+      "s3rch/acl",
+      "MeshSeeGrant",
+      "HopFactor",
+      "HeldClaimPrefix",
+      "aclKey",
+      "grantSoul",
+      "acceptHop",
+      "decodeHop",
     ]) {
       assert.match(dts, new RegExp(needle.replace(/[()]/g, "\\$&")));
     }
@@ -149,6 +205,24 @@ describe("locked Gun souls", () => {
       `s3rch/granted/${BOB}/items/s3rch:post:1`,
     );
     assert.equal(metaSoul(), "s3rch/meta");
+    assert.equal(aclKey("rss3:act/1#x"), "rss3:act_1_x");
+    assert.equal(aclKey("ens:alice.eth"), "ens:alice_eth");
+    assert.equal(aclKey(itemSoul("rss3:act/1#x")), "s3rch_items_rss3:act_1_x");
+    assert.equal(aclPrincipalKey(userSoul(ALICE)), ALICE);
+    assert.equal(aclPrincipalKey(ALICE.toLowerCase()), ALICE);
+    assert.equal(aclSoul(ALICE), `s3rch/acl/${ALICE}`);
+    assert.equal(
+      grantSoul(ALICE, "rss3:act/1#x", BOB),
+      `s3rch/acl/${ALICE}/rss3:act_1_x/${BOB}`,
+    );
+    assert.equal(
+      grantSoul(ALICE, "ens:alice.eth", userSoul(BOB)),
+      `s3rch/acl/${ALICE}/ens:alice_eth/${BOB}`,
+    );
+    assert.equal(
+      grantSoul(ALICE, itemSoul("rss3:act/1#x"), BOB).split("/").length,
+      5,
+    );
   });
 
   it("toGunNode / fromGunNode: empty kind is activity; unknown source is not a feed node", () => {
@@ -212,6 +286,75 @@ describe("CHECK(see, object, accessor) consume laws", () => {
     const result = checkSee(acl, CLAIM, BOB, NOW, accepted);
     assert.equal(result.allowed, false);
     assert.notEqual(result.reason, "see-grant");
+  });
+
+  it("hop missing does not fail; hop alone never allows; hint+hop fail closed without dest ACL", () => {
+    const acl = createMemorySeeAcl();
+    acl.putObject(CLAIM, ALICE);
+    const hop: HopFactor = { channel: "convention-badge" };
+    const acceptedHop = acceptHop(hop);
+    assert.equal(acceptedHop instanceof Uint8Array ? false : acceptedHop.channel, "convention-badge");
+    assert.equal(checkSee(acl, CLAIM, ALICE, NOW).allowed, true);
+    assert.equal(checkSee(acl, CLAIM, ALICE, NOW, undefined, hop).allowed, true);
+    const hopAlone = checkSee(acl, CLAIM, BOB, NOW, undefined, hop);
+    assert.equal(hopAlone.allowed, false);
+    assert.equal(hopAlone.reason, "missing-grant");
+    const hintPlusHop = checkSee(acl, CLAIM, BOB, NOW, hint(), hop);
+    assert.equal(hintPlusHop.allowed, false);
+    const empty = createMemorySeeAcl();
+    assert.equal(checkSee(empty, CLAIM, BOB, NOW, hint(), hop).allowed, false);
+    applySeeGrant(acl, ALICE, { claimId: CLAIM, accessor: BOB, from: 0, until: NOW + 80 });
+    assert.equal(checkSee(acl, CLAIM, BOB, NOW, undefined, hop).allowed, true);
+  });
+
+  it("decodeHop does not verify or mint; unnamed bytes stay opaque", () => {
+    const bytes = encodeSlhp("convention-badge", new Uint8Array([1, 2, 3]), "token");
+    const decoded = decodeHop(bytes);
+    assert.equal(decoded instanceof Uint8Array, false);
+    if (decoded instanceof Uint8Array) throw new Error("expected structured hop");
+    assert.equal(decoded.channel, "convention-badge");
+    assert.deepEqual(Array.from(decoded.attestationBytes ?? []), [1, 2, 3]);
+    assert.equal(decoded.shareToken, "token");
+    const garbage = decodeHop(new Uint8Array([9, 9, 9]));
+    assert.equal(garbage instanceof Uint8Array, true);
+    const acl = createMemorySeeAcl();
+    assert.equal(checkSee(acl, CLAIM, BOB, NOW, undefined, garbage).allowed, false);
+  });
+
+  it("dest ACL souls and claim-id objects fail closed without dest ACL", () => {
+    const acl = createMemorySeeAcl();
+    const hop: HopFactor = { channel: "enrolled-station" };
+    assert.equal(checkSee(acl, aclSoul(ALICE), ALICE, NOW).allowed, false);
+    assert.equal(checkSee(acl, aclSoul(ALICE), ALICE, NOW).reason, "acl");
+    assert.equal(
+      checkSee(acl, grantSoul(ALICE, CLAIM, BOB), BOB, NOW, hint(), hop).allowed,
+      false,
+    );
+    assert.equal(checkSee(acl, "s3rch/acl", ALICE, NOW).reason, "acl");
+    for (const claim of [
+      "ens:alice.eth",
+      "unstoppable:brad.x",
+      "fc:dwr",
+      "farcaster:dwr",
+      "lens:vitalik",
+      "rss3:0xabc",
+    ]) {
+      assert.equal(checkSee(acl, claim, BOB, NOW, hint(), hop).allowed, false);
+      acl.putObject(claim, ALICE);
+      assert.equal(checkSee(acl, claim, ALICE, NOW).reason, "owner");
+      assert.equal(checkSee(acl, claim, BOB, NOW, hint(), hop).allowed, false);
+      assert.equal(claim.includes("/claims/"), false);
+    }
+  });
+
+  it("owner-only cancelSee; non-owner cannot privilege-down", () => {
+    const acl = createMemorySeeAcl();
+    acl.putObject(CLAIM, ALICE);
+    applySeeGrant(acl, ALICE, { claimId: CLAIM, accessor: BOB, from: 0, until: 80 });
+    cancelSee(acl, BOB, BOB, CLAIM);
+    assert.equal(checkSee(acl, CLAIM, BOB, 10).allowed, true);
+    cancelSee(acl, ALICE, BOB, CLAIM);
+    assert.equal(checkSee(acl, CLAIM, BOB, 10).allowed, false);
   });
 
   it("cancelSee denies the next check (privilege-down is immediate)", () => {

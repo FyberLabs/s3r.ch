@@ -10,7 +10,12 @@ import {
   prepareGrantUserDelivery,
   putGrantDelivery,
 } from "@/lib/grant-delivery";
-import { applySeeGrant, cancelSee } from "@/lib/identity/check";
+import {
+  cancelSeeOnMesh,
+  createMeshAclIndex,
+  stateSeeGrantOnMesh,
+  type MeshAclIndex,
+} from "@/lib/identity/mesh-acl";
 import {
   grantWindowFromHours,
   heldClaimOptionsFromIndicators,
@@ -41,7 +46,9 @@ export function SeeGrantControls({
   const shared = useSeeAcl();
   const peer = useGunPeer();
   const [localAcl] = useState<MemorySeeAcl>(() => createMemorySeeAcl());
+  const [localMesh] = useState<MeshAclIndex>(() => createMeshAclIndex());
   const acl = shared?.acl ?? localAcl;
+  const mesh = shared?.mesh ?? localMesh;
   const [localReady, setLocalReady] = useState(false);
   const ready = shared ? shared.ready : localReady;
   const [grants, setGrants] = useState<IdentitySeeGrant[]>([]);
@@ -154,7 +161,7 @@ export function SeeGrantControls({
         until: window.until,
       };
       acl.putObject(selected.id, address);
-      applySeeGrant(acl, address, grant);
+      stateSeeGrantOnMesh(acl, mesh, address, grant, peer?.gun);
       const user = overlay;
       if (user) {
         const prepared = prepareGrantUserDelivery(
@@ -184,7 +191,7 @@ export function SeeGrantControls({
     setBusy(true);
     setMessage(null);
     try {
-      cancelSee(acl, address, grant.accessor, grant.claimId);
+      cancelSeeOnMesh(acl, mesh, address, grant.accessor, grant.claimId, peer?.gun);
       const retract = prepareGrantRetract(
         address,
         grant,

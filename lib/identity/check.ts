@@ -4,7 +4,9 @@
  * Reimplements the consume contract in `docs/s3rch-check.d.ts`.
  * Runs in the browser. Does not import FyberLabs/SociACL (crate, NAPI,
  * WASM, or npm). hopcap 1: do not walk friend edges. Hint never sets
- * `allowed`. Privilege-down (`cancelSee`) is immediate.
+ * `allowed`. Hop never sets `allowed`. Privilege-down (`cancelSee`) is
+ * immediate on dest ACL. Owner-only cancel must bump HAM so cancel
+ * wins the next merge.
  */
 
 import { getAddress } from "viem";
@@ -38,7 +40,24 @@ export const S3RCH_CHAT = "chat" as const;
 export const S3RCH_PRESENCE = "presence" as const;
 export const S3RCH_USERS = "users" as const;
 export const S3RCH_GRANTED = "granted" as const;
+export const S3RCH_ACL = "acl" as const;
 export const S3RCH_META = "meta" as const;
+
+/** Dest ACL collection. Sibling of items / users / meta. Not a Check object. */
+export type S3rchAcl = typeof S3RCH_ACL;
+
+/**
+ * Held-claim CheckObjectId prefixes. The object id is the claim id
+ * itself, linked from GunUserNode.indicators. s3r.ch #46 also links
+ * `farcaster:` (same family as consume-contract `fc:`).
+ */
+export type HeldClaimPrefix =
+  | "ens:"
+  | "unstoppable:"
+  | "fc:"
+  | "farcaster:"
+  | "lens:"
+  | "rss3:";
 
 /**
  * gun.get('s3rch').get('rooms').get(encodeKey(id))
@@ -122,13 +141,59 @@ export type AccessorId = string;
 
 export type CheckResult = {
   allowed: boolean;
-  /** Predicate / deny reason. A present hint never makes this a grant. */
+  /**
+   * Predicate / deny reason. A present hint never makes this a grant.
+   * A present hop never makes this a grant.
+   */
   reason: string;
+};
+
+/** Named Social Light channels. Hop is not a grant. */
+export type SocialLightChannel = "convention-badge" | "enrolled-station";
+
+/**
+ * Optional Check factor. Opaque SLHP bytes or the structured hop
+ * sociacl-core already names. Destination re-authorizes.
+ * Hop missing does not fail. Hop alone never allows.
+ * Hop never mints a grant. URL handoffs stay untrusted HandoffHint.
+ */
+export type HopFactor =
+  | Uint8Array
+  | {
+      channel: SocialLightChannel;
+      attestationBytes?: Uint8Array;
+      shareToken?: string;
+    };
+
+/**
+ * In-graph see grant. HAM-merges across peers.
+ * `stated` 1 = jointly stated, 0 = cancelled (privilege-down).
+ */
+export type MeshSeeGrant = {
+  object: CheckObjectId;
+  accessor: AccessorId;
+  from: number;
+  until: number;
+  stated: 0 | 1;
+};
+
+/**
+ * One dest-ACL grant node. Soul is grantSoul(owner, object, accessor).
+ * Peers HAM-merge by hamState (higher wins). Cancel bumps hamState.
+ */
+export type GunAclEdge = {
+  soul: string;
+  owner: AccessorId;
+  grant: MeshSeeGrant;
+  hamState: number;
 };
 
 /**
  * Live graph the browser reads. Only in-graph objects and jointly
  * stated see grants. Do not walk friend edges (hopcap 1).
+ *
+ * Mesh: each peer evaluates against its locally HAM-merged Gun graph
+ * at now. Do not cache an allow across a privilege-down merge.
  */
 export type SeeGraph = {
   hasObject(object: CheckObjectId): boolean;
@@ -211,6 +276,55 @@ export function metaSoul(): string {
   return `${S3RCH_ROOT}/${S3RCH_META}`;
 }
 
+/**
+ * Dest-ACL path key. encodeKey, then `/` → `_`, so a grant soul stays
+ * five segments when the object id still contains slashes.
+ */
+export function aclKey(id: string): string {
+  return encodeKey(id).replace(/\//g, "_");
+}
+
+/**
+ * Owner / accessor key on dest ACL. `s3rch/users/<wallet>` collapses
+ * to the wallet. Anything else is aclKey.
+ */
+export function aclPrincipalKey(id: string): string {
+  const trimmed = id.trim();
+  if (!trimmed) return "";
+  let key = trimmed;
+  if (trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)) {
+    key = trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length);
+  }
+  try {
+    return getAddress(key);
+  } catch {
+    return aclKey(key);
+  }
+}
+
+/**
+ * Owner dest-ACL root. Not a Check object.
+ * gun.get('s3rch').get('acl').get(aclPrincipalKey(owner))
+ */
+export function aclSoul(owner: AccessorId): string {
+  return `${S3RCH_ROOT}/${S3RCH_ACL}/${aclPrincipalKey(owner)}`;
+}
+
+/**
+ * Jointly stated see grant under the object owner's dest ACL.
+ * gun.get('s3rch').get('acl')
+ *   .get(aclPrincipalKey(owner))
+ *   .get(aclKey(object))
+ *   .get(aclPrincipalKey(accessor))
+ */
+export function grantSoul(
+  owner: AccessorId,
+  object: CheckObjectId,
+  accessor: AccessorId,
+): string {
+  return `${aclSoul(owner)}/${aclKey(object)}/${aclPrincipalKey(accessor)}`;
+}
+
 /** Does not verify. Does not mint. */
 export function acceptHint(hint: HandoffHint): HandoffHint {
   return {
@@ -218,6 +332,90 @@ export function acceptHint(hint: HandoffHint): HandoffHint {
     target: hint.target,
     ...(hint.verb !== undefined ? { verb: hint.verb } : {}),
     ...(hint.context !== undefined ? { context: hint.context } : {}),
+  };
+}
+
+const SOCIAL_LIGHT_CHANNELS: readonly SocialLightChannel[] = [
+  "convention-badge",
+  "enrolled-station",
+];
+
+function isSocialLightChannel(value: string): value is SocialLightChannel {
+  return (SOCIAL_LIGHT_CHANNELS as readonly string[]).includes(value);
+}
+
+/**
+ * Identity. Does not verify. Does not mint. Mirror acceptHint.
+ */
+export function acceptHop(hop: HopFactor): HopFactor {
+  if (hop instanceof Uint8Array) return hop;
+  return {
+    channel: hop.channel,
+    ...(hop.attestationBytes !== undefined
+      ? { attestationBytes: hop.attestationBytes }
+      : {}),
+    ...(hop.shareToken !== undefined ? { shareToken: hop.shareToken } : {}),
+  };
+}
+
+function readUtf8(bytes: Uint8Array, start: number, length: number): string | null {
+  if (length > 4096 || start + length > bytes.length) return null;
+  try {
+    return new TextDecoder().decode(bytes.subarray(start, start + length));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * SLHP decode. Does not verify. Does not mint. Mirror acceptHint.
+ * Attestation bytes stay opaque. Unparsed bytes stay the hop.
+ */
+export function decodeHop(bytes: Uint8Array): HopFactor {
+  if (bytes.length < 10) return bytes;
+  if (bytes[0] !== 0x53 || bytes[1] !== 0x4c || bytes[2] !== 0x48 || bytes[3] !== 0x50) {
+    return bytes;
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const version = view.getUint16(4, true);
+  if (version !== 1) return bytes;
+  const payloadLen = view.getUint32(6, true);
+  if (10 + payloadLen !== bytes.length) return bytes;
+  let offset = 10;
+  if (offset + 4 > bytes.length) return bytes;
+  const channelLen = view.getUint32(offset, true);
+  offset += 4;
+  const channel = readUtf8(bytes, offset, channelLen);
+  if (channel === null) return bytes;
+  offset += channelLen;
+  if (offset + 4 > bytes.length) return bytes;
+  const attLen = view.getUint32(offset, true);
+  offset += 4;
+  if (attLen > 65536 || offset + attLen > bytes.length) return bytes;
+  const attestationBytes =
+    attLen > 0 ? new Uint8Array(bytes.subarray(offset, offset + attLen)) : undefined;
+  offset += attLen;
+  if (offset + 1 > bytes.length) return bytes;
+  const hasToken = bytes[offset];
+  offset += 1;
+  let shareToken: string | undefined;
+  if (hasToken === 1) {
+    if (offset + 4 > bytes.length) return bytes;
+    const tokenLen = view.getUint32(offset, true);
+    offset += 4;
+    const token = readUtf8(bytes, offset, tokenLen);
+    if (token === null) return bytes;
+    shareToken = token;
+    offset += tokenLen;
+  } else if (hasToken !== 0) {
+    return bytes;
+  }
+  if (offset !== bytes.length) return bytes;
+  if (!isSocialLightChannel(channel)) return bytes;
+  return {
+    channel,
+    ...(attestationBytes ? { attestationBytes } : {}),
+    ...(shareToken !== undefined ? { shareToken } : {}),
   };
 }
 
@@ -230,6 +428,16 @@ export function isMetaId(id: string): boolean {
   if (trimmed === metaSoul() || trimmed === S3RCH_META) return true;
   if (trimmed === `gun.get('${S3RCH_ROOT}').get('${S3RCH_META}')`) return true;
   if (trimmed === `gun.get("${S3RCH_ROOT}").get("${S3RCH_META}")`) return true;
+  return false;
+}
+
+/** Dest ACL collection and grant souls are not Check objects. */
+export function isAclId(id: string): boolean {
+  const trimmed = id.trim();
+  if (trimmed === `${S3RCH_ROOT}/${S3RCH_ACL}` || trimmed === S3RCH_ACL) return true;
+  if (trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_ACL}/`)) return true;
+  if (trimmed === `gun.get('${S3RCH_ROOT}').get('${S3RCH_ACL}')`) return true;
+  if (trimmed === `gun.get("${S3RCH_ROOT}").get("${S3RCH_ACL}")`) return true;
   return false;
 }
 
@@ -302,6 +510,20 @@ export function grantNamesAccessor(
   return sameAccessor(grant.accessor, accessor);
 }
 
+/** Owner of the object or a locked soul alias (item / room / user). */
+export function ownerOwnsObject(
+  acl: SeeAcl,
+  owner: AccessorId,
+  object: CheckObjectId,
+): boolean {
+  if (sameAccessor(acl.ownerOf(object), owner)) return true;
+  if (sameAccessor(acl.ownerOf(itemSoul(object)), owner)) return true;
+  if (sameAccessor(acl.ownerOf(roomSoul(object)), owner)) return true;
+  const user = userObjectId(object);
+  if (user && sameAccessor(acl.ownerOf(user), owner)) return true;
+  return false;
+}
+
 /** `now ∈ [from, until)` — `from` inclusive, `until` exclusive. */
 export function grantLiveAt(grant: IdentitySeeGrant, now: number): boolean {
   return now >= grant.from && now < grant.until;
@@ -310,8 +532,11 @@ export function grantLiveAt(grant: IdentitySeeGrant, now: number): boolean {
 /**
  * CHECK(see, object, accessor) at now.
  * see maps to dest read. Hint is ignored for allowed.
- * Owner sees their object. Else a live IdentitySeeGrant must name
- * this pair and now ∈ [from, until). meta and UrlLeaf fail closed.
+ * Hop missing does not fail. Hop alone never allows. Hop may only
+ * factor an already-named grant or owner path.
+ * Owner sees their object. Else a live IdentitySeeGrant / MeshSeeGrant
+ * must name this pair and now ∈ [from, until). meta, dest ACL souls,
+ * and UrlLeaf fail closed.
  */
 export function checkSee(
   graph: SeeGraph,
@@ -319,10 +544,15 @@ export function checkSee(
   accessor: AccessorId,
   now: number,
   hint?: HandoffHint,
+  hop?: HopFactor,
 ): CheckResult {
   void hint;
+  void hop;
   if (isMetaId(object)) {
     return { allowed: false, reason: "meta" };
+  }
+  if (isAclId(object)) {
+    return { allowed: false, reason: "acl" };
   }
   if (isUrlLeafId(object)) {
     return { allowed: false, reason: "url-leaf" };
@@ -364,8 +594,9 @@ export function checkSeeGrant(
   accessor: AccessorId,
   now: number,
   hint?: HandoffHint,
+  hop?: HopFactor,
 ): CheckResult {
-  const dest = checkSee(graph, object, accessor, now, hint);
+  const dest = checkSee(graph, object, accessor, now, hint, hop);
   if (!grantNamesObject(grant, object) || !grantNamesAccessor(grant, accessor)) {
     return { allowed: false, reason: dest.reason === "owner" ? "denied" : dest.reason };
   }
@@ -429,7 +660,7 @@ function userNodeAdmitted(node: GunUserNode): string | null {
 function destOwner(owner: AccessorId): AccessorId | null {
   const trimmed = owner.trim();
   if (!trimmed) return null;
-  if (isUrlLeafId(trimmed) || isMetaId(trimmed)) return null;
+  if (isUrlLeafId(trimmed) || isMetaId(trimmed) || isAclId(trimmed)) return null;
   return trimmed;
 }
 
@@ -624,7 +855,9 @@ function resolveGrantObject(
   grant: IdentitySeeGrant,
 ): CheckObjectId | undefined {
   const claimId = grant.claimId.trim();
-  if (!claimId || isUrlLeafId(claimId) || isMetaId(claimId)) return undefined;
+  if (!claimId || isUrlLeafId(claimId) || isMetaId(claimId) || isAclId(claimId)) {
+    return undefined;
+  }
   if (acl.hasObject(claimId)) return claimId;
   const item = itemSoul(claimId);
   if (acl.hasObject(item)) return item;
@@ -650,12 +883,13 @@ export function applySeeGrant(
   acl.stateSeeGrant(owner, grant);
 }
 
-/** Privilege-down is immediate. Dest ACL only. */
+/** Privilege-down is immediate. Dest ACL only. Owner-only. */
 export function cancelSee(
   acl: SeeAcl,
   owner: AccessorId,
   accessor: AccessorId,
   object: CheckObjectId,
 ): void {
+  if (!ownerOwnsObject(acl, owner, object)) return;
   acl.unstateSeeGrant(owner, accessor, object);
 }

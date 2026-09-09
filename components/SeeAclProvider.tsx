@@ -10,6 +10,10 @@ import {
   type ReactNode,
 } from "react";
 import {
+  createMeshAclIndex,
+  type MeshAclIndex,
+} from "@/lib/identity/mesh-acl";
+import {
   createMemorySeeAcl,
   hydrateSeeAcl,
   persistSeeAcl,
@@ -18,6 +22,7 @@ import {
 
 export type SeeAclContextValue = {
   acl: MemorySeeAcl;
+  mesh: MeshAclIndex;
   ready: boolean;
   persist: () => Promise<void>;
 };
@@ -26,6 +31,7 @@ const SeeAclContext = createContext<SeeAclContextValue | null>(null);
 
 export function SeeAclProvider({ children }: { children: ReactNode }) {
   const [acl] = useState<MemorySeeAcl>(() => createMemorySeeAcl());
+  const [mesh] = useState<MeshAclIndex>(() => createMeshAclIndex());
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -49,8 +55,8 @@ export function SeeAclProvider({ children }: { children: ReactNode }) {
   }, [acl]);
 
   const value = useMemo(
-    () => ({ acl, ready, persist }),
-    [acl, ready, persist],
+    () => ({ acl, mesh, ready, persist }),
+    [acl, mesh, ready, persist],
   );
 
   return (
