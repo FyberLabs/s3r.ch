@@ -12,6 +12,10 @@ export const SECONDARY_WRAP_STATEMENT =
 export const NONCE_TTL_SECONDS = 5 * 60;
 export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 export const SIWE_MESSAGE_TTL_MS = 10 * 60 * 1000;
+/** Short-lived confirm challenge. Not a session. */
+export const CONFIRM_TTL_SECONDS = 10 * 60;
+/** Lab/dev fixture code. Never a live vendor OTP. */
+export const FIXTURE_CONFIRM_CODE = "000000";
 
 export const MIN_SECRET_LENGTH = 32;
 
@@ -23,4 +27,5 @@ export const ALLOWED_SIWE_HOSTS = new Set(["s3r.ch", "localhost", "127.0.0.1"]);
 export const COOKIE_BASE = {
   nonce: "s3rch-nonce",
   session: "s3rch-session",
+  confirm: "s3rch-confirm",
 } as const;

@@ -57,7 +57,10 @@ export type HeldClaimPrefix =
   | "fc:"
   | "farcaster:"
   | "lens:"
-  | "rss3:";
+  | "rss3:"
+  | "email:"
+  | "phone:"
+  | "kyc:";
 
 /**
  * gun.get('s3rch').get('rooms').get(encodeKey(id))

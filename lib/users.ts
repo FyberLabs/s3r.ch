@@ -22,8 +22,14 @@ import {
   HELD_CLAIM_FAMILIES,
   HELD_CLAIM_PREFIX,
   ensClaimId,
+  emailClaimId,
   farcasterClaimId,
+  kycClaimId,
   lensClaimId,
+  normalizeEmailTarget,
+  normalizePhoneTarget,
+  parseKycLookup,
+  phoneClaimId,
   rss3ClaimId,
   unstoppableClaimId,
   walletClaimId,
@@ -66,6 +72,9 @@ export type HeldIndicatorInput = {
   farcaster?: string | null;
   lens?: string | null;
   rss3?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  kyc?: string | null;
 };
 
 export type AssembleMineUserInput = {
@@ -96,6 +105,16 @@ export function namedHeldIndicators(input: HeldIndicatorInput): string[] {
   if (input.farcaster) raw.push(farcasterClaimId(input.farcaster));
   if (input.lens) raw.push(lensClaimId(input.lens));
   if (input.rss3) raw.push(rss3ClaimId(input.rss3));
+  if (input.email && normalizeEmailTarget(input.email)) {
+    raw.push(emailClaimId(input.email));
+  }
+  if (input.phone && normalizePhoneTarget(input.phone)) {
+    raw.push(phoneClaimId(input.phone));
+  }
+  if (input.kyc) {
+    const parsed = parseKycLookup(input.kyc);
+    if (parsed) raw.push(kycClaimId(parsed.issuer, parsed.subject));
+  }
   return splitIndicators(raw);
 }
 

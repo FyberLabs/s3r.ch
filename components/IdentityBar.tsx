@@ -9,8 +9,10 @@ import {
   useSignMessage,
 } from "wagmi";
 import { IdentityProviders } from "@/components/IdentityProviders";
+import { HeldConfirmControls } from "@/components/HeldConfirmControls";
 import { SeeGrantControls } from "@/components/SeeGrantControls";
 import { UserNodeControls } from "@/components/UserNodeControls";
+import { useHeldConfirms } from "@/components/useHeldConfirms";
 import { useMineUserOverlay } from "@/components/useMineUserOverlay";
 import { SIWE_MESSAGE_TTL_MS } from "@/lib/identity/config";
 import {
@@ -266,7 +268,22 @@ function IdentityBarInner() {
       indicators.rss3.name,
     ],
   );
-  const mineUser = useMineUserOverlay(session?.address ?? null, heldLookups);
+  const confirms = useHeldConfirms(session?.address ?? null);
+  const overlayLookups = useMemo(
+    () => ({
+      ...heldLookups,
+      email: confirms.lookups.email,
+      phone: confirms.lookups.phone,
+      kyc: confirms.lookups.kyc,
+    }),
+    [
+      heldLookups,
+      confirms.lookups.email,
+      confirms.lookups.phone,
+      confirms.lookups.kyc,
+    ],
+  );
+  const mineUser = useMineUserOverlay(session?.address ?? null, overlayLookups);
 
   const injected = connectors.find((connector) => connector.id === "injected") ?? connectors[0];
   const walletConnectConnector = connectors.find(
@@ -780,6 +797,11 @@ function IdentityBarInner() {
       {meshLine ? <p className="mt-3 text-xs text-ink-muted">{meshLine}</p> : null}
       {session ? (
         <>
+          <HeldConfirmControls
+            address={session.address}
+            proofs={confirms.proofs}
+            onHeld={confirms.putProof}
+          />
           <UserNodeControls
             address={session.address}
             overlay={mineUser.overlay}

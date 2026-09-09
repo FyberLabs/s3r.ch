@@ -11,7 +11,8 @@
  * CHECK(see, object, accessor) at now.
  *   object   = GunFeedNode | held claim id | later opaque post/room
  *   claim id = the id itself (ens:… / unstoppable:… / fc:… / lens:… /
- *              rss3:…), linked from GunUserNode.indicators
+ *              rss3:… / email:… / phone:… / kyc:<issuer>:…), linked
+ *              from GunUserNode.indicators
  *   Do not invent s3rch/users/<wallet>/claims/…
  *   accessor = wallet / Gun peer
  *   hopcap 1, jointly stated grants, revoke immediate
@@ -375,7 +376,10 @@ export type HeldClaimPrefix =
   | "fc:"
   | "farcaster:"
   | "lens:"
-  | "rss3:";
+  | "rss3:"
+  | "email:"
+  | "phone:"
+  | "kyc:";
 
 /**
  * Dest-ACL path key. encodeKey, then `/` → `_`, so a grant soul stays

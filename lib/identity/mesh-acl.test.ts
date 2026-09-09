@@ -99,7 +99,16 @@ describe("mesh Check objects", () => {
   it("claim-id objects use the claim id itself — no users/…/claims/ path", () => {
     const acl = createMemorySeeAcl();
     const mesh = createMeshAclIndex();
-    for (const claim of ["ens:alice.eth", "fc:dwr", "farcaster:dwr", "lens:vitalik", "rss3:0xabc"]) {
+    for (const claim of [
+      "ens:alice.eth",
+      "fc:dwr",
+      "farcaster:dwr",
+      "lens:vitalik",
+      "rss3:0xabc",
+      "email:alice@example.com",
+      "phone:+15551234567",
+      "kyc:fixture:held",
+    ]) {
       acl.putObject(claim, ALICE);
       const edge = stateSeeGrantOnMesh(acl, mesh, ALICE, {
         claimId: claim,

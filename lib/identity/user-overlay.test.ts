@@ -66,4 +66,19 @@ describe("Mine overlay GunUserNode store", () => {
     assert.deepEqual(again.indicators, ["ens:vitalik.eth", "farcaster:dwr"]);
     assert.equal(toGunUserNode(again).unshared, undefined);
   });
+
+  it("keeps a private email claim on the overlay without a public put", async () => {
+    const store = createMemoryUserOverlayStore();
+    const first = assembleMineUser({
+      address: ALICE,
+      lookups: { email: "alice@example.com" },
+      nowSeconds: NOW,
+    });
+    assert.ok(first);
+    await store.put(first);
+    const loaded = await store.get(ALICE);
+    assert.ok(loaded);
+    assert.deepEqual(loaded.indicators, ["email:alice@example.com"]);
+    assert.equal(toGunUserNode(loaded).indicators.includes("/claims/"), false);
+  });
 });

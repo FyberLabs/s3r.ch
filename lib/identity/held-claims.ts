@@ -18,6 +18,9 @@ export const HELD_CLAIM_FAMILIES = [
   "farcaster",
   "lens",
   "rss3",
+  "email",
+  "phone",
+  "kyc",
 ] as const;
 
 export type HeldClaimFamily = (typeof HELD_CLAIM_FAMILIES)[number];
@@ -28,6 +31,9 @@ export const HELD_CLAIM_PREFIX: Record<HeldClaimFamily, string> = {
   farcaster: "farcaster:",
   lens: "lens:",
   rss3: "rss3:",
+  email: "email:",
+  phone: "phone:",
+  kyc: "kyc:",
 };
 
 /** `undefined` = lookup still in flight. `null` = settled empty. */
@@ -70,6 +76,69 @@ export function rss3ClaimId(name: string): string {
   return `rss3:${name.trim()}`;
 }
 
+export function normalizeEmailTarget(value: string): string | null {
+  const trimmed = value.trim().toLowerCase();
+  if (trimmed.length > 254) return null;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+export function normalizePhoneTarget(value: string): string | null {
+  const compact = value.trim().replace(/[\s().-]/g, "");
+  const e164 = compact.startsWith("+") ? compact : `+${compact}`;
+  if (!/^\+[1-9]\d{7,14}$/.test(e164)) return null;
+  return e164;
+}
+
+export function normalizeKycIssuer(value: string): string | null {
+  const trimmed = value.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+export function normalizeKycSubject(value: string): string | null {
+  const trimmed = value.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+export function parseKycLookup(
+  value: string,
+): { issuer: string; subject: string } | null {
+  let rest = value.trim();
+  if (!rest) return null;
+  if (rest.toLowerCase().startsWith("kyc:")) rest = rest.slice(4);
+  const cut = rest.indexOf(":");
+  if (cut < 0) {
+    const subject = normalizeKycSubject(rest);
+    return subject ? { issuer: "fixture", subject } : null;
+  }
+  const issuer = normalizeKycIssuer(rest.slice(0, cut));
+  const subject = normalizeKycSubject(rest.slice(cut + 1));
+  if (!issuer || !subject) return null;
+  return { issuer, subject };
+}
+
+export function emailClaimId(email: string): string {
+  return `email:${normalizeEmailTarget(email) ?? email.trim().toLowerCase()}`;
+}
+
+export function phoneClaimId(phone: string): string {
+  return `phone:${normalizePhoneTarget(phone) ?? phone.trim()}`;
+}
+
+export function kycClaimId(issuer: string, subject: string): string {
+  const parsed = parseKycLookup(`${issuer}:${subject}`);
+  if (!parsed) return `kyc:${issuer.trim().toLowerCase()}:${subject.trim().toLowerCase()}`;
+  return `kyc:${parsed.issuer}:${parsed.subject}`;
+}
+
+export function lookupValueFromClaimId(claimId: string): string {
+  const family = claimFamilyOf(claimId);
+  if (family === "kyc") return claimId.replace(/^kyc:/i, "");
+  return claimLabelFromId(claimId);
+}
+
 export function walletClaimId(address: string): string {
   return getAddress(address);
 }
@@ -81,6 +150,9 @@ export function heldClaimOptions(input: {
   farcaster?: string | null;
   lens?: string | null;
   rss3?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  kyc?: string | null;
 }): HeldClaimOption[] {
   let checksum: string;
   try {
@@ -106,6 +178,27 @@ export function heldClaimOptions(input: {
   }
   if (input.lens) options.push({ id: lensClaimId(input.lens), label: input.lens });
   if (input.rss3) options.push({ id: rss3ClaimId(input.rss3), label: input.rss3 });
+  if (input.email && normalizeEmailTarget(input.email)) {
+    options.push({
+      id: emailClaimId(input.email),
+      label: normalizeEmailTarget(input.email) ?? input.email,
+    });
+  }
+  if (input.phone && normalizePhoneTarget(input.phone)) {
+    options.push({
+      id: phoneClaimId(input.phone),
+      label: normalizePhoneTarget(input.phone) ?? input.phone,
+    });
+  }
+  if (input.kyc) {
+    const parsed = parseKycLookup(input.kyc);
+    if (parsed) {
+      options.push({
+        id: kycClaimId(parsed.issuer, parsed.subject),
+        label: `${parsed.issuer}:${parsed.subject}`,
+      });
+    }
+  }
   return options;
 }
 
