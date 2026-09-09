@@ -1,6 +1,6 @@
-# Durable Gun graph and TURN (2026-09-08)
+# Durable Gun graph and TURN (2026-09-09)
 
-Design only. Sequence step 3 after live mesh delivery ([#40](https://github.com/FyberLabs/s3r.ch/pull/40)) and browser pull + HAM-merge ([#42](https://github.com/FyberLabs/s3r.ch/pull/42)). This file does **not** deploy coturn, mount a disk, change live ICE, or mint TURN credentials.
+Durable graph stays requirements-only. **Path A consume is wired:** session-gated `POST /api/turn/allocate` hops to Panopticon `POST /api/v1/turn/allocate` and may set Gun `opt.rtc.iceServers`. This file does **not** deploy coturn, mount a disk, or put the long-lived TURN secret in the browser.
 
 Parent: [ARCHITECTURE.md](ARCHITECTURE.md). Identity / Check locks stay in [identity.md](identity.md) and [s3rch-check.md](s3rch-check.md). Fyber-wide service lock: [FyberLabs/hypermesh-docs `open-services.md`](https://github.com/FyberLabs/hypermesh-docs/blob/main/open-services.md) (2026-09-02). Infra facts: [FyberLabs/infra `docs/PLATFORM.md`](https://github.com/FyberLabs/infra/blob/main/docs/PLATFORM.md) and [`terraform/s3rch/README.md`](https://github.com/FyberLabs/infra/blob/main/terraform/s3rch/README.md).
 
@@ -13,9 +13,9 @@ This is an instrument-honest requirements note for two missing pieces:
 1. **Durable graph** — what should still exist after an App Service recycle.
 2. **TURN** — when STUN cannot punch NAT, and where that relay may live.
 
-It is **not** a finished P2P mesh claim. `gun/lib/webrtc` is STUN-only today. Browser Gun uses `localStorage: false`. The seed peer is a cache. Chat and presence are Gun subscriptions, not WebRTC. Meetings / streams are later.
+It is **not** a finished P2P mesh claim. `gun/lib/webrtc` is STUN by default; signed-in allocate may add short-lived `turn:` / `turns:`. Browser Gun uses `localStorage: false`. The seed peer is a cache. Chat and presence are Gun subscriptions, not WebRTC. Meetings / streams are later.
 
-Out of this file: implementing coturn, Terraform apply, meetings/streams UI, putting TURN secrets on live ICE, Odoo/GitLab restyle.
+Out of this file: implementing coturn, Terraform apply, meetings/streams UI, putting the long-lived TURN secret on Gun or `NEXT_PUBLIC_*`, Odoo/GitLab restyle.
 
 ## Steering locks (stay put)
 
@@ -135,12 +135,12 @@ The mesh is the archive. Popular items cache across peers. A seed (App Service o
 
 ### ICE: keep STUN; when TURN is needed
 
-Today (`lib/gun-webrtc.ts`): `opt.rtc.iceServers` is **STUN only** (`stun:stun.l.google.com:19302`). If ICE fails, `/feed` falls open to same-origin `/gun` / snapshot. That path stays.
+Today (`lib/gun-webrtc.ts`): `opt.rtc.iceServers` defaults to **STUN** (`stun:stun.l.google.com:19302`). Signed-in `/feed` may replace that list with Panopticon allocate `{ iceServers, expiresAt }` via same-origin `POST /api/turn/allocate`. If allocate or ICE fails, `/feed` falls open to same-origin `/gun` / snapshot. That path stays.
 
 | Mechanism | Role | Today |
 | --- | --- | --- |
 | **STUN** | Discover reflexive address; punch when NAT is friendly | Google public STUN. Keep it. |
-| **TURN** | Relay media / data when both sides are behind symmetric NAT, or when UDP is blocked | **None.** Do not document Google as TURN. |
+| **TURN** | Relay media / data when both sides are behind symmetric NAT, or when UDP is blocked | Path A hop when `PANOPTICON_TURN_*` is set and SIWE session is live. Empty env / fail → none. Do not document Google as TURN. |
 | **Seed `/gun` WebSocket** | Gun DAM over Cloudflare → App Service | Works as the fallback when WebRTC does not. |
 
 TURN is needed when two **browsers** must exchange Gun (or later meeting) traffic and STUN cannot bind. It is not needed for Public snapshot hydrate. It is not a chat server. Chat / presence stay Gun `.on` even after TURN exists.
@@ -161,11 +161,11 @@ TURN without auth is an open relay (abuse, cost). Static secrets in the client a
 | --- | --- |
 | Time-limited credentials (coturn `use-auth-secret` / TURN REST: username `expiry:id`, HMAC password) | A captured password dies. |
 | Shared secret in Key Vault only (`kv-fyber-cg47`, same habit as `SEED_SECRET` / `IDENTITY_SESSION_SECRET`) | Not git, not `NEXT_PUBLIC_*`, not Gun. |
-| Mint against the **same** `POST /api/v1/turn/allocate` contract (lab host or Panopticon). SIWE-gated for s3r.ch | Browser receives `{ iceServers, expiresAt }`. No second mint API. |
+| Mint against the **same** `POST /api/v1/turn/allocate` contract (Panopticon). SIWE-gated for s3r.ch | Browser receives `{ iceServers, expiresAt }` from Next. Product API key stays on the server. No second mint API. |
 | **Never put the long-lived TURN secret on a Gun node** | Graph is replicated. A secret there is public. |
-| Do not change live ICE in this PR | No `turn:` URLs, no minted creds, no App Service TURN. |
+| Do not put allocate credentials on Gun | Graph is replicated. A credential there is public. |
 
-Lab mint (later implementation, not this PR): same allocate URI and JSON as path A; session-gated; checksummed address as the id; TTL minutes not days. Fail closed if the secret is missing in production (same class as identity cookies). Unsigned visitors keep STUN + `/gun`. Cutover changes the host, not the path.
+Lab / product mint: same allocate URI and JSON as path A; session-gated Next hop; checksummed address as `clientHint`; TTL minutes not days. Empty `PANOPTICON_TURN_BASE` / `PANOPTICON_TENANT_ID` / `PANOPTICON_API_KEY` keeps STUN + `/gun`. Unsigned visitors keep STUN + `/gun`. Cutover changes the host, not the path.
 
 ### Scale, regions, transports (Research Bot / Azure)
 
@@ -234,7 +234,7 @@ No Terraform in this repo. No apply. When Chris wants the lab relay, a sibling *
 | Secrets | Long-lived auth secret in `kv-fyber-cg47`; UAMI read | Commit the secret; `NEXT_PUBLIC_*`; put it on Gun |
 | NSG | Allow **UDP 3478** + the chosen relay range, and **443/tcp** if TURNS, from `0.0.0.0/0` (browser clients). Lock admin SSH to existing admin paths (Tailscale / jump) | PE-only ingress. Public SSH. Uncapped relay ports |
 | Shared use | One public TURN for s3r.ch Gun first; Hypermesh may share the **TURN contract** | Put coturn on `vm-pano-test` / `wg.test`. Send `/feed` through Tailscale |
-| s3r.ch consume (later product PR) | Mint against the **same** allocate URI contract as A → `opt.rtc.iceServers` = STUN + time-limited `turn:` / `turns:` | A second mint API. Static password on live ICE in this design PR |
+| s3r.ch consume (this slice) | Mint against the **same** allocate URI contract as A → `opt.rtc.iceServers` = STUN + time-limited `turn:` / `turns:` | A second mint API. Static password on live ICE. Product key in `NEXT_PUBLIC_*` |
 
 `terraform/s3rch/README.md` already says: “TURN is later (Panopticon). … Do not add coturn or a Cloudflare Worker here.” That line stays until an infra PR exists. The sketch above is that later layer, not a change to the web-app module.
 
@@ -258,6 +258,18 @@ POST /api/v1/turn/allocate
 
 Do not invent a second control plane on s3r.ch Azure to do this.
 
+### s3r.ch consume (this slice)
+
+Honest smallest rule: **signed-in only**. The browser POSTs same-origin `/api/turn/allocate` (cookie). Next verifies the SIWE session, then hops with the product API key. Unsigned / missing env / 401 / 503 / network → STUN + `/gun`. Re-allocate before `expiresAt` by mutating the same `opt.rtc` object Gun's webrtc adapter closes over. Public `/` and `/feed` stay short visitor verbs.
+
+| Env (server-only) | Role |
+| --- | --- |
+| `PANOPTICON_TURN_BASE` | Allocate origin, or origin plus `/api/v1` / `/api/v1/turn` |
+| `PANOPTICON_TENANT_ID` | `X-Tenant-ID` |
+| `PANOPTICON_API_KEY` | `X-Api-Key`. Never `NEXT_PUBLIC_*`. |
+
+Empty any of the three = STUN-only. Operator sets them on App Service (Key Vault later). This repo does not deploy coturn.
+
 ---
 
 ## Decision (for Chris)
@@ -268,6 +280,6 @@ Do not invent a second control plane on s3r.ch Azure to do this.
 | Can TURN live in FyberLabs/infra independent of Panopticon **for the lab**? | **Optional path B**, and only if time-boxed, contract-identical, no product data, graduation = DNS/config cutover. SKU: B2s/B2ms, East US 2, public TURN, separate from the seeder. Not WG/Tailscale for browsers. | Prefer waiting for A: say so; lab stays STUN + `/gun`. |
 | Does B replace Panopticon? | **No.** Lock 5 / `open-services.md` stay. Cutover retires the second plane. | Path C = amend `open-services.md` in hypermesh-docs. Not done here. |
 | Durable graph on App Service disk? | **No** as the archive. Optional Blob of the existing Public snapshot. Mesh (D1) + optional seed relay VM (D3) for shared puts — **not** the TURN host. | Files-mount radisk is the Mastodon slope. |
-| Implement now? | **No.** Docs only. No infra PR in this slice. | — |
+| Implement now? | **Path A consume — this slice.** No infra coturn PR. | — |
 
 Copy on `/feed` stays: STUN ≠ TURN; seed / snapshot if ICE fails; Network / Granted can be empty; not a finished P2P mesh.

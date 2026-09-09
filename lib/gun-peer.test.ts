@@ -84,7 +84,7 @@ describe("browserGunOptions", () => {
     assert.equal(isStunOnlyIceServer(opts.rtc.iceServers[0]), true);
   });
 
-  it("adds STUN-only rtc and still forbids recall and TURN", () => {
+  it("adds STUN-only rtc by default and still forbids recall and hardcoded TURN", () => {
     const src = helperSource();
     assert.equal(src.includes("stunOnlyRtcOptions"), true);
     assert.equal(src.includes("user.recall({ sessionStorage: true })"), true);
@@ -94,6 +94,20 @@ describe("browserGunOptions", () => {
       "utf8",
     );
     assert.equal(webrtcSrc.includes("gun/lib/webrtc"), true);
+    const withTurn = browserGunOptions("https://s3r.ch", {
+      iceServers: [
+        {
+          urls: ["turn:turn.example.com:3478"],
+          username: "1757383200:s3rch-peer",
+          credential: "fixture",
+        },
+      ],
+    });
+    assert.equal(withTurn.localStorage, false);
+    assert.equal(
+      typeof withTurn.rtc.iceServers[0].username,
+      "string",
+    );
   });
 });
 
