@@ -152,6 +152,7 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `lib/turn-allocate.ts` | Server hop to Panopticon allocate. `PANOPTICON_TURN_*` server env. Session-gated. Fail soft |
 | `lib/turn-ice.ts` | Browser `/api/turn/allocate` fetch, STUN fallback, re-allocate before `expiresAt` |
 | `app/api/turn/allocate` | `GET`/`POST` — SIWE cookie, then hop. 401 unsigned; 503 empty env / hop fail |
+| `docs/oracles-and-payments-prep.md` | Held App Service env stubs for later Panopticon oracles/payments hops. Empty = no hop. Not consume |
 | `lib/feed-rank.ts` | Tags-first any-match filter, then recency. No engagement |
 | `lib/feed-discover.ts` | Client Discover corpus (Public seed + shared rooms + live Network mesh). Inventory tag counts, `?tag=` parse, owner snippet. Not search / Popular / Mine |
 | `lib/feed-tabs.ts` | Public = seed; Mine = overlay; Network = live shared Gun mesh; Granted = grant inbox (not snapshot, not overlay, not Public) |
