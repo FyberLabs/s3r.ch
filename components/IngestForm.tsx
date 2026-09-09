@@ -137,6 +137,9 @@ export function IngestForm({
   return (
     <div className={`mt-10 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Pull</h2>
+      {relayCopy ? (
+        <p className="mt-2 text-xs text-ink-muted">{relayCopy}</p>
+      ) : null}
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="block text-sm text-ink">
           Feed URL
@@ -184,9 +187,6 @@ export function IngestForm({
         <h3 className="text-sm font-semibold text-ink">Sources</h3>
         {session ? (
           <>
-            {relayCopy ? (
-              <p className="mt-3 text-xs text-ink-muted">{relayCopy}</p>
-            ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
               {ALLOWED_SOURCE_CLASSES.map((kind) => (
                 <button
