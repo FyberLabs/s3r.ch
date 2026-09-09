@@ -279,7 +279,18 @@ Product locks (signed 2026-09-09). Do not expand this slice past these:
 | `PANOPTICON_TENANT_ID` | `X-Tenant-ID` |
 | `PANOPTICON_API_KEY` | `X-Api-Key`. Never `NEXT_PUBLIC_*`. |
 
-Empty any of the three = STUN-only. Operator sets them on App Service (Key Vault later). This repo does not deploy coturn.
+Empty any of the three = STUN-only. Integrator contract: FyberLabs/panopticon [`products/turn/docs/turn-allocate-v0.md`](https://github.com/FyberLabs/panopticon/blob/main/products/turn/docs/turn-allocate-v0.md).
+
+### Operator / infra habit (live TURN)
+
+Same style as `IDENTITY_SESSION_SECRET` / `SEED_SECRET`: App Service application settings, Key Vault for the secret, Terraform in **FyberLabs/infra** `terraform/s3rch`. **Research owns that layer.** This repo is Path A consume only — no coturn, no Terraform here.
+
+Checklist for live TURN:
+
+1. Set all three App Service application settings: `PANOPTICON_TURN_BASE`, `PANOPTICON_TENANT_ID`, `PANOPTICON_API_KEY`. Empty or any missing → STUN + `/gun`. No error theater on `/feed`.
+2. Hold `PANOPTICON_API_KEY` in Key Vault (`kv-fyber-cg47`). Terraform wires secret → App Setting. Never git, never `NEXT_PUBLIC_*`, never Gun, never the browser.
+3. `PANOPTICON_TURN_BASE` is the allocate origin (or origin plus `/api/v1` / `/api/v1/turn`). Next hops `POST /api/v1/turn/allocate`.
+4. Do not add coturn to `terraform/s3rch` or this App Service. Relay dataplane stays Panopticon (or a later time-boxed Path B layer), not the seeder.
 
 ---
 
@@ -292,5 +303,6 @@ Empty any of the three = STUN-only. Operator sets them on App Service (Key Vault
 | Does B replace Panopticon? | **No.** Lock 5 / `open-services.md` stay. Cutover retires the second plane. | Path C = amend `open-services.md` in hypermesh-docs. Not done here. |
 | Durable graph on App Service disk? | **No** as the archive. Optional Blob of the existing Public snapshot. Mesh (D1) + optional seed relay VM (D3) for shared puts — **not** the TURN host. | Files-mount radisk is the Mastodon slope. |
 | Implement now? | **Path A consume — this slice.** No infra coturn PR. | — |
+| Live TURN on App Service? | Research: three application settings in FyberLabs/infra `terraform/s3rch` (KV for the API key). [Operator / infra habit](#operator--infra-habit-live-turn). | Leave empty → STUN + `/gun`. |
 
 Copy on `/feed` stays: STUN ≠ TURN; seed / snapshot if ICE fails; Network / Granted can be empty; not a finished P2P mesh.
