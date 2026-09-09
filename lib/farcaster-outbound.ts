@@ -11,6 +11,7 @@
  * Missing creds fail closed. Share-into-mesh does not call this.
  */
 
+import "./faker-v7-compat";
 import {
   CastType,
   FarcasterNetwork,

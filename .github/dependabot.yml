@@ -1,0 +1,30 @@
+version: 2
+updates:
+  # Weekly npm version updates. Security updates stay enabled in repo settings
+  # and are not ignored — axios / @faker-js/faker stay in play.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "07:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    groups:
+      production-npm:
+        dependency-type: production
+      development-npm:
+        dependency-type: development
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "07:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns:
+          - "*"

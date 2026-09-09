@@ -7,3 +7,5 @@ Private vulnerability reporting is not enabled here. Email **github@fyberlabs.co
 There is no bug bounty.
 
 Do not include SIWE signatures, Gun SEA private keys, session cookies, or personal data in a report. A checksummed address is enough when an identity bug needs a public subject.
+
+Dependency hygiene (Dependabot weekly config and the axios / `@faker-js/faker` overrides) is in [docs/dependabot.md](docs/dependabot.md).
