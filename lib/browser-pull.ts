@@ -27,6 +27,8 @@ export const ALLOWED_SOURCE_CLASSES = [
   "farcaster",
   "atproto",
   "rss",
+  "activitypub",
+  "nostr",
   "rss3-gi",
 ] as const;
 
@@ -45,6 +47,8 @@ export const ALLOWED_SOURCE_LABELS: Record<AllowedSourceClass, string> = {
   farcaster: "Farcaster",
   atproto: "ATProto",
   rss: "RSS / Atom",
+  activitypub: "ActivityPub",
+  nostr: "Nostr",
   "rss3-gi": "RSS3 GI",
 };
 

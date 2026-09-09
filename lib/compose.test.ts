@@ -52,7 +52,15 @@ function ingestItem() {
 describe("FeedSource s3rch", () => {
   it("is a feed source; existing sources still listed", () => {
     assert.equal(isFeedSource("s3rch"), true);
-    for (const source of ["rss3", "rss", "atom", "farcaster", "atproto"] as const) {
+    for (const source of [
+      "rss3",
+      "rss",
+      "atom",
+      "farcaster",
+      "atproto",
+      "activitypub",
+      "nostr",
+    ] as const) {
       assert.equal(isFeedSource(source), true);
       assert.ok(FEED_SOURCES.includes(source));
     }

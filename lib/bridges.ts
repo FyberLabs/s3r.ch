@@ -29,7 +29,7 @@ export const BRIDGE_MATRIX: NetworkBridge[] = [
     network: "ActivityPub",
     pull: "yes",
     repost: "yes",
-    thisSlice: "not wired",
+    thisSlice: "public seeder + signed-in browser pull via actor outbox first page; /api/ingest CORS proxy",
   },
   {
     network: "ATProto / Bluesky",
@@ -41,7 +41,7 @@ export const BRIDGE_MATRIX: NetworkBridge[] = [
     network: "Nostr",
     pull: "yes",
     repost: "yes",
-    thisSlice: "not wired",
+    thisSlice: "public seeder + signed-in browser pull via NIP-01 kind 1 REQ (server WS); /api/ingest CORS proxy",
   },
   {
     network: "Farcaster",

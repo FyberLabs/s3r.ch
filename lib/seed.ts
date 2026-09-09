@@ -1,9 +1,11 @@
 import type { AllowedSourceClass } from "./browser-pull";
 import type { FeedItem, SeedReport, SourcePull } from "./feed-types";
+import { fetchPublicActivityPub } from "./activitypub";
 import { fetchPublicAtproto } from "./atproto";
 import { fetchPublicCasts } from "./farcaster";
 import { putItems, setSeedMeta } from "./gun-server";
 import { canonicalKey } from "./merge";
+import { fetchPublicNostr } from "./nostr";
 import { normalizeRss3Activities } from "./normalize";
 import { fetchPublicRss } from "./rss-atom";
 import { fetchPublicActivities, GI_BASE } from "./rss3";
@@ -19,6 +21,10 @@ export async function pullAllowedSource(
       return fetchPublicAtproto();
     case "rss":
       return fetchPublicRss();
+    case "activitypub":
+      return fetchPublicActivityPub();
+    case "nostr":
+      return fetchPublicNostr();
     case "rss3-gi":
       return fetchOptionalGi();
   }
@@ -30,6 +36,8 @@ export async function seedPublicGraph(): Promise<SeedReport> {
       fetchPublicCasts(),
       fetchPublicAtproto(),
       fetchPublicRss(),
+      fetchPublicActivityPub(),
+      fetchPublicNostr(),
       fetchOptionalGi(),
     ]),
   );
