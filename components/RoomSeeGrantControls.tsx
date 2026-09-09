@@ -10,7 +10,8 @@ import {
   prepareGrantRoomDelivery,
   putGrantDelivery,
 } from "@/lib/grant-delivery";
-import { applySeeGrant, cancelSee, grantNamesObject, roomSoul } from "@/lib/identity/check";
+import { grantNamesObject, roomSoul } from "@/lib/identity/check";
+import { cancelSeeOnMesh, stateSeeGrantOnMesh } from "@/lib/identity/mesh-acl";
 import {
   grantWindowFromHours,
   parseGrantAccessor,
@@ -83,7 +84,7 @@ export function RoomSeeGrantControls({
         from: window.from,
         until: window.until,
       };
-      applySeeGrant(see.acl, address, grant);
+      stateSeeGrantOnMesh(see.acl, see.mesh, address, grant, peer?.gun);
       const prepared = prepareGrantRoomDelivery(
         see.acl,
         room,
@@ -111,7 +112,14 @@ export function RoomSeeGrantControls({
     setBusy(true);
     setMessage(null);
     try {
-      cancelSee(see.acl, address, grant.accessor, grant.claimId);
+      cancelSeeOnMesh(
+        see.acl,
+        see.mesh,
+        address,
+        grant.accessor,
+        grant.claimId,
+        peer?.gun,
+      );
       const retract = prepareGrantRetract(
         address,
         grant,

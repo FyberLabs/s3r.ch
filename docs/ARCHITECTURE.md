@@ -37,8 +37,8 @@ These stay put. They are why the stack looks like this — not a slogan.
 | Who pulls Farcaster, ATProto, RSS, ActivityPub, Nostr, and optional RSS3 | Lab seeder on the container **and** signed-in browsers through `/api/ingest` (same documented sources). Admit `GunFeedNode` `v: 1` onto Mine. Empty/failed sources write nothing. Direct browser-to-source still fails CORS | Same. Relay / extension later. Do not invent a second proxy or datastore |
 | Where the graph lives | Server Gun + JSON snapshot on **ephemeral** container disk; client Gun hydrates from `GET /api/feed` and peers same-origin `/gun` when the socket is up. Recycle empties radisk + snapshot. Browser Gun is `localStorage: false` | HAM-merged mesh is the archive. Optional lab Blob of the **existing** Public snapshot only. App Service disk stays not the archive. See [durable-graph-and-turn.md](durable-graph-and-turn.md) |
 | Azure App Service | Seed peer + bootstrap cache so the graph is not empty | Still a seed peer — **not** the realtime / chat / presence server |
-| Identity | SIWE cookie session binds a checksummed address (EOA or ERC-1271 smart account). After auth, mainnet ENS, Polygon Unstoppable, plus Farcaster / Lens / RSS3 are held claims on `/feed` when bidirectional public lookups match (not login). **This slice** assembles/updates the Mine overlay `GunUserNode` with those linked claim ids after SIWE + successful lookups (local graph / dest ACL — not session-display-only). Public `s3rch/users/<wallet>` still requires an explicit share of the node or of one claim. Owner can unshare the user node (tombstone) or one claim (republish without that indicator). Overlay can still pull `GET /decentralized/{account}`; items already carry `author` / `provenance` | Same user node, HAM-merged. **Still later:** mesh-wide Check, Social Light hop, email/phone / third-party KYC attestations |
-| Visibility | Light Check see-grants on the lab dest ACL (memory / IndexedDB), including native post, room, user, and held-claim objects. hopcap 1. Public seed is still lab lists plus **explicitly shared** native posts and **explicitly shared** pulled public-source items. Shared rooms live on client `s3rch/rooms`, not the seed snapshot. Shared user nodes live on client `s3rch/users`, not the seed snapshot. A grant is not share-into-mesh. **Delivery** of a granted Gun-stored object is a holder put onto `s3rch/granted/<accessor>` (Granted tab). URL fetches stay handoffs. Chat / presence are not grant-delivered. Browser pulls stay Mine until share | Same Check on **Gun-stored** objects across the mesh. URL fetches stay handoffs. Durable graph + TURN: [durable-graph-and-turn.md](durable-graph-and-turn.md) (docs; not deployed) |
+| Identity | SIWE cookie session binds a checksummed address (EOA or ERC-1271 smart account). After auth, mainnet ENS, Polygon Unstoppable, plus Farcaster / Lens / RSS3 are held claims on `/feed` when bidirectional public lookups match (not login). **This slice** assembles/updates the Mine overlay `GunUserNode` with those linked claim ids after SIWE + successful lookups (local graph / dest ACL — not session-display-only). Public `s3rch/users/<wallet>` still requires an explicit share of the node or of one claim. Owner can unshare the user node (tombstone) or one claim (republish without that indicator). Overlay can still pull `GET /decentralized/{account}`; items already carry `author` / `provenance` | Same user node, HAM-merged. **Still later:** email/phone / third-party KYC attestations |
+| Visibility | Light Check see-grants on the lab dest ACL (memory / IndexedDB) **and** mesh `MeshSeeGrant` rows on `s3rch/acl/<owner>/<aclKey(object)>/<accessor>` so peers can `checkSee` the HAM-merged graph at now. hopcap 1. Optional Social Light `HopFactor` may factor an already-named grant or owner path — hop missing does not fail; hop alone never allows; hop never mints. Public seed is still lab lists plus **explicitly shared** native posts and **explicitly shared** pulled public-source items. Shared rooms live on client `s3rch/rooms`, not the seed snapshot. Shared user nodes live on client `s3rch/users`, not the seed snapshot. A grant is not share-into-mesh. **Delivery** of a granted Gun-stored object is a holder put onto `s3rch/granted/<accessor>` (Granted tab). URL fetches stay handoffs. Chat / presence are not grant-delivered. Browser pulls stay Mine until share | Same Check on **Gun-stored** objects across the mesh. URL fetches stay handoffs. Durable graph + TURN: [durable-graph-and-turn.md](durable-graph-and-turn.md) (docs; not deployed) |
 | Streaming, chat, sharing | Native compose + rooms as Gun threads + **live chat** (`GunChatNode` on `s3rch/rooms/<id>/chat`) + **presence** (`GunPresenceNode` on `s3rch/rooms/<id>/presence`, heartbeat ~25s, expire ~75s, admit + Check, Mine overlay until the room is shared) + explicit share-into-mesh of an admitted GunFeedNode onto `s3rch/items`, GunRoomNode onto `s3rch/rooms`, or GunUserNode onto `s3rch/users` + **honest unshare** (HAM tombstone `unshared: 1` / `v: 1` on the same path; claim unshare republishes without that indicator) + **`gun/lib/webrtc`** (STUN-only ICE). No TURN, meetings, or streams | TURN when NAT blocks STUN: **Panopticon end-state**; optional time-boxed infra coturn with the **same URI contract** and DNS cutover. Not WG/Tailscale for browsers. Meetings / streams later. Not a hosted chat or presence server |
 | Tabs | **Public** (snapshot hydrate + shared posts / rooms), **Mine** (overlay + native + owned rooms + admitted browser pulls), **Network** (live Gun `.map().on` on `s3rch/items` and `s3rch/rooms`; empty if the seed peer is down and no mesh rows are in memory), **Granted** (live `s3rch/granted/<session>` after SIWE; empty if the seed peer is down and no inbox rows are in memory). **Discover** lists tags already on Public and that live Network mesh (inventory counts + matching shared rooms) and a quiet line of **shared** user nodes (truncated address / indicators). Mine overlay and Granted are not Discover sources. Readers drop unshared public rows when they observe the tombstone | Users do not dump every pull into the public seed by default (already this slice). Unshare tombstones hide retracted public puts (delivery must not resurrect them). Meetings / streams later. Durable graph + TURN architected in [durable-graph-and-turn.md](durable-graph-and-turn.md) |
 
@@ -71,7 +71,7 @@ now:
   unshare (post / room / user node) → own-only confirm → HAM tombstone { id, unshared: 1, v: 1 } put on the same path
   unshare (one claim) → republish s3rch/users/<wallet> without that indicator
   readers → fromGun* drops unshared / unknown v; Public / Network / Discover hide the row when the put is observed
-  grant see → dest ACL + holder put onto s3rch/granted/<accessor>/{items|rooms|users}
+  grant see → dest ACL (IndexedDB immediate) + MeshSeeGrant put on s3rch/acl + holder put onto s3rch/granted/<accessor>/{items|rooms|users}
   Granted tab → live Gun .map().on on that accessor inbox after SIWE (not Public, not Network)
   revoke see → dest ACL cancel immediate + inbox tombstone (mesh retract can wait)
 
@@ -152,7 +152,7 @@ We can collect **many proof types** onto the same user node. Holding a proof is 
 | Third-party digital KYC attestations | Later, only if a real issuer exists. Not a s3r.ch passport product | **Private** (held claim) |
 | Old-school email / phone confirmation | Later. Proves the claim **to the holder** | **Private**. Confirming an email does **not** publish it |
 
-Those last two are supportable end-state, not this slice. This PR has no email/SMS, no KYC vendor, no verify UI. Mesh-wide Check and Social Light hop stay later.
+Those last two are supportable end-state, not this slice. This PR has no email/SMS, no KYC vendor, no verify UI. Mesh-wide Check + Social Light hop factor ship; hop UI and KYC do not.
 
 ### Visibility is a grant (lighter SociACL Check)
 
@@ -182,7 +182,7 @@ held claim (overlay, private)
   → grant delivery (Gun-stored only)        → s3rch/granted/<accessor> (Granted tab)
 ```
 
-This slice ships light Check see-grants on the lab dest ACL and live mesh **delivery** of granted Gun-stored objects. Live `/feed` must not claim KYC, uniqueness, or full mesh ACL. A grant is not login. Delivery is not share-into-mesh. URL fetches stay handoffs.
+This slice ships light Check see-grants on the lab dest ACL **and** Gun `s3rch/acl` `MeshSeeGrant` rows, plus live mesh **delivery** of granted Gun-stored objects. Optional hop may factor Check; it cannot mint. Live `/feed` must not claim KYC, uniqueness, or hop UI. A grant is not login. Delivery is not share-into-mesh. URL fetches stay handoffs.
 
 ## How SociACL meets Gun (locks, 2026-08-31)
 
@@ -196,7 +196,7 @@ These locks stay put. s3r.ch (this repo) is **product / UX**. The full Gun adapt
 
 4. **The destination must not trust our metadata** except untrusted hints: user/agent ID as we consider them, the data we think they are requesting, optional verb/context. The destination **re-authorizes**. When **we** are the destination (ingest or seeder returning into Gun), we re-authorize **before** putting a native SociACL object in Gun. Do **not** copy RSS3 / KYC response fields into a grant.
 
-5. **Social Light hop** can factor a Check; it **cannot mint the grant**. Mentioned once. No hop UI in this slice.
+5. **Social Light hop** can factor a Check; it **cannot mint the grant**. `checkSee(..., hint?, hop?)`. `acceptHop` / `decodeHop` do not verify. No hop UI on public `/` or `/feed`.
 
 ```
 URL (RSS3 / RSS / ActivityPub / Nostr / issuer)  --handoff-->  fetch
@@ -309,6 +309,8 @@ gun.get('s3rch').get('rooms').get(encodeKey(id)).get('presence').get(encodeKey(a
 gun.get('s3rch').get('users').get(wallet)          → GunUserNode (write after explicit share)
 gun.get('s3rch').get('granted').get(accessor).get('items'|'rooms'|'users').get(encodeKey(id))
                                                    → grant-delivery envelope (v: 1; not a public row)
+gun.get('s3rch').get('acl').get(aclPrincipalKey(owner)).get(aclKey(object)).get(aclPrincipalKey(accessor))
+                                                   → MeshSeeGrant (stated 1|0; not a Check object)
 gun.get('s3rch').get('meta')                       → seed meta, not a Check object
 ```
 
@@ -458,7 +460,7 @@ Outbound: `OutboundAdapter` is an interface only. Native s3r.ch compose is **not
 - TURN so NAT'd peers can mesh when STUN cannot punch. Architected in [durable-graph-and-turn.md](durable-graph-and-turn.md) (not deployed). Google STUN ≠ TURN. No TURN on App Service. Product end-state is Panopticon (path A). Optional time-boxed infra coturn (path B) only with the same URI contract and DNS/config cutover.
 - Meetings / streams. Unshare tombstones hide retracted public puts — grant delivery must not resurrect those public rows. Network tab **does** ship (live Gun subscriptions; Discover reads that corpus). Granted tab **does** ship (grant inbox; not Discover). Gun user node + explicit claim share **do** ship. Unshare / HAM-delete **does** ship (client tombstone; not instant global delete). Live mesh **delivery** of granted Gun objects **does** ship. Signed-in **browser pull** of allowed sources through `/api/ingest` **does** ship (Mine until share; HAM-merge on explicit share). Direct browser-to-source still fails CORS. Not a finished P2P mesh claim.
 - Wire the SEA pair (not `recall` to sessionStorage) and PRF wrap after SIWE is proven — already this kit. Do not put `priv` / `epriv` on the user node.
-- Mesh-wide Check on Gun-stored objects (this slice is the lab dest ACL). URL fetches remain handoffs; they do not mint `see`. Not Hypermesh Phase 1. Social Light hop can factor a Check later; it cannot mint a grant.
+- Mesh-wide Check on Gun `s3rch/acl` **does** ship (plus lab IndexedDB for immediate privilege-down). URL fetches remain handoffs; they do not mint `see`. Not Hypermesh Phase 1. Social Light hop can factor a Check; it cannot mint a grant. No hop UI. Email/phone KYC still later.
 - Email/phone confirmation and third-party KYC attestations as private claims (prove to holder ≠ publish).
 - Meetings and live streams. Chat and presence over Gun subscriptions on a visible room **do** ship; they are not WebRTC. `gun/lib/webrtc` + STUN **does** ship; it is not a meeting or stream product.
 - ActivityPub / Nostr / Farcaster / ATProto **outbound** posting (inbound pull for those networks is wired; posting is not). A browser extension CORS bypass is a different PR.
