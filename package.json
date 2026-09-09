@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@coinbase/wallet-sdk": "^4.3.7",
+    "@farcaster/core": "^0.20.0",
     "@tanstack/react-query": "^5.102.8",
     "@walletconnect/ethereum-provider": "^2.24.0",
     "gun": "^0.2020.1241",

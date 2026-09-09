@@ -100,6 +100,7 @@ export function admitNativePost(
 /**
  * Prepare an explicit share-into-mesh put.
  * Does not grant see. Does not call OutboundAdapter.
+ * Outbound is a separate SIWE POST /api/outbound.
  * Clears a prior `unshared` marker so a re-share HAM-wins over a tombstone.
  */
 export function prepareShareIntoMesh(

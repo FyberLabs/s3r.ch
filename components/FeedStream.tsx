@@ -60,6 +60,7 @@ import { ComposeForm } from "@/components/ComposeForm";
 import { DiscoverPanel } from "@/components/DiscoverPanel";
 import { useGunPeer, type FeedGun } from "@/components/GunPeerProvider";
 import { IngestForm } from "@/components/IngestForm";
+import { OutboundPostControls } from "@/components/OutboundPostControls";
 import { PostSeeGrantControls } from "@/components/PostSeeGrantControls";
 import { RoomSeeGrantControls } from "@/components/RoomSeeGrantControls";
 import { RoomChat } from "@/components/RoomChat";
@@ -1215,11 +1216,13 @@ function FeedItems({
           ? items
               .filter((item) => ownsNativePost(item, sessionAddress))
               .map((item) => (
-                <PostSeeGrantControls
-                  key={`grant-${item.id}`}
-                  address={sessionAddress}
-                  item={item}
-                />
+                <div key={`own-${item.id}`}>
+                  <OutboundPostControls item={item} />
+                  <PostSeeGrantControls
+                    address={sessionAddress}
+                    item={item}
+                  />
+                </div>
               ))
           : null}
       </div>
@@ -1322,6 +1325,7 @@ function FeedCard({
             </>
           )}
         </div>
+        <OutboundPostControls item={item} />
         <PostSeeGrantControls address={sessionAddress} item={item} />
       </div>
     );

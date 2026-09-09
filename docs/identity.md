@@ -32,6 +32,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - **Honest unshare** of a previously shared post, room, user node, or claim: own-only confirm, then a `v: 1` HAM tombstone (`unshared: 1`) on the same path, or a republish of the user node without that claim. Readers drop or hide when they observe the put. Observation can wait. Not a see-grant revoke. Room unshare does not delete Mine posts inside; public chat and presence then become local or empty for those readers. No `/api/unshare`.
 - **Browser WebRTC** (`gun/lib/webrtc` after `gun/browser`, STUN-only ICE). Additive to the same-origin `/gun` seed peer. If ICE fails, seed / snapshot like today. STUN ≠ TURN. Chat and presence stay Gun subscriptions.
 - **Signed-in browser pull** of the same documented public sources the lab seeder uses (Farcaster hub FIDs, ATProto AppView, RSS/Atom, ActivityPub actor outbox, Nostr kind 1 relay query, optional RSS3 GI) through `/api/ingest`. Dest `admitFeedNode` before a `GunFeedNode` `v: 1` lands on Mine. Explicit share-into-mesh may HAM-merge onto `s3rch/items`. Direct browser-to-source still fails CORS. A pull is not a grant and is not an automatic public put.
+- **Explicit Farcaster / ATProto outbound** on an owned native post (`Post to Farcaster` / `Post to Bluesky`). SIWE `POST /api/outbound`. Server-side `FARCASTER_FID` + `FARCASTER_SIGNER_KEY` and `ATPROTO_IDENTIFIER` + `ATPROTO_APP_PASSWORD` only — never `NEXT_PUBLIC_*`, never on Gun. Missing creds fail closed. Share / grant / pull do not post out. Not a second IdP.
 
 ## What this slice does not ship
 
@@ -48,7 +49,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - Friend-of-friend, Social Light hop UI, Elect / wills / Case C, or any verb beyond `see`. Hop may factor Check in TS; it is not a grant and has no public-page UI.
 - NextAuth, Keycloak, or email magic link on this app.
 - TURN, meetings, live streams, hop UI, Elect / wills / Case C. Live chat and presence over Gun subscriptions ship; they are not a TURN/WebRTC mesh. `gun/lib/webrtc` + STUN ships; TURN does not. Durable graph + TURN requirements: [durable-graph-and-turn.md](durable-graph-and-turn.md).
-- OutboundAdapter / Farcaster / ATProto / ActivityPub / Nostr / RSS outbound. Native post ≠ bridging out. Inbound pull for those networks is a separate path.
+- ActivityPub / Nostr / RSS / RSS3 outbound. Farcaster + ATProto outbound **do** ship as an explicit SIWE action (not auto-bridge). Inbound pull for those networks stays a separate path. Native post ≠ bridging out.
 - Popular / Novel columns, likes / views / engagement scores. Network **does** ship as the live mesh view (not a finished P2P mesh claim).
 - Instant mesh-wide delete, or an Azure `/api/unshare`. Unshare is a client Gun tombstone / republish. Observation can wait. Check revoke stays dest ACL.
 - Dumping user posts into the public seed / `GET /api/feed` snapshot / lab seeder by default.
@@ -74,6 +75,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 | `lib/auth.ts` is seed authorize | User identity lives in `lib/identity/` |
 | Check is grants, not login | Session subject stays the checksummed address. A live `IdentitySeeGrant` is not a session. hopcap 1. Revoke is immediate. URL 200 / ingest / seeder fetch is not `see` |
 | Dest ACL is local + mesh | See-grants live in memory / origin IndexedDB (immediate privilege-down) and HAM-merge on Gun `s3rch/acl` as `MeshSeeGrant` (`stated` 1\|0). Cancel is owner-only and bumps `hamState`. Never write SIWE signatures, SEA `priv` / `epriv`, wrap envelopes, or paper strings onto public Gun. Hop never lands as a grant row |
+| Outbound is explicit and session-gated | Farcaster hub submitMessage / ATProto PDS createRecord run only after SIWE on an owned native post. Server env only. Share ≠ outbound. Never put signer keys, app passwords, or PDS JWTs on Gun |
 
 ## Libraries
 
@@ -89,6 +91,7 @@ Pinned to current majors compatible with Next.js 16, React 19, and Node 24:
 | `@tanstack/react-query` | Required by wagmi |
 | `jose` | Sign nonce and session cookies (HS256) |
 | `gun` / `gun/sea` | Already a dependency. `createSeaPair()` calls `SEA.pair()` after SIWE. Persist in IndexedDB, not `recall()` |
+| `@farcaster/core` | Server-only CastAdd encode for hub `submitMessage`. Never imported from client components |
 
 No SimpleWebAuthn. The PRF helper uses native `navigator.credentials.create` / `get` with `extensions.prf`.
 
@@ -128,7 +131,13 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `components/useMineUserOverlay.ts` | After SIWE: hydrate previous overlay + assemble/link settled lookups. Not a public put |
 | `components/UserNodeControls.tsx` | Signed-in publish / unshare user node and share / unshare claim (confirm + admit + put). Held vs Public on linked overlay claims. Copy stays visitor verbs |
 | `components/GunPeerProvider.tsx` | Thin `/feed` Gun handle so IdentityBar can put a user node on the same browser Gun FeedStream constructed |
-| `lib/compose.ts` | Native post builder + admit-before-overlay / admit-before-share / admit-before-unshare. Empty body rejected |
+| `lib/compose.ts` | Native post builder + admit-before-overlay / admit-before-share / admit-before-unshare. Empty body rejected. Does not call OutboundAdapter |
+| `lib/outbound.ts` | UI-safe parse / own-native gate / draft. Not hub signing |
+| `lib/outbound-adapters.ts` | Server factory: Farcaster + ATProto live; ActivityPub / Nostr unimplemented |
+| `lib/farcaster-outbound.ts` | Hub `submitMessage` CastAdd. `FARCASTER_FID` + `FARCASTER_SIGNER_KEY`. Never `NEXT_PUBLIC_*` |
+| `lib/atproto-outbound.ts` | PDS `createSession` + `createRecord`. `ATPROTO_IDENTIFIER` + `ATPROTO_APP_PASSWORD`. JWT not stored |
+| `app/api/outbound` | SIWE `GET` status + `POST` `{ network, item }`. Own native only. 401 without session |
+| `components/OutboundPostControls.tsx` | Short Mine verbs: Post to Farcaster / Post to Bluesky. Confirm, then POST. No protocol essay |
 | `lib/rooms.ts` | Room builder, GunRoomNode csv tags, admit-before-overlay / admit-before-share / admit-before-unshare of the room node, `roomTag`, `roomsForTab`, `itemsInRoom`, `rankRooms` |
 | `lib/chat.ts` | Room chat builder, GunChatNode, admit-before-overlay / admit-before-put on the room chat path, Mine overlay until the room is on `s3rch/rooms` |
 | `lib/presence.ts` | Room presence builder, GunPresenceNode, admit-before-overlay / admit-before-put on the room presence path, soft TTL, Mine overlay until the room is on `s3rch/rooms` |
@@ -264,6 +273,14 @@ IdentityBar fetches after the SIWE session (separate from ENS / indicators) and 
 
 1. Create a Resolution Service API key from the Unstoppable partner / API panel (backend key, not a browser key).
 2. Set `UNSTOPPABLE_API_KEY` on the Azure App Service **runtime** env (not `NEXT_PUBLIC_*`, not Docker build-arg). Local: `.env.local`.
+
+### Operator path (Farcaster / ATProto outbound)
+
+Server-only. Not a second IdP. SIWE still gates who may press **Post to Farcaster** / **Post to Bluesky**.
+
+1. Farcaster: set `FARCASTER_FID` and `FARCASTER_SIGNER_KEY` (32-byte ed25519 hex for a signer already authorized on that FID). Optional `FARCASTER_HUB_AUTH=user:pass` if the hub uses `--rpc-auth`. `FARCASTER_HUB_BASE` is the same override as inbound pull.
+2. Bluesky: set `ATPROTO_IDENTIFIER` and `ATPROTO_APP_PASSWORD`. Optional `ATPROTO_PDS_BASE` (default `https://bsky.social`). Do not use `ATPROTO_APPVIEW_BASE` for writes.
+3. Never `NEXT_PUBLIC_*`. Never write these values, SIWE signatures, or the PDS access JWT onto Gun. Empty env fails closed with a short UI reason.
 3. Leave it empty if you do not have a key. On-chain stays the preferred path; a miss stays quiet.
 4. Key Vault later — not this PR.
 

@@ -35,7 +35,8 @@ export const BRIDGE_MATRIX: NetworkBridge[] = [
     network: "ATProto / Bluesky",
     pull: "yes",
     repost: "yes",
-    thisSlice: "public seeder + signed-in browser pull via AppView (no auth); /api/ingest CORS proxy",
+    thisSlice:
+      "public seeder + signed-in browser pull via AppView; explicit SIWE outbound via PDS createRecord (server app password)",
   },
   {
     network: "Nostr",
@@ -47,7 +48,8 @@ export const BRIDGE_MATRIX: NetworkBridge[] = [
     network: "Farcaster",
     pull: "yes",
     repost: "yes",
-    thisSlice: "public seeder + signed-in browser pull via Hubble HTTP (Pinata, no API key); /api/ingest CORS proxy",
+    thisSlice:
+      "public seeder + signed-in browser pull via Hubble HTTP; explicit SIWE outbound via hub submitMessage (server signer)",
   },
   {
     network: "Lens",
@@ -91,7 +93,11 @@ export type OutboundResult =
   | { ok: true; network: string; url: string }
   | { ok: false; network: string; reason: string };
 
-/** Outbound posting is not wired. Do not claim it works. */
+/**
+ * Documented outbound post interface.
+ * Farcaster + ATProto are wired (SIWE + server env). Others stay unimplemented.
+ * Share-into-mesh does not call post().
+ */
 export interface OutboundAdapter {
   readonly network: string;
   readonly enabled: boolean;
@@ -112,11 +118,4 @@ export class UnimplementedOutbound implements OutboundAdapter {
   }
 }
 
-export const OUTBOUND_ADAPTERS: OutboundAdapter[] = [
-  new UnimplementedOutbound("RSS3 Data Sublayer"),
-  new UnimplementedOutbound("RSS / Atom"),
-  new UnimplementedOutbound("ActivityPub"),
-  new UnimplementedOutbound("ATProto / Bluesky"),
-  new UnimplementedOutbound("Nostr"),
-  new UnimplementedOutbound("Farcaster"),
-];
+/** Built in `createOutboundAdapters()` so client bundles never load hub signers. */
