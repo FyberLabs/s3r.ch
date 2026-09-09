@@ -232,3 +232,28 @@ describe("sessionGatedAllocate", () => {
     assert.equal(missed, null);
   });
 });
+
+describe("product consume locks", () => {
+  it("keeps the API key on the Next hop and SIWE on this origin", () => {
+    const hop = helperSource();
+    const route = readFileSync(
+      new URL("../app/api/turn/allocate/route.ts", import.meta.url),
+      "utf8",
+    );
+    const ice = readFileSync(new URL("./turn-ice.ts", import.meta.url), "utf8");
+    const tests = readFileSync(new URL("./turn-allocate.test.ts", import.meta.url), "utf8");
+    assert.equal(hop.includes("X-Api-Key"), true);
+    assert.equal(route.includes("readSessionToken"), true);
+    assert.equal(route.includes("sessionGatedAllocate"), true);
+    assert.equal(route.includes("NEXT_PUBLIC_"), false);
+    assert.equal(ice.includes("NEXT_PUBLIC_"), false);
+    assert.equal(ice.includes("TURN_AUTH_SECRET"), false);
+    assert.equal(hop.includes("Keycloak"), false);
+    assert.equal(route.includes("Keycloak"), false);
+    assert.equal(hop.includes("Stripe"), false);
+    assert.equal(hop.includes("gun.get"), false);
+    assert.equal(ice.includes("gun.get"), false);
+    assert.equal(tests.includes("fetchImpl"), true);
+    assert.equal(tests.includes("jsonResponse(200, ALLOCATE_OK_BODY)"), true);
+  });
+});

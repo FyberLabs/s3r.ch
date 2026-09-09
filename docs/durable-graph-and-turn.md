@@ -262,6 +262,17 @@ Do not invent a second control plane on s3r.ch Azure to do this.
 
 Honest smallest rule: **signed-in only**. The browser POSTs same-origin `/api/turn/allocate` (cookie). Next verifies the SIWE session, then hops with the product API key. Unsigned / missing env / 401 / 503 / network → STUN + `/gun`. Re-allocate before `expiresAt` by mutating the same `opt.rtc` object Gun's webrtc adapter closes over. Public `/` and `/feed` stay short visitor verbs.
 
+Product locks (signed 2026-09-09). Do not expand this slice past these:
+
+1. Next server only calls allocate. API key server-side only — never `NEXT_PUBLIC_*`, Gun, localStorage, or browser-visible.
+2. SIWE stays on s3r.ch origin. No SIWE-as-Panopticon-login. No Keycloak. Wallet door parked.
+3. After SIWE verified server-side, server may allocate for that session. Unsigned/failed allocate → keep STUN + `/gun` fail-open.
+4. Re-allocate before `expiresAt`. Do not persist HMAC credential or `TURN_AUTH_SECRET` on Gun/public mesh.
+5. No public-page architecture essays. Short connection status only.
+6. Azure App Service stays seed peer, not TURN. This slice is allocate consume only.
+7. No Hypermesh lease/Checkout/Stripe, oracles, payments, or “finished P2P mesh” claims.
+8. Hermetic tests with mocked allocate — do not require live Panopticon in CI.
+
 | Env (server-only) | Role |
 | --- | --- |
 | `PANOPTICON_TURN_BASE` | Allocate origin, or origin plus `/api/v1` / `/api/v1/turn` |
