@@ -7,7 +7,12 @@ import {
   isIdentitySeeGrant,
   sanitizeSeeAclSnapshot,
 } from "./see-acl";
-import { heldClaimOptions, parseGrantAccessor, grantWindowFromHours } from "./held-claims";
+import {
+  heldClaimOptions,
+  heldClaimOptionsFromIndicators,
+  parseGrantAccessor,
+  grantWindowFromHours,
+} from "./held-claims";
 
 const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const BOB = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
@@ -91,6 +96,14 @@ describe("held claim ids and grant form", () => {
     for (const option of options) {
       assert.equal(option.id.includes("/claims/"), false);
     }
+    const fromOverlay = heldClaimOptionsFromIndicators(ALICE, [
+      "ens:vitalik.eth",
+      "farcaster:dwr",
+    ]);
+    assert.deepEqual(
+      fromOverlay.map((option) => option.id),
+      [ALICE, "ens:vitalik.eth", "farcaster:dwr"],
+    );
   });
 
   it("requires a checksummed accessor and a positive window", () => {

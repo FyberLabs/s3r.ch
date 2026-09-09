@@ -30,7 +30,7 @@ import {
   roomsForTab,
   type Room,
 } from "./rooms";
-import { admitComposedUser, composeUser } from "./users";
+import { admitComposedUser, assembleMineUser, composeUser } from "./users";
 
 const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const BOB = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
@@ -187,6 +187,24 @@ describe("prepareGrantUserDelivery", () => {
     assert.equal(prepared.node.payload.includes("ens:vitalik.eth"), true);
     assert.equal(prepared.node.payload.includes("farcaster:dwr"), false);
     assert.equal(prepared.node.payload.includes("priv"), false);
+  });
+
+  it("delivers from an assembled Mine overlay, not session-display-only claims", () => {
+    const acl = createMemorySeeAcl();
+    const overlay = assembleMineUser({
+      address: ALICE,
+      lookups: { ens: "vitalik.eth", farcaster: "dwr" },
+      nowSeconds: NOW,
+    });
+    assert.ok(overlay);
+    admitComposedUser(acl, overlay, ALICE);
+    const grant = grantFor("farcaster:dwr");
+    applySeeGrant(acl, ALICE, grant);
+    const prepared = prepareGrantUserDelivery(acl, overlay, ALICE, grant, NOW);
+    assert.ok(!("denied" in prepared));
+    if ("retracted" in prepared.node) return;
+    assert.equal(prepared.node.payload.includes("farcaster:dwr"), true);
+    assert.equal(prepared.node.payload.includes("ens:vitalik.eth"), false);
   });
 });
 

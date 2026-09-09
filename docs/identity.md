@@ -18,7 +18,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - After a SIWE session exists: a **mainnet ENS held claim** on `/feed` when reverse **and** forward match the checksummed session address. ENS is never login and never the session key.
 - After a SIWE session exists: a **Polygon UNS Unstoppable held claim** on `/feed` when reverse **and** forward checksum-match the session address. Unstoppable is never login and never the session key. SNS / Solana names are not this slice.
 - After a SIWE session exists: **Farcaster / Lens / RSS3 held claims** on `/feed` when a bidirectional public lookup binds them to the checksummed session address. These are never login (no SIWF, no Lens OAuth, no RSS3 login) and never the session key.
-- After a SIWE session exists: a **Gun user node** (`GunUserNode` on `s3rch/users/<wallet>`, `v: 1`). Verified held indicators link as claim ids on that node. Default is **Mine / private**. Explicit share-into-mesh of the user node or of an individual claim is confirm + admit + put — same pattern as a native post or room. Holding a claim is not publishing it. Unshare retracts the user node (tombstone) or republishes without one claim.
+- After a SIWE session exists: a **Gun user node** (`GunUserNode` on `s3rch/users/<wallet>`, `v: 1`). Verified held indicators **assemble/update the Mine overlay** with linked claim ids after successful lookups (wallet + ENS / Unstoppable / Farcaster / Lens / RSS3). That overlay is local Gun-shaped state (dest ACL + origin IndexedDB) — not session-display-only, and **not** an automatic public put. Explicit share-into-mesh of the user node or of an individual claim is confirm + admit + put — same pattern as a native post or room. Holding a claim is not publishing it. Unshare retracts the user node (tombstone) or republishes without one claim. Session chrome shows **Held.** vs **Public.** without architecture essays.
 - **ERC-1271** (and EIP-6492 via the same viem path) so a smart-account wallet can SIWE. Session subject stays the checksummed contract or EOA address.
 - **Paper-backup UI** for the wrap secondary KEK (`s3rch-wrap-v1:<base64url>`). Recovery, not login. Random 32-byte paper IKM (not a wallet-signature export). Shown once on wrap/export; paste unlocks.
 - Light SociACL **Check see-grants** in the browser (`CHECK(see, object, accessor)` at `now`). Quiet `/feed` grant / revoke after SIWE on **held claims** and on **own native posts**. Grants are `IdentitySeeGrant` records on an in-memory / IndexedDB dest ACL. Not login. Not share-into-mesh.
@@ -119,11 +119,13 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `lib/identity/indicators.ts` | Session-gated Farcaster / Lens / RSS3 in one trip. Isolates GI misses |
 | `lib/identity/check.ts` | Consume-contract Check: `checkSee`, `checkSeeGrant`, `applySeeGrant`, `cancelSee`, `admitFeedNode`, `admitRoomNode`, `admitChatNode`, `admitPresenceNode`, `admitUserNode`, `acceptHint`, souls (`itemSoul`, `roomSoul`, `chatSoul`, `presenceSoul`, `userSoul`, `grantedSoul`) |
 | `lib/grant-delivery.ts` | Holder prepare + accessor accept for grant-inbox envelopes (`v: 1`). Native posts, rooms, user/claim only. Tombstone retract. Does not write Public |
-| `lib/users.ts` | User node builder, GunUserNode csv indicators, admit-before-overlay / admit-before-share / admit-before-unshare of the user node or an individual claim. Mine overlay until explicit put. No `/api/users` |
+| `lib/users.ts` | User node builder, GunUserNode csv indicators, assemble/link held claims onto the Mine overlay after SIWE lookups, admit-before-overlay / admit-before-share / admit-before-unshare of the user node or an individual claim. Mine overlay until explicit put. No `/api/users` |
+| `lib/identity/user-overlay.ts` | Origin IndexedDB / memory store for the Mine overlay `GunUserNode`. Same wire shape as `s3rch/users/<wallet>`. Fail closed on secrets. Not a public put |
 | `lib/unshare.ts` | HAM tombstone helpers (`unshared: 1`, `v: 1`), drop-by-id, honest copy. Fail closed for unknown `v` / unknown `unshared` |
 | `lib/identity/see-acl.ts` | Lab dest ACL (memory + IndexedDB). `IdentitySeeGrant` records only |
-| `lib/identity/held-claims.ts` | Claim ids linked from the user node (`ens:name.eth`, `unstoppable:brad.x`). Not `s3rch/users/{wallet}/claims/…` |
-| `components/UserNodeControls.tsx` | Signed-in publish / unshare user node and share / unshare claim (confirm + admit + put). Copy: holding ≠ publishing; grant is not share; unshare is not instant and not a revoke |
+| `lib/identity/held-claims.ts` | Claim ids linked from the user node (`ens:name.eth`, `unstoppable:brad.x`). Lookup settle vs pending. Not `s3rch/users/{wallet}/claims/…` |
+| `components/useMineUserOverlay.ts` | After SIWE: hydrate previous overlay + assemble/link settled lookups. Not a public put |
+| `components/UserNodeControls.tsx` | Signed-in publish / unshare user node and share / unshare claim (confirm + admit + put). Held vs Public on linked overlay claims. Copy stays visitor verbs |
 | `components/GunPeerProvider.tsx` | Thin `/feed` Gun handle so IdentityBar can put a user node on the same browser Gun FeedStream constructed |
 | `lib/compose.ts` | Native post builder + admit-before-overlay / admit-before-share / admit-before-unshare. Empty body rejected |
 | `lib/rooms.ts` | Room builder, GunRoomNode csv tags, admit-before-overlay / admit-before-share / admit-before-unshare of the room node, `roomTag`, `roomsForTab`, `itemsInRoom`, `rankRooms` |
@@ -140,8 +142,8 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `app/api/identity/unstoppable` | `GET ?address=` — session-gated Unstoppable claim for the session address only |
 | `app/api/identity/indicators` | `GET ?address=` — session-gated Farcaster / Lens / RSS3 claims for the session address only |
 | `app/api/identity/logout` | `POST` — clear identity cookies |
-| `components/IdentityBar.tsx` | Quiet `/feed` connect + Passkey wallet (Smart Wallet onramp) + optional WalletConnect + SIWE + mesh key + wrap/unlock + paper backup + ENS + Unstoppable + public-indicator claims + publish user node / share claim + see-grant / revoke + sign out |
-| `components/SeeGrantControls.tsx` | Signed-in grant see / revoke of a held claim (wallet / ENS / Unstoppable / FC / Lens / RSS3). Dest ACL + grant-inbox put. Public copy is a short UX hint. No hop UI |
+| `components/IdentityBar.tsx` | Quiet `/feed` connect + Passkey wallet (Smart Wallet onramp) + optional WalletConnect + SIWE + mesh key + wrap/unlock + paper backup + held-claim lookups that assemble the Mine overlay + publish user node / share claim + see-grant / revoke + sign out |
+| `components/SeeGrantControls.tsx` | Signed-in grant see / revoke of a Gun-linked held claim from the Mine overlay. Dest ACL + grant-inbox put. Public copy is a short UX hint. No hop UI |
 | `components/ComposeForm.tsx` | Signed-in native compose onto Mine. Optional `roomId` adds the room membership tag. Signed-out: one-line SIWE hint, not a second IdP |
 | `components/PostSeeGrantControls.tsx` | Grant see / revoke on an owned native post (`claimId` = post id / item soul). Dest ACL + grant-inbox put |
 | `components/DiscoverPanel.tsx` | Discover on Public / Network: tags already on seed + shared rooms + live mesh, inventory counts, matching shared rooms, quiet shared-user provenance. Same ranker. Not search / Popular / Mine. Public copy is a short UX hint |
@@ -219,7 +221,7 @@ This slice is **mainnet ENS only**. A `createPublicClient({ chain: mainnet, tran
 
 `GET /api/identity/ens?address=` is session-gated. The query address, when present, must match the session subject. The route does not become an open ENS proxy and does **not** write the claim onto the public Gun graph.
 
-IdentityBar caches the claim in component state for the current session (no Redis). Quiet line format: `ENS claim: name.eth` or nothing. `vitalik.eth` ↔ `0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` still reverse+forward as of 2026-09-01 and is the documented format example — not a screenshot subject for Anvil.
+IdentityBar caches the claim in component state for the current session (no Redis), then assembles it onto the Mine overlay as `ens:name.eth`. Session chrome shows the name as **Held.** until an explicit share (**Public.**). `vitalik.eth` ↔ `0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` still reverse+forward as of 2026-09-01 and is the documented format example — not a screenshot subject for Anvil.
 
 ## Unstoppable held claim (after SIWE, not login)
 
@@ -254,7 +256,7 @@ Hosted Resolution Service (`api.unstoppabledomains.com/resolve`) requires a Bear
 
 If on-chain reverse/forward **throws** (RPC miss), the route may fall back to Resolution Service **only** when `UNSTOPPABLE_API_KEY` is set on the server. A successful empty reverse is final — do not shop a second source. Empty / unset key = quiet empty (same class as an RSS3 GI miss). Never send the key to the client. Do not add Key Vault in this slice.
 
-IdentityBar fetches after the SIWE session (separate from ENS / indicators) and caches the claim in component state (no Redis). Quiet line format: `Unstoppable claim: name.crypto` (or whatever TLD the verified name uses) or nothing. Tests use a dummy `0xCcCC…cccC`. `brad.x` ↔ `0x8aaD44321A86b170879d7A244c1e8d360c99DdA8` still reverse+forwards on Polygon ProxyReader as of 2026-09-02 and is the documented format example — not a screenshot subject. The UD docs wallet `0x88bc…` still reverse-resolves `jim-unstoppable.x` but its `crypto.ETH.address` does **not** checksum-match, so it is not a fixture.
+IdentityBar fetches after the SIWE session (separate from ENS / indicators) and caches the claim in component state (no Redis), then links it on the Mine overlay as `unstoppable:name`. Session chrome shows the name as **Held.** until an explicit share. Tests use a dummy `0xCcCC…cccC`. `brad.x` ↔ `0x8aaD44321A86b170879d7A244c1e8d360c99DdA8` still reverse+forwards on Polygon ProxyReader as of 2026-09-02 and is the documented format example — not a screenshot subject. The UD docs wallet `0x88bc…` still reverse-resolves `jim-unstoppable.x` but its `crypto.ETH.address` does **not** checksum-match, so it is not a fixture.
 
 ### Operator path (`UNSTOPPABLE_API_KEY`, optional)
 
@@ -283,7 +285,7 @@ Hubble reverse is **custody**. A verified-only ETH address with no current id-re
 
 RSS3 GI (`https://gi.rss3.io`) is optional / currently DNS-dead. A GI miss is a quiet empty RSS3 claim, **not** a reason to drop Farcaster or Lens. Do not dump GI account activity, casts, or tx graphs as identity.
 
-`GET /api/identity/indicators?address=` is session-gated. The query address, when present, must match the session subject. The route does not become an open Farcaster / Lens / RSS3 proxy. ENS stays on `GET /api/identity/ens` and Unstoppable stays on `GET /api/identity/unstoppable` (unchanged verification rules). IdentityBar fetches ENS, Unstoppable, and this one indicators route after session — not three extra uncoordinated indicator trips — and caches results in component state (no Redis).
+`GET /api/identity/indicators?address=` is session-gated. The query address, when present, must match the session subject. The route does not become an open Farcaster / Lens / RSS3 proxy. ENS stays on `GET /api/identity/ens` and Unstoppable stays on `GET /api/identity/unstoppable` (unchanged verification rules). IdentityBar fetches ENS, Unstoppable, and this one indicators route after session — not three extra uncoordinated indicator trips — caches results in component state (no Redis), and links verified names onto the Mine overlay GunUserNode.
 
 ## WebAuthn PRF wrap (recovery, not login)
 
@@ -346,9 +348,9 @@ After signed-in + mesh key present:
 - Paste field + `Unlock with paper` when wrapped and locked; clear the paste after success
 - `Export paper backup` when wrapped and PRF is not known-unavailable: re-wrap with a new paper IKM, show `s3rch-wrap-v1:` once (copyable), then the user keeps it
 - Degrade copy when PRF is missing; paper unlock still works
-- After SIWE: quiet `ENS claim:` / `Unstoppable claim:` / indicator lines when verified. Empty Unstoppable does not drop the others
+- After SIWE: verified claims assemble onto the Mine overlay. Session chrome shows **Held.** / **Public.** — not `ENS claim:` essays. Empty Unstoppable does not drop the others
 - Do not dump `priv` / `epriv`, the paper string as a standing `/feed` hero line, or invalid-paste dumps
-- After SIWE: quiet **Grant see** / **Revoke** for a held claim (wallet / ENS / Unstoppable / …) to another checksummed address and a time window. Copy: this is a grant, not login. No hop UI
+- After SIWE: quiet **Grant see** / **Revoke** for a Gun-linked held claim (wallet / ENS / Unstoppable / …) to another checksummed address and a time window. Copy: this is a grant, not login. No hop UI
 
 ## Local SEA mesh key (after SIWE)
 
@@ -438,7 +440,9 @@ Quiet `/feed` IdentityBar: grant see + revoke after SIWE on held claims. Publish
 
 - Operator: App Service WebSockets + HTTP/2 so the already-wired same-origin `/gun` peer can stay up (Cloudflare + Azure ARR can still drop the socket; snapshot stays on Public). `gun/lib/webrtc` + STUN, the Network tab, the Granted tab, the Gun user node, unshare, live mesh delivery, and signed-in browser pull (Mine until share) already ship. Durable graph + TURN are **architected** in [durable-graph-and-turn.md](durable-graph-and-turn.md) (not deployed; live ICE stays STUN-only; no TURN secrets on Gun). Product end-state is Panopticon. Optional time-boxed infra coturn only with the same URI contract and DNS/config cutover — not a second control plane, not WG/Tailscale for browsers. Still later: meetings/streams. Room presence already ships. Google STUN ≠ TURN. Long-term low/no server footprint, TURN-class relays, Panopticon-hosted needed services, oracles/validators, versioned Gun `v`, and later crypto (or optional fiat) payments: [ARCHITECTURE.md — Steering locks (2026-09-02)](ARCHITECTURE.md#steering-locks-2026-09-02). Do not grow s3r.ch Azure into that service in this PR.
 - SNS / Solana names (not this slice; ENS remains primary mainnet reverse+forward. Unstoppable is a held claim after SIWE, not login).
-- More Check verbs, Social Light hop (may factor a Check later; it cannot mint a grant), friend-of-friend. Do not import `FyberLabs/SociACL`.
+- Mesh-wide Check on Gun-stored objects (this slice is the lab dest ACL + Mine overlay user node). URL fetches remain handoffs.
+- Social Light hop (may factor a Check later; it cannot mint a grant), friend-of-friend. Do not import `FyberLabs/SociACL`.
+- Email/phone confirmation and third-party KYC attestations as private claims (prove to holder ≠ publish).
 - Azure Key Vault for `IDENTITY_SESSION_SECRET` and later `UNSTOPPABLE_API_KEY` (still operator / Azure in this slice).
 - Contract verify on chains other than mainnet (this slice's 1271 RPC allowlist is mainnet only).
 
