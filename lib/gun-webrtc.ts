@@ -6,10 +6,13 @@
  * after `gun/browser` has set `window.Gun` and **before** `Gun(opts)` —
  * `root.once` skips later opt. See `node_modules/gun/lib/webrtc.js`.
  *
- * ICE here is **STUN only**. Google public `stun.l.google.com:19302` is
- * STUN, not TURN. Do not document Google as free TURN. Do not stand up
- * TURN on App Service. Requirements (lab infra vs Panopticon): 
- * `docs/durable-graph-and-turn.md`. Do not put TURN secrets on Gun.
+ * ICE defaults to **STUN only**. Google public `stun.l.google.com:19302`
+ * is STUN, not TURN. Do not document Google as free TURN. Do not stand
+ * up TURN on App Service. Signed-in browsers may receive short-lived
+ * `turn:` / `turns:` from same-origin `/api/turn/allocate` (Panopticon
+ * path A hop). Missing env / failed allocate keeps this STUN list.
+ * Requirements: `docs/durable-graph-and-turn.md`. Do not put TURN
+ * secrets on Gun.
  *
  * WebRTC is additive to `listenThenConnectSeedPeer`. If ICE fails, the
  * feed falls open to the same-origin `/gun` seed peer / snapshot.
@@ -27,8 +30,18 @@ export type StunIceServer = {
   urls: string;
 };
 
+export type IceServer = {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+};
+
 export type StunOnlyRtcOptions = {
   iceServers: StunIceServer[];
+};
+
+export type BrowserRtcOptions = {
+  iceServers: IceServer[];
 };
 
 export type BrowserRtcEnv = {
@@ -50,7 +63,8 @@ export function stunOnlyIceServers(): StunIceServer[] {
 
 /**
  * `opt.rtc` payload Gun's webrtc adapter merges on first opt.
- * STUN-only iceServers. No `turn:` / `turns:` URLs.
+ * Default is STUN-only. Callers may replace `iceServers` with a
+ * time-limited allocate list (same object — Gun closes over `opt.rtc`).
  */
 export function stunOnlyRtcOptions(): StunOnlyRtcOptions {
   return {

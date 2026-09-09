@@ -1,8 +1,9 @@
 /**
  * Same-origin Gun seed peer for the browser. Azure App Service is a seed
  * peer + bootstrap cache, not a mesh hub, not a TURN server, and not the
- * chat or presence server. WebRTC is additive (`gun/lib/webrtc` + STUN
- * only). Do not call user.recall({ sessionStorage: true }).
+ * chat or presence server. WebRTC is additive (`gun/lib/webrtc` + STUN,
+ * plus short-lived TURN iceServers when allocate succeeds). Do not call
+ * user.recall({ sessionStorage: true }).
  *
  * Gun 0.2020.1241 mesh emits hi/bye on the root onto (`gun._.on`), not the
  * graph `.on`. `Gun({ peers })` starts the wire immediately (websocket.js
@@ -18,7 +19,7 @@
 import {
   stunOnlyRtcOptions,
   withWebrtcHint,
-  type StunOnlyRtcOptions,
+  type BrowserRtcOptions,
 } from "./gun-webrtc";
 
 export const GUN_PEER_PATH = "/gun";
@@ -32,7 +33,7 @@ export const GUN_EMPTY_COPY = "Gun is empty. Nothing was invented.";
 
 export type BrowserGunOptions = {
   localStorage: false;
-  rtc: StunOnlyRtcOptions;
+  rtc: BrowserRtcOptions;
 };
 
 export type SeedPeerConnectOptions = {
@@ -67,13 +68,16 @@ export function sameOriginGunPeerUrl(origin: string): string {
 /**
  * Constructor options for `gun/browser`. No peers — listen for mesh hi/bye
  * first, then `opt` the same-origin `/gun` URL. Radisk stays at Gun's
- * browser default. `rtc` is STUN-only ICE for `gun/lib/webrtc` (imported
- * before construct). localStorage stays off.
+ * browser default. `rtc` defaults to STUN-only ICE; pass allocate
+ * iceServers when the Next hop succeeded. localStorage stays off.
  */
-export function browserGunOptions(_origin?: string): BrowserGunOptions {
+export function browserGunOptions(
+  _origin?: string,
+  rtc?: BrowserRtcOptions,
+): BrowserGunOptions {
   return {
     localStorage: false,
-    rtc: stunOnlyRtcOptions(),
+    rtc: rtc ?? stunOnlyRtcOptions(),
   };
 }
 
