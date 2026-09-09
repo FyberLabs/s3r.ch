@@ -9,6 +9,8 @@ import {
 } from "@/lib/browser-pull";
 import type { FeedItem } from "@/lib/feed-types";
 import { btnPrimary, btnSecondary, field, panel } from "@/lib/brand-ui";
+import { canUsePullRelay } from "@/lib/pull-relay";
+import { pullRelayStatusCopy, requestPullRelay, usePullRelay } from "@/lib/pull-relay-client";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
 
@@ -21,12 +23,38 @@ export function IngestForm({
 }) {
   const session = useIdentitySession();
   const see = useSeeAcl();
+  const { via } = usePullRelay();
   const [rssUrl, setRssUrl] = useState("");
   const [rss3Account, setRss3Account] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [lastAdmitted, setLastAdmitted] = useState<FeedItem[]>([]);
   const [confirmShare, setConfirmShare] = useState(false);
+  const relayCopy = pullRelayStatusCopy(via);
+
+  async function ingestJson(body: unknown): Promise<{
+    items: FeedItem[];
+    error?: string | null;
+  }> {
+    if (via && canUsePullRelay(body)) {
+      try {
+        const pulled = await requestPullRelay(body, via);
+        return { items: pulled.items, error: pulled.error };
+      } catch {
+        /* same-origin proxy stays valid */
+      }
+    }
+    const response = await fetch("/api/ingest", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const payload = (await response.json()) as {
+      items?: FeedItem[];
+      error?: string | null;
+    };
+    return { items: payload.items ?? [], error: payload.error };
+  }
 
   async function submitOverlay(kind: "rss" | "rss3") {
     setBusy(true);
@@ -38,16 +66,8 @@ export function IngestForm({
         kind === "rss"
           ? { rssUrl: rssUrl.trim() }
           : { rss3Account: rss3Account.trim() };
-      const response = await fetch("/api/ingest", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const payload = (await response.json()) as {
-        items?: FeedItem[];
-        error?: string | null;
-      };
-      const items = payload.items ?? [];
+      const payload = await ingestJson(body);
+      const items = payload.items;
       if (items.length) {
         onItems(items);
         setMessage(`Pulled ${items.length} item${items.length === 1 ? "" : "s"} onto Mine.`);
@@ -71,16 +91,8 @@ export function IngestForm({
         setMessage("Sign in to pull.");
         return;
       }
-      const response = await fetch("/api/ingest", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ allowedSource }),
-      });
-      const payload = (await response.json()) as {
-        items?: FeedItem[];
-        error?: string | null;
-      };
-      const items = payload.items ?? [];
+      const payload = await ingestJson({ allowedSource });
+      const items = payload.items;
       if (!items.length) {
         setMessage(payload.error || "Nothing to pull.");
         return;
@@ -125,6 +137,9 @@ export function IngestForm({
   return (
     <div className={`mt-10 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Pull</h2>
+      {relayCopy ? (
+        <p className="mt-2 text-xs text-ink-muted">{relayCopy}</p>
+      ) : null}
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="block text-sm text-ink">
           Feed URL
@@ -181,7 +196,11 @@ export function IngestForm({
                   onClick={() => void submitAllowed(kind)}
                   className={btnSecondary}
                 >
-                  Pull {ALLOWED_SOURCE_LABELS[kind]}
+                  {via === "extension"
+                    ? `Pull ${ALLOWED_SOURCE_LABELS[kind]} via extension`
+                    : via === "localhost"
+                      ? `Pull ${ALLOWED_SOURCE_LABELS[kind]} via relay`
+                      : `Pull ${ALLOWED_SOURCE_LABELS[kind]}`}
                 </button>
               ))}
             </div>

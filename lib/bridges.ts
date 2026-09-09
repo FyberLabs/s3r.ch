@@ -17,39 +17,39 @@ export const BRIDGE_MATRIX: NetworkBridge[] = [
     network: "RSS3 Data Sublayer",
     pull: "yes",
     repost: "yes",
-    thisSlice: "optional public seeder + address ingest + signed-in rss3-gi pull; gi.rss3.io currently has no DNS",
+    thisSlice: "optional public seeder + address ingest + signed-in rss3-gi pull; /api/ingest or allowlisted extension/relay; gi.rss3.io currently has no DNS",
   },
   {
     network: "RSS / Atom",
     pull: "yes",
     repost: "yes",
-    thisSlice: "public seeder + URL ingest + signed-in documented-feed pull (same-origin proxy)",
+    thisSlice: "public seeder + URL ingest + signed-in documented-feed pull; /api/ingest or allowlisted extension/relay",
   },
   {
     network: "ActivityPub",
     pull: "yes",
     repost: "yes",
-    thisSlice: "public seeder + signed-in browser pull via actor outbox first page; /api/ingest CORS proxy",
+    thisSlice: "public seeder + signed-in browser pull via actor outbox first page; /api/ingest or allowlisted extension/relay",
   },
   {
     network: "ATProto / Bluesky",
     pull: "yes",
     repost: "yes",
     thisSlice:
-      "public seeder + signed-in browser pull via AppView; explicit SIWE outbound via PDS createRecord (server app password)",
+      "public seeder + signed-in browser pull via AppView; /api/ingest or allowlisted extension/relay; explicit SIWE outbound via PDS createRecord (server app password)",
   },
   {
     network: "Nostr",
     pull: "yes",
     repost: "yes",
-    thisSlice: "public seeder + signed-in browser pull via NIP-01 kind 1 REQ (server WS); /api/ingest CORS proxy",
+    thisSlice: "public seeder + signed-in browser pull via NIP-01 kind 1 REQ; /api/ingest or allowlisted extension/relay",
   },
   {
     network: "Farcaster",
     pull: "yes",
     repost: "yes",
     thisSlice:
-      "public seeder + signed-in browser pull via Hubble HTTP; explicit SIWE outbound via hub submitMessage (server signer)",
+      "public seeder + signed-in browser pull via Hubble HTTP; /api/ingest or allowlisted extension/relay; explicit SIWE outbound via hub submitMessage (server signer)",
   },
   {
     network: "Lens",

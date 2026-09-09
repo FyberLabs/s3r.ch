@@ -1,7 +1,9 @@
 /**
  * Browser pull of the same documented public sources the lab seeder uses.
  * `/api/ingest` is the same-origin CORS proxy — direct browser-to-source
- * still fails. Fetch is a handoff, not a grant. Dest re-authorizes
+ * still fails in a naked tab. An unpacked extension or 127.0.0.1 relay
+ * (`lib/pull-relay.ts`) is an additive allowlisted fetch path, not a
+ * CORS off-switch. Fetch is a handoff, not a grant. Dest re-authorizes
  * (`admitFeedNode`) before a GunFeedNode `v: 1` lands. Default is Mine
  * overlay. Explicit share-into-mesh may HAM-merge onto `s3rch/items`.
  * Do not dump every pull into the public seed.

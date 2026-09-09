@@ -17,7 +17,7 @@ New issues get a `needs-triage` label. That is first-pass intake only.
 
 Use the **[AI review](.github/ISSUE_TEMPLATE/ai-review.yml)** form. One cluster of related findings per issue.
 
-- Cite docs paths you actually read: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/identity.md](docs/identity.md), [docs/s3rch-check.md](docs/s3rch-check.md), [docs/durable-graph-and-turn.md](docs/durable-graph-and-turn.md).
+- Cite docs paths you actually read: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/identity.md](docs/identity.md), [docs/s3rch-check.md](docs/s3rch-check.md), [docs/durable-graph-and-turn.md](docs/durable-graph-and-turn.md), [docs/pull-relay.md](docs/pull-relay.md).
 - Say whether you ran the app or reviewed docs only. Do not invent stack traces.
 - Do not file Hypermesh, Panopticon, AKS, or other-repo infra here.
 - Do not dump credentials, SIWE signatures, Gun SEA keys, cookies, or PII.

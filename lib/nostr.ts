@@ -1,8 +1,9 @@
 /**
  * Nostr inbound (no outbound). NIP-01 REQ on a documented public relay
- * for kind 1 notes from documented pubkeys. Server-side WebSocket —
- * browsers still pull through `/api/ingest`. Empty / failed relays
- * write nothing. Direct browser-to-source CORS is unchanged.
+ * for kind 1 notes from documented pubkeys. Server-side WebSocket on
+ * the seeder / `/api/ingest`. The allowlisted extension / relay may
+ * open that documented `wss` itself. Empty / failed relays write
+ * nothing. Direct browser-to-source CORS is unchanged in a naked tab.
  */
 
 import { PUBLIC_FETCH_MS } from "./public-fetch";
@@ -142,6 +143,13 @@ async function pullPubkey(pubkey: string): Promise<FeedItem[]> {
     if (item) items.push(item);
   }
   return items;
+}
+
+export async function queryNostrRelay(
+  relay: string,
+  filter: NostrFilter,
+): Promise<unknown[]> {
+  return queryRelay(relay, filter);
 }
 
 async function queryRelay(relay: string, filter: NostrFilter): Promise<unknown[]> {
