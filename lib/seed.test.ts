@@ -38,6 +38,30 @@ describe("combinePulls", () => {
       sourcesTried: 2,
       error: null,
     };
+    const activitypub: SourcePull = {
+      items: [
+        item({
+          id: "https://mastodon.social/users/Mastodon/statuses/1",
+          source: "activitypub",
+          tags: ["activitypub", "social"],
+        }),
+      ],
+      sourcesOk: 2,
+      sourcesTried: 2,
+      error: null,
+    };
+    const nostr: SourcePull = {
+      items: [
+        item({
+          id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          source: "nostr",
+          tags: ["nostr", "social"],
+        }),
+      ],
+      sourcesOk: 2,
+      sourcesTried: 2,
+      error: null,
+    };
     const gi: SourcePull = {
       items: [],
       sourcesOk: 0,
@@ -45,13 +69,15 @@ describe("combinePulls", () => {
       error: "getaddrinfo ENOTFOUND gi.rss3.io",
     };
 
-    const combined = combinePulls([farcaster, atproto, rss, gi]);
-    assert.equal(combined.sourcesOk, 6);
-    assert.equal(combined.sourcesTried, 13);
+    const combined = combinePulls([farcaster, atproto, rss, activitypub, nostr, gi]);
+    assert.equal(combined.sourcesOk, 10);
+    assert.equal(combined.sourcesTried, 17);
     assert.equal(combined.error, null);
-    assert.equal(combined.items.length, 3);
+    assert.equal(combined.items.length, 5);
     assert.ok(combined.items.some((row) => row.source === "farcaster"));
     assert.ok(combined.items.some((row) => row.source === "atproto" || row.source === "rss"));
+    assert.ok(combined.items.some((row) => row.source === "activitypub"));
+    assert.ok(combined.items.some((row) => row.source === "nostr"));
   });
 
   it("returns no rows and an error when every source fails", () => {
@@ -79,6 +105,39 @@ describe("fromGunNode", () => {
   it("drops unknown sources", () => {
     assert.equal(fromGunNode({ id: "x", source: "neynar", kind: "social", tags: "" }), null);
   });
+
+  it("reads activitypub and nostr v:1 nodes", () => {
+    assert.equal(
+      fromGunNode({
+        id: "https://mastodon.social/users/Mastodon/statuses/1",
+        source: "activitypub",
+        kind: "social",
+        tags: "activitypub,social",
+        v: 1,
+      })?.source,
+      "activitypub",
+    );
+    assert.equal(
+      fromGunNode({
+        id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        source: "nostr",
+        kind: "social",
+        tags: "nostr,social",
+        v: 1,
+      })?.source,
+      "nostr",
+    );
+    assert.equal(
+      fromGunNode({
+        id: "https://mastodon.social/users/Mastodon/statuses/1",
+        source: "activitypub",
+        kind: "social",
+        tags: "",
+        v: 2,
+      }),
+      null,
+    );
+  });
 });
 
 describe("pullAllowedSource", () => {
@@ -88,6 +147,8 @@ describe("pullAllowedSource", () => {
       "farcaster",
       "atproto",
       "rss",
+      "activitypub",
+      "nostr",
       "rss3-gi",
     ]);
   });

@@ -3,7 +3,15 @@
  * the live Gun mesh all use this. Public / Mine / Network tabs render.
  */
 
-export type FeedSource = "rss3" | "rss" | "atom" | "farcaster" | "atproto" | "s3rch";
+export type FeedSource =
+  | "rss3"
+  | "rss"
+  | "atom"
+  | "farcaster"
+  | "atproto"
+  | "activitypub"
+  | "nostr"
+  | "s3rch";
 
 export const FEED_SOURCES: readonly FeedSource[] = [
   "rss3",
@@ -11,6 +19,8 @@ export const FEED_SOURCES: readonly FeedSource[] = [
   "atom",
   "farcaster",
   "atproto",
+  "activitypub",
+  "nostr",
   "s3rch",
 ];
 
@@ -35,7 +45,7 @@ export type FeedItem = {
   v?: number;
 };
 
-/** One public seed pull (hub FID, AppView feed, RSS URL, or GI list). */
+/** One public seed pull (hub FID, AppView, RSS, ActivityPub, Nostr, or GI). */
 export type SourcePull = {
   items: FeedItem[];
   sourcesOk: number;

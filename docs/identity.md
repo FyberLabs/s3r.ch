@@ -31,7 +31,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - **Explicit share-into-mesh** on the holder's own native post: admit, then put the node onto `gun.get('s3rch').get('items')`. Same confirm pattern for an owned room node onto `s3rch/rooms`, and for the holder's user node / a selected held claim onto `s3rch/users/<wallet>`. A see-grant is not this. Room share ≠ post share. User-node share ≠ dumping every held claim.
 - **Honest unshare** of a previously shared post, room, user node, or claim: own-only confirm, then a `v: 1` HAM tombstone (`unshared: 1`) on the same path, or a republish of the user node without that claim. Readers drop or hide when they observe the put. Observation can wait. Not a see-grant revoke. Room unshare does not delete Mine posts inside; public chat and presence then become local or empty for those readers. No `/api/unshare`.
 - **Browser WebRTC** (`gun/lib/webrtc` after `gun/browser`, STUN-only ICE). Additive to the same-origin `/gun` seed peer. If ICE fails, seed / snapshot like today. STUN ≠ TURN. Chat and presence stay Gun subscriptions.
-- **Signed-in browser pull** of the same documented public sources the lab seeder uses (Farcaster hub FIDs, ATProto AppView, RSS/Atom, optional RSS3 GI) through `/api/ingest`. Dest `admitFeedNode` before a `GunFeedNode` `v: 1` lands on Mine. Explicit share-into-mesh may HAM-merge onto `s3rch/items`. Direct browser-to-source still fails CORS. A pull is not a grant and is not an automatic public put.
+- **Signed-in browser pull** of the same documented public sources the lab seeder uses (Farcaster hub FIDs, ATProto AppView, RSS/Atom, ActivityPub actor outbox, Nostr kind 1 relay query, optional RSS3 GI) through `/api/ingest`. Dest `admitFeedNode` before a `GunFeedNode` `v: 1` lands on Mine. Explicit share-into-mesh may HAM-merge onto `s3rch/items`. Direct browser-to-source still fails CORS. A pull is not a grant and is not an automatic public put.
 
 ## What this slice does not ship
 
@@ -48,7 +48,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - Friend-of-friend, Social Light hop UI, Elect / wills / Case C, or any verb beyond `see`.
 - NextAuth, Keycloak, or email magic link on this app.
 - TURN, meetings, live streams, hop UI, Elect / wills / Case C. Live chat and presence over Gun subscriptions ship; they are not a TURN/WebRTC mesh. `gun/lib/webrtc` + STUN ships; TURN does not. Durable graph + TURN requirements: [durable-graph-and-turn.md](durable-graph-and-turn.md).
-- OutboundAdapter / Farcaster / ATProto / RSS outbound. Native post ≠ bridging out.
+- OutboundAdapter / Farcaster / ATProto / ActivityPub / Nostr / RSS outbound. Native post ≠ bridging out. Inbound pull for those networks is a separate path.
 - Popular / Novel columns, likes / views / engagement scores. Network **does** ship as the live mesh view (not a finished P2P mesh claim).
 - Instant mesh-wide delete, or an Azure `/api/unshare`. Unshare is a client Gun tombstone / republish. Observation can wait. Check revoke stays dest ACL.
 - Dumping user posts into the public seed / `GET /api/feed` snapshot / lab seeder by default.

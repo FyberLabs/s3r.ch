@@ -43,9 +43,13 @@ describe("allowed source classes", () => {
       "farcaster",
       "atproto",
       "rss",
+      "activitypub",
+      "nostr",
       "rss3-gi",
     ]);
     assert.equal(isAllowedSourceClass("farcaster"), true);
+    assert.equal(isAllowedSourceClass("activitypub"), true);
+    assert.equal(isAllowedSourceClass("nostr"), true);
     assert.equal(isAllowedSourceClass("neynar"), false);
     assert.equal(isAllowedSourceClass("search"), false);
     assert.equal(isAllowedSourceClass(""), false);
@@ -65,6 +69,14 @@ describe("parseIngestRequest", () => {
     assert.deepEqual(parseIngestRequest({ allowedSource: "farcaster" }), {
       kind: "allowedSource",
       allowedSource: "farcaster",
+    });
+    assert.deepEqual(parseIngestRequest({ allowedSource: "activitypub" }), {
+      kind: "allowedSource",
+      allowedSource: "activitypub",
+    });
+    assert.deepEqual(parseIngestRequest({ allowedSource: "nostr" }), {
+      kind: "allowedSource",
+      allowedSource: "nostr",
     });
   });
 
