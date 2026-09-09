@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 import {
+  confirmCookieName,
+  confirmCookieNames,
   cookieOptions,
   nonceCookieName,
   nonceCookieNames,
@@ -36,6 +38,13 @@ export async function readSessionFromRequest(
   return readCookie(header, sessionCookieNames());
 }
 
+export async function readConfirmFromRequest(
+  request: Request,
+): Promise<string | undefined> {
+  const header = request.headers.get("cookie");
+  return readCookie(header, confirmCookieNames());
+}
+
 export async function setIdentityCookie(
   name: string,
   value: string,
@@ -53,6 +62,8 @@ export async function clearIdentityCookies(): Promise<void> {
     nonceCookieName(false),
     sessionCookieName(true),
     sessionCookieName(false),
+    confirmCookieName(true),
+    confirmCookieName(false),
   ];
   for (const name of names) {
     const secure = name.startsWith("__Host-");

@@ -81,6 +81,9 @@ describe("held claim ids and grant form", () => {
       farcaster: "dwr",
       lens: "vitalik",
       rss3: "footprint",
+      email: "alice@example.com",
+      phone: "+15551234567",
+      kyc: "fixture:held",
     });
     assert.deepEqual(
       options.map((option) => option.id),
@@ -91,6 +94,9 @@ describe("held claim ids and grant form", () => {
         "farcaster:dwr",
         "lens:vitalik",
         "rss3:footprint",
+        "email:alice@example.com",
+        "phone:+15551234567",
+        "kyc:fixture:held",
       ],
     );
     for (const option of options) {

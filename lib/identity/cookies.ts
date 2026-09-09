@@ -42,12 +42,20 @@ export function sessionCookieName(secure: boolean): string {
   return `${cookiePrefix(secure)}${COOKIE_BASE.session}`;
 }
 
+export function confirmCookieName(secure: boolean): string {
+  return `${cookiePrefix(secure)}${COOKIE_BASE.confirm}`;
+}
+
 export function nonceCookieNames(): string[] {
   return [nonceCookieName(true), nonceCookieName(false)];
 }
 
 export function sessionCookieNames(): string[] {
   return [sessionCookieName(true), sessionCookieName(false)];
+}
+
+export function confirmCookieNames(): string[] {
+  return [confirmCookieName(true), confirmCookieName(false)];
 }
 
 export function cookieOptions(secure: boolean, maxAge: number): CookieOpts {

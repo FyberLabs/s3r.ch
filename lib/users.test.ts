@@ -150,6 +150,64 @@ describe("assemble / link Mine overlay", () => {
     assert.equal(node.v, 1);
   });
 
+  it("links email / phone / kyc claim ids and keeps them while other lookups settle", () => {
+    const overlay = assembleMineUser({
+      address: ALICE,
+      lookups: {
+        email: "alice@example.com",
+        phone: "+1 (555) 123-4567",
+        kyc: "fixture:held",
+      },
+      nowSeconds: NOW,
+    });
+    assert.ok(overlay);
+    assert.deepEqual(overlay.indicators, [
+      "email:alice@example.com",
+      "phone:+15551234567",
+      "kyc:fixture:held",
+    ]);
+    const kept = assembleMineUser({
+      address: ALICE,
+      lookups: { ens: "vitalik.eth", email: undefined, phone: undefined, kyc: undefined },
+      previous: overlay,
+      nowSeconds: NOW + 1,
+    });
+    assert.ok(kept);
+    assert.deepEqual(kept.indicators, [
+      "ens:vitalik.eth",
+      "email:alice@example.com",
+      "phone:+15551234567",
+      "kyc:fixture:held",
+    ]);
+  });
+
+  it("sharing an email claim does not publish phone or kyc", () => {
+    const acl = createMemorySeeAcl();
+    const overlay = assembleMineUser({
+      address: ALICE,
+      lookups: {
+        email: "alice@example.com",
+        phone: "+15551234567",
+        kyc: "fixture:held",
+      },
+      nowSeconds: NOW,
+    });
+    assert.ok(overlay);
+    registerMineUserOverlay(acl, overlay, ALICE);
+    const share = prepareShareClaimIntoMesh(
+      acl,
+      overlay,
+      ALICE,
+      "email:alice@example.com",
+      [],
+      NOW + 1,
+    );
+    assert.ok(!("denied" in share));
+    assert.equal(share.node.indicators, "email:alice@example.com");
+    assert.equal(share.node.indicators.includes("phone:"), false);
+    assert.equal(share.node.indicators.includes("kyc:"), false);
+  });
+
   it("pending lookups keep previous linked claims; settled empty drops that family", () => {
     const previous = user({
       indicators: ["ens:vitalik.eth", "farcaster:dwr"],

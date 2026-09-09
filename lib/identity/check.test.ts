@@ -338,6 +338,9 @@ describe("CHECK(see, object, accessor) consume laws", () => {
       "farcaster:dwr",
       "lens:vitalik",
       "rss3:0xabc",
+      "email:alice@example.com",
+      "phone:+15551234567",
+      "kyc:fixture:held",
     ]) {
       assert.equal(checkSee(acl, claim, BOB, NOW, hint(), hop).allowed, false);
       acl.putObject(claim, ALICE);
@@ -547,6 +550,27 @@ describe("CHECK(see, object, accessor) consume laws", () => {
     assert.equal(checkSee(acl, CLAIM, ALICE, NOW).allowed, true);
     assert.equal(checkSee(acl, userSoul(ALICE), BOB, NOW, urlHint).allowed, false);
     assert.equal(checkSee(acl, CLAIM, BOB, NOW, urlHint).allowed, false);
+
+    const privateClaims = admitUserNode(
+      acl,
+      {
+        ...node,
+        indicators: "email:alice@example.com,phone:+15551234567,kyc:fixture:held",
+      },
+      ALICE,
+      urlHint,
+    );
+    assert.ok(!("denied" in privateClaims));
+    for (const claim of [
+      "email:alice@example.com",
+      "phone:+15551234567",
+      "kyc:fixture:held",
+    ]) {
+      assert.equal(acl.hasObject(claim), true);
+      assert.equal(claim.includes("/claims/"), false);
+      assert.equal(checkSee(acl, claim, ALICE, NOW).reason, "owner");
+      assert.equal(checkSee(acl, claim, BOB, NOW, urlHint).allowed, false);
+    }
   });
 
   it("live IdentitySeeGrant names the pair and now ∈ [from, until)", () => {

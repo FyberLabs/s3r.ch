@@ -14,7 +14,7 @@ The Next app runs Check **in the browser** on the Gun mesh. It does **not** impo
 
 | Name | Meaning |
 | --- | --- |
-| `object` | `GunFeedNode` at `s3rch/items/<encodeKey(id)>`, or a held claim id itself (`ens:…` / `unstoppable:…` / `fc:…` / `farcaster:…` / `lens:…` / `rss3:…`) linked from `GunUserNode.indicators`, or a later opaque post/room `CheckObjectId` (s3r.ch rooms / chat / presence keep their existing souls) |
+| `object` | `GunFeedNode` at `s3rch/items/<encodeKey(id)>`, or a held claim id itself (`ens:…` / `unstoppable:…` / `fc:…` / `farcaster:…` / `lens:…` / `rss3:…` / `email:…` / `phone:…` / `kyc:<issuer>:…`) linked from `GunUserNode.indicators`, or a later opaque post/room `CheckObjectId` (s3r.ch rooms / chat / presence keep their existing souls) |
 | `accessor` | wallet / Gun peer (`s3rch/users/{wallet}`) |
 | `see` | dest Check `read` |
 | grant | jointly stated `IdentitySeeGrant` / mesh `MeshSeeGrant`; hopcap **1** (no friend-of-friend) |
@@ -48,7 +48,7 @@ gun.get('s3rch').get('acl').get(aclPrincipalKey(owner))
 
 `aclKey`: `encodeKey` then `/` → `_` so dest-ACL souls stay five segments. Not a second `encodeKey` for items or users.
 
-Held-claim object id is the **claim id itself** (`ens:name.eth`, `unstoppable:…`, `fc:…` / `farcaster:…`, `lens:…`, `rss3:0x…`), linked from `GunUserNode.indicators` on `s3rch/users/<wallet>`. Mesh Check treats those ids the same as `GunFeedNode` ids. Do not invent `s3rch/users/<wallet>/claims/…`. Overlay uses the same `GunUserNode` shape until s3r.ch `prepareShareUserIntoMesh` / `prepareShareClaimIntoMesh`. Posts / rooms stay opaque `CheckObjectId`s — s3r.ch owns those souls.
+Held-claim object id is the **claim id itself** (`ens:name.eth`, `unstoppable:…`, `fc:…` / `farcaster:…`, `lens:…`, `rss3:0x…`, `email:…`, `phone:…`, `kyc:<issuer>:…`), linked from `GunUserNode.indicators` on `s3rch/users/<wallet>`. Mesh Check treats those ids the same as `GunFeedNode` ids. Do not invent `s3rch/users/<wallet>/claims/…`. Overlay uses the same `GunUserNode` shape until s3r.ch `prepareShareUserIntoMesh` / `prepareShareClaimIntoMesh`. Posts / rooms stay opaque `CheckObjectId`s — s3r.ch owns those souls.
 
 The Rust crate remains the full plane. See [FyberLabs/SociACL docs/gun.md](https://github.com/FyberLabs/SociACL/blob/master/docs/gun.md) for that map. Social Light hop wire: [FyberLabs/SociACL docs/social-light.md](https://github.com/FyberLabs/SociACL/blob/master/docs/social-light.md).
 
