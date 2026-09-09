@@ -12,8 +12,43 @@ export type HeldClaimOption = {
   label: string;
 };
 
+export const HELD_CLAIM_FAMILIES = [
+  "ens",
+  "unstoppable",
+  "farcaster",
+  "lens",
+  "rss3",
+] as const;
+
+export type HeldClaimFamily = (typeof HELD_CLAIM_FAMILIES)[number];
+
+export const HELD_CLAIM_PREFIX: Record<HeldClaimFamily, string> = {
+  ens: "ens:",
+  unstoppable: "unstoppable:",
+  farcaster: "farcaster:",
+  lens: "lens:",
+  rss3: "rss3:",
+};
+
+/** `undefined` = lookup still in flight. `null` = settled empty. */
+export type HeldLookupState = {
+  [K in HeldClaimFamily]?: string | null;
+};
+
 export const SEE_GRANT_COPY =
   "Let another address see this. Revoke anytime.";
+
+export function claimFamilyOf(claimId: string): HeldClaimFamily | null {
+  const lower = claimId.trim().toLowerCase();
+  for (const family of HELD_CLAIM_FAMILIES) {
+    if (lower.startsWith(HELD_CLAIM_PREFIX[family])) return family;
+  }
+  return null;
+}
+
+export function claimLabelFromId(claimId: string): string {
+  return claimId.replace(/^[a-z]+:/i, "");
+}
 
 export function ensClaimId(name: string): string {
   return `ens:${name.trim()}`;
@@ -71,6 +106,33 @@ export function heldClaimOptions(input: {
   }
   if (input.lens) options.push({ id: lensClaimId(input.lens), label: input.lens });
   if (input.rss3) options.push({ id: rss3ClaimId(input.rss3), label: input.rss3 });
+  return options;
+}
+
+/** Wallet plus already-linked overlay indicators. Source of truth is the Gun node. */
+export function heldClaimOptionsFromIndicators(
+  address: string,
+  indicators: readonly string[],
+): HeldClaimOption[] {
+  let checksum: string;
+  try {
+    checksum = getAddress(address);
+  } catch {
+    return [];
+  }
+  const options: HeldClaimOption[] = [
+    { id: walletClaimId(checksum), label: checksum },
+  ];
+  const seen = new Set<string>([checksum.toLowerCase()]);
+  for (const raw of indicators) {
+    if (typeof raw !== "string") continue;
+    const id = raw.trim();
+    if (!id) continue;
+    const key = id.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    options.push({ id, label: claimLabelFromId(id) });
+  }
   return options;
 }
 

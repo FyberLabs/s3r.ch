@@ -13,7 +13,7 @@ import {
 import { applySeeGrant, cancelSee } from "@/lib/identity/check";
 import {
   grantWindowFromHours,
-  heldClaimOptions,
+  heldClaimOptionsFromIndicators,
   parseGrantAccessor,
   type HeldClaimOption,
 } from "@/lib/identity/held-claims";
@@ -24,27 +24,19 @@ import {
   persistSeeAcl,
   type MemorySeeAcl,
 } from "@/lib/identity/see-acl";
-import { composeUser } from "@/lib/users";
+import type { User } from "@/lib/users";
 import { useGunPeer } from "@/components/GunPeerProvider";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { btnSecondary, field, fieldMono } from "@/lib/brand-ui";
 
 type Props = {
   address: string;
-  ens?: string | null;
-  unstoppable?: string | null;
-  farcaster?: string | null;
-  lens?: string | null;
-  rss3?: string | null;
+  overlay: User | null;
 };
 
 export function SeeGrantControls({
   address,
-  ens,
-  unstoppable,
-  farcaster,
-  lens,
-  rss3,
+  overlay,
 }: Props) {
   const shared = useSeeAcl();
   const peer = useGunPeer();
@@ -60,8 +52,11 @@ export function SeeGrantControls({
   const [busy, setBusy] = useState(false);
 
   const claims = useMemo(
-    () => heldClaimOptions({ address, ens, unstoppable, farcaster, lens, rss3 }),
-    [address, ens, unstoppable, farcaster, lens, rss3],
+    () =>
+      overlay
+        ? heldClaimOptionsFromIndicators(overlay.id, overlay.indicators)
+        : heldClaimOptionsFromIndicators(address, []),
+    [address, overlay],
   );
 
   const refreshGrants = useCallback(() => {
@@ -160,12 +155,7 @@ export function SeeGrantControls({
       };
       acl.putObject(selected.id, address);
       applySeeGrant(acl, address, grant);
-      const user = composeUser({
-        address,
-        indicators: claims
-          .map((claim) => claim.id)
-          .filter((id) => id.toLowerCase() !== address.toLowerCase()),
-      });
+      const user = overlay;
       if (user) {
         const prepared = prepareGrantUserDelivery(
           acl,

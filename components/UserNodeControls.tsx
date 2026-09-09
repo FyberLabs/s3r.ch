@@ -9,17 +9,18 @@ import {
   USER_UNSHARE_COPY,
   isUnsharePut,
 } from "@/lib/unshare";
+import { claimLabelFromId } from "@/lib/identity/held-claims";
+import { putMineUserOverlay } from "@/lib/identity/user-overlay";
 import {
-  admitComposedUser,
   claimIsShared,
-  composeUser,
   fromGunUserNode,
   isWalletClaimId,
-  namedHeldIndicators,
   prepareShareClaimIntoMesh,
   prepareShareUserIntoMesh,
   prepareUnshareClaimFromMesh,
   prepareUnshareUserFromMesh,
+  registerMineUserOverlay,
+  type User,
 } from "@/lib/users";
 
 export const USER_SHARE_COPY =
@@ -27,20 +28,14 @@ export const USER_SHARE_COPY =
 
 type Props = {
   address: string;
-  ens?: string | null;
-  unstoppable?: string | null;
-  farcaster?: string | null;
-  lens?: string | null;
-  rss3?: string | null;
+  overlay: User | null;
+  ready?: boolean;
 };
 
 export function UserNodeControls({
   address,
-  ens,
-  unstoppable,
-  farcaster,
-  lens,
-  rss3,
+  overlay,
+  ready = true,
 }: Props) {
   const see = useSeeAcl();
   const peer = useGunPeer();
@@ -55,13 +50,8 @@ export function UserNodeControls({
   const [sharedIndicators, setSharedIndicators] = useState<string[]>([]);
 
   const indicators = useMemo(
-    () => namedHeldIndicators({ ens, unstoppable, farcaster, lens, rss3 }),
-    [ens, unstoppable, farcaster, lens, rss3],
-  );
-
-  const overlay = useMemo(
-    () => composeUser({ address, indicators }),
-    [address, indicators],
+    () => overlay?.indicators ?? [],
+    [overlay],
   );
 
   useEffect(() => {
@@ -75,11 +65,14 @@ export function UserNodeControls({
   }, [address]);
 
   useEffect(() => {
-    if (!see?.ready || !overlay) return;
-    const admitted = admitComposedUser(see.acl, overlay, address);
+    if (!see?.ready || !ready || !overlay) return;
+    const admitted = registerMineUserOverlay(see.acl, overlay, address);
     if ("denied" in admitted) return;
+    void putMineUserOverlay(overlay).catch(() => {
+      // Private mode / missing IndexedDB — dest ACL still has the link.
+    });
     void see.persist();
-  }, [address, overlay, see]);
+  }, [address, overlay, ready, see]);
 
   useEffect(() => {
     const gun = peer?.gun;
@@ -286,7 +279,7 @@ export function UserNodeControls({
                 key={claimId}
                 className="flex flex-wrap items-center gap-2 text-xs text-ink-muted"
               >
-                <span>{claimId.replace(/^[a-z]+:/i, "")}</span>
+                <span>{claimLabelFromId(claimId)}</span>
                 {shared ? (
                   <>
                     <span>Public.</span>
@@ -301,15 +294,18 @@ export function UserNodeControls({
                     </button>
                   </>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => void shareClaim(claimId)}
-                    className={btnSecondary}
-                  >
-                    {confirmClaimId === claimId
-                      ? "Confirm share"
-                      : "Share"}
-                  </button>
+                  <>
+                    <span>Held.</span>
+                    <button
+                      type="button"
+                      onClick={() => void shareClaim(claimId)}
+                      className={btnSecondary}
+                    >
+                      {confirmClaimId === claimId
+                        ? "Confirm share"
+                        : "Share"}
+                    </button>
+                  </>
                 )}
               </li>
             );

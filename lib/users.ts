@@ -19,12 +19,15 @@ import {
   type UnshareResult,
 } from "./unshare";
 import {
+  HELD_CLAIM_FAMILIES,
+  HELD_CLAIM_PREFIX,
   ensClaimId,
   farcasterClaimId,
   lensClaimId,
   rss3ClaimId,
   unstoppableClaimId,
   walletClaimId,
+  type HeldLookupState,
 } from "./identity/held-claims";
 import { admitUserNode, userSoul, type SeeAcl } from "./identity/check";
 
@@ -65,6 +68,18 @@ export type HeldIndicatorInput = {
   rss3?: string | null;
 };
 
+export type AssembleMineUserInput = {
+  address: string;
+  lookups?: HeldLookupState;
+  indicators?: readonly string[];
+  previous?: User | null;
+  nowSeconds?: number;
+};
+
+export type RegisterMineUserResult =
+  | { user: User; object: string; node: GunUserNode }
+  | { denied: true };
+
 export type AdmitUserResult =
   | { user: User; object: string }
   | { denied: true };
@@ -82,6 +97,81 @@ export function namedHeldIndicators(input: HeldIndicatorInput): string[] {
   if (input.lens) raw.push(lensClaimId(input.lens));
   if (input.rss3) raw.push(rss3ClaimId(input.rss3));
   return splitIndicators(raw);
+}
+
+export function sameHeldIndicators(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  const a = splitIndicators([...left]);
+  const b = splitIndicators([...right]);
+  if (a.length !== b.length) return false;
+  return a.every((row, index) => row.toLowerCase() === b[index]?.toLowerCase());
+}
+
+/**
+ * Link verified held-claim ids onto the Mine overlay.
+ * `undefined` lookup = still in flight — keep that family from `previous`.
+ * `null` = settled empty — drop that family. Does not publish.
+ */
+export function linkHeldIndicators(
+  lookups: HeldLookupState = {},
+  previous: readonly string[] = [],
+): string[] {
+  const prior = splitIndicators([...previous]);
+  const next: string[] = [];
+  for (const family of HELD_CLAIM_FAMILIES) {
+    const value = lookups[family];
+    if (value === undefined) {
+      const prefix = HELD_CLAIM_PREFIX[family];
+      for (const row of prior) {
+        if (row.toLowerCase().startsWith(prefix)) next.push(row);
+      }
+      continue;
+    }
+    if (value) next.push(...namedHeldIndicators({ [family]: value }));
+  }
+  return splitIndicators(next);
+}
+
+/**
+ * Assemble the Mine overlay Gun user node after SIWE.
+ * Wallet + verified (or previously linked) claim ids. Not a public put.
+ */
+export function assembleMineUser(input: AssembleMineUserInput): User | null {
+  const indicators = input.indicators
+    ? splitIndicators([...input.indicators])
+    : linkHeldIndicators(input.lookups ?? {}, input.previous?.indicators ?? []);
+  let checksum: string;
+  try {
+    checksum = getAddress(input.address);
+  } catch {
+    return null;
+  }
+  const samePrevious =
+    input.previous &&
+    input.previous.id === checksum &&
+    sameHeldIndicators(input.previous.indicators, indicators);
+  return composeUser({
+    address: checksum,
+    indicators,
+    nowSeconds:
+      samePrevious && input.previous ? input.previous.ts : input.nowSeconds,
+  });
+}
+
+/**
+ * Dest re-auth of the assembled overlay. Links claim ids on the dest ACL.
+ * Does not put `s3rch/users`. Share-into-mesh is a separate confirm.
+ */
+export function registerMineUserOverlay(
+  acl: SeeAcl,
+  user: User,
+  owner: string,
+): RegisterMineUserResult {
+  const admitted = admitComposedUser(acl, user, owner);
+  if ("denied" in admitted) return { denied: true };
+  return { user, object: admitted.object, node: toGunUserNode(user) };
 }
 
 /**

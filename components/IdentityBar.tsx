@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   useConnect,
   useConnection,
@@ -11,6 +11,7 @@ import {
 import { IdentityProviders } from "@/components/IdentityProviders";
 import { SeeGrantControls } from "@/components/SeeGrantControls";
 import { UserNodeControls } from "@/components/UserNodeControls";
+import { useMineUserOverlay } from "@/components/useMineUserOverlay";
 import { SIWE_MESSAGE_TTL_MS } from "@/lib/identity/config";
 import {
   getMeshKey,
@@ -234,6 +235,38 @@ function IdentityBarInner() {
         // Private mode / missing IndexedDB — stay quiet.
       });
   }, [session]);
+
+  const heldLookups = useMemo(
+    () => ({
+      ens: ensCachedFor === session?.address ? ensClaim : undefined,
+      unstoppable:
+        unstoppableCachedFor === session?.address ? unstoppableClaim : undefined,
+      farcaster:
+        indicatorsCachedFor === session?.address
+          ? indicators.farcaster.name
+          : undefined,
+      lens:
+        indicatorsCachedFor === session?.address
+          ? indicators.lens.name
+          : undefined,
+      rss3:
+        indicatorsCachedFor === session?.address
+          ? indicators.rss3.name
+          : undefined,
+    }),
+    [
+      session?.address,
+      ensCachedFor,
+      ensClaim,
+      unstoppableCachedFor,
+      unstoppableClaim,
+      indicatorsCachedFor,
+      indicators.farcaster.name,
+      indicators.lens.name,
+      indicators.rss3.name,
+    ],
+  );
+  const mineUser = useMineUserOverlay(session?.address ?? null, heldLookups);
 
   const injected = connectors.find((connector) => connector.id === "injected") ?? connectors[0];
   const walletConnectConnector = connectors.find(
@@ -745,38 +778,16 @@ function IdentityBarInner() {
         </div>
       ) : null}
       {meshLine ? <p className="mt-3 text-xs text-ink-muted">{meshLine}</p> : null}
-      {ensClaim ? (
-        <p className="mt-3 text-xs text-ink-muted">{ensClaim}</p>
-      ) : null}
-      {unstoppableClaim ? (
-        <p className="mt-3 text-xs text-ink-muted">{unstoppableClaim}</p>
-      ) : null}
-      {indicators.farcaster.name ? (
-        <p className="mt-3 text-xs text-ink-muted">{indicators.farcaster.name}</p>
-      ) : null}
-      {indicators.lens.name ? (
-        <p className="mt-3 text-xs text-ink-muted">{indicators.lens.name}</p>
-      ) : null}
-      {indicators.rss3.name ? (
-        <p className="mt-3 text-xs text-ink-muted">{indicators.rss3.name}</p>
-      ) : null}
       {session ? (
         <>
           <UserNodeControls
             address={session.address}
-            ens={ensClaim}
-            unstoppable={unstoppableClaim}
-            farcaster={indicators.farcaster.name}
-            lens={indicators.lens.name}
-            rss3={indicators.rss3.name}
+            overlay={mineUser.overlay}
+            ready={mineUser.ready}
           />
           <SeeGrantControls
             address={session.address}
-            ens={ensClaim}
-            unstoppable={unstoppableClaim}
-            farcaster={indicators.farcaster.name}
-            lens={indicators.lens.name}
-            rss3={indicators.rss3.name}
+            overlay={mineUser.overlay}
           />
         </>
       ) : null}

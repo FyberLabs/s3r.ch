@@ -8,10 +8,12 @@ import {
 import { createMemorySeeAcl } from "./identity/see-acl";
 import {
   admitComposedUser,
+  assembleMineUser,
   claimIsShared,
   composeUser,
   fromGunUserNode,
   joinIndicators,
+  linkHeldIndicators,
   mergeUsers,
   namedHeldIndicators,
   ownsUser,
@@ -19,6 +21,7 @@ import {
   prepareShareUserIntoMesh,
   prepareUnshareClaimFromMesh,
   prepareUnshareUserFromMesh,
+  registerMineUserOverlay,
   splitIndicators,
   toGunUserNode,
   userProvenanceLine,
@@ -117,6 +120,115 @@ describe("composeUser", () => {
     const empty = composeUser({ address: ALICE, nowSeconds: NOW });
     assert.ok(empty);
     assert.deepEqual(empty.indicators, []);
+  });
+});
+
+describe("assemble / link Mine overlay", () => {
+  it("assembles a Mine GunUserNode with linked claim ids after SIWE lookups", () => {
+    const overlay = assembleMineUser({
+      address: ALICE.toLowerCase(),
+      lookups: {
+        ens: "vitalik.eth",
+        unstoppable: "brad.x",
+        farcaster: "dwr",
+        lens: "vitalik",
+        rss3: "footprint",
+      },
+      nowSeconds: NOW,
+    });
+    assert.ok(overlay);
+    assert.equal(overlay.id, ALICE);
+    assert.deepEqual(overlay.indicators, [
+      "ens:vitalik.eth",
+      "unstoppable:brad.x",
+      "farcaster:dwr",
+      "lens:vitalik",
+      "rss3:footprint",
+    ]);
+    const node = toGunUserNode(overlay);
+    assert.equal(node.indicators.includes("ens:vitalik.eth"), true);
+    assert.equal(node.v, 1);
+  });
+
+  it("pending lookups keep previous linked claims; settled empty drops that family", () => {
+    const previous = user({
+      indicators: ["ens:vitalik.eth", "farcaster:dwr"],
+    });
+    assert.deepEqual(
+      linkHeldIndicators({ ens: undefined, farcaster: "alice" }, previous.indicators),
+      ["ens:vitalik.eth", "farcaster:alice"],
+    );
+    const updated = assembleMineUser({
+      address: ALICE,
+      lookups: { ens: null, farcaster: undefined },
+      previous,
+      nowSeconds: NOW + 1,
+    });
+    assert.ok(updated);
+    assert.deepEqual(updated.indicators, ["farcaster:dwr"]);
+  });
+
+  it("registerMineUserOverlay admits and links claims without a public share put", () => {
+    const acl = createMemorySeeAcl();
+    const overlay = assembleMineUser({
+      address: ALICE,
+      lookups: { ens: "vitalik.eth", farcaster: "dwr" },
+      nowSeconds: NOW,
+    });
+    assert.ok(overlay);
+    const registered = registerMineUserOverlay(acl, overlay, ALICE);
+    assert.ok(!("denied" in registered));
+    assert.equal(registered.object, userSoul(ALICE));
+    assert.equal(registered.node.indicators, "ens:vitalik.eth,farcaster:dwr");
+    assert.equal(acl.hasObject("ens:vitalik.eth"), true);
+    assert.equal(acl.hasObject("farcaster:dwr"), true);
+
+    const publicPut = prepareShareUserIntoMesh(acl, overlay, ALICE, []);
+    assert.ok(!("denied" in publicPut));
+    assert.equal(publicPut.node.indicators, "");
+    assert.deepEqual(overlay.indicators, ["ens:vitalik.eth", "farcaster:dwr"]);
+  });
+
+  it("share / unshare claim paths require the claim to be Gun-linked on the overlay", () => {
+    const acl = createMemorySeeAcl();
+    const overlay = assembleMineUser({
+      address: ALICE,
+      lookups: { ens: "vitalik.eth" },
+      nowSeconds: NOW,
+    });
+    assert.ok(overlay);
+    registerMineUserOverlay(acl, overlay, ALICE);
+
+    assert.deepEqual(
+      prepareShareClaimIntoMesh(acl, overlay, ALICE, "lens:nope", []),
+      { denied: true },
+    );
+    const share = prepareShareClaimIntoMesh(
+      acl,
+      overlay,
+      ALICE,
+      "ens:vitalik.eth",
+      [],
+      NOW + 1,
+    );
+    assert.ok(!("denied" in share));
+    assert.equal(share.node.indicators, "ens:vitalik.eth");
+
+    const unshare = prepareUnshareClaimFromMesh(
+      acl,
+      overlay,
+      ALICE,
+      "ens:vitalik.eth",
+      ["ens:vitalik.eth"],
+      NOW + 2,
+    );
+    assert.ok(!("denied" in unshare));
+    assert.ok("node" in unshare);
+    assert.equal(unshare.node.indicators, "");
+    assert.deepEqual(
+      prepareUnshareClaimFromMesh(acl, overlay, ALICE, "ens:vitalik.eth", []),
+      { denied: true },
+    );
   });
 });
 
