@@ -33,7 +33,9 @@ describe("faker v7 aliases for @farcaster/core", () => {
     assert.ok(dt instanceof Date);
     const from = new Date("2020-01-01T00:00:00.000Z");
     const to = new Date("2020-01-02T00:00:00.000Z");
-    const mid = aliased.date.between(from, to);
+    const mid = (
+      aliased.date.between as (from: Date, to: Date) => Date
+    )(from, to);
     assert.ok(mid instanceof Date);
     assert.ok(mid.getTime() >= from.getTime());
     assert.ok(mid.getTime() <= to.getTime());
