@@ -1,3 +1,4 @@
+import "@/lib/faker-v7-compat";
 import { createOutboundAdapters } from "@/lib/outbound-adapters";
 import {
   adapterForNetwork,
