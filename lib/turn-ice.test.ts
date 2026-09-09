@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { GOOGLE_STUN_URL, stunOnlyRtcOptions } from "./gun-webrtc";
+import {
+  GOOGLE_STUN_URL,
+  stunOnlyRtcOptions,
+  type BrowserRtcOptions,
+} from "./gun-webrtc";
 import {
   ALLOCATE_EXPIRES_AT,
   ALLOCATE_OK_BODY,
@@ -108,7 +112,7 @@ describe("rtc options from allocate", () => {
   });
 
   it("mutates the same rtc object Gun closes over", () => {
-    const rtc = stunOnlyRtcOptions();
+    const rtc: BrowserRtcOptions = stunOnlyRtcOptions();
     const ok = parseAllocateResponse(ALLOCATE_OK_BODY);
     assert.ok(ok);
     applyRtcIceServers(rtc, ok.iceServers);
@@ -130,7 +134,7 @@ describe("re-allocate before expiresAt", () => {
   });
 
   it("applies a refresh onto the live rtc object", async () => {
-    const rtc = stunOnlyRtcOptions();
+    const rtc: BrowserRtcOptions = stunOnlyRtcOptions();
     const waits: number[] = [];
     const applied: string[] = [];
     let fire: (() => void) | undefined;
@@ -139,9 +143,9 @@ describe("re-allocate before expiresAt", () => {
       expiresAt: ALLOCATE_EXPIRES_AT,
       now: () => Date.parse(ALLOCATE_EXPIRES_AT) - 90_000,
       fetchAllocate: async () => parseAllocateResponse(ALLOCATE_OK_BODY),
-      setTimeoutFn: ((fn, ms) => {
-        waits.push(ms as number);
-        fire = fn as () => void;
+      setTimeoutFn: ((fn: () => void, ms?: number) => {
+        waits.push(ms ?? 0);
+        fire = fn;
         return 1 as unknown as ReturnType<typeof setTimeout>;
       }) as typeof setTimeout,
       clearTimeoutFn: (() => {}) as typeof clearTimeout,
