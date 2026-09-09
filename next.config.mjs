@@ -13,6 +13,11 @@ const nextConfig = {
     "@faker-js/faker",
     "@farcaster/core",
   ],
+  // TypeScript 7 ships the native tsc CLI, not the JS compiler API
+  // Next's default typecheck backend still calls. Use the project tsc.
+  experimental: {
+    useTypeScriptCli: true,
+  },
   async redirects() {
     return [
       { source: "/design", destination: "/", permanent: false },
