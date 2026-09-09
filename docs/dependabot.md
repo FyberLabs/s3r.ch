@@ -11,6 +11,6 @@ Neither package is a direct app dependency. Dependabot security updates failed w
 
 `overrides` force `axios@>=1.18.0` and pin `@faker-js/faker` to the direct `^10.6.0` (patched; ≥10.5.0) so the lockfile does not keep 7.x for `@farcaster/core`. Do not drop Farcaster outbound or WalletConnect.
 
-`@farcaster/core` still calls faker v7 APIs (`datatype.number`, `random.alphaNumeric`, two-arg `date.between`) while the module evaluates. `lib/faker-v7-compat.ts` aliases those onto faker 10 and must stay imported before `@farcaster/core` in `lib/farcaster-outbound.ts`. Drop the shim when upstream ships a core that does not load faker v7 at import.
+`@farcaster/core` still calls faker v7 APIs (`datatype.number`, `random.alphaNumeric`, two-arg `date.between`) while the module evaluates. `lib/faker-v7-compat.ts` aliases those onto faker 10 and must stay imported before `@farcaster/core` in `lib/farcaster-outbound.ts`. `next.config.mjs` must list both `@faker-js/faker` and `@farcaster/core` in `serverExternalPackages` so Next/Turbopack does not inline a second faker copy (that split breaks `next build` while collecting `/api/outbound`). Drop the shim when upstream ships a core that does not load faker v7 at import.
 
 Revisit and drop the overrides when those upstreams publish releases that accept the patched ranges. Do not rip out `@farcaster/core` or WalletConnect to clear the alerts.
