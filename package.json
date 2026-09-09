@@ -7,6 +7,7 @@
     "build": "next build && node scripts/copy-standalone-assets.cjs",
     "start": "node -r ./gun-preload.cjs .next/standalone/server.js",
     "test": "tsx --test lib/*.test.ts lib/identity/*.test.ts",
+    "pull-relay": "tsx scripts/s3rch-pull-relay.ts",
     "lint": "next lint"
   },
   "dependencies": {

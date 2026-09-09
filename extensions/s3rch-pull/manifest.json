@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "s3r.ch pull",
+  "version": "0.1.0",
+  "description": "Fetch allowlisted public sources for s3r.ch. Not a general proxy.",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://s3r.ch/*",
+        "https://www.s3r.ch/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "host_permissions": [
+    "https://hub.pinata.cloud/*",
+    "https://public.api.bsky.app/*",
+    "https://blog.ethereum.org/*",
+    "https://github.com/*",
+    "https://w3c.social/*",
+    "https://fosstodon.org/*",
+    "wss://nos.lol/*",
+    "https://gi.rss3.io/*"
+  ]
+}

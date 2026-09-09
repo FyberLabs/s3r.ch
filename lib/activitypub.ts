@@ -3,8 +3,9 @@
  * then the outbox OrderedCollection first page (subset). Embedded
  * Create/Note objects only — string IDs are skipped, not fetched.
  *
- * Direct browser-to-source still fails CORS. Seeder and `/api/ingest`
- * fetch server-side. Empty / failed actors write nothing.
+ * Direct browser-to-source still fails CORS in a naked tab. Seeder,
+ * `/api/ingest`, and the allowlisted extension / relay fetch. Empty /
+ * failed actors write nothing.
  */
 
 import type { FeedItem, SourcePull } from "./feed-types";
