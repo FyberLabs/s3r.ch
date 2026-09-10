@@ -39,7 +39,7 @@ jobs:
 
   deploy:
     needs: [test]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     environment: prod
     env:
       ENV_TAG: prod
