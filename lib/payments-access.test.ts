@@ -135,9 +135,19 @@ describe("payments hop headers and identifiers", () => {
     assert.equal(headers["X-Api-Key"], HOP_ENV.PANOPTICON_API_KEY);
     assert.equal("Authorization" in headers, false);
     const src = helperSource();
-    assert.equal(src.includes("process.env.NEXT_PUBLIC"), false);
-    assert.equal(src.includes("NEXT_PUBLIC_PAYMENTS_"), false);
+    // Comment already contains NEXT_PUBLIC_*; lock the consume name, not that substring.
+    assert.equal(src.includes("NEXT_PUBLIC_PAYMENTS"), false);
     assert.equal(src.includes("Never NEXT_PUBLIC_*"), true);
+    assert.equal(src.includes(`process.env.${ENV_API_KEY}`), false);
+    assert.equal(ENV_API_KEY, "PANOPTICON_API_KEY");
+    assert.equal(
+      readPaymentsAccessEnv({
+        PANOPTICON_PAYMENTS_BASE: HOP_ENV.PANOPTICON_PAYMENTS_BASE,
+        PANOPTICON_TENANT_ID: HOP_ENV.PANOPTICON_TENANT_ID,
+        NEXT_PUBLIC_PANOPTICON_API_KEY: HOP_ENV.PANOPTICON_API_KEY,
+      }),
+      null,
+    );
     assert.equal(src.includes("localStorage"), true);
     assert.equal(src.includes("Never Gun"), true);
     assert.equal(src.includes("Never Stripe"), true);
