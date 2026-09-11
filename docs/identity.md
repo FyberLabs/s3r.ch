@@ -155,7 +155,10 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `app/api/turn/allocate` | `GET`/`POST` — SIWE cookie, then hop. 401 unsigned; 503 empty env / hop fail |
 | `lib/oracles-attest.ts` | Server hop to Panopticon `POST /api/v1/oracles/v0/attest`. `PANOPTICON_ORACLES_BASE` + shared tenant/key. Session-gated. Fail soft |
 | `app/api/oracles/attest` | `POST` `{ kind, subject }` — SIWE cookie, then hop (`clientHint` locked to `s3rch-next`). 401 unsigned; 503 empty env / hop fail; 200 plane JSON including `ok: false` |
-| `docs/oracles-and-payments-prep.md` | Oracles attest consume + held payments env stub. Empty oracles env = no hop. Smoke notes |
+| `lib/payments-access.ts` | Server hop to Panopticon payments receipt/intent. `PANOPTICON_PAYMENTS_BASE` + shared tenant/key. Session-gated. Fail soft |
+| `app/api/payments/receipt` | `POST` — SIWE cookie, then hop `POST /api/v1/payments/v0/receipt`. 401 unsigned; 503 empty env / hop fail |
+| `app/api/payments/intent` | `POST` — optional quote hop. Same session/env habit as receipt |
+| `docs/oracles-and-payments-prep.md` | Oracles attest + payments receipt/intent consume smoke. Empty env = fail-soft. No UI paywall |
 | `lib/feed-rank.ts` | Tags-first any-match filter, then recency. No engagement |
 | `lib/feed-discover.ts` | Client Discover corpus (Public seed + shared rooms + live Network mesh). Inventory tag counts, `?tag=` parse, owner snippet. Not search / Popular / Mine |
 | `lib/feed-tabs.ts` | Public = seed; Mine = overlay; Network = live shared Gun mesh; Granted = grant inbox (not snapshot, not overlay, not Public) |
