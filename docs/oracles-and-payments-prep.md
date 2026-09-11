@@ -34,7 +34,7 @@ SIWE stays on the s3r.ch origin. `POST /api/oracles/attest` is session-gated lik
 | Empty / invalid env | 503 | `{ error: "oracles-unconfigured" }` |
 | Plane 401 / 503 / network / bad JSON | 503 | `{ error: "oracles-unavailable" }` |
 | Invalid `kind` / `subject` | 400 | `{ error: "invalid-subject" }` |
-| Plane HTTP 200 (`ok: true` or fail-soft `ok: false`) | 200 | `{ ok, kind, subject, status, observedAt, digest, upstream }` |
+| Plane HTTP 200 (`ok: true` or fail-soft `ok: false`) | 200 | `{ ok, kind, subject, status, observedAt, digest?, upstream }` |
 
 Plane fail-soft statuses (`not_found` \| `unreachable` \| `error`) stay HTTP 200 + `ok: false`. That is not a grant. Do not persist `null` as proof.
 

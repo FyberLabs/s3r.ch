@@ -154,7 +154,7 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `lib/turn-ice.ts` | Browser `/api/turn/allocate` fetch, STUN fallback, re-allocate before `expiresAt` |
 | `app/api/turn/allocate` | `GET`/`POST` — SIWE cookie, then hop. 401 unsigned; 503 empty env / hop fail |
 | `lib/oracles-attest.ts` | Server hop to Panopticon `POST /api/v1/oracles/v0/attest`. `PANOPTICON_ORACLES_BASE` + shared tenant/key. Session-gated. Fail soft |
-| `app/api/oracles/attest` | `POST` `{ kind, subject, clientHint? }` — SIWE cookie, then hop. 401 unsigned; 503 empty env / hop fail; 200 plane JSON including `ok: false` |
+| `app/api/oracles/attest` | `POST` `{ kind, subject }` — SIWE cookie, then hop (`clientHint` locked to `s3rch-next`). 401 unsigned; 503 empty env / hop fail; 200 plane JSON including `ok: false` |
 | `docs/oracles-and-payments-prep.md` | Oracles attest consume + held payments env stub. Empty oracles env = no hop. Smoke notes |
 | `lib/feed-rank.ts` | Tags-first any-match filter, then recency. No engagement |
 | `lib/feed-discover.ts` | Client Discover corpus (Public seed + shared rooms + live Network mesh). Inventory tag counts, `?tag=` parse, owner snippet. Not search / Popular / Mine |

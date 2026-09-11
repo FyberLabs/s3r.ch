@@ -2,7 +2,8 @@
  * Server hop: s3r.ch SIWE session → Panopticon oracles attest v0.
  *
  * Contract: FyberLabs/panopticon `products/oracles/docs/oracles-attest-v0.md`.
- * `POST /api/v1/oracles/v0/attest` → `{ ok, kind, subject, status, observedAt, digest, upstream }`.
+ * `POST /api/v1/oracles/v0/attest` → `{ ok, kind, subject, status, observedAt, digest?, upstream }`.
+ * Hop `clientHint` is locked to `s3rch-next`.
  *
  * Env (server-only, empty = no hop):
  *   PANOPTICON_ORACLES_BASE  origin or origin+/api/v1[/oracles[/v0]]
@@ -47,7 +48,6 @@ export type AttestStatus = (typeof ATTEST_STATUSES)[number];
 export type OraclesAttestRequest = {
   kind: AttestKind;
   subject: string;
-  clientHint: string;
 };
 
 export type OraclesAttestBody = {
@@ -56,7 +56,7 @@ export type OraclesAttestBody = {
   subject: string;
   status: AttestStatus;
   observedAt: string;
-  digest: string | null;
+  digest?: string | null;
   upstream: string;
 };
 
@@ -178,17 +178,12 @@ export function sanitizeAttestSubject(kind: AttestKind, subject: string): string
 
 export function parseAttestRequest(body: unknown): OraclesAttestRequest | null {
   if (!body || typeof body !== "object") return null;
-  const row = body as { kind?: unknown; subject?: unknown; clientHint?: unknown };
+  const row = body as { kind?: unknown; subject?: unknown };
   if (row.kind !== "public_attestation" && row.kind !== "public_relay") return null;
   if (typeof row.subject !== "string") return null;
   const subject = sanitizeAttestSubject(row.kind, row.subject);
   if (!subject) return null;
-  const clientHint =
-    typeof row.clientHint === "string" || row.clientHint === undefined
-      ? sanitizeClientHint(row.clientHint)
-      : null;
-  if (!clientHint) return null;
-  return { kind: row.kind, subject, clientHint };
+  return { kind: row.kind, subject };
 }
 
 function isAttestKind(value: unknown): value is AttestKind {
@@ -224,22 +219,24 @@ export function parseAttestResponse(body: unknown): OraclesAttestBody | null {
   }
   if (typeof row.upstream !== "string" || !row.upstream) return null;
   if (row.ok !== (row.status === "observed")) return null;
-  let digest: string | null = null;
-  if (row.digest !== null && row.digest !== undefined) {
-    if (typeof row.digest !== "string" || !DIGEST_RE.test(row.digest)) return null;
-    digest = row.digest;
-  }
-  if (row.ok && !digest) return null;
-  if (!row.ok && digest) return null;
-  return {
+  const parsed: OraclesAttestBody = {
     ok: row.ok,
     kind: row.kind,
     subject: row.subject,
     status: row.status,
     observedAt: row.observedAt,
-    digest,
     upstream: row.upstream,
   };
+  if (row.digest !== undefined) {
+    if (row.digest === null) {
+      parsed.digest = null;
+    } else if (typeof row.digest === "string" && DIGEST_RE.test(row.digest)) {
+      parsed.digest = row.digest;
+    } else {
+      return null;
+    }
+  }
+  return parsed;
 }
 
 export async function hopPanopticonAttest(input: {
@@ -256,7 +253,7 @@ export async function hopPanopticonAttest(input: {
       body: JSON.stringify({
         kind: input.request.kind,
         subject: input.request.subject,
-        clientHint: input.request.clientHint,
+        clientHint: DEFAULT_CLIENT_HINT,
       }),
       signal: AbortSignal.timeout(ATTEST_FETCH_MS),
       cache: "no-store",
