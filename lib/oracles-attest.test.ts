@@ -134,11 +134,10 @@ describe("attest hop headers and hint", () => {
     assert.equal(src.includes("Never Gun"), true);
   });
 
-  it("defaults clientHint to the integrator label", () => {
+  it("locks clientHint to s3rch-next", () => {
+    assert.equal(DEFAULT_CLIENT_HINT, "s3rch-next");
     assert.equal(sanitizeClientHint("s3rch-next"), "s3rch-next");
     assert.equal(sanitizeClientHint(""), DEFAULT_CLIENT_HINT);
-    assert.equal(sanitizeClientHint("  "), DEFAULT_CLIENT_HINT);
-    assert.equal(sanitizeClientHint("x".repeat(200)).length, 128);
   });
 });
 
@@ -178,7 +177,6 @@ describe("parseAttestRequest / parseAttestResponse", () => {
       {
         kind: "public_attestation",
         subject: ATTEST_SUBJECT,
-        clientHint: "s3rch-next",
       },
     );
     const parsed = parseAttestResponse(ATTEST_OK_BODY);
@@ -193,8 +191,8 @@ describe("parseAttestRequest / parseAttestResponse", () => {
   it("rejects bad kind, private subject, and unparseable plane JSON", () => {
     assert.equal(parseAttestRequest({ kind: "verify", subject: ATTEST_SUBJECT }), null);
     assert.equal(parseAttestRequest({ kind: "public_attestation" }), null);
+    assert.ok(parseAttestResponse(ATTEST_OK_WITHOUT_DIGEST));
     assert.equal(parseAttestResponse(ATTEST_BAD_OBSERVED_AT), null);
-    assert.equal(parseAttestResponse(ATTEST_OK_WITHOUT_DIGEST), null);
     assert.equal(parseAttestResponse({ ...ATTEST_OK_BODY, ok: false }), null);
     assert.equal(parseAttestResponse({ ...ATTEST_NOT_FOUND_BODY, digest: "sha256:ab" }), null);
   });
@@ -241,7 +239,11 @@ describe("sessionGatedAttest", () => {
     const seen: { url: string; init?: RequestInit }[] = [];
     const result = await sessionGatedAttest({
       sessionAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-      body: { kind: "public_attestation", subject: ATTEST_SUBJECT },
+      body: {
+        kind: "public_attestation",
+        subject: ATTEST_SUBJECT,
+        clientHint: "not-this-label",
+      },
       env: ATTEST_HOP_ENV,
       fetchImpl: async (url, init) => {
         seen.push({ url: String(url), init });
@@ -288,7 +290,7 @@ describe("sessionGatedAttest", () => {
       async () => {
         throw new Error("network down");
       },
-      async () => jsonResponse(200, ATTEST_OK_WITHOUT_DIGEST),
+      async () => jsonResponse(200, { ...ATTEST_OK_BODY, observedAt: "not-a-date" }),
     ];
     for (const fetchImpl of cases) {
       const result = await sessionGatedAttest({
@@ -310,7 +312,6 @@ describe("sessionGatedAttest", () => {
       request: {
         kind: "public_attestation",
         subject: ATTEST_SUBJECT,
-        clientHint: DEFAULT_CLIENT_HINT,
       },
       fetchImpl: async () => jsonResponse(200, { nope: true }),
     });
