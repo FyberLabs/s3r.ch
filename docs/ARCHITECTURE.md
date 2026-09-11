@@ -26,7 +26,7 @@ These stay put. They are why the stack looks like this — not a slogan.
 
 4. **Oracles and validators from the browser when possible.** Prefer browser-direct verification (already: SIWE ecrecover, ERC-1271, ENS reverse+forward). Any service we still have to run should look like a crypto validator / relay (seed, TURN, later paid access), not a privileged social backend.
 
-5. **Needed services live in Panopticon.** Same pattern as Hypermesh on Panopticon: an open product network with public APIs so others can run or sell equivalents in a market. Do not grow s3r.ch Azure into that service. Do not invent a second control plane. Azure is not the Gun datastore. Hypermesh Phase 1 Stripe / Keycloak locks stay in hypermesh-docs; this file does not move them. The SociACL crate stays in [FyberLabs/SociACL](https://github.com/FyberLabs/SociACL). This PR consumes Panopticon TURN allocate (path A) from the Next server. It does not implement payments or oracles. An optional **time-boxed** infra coturn (path B) is allowed only with the **same TURN/URI contract** as the Panopticon product and a **DNS/config cutover** — not a permanent second plane. See [durable-graph-and-turn.md](durable-graph-and-turn.md).
+5. **Needed services live in Panopticon.** Same pattern as Hypermesh on Panopticon: an open product network with public APIs so others can run or sell equivalents in a market. Do not grow s3r.ch Azure into that service. Do not invent a second control plane. Azure is not the Gun datastore. Hypermesh Phase 1 Stripe / Keycloak locks stay in hypermesh-docs; this file does not move them. The SociACL crate stays in [FyberLabs/SociACL](https://github.com/FyberLabs/SociACL). This PR consumes Panopticon TURN allocate (path A) and oracles attest v0 from the Next server. It does not implement payments. An optional **time-boxed** infra coturn (path B) is allowed only with the **same TURN/URI contract** as the Panopticon product and a **DNS/config cutover** — not a permanent second plane. See [durable-graph-and-turn.md](durable-graph-and-turn.md).
 
 6. **Payments later.** Access to content / connections will be crypto. A thinner fiat micropayment rail (us or others) is optional later. Not this PR. No Stripe, no token launch, no paywall UI.
 
@@ -472,7 +472,7 @@ Outbound: `OutboundAdapter` is wired for **Farcaster** (hub `submitMessage`) and
 - Meetings and live streams. Chat and presence over Gun subscriptions on a visible room **do** ship; they are not WebRTC. `gun/lib/webrtc` + STUN **does** ship; allocate TURN **does** ship as a fail-soft hop. Neither is a meeting or stream product.
 - ActivityPub / Nostr **outbound** posting (inbound pull is wired; posting is not). Farcaster / ATProto outbound **does** ship (explicit Mine control; not auto-bridge). Allowlisted pull extension / localhost relay **does** ship (not a general proxy; `/api/ingest` remains). RSS3 GI still has no public DNS.
 - Durable storage is the mesh (and any later durable seed), not the container disk. Requirements: [durable-graph-and-turn.md](durable-graph-and-turn.md). This PR does not mount Blob/Files or a relay VM.
-- Coturn dataplane, oracles/validators, and crypto (or later fiat) payments — see **Steering locks**. Allocate hop is this slice. Durable graph is still requirements-only.
+- Coturn dataplane, oracles `/verify`, and crypto (or later fiat) payments — see **Steering locks**. Allocate and oracles attest hops are this slice. Durable graph is still requirements-only.
 
 ## Out of scope (do not restore)
 

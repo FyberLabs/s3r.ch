@@ -13,7 +13,7 @@ function prepDoc(): string {
   );
 }
 
-describe("oracles / payments env prep", () => {
+describe("oracles consume / payments env prep", () => {
   it("names server-only bases and reuses TURN tenant/key", () => {
     const env = envExample();
     assert.equal(env.includes("PANOPTICON_ORACLES_BASE="), true);
@@ -24,22 +24,29 @@ describe("oracles / payments env prep", () => {
     assert.equal(env.includes("Never NEXT_PUBLIC_*"), true);
     assert.equal(env.includes("oracles-attest-v0.md"), true);
     assert.equal(env.includes("payments-access-v0.md"), true);
+    assert.equal(env.includes("/api/v1/oracles/v0/attest"), true);
   });
 
-  it("documents fail-soft empty env and held hops", () => {
+  it("documents fail-soft empty env, oracles consume, and held payments", () => {
     const doc = prepDoc();
     assert.equal(doc.includes("fail-soft"), true);
     assert.equal(doc.includes("no hop"), true);
+    assert.equal(doc.includes("/api/oracles/attest"), true);
     assert.equal(doc.includes("/api/v1/oracles/v0/attest"), true);
     assert.equal(doc.includes("/api/v1/payments/v0/receipt"), true);
     assert.equal(doc.includes("Never `NEXT_PUBLIC_*`"), true);
     assert.equal(doc.includes("Do not invent a SociACL grant"), true);
+    assert.equal(doc.includes("unauthorized"), true);
+    assert.equal(doc.includes("oracles-unconfigured"), true);
   });
 
-  it("does not ship a live oracles or payments hop", () => {
-    assert.equal(existsSync(new URL("../app/api/oracles", import.meta.url)), false);
+  it("ships the oracles attest hop and keeps payments held", () => {
+    assert.equal(existsSync(new URL("./oracles-attest.ts", import.meta.url)), true);
+    assert.equal(
+      existsSync(new URL("../app/api/oracles/attest/route.ts", import.meta.url)),
+      true,
+    );
     assert.equal(existsSync(new URL("../app/api/payments", import.meta.url)), false);
-    assert.equal(existsSync(new URL("./oracles-attest.ts", import.meta.url)), false);
     assert.equal(existsSync(new URL("./payments-access.ts", import.meta.url)), false);
   });
 });
