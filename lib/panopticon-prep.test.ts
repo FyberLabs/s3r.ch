@@ -13,6 +13,22 @@ function prepDoc(): string {
   );
 }
 
+const LAB_ORIGIN = "https://api.test.hyperme.sh";
+
+/** True when text names the lab origin host — not a substring-in-any-URL check. */
+function mentionsLabOrigin(text: string): boolean {
+  const expected = new URL(LAB_ORIGIN);
+  const found = text.match(/https?:\/\/[^\s`'"]+/g) ?? [];
+  return found.some((raw) => {
+    try {
+      const url = new URL(raw.replace(/[.,;:)]+$/, ""));
+      return url.protocol === expected.protocol && url.hostname === expected.hostname;
+    } catch {
+      return false;
+    }
+  });
+}
+
 describe("oracles consume / payments consume", () => {
   it("names server-only bases and reuses TURN tenant/key", () => {
     const env = envExample();
@@ -25,7 +41,7 @@ describe("oracles consume / payments consume", () => {
     assert.equal(env.includes("oracles-attest-v0.md"), true);
     assert.equal(env.includes("payments-access-v0.md"), true);
     assert.equal(env.includes("/api/v1/oracles/v0/attest"), true);
-    assert.equal(env.includes("https://api.test.hyperme.sh"), true);
+    assert.equal(mentionsLabOrigin(env), true);
     assert.equal(env.includes("/api/payments/receipt"), true);
   });
 
