@@ -13,7 +13,7 @@ function prepDoc(): string {
   );
 }
 
-describe("oracles consume / payments env prep", () => {
+describe("oracles consume / payments consume", () => {
   it("names server-only bases and reuses TURN tenant/key", () => {
     const env = envExample();
     assert.equal(env.includes("PANOPTICON_ORACLES_BASE="), true);
@@ -25,28 +25,40 @@ describe("oracles consume / payments env prep", () => {
     assert.equal(env.includes("oracles-attest-v0.md"), true);
     assert.equal(env.includes("payments-access-v0.md"), true);
     assert.equal(env.includes("/api/v1/oracles/v0/attest"), true);
+    assert.equal(env.includes("https://api.test.hyperme.sh"), true);
+    assert.equal(env.includes("/api/payments/receipt"), true);
   });
 
-  it("documents fail-soft empty env, oracles consume, and held payments", () => {
+  it("documents fail-soft empty env and both consume smokes", () => {
     const doc = prepDoc();
     assert.equal(doc.includes("fail-soft"), true);
     assert.equal(doc.includes("no hop"), true);
     assert.equal(doc.includes("/api/oracles/attest"), true);
     assert.equal(doc.includes("/api/v1/oracles/v0/attest"), true);
     assert.equal(doc.includes("/api/v1/payments/v0/receipt"), true);
+    assert.equal(doc.includes("/api/payments/receipt"), true);
+    assert.equal(doc.includes("payments-unconfigured"), true);
+    assert.equal(doc.includes("oracles-unconfigured"), true);
+    assert.equal(doc.includes("unauthorized"), true);
     assert.equal(doc.includes("Never `NEXT_PUBLIC_*`"), true);
     assert.equal(doc.includes("Do not invent a SociACL grant"), true);
-    assert.equal(doc.includes("unauthorized"), true);
-    assert.equal(doc.includes("oracles-unconfigured"), true);
+    assert.equal(doc.includes("Not Stripe"), true);
   });
 
-  it("ships the oracles attest hop and keeps payments held", () => {
+  it("ships oracles attest and payments receipt/intent hops", () => {
     assert.equal(existsSync(new URL("./oracles-attest.ts", import.meta.url)), true);
     assert.equal(
       existsSync(new URL("../app/api/oracles/attest/route.ts", import.meta.url)),
       true,
     );
-    assert.equal(existsSync(new URL("../app/api/payments", import.meta.url)), false);
-    assert.equal(existsSync(new URL("./payments-access.ts", import.meta.url)), false);
+    assert.equal(existsSync(new URL("./payments-access.ts", import.meta.url)), true);
+    assert.equal(
+      existsSync(new URL("../app/api/payments/receipt/route.ts", import.meta.url)),
+      true,
+    );
+    assert.equal(
+      existsSync(new URL("../app/api/payments/intent/route.ts", import.meta.url)),
+      true,
+    );
   });
 });
