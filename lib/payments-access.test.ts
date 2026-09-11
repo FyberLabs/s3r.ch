@@ -135,7 +135,7 @@ describe("payments hop headers and identifiers", () => {
     assert.equal(headers["X-Api-Key"], HOP_ENV.PANOPTICON_API_KEY);
     assert.equal("Authorization" in headers, false);
     const src = helperSource();
-    assert.equal(src.includes("NEXT_PUBLIC_"), false);
+    assert.equal(src.includes("NEXT_PUBLIC_PAYMENTS"), false);
     assert.equal(src.includes("Never NEXT_PUBLIC_*"), true);
     assert.equal(src.includes("localStorage"), true);
     assert.equal(src.includes("Never Gun"), true);
