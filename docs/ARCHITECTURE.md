@@ -323,7 +323,7 @@ A room is `{ id, title, owner, tags, ts, provenance, v }` with csv tags on the w
 
 Fetching a URL is an edge handoff, not a grant. Empty or failed sources write nothing. `POST /api/seed` is **503** only when `sourcesOk=0` **and** there is an error. A dead GI host must not empty the other sources. Signed-in browsers can pull the **same** documented classes via `POST /api/ingest` `{ allowedSource }` or the `s3rch-pull` extension / localhost relay. Those paths still do **not** write the public seed — the client admits `v: 1` onto Mine and only puts `s3rch/items` on an explicit share.
 
-User-Agent: `s3r.ch-gun-feed/0.1 (Fyber Labs)`. Timeouts are 8s, same as the old GI fetches.
+User-Agent: `s3r.ch-gun-feed/0.1 (Fyber Labs)`. Timeouts are 15s (`PUBLIC_FETCH_MS` / `AbortSignal.timeout`), same shared budget as the other public pulls.
 
 ### Farcaster Hubble HTTP (required for a live seed)
 
