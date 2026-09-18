@@ -1,7 +1,8 @@
 /** Shared lab seeder / ingest fetch defaults. */
 
 export const PUBLIC_USER_AGENT = "s3r.ch-gun-feed/0.1 (Fyber Labs)";
-export const PUBLIC_FETCH_MS = 8_000;
+/** Per-request budget for parallel public pulls. 8s is tight on App Service egress. */
+export const PUBLIC_FETCH_MS = 15_000;
 
 export async function fetchPublic(
   url: string | URL,
