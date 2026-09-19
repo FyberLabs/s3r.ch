@@ -106,11 +106,60 @@ jobs:
             exit 1
           fi
           IMAGE="${ACR_LOGIN}/${IMAGE_REPO}:${ENV_TAG}"
+          export SUBSCRIPTION_ID AZURE_RESOURCE_GROUP AZURE_WEBAPP_NAME
 
           az webapp config container set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEBAPP_NAME" \
             --container-image-name "$IMAGE"
+
+          echo "Refreshing Key Vault app setting references"
+          az rest --method POST --uri \
+            "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${AZURE_RESOURCE_GROUP}/providers/Microsoft.Web/sites/${AZURE_WEBAPP_NAME}/config/configreferences/appsettings/refresh?api-version=2022-03-01" \
+            --output none
+
+          python3 - <<'PY'
+import json, os, subprocess, sys, time
+
+sub = os.environ["SUBSCRIPTION_ID"]
+rg = os.environ["AZURE_RESOURCE_GROUP"]
+name = os.environ["AZURE_WEBAPP_NAME"]
+uri = (
+    f"https://management.azure.com/subscriptions/{sub}/resourceGroups/{rg}"
+    f"/providers/Microsoft.Web/sites/{name}/config/configreferences/appsettings"
+    "?api-version=2022-03-01"
+)
+watch = "PANOPTICON_API_KEY"
+
+def refs():
+    raw = subprocess.check_output(
+        ["az", "rest", "--method", "GET", "--uri", uri, "-o", "json"],
+        text=True,
+    )
+    data = json.loads(raw)
+    props = data.get("properties") or {}
+    if isinstance(props, dict):
+        return props
+    return {}
+
+status = ""
+for attempt in range(1, 21):
+    props = refs()
+    meta = props.get(watch)
+    if not meta:
+        print(f"{watch} is not a Key Vault reference (STUN-only is valid).")
+        status = "absent"
+        break
+    status = str(meta.get("status") or meta.get("Status") or "")
+    print(f"{watch} reference status={status!r} (attempt {attempt}/20)")
+    if status.lower() in {"resolved", "success"}:
+        break
+    time.sleep(3)
+else:
+    print(f"{watch} Key Vault reference did not resolve", file=sys.stderr)
+    sys.exit(1)
+PY
+
           az webapp restart \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$AZURE_WEBAPP_NAME"

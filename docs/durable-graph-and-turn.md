@@ -29,7 +29,7 @@ From [ARCHITECTURE.md — Steering locks (2026-09-02)](ARCHITECTURE.md#steering-
 | Needed services live in **Panopticon** | Seed, TURN, paid access, oracles we cannot do in-browser: open product network, public APIs, market of equivalents. Do not grow s3r.ch Azure into that service. Do not invent a second control plane. |
 | STUN ≠ TURN | Google `stun.l.google.com:19302` is STUN. It is not free TURN. No TURN on App Service. |
 
-Chris asked whether TURN can deploy **in FyberLabs/infra as a service independent of Panopticon**. Fyber Research Bot (infra/Azure, docs-phase) agrees the lock stands: required client-mesh services belong in **Panopticon** (open/public, market-equivalent OK). Azure is not the Gun datastore. An interim coturn is sane **only** under the conditions in **Path B is legal only if** below.
+TURN does not deploy **in FyberLabs/infra as a service independent of Panopticon**. Required client-mesh services belong in **Panopticon** (open/public, market-equivalent OK). Azure is not the Gun datastore. An interim coturn is sane **only** under the conditions in **Path B is legal only if** below.
 
 | Path | What it is | Lock |
 | --- | --- | --- |
@@ -37,7 +37,7 @@ Chris asked whether TURN can deploy **in FyberLabs/infra as a service independen
 | **B** | Optional, **time-boxed** FyberLabs/infra coturn that already implements the **same TURN/URI contract** as A. Graduation is DNS/config cutover, not a second control plane. | Lock **stays**. Allowed only if every B condition holds. |
 | **C** | Fully independent infra-only forever | Conflicts with the lock unless `open-services.md` is amended. This file does not amend it. |
 
-This file recommends **A as the product end-state**, plus **optional time-boxed B** for the lab if Chris wants a relay before the Panopticon product exists. Path C is listed so the tension is visible. Choosing C is a lock change — do it in hypermesh-docs, not by silence here.
+This file recommends **A as the product end-state**, plus **optional time-boxed B** for the lab if a relay is needed before the Panopticon product exists. Path C is listed so the tension is visible. Choosing C is a lock change — do it in hypermesh-docs, not by silence here.
 
 ### Path B is legal only if
 
@@ -167,7 +167,7 @@ TURN without auth is an open relay (abuse, cost). Static secrets in the client a
 
 Lab / product mint: same allocate URI and JSON as path A; session-gated Next hop; checksummed address as `clientHint`; TTL minutes not days. Empty `PANOPTICON_TURN_BASE` / `PANOPTICON_TENANT_ID` / `PANOPTICON_API_KEY` keeps STUN + `/gun`. Unsigned visitors keep STUN + `/gun`. Cutover changes the host, not the path.
 
-### Scale, regions, transports (Research Bot / Azure)
+### Scale, regions, transports (Azure)
 
 Prefer a **small dedicated Linux VM** over ACA Consumption. TURN wants stable **UDP** (3478 + a **capped relay port range**) and long-lived allocations. ACA Consumption is a poor fit without VNet / dedicated profiles (same class of reason `vm-pano-test` is a VM).
 
@@ -283,7 +283,7 @@ Empty any of the three = STUN-only. Integrator contract: FyberLabs/panopticon [`
 
 ### Operator / infra habit (live TURN)
 
-Same style as `IDENTITY_SESSION_SECRET` / `SEED_SECRET`: App Service application settings, Key Vault for the secret, Terraform in **FyberLabs/infra** `terraform/s3rch`. **Research owns that layer.** This repo is Path A consume only — no coturn, no Terraform here.
+Same style as `IDENTITY_SESSION_SECRET` / `SEED_SECRET`: App Service application settings, Key Vault for the secret, Terraform in **FyberLabs/infra** `terraform/s3rch`. That infra layer owns the wire. This repo is Path A consume only — no coturn, no Terraform here.
 
 Checklist for live TURN:
 

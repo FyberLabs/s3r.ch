@@ -13,9 +13,9 @@ Gun is the client graph. Azure App Service is a seed peer / bootstrap cache, not
 
 New issues get a `needs-triage` label. That is first-pass intake only.
 
-## If you are an AI
+## Review findings
 
-Use the **[AI review](.github/ISSUE_TEMPLATE/ai-review.yml)** form. One cluster of related findings per issue.
+Use the **[Review findings](.github/ISSUE_TEMPLATE/ai-review.yml)** form for a cluster of related findings from a code or docs review.
 
 - Cite docs paths you actually read: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/identity.md](docs/identity.md), [docs/s3rch-check.md](docs/s3rch-check.md), [docs/durable-graph-and-turn.md](docs/durable-graph-and-turn.md), [docs/pull-relay.md](docs/pull-relay.md).
 - Say whether you ran the app or reviewed docs only. Do not invent stack traces.
@@ -30,7 +30,7 @@ These already exist on the repo (keep GitHub defaults such as `bug`, `enhancemen
 | Label | Use |
 | --- | --- |
 | `needs-triage` | New intake, not yet scheduled |
-| `ai-review` | Filed from the AI review form |
+| `ai-review` | Filed from the review-findings form |
 | `scheduled` | Accepted and queued |
 | `feed` | Lab feed / news / seeder sources |
 | `oracle` | Search or oracle API lookup |

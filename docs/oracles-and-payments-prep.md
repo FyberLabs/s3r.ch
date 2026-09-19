@@ -103,6 +103,6 @@ TURN consume (already live, unchanged): [`products/turn/docs/turn-allocate-v0.md
 
 ## Operator / infra habit
 
-Same as TURN / `IDENTITY_SESSION_SECRET` / `SEED_SECRET`: App Service application settings, Key Vault (`kv-fyber-cg47`) for `PANOPTICON_API_KEY`, Terraform in **FyberLabs/infra** `terraform/s3rch`. **Research owns that layer** (`PANOPTICON_ORACLES_BASE` and `PANOPTICON_PAYMENTS_BASE` App Settings, TURN twin). This repo is s3r.ch consume only — it does not wire ACA and does not add Terraform here.
+Same as TURN / `IDENTITY_SESSION_SECRET` / `SEED_SECRET`: App Service application settings, Key Vault (`kv-fyber-cg47`) for `PANOPTICON_API_KEY`, Terraform in **FyberLabs/infra** `terraform/s3rch`. That layer sets `PANOPTICON_ORACLES_BASE` and `PANOPTICON_PAYMENTS_BASE` (TURN twin). This repo is s3r.ch consume only — it does not wire ACA and does not add Terraform here.
 
 Empty oracles or payments env stays fail-soft.
