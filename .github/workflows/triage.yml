@@ -19,6 +19,7 @@ jobs:
       - name: Add ai-review
         if: >-
           startsWith(github.event.issue.title, '[AI review]')
+          || startsWith(github.event.issue.title, '[review]')
           || contains(github.event.issue.body, 's3rch-template: ai-review')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
