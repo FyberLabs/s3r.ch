@@ -119,46 +119,46 @@ jobs:
             --output none
 
           python3 - <<'PY'
-import json, os, subprocess, sys, time
+          import json, os, subprocess, sys, time
 
-sub = os.environ["SUBSCRIPTION_ID"]
-rg = os.environ["AZURE_RESOURCE_GROUP"]
-name = os.environ["AZURE_WEBAPP_NAME"]
-uri = (
-    f"https://management.azure.com/subscriptions/{sub}/resourceGroups/{rg}"
-    f"/providers/Microsoft.Web/sites/{name}/config/configreferences/appsettings"
-    "?api-version=2022-03-01"
-)
-watch = "PANOPTICON_API_KEY"
+          sub = os.environ["SUBSCRIPTION_ID"]
+          rg = os.environ["AZURE_RESOURCE_GROUP"]
+          name = os.environ["AZURE_WEBAPP_NAME"]
+          uri = (
+              f"https://management.azure.com/subscriptions/{sub}/resourceGroups/{rg}"
+              f"/providers/Microsoft.Web/sites/{name}/config/configreferences/appsettings"
+              "?api-version=2022-03-01"
+          )
+          watch = "PANOPTICON_API_KEY"
 
-def refs():
-    raw = subprocess.check_output(
-        ["az", "rest", "--method", "GET", "--uri", uri, "-o", "json"],
-        text=True,
-    )
-    data = json.loads(raw)
-    props = data.get("properties") or {}
-    if isinstance(props, dict):
-        return props
-    return {}
+          def refs():
+              raw = subprocess.check_output(
+                  ["az", "rest", "--method", "GET", "--uri", uri, "-o", "json"],
+                  text=True,
+              )
+              data = json.loads(raw)
+              props = data.get("properties") or {}
+              if isinstance(props, dict):
+                  return props
+              return {}
 
-status = ""
-for attempt in range(1, 21):
-    props = refs()
-    meta = props.get(watch)
-    if not meta:
-        print(f"{watch} is not a Key Vault reference (STUN-only is valid).")
-        status = "absent"
-        break
-    status = str(meta.get("status") or meta.get("Status") or "")
-    print(f"{watch} reference status={status!r} (attempt {attempt}/20)")
-    if status.lower() in {"resolved", "success"}:
-        break
-    time.sleep(3)
-else:
-    print(f"{watch} Key Vault reference did not resolve", file=sys.stderr)
-    sys.exit(1)
-PY
+          status = ""
+          for attempt in range(1, 21):
+              props = refs()
+              meta = props.get(watch)
+              if not meta:
+                  print(f"{watch} is not a Key Vault reference (STUN-only is valid).")
+                  status = "absent"
+                  break
+              status = str(meta.get("status") or meta.get("Status") or "")
+              print(f"{watch} reference status={status!r} (attempt {attempt}/20)")
+              if status.lower() in {"resolved", "success"}:
+                  break
+              time.sleep(3)
+          else:
+              print(f"{watch} Key Vault reference did not resolve", file=sys.stderr)
+              sys.exit(1)
+          PY
 
           az webapp restart \
             --resource-group "$AZURE_RESOURCE_GROUP" \
