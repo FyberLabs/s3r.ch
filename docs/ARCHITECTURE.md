@@ -82,8 +82,10 @@ next:
   do not deploy coturn, Blob, or the long-lived TURN secret in this slice
   operator: App Service WebSockets + HTTP/2 (sibling infra PR)
   share-into-mesh stays explicit; personal overlay stays mine until shared
-  meetings / streams — not this slice
+  meetings / streams — not this slice. Remaining v1: [ROADMAP-v1.md](ROADMAP-v1.md)
 ```
+
+Planned v1 bot-plane compatibility (Slack/Discord-shaped events and webhooks, not clones) is [bot-plane-compatibility.md](bot-plane-compatibility.md). It is not live in this slice.
 
 ## Graphs: public cache, personal overlay, share-into-mesh, unshare, grant delivery
 
@@ -469,7 +471,7 @@ Outbound: `OutboundAdapter` is wired for **Farcaster** (hub `submitMessage`) and
 - Wire the SEA pair (not `recall` to sessionStorage) and PRF wrap after SIWE is proven — already this kit. Do not put `priv` / `epriv` on the user node.
 - Mesh-wide Check on Gun `s3rch/acl` **does** ship (plus lab IndexedDB for immediate privilege-down). URL fetches remain handoffs; they do not mint `see`. Not Hypermesh Phase 1. Social Light hop can factor a Check; it cannot mint a grant. No hop UI. Email/phone confirm and fixture KYC attestations **do** ship as private held claims (Mine until share).
 - A live email/SMS vendor or a real third-party KYC HTTP issuer (env-gated; unset stays honest "not configured" / fixture). Not a passport upload.
-- Meetings and live streams. Chat and presence over Gun subscriptions on a visible room **do** ship; they are not WebRTC. `gun/lib/webrtc` + STUN **does** ship; allocate TURN **does** ship as a fail-soft hop. Neither is a meeting or stream product.
+- Meetings and live streams (ordered in [ROADMAP-v1.md](ROADMAP-v1.md)). Chat and presence over Gun subscriptions on a visible room **do** ship; they are not WebRTC. `gun/lib/webrtc` + STUN **does** ship; allocate TURN **does** ship as a fail-soft hop. Neither is a meeting or stream product.
 - ActivityPub / Nostr **outbound** posting (inbound pull is wired; posting is not). Farcaster / ATProto outbound **does** ship (explicit Mine control; not auto-bridge). Allowlisted pull extension / localhost relay **does** ship (not a general proxy; `/api/ingest` remains). RSS3 GI still has no public DNS.
 - Durable storage is the mesh (and any later durable seed), not the container disk. Requirements: [durable-graph-and-turn.md](durable-graph-and-turn.md). This PR does not mount Blob/Files or a relay VM.
 - Coturn dataplane and oracles `/verify` — see **Steering locks**. Allocate, oracles attest, and payments receipt/intent hops **do** ship (empty env fail-soft; no paywall UI). Durable graph is still requirements-only.
