@@ -47,6 +47,21 @@ jobs:
       AZURE_RESOURCE_GROUP: rg-s3rch-fyberlabs-prod
       HEALTH_URL: https://s3rch-fyberlabs-prod.azurewebsites.net/api/health
     steps:
+      # az and azure/login keep account state in ~/.azure, outside the checkout.
+      # docker/login-action writes the registry token to ~/.docker/config.json.
+      # The shared runners do not wipe the home directory between jobs.
+      # jobs.*.env cannot read runner.temp (that context exists only in steps),
+      # so this step exports both paths for every later step. RUNNER_TEMP is
+      # removed when the job ends. Logout cannot clear another job's credentials.
+      - name: Isolate credential stores
+        run: |
+          set -euo pipefail
+          azure_config="$RUNNER_TEMP/azure-config"
+          docker_config="$RUNNER_TEMP/docker-config"
+          mkdir -p "$azure_config" "$docker_config"
+          echo "AZURE_CONFIG_DIR=$azure_config" >> "$GITHUB_ENV"
+          echo "DOCKER_CONFIG=$docker_config" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
@@ -87,8 +102,8 @@ jobs:
             ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_REPO }}:${{ github.sha }}
             ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_REPO }}:${{ env.ENV_TAG }}
 
-      # Self-hosted runners share ~/.azure; a long docker build can drop the
-      # first OIDC session. Re-login immediately before App Service commands.
+      # The OIDC access token can expire during a long image build.
+      # Re-login into this job's AZURE_CONFIG_DIR before App Service commands.
       - uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -177,3 +192,18 @@ jobs:
           done
           echo "Health check failed after 30 attempts"
           exit 1
+
+      - name: Log out of Azure and ACR
+        if: always()
+        env:
+          AZURE_CONFIG_DIR: ${{ runner.temp }}/azure-config
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-config
+        run: |
+          set -euo pipefail
+          # Only the per-job directories. Do not log out a shared ~/.azure.
+          if [ -d "$AZURE_CONFIG_DIR" ]; then
+            az logout || true
+          fi
+          if [ -f "$DOCKER_CONFIG/config.json" ]; then
+            docker logout "${ACR_LOGIN_SERVER}" || true
+          fi
