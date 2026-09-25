@@ -10,14 +10,16 @@ permissions:
 
 jobs:
   voice:
-    runs-on: [self-hosted, linux, x64]
+    # pull_request runs fork code. Keep this off the org self-hosted runner.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - name: Fail agent-ops language
         run: bash scripts/check-public-voice.sh
 
   test:
-    runs-on: [self-hosted, linux, x64]
+    # pull_request runs fork code. Keep this off the org self-hosted runner.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
