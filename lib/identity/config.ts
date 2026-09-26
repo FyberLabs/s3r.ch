@@ -24,8 +24,29 @@ export const LOCAL_SESSION_SECRET = "s3rch-local-identity-session-secret";
 
 export const ALLOWED_SIWE_HOSTS = new Set(["s3r.ch", "localhost", "127.0.0.1"]);
 
+/** Short-lived PKCE state. Not a session. */
+export const OAUTH_PKCE_TTL_SECONDS = 10 * 60;
+
+/** Public Keycloak client on the controlplane realm. No secret. */
+export const OAUTH_CLIENT_ID = "s3rch-web";
+
+export const OAUTH_CALLBACK_PATH = "/api/identity/oauth/callback";
+
+/**
+ * Exact redirect URIs registered on `s3rch-web`.
+ * Keep in sync with panopticon `infra/keycloak/s3rch_web.py`.
+ */
+export const OAUTH_REDIRECT_URIS = [
+  `https://s3r.ch${OAUTH_CALLBACK_PATH}`,
+  `https://www.s3r.ch${OAUTH_CALLBACK_PATH}`,
+  `http://localhost:3000${OAUTH_CALLBACK_PATH}`,
+  `http://127.0.0.1:3000${OAUTH_CALLBACK_PATH}`,
+] as const;
+
 export const COOKIE_BASE = {
   nonce: "s3rch-nonce",
   session: "s3rch-session",
   confirm: "s3rch-confirm",
+  oauth: "s3rch-oauth",
+  oauthPkce: "s3rch-oauth-pkce",
 } as const;

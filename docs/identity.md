@@ -2,13 +2,14 @@
 
 Source of truth for login on this Next app. Product decisions agreed with Chris Hamilton (cchamilt).
 
-This kit is **s3r.ch login** (wallet first) and, later, a Hypermesh **wallet door**. The Hypermesh portal stays Keycloak. **Do not make OIDC primary login on s3r.ch.** Panopticon Keycloak OAuth is planned as a **backup** door only, with the same brokers Hypermesh already uses (Microsoft, GitHub, Google). See [oauth-idp.md](oauth-idp.md).
+This kit is **s3r.ch login** (wallet first) and, later, a Hypermesh **wallet door**. The Hypermesh portal stays Keycloak. **Do not make OIDC primary login on s3r.ch.** Panopticon Keycloak OAuth is a **backup** door only, with the same brokers Hypermesh already uses (Microsoft, GitHub, Google). See [oauth-idp.md](oauth-idp.md).
 
 Components here are written so they can be extracted into a shared kit later. The first implementation lives in this repo.
 
 ## What this slice ships
 
 - EIP-4361 **Sign-In with Ethereum** (SIWE).
+- **Keycloak OAuth backup** on the existing Panopticon `controlplane` realm (public PKCE client `s3rch-web`, brokers `microsoft` / `github` / `google`). `GET /api/identity/oauth/start` and `GET /api/identity/oauth/callback` set a backup cookie separate from the SIWE cookie. Provider tokens are not stored and are not written to Gun. Empty or unknown `S3RCH_OAUTH_ISSUER` fails closed. Unlinked OAuth is not the Gun / forum owner. SIWE link binding is not this slice.
 - Signed **HttpOnly cookie session** bound to a **checksummed** Ethereum address (never ENS, never email, never a SEA pub).
 - Quiet connect / sign-in / sign-out on `/feed` (injected wallet by default).
 - **Coinbase Smart Wallet onramp** (wagmi `coinbaseWallet` with `preference.options: "smartWalletOnly"`). Ungated — no project id. Creates or opens a passkey smart account so someone not in crypto yet can get an address, then SIWE as today. Not a second IdP. Not email/phone login. Not `@coinbase/cdp-wagmi`.
@@ -43,13 +44,13 @@ Components here are written so they can be extracted into a shared kit later. Th
 - A paper-only wrap that drops the PRF KEK. Paper replaces the **secondary** IKM only.
 - A Reown Cloud project id invented in this repo. Empty `NEXT_PUBLIC_WC_PROJECT_ID` stays injected + Smart Wallet (no WalletConnect).
 - Coinbase CDP Embedded Wallet (`@coinbase/cdp-wagmi`), a CDP Project ID, email/phone magic link, Privy, Dynamic, Web3Auth, or Magic as the session. Those are email-login-as-IdP. Onramp is Smart Wallet then SIWE.
-- Panopticon / Hypermesh Keycloak as **primary** IdP. s3r.ch primary login stays EIP-4361 SIWE. Keycloak OAuth as **backup** (same microsoft / github / google brokers) is planned in [oauth-idp.md](oauth-idp.md) — not coded in this slice.
+- Panopticon / Hypermesh Keycloak as **primary** IdP. s3r.ch primary login stays EIP-4361 SIWE. Keycloak OAuth backup (start, callback, secondary Continue control) is in [oauth-idp.md](oauth-idp.md). Binding Keycloak `sub` to a SIWE address is not this slice.
 - ENS or Unstoppable as login, or dumping an ENS / Unstoppable / Farcaster / Lens / RSS3 claim onto the public Gun graph without an explicit share.
 - A UD partner key in `NEXT_PUBLIC_*`, a browser call to `api.unstoppabledomains.com/resolve`, or Key Vault for `UNSTOPPABLE_API_KEY`.
 - Farcaster SIWF, Lens OAuth, or RSS3 login. Indicators are held claims after SIWE, not session subjects.
 - Importing `FyberLabs/SociACL` as a crate, NAPI, WASM, or npm package. Light Check is re-typed from the consume contract (`docs/s3rch-check.d.ts`).
 - Friend-of-friend, Social Light hop UI, Elect / wills / Case C, or any verb beyond `see`. Hop may factor Check in TS; it is not a grant and has no public-page UI.
-- NextAuth or email magic link on this app. Email / phone confirm is a held claim after SIWE, not a session. Keycloak OAuth backup is planned ([oauth-idp.md](oauth-idp.md)), not shipped in this slice.
+- NextAuth or email magic link on this app. Email / phone confirm is a held claim after SIWE, not a session. Keycloak OAuth backup is a separate cookie ([oauth-idp.md](oauth-idp.md)), not an email login and not the Gun owner.
 - Meetings, live streams, hop UI, Elect / wills / Case C. Live chat and presence over Gun subscriptions ship; they are not a TURN/WebRTC mesh. `gun/lib/webrtc` + STUN + signed-in allocate ships as a hop. Allocate is not a public mesh.
 - ActivityPub / Nostr / RSS / RSS3 outbound. Farcaster + ATProto outbound **do** ship as an explicit SIWE action (not auto-bridge). Inbound pull for those networks stays a separate path. Native post ≠ bridging out.
 - Popular / Novel columns, likes / views / engagement scores. Network **does** ship as the live mesh view (not a finished P2P mesh claim).
@@ -108,7 +109,11 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `lib/identity/secret.ts` | `IDENTITY_SESSION_SECRET` (min 32 chars). Local fallback only when unset and not production |
 | `lib/identity/cookies.ts` | `__Host-` on HTTPS, `Host-` on HTTP localhost. HttpOnly, SameSite=Lax, `Path=/` |
 | `lib/identity/nonce.ts` | Random SIWE nonce + signed cookie payload |
-| `lib/identity/session.ts` | Signed session `{ address, chainId, iat, exp }` |
+| `lib/identity/session.ts` | Signed SIWE session `{ address, chainId, iat, exp }` |
+| `lib/identity/oauth.ts` | Backup OAuth: PKCE start, code exchange, backup cookie `{ sub, idp }`. No provider tokens. Not Gun |
+| `app/api/identity/oauth/start` | Redirect to Keycloak, or `/feed?oauth=unconfigured` when the issuer is missing |
+| `app/api/identity/oauth/callback` | Backup session cookie. Clears the PKCE cookie. Never the SIWE cookie |
+| `app/api/identity/oauth/session` | `{ idp, linked: false }` for the backup door. `linked` stays false until a later SIWE bind |
 | `lib/identity/siwe.ts` | Parse, domain/nonce/expiry checks, EOA ecrecover then ERC-1271 / EIP-6492 |
 | `lib/identity/wrap.ts` | Envelope v1 + HKDF-then-AES-GCM wrap/unwrap of the SEA pair |
 | `lib/identity/webauthn-prf.ts` | Native WebAuthn PRF create/get. Refuses to fake a wrap |
@@ -235,7 +240,7 @@ RPC errors and a non-magic / false ERC-1271 result are a quiet invalid signature
 
 Reject on domain mismatch. Do not treat ENS names as the session key.
 
-s3r.ch does **not** use Panopticon Keycloak as **primary** login. OAuth backup via that Keycloak (same IdPs as Hypermesh) is planned in [oauth-idp.md](oauth-idp.md). SociACL Check is **grants**, not login. The session subject for Gun / forum stays the checksummed address (after any OAuth↔SIWE link). See [s3rch-check.md](s3rch-check.md).
+s3r.ch does **not** use Panopticon Keycloak as **primary** login. OAuth backup via that Keycloak (same IdPs as Hypermesh) is the start/callback door in [oauth-idp.md](oauth-idp.md). SociACL Check is **grants**, not login. The session subject for Gun / forum stays the checksummed address (after any OAuth↔SIWE link). See [s3rch-check.md](s3rch-check.md).
 
 ## ENS held claim (after SIWE, not login)
 
@@ -377,7 +382,7 @@ Not credBlob. Not largeBlob.
 
 ### Quiet UI (`/feed` IdentityBar)
 
-Signed-out: **Connect wallet** (injected). A quiet **Passkey wallet** control opens Coinbase Smart Wallet (`smartWalletOnly`) so someone without an extension can get an address. When `NEXT_PUBLIC_WC_PROJECT_ID` is set at build time, a quiet **WalletConnect** control appears. Sign in with Ethereum still runs after a session address exists. Passkey wallet is an onramp, not a separate identity provider. Do not dump Coinbase branding as a new login product. The Smart Wallet passkey is not the WebAuthn PRF wrap of the Gun SEA pair.
+Signed-out: **Connect wallet** (injected) stays the primary control, then **Sign in with wallet**. A quiet **Passkey wallet** control opens Coinbase Smart Wallet (`smartWalletOnly`) so someone without an extension can get an address. When `NEXT_PUBLIC_WC_PROJECT_ID` is set at build time, a quiet **WalletConnect** control appears. Secondary links (**Continue with Microsoft** / **GitHub** / **Google**, or **Hypermesh account**) go to `/api/identity/oauth/start`. They are not the session subject. Sign in with Ethereum still runs after a session address exists. Passkey wallet is an onramp, not a separate identity provider. Do not dump Coinbase branding as a new login product. The Smart Wallet passkey is not the WebAuthn PRF wrap of the Gun SEA pair.
 
 After signed-in + mesh key present:
 
@@ -410,7 +415,7 @@ Locks that stay:
 
 ## WalletConnect (gated connector, not an IdP)
 
-This slice ships WalletConnect **gated** on `NEXT_PUBLIC_WC_PROJECT_ID`. Injected stays the default Connect wallet control. If the env is unset or empty, Connect wallet still shows "No injected wallet found." when no extension is present; **Passkey wallet** (Smart Wallet) remains available. If it is set (non-empty) at **build time**, IdentityBar shows a quiet **WalletConnect** control. Sign-in is still SIWE after a wagmi session address exists (injected, Smart Wallet, or WalletConnect). Session subject stays the checksummed address. No Keycloak, no RainbowKit, no ConnectKit.
+This slice ships WalletConnect **gated** on `NEXT_PUBLIC_WC_PROJECT_ID`. Injected stays the default Connect wallet control. If the env is unset or empty, Connect wallet still shows "No injected wallet found." when no extension is present; **Passkey wallet** (Smart Wallet) remains available. If it is set (non-empty) at **build time**, IdentityBar shows a quiet **WalletConnect** control. Sign-in is still SIWE after a wagmi session address exists (injected, Smart Wallet, or WalletConnect). Session subject stays the checksummed address. WalletConnect is not the Keycloak backup door. No RainbowKit, no ConnectKit.
 
 Next.js inlines `NEXT_PUBLIC_*` at `next build`. s3r.ch builds inside Docker (`Dockerfile` builder stage). App Service **runtime** env will not inject this into the client bundle. The Dockerfile takes `ARG NEXT_PUBLIC_WC_PROJECT_ID` and sets `ENV` **before** `npm run build`. Deploy passes `build-args: NEXT_PUBLIC_WC_PROJECT_ID=${{ vars.NEXT_PUBLIC_WC_PROJECT_ID }}` (GitHub **variable**, not secret — this id is public, same class as `SEED_URL`). A missing variable must not fail the build (empty ARG → injected-only).
 

@@ -1,6 +1,6 @@
 # s3r.ch OAuth IdP (backup)
 
-Status: plan. 2026-09-26.
+Status: start, callback, and secondary Continue controls ship. SIWE link does not. 2026-09-26.
 Wallet / SIWE stays **primary**. OAuth through Panopticon Keycloak is **backup**.
 Parent: [identity.md](identity.md). Hypermesh plane: [auth-kit](https://github.com/FyberLabs/hypermesh-docs/blob/main/auth-kit.md), [customer-interfaces](https://github.com/FyberLabs/hypermesh-docs/blob/main/customer-interfaces.md). Brokers: [panopticon Keycloak README](https://github.com/FyberLabs/panopticon/blob/main/infra/keycloak/README.md).
 
@@ -27,12 +27,12 @@ This replaces “s3r.ch does not use Keycloak as an IdP” for the backup door o
 
 Broker callbacks stay on the Keycloak host. s3r.ch is a Keycloak **client** with its own redirect URI.
 
-## Slices (not coded)
+## Slices
 
-1. Keycloak client for s3r.ch origins (test + prod).
-2. Start + callback routes; backup session; tokens never on Gun.
-3. One SIWE to link `sub` ↔ address; unlinked OAuth stays limited.
-4. UI: primary wallet / SIWE; secondary Continue with Microsoft / GitHub / Google (or Hypermesh account).
+1. Keycloak client `s3rch-web` on `controlplane` (Panopticon realm import + live upsert). Public PKCE. Exact callback URIs. No new brokers.
+2. Start + callback routes; backup session cookie; tokens never stored and never on Gun. Missing issuer fails closed.
+3. One SIWE to link `sub` ↔ address; unlinked OAuth stays limited. Not this slice.
+4. UI: primary Connect wallet / Sign in with wallet. Secondary Continue with Microsoft / GitHub / Google, or Hypermesh account, hitting the start route.
 
 ## Renter how-to
 
