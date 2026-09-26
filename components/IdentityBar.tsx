@@ -68,6 +68,8 @@ type SessionPayload = {
 
 type BackupIdp = "microsoft" | "github" | "google" | null;
 
+type BackupState = { idp: BackupIdp; linked: boolean };
+
 function backupLabel(idp: BackupIdp): string {
   if (idp === "microsoft") return "Microsoft";
   if (idp === "github") return "GitHub";
@@ -91,7 +93,7 @@ function IdentityBarInner() {
   const { mutateAsync: signMessageAsync } = useSignMessage();
 
   const [session, setSession] = useState<SessionPayload | null>(null);
-  const [backupIdp, setBackupIdp] = useState<BackupIdp | undefined>(undefined);
+  const [backup, setBackup] = useState<BackupState | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [meshLine, setMeshLine] = useState<string | null>(null);
@@ -129,17 +131,13 @@ function IdentityBarInner() {
     try {
       const response = await fetch("/api/identity/oauth/session", { cache: "no-store" });
       if (!response.ok) {
-        setBackupIdp(undefined);
+        setBackup(undefined);
         return;
       }
       const payload = (await response.json()) as { idp?: BackupIdp; linked?: boolean };
-      if (payload.linked) {
-        setBackupIdp(undefined);
-        return;
-      }
-      setBackupIdp(payload.idp ?? null);
+      setBackup({ idp: payload.idp ?? null, linked: payload.linked === true });
     } catch {
-      setBackupIdp(undefined);
+      setBackup(undefined);
     }
   }, []);
 
@@ -152,6 +150,7 @@ function IdentityBarInner() {
     const flag = new URLSearchParams(window.location.search).get("oauth");
     if (flag === "unconfigured") setMessage("Hypermesh sign-in is not configured.");
     if (flag === "denied") setMessage("Hypermesh sign-in did not finish.");
+    if (flag === "conflict") setMessage("That Hypermesh account is already linked to another wallet.");
   }, []);
 
   useEffect(() => {
@@ -399,6 +398,15 @@ function IdentityBarInner() {
       }
       setSession({ address: verifyBody.address, chainId: verifyBody.chainId });
       setMessage(null);
+      try {
+        const linkRes = await fetch("/api/identity/oauth/link", { method: "POST" });
+        if (linkRes.status === 409) {
+          setMessage("That Hypermesh account is already linked to another wallet.");
+        }
+        await refreshBackup();
+      } catch {
+        // Linking is optional until both sessions exist.
+      }
       try {
         const mesh = await ensureLocalMeshKey({
           address: verifyBody.address,
@@ -649,7 +657,7 @@ function IdentityBarInner() {
     try {
       await fetch("/api/identity/logout", { method: "POST" });
       setSession(null);
-      setBackupIdp(undefined);
+      await refreshBackup();
       setMeshLine(null);
       setMeshKind(null);
       setUnlocked(false);
@@ -727,6 +735,11 @@ function IdentityBarInner() {
                 Backup
               </button>
             ) : null}
+            {backup ? (
+              <p className="basis-full text-xs text-ink-muted">
+                {backupLabel(backup.idp)} · {backup.linked ? "linked" : "not linked"}
+              </p>
+            ) : null}
           </>
         ) : (
           <>
@@ -774,9 +787,9 @@ function IdentityBarInner() {
             >
               Sign in with wallet
             </button>
-            {backupIdp !== undefined ? (
+            {backup ? (
               <p className="basis-full text-xs text-ink-muted">
-                {backupLabel(backupIdp)} · not linked
+                {backupLabel(backup.idp)} · {backup.linked ? "linked" : "not linked"}
               </p>
             ) : null}
             <a

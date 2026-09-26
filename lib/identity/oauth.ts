@@ -1,12 +1,15 @@
 /**
  * Backup OAuth door. Panopticon Keycloak, public PKCE client `s3rch-web`.
  *
- * The SIWE cookie stays the session subject for Gun, Check, and the forum
- * owner. This cookie is a separate backup session. It stores the Keycloak
- * `sub` and which broker was used. It does not store access tokens, refresh
- * tokens, or the id token. Nothing here is written to Gun.
+ * The SIWE cookie stays the session subject for Gun and Check. The forum
+ * owner is the sociacl checksummed address after a handle resolves. This
+ * cookie is a separate backup session. It stores the Keycloak `sub` and
+ * which broker was used. It does not store access tokens, refresh tokens,
+ * or the id token. Nothing here is written to Gun.
  *
- * Unlinked OAuth is not an owner. SIWE link binding is a later slice.
+ * Unlinked OAuth is not an owner. A SIWE session and this cookie can bind
+ * both ways onto one sociacl owner (the checksummed address). The binding
+ * is not this cookie and is not written to Gun.
  * Missing or unknown issuer config fails closed.
  */
 
@@ -29,9 +32,12 @@ import {
   requestHost,
   requestIsSecure,
   serializeCookie,
+  sessionCookieNames,
 } from "./cookies";
 import { secretFailureResponse } from "./http";
+import { linkLoginPaths } from "./link";
 import { getIdentitySecret, secretKey } from "./secret";
+import { readSessionToken } from "./session";
 
 export const OAUTH_IDPS = ["microsoft", "github", "google"] as const;
 export type OAuthIdp = (typeof OAUTH_IDPS)[number];
@@ -397,12 +403,14 @@ export async function finishOAuth(
       issuer,
       key: deps.key ?? jwksFor(issuer),
     });
+    const idp = verified.idp ?? pending.idp;
     const session = await signBackupSession(
-      { sub: verified.sub, idp: verified.idp ?? pending.idp },
+      { sub: verified.sub, idp },
       secret,
       deps.now,
     );
-    return appRedirect("/feed", [
+    const location = await linkWalletOnCallback(request, secret, verified.sub, idp);
+    return appRedirect(location, [
       serializeCookie(
         oauthSessionCookieName(secure),
         session,
@@ -413,6 +421,24 @@ export async function finishOAuth(
   } catch {
     return denied();
   }
+}
+
+async function linkWalletOnCallback(
+  request: Request,
+  secret: string,
+  sub: string,
+  idp: OAuthIdp | null,
+): Promise<string> {
+  const siwe = readCookie(request.headers.get("cookie"), sessionCookieNames());
+  if (!siwe) return "/feed";
+  try {
+    const claims = await readSessionToken(siwe, secret);
+    const bound = linkLoginPaths({ wallet: claims.address, sub, idp });
+    if ("denied" in bound && bound.reason === "already-linked") return "/feed?oauth=conflict";
+  } catch {
+    return "/feed";
+  }
+  return "/feed";
 }
 
 export async function readBackupFromRequest(
