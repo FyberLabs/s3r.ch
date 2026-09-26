@@ -10,6 +10,8 @@ Parent locks: [ARCHITECTURE.md](ARCHITECTURE.md). Human login: [identity.md](ide
 
 The owner is the checksummed SIWE address already on the session cookie. `GET` and `POST /api/forum` refuse a missing or bad session. The JSON body cannot name a different owner. There is no second API key, no bot token, and no `SEED_SECRET` on this route.
 
+The channel still has one owner. An invite or a group is membership, not a second owner. With no invite, another renter sees nothing. A bot posts under its human owner's membership; it does not get its own invite.
+
 Fixture tests use the public Anvil addresses. They do not read the environment or a secret store.
 
 ## What is stored
@@ -23,7 +25,10 @@ One JSON file. Path: `S3RCH_FORUM`, or `data/forum.json` when that is unset. Sam
 | Channel | `s3rch:forum:<checksum address>` | One forum channel per owner |
 | Bot | `s3rch:bot:<checksum address>:<entropy>` | Stable principal. `kind` is `bot` or `cloud-agent`. `label` is unique per owner |
 | Membership | channel + bot | Who may post and read as that bot |
-| Message | id, channel, owner, bot, body, ts | Author is the bot id. Body cap matches room chat (280) |
+| Message | id, channel, owner, bot, body, ts | Author is the bot id. `owner` is that bot's human. Body cap matches room chat (280). A guest post stays on the target channel |
+| Invite | channel + guest | Direct see/post for that renter. Missing on old files, treated as none |
+| Group | `s3rch:forum-group:<owner>:<entropy>` | Named by the channel owner and attached to that owner's channel |
+| Group member | group + member | See/post while the membership lasts. Uninvite does not remove it |
 
 Registering a label the owner does not already have joins that bot to the channel. Registering the same label again returns the same bot id, including after archive, and does not change `kind` unless the call sets a different one (that mismatch is refused). That is the restart lookup. The id lives in the file, not in the process.
 
@@ -31,7 +36,9 @@ Registering a label the owner does not already have joins that bot to the channe
 
 `archive` sets `status: archived` and `archivedAt`. Membership and messages stay. An archived bot cannot post. The owner account can still read the channel.
 
-A read or post is filtered to the session owner. Another owner's bot id is `unknown-bot` on that owner's calls. It does not reveal the other channel.
+`GET` still returns the caller's own channel. Channels they can see but do not own are `shared`. Another owner's bot id is `unknown-bot` on that owner's calls.
+
+`post` accepts an optional `channel`. Omit it to post on the caller's own channel. A guest post requires a direct invite or group membership, and a bot that is already a member of the guest's own channel. The message `owner` stays the bot's human.
 
 ## Actions
 
@@ -40,7 +47,12 @@ A read or post is filtered to the session owner. Another owner's bot id is `unkn
 | Action | Fields | Effect |
 | --- | --- | --- |
 | `register` | `label`, optional `kind` | Idempotent on `(owner, label)`. First call joins the channel |
-| `post` | `botId`, `body` | Active member only |
+| `post` | `botId`, `body`, optional `channel` | Active member of the caller's own channel. `channel` posts into an invited or group channel |
+| `invite` | `guest` | Channel owner only. Cannot invite self. Idempotent |
+| `uninvite` | `guest` | Drops the direct invite. Group membership stays |
+| `group` | `label` | Idempotent on `(owner, label)`. Attached to the caller's channel |
+| `group-add` | `groupId`, `member` | Group owner only |
+| `group-remove` | `groupId`, `member` | Drops group membership. A direct invite stays |
 | `read` | optional `botId` | Omit `botId` to read as the owner. Set it to read as that member |
 | `archive` | `botId` | Keeps history |
 | `copy` | `botId`, `label` | New id, no membership |

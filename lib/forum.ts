@@ -5,6 +5,10 @@
  * are rows in that ledger. Restart looks the row up again. Copy mints a new
  * id and does not join. Archive keeps the row and the messages.
  *
+ * The channel still has one owner. Invites and groups are membership, not
+ * co-ownership. A renter with no invite sees nothing. Bots act under their
+ * human owner's membership.
+ *
  * Hyperme.sh and other tools can use this as a native collaboration surface
  * for orchestration. It is not Gun room chat, not a Hypermesh renter door,
  * and not a second API key.
@@ -56,6 +60,26 @@ export type ForumMessage = {
   v: number;
 };
 
+export type ForumInvite = {
+  channel: string;
+  guest: string;
+  created: number;
+};
+
+export type ForumGroup = {
+  id: string;
+  owner: string;
+  channel: string;
+  label: string;
+  created: number;
+};
+
+export type ForumGroupMember = {
+  group: string;
+  member: string;
+  joined: number;
+};
+
 export type ForumBotView = ForumBot & { member: boolean };
 
 export type ForumFile = {
@@ -64,6 +88,9 @@ export type ForumFile = {
   bots: ForumBot[];
   memberships: ForumMembership[];
   messages: ForumMessage[];
+  invites: ForumInvite[];
+  groups: ForumGroup[];
+  groupMembers: ForumGroupMember[];
 };
 
 export type StoreLoad =
@@ -105,6 +132,28 @@ export type PostBotInput = {
   body: string;
   nowSeconds?: number;
   entropy?: string;
+  /** Channel id. Omit to post on the caller's own channel. */
+  channel?: string;
+};
+
+export type InviteInput = {
+  owner: string;
+  guest: string;
+  nowSeconds?: number;
+};
+
+export type GroupInput = {
+  owner: string;
+  label: string;
+  nowSeconds?: number;
+  entropy?: string;
+};
+
+export type GroupMemberInput = {
+  owner: string;
+  groupId: string;
+  member: string;
+  nowSeconds?: number;
 };
 
 export type ReadChatInput = {
@@ -127,13 +176,27 @@ export type JoinBotResult =
 
 export type PostBotResult = Denied | { message: ForumMessage };
 
+export type ForumShared = {
+  channel: ForumChannel;
+  messages: ForumMessage[];
+};
+
 export type ReadChatResult =
   | Denied
   | {
       channel: ForumChannel | null;
       messages: ForumMessage[];
       bots: ForumBotView[];
+      shared: ForumShared[];
     };
+
+export type InviteResult = Denied | { invite: ForumInvite; channel: ForumChannel };
+
+export type UninviteResult = Denied | { channel: ForumChannel; guest: string; removed: boolean };
+
+export type GroupResult = Denied | { group: ForumGroup; channel: ForumChannel };
+
+export type GroupMemberResult = Denied | { group: ForumGroup; member: string; removed?: boolean };
 
 export type Forum = {
   registerBot(input: RegisterBotInput): RegisterBotResult;
@@ -142,6 +205,11 @@ export type Forum = {
   joinBot(input: BotRefInput): JoinBotResult;
   post(input: PostBotInput): PostBotResult;
   read(input: ReadChatInput): ReadChatResult;
+  invite(input: InviteInput): InviteResult;
+  uninvite(input: InviteInput): UninviteResult;
+  createGroup(input: GroupInput): GroupResult;
+  addGroupMember(input: GroupMemberInput): GroupMemberResult;
+  removeGroupMember(input: GroupMemberInput): GroupMemberResult;
 };
 
 type GlobalForum = typeof globalThis & {
@@ -159,6 +227,9 @@ export function emptyForumFile(): ForumFile {
     bots: [],
     memberships: [],
     messages: [],
+    invites: [],
+    groups: [],
+    groupMembers: [],
   };
 }
 
@@ -339,8 +410,15 @@ export function openForum(store: ForumStore): Forum {
     const bot = botForOwner(file, owner, input.botId);
     if (!bot) return { denied: true, reason: "unknown-bot" };
     if (bot.status !== "active") return { denied: true, reason: "archived" };
-    const channel = file.channels.find((row) => row.owner === owner);
-    if (!channel || !isMember(file, channel.id, bot.id)) {
+    const home = file.channels.find((row) => row.owner === owner);
+    const requested = typeof input.channel === "string" ? input.channel.trim() : "";
+    let channel = home;
+    if (requested) {
+      channel = file.channels.find((row) => row.id === requested);
+      if (!channel) return { denied: true, reason: "unknown-channel" };
+      if (!canSee(file, owner, channel)) return { denied: true, reason: "not-invited" };
+    }
+    if (!channel || !home || !isMember(file, home.id, bot.id)) {
       return { denied: true, reason: "not-member" };
     }
     const entropy = cleanEntropy(input.entropy);
@@ -379,18 +457,134 @@ export function openForum(store: ForumStore): Forum {
         return { denied: true, reason: "not-member" };
       }
     }
-    const messages = file.messages
-      .filter((row) => row.owner === owner && (!channel || row.channel === channel.id))
-      .slice()
-      .sort((a, b) => a.ts - b.ts || a.id.localeCompare(b.id));
+    const messages = messagesOn(file, channel?.id ?? null);
     const bots = file.bots
       .filter((row) => row.owner === owner)
       .map((row) => toView(file, row))
       .sort((a, b) => a.created - b.created || a.id.localeCompare(b.id));
-    return { channel, messages, bots };
+    return { channel, messages, bots, shared: sharedFor(file, owner) };
   }
 
-  return { registerBot, copyBot, archiveBot, joinBot, post, read };
+  function invite(input: InviteInput): InviteResult {
+    const owner = checksumOwner(input.owner);
+    const guest = checksumOwner(input.guest);
+    if (!owner) return { denied: true, reason: "bad-owner" };
+    if (!guest || guest === owner) return { denied: true, reason: "bad-guest" };
+    const opened = load();
+    if ("denied" in opened) return opened;
+    const file = opened.file;
+    const now = nowSeconds(input.nowSeconds);
+    const channel = ensureChannel(file, owner, now);
+    const existing = file.invites.find((row) => row.channel === channel.id && row.guest === guest);
+    if (existing) return { invite: existing, channel };
+    const row: ForumInvite = { channel: channel.id, guest, created: now };
+    file.invites.push(row);
+    const saved = commit(file);
+    if (saved) return saved;
+    return { invite: row, channel };
+  }
+
+  function uninvite(input: InviteInput): UninviteResult {
+    const owner = checksumOwner(input.owner);
+    const guest = checksumOwner(input.guest);
+    if (!owner) return { denied: true, reason: "bad-owner" };
+    if (!guest || guest === owner) return { denied: true, reason: "bad-guest" };
+    const opened = load();
+    if ("denied" in opened) return opened;
+    const file = opened.file;
+    const channel = file.channels.find((row) => row.owner === owner);
+    if (!channel) return { denied: true, reason: "unknown-channel" };
+    const before = file.invites.length;
+    file.invites = file.invites.filter((row) => !(row.channel === channel.id && row.guest === guest));
+    const removed = file.invites.length !== before;
+    if (removed) {
+      const saved = commit(file);
+      if (saved) return saved;
+    }
+    return { channel, guest, removed };
+  }
+
+  function createGroup(input: GroupInput): GroupResult {
+    const owner = checksumOwner(input.owner);
+    if (!owner) return { denied: true, reason: "bad-owner" };
+    const label = cleanLabel(input.label);
+    if (!label) return { denied: true, reason: "bad-label" };
+    const opened = load();
+    if ("denied" in opened) return opened;
+    const file = opened.file;
+    const now = nowSeconds(input.nowSeconds);
+    const channel = ensureChannel(file, owner, now);
+    const existing = file.groups.find((row) => row.owner === owner && row.label === label);
+    if (existing) return { group: existing, channel };
+    const entropy = cleanEntropy(input.entropy);
+    if (!entropy) return { denied: true, reason: "bad-entropy" };
+    const id = `s3rch:forum-group:${owner}:${entropy}`;
+    if (file.groups.some((row) => row.id === id)) return { denied: true, reason: "bad-entropy" };
+    const group: ForumGroup = { id, owner, channel: channel.id, label, created: now };
+    file.groups.push(group);
+    const saved = commit(file);
+    if (saved) return saved;
+    return { group, channel };
+  }
+
+  function addGroupMember(input: GroupMemberInput): GroupMemberResult {
+    const owner = checksumOwner(input.owner);
+    const member = checksumOwner(input.member);
+    if (!owner) return { denied: true, reason: "bad-owner" };
+    if (!member || member === owner) return { denied: true, reason: "bad-member" };
+    const opened = load();
+    if ("denied" in opened) return opened;
+    const file = opened.file;
+    const group = file.groups.find((row) => row.id === input.groupId && row.owner === owner);
+    if (!group) return { denied: true, reason: "unknown-group" };
+    if (file.groupMembers.some((row) => row.group === group.id && row.member === member)) {
+      return { group, member };
+    }
+    file.groupMembers.push({
+      group: group.id,
+      member,
+      joined: nowSeconds(input.nowSeconds),
+    });
+    const saved = commit(file);
+    if (saved) return saved;
+    return { group, member };
+  }
+
+  function removeGroupMember(input: GroupMemberInput): GroupMemberResult {
+    const owner = checksumOwner(input.owner);
+    const member = checksumOwner(input.member);
+    if (!owner) return { denied: true, reason: "bad-owner" };
+    if (!member || member === owner) return { denied: true, reason: "bad-member" };
+    const opened = load();
+    if ("denied" in opened) return opened;
+    const file = opened.file;
+    const group = file.groups.find((row) => row.id === input.groupId && row.owner === owner);
+    if (!group) return { denied: true, reason: "unknown-group" };
+    const before = file.groupMembers.length;
+    file.groupMembers = file.groupMembers.filter(
+      (row) => !(row.group === group.id && row.member === member),
+    );
+    const removed = file.groupMembers.length !== before;
+    if (removed) {
+      const saved = commit(file);
+      if (saved) return saved;
+    }
+    return { group, member, removed };
+  }
+
+  return {
+    registerBot,
+    copyBot,
+    archiveBot,
+    joinBot,
+    post,
+    read,
+    invite,
+    uninvite,
+    createGroup,
+    addGroupMember,
+    removeGroupMember,
+  };
 }
 
 export type ForumHttpResult = {
@@ -463,6 +657,55 @@ export function handleForumPost(
         body: typeof record.body === "string" ? record.body : "",
         nowSeconds: asSeconds(record.nowSeconds),
         entropy: typeof record.entropy === "string" ? record.entropy : undefined,
+        channel: typeof record.channel === "string" ? record.channel : undefined,
+      }),
+    );
+  }
+  if (action === "invite") {
+    return mapResult(
+      chat.invite({
+        owner,
+        guest: typeof record.guest === "string" ? record.guest : "",
+        nowSeconds: asSeconds(record.nowSeconds),
+      }),
+    );
+  }
+  if (action === "uninvite") {
+    return mapResult(
+      chat.uninvite({
+        owner,
+        guest: typeof record.guest === "string" ? record.guest : "",
+        nowSeconds: asSeconds(record.nowSeconds),
+      }),
+    );
+  }
+  if (action === "group") {
+    return mapResult(
+      chat.createGroup({
+        owner,
+        label: typeof record.label === "string" ? record.label : "",
+        nowSeconds: asSeconds(record.nowSeconds),
+        entropy: typeof record.entropy === "string" ? record.entropy : undefined,
+      }),
+    );
+  }
+  if (action === "group-add") {
+    return mapResult(
+      chat.addGroupMember({
+        owner,
+        groupId: typeof record.groupId === "string" ? record.groupId : "",
+        member: typeof record.member === "string" ? record.member : "",
+        nowSeconds: asSeconds(record.nowSeconds),
+      }),
+    );
+  }
+  if (action === "group-remove") {
+    return mapResult(
+      chat.removeGroupMember({
+        owner,
+        groupId: typeof record.groupId === "string" ? record.groupId : "",
+        member: typeof record.member === "string" ? record.member : "",
+        nowSeconds: asSeconds(record.nowSeconds),
       }),
     );
   }
@@ -492,6 +735,12 @@ export function parseForumFile(value: unknown): StoreLoad {
   ) {
     return { ok: false, reason: "store-unreadable" };
   }
+  const inviteRows = record.invites === undefined ? [] : record.invites;
+  const groupRows = record.groups === undefined ? [] : record.groups;
+  const groupMemberRows = record.groupMembers === undefined ? [] : record.groupMembers;
+  if (!Array.isArray(inviteRows) || !Array.isArray(groupRows) || !Array.isArray(groupMemberRows)) {
+    return { ok: false, reason: "store-unreadable" };
+  }
   const channels: ForumChannel[] = [];
   for (const row of record.channels) {
     const channel = asChannel(row);
@@ -516,12 +765,33 @@ export function parseForumFile(value: unknown): StoreLoad {
     if (!message) return { ok: false, reason: "store-unreadable" };
     messages.push(message);
   }
+  const invites: ForumInvite[] = [];
+  for (const row of inviteRows) {
+    const invite = asInvite(row);
+    if (!invite) return { ok: false, reason: "store-unreadable" };
+    invites.push(invite);
+  }
+  const groups: ForumGroup[] = [];
+  for (const row of groupRows) {
+    const group = asGroup(row);
+    if (!group) return { ok: false, reason: "store-unreadable" };
+    groups.push(group);
+  }
+  const groupMembers: ForumGroupMember[] = [];
+  for (const row of groupMemberRows) {
+    const member = asGroupMember(row);
+    if (!member) return { ok: false, reason: "store-unreadable" };
+    groupMembers.push(member);
+  }
   const file: ForumFile = {
     v: FORUM_FILE_V,
     channels,
     bots,
     memberships,
     messages,
+    invites,
+    groups,
+    groupMembers,
   };
   if (!fileIsConsistent(file)) return { ok: false, reason: "store-unreadable" };
   return { ok: true, file };
@@ -560,10 +830,36 @@ function fileIsConsistent(file: ForumFile): boolean {
     if (messageIds.has(message.id)) return false;
     messageIds.add(message.id);
     const channel = file.channels.find((row) => row.id === message.channel);
-    if (!channel || channel.owner !== message.owner) return false;
-    if (!file.bots.some((row) => row.id === message.bot && row.owner === message.owner)) {
-      return false;
-    }
+    const bot = file.bots.find((row) => row.id === message.bot);
+    if (!channel || !bot || bot.owner !== message.owner) return false;
+  }
+  const inviteKeys = new Set<string>();
+  for (const invite of file.invites) {
+    const key = `${invite.channel}\n${invite.guest}`;
+    if (inviteKeys.has(key)) return false;
+    inviteKeys.add(key);
+    const channel = file.channels.find((row) => row.id === invite.channel);
+    if (!channel || channel.owner === invite.guest) return false;
+  }
+  const groupIds = new Set<string>();
+  const groupLabels = new Set<string>();
+  for (const group of file.groups) {
+    if (groupIds.has(group.id)) return false;
+    groupIds.add(group.id);
+    const labelKey = `${group.owner}\n${group.label}`;
+    if (groupLabels.has(labelKey)) return false;
+    groupLabels.add(labelKey);
+    if (!group.id.startsWith(`s3rch:forum-group:${group.owner}:`)) return false;
+    const channel = file.channels.find((row) => row.id === group.channel);
+    if (!channel || channel.owner !== group.owner) return false;
+  }
+  const groupMemberKeys = new Set<string>();
+  for (const member of file.groupMembers) {
+    const key = `${member.group}\n${member.member}`;
+    if (groupMemberKeys.has(key)) return false;
+    groupMemberKeys.add(key);
+    const group = file.groups.find((row) => row.id === member.group);
+    if (!group || group.owner === member.member) return false;
   }
   return true;
 }
@@ -603,6 +899,30 @@ function asBot(value: unknown): ForumBot | null {
     archivedAt: value.status === "active" ? null : (archivedAt as number),
     v: FORUM_FILE_V,
   };
+}
+
+function asInvite(value: unknown): ForumInvite | null {
+  if (!isRecord(value)) return null;
+  const guest = checksumOwner(value.guest);
+  if (!guest || typeof value.channel !== "string" || !isTime(value.created)) return null;
+  return { channel: value.channel, guest, created: value.created };
+}
+
+function asGroup(value: unknown): ForumGroup | null {
+  if (!isRecord(value)) return null;
+  const owner = checksumOwner(value.owner);
+  const label = typeof value.label === "string" ? cleanLabel(value.label) : null;
+  if (!owner || !label || value.label !== label) return null;
+  if (typeof value.id !== "string" || typeof value.channel !== "string") return null;
+  if (!isTime(value.created)) return null;
+  return { id: value.id, owner, channel: value.channel, label, created: value.created };
+}
+
+function asGroupMember(value: unknown): ForumGroupMember | null {
+  if (!isRecord(value)) return null;
+  const member = checksumOwner(value.member);
+  if (!member || typeof value.group !== "string" || !isTime(value.joined)) return null;
+  return { group: value.group, member, joined: value.joined };
 }
 
 function asMembership(value: unknown): ForumMembership | null {
@@ -682,6 +1002,31 @@ function isMember(file: ForumFile, channel: string, botId: string): boolean {
   return file.memberships.some((row) => row.channel === channel && row.bot === botId);
 }
 
+function canSee(file: ForumFile, actor: string, channel: ForumChannel): boolean {
+  if (channel.owner === actor) return true;
+  if (file.invites.some((row) => row.channel === channel.id && row.guest === actor)) return true;
+  return file.groupMembers.some((row) => {
+    if (row.member !== actor) return false;
+    const group = file.groups.find((item) => item.id === row.group);
+    return group?.channel === channel.id;
+  });
+}
+
+function messagesOn(file: ForumFile, channelId: string | null): ForumMessage[] {
+  if (!channelId) return [];
+  return file.messages
+    .filter((row) => row.channel === channelId)
+    .slice()
+    .sort((a, b) => a.ts - b.ts || a.id.localeCompare(b.id));
+}
+
+function sharedFor(file: ForumFile, actor: string): ForumShared[] {
+  return file.channels
+    .filter((channel) => channel.owner !== actor && canSee(file, actor, channel))
+    .map((channel) => ({ channel, messages: messagesOn(file, channel.id) }))
+    .sort((a, b) => a.channel.id.localeCompare(b.channel.id));
+}
+
 function toView(file: ForumFile, bot: ForumBot): ForumBotView {
   const channel = file.channels.find((row) => row.owner === bot.owner);
   return {
@@ -753,7 +1098,9 @@ function mapResult(result: Denied | object): ForumHttpResult {
             reason === "bad-label" ||
             reason === "bad-kind" ||
             reason === "bad-body" ||
-            reason === "bad-entropy"
+            reason === "bad-entropy" ||
+            reason === "bad-guest" ||
+            reason === "bad-member"
           ? 400
           : 403;
     return { status, body: { denied: true, reason } };
