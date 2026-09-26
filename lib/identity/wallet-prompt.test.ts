@@ -50,6 +50,18 @@ describe("hyperme.sh wallet handoff prompt", () => {
       assert.equal(file.includes("privateKey"), false);
       assert.equal(file.includes("generateWallet"), false);
       assert.equal(file.includes("usdc_pubkey"), false);
+      assert.equal(/from ["']gun/.test(file), false);
+    }
+    for (const route of [
+      "../../app/api/turn/allocate/route.ts",
+      "../../app/api/payments/receipt/route.ts",
+      "../../app/api/oracles/attest/route.ts",
+      "../../app/api/identity/session/route.ts",
+    ]) {
+      const hop = readFileSync(fileURLToPath(new URL(route, import.meta.url)), "utf8");
+      assert.equal(hop.includes("readBackupFromRequest"), false);
+      assert.equal(hop.includes("ownerForOAuth"), false);
+      assert.equal(hop.includes("readSessionToken"), true);
     }
   });
 });
