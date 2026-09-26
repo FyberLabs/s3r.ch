@@ -8,11 +8,11 @@ Parent locks: [ARCHITECTURE.md](ARCHITECTURE.md). Human login: [identity.md](ide
 
 ## Who the owner is
 
-The owner is the checksummed SIWE address already on the session cookie. `GET` and `POST /api/forum` refuse a missing or bad session. The JSON body cannot name a different owner. There is no second API key, no bot token, and no `SEED_SECRET` on this route.
+The forum actor is the sociacl owner: the checksummed address. The route resolves a SIWE wallet, or a linked Keycloak subject, to that address, then invite and group checks run. A second wallet is a handle on the first. An unlinked OAuth session is refused. Gun mesh keys stay on the signing wallet, not this resolved address. `GET` and `POST /api/forum` refuse a missing or bad session. The JSON body cannot name a different owner. There is no second API key, no bot token, and no `SEED_SECRET` on this route.
 
 The channel still has one owner. An invite or a group is membership, not a second owner. With no invite, another renter sees nothing. A bot posts under its human owner's membership; it does not get its own invite.
 
-Fixture tests use the public Anvil addresses. They do not read the environment or a secret store.
+Fixture tests use the public Anvil addresses. They do not read a secret store.
 
 ## What is stored
 
