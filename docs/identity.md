@@ -9,7 +9,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 ## What this slice ships
 
 - EIP-4361 **Sign-In with Ethereum** (SIWE).
-- **Keycloak OAuth backup** on the existing Panopticon `controlplane` realm (public PKCE client `s3rch-web`, brokers `microsoft` / `github` / `google`). `GET /api/identity/oauth/start` and `GET /api/identity/oauth/callback` set a backup cookie separate from the SIWE cookie. Provider tokens are not stored and are not written to Gun. Empty or unknown `S3RCH_OAUTH_ISSUER` fails closed. Unlinked OAuth is not the Gun / forum owner. SIWE link binding is not this slice.
+- **Keycloak OAuth backup** on the existing Panopticon `controlplane` realm (public PKCE client `s3rch-web`, brokers `microsoft` / `github` / `google`). `GET /api/identity/oauth/start` and `GET /api/identity/oauth/callback` set a backup cookie separate from the SIWE cookie. Provider tokens are not stored and are not written to Gun. Empty or unknown `S3RCH_OAUTH_ISSUER` fails closed. Unlinked OAuth is not an owner. A SIWE session and the backup cookie bind both ways onto one sociacl owner (the checksummed address) in `S3RCH_IDENTITY_LINKS`. Gun and Check stay on the signing address.
 - Signed **HttpOnly cookie session** bound to a **checksummed** Ethereum address (never ENS, never email, never a SEA pub).
 - Quiet connect / sign-in / sign-out on `/feed` (injected wallet by default).
 - **Coinbase Smart Wallet onramp** (wagmi `coinbaseWallet` with `preference.options: "smartWalletOnly"`). Ungated — no project id. Creates or opens a passkey smart account so someone not in crypto yet can get an address, then SIWE as today. Not a second IdP. Not email/phone login. Not `@coinbase/cdp-wagmi`.
@@ -44,7 +44,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - A paper-only wrap that drops the PRF KEK. Paper replaces the **secondary** IKM only.
 - A Reown Cloud project id invented in this repo. Empty `NEXT_PUBLIC_WC_PROJECT_ID` stays injected + Smart Wallet (no WalletConnect).
 - Coinbase CDP Embedded Wallet (`@coinbase/cdp-wagmi`), a CDP Project ID, email/phone magic link, Privy, Dynamic, Web3Auth, or Magic as the session. Those are email-login-as-IdP. Onramp is Smart Wallet then SIWE.
-- Panopticon / Hypermesh Keycloak as **primary** IdP. s3r.ch primary login stays EIP-4361 SIWE. Keycloak OAuth backup (start, callback, secondary Continue control) is in [oauth-idp.md](oauth-idp.md). Binding Keycloak `sub` to a SIWE address is not this slice.
+- Panopticon / Hypermesh Keycloak as **primary** IdP. s3r.ch primary login stays EIP-4361 SIWE. Keycloak OAuth backup (start, callback, secondary Continue, two-way link) is in [oauth-idp.md](oauth-idp.md). Keycloak `sub` is a handle, never the owner id.
 - ENS or Unstoppable as login, or dumping an ENS / Unstoppable / Farcaster / Lens / RSS3 claim onto the public Gun graph without an explicit share.
 - A UD partner key in `NEXT_PUBLIC_*`, a browser call to `api.unstoppabledomains.com/resolve`, or Key Vault for `UNSTOPPABLE_API_KEY`.
 - Farcaster SIWF, Lens OAuth, or RSS3 login. Indicators are held claims after SIWE, not session subjects.
@@ -110,10 +110,12 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `lib/identity/cookies.ts` | `__Host-` on HTTPS, `Host-` on HTTP localhost. HttpOnly, SameSite=Lax, `Path=/` |
 | `lib/identity/nonce.ts` | Random SIWE nonce + signed cookie payload |
 | `lib/identity/session.ts` | Signed SIWE session `{ address, chainId, iat, exp }` |
-| `lib/identity/oauth.ts` | Backup OAuth: PKCE start, code exchange, backup cookie `{ sub, idp }`. No provider tokens. Not Gun |
+| `lib/identity/oauth.ts` | Backup OAuth: PKCE start, code exchange, backup cookie `{ sub, idp }`. No provider tokens. Not Gun. If a SIWE cookie is already present, the callback links both handles |
+| `lib/identity/link.ts` | JSON handles on one sociacl owner. `S3RCH_IDENTITY_LINKS` or `data/identity-links.json`. Not Gun. No tokens |
 | `app/api/identity/oauth/start` | Redirect to Keycloak, or `/feed?oauth=unconfigured` when the issuer is missing |
-| `app/api/identity/oauth/callback` | Backup session cookie. Clears the PKCE cookie. Never the SIWE cookie |
-| `app/api/identity/oauth/session` | `{ idp, linked: false }` for the backup door. `linked` stays false until a later SIWE bind |
+| `app/api/identity/oauth/callback` | Backup session cookie. Clears the PKCE cookie. Never the SIWE cookie. `?oauth=conflict` when the two paths already belong to different owners |
+| `app/api/identity/oauth/link` | `POST` binds the current SIWE cookie and the current backup cookie. 401 if either is missing. 409 `already-linked` |
+| `app/api/identity/oauth/session` | `{ idp, linked, owner }` for the backup door. `owner` is the checksummed address when linked, otherwise null. No Keycloak subject |
 | `lib/identity/siwe.ts` | Parse, domain/nonce/expiry checks, EOA ecrecover then ERC-1271 / EIP-6492 |
 | `lib/identity/wrap.ts` | Envelope v1 + HKDF-then-AES-GCM wrap/unwrap of the SEA pair |
 | `lib/identity/webauthn-prf.ts` | Native WebAuthn PRF create/get. Refuses to fake a wrap |

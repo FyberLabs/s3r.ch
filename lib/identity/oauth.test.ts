@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 import { generateKeyPair, SignJWT } from "jose";
 import { LOCAL_SESSION_SECRET, OAUTH_CLIENT_ID, OAUTH_REDIRECT_URIS } from "./config";
 import { oauthPkceCookieName, oauthSessionCookieName, sessionCookieName } from "./cookies";
+import { linkLoginPaths, ownerForOAuth } from "./link";
 import { readSessionToken, signSessionToken } from "./session";
 import {
   ALLOWED_OAUTH_ISSUERS,
@@ -174,8 +177,9 @@ describe("OAuth callback", () => {
       new URL("../../app/api/identity/oauth/session/route.ts", import.meta.url),
       "utf8",
     );
-    assert.match(route, /linked: false/);
+    assert.match(route, /linked: owner !== null/);
     assert.equal(route.includes("session.sub"), false);
+    assert.equal(route.includes("sub:"), false);
     assert.equal(route.includes("kc-user-1"), false);
   });
 
@@ -229,6 +233,85 @@ describe("OAuth callback", () => {
       },
     );
     assert.equal(response.headers.get("location"), "/feed?oauth=denied");
+  });
+
+  it("links a SIWE cookie already on the callback and reports a conflict", async () => {
+    const { publicKey, privateKey } = await generateKeyPair("RS256");
+    const dir = mkdtempSync(join(tmpdir(), "s3rch-oauth-link-"));
+    const file = join(dir, "identity-links.json");
+    const previous = process.env.S3RCH_IDENTITY_LINKS;
+    process.env.S3RCH_IDENTITY_LINKS = file;
+    const alice = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+    const bob = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+    try {
+      const siwe = await signSessionToken({ address: alice, chainId: 1 }, SECRET);
+      const started = await beginOAuth(
+        startRequest("http://127.0.0.1:3000/api/identity/oauth/start"),
+        ENV,
+      );
+      const state = new URL(started.headers.get("location") ?? "").searchParams.get("state");
+      const pkce = cookiePair(started, oauthPkceCookieName(false));
+      const idToken = await new SignJWT({})
+        .setProtectedHeader({ alg: "RS256" })
+        .setIssuer(ISSUER)
+        .setAudience(OAUTH_CLIENT_ID)
+        .setSubject("kc-link-1")
+        .setExpirationTime("5m")
+        .sign(privateKey);
+      const response = await finishOAuth(
+        new Request(`http://127.0.0.1:3000/api/identity/oauth/callback?code=auth-code&state=${state}`, {
+          headers: {
+            cookie: `${sessionCookieName(false)}=${siwe}; ${pkce}`,
+            "x-forwarded-proto": "http",
+          },
+        }),
+        ENV,
+        {
+          key: publicKey,
+          fetchImpl: async () => Response.json({ id_token: idToken }),
+        },
+      );
+      assert.equal(response.headers.get("location"), "/feed");
+      assert.equal(ownerForOAuth("kc-link-1"), alice);
+
+      linkLoginPaths({ wallet: bob, sub: "kc-other", idp: "google" });
+      const conflictStart = await beginOAuth(
+        startRequest("http://127.0.0.1:3000/api/identity/oauth/start"),
+        ENV,
+      );
+      const conflictState = new URL(conflictStart.headers.get("location") ?? "").searchParams.get("state");
+      const conflictPkce = cookiePair(conflictStart, oauthPkceCookieName(false));
+      const other = await new SignJWT({})
+        .setProtectedHeader({ alg: "RS256" })
+        .setIssuer(ISSUER)
+        .setAudience(OAUTH_CLIENT_ID)
+        .setSubject("kc-other")
+        .setExpirationTime("5m")
+        .sign(privateKey);
+      const conflict = await finishOAuth(
+        new Request(
+          `http://127.0.0.1:3000/api/identity/oauth/callback?code=auth-code&state=${conflictState}`,
+          {
+            headers: {
+              cookie: `${sessionCookieName(false)}=${siwe}; ${conflictPkce}`,
+              "x-forwarded-proto": "http",
+            },
+          },
+        ),
+        ENV,
+        {
+          key: publicKey,
+          fetchImpl: async () => Response.json({ id_token: other }),
+        },
+      );
+      assert.equal(conflict.headers.get("location"), "/feed?oauth=conflict");
+      assert.equal(ownerForOAuth("kc-other"), bob);
+      assert.equal(ownerForOAuth("kc-link-1"), alice);
+    } finally {
+      if (previous === undefined) delete process.env.S3RCH_IDENTITY_LINKS;
+      else process.env.S3RCH_IDENTITY_LINKS = previous;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

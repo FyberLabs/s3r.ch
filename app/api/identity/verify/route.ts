@@ -12,6 +12,8 @@ import {
   setIdentityCookie,
 } from "@/lib/identity/http";
 import { readNonceToken } from "@/lib/identity/nonce";
+import { linkLoginPaths } from "@/lib/identity/link";
+import { readBackupFromRequest } from "@/lib/identity/oauth";
 import { signSessionToken } from "@/lib/identity/session";
 import { verifySiweLogin } from "@/lib/identity/siwe";
 
@@ -84,5 +86,20 @@ export async function POST(request: Request) {
   );
   await setIdentityCookie(nonceCookieName(secure), "", secure, 0);
 
-  return Response.json({ address: result.address, chainId: result.chainId });
+  let linked = false;
+  try {
+    const backup = await readBackupFromRequest(request);
+    if (backup) {
+      const bound = linkLoginPaths({
+        wallet: result.address,
+        sub: backup.sub,
+        idp: backup.idp,
+      });
+      linked = !("denied" in bound);
+    }
+  } catch {
+    linked = false;
+  }
+
+  return Response.json({ address: result.address, chainId: result.chainId, linked });
 }
