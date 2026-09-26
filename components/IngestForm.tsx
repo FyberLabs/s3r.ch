@@ -12,7 +12,7 @@ import { btnPrimary, btnSecondary, field, panel } from "@/lib/brand-ui";
 import { canUsePullRelay } from "@/lib/pull-relay";
 import { pullRelayStatusCopy, requestPullRelay, usePullRelay } from "@/lib/pull-relay-client";
 import { useSeeAcl } from "@/components/SeeAclProvider";
-import { useIdentitySession } from "@/components/useIdentitySession";
+import { objectOwner, useIdentitySession } from "@/components/useIdentitySession";
 
 export function IngestForm({
   onItems,
@@ -97,7 +97,7 @@ export function IngestForm({
         setMessage(payload.error || "Nothing to pull.");
         return;
       }
-      const admitted = admitPulledItems(see.acl, items, session.address);
+      const admitted = admitPulledItems(see.acl, items, objectOwner(session));
       if (!admitted.length) {
         setMessage("Could not pull those items.");
         return;

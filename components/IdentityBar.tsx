@@ -64,6 +64,7 @@ const WRAP_UNAVAILABLE_COPY = "Save with passkey is not available in this browse
 type SessionPayload = {
   address: string;
   chainId: number;
+  owner?: string;
 };
 
 type BackupIdp = "microsoft" | "github" | "google" | null;
@@ -120,7 +121,13 @@ function IdentityBarInner() {
         return;
       }
       const payload = (await response.json()) as SessionPayload;
-      if (payload.address) setSession(payload);
+      if (payload.address) {
+        setSession({
+          address: payload.address,
+          chainId: payload.chainId,
+          owner: payload.owner || payload.address,
+        });
+      }
       else setSession(null);
     } catch {
       setSession(null);
@@ -302,7 +309,8 @@ function IdentityBarInner() {
       indicators.rss3.name,
     ],
   );
-  const confirms = useHeldConfirms(session?.address ?? null);
+  const objectOwner = session?.owner || session?.address || null;
+  const confirms = useHeldConfirms(objectOwner);
   const overlayLookups = useMemo(
     () => ({
       ...heldLookups,
@@ -317,7 +325,7 @@ function IdentityBarInner() {
       confirms.lookups.kyc,
     ],
   );
-  const mineUser = useMineUserOverlay(session?.address ?? null, overlayLookups);
+  const mineUser = useMineUserOverlay(objectOwner, overlayLookups);
 
   const injected = connectors.find((connector) => connector.id === "injected") ?? connectors[0];
   const walletConnectConnector = connectors.find(
@@ -392,11 +400,18 @@ function IdentityBarInner() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ message: prepared, signature }),
       });
-      const verifyBody = (await verifyRes.json()) as SessionPayload & { error?: string };
+      const verifyBody = (await verifyRes.json()) as SessionPayload & {
+        error?: string;
+        owner?: string;
+      };
       if (!verifyRes.ok) {
         throw new Error(verifyBody.error || "Verify failed.");
       }
-      setSession({ address: verifyBody.address, chainId: verifyBody.chainId });
+      setSession({
+        address: verifyBody.address,
+        chainId: verifyBody.chainId,
+        owner: verifyBody.owner || verifyBody.address,
+      });
       setMessage(null);
       try {
         const linkRes = await fetch("/api/identity/oauth/link", { method: "POST" });
@@ -697,6 +712,11 @@ function IdentityBarInner() {
             <p className="text-sm font-medium text-ink">
               {truncateAddress(session.address)}
             </p>
+            {session.owner && session.owner !== session.address ? (
+              <p className="basis-full text-xs text-ink-muted">
+                Owner {truncateAddress(session.owner)}
+              </p>
+            ) : null}
             <button
               type="button"
               disabled={busy}
@@ -873,17 +893,17 @@ function IdentityBarInner() {
       {session ? (
         <>
           <HeldConfirmControls
-            address={session.address}
+            address={session.owner || session.address}
             proofs={confirms.proofs}
             onHeld={confirms.putProof}
           />
           <UserNodeControls
-            address={session.address}
+            address={session.owner || session.address}
             overlay={mineUser.overlay}
             ready={mineUser.ready}
           />
           <SeeGrantControls
-            address={session.address}
+            address={session.owner || session.address}
             overlay={mineUser.overlay}
           />
         </>

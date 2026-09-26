@@ -11,7 +11,7 @@ import {
 } from "@/lib/rooms";
 import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
-import { useIdentitySession } from "@/components/useIdentitySession";
+import { objectOwner, useIdentitySession } from "@/components/useIdentitySession";
 import { btnPrimary, btnTabOff, btnTabOn, field, panel } from "@/lib/brand-ui";
 
 export function RoomsList({
@@ -128,7 +128,8 @@ function NewRoomForm({ onCreated }: { onCreated: (room: Room) => void }) {
   const [tagsInput, setTagsInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const session = useIdentitySession()?.address ?? null;
+  const identity = useIdentitySession();
+  const session = identity ? objectOwner(identity) : null;
 
   async function submit() {
     setBusy(true);

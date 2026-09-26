@@ -9,7 +9,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 ## What this slice ships
 
 - EIP-4361 **Sign-In with Ethereum** (SIWE).
-- **Keycloak OAuth backup** on the existing Panopticon `controlplane` realm (public PKCE client `s3rch-web`, brokers `microsoft` / `github` / `google`). `GET /api/identity/oauth/start` and `GET /api/identity/oauth/callback` set a backup cookie separate from the SIWE cookie. Provider tokens are not stored and are not written to Gun. Empty or unknown `S3RCH_OAUTH_ISSUER` fails closed. Unlinked OAuth is not an owner. A SIWE session and the backup cookie bind both ways onto one sociacl owner (the checksummed address) in `S3RCH_IDENTITY_LINKS`. Gun and Check stay on the signing address.
+- **Keycloak OAuth backup** on the existing Panopticon `controlplane` realm (public PKCE client `s3rch-web`, brokers `microsoft` / `github` / `google`). `GET /api/identity/oauth/start` and `GET /api/identity/oauth/callback` set a backup cookie separate from the SIWE cookie. Provider tokens are not stored and are not written to Gun. Empty or unknown `S3RCH_OAUTH_ISSUER` fails closed. Unlinked OAuth is not an owner. A SIWE session and the backup cookie bind both ways onto one sociacl owner (the checksummed address) in `S3RCH_IDENTITY_LINKS`. Gun and Check objects are owned by that address. The Gun mesh key stays on the wallet that signed the mesh-link statement.
 - Signed **HttpOnly cookie session** bound to a **checksummed** Ethereum address (never ENS, never email, never a SEA pub).
 - Quiet connect / sign-in / sign-out on `/feed` (injected wallet by default).
 - **Coinbase Smart Wallet onramp** (wagmi `coinbaseWallet` with `preference.options: "smartWalletOnly"`). Ungated — no project id. Creates or opens a passkey smart account so someone not in crypto yet can get an address, then SIWE as today. Not a second IdP. Not email/phone login. Not `@coinbase/cdp-wagmi`.
@@ -63,6 +63,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 | Lock | Why |
 | --- | --- |
 | Session key is the checksummed address | ENS, Unstoppable name, fname, Lens handle, RSS3 id, email, phone, KYC attestation, Keycloak `sub`, and SEA `pub` are never the session subject. EOA or ERC-1271 contract address only |
+| Gun and Check object owner is the sociacl owner | A second linked wallet reads and writes those objects as the first checksummed address. The mesh key, wrap, and chain lookups stay on the wallet that signed. Linked OAuth with no signing wallet does not mint a Gun key |
 | Email / phone / KYC are held claims after SIWE | Confirm proves the claim to the holder. Private IndexedDB proof + overlay claim id. Public only after explicit share of that claim id. Live send / a real issuer fail soft as "not configured" when unset. Not AML. Not a passport product |
 | Contract SIWE is mainnet ERC-1271 / EIP-6492 | Local Anvil is EOA-only. Do not send a local contract `eth_call` to mainnet |
 | ENS is a held claim after SIWE | Reverse + forward must checksum-match. Unverified reverse is never shown |
