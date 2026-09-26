@@ -2,7 +2,7 @@
 
 Source of truth for login on this Next app. Product decisions agreed with Chris Hamilton (cchamilt).
 
-This kit is **s3r.ch login** and, later, a Hypermesh **wallet door**. The Hypermesh portal stays Keycloak. Do not bolt OIDC onto s3r.ch as primary login.
+This kit is **s3r.ch login** (wallet first) and, later, a Hypermesh **wallet door**. The Hypermesh portal stays Keycloak. **Do not make OIDC primary login on s3r.ch.** Panopticon Keycloak OAuth is planned as a **backup** door only, with the same brokers Hypermesh already uses (Microsoft, GitHub, Google). See [oauth-idp.md](oauth-idp.md).
 
 Components here are written so they can be extracted into a shared kit later. The first implementation lives in this repo.
 
@@ -43,13 +43,13 @@ Components here are written so they can be extracted into a shared kit later. Th
 - A paper-only wrap that drops the PRF KEK. Paper replaces the **secondary** IKM only.
 - A Reown Cloud project id invented in this repo. Empty `NEXT_PUBLIC_WC_PROJECT_ID` stays injected + Smart Wallet (no WalletConnect).
 - Coinbase CDP Embedded Wallet (`@coinbase/cdp-wagmi`), a CDP Project ID, email/phone magic link, Privy, Dynamic, Web3Auth, or Magic as the session. Those are email-login-as-IdP. Onramp is Smart Wallet then SIWE.
-- Panopticon / Hypermesh Keycloak as an IdP. s3r.ch login stays EIP-4361 SIWE.
+- Panopticon / Hypermesh Keycloak as **primary** IdP. s3r.ch primary login stays EIP-4361 SIWE. Keycloak OAuth as **backup** (same microsoft / github / google brokers) is planned in [oauth-idp.md](oauth-idp.md) — not coded in this slice.
 - ENS or Unstoppable as login, or dumping an ENS / Unstoppable / Farcaster / Lens / RSS3 claim onto the public Gun graph without an explicit share.
 - A UD partner key in `NEXT_PUBLIC_*`, a browser call to `api.unstoppabledomains.com/resolve`, or Key Vault for `UNSTOPPABLE_API_KEY`.
 - Farcaster SIWF, Lens OAuth, or RSS3 login. Indicators are held claims after SIWE, not session subjects.
 - Importing `FyberLabs/SociACL` as a crate, NAPI, WASM, or npm package. Light Check is re-typed from the consume contract (`docs/s3rch-check.d.ts`).
 - Friend-of-friend, Social Light hop UI, Elect / wills / Case C, or any verb beyond `see`. Hop may factor Check in TS; it is not a grant and has no public-page UI.
-- NextAuth, Keycloak, or email magic link on this app. Email / phone confirm is a held claim after SIWE, not a session.
+- NextAuth or email magic link on this app. Email / phone confirm is a held claim after SIWE, not a session. Keycloak OAuth backup is planned ([oauth-idp.md](oauth-idp.md)), not shipped in this slice.
 - Meetings, live streams, hop UI, Elect / wills / Case C. Live chat and presence over Gun subscriptions ship; they are not a TURN/WebRTC mesh. `gun/lib/webrtc` + STUN + signed-in allocate ships as a hop. Allocate is not a public mesh.
 - ActivityPub / Nostr / RSS / RSS3 outbound. Farcaster + ATProto outbound **do** ship as an explicit SIWE action (not auto-bridge). Inbound pull for those networks stays a separate path. Native post ≠ bridging out.
 - Popular / Novel columns, likes / views / engagement scores. Network **does** ship as the live mesh view (not a finished P2P mesh claim).
@@ -71,7 +71,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 | Never call `user.recall({ sessionStorage: true })` | Gun would store the plaintext SEA pair. Never `sessionStorage` for this kit. |
 | Never put SIWE signatures, SEA `priv` / `epriv`, the envelope, DEK, KEKs on a Gun node | Session / device secrets stay in cookies and IndexedDB. Held claims go on `s3rch/users/<wallet>` only after explicit share. `fromGunUserNode` fails closed on those secret keys |
 | Nonce lives in a **signed cookie**, not an in-memory `Map` | Azure App Service is multi-instance; Redis is not in this slice |
-| OIDC is not primary login | Hypermesh portal can stay Keycloak; s3r.ch does not use Panopticon Keycloak as an IdP |
+| OIDC is not primary login | Hypermesh portal stays Keycloak. s3r.ch primary stays SIWE. Keycloak OAuth is backup only ([oauth-idp.md](oauth-idp.md)); Keycloak `sub` is never the Gun / forum owner |
 | Passkey WebAuthn PRF wrap is recovery | PRF is device proof for the Gun SEA pair. It does not become the session subject. Distinct from a Coinbase Smart Wallet passkey (onramp to an address, then SIWE) |
 | Smart Wallet is an onramp, not an IdP | Coinbase Smart Wallet (passkey popup) creates or opens an address. Session is still EIP-4361 SIWE on the checksummed address. Not email login. Not Keycloak. Not `@coinbase/cdp-wagmi` |
 | Paper backup is recovery | Same wrap slot as wallet secondary. Never login. Never persist the paper string, DEK, KEKs, or SEA `priv` / `epriv` in Gun, cookies, or `sessionStorage` |
@@ -235,7 +235,7 @@ RPC errors and a non-magic / false ERC-1271 result are a quiet invalid signature
 
 Reject on domain mismatch. Do not treat ENS names as the session key.
 
-s3r.ch does **not** use Panopticon Keycloak as an IdP and does not federate to hyperme.sh. SociACL Check is **grants**, not login. The session subject stays the checksummed address. See [s3rch-check.md](s3rch-check.md).
+s3r.ch does **not** use Panopticon Keycloak as **primary** login. OAuth backup via that Keycloak (same IdPs as Hypermesh) is planned in [oauth-idp.md](oauth-idp.md). SociACL Check is **grants**, not login. The session subject for Gun / forum stays the checksummed address (after any OAuth↔SIWE link). See [s3rch-check.md](s3rch-check.md).
 
 ## ENS held claim (after SIWE, not login)
 
