@@ -80,6 +80,59 @@ export type ForumGroupMember = {
   joined: number;
 };
 
+export const FORUM_THINKING_KINDS = [
+  "type",
+  "mouse",
+  "mcp",
+  "focus",
+  "prompt",
+  "file",
+  "secret",
+] as const;
+
+export type ForumThinkingKind = (typeof FORUM_THINKING_KINDS)[number];
+
+export type ForumThinking = {
+  kind: ForumThinkingKind;
+  text: string;
+};
+
+export type ForumSnapshot = {
+  handle: string;
+  mime: "image/png";
+  seq: number;
+};
+
+/** Latest visor desktop for one channel. Handles only. Image bytes are not here. */
+export type ForumDesktop = {
+  channel: string;
+  session: string;
+  snapshot: ForumSnapshot | null;
+  thinking: ForumThinking[];
+  files: { handle: string }[];
+  secrets: { handle: string }[];
+  updated: number;
+};
+
+export type PublishDesktopInput = {
+  owner: string;
+  session: string;
+  snapshot: ForumSnapshot | null;
+  /** Held in process memory for this channel. Never written to the JSON file. */
+  pngBase64?: string;
+  thinking: ForumThinking[];
+  files: { handle: string }[];
+  secrets: { handle: string }[];
+  nowSeconds?: number;
+};
+
+export type PublishDesktopResult = Denied | { desktop: ForumDesktop };
+
+export type ForumSnapshotBytes = {
+  mime: "image/png";
+  bytes: Buffer;
+};
+
 export type ForumBotView = ForumBot & { member: boolean };
 
 export type ForumFile = {
@@ -91,6 +144,7 @@ export type ForumFile = {
   invites: ForumInvite[];
   groups: ForumGroup[];
   groupMembers: ForumGroupMember[];
+  desktops: ForumDesktop[];
 };
 
 export type StoreLoad =
@@ -179,6 +233,7 @@ export type PostBotResult = Denied | { message: ForumMessage };
 export type ForumShared = {
   channel: ForumChannel;
   messages: ForumMessage[];
+  desktop: ForumDesktop | null;
 };
 
 export type ReadChatResult =
@@ -187,6 +242,7 @@ export type ReadChatResult =
       channel: ForumChannel | null;
       messages: ForumMessage[];
       bots: ForumBotView[];
+      desktop: ForumDesktop | null;
       shared: ForumShared[];
     };
 
@@ -210,6 +266,8 @@ export type Forum = {
   createGroup(input: GroupInput): GroupResult;
   addGroupMember(input: GroupMemberInput): GroupMemberResult;
   removeGroupMember(input: GroupMemberInput): GroupMemberResult;
+  publishDesktop(input: PublishDesktopInput): PublishDesktopResult;
+  readSnapshot(input: { owner: string; handle: string }): ForumSnapshotBytes | null;
 };
 
 type GlobalForum = typeof globalThis & {
@@ -230,6 +288,7 @@ export function emptyForumFile(): ForumFile {
     invites: [],
     groups: [],
     groupMembers: [],
+    desktops: [],
   };
 }
 
@@ -272,6 +331,8 @@ export function getForum(): Forum {
 }
 
 export function openForum(store: ForumStore): Forum {
+  const heldPng = new Map<string, { channel: string; bytes: Buffer }>();
+
   function load(): { ok: true; file: ForumFile } | Denied {
     let loaded: StoreLoad;
     try {
@@ -462,7 +523,77 @@ export function openForum(store: ForumStore): Forum {
       .filter((row) => row.owner === owner)
       .map((row) => toView(file, row))
       .sort((a, b) => a.created - b.created || a.id.localeCompare(b.id));
-    return { channel, messages, bots, shared: sharedFor(file, owner) };
+    return {
+      channel,
+      messages,
+      bots,
+      desktop: desktopOn(file, channel?.id ?? null),
+      shared: sharedFor(file, owner),
+    };
+  }
+
+  function publishDesktop(input: PublishDesktopInput): PublishDesktopResult {
+    const owner = checksumOwner(input.owner);
+    if (!owner) return { denied: true, reason: "bad-owner" };
+    const session = cleanSession(input.session);
+    if (!session) return { denied: true, reason: "bad-desktop" };
+    const thinking = cleanThinking(input.thinking);
+    const files = cleanHandles(input.files);
+    const secrets = cleanHandles(input.secrets);
+    if (!thinking || !files || !secrets) return { denied: true, reason: "bad-desktop" };
+    if (input.snapshot !== null && !isSnapshot(input.snapshot)) {
+      return { denied: true, reason: "bad-snapshot" };
+    }
+    const opened = load();
+    if ("denied" in opened) return opened;
+    const file = opened.file;
+    const now = nowSeconds(input.nowSeconds);
+    const channel = ensureChannel(file, owner, now);
+    let png: Buffer | null = null;
+    if (input.pngBase64 !== undefined) {
+      if (!input.snapshot) return { denied: true, reason: "bad-snapshot" };
+      png = decodePng(input.pngBase64);
+      if (!png) return { denied: true, reason: "bad-snapshot" };
+    }
+    const desktop: ForumDesktop = {
+      channel: channel.id,
+      session,
+      snapshot: input.snapshot,
+      thinking,
+      files,
+      secrets,
+      updated: now,
+    };
+    file.desktops = file.desktops.filter((row) => row.channel !== channel.id);
+    file.desktops.push(desktop);
+    const saved = commit(file);
+    if (saved) return saved;
+    for (const [key, held] of heldPng) {
+      if (held.channel === channel.id) heldPng.delete(key);
+    }
+    if (png && input.snapshot) {
+      heldPng.set(heldKey(channel.id, input.snapshot.handle), {
+        channel: channel.id,
+        bytes: png,
+      });
+    }
+    return { desktop };
+  }
+
+  function readSnapshot(input: { owner: string; handle: string }): ForumSnapshotBytes | null {
+    const owner = checksumOwner(input.owner);
+    const handle = cleanHandle(input.handle);
+    if (!owner || !handle) return null;
+    const opened = load();
+    if ("denied" in opened) return null;
+    const file = opened.file;
+    const row = file.desktops.find((item) => item.snapshot?.handle === handle);
+    if (!row?.snapshot) return null;
+    const channel = file.channels.find((item) => item.id === row.channel);
+    if (!channel || !canSee(file, owner, channel)) return null;
+    const held = heldPng.get(heldKey(row.channel, handle));
+    if (!held || held.channel !== row.channel) return null;
+    return { mime: "image/png", bytes: held.bytes };
   }
 
   function invite(input: InviteInput): InviteResult {
@@ -584,6 +715,8 @@ export function openForum(store: ForumStore): Forum {
     createGroup,
     addGroupMember,
     removeGroupMember,
+    publishDesktop,
+    readSnapshot,
   };
 }
 
@@ -709,6 +842,11 @@ export function handleForumPost(
       }),
     );
   }
+  if (action === "desktop") {
+    const parsed = parseDesktopPost(record);
+    if ("denied" in parsed) return { status: 400, body: parsed };
+    return mapResult(chat.publishDesktop({ owner, ...parsed }));
+  }
   if (action === "read") {
     return readResult(
       chat.read({
@@ -738,7 +876,13 @@ export function parseForumFile(value: unknown): StoreLoad {
   const inviteRows = record.invites === undefined ? [] : record.invites;
   const groupRows = record.groups === undefined ? [] : record.groups;
   const groupMemberRows = record.groupMembers === undefined ? [] : record.groupMembers;
-  if (!Array.isArray(inviteRows) || !Array.isArray(groupRows) || !Array.isArray(groupMemberRows)) {
+  const desktopRows = record.desktops === undefined ? [] : record.desktops;
+  if (
+    !Array.isArray(inviteRows) ||
+    !Array.isArray(groupRows) ||
+    !Array.isArray(groupMemberRows) ||
+    !Array.isArray(desktopRows)
+  ) {
     return { ok: false, reason: "store-unreadable" };
   }
   const channels: ForumChannel[] = [];
@@ -783,6 +927,12 @@ export function parseForumFile(value: unknown): StoreLoad {
     if (!member) return { ok: false, reason: "store-unreadable" };
     groupMembers.push(member);
   }
+  const desktops: ForumDesktop[] = [];
+  for (const row of desktopRows) {
+    const desktop = asDesktop(row);
+    if (!desktop) return { ok: false, reason: "store-unreadable" };
+    desktops.push(desktop);
+  }
   const file: ForumFile = {
     v: FORUM_FILE_V,
     channels,
@@ -792,6 +942,7 @@ export function parseForumFile(value: unknown): StoreLoad {
     invites,
     groups,
     groupMembers,
+    desktops,
   };
   if (!fileIsConsistent(file)) return { ok: false, reason: "store-unreadable" };
   return { ok: true, file };
@@ -860,6 +1011,14 @@ function fileIsConsistent(file: ForumFile): boolean {
     groupMemberKeys.add(key);
     const group = file.groups.find((row) => row.id === member.group);
     if (!group || group.owner === member.member) return false;
+  }
+  const desktopChannels = new Set<string>();
+  for (const desktop of file.desktops) {
+    if (desktopChannels.has(desktop.channel)) return false;
+    desktopChannels.add(desktop.channel);
+    if (!file.channels.some((row) => row.id === desktop.channel)) return false;
+    if (!cleanSession(desktop.session)) return false;
+    if (desktop.snapshot && !isSnapshot(desktop.snapshot)) return false;
   }
   return true;
 }
@@ -1023,8 +1182,17 @@ function messagesOn(file: ForumFile, channelId: string | null): ForumMessage[] {
 function sharedFor(file: ForumFile, actor: string): ForumShared[] {
   return file.channels
     .filter((channel) => channel.owner !== actor && canSee(file, actor, channel))
-    .map((channel) => ({ channel, messages: messagesOn(file, channel.id) }))
+    .map((channel) => ({
+      channel,
+      messages: messagesOn(file, channel.id),
+      desktop: desktopOn(file, channel.id),
+    }))
     .sort((a, b) => a.channel.id.localeCompare(b.channel.id));
+}
+
+function desktopOn(file: ForumFile, channelId: string | null): ForumDesktop | null {
+  if (!channelId) return null;
+  return file.desktops.find((row) => row.channel === channelId) ?? null;
 }
 
 function toView(file: ForumFile, bot: ForumBot): ForumBotView {
@@ -1032,6 +1200,197 @@ function toView(file: ForumFile, bot: ForumBot): ForumBotView {
   return {
     ...bot,
     member: channel ? isMember(file, channel.id, bot.id) : false,
+  };
+}
+
+function heldKey(channel: string, handle: string): string {
+  return `${channel}\n${handle}`;
+}
+
+function isThinkingKind(value: string): value is ForumThinkingKind {
+  return (FORUM_THINKING_KINDS as readonly string[]).includes(value);
+}
+
+function cleanSession(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const session = value.trim().toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(session)) {
+    return null;
+  }
+  return session;
+}
+
+function cleanHandle(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const handle = value.trim();
+  if (!handle || handle.length > 80) return null;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(handle)) return null;
+  return handle;
+}
+
+function cleanActivityText(value: string): string | null {
+  const text = value.replace(/[\u0000-\u001f]/g, " ").trim();
+  if (!text || text.length > 280) return null;
+  if (text.includes("content_base64") || text.includes("data:image")) return null;
+  return text;
+}
+
+function cleanThinking(value: unknown): ForumThinking[] | null {
+  if (!Array.isArray(value) || value.length > 64) return null;
+  const lines: ForumThinking[] = [];
+  for (const row of value) {
+    if (!isRecord(row)) return null;
+    if ("value" in row || "bytes" in row || "content_base64" in row || "png_base64" in row) {
+      return null;
+    }
+    if (typeof row.kind !== "string" || !isThinkingKind(row.kind)) return null;
+    if (typeof row.text !== "string") return null;
+    const text = cleanActivityText(row.text);
+    if (!text) return null;
+    lines.push({ kind: row.kind, text });
+  }
+  return lines;
+}
+
+function cleanHandles(value: unknown): { handle: string }[] | null {
+  if (!Array.isArray(value) || value.length > 32) return null;
+  const handles: { handle: string }[] = [];
+  for (const row of value) {
+    if (!isRecord(row)) return null;
+    const handle = cleanHandle(row.handle);
+    if (!handle) return null;
+    handles.push({ handle });
+  }
+  return handles;
+}
+
+function isSnapshot(value: ForumSnapshot): boolean {
+  return (
+    value.mime === "image/png" &&
+    cleanHandle(value.handle) === value.handle &&
+    Number.isInteger(value.seq) &&
+    value.seq >= 1 &&
+    value.seq <= 1_000_000_000
+  );
+}
+
+function asSnapshot(value: Record<string, unknown>): ForumSnapshot | null {
+  const handle = cleanHandle(value.handle);
+  if (!handle || value.mime !== "image/png") return null;
+  if (typeof value.seq !== "number" || !Number.isInteger(value.seq)) return null;
+  const snapshot: ForumSnapshot = { handle, mime: "image/png", seq: value.seq };
+  return isSnapshot(snapshot) ? snapshot : null;
+}
+
+function asDesktop(value: unknown): ForumDesktop | null {
+  if (!isRecord(value)) return null;
+  if ("png_base64" in value || "bytes" in value || "value" in value || "content_base64" in value) {
+    return null;
+  }
+  if (typeof value.channel !== "string" || !value.channel.startsWith("s3rch:forum:")) return null;
+  const session = cleanSession(value.session);
+  if (!session || !isTime(value.updated)) return null;
+  let snapshot: ForumSnapshot | null = null;
+  if (value.snapshot !== null) {
+    if (!isRecord(value.snapshot)) return null;
+    snapshot = asSnapshot(value.snapshot);
+    if (!snapshot) return null;
+  }
+  const thinking = cleanThinking(value.thinking);
+  const files = cleanHandles(value.files);
+  const secrets = cleanHandles(value.secrets);
+  if (!thinking || !files || !secrets) return null;
+  return {
+    channel: value.channel,
+    session,
+    snapshot,
+    thinking,
+    files,
+    secrets,
+    updated: value.updated,
+  };
+}
+
+function decodePng(value: string): Buffer | null {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 2_000_000) return null;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(trimmed)) return null;
+  const bytes = Buffer.from(trimmed, "base64");
+  if (bytes.length === 0 || bytes.length > 1_500_000) return null;
+  return bytes;
+}
+
+function secretNeedles(record: Record<string, unknown>): string[] {
+  const found: string[] = [];
+  const walk = (value: unknown) => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
+    }
+    const row = value as Record<string, unknown>;
+    if (typeof row.value === "string") found.push(row.value);
+    if (typeof row.content_base64 === "string") {
+      const text = Buffer.from(row.content_base64, "base64").toString("utf8");
+      if (text && !text.includes("\u0000")) found.push(text);
+    }
+    for (const child of Object.values(row)) {
+      if (child !== row.value && child !== row.content_base64) walk(child);
+    }
+  };
+  walk(record.thinking);
+  walk(record.files);
+  walk(record.secrets);
+  return found.filter((item) => item.length >= 4);
+}
+
+function scrub(text: string, needles: string[]): string {
+  let out = text;
+  for (const needle of needles) {
+    if (needle.length >= 4 && out.includes(needle)) out = out.split(needle).join("***");
+  }
+  return out;
+}
+
+function parseDesktopPost(
+  record: Record<string, unknown>,
+): Omit<PublishDesktopInput, "owner"> | Denied {
+  const thinkingRaw = record.thinking;
+  if (!Array.isArray(thinkingRaw)) return { denied: true, reason: "bad-desktop" };
+  const needles = secretNeedles(record);
+  const thinking: ForumThinking[] = [];
+  for (const row of thinkingRaw) {
+    if (!isRecord(row) || typeof row.kind !== "string" || typeof row.text !== "string") {
+      return { denied: true, reason: "bad-desktop" };
+    }
+    if (!isThinkingKind(row.kind)) return { denied: true, reason: "bad-desktop" };
+    const text = cleanActivityText(scrub(row.text, needles));
+    if (!text) return { denied: true, reason: "bad-desktop" };
+    thinking.push({ kind: row.kind, text });
+  }
+  const files = cleanHandles(record.files);
+  const secrets = cleanHandles(record.secrets);
+  if (!files || !secrets) return { denied: true, reason: "bad-desktop" };
+  let snapshot: ForumSnapshot | null = null;
+  if (record.snapshot !== undefined && record.snapshot !== null) {
+    if (!isRecord(record.snapshot)) return { denied: true, reason: "bad-snapshot" };
+    const parsed = asSnapshot(record.snapshot);
+    if (!parsed) return { denied: true, reason: "bad-snapshot" };
+    snapshot = parsed;
+  }
+  let pngBase64: string | undefined;
+  if (record.png_base64 !== undefined) {
+    if (typeof record.png_base64 !== "string") return { denied: true, reason: "bad-snapshot" };
+    pngBase64 = record.png_base64;
+  }
+  return {
+    session: typeof record.session === "string" ? record.session : "",
+    snapshot,
+    pngBase64,
+    thinking,
+    files,
+    secrets,
+    nowSeconds: asSeconds(record.nowSeconds),
   };
 }
 
@@ -1100,7 +1459,9 @@ function mapResult(result: Denied | object): ForumHttpResult {
             reason === "bad-body" ||
             reason === "bad-entropy" ||
             reason === "bad-guest" ||
-            reason === "bad-member"
+            reason === "bad-member" ||
+            reason === "bad-desktop" ||
+            reason === "bad-snapshot"
           ? 400
           : 403;
     return { status, body: { denied: true, reason } };

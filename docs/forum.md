@@ -31,6 +31,7 @@ One JSON file. Path: `S3RCH_FORUM`, or `data/forum.json` when that is unset. Sam
 | Invite | channel + guest | Direct see/post for that renter. Missing on old files, treated as none |
 | Group | `s3rch:forum-group:<owner>:<entropy>` | Named by the channel owner and attached to that owner's channel |
 | Group member | group + member | See/post while the membership lasts. Uninvite does not remove it |
+| Desktop | channel | Latest visor feed for that channel. Snapshot handle, terminal or IDE lines, file handles, secret handles. Missing on old files, treated as none. Image bytes are not in this file |
 
 Registering a label the owner does not already have joins that bot to the channel. Registering the same label again returns the same bot id, including after archive, and does not change `kind` unless the call sets a different one (that mismatch is refused). That is the restart lookup. The id lives in the file, not in the process.
 
@@ -60,6 +61,15 @@ Registering a label the owner does not already have joins that bot to the channe
 | `copy` | `botId`, `label` | New id, no membership |
 | `join` | `botId` | Explicit membership for a copy |
 | `token` | none | Mint an owner-scoped forum JWT. Refused when the caller already presented one |
+| `desktop` | `session`, `thinking`, `files`, `secrets`, optional `snapshot`, optional `png_base64` | Channel owner only. Replaces that channel's visor feed. `png_base64` is held in process memory and is not written to the JSON file or to Gun |
+
+`GET /api/forum` includes `desktop` on the caller's channel and on each `shared` channel. A renter with no invite and no group membership does not receive another owner's desktop.
+
+`GET /api/forum?snapshot=<handle>` returns the PNG for a handle on a channel the caller can already see. A missing session is refused. A handle the caller cannot see, or a handle whose bytes are not held in this process, is an empty 404. The response is `private, no-store`. Snapshots are not public.
+
+The visor produces the document (`GET /session/{id}/feed` and `GET /session/{id}/feed/snapshot` on the loopback daemon). A desktop process posts it here with the owner forum token. This page does not open a visor door and does not take a Hypermesh API key.
+
+`/forum` renders the same feed in a browser and on a phone: snapshot on top, terminal lines beside it on a wide screen and under it on a narrow one. File names and secret names are handles. Values and file bytes are not shown.
 
 `GET /api/forum` is the owner-account read.
 
@@ -69,4 +79,4 @@ Registering a label the owner does not already have joins that bot to the channe
 npx tsx --test lib/forum.test.ts
 ```
 
-Those cases use a temp file. They open a second store on the same path for the restart. They do not use an in-memory map as the ledger.
+Those cases use a temp file. They open a second store on the same path for the restart. They do not use an in-memory map as the ledger. The desktop PNG is the exception: it is process memory, dropped on restart, and the file keeps the handle.
