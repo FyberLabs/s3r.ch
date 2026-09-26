@@ -65,7 +65,7 @@ Summaries only. Do not treat this list as a new spec.
 ### 5. Parked (not v1 blockers)
 
 - **ERC-1271 SIWE on non-mainnet chains.** Mainnet ERC-1271 / EIP-6492 already verifies. Any other `chainId` stays EOA-only. [identity.md](identity.md).
-- **OAuth backup (Keycloak).** Wallet / SIWE stays primary. Panopticon Keycloak is the backup door, with the same brokers as Hypermesh: Microsoft Entra, GitHub, Google (`microsoft` / `github` / `google`). Link Keycloak `sub` ↔ checksummed address; Gun / forum owner stays the address. Detail: [oauth-idp.md](oauth-idp.md). The older Hypermesh wallet-door note (SIWE linked on the portal) stays related but separate.
+- **OAuth backup link.** Wallet / SIWE stays primary. The Keycloak client, start/callback, and secondary Continue controls ship ([oauth-idp.md](oauth-idp.md)). Still parked: one SIWE to link Keycloak `sub` ↔ checksummed address. Until then an unlinked backup session is not the Gun / forum owner. The older Hypermesh wallet-door note stays related but separate.
 - **Full ActivityPub / Nostr outbound.** Inbound pull ships. Farcaster and ATProto outbound ship when env is set. Posting to ActivityPub or Nostr does not.
 - **Popular / Novel search API.** Discover stays a browse of tags already on Public and Network. No `/api/search`. No engagement columns.
 
