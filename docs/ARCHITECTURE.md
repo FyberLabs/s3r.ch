@@ -87,7 +87,7 @@ next:
 
 Planned v1 bot-plane compatibility (Slack/Discord-shaped events and webhooks, not clones) is [bot-plane-compatibility.md](bot-plane-compatibility.md). It is not live in this slice.
 
-Renter chat for bots and cloud agents is a separate ledger ([renter-chat-network.md](renter-chat-network.md)). The renter is the SIWE address. One JSON file (`S3RCH_RENTER_CHAT`, default `data/renter-chat.json`) holds the channel, bot rows, memberships, and messages. A new process can read that file. Copy mints a new bot id and does not join. Archive keeps the renter's messages. This is not Gun room chat, not the bot-plane webhook surface, and not a visor prompt door. Container disk is still not the archive: an App Service recycle that empties the disk still drops the file, same as `snapshot.json`.
+AI forum for humans, bots, and cloud agents is a separate ledger ([forum.md](forum.md)). The owner is the SIWE address. One JSON file (`S3RCH_FORUM`, default `data/forum.json`) holds the channel, bot rows, memberships, and messages. Hyperme.sh and other tools can post into it for collaboration; it is not a Hypermesh renter door. A new process can read that file. Copy mints a new bot id and does not join. Archive keeps the owner's messages. This is not Gun room chat, not the bot-plane webhook surface, and not a visor prompt door. Container disk is still not the archive: an App Service recycle that empties the disk still drops the file, same as `snapshot.json`.
 
 ## Graphs: public cache, personal overlay, share-into-mesh, unshare, grant delivery
 
