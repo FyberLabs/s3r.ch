@@ -66,6 +66,15 @@ type SessionPayload = {
   chainId: number;
 };
 
+type BackupIdp = "microsoft" | "github" | "google" | null;
+
+function backupLabel(idp: BackupIdp): string {
+  if (idp === "microsoft") return "Microsoft";
+  if (idp === "github") return "GitHub";
+  if (idp === "google") return "Google";
+  return "Hypermesh account";
+}
+
 export function IdentityBar() {
   return (
     <IdentityProviders>
@@ -82,6 +91,7 @@ function IdentityBarInner() {
   const { mutateAsync: signMessageAsync } = useSignMessage();
 
   const [session, setSession] = useState<SessionPayload | null>(null);
+  const [backupIdp, setBackupIdp] = useState<BackupIdp | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [meshLine, setMeshLine] = useState<string | null>(null);
@@ -115,9 +125,34 @@ function IdentityBarInner() {
     }
   }, []);
 
+  const refreshBackup = useCallback(async () => {
+    try {
+      const response = await fetch("/api/identity/oauth/session", { cache: "no-store" });
+      if (!response.ok) {
+        setBackupIdp(undefined);
+        return;
+      }
+      const payload = (await response.json()) as { idp?: BackupIdp; linked?: boolean };
+      if (payload.linked) {
+        setBackupIdp(undefined);
+        return;
+      }
+      setBackupIdp(payload.idp ?? null);
+    } catch {
+      setBackupIdp(undefined);
+    }
+  }, []);
+
   useEffect(() => {
     void refreshSession();
-  }, [refreshSession]);
+    void refreshBackup();
+  }, [refreshSession, refreshBackup]);
+
+  useEffect(() => {
+    const flag = new URLSearchParams(window.location.search).get("oauth");
+    if (flag === "unconfigured") setMessage("Hypermesh sign-in is not configured.");
+    if (flag === "denied") setMessage("Hypermesh sign-in did not finish.");
+  }, []);
 
   useEffect(() => {
     void detectPrfAvailability().then((result) => {
@@ -614,6 +649,7 @@ function IdentityBarInner() {
     try {
       await fetch("/api/identity/logout", { method: "POST" });
       setSession(null);
+      setBackupIdp(undefined);
       setMeshLine(null);
       setMeshKind(null);
       setUnlocked(false);
@@ -738,6 +774,32 @@ function IdentityBarInner() {
             >
               Sign in with wallet
             </button>
+            {backupIdp !== undefined ? (
+              <p className="basis-full text-xs text-ink-muted">
+                {backupLabel(backupIdp)} · not linked
+              </p>
+            ) : null}
+            <a
+              href="/api/identity/oauth/start?idp=microsoft"
+              className={btnSecondary}
+            >
+              Continue with Microsoft
+            </a>
+            <a
+              href="/api/identity/oauth/start?idp=github"
+              className={btnSecondary}
+            >
+              Continue with GitHub
+            </a>
+            <a
+              href="/api/identity/oauth/start?idp=google"
+              className={btnSecondary}
+            >
+              Continue with Google
+            </a>
+            <a href="/api/identity/oauth/start" className={btnSecondary}>
+              Hypermesh account
+            </a>
           </>
         )}
       </div>

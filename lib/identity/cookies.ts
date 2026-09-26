@@ -46,6 +46,14 @@ export function confirmCookieName(secure: boolean): string {
   return `${cookiePrefix(secure)}${COOKIE_BASE.confirm}`;
 }
 
+export function oauthSessionCookieName(secure: boolean): string {
+  return `${cookiePrefix(secure)}${COOKIE_BASE.oauth}`;
+}
+
+export function oauthPkceCookieName(secure: boolean): string {
+  return `${cookiePrefix(secure)}${COOKIE_BASE.oauthPkce}`;
+}
+
 export function nonceCookieNames(): string[] {
   return [nonceCookieName(true), nonceCookieName(false)];
 }
@@ -56,6 +64,14 @@ export function sessionCookieNames(): string[] {
 
 export function confirmCookieNames(): string[] {
   return [confirmCookieName(true), confirmCookieName(false)];
+}
+
+export function oauthSessionCookieNames(): string[] {
+  return [oauthSessionCookieName(true), oauthSessionCookieName(false)];
+}
+
+export function oauthPkceCookieNames(): string[] {
+  return [oauthPkceCookieName(true), oauthPkceCookieName(false)];
 }
 
 export function cookieOptions(secure: boolean, maxAge: number): CookieOpts {
