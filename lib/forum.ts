@@ -1,1 +1,1 @@
-PLACEHOLDER_REPLACE
+replaced-by-script
