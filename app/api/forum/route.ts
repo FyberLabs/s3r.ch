@@ -30,6 +30,19 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const session = await requireSession(request);
   if (!session.ok) return session.response;
+  const handle = new URL(request.url).searchParams.get("snapshot");
+  if (handle !== null) {
+    const hit = getForum().readSnapshot({ owner: session.address, handle });
+    if (!hit) return new Response(null, { status: 404 });
+    return new Response(new Uint8Array(hit.bytes), {
+      status: 200,
+      headers: {
+        "content-type": hit.mime,
+        "cache-control": "private, no-store",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  }
   const result = handleForumGet(getForum(), session.address);
   return Response.json(result.body, { status: result.status });
 }

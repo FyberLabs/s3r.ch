@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { Buffer } from "node:buffer";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -118,6 +119,39 @@ describe("forum route resolves a login, then honors invites", { concurrency: 1 }
       assert.equal(grouped.status, 200);
       const groupId = (grouped.body.group as { id: string }).id;
       assert.equal((await post(alice, { action: "group-add", groupId, member: CAROL })).status, 200);
+      const marker = "VISORPNGMARKER";
+      const desktop = await post(alice, {
+        action: "desktop",
+        session: "11111111-1111-4111-8111-111111111111",
+        snapshot: { handle: "abc123def0", mime: "image/png", seq: 2 },
+        png_base64: Buffer.from(marker, "utf8").toString("base64"),
+        thinking: [
+          { kind: "type", text: "cargo test --locked" },
+          { kind: "prompt", text: "count the sheep" },
+        ],
+        files: [{ handle: "notes.txt" }],
+        secrets: [{ handle: "password", value: "hunter2" }],
+      });
+      assert.equal(desktop.status, 200);
+      const ledger = readFileSync(process.env.S3RCH_FORUM!, "utf8");
+      assert.equal(ledger.includes(marker), false);
+      assert.equal(ledger.includes("hunter2"), false);
+      assert.equal(ledger.includes("abc123def0"), true);
+      const shot = "http://localhost/api/forum?snapshot=abc123def0";
+      assert.equal((await GET(new Request(shot))).status, 401);
+      assert.equal((await GET(new Request(shot, { headers: { cookie: dave } }))).status, 404);
+      const eveShot = await GET(new Request(shot, { headers: { cookie: eve } }));
+      assert.equal(eveShot.status, 200);
+      assert.equal(eveShot.headers.get("content-type"), "image/png");
+      assert.equal(Buffer.from(await eveShot.arrayBuffer()).toString("utf8"), marker);
+      const eveDesk = await read(eve);
+      const sharedDesk = (
+        eveDesk.body.shared as { desktop: { thinking: { text: string }[]; secrets: { handle: string }[] } }[]
+      )[0]?.desktop;
+      assert.equal(sharedDesk.thinking.some((row) => row.text === "cargo test --locked"), true);
+      assert.deepEqual(sharedDesk.secrets, [{ handle: "password" }]);
+      assert.equal(JSON.stringify(eveDesk.body).includes("hunter2"), false);
+      assert.deepEqual((await read(dave)).body.shared, []);
       const viaGroup = await read(eve);
       assert.equal((viaGroup.body.shared as unknown[]).length, 1);
       assert.deepEqual((await read(dave)).body.shared, []);

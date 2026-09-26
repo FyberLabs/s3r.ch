@@ -552,6 +552,106 @@ describe("forum invites and groups", () => {
   });
 });
 
+describe("forum desktop feed", () => {
+  const CAROL = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+  const SESSION = "11111111-1111-4111-8111-111111111111";
+  const HANDLE = "abc123def0";
+  const MARKER = "VISORPNGMARKER";
+
+  function desktopPost(extra: Record<string, unknown> = {}) {
+    return {
+      action: "desktop",
+      session: SESSION,
+      snapshot: { handle: HANDLE, mime: "image/png", seq: 1 },
+      png_base64: Buffer.from(MARKER, "utf8").toString("base64"),
+      thinking: [
+        { kind: "prompt", text: "count the sheep" },
+        { kind: "type", text: "cargo test --locked hunter2" },
+        { kind: "focus", text: "gnome-terminal" },
+      ],
+      files: [{ handle: "notes.txt", value: "SECRETFILEBYTES" }],
+      secrets: [{ handle: "password", value: "hunter2" }],
+      nowSeconds: NOW,
+      ...extra,
+    };
+  }
+
+  it("shows the snapshot and thinking to the owner, an invite, and a group, and to nobody else", () => {
+    const { dir, file } = tempFile();
+    try {
+      const chat = openAt(file);
+      const posted = handleForumPost(chat, ALICE, desktopPost());
+      assert.equal(posted.status, 200);
+      const saved = readFileSync(file, "utf8");
+      assert.equal(saved.includes(MARKER), false);
+      assert.equal(saved.includes(Buffer.from(MARKER, "utf8").toString("base64")), false);
+      assert.equal(saved.includes("hunter2"), false);
+      assert.equal(saved.includes("SECRETFILEBYTES"), false);
+      assert.equal(saved.includes(HANDLE), true);
+
+      const alice = chat.read({ owner: ALICE });
+      assert.ok(!("denied" in alice));
+      assert.equal(alice.desktop?.snapshot?.handle, HANDLE);
+      assert.deepEqual(
+        alice.desktop?.thinking.map((row) => row.text),
+        ["count the sheep", "cargo test --locked ***", "gnome-terminal"],
+      );
+      assert.deepEqual(alice.desktop?.files, [{ handle: "notes.txt" }]);
+      assert.deepEqual(alice.desktop?.secrets, [{ handle: "password" }]);
+      assert.equal(JSON.stringify(alice).includes("hunter2"), false);
+      const png = chat.readSnapshot({ owner: ALICE, handle: HANDLE });
+      assert.equal(png?.bytes.toString("utf8"), MARKER);
+
+      const hidden = chat.read({ owner: BOB });
+      assert.ok(!("denied" in hidden));
+      assert.equal(hidden.desktop, null);
+      assert.deepEqual(hidden.shared, []);
+      assert.equal(chat.readSnapshot({ owner: BOB, handle: HANDLE }), null);
+
+      assert.ok(!("denied" in chat.invite({ owner: ALICE, guest: BOB, nowSeconds: NOW + 1 })));
+      const invited = chat.read({ owner: BOB });
+      assert.ok(!("denied" in invited));
+      assert.equal(invited.shared[0]?.desktop?.snapshot?.handle, HANDLE);
+      assert.equal(chat.readSnapshot({ owner: BOB, handle: HANDLE })?.bytes.toString("utf8"), MARKER);
+
+      assert.ok(!("denied" in chat.uninvite({ owner: ALICE, guest: BOB })));
+      assert.equal(chat.read({ owner: BOB }).shared.length, 0);
+      assert.equal(chat.readSnapshot({ owner: BOB, handle: HANDLE }), null);
+
+      const grouped = chat.createGroup({
+        owner: ALICE,
+        label: "crew",
+        entropy: "desk1",
+        nowSeconds: NOW + 2,
+      });
+      assert.ok(!("denied" in grouped));
+      assert.ok(
+        !("denied" in
+          chat.addGroupMember({
+            owner: ALICE,
+            groupId: grouped.group.id,
+            member: CAROL,
+            nowSeconds: NOW + 3,
+          })),
+      );
+      const member = chat.read({ owner: CAROL });
+      assert.ok(!("denied" in member));
+      assert.equal(member.shared[0]?.desktop?.thinking.some((row) => row.kind === "type"), true);
+      assert.equal(chat.readSnapshot({ owner: CAROL, handle: HANDLE })?.mime, "image/png");
+      assert.equal(chat.read({ owner: BOB }).shared.length, 0);
+
+      const restarted = openAt(file);
+      const again = restarted.read({ owner: ALICE });
+      assert.ok(!("denied" in again));
+      assert.equal(again.desktop?.snapshot?.handle, HANDLE);
+      assert.equal(restarted.readSnapshot({ owner: ALICE, handle: HANDLE }), null);
+      assert.equal(readFileSync(file, "utf8").includes(MARKER), false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("forum route", () => {
   it("uses the SIWE session and does not invent an API key", () => {
     const route = readFileSync(
