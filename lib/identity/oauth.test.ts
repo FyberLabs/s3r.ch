@@ -17,6 +17,7 @@ import {
   createPkcePair,
   exchangeCodeForIdToken,
   finishOAuth,
+  lookupHypermeshWallet,
   parseIdpHint,
   readBackupSession,
   readOAuthIssuer,
@@ -339,6 +340,95 @@ describe("backup session is not the SIWE session", () => {
   });
 });
 
+describe("hyperme.sh wallet handoff", () => {
+  it("reads the bound address and does not keep the access token", async () => {
+    const wallet = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+    let auth = "";
+    const found = await lookupHypermeshWallet({
+      issuer: ISSUER,
+      accessToken: "provider-access-token",
+      fetchImpl: async (url, init) => {
+        const headers = init?.headers as { Authorization?: string } | undefined;
+        auth = headers?.Authorization ?? "";
+        assert.equal(url, "https://api.test.hyperme.sh/auth/siwe/me");
+        return Response.json({ bound: true, wallet_address: wallet.toLowerCase() });
+      },
+    });
+    assert.equal(found, wallet);
+    assert.equal(auth, "Bearer provider-access-token");
+    assert.equal(
+      await lookupHypermeshWallet({
+        issuer: ISSUER,
+        accessToken: "provider-access-token",
+        fetchImpl: async () => new Response("missing", { status: 404 }),
+      }),
+      null,
+    );
+    assert.equal(
+      await lookupHypermeshWallet({
+        issuer: "http://127.0.0.1:8081/realms/controlplane",
+        accessToken: "provider-access-token",
+        fetchImpl: async () => {
+          throw new Error("localhost has no wallet URL");
+        },
+      }),
+      null,
+    );
+    assert.equal(
+      await lookupHypermeshWallet({
+        issuer: ISSUER,
+        accessToken: "provider-access-token",
+        fetchImpl: async () =>
+          Response.json({
+            bound: true,
+            wallet_address: "FyberHmHostUsdc111111111111111111111111111",
+          }),
+      }),
+      null,
+    );
+
+    const { publicKey, privateKey } = await generateKeyPair("RS256");
+    const started = await beginOAuth(
+      startRequest("http://127.0.0.1:3000/api/identity/oauth/start?idp=github"),
+      ENV,
+    );
+    const state = new URL(started.headers.get("location") ?? "").searchParams.get("state") ?? "";
+    const pkce = cookiePair(started, oauthPkceCookieName(false));
+    const idToken = await new SignJWT({ idp_provider: "github" })
+      .setProtectedHeader({ alg: "RS256" })
+      .setIssuer(ISSUER)
+      .setAudience(OAUTH_CLIENT_ID)
+      .setSubject("kc-user-1")
+      .setExpirationTime("5m")
+      .sign(privateKey);
+    const response = await finishOAuth(
+      new Request(
+        `http://127.0.0.1:3000/api/identity/oauth/callback?code=auth-code&state=${state}`,
+        { headers: { cookie: pkce, "x-forwarded-proto": "http" } },
+      ),
+      ENV,
+      {
+        key: publicKey,
+        fetchImpl: async () =>
+          Response.json({
+            id_token: idToken,
+            access_token: "provider-access-token",
+            refresh_token: "provider-refresh-token",
+          }),
+        walletFetch: async () => Response.json({ bound: true, wallet_address: wallet }),
+      },
+    );
+    const baked = response.headers.getSetCookie().join("\n");
+    assert.equal(baked.includes("provider-access-token"), false);
+    assert.equal(baked.includes("provider-refresh-token"), false);
+    const sessionPair = cookiePair(response, oauthSessionCookieName(false));
+    const token = decodeURIComponent(sessionPair.slice(sessionPair.indexOf("=") + 1));
+    const claims = await readBackupSession(token, SECRET);
+    assert.equal(claims.hypermeshWallet, wallet);
+    assert.equal("address" in claims, false);
+  });
+});
+
 describe("token exchange", () => {
   it("posts the verifier and omits a client secret", async () => {
     const pair = createPkcePair();
@@ -379,8 +469,12 @@ describe("OAuth stays off Gun and off the SIWE owner", () => {
   it("does not mention Gun or a client secret", () => {
     const src = readFileSync(new URL("./oauth.ts", import.meta.url), "utf8");
     assert.equal(src.includes("client_secret"), false);
-    assert.equal(src.includes("access_token"), false);
     assert.equal(src.includes("refresh_token"), false);
+    const sessionFn = src.slice(
+      src.indexOf("export async function signBackupSession"),
+      src.indexOf("export async function readBackupSession"),
+    );
+    assert.equal(sessionFn.includes("access_token"), false);
     assert.equal(src.includes('from "gun"'), false);
     assert.match(src, /written to Gun/);
     const forum = readFileSync(new URL("../forum.ts", import.meta.url), "utf8");

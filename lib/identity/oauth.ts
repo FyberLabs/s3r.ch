@@ -15,6 +15,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify, SignJWT, type JWTVerifyGetKey } from "jose";
+import { getAddress } from "viem";
 import {
   OAUTH_CALLBACK_PATH,
   OAUTH_CLIENT_ID,
@@ -66,6 +67,8 @@ export class OAuthFlowError extends Error {
 export type BackupSession = {
   sub: string;
   idp: OAuthIdp | null;
+  /** Checksummed address from Panopticon `GET /auth/siwe/me`. Not a key. */
+  hypermeshWallet: string | null;
   iat: number;
   exp: number;
 };
@@ -85,8 +88,20 @@ type EnvLike = {
 
 export type OAuthDeps = {
   fetchImpl?: typeof fetch;
+  /** Reads `GET /auth/siwe/me`. Omitted in tests that only mock the token exchange. */
+  walletFetch?: typeof fetch;
   key?: JWTVerifyGetKey | Uint8Array | CryptoKey;
   now?: number;
+};
+
+/**
+ * Panopticon auth-service wallet bind, via the public API edge.
+ * `user_wallet_bindings.wallet_address`. Not payment-service ledger USDC,
+ * and not a host `usdc_pubkey`. No other API host is documented here.
+ */
+const HYPERMESH_WALLET_URLS: Record<string, string> = {
+  "https://auth.test.hyperme.sh/realms/controlplane":
+    "https://api.test.hyperme.sh/auth/siwe/me",
 };
 
 export function readOAuthIssuer(env: EnvLike = process.env): string | null {
@@ -193,15 +208,17 @@ async function readPkce(token: string, secret: string): Promise<PkcePending> {
 }
 
 export async function signBackupSession(
-  input: { sub: string; idp: OAuthIdp | null },
+  input: { sub: string; idp: OAuthIdp | null; hypermeshWallet?: string | null },
   secret: string,
   now = Date.now(),
 ): Promise<string> {
   const sub = assertSub(input.sub);
   const iat = Math.floor(now / 1000);
+  const hypermeshWallet = input.hypermeshWallet ? getAddress(input.hypermeshWallet) : undefined;
   return new SignJWT({
     kind: "oauth-backup",
     idp: input.idp ?? "",
+    ...(hypermeshWallet ? { hypermeshWallet } : {}),
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setSubject(sub)
@@ -223,12 +240,47 @@ export async function readBackupSession(token: string, secret: string): Promise<
   return {
     sub: assertSub(sub),
     idp: asIdp(payload.idp),
+    hypermeshWallet: checksumWallet(payload.hypermeshWallet),
     iat: payload.iat,
     exp: payload.exp,
   };
 }
 
-export async function exchangeCodeForIdToken(
+function checksumWallet(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  try {
+    return getAddress(value);
+  } catch {
+    return null;
+  }
+}
+
+/** One read of the bound wallet. The access token is not stored. Failure is no wallet. */
+export async function lookupHypermeshWallet(input: {
+  issuer: string;
+  accessToken: string;
+  fetchImpl: typeof fetch;
+}): Promise<string | null> {
+  const url = HYPERMESH_WALLET_URLS[input.issuer];
+  if (!url || !input.accessToken || input.accessToken.length > 8192) return null;
+  try {
+    const response = await input.fetchImpl(url, {
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        Accept: "application/json",
+      },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return null;
+    const json = (await response.json()) as { bound?: unknown; wallet_address?: unknown };
+    if (json.bound !== true) return null;
+    return checksumWallet(json.wallet_address);
+  } catch {
+    return null;
+  }
+}
+
+async function exchangeCode(
   input: {
     issuer: string;
     code: string;
@@ -236,7 +288,7 @@ export async function exchangeCodeForIdToken(
     redirectUri: string;
   },
   fetchImpl: typeof fetch = fetch,
-): Promise<string> {
+): Promise<{ idToken: string; accessToken: string | null }> {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code: input.code,
@@ -256,16 +308,30 @@ export async function exchangeCodeForIdToken(
     throw new OAuthFlowError("Token exchange failed.");
   }
   if (!response.ok) throw new OAuthFlowError("Token exchange failed.");
-  let json: { id_token?: unknown };
+  let json: { id_token?: unknown; access_token?: unknown };
   try {
-    json = (await response.json()) as { id_token?: unknown };
+    json = (await response.json()) as { id_token?: unknown; access_token?: unknown };
   } catch {
     throw new OAuthFlowError("Token exchange failed.");
   }
   if (typeof json.id_token !== "string" || !json.id_token) {
     throw new OAuthFlowError("Token exchange failed.");
   }
-  return json.id_token;
+  const accessToken =
+    typeof json.access_token === "string" && json.access_token ? json.access_token : null;
+  return { idToken: json.id_token, accessToken };
+}
+
+export async function exchangeCodeForIdToken(
+  input: {
+    issuer: string;
+    code: string;
+    verifier: string;
+    redirectUri: string;
+  },
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  return (await exchangeCode(input, fetchImpl)).idToken;
 }
 
 function jwksFor(issuer: string): JWTVerifyGetKey {
@@ -395,17 +461,26 @@ export async function finishOAuth(
   if (!redirectUri || redirectUri !== pending.redirectUri) return denied();
 
   try {
-    const idToken = await exchangeCodeForIdToken(
+    const exchanged = await exchangeCode(
       { issuer, code, verifier: pending.verifier, redirectUri },
       deps.fetchImpl,
     );
-    const verified = await verifyBackupIdToken(idToken, {
+    const verified = await verifyBackupIdToken(exchanged.idToken, {
       issuer,
       key: deps.key ?? jwksFor(issuer),
     });
     const idp = verified.idp ?? pending.idp;
+    const walletFetch = deps.walletFetch ?? (deps.fetchImpl ? undefined : fetch);
+    const hypermeshWallet =
+      exchanged.accessToken && walletFetch
+        ? await lookupHypermeshWallet({
+            issuer,
+            accessToken: exchanged.accessToken,
+            fetchImpl: walletFetch,
+          })
+        : null;
     const session = await signBackupSession(
-      { sub: verified.sub, idp },
+      { sub: verified.sub, idp, hypermeshWallet },
       secret,
       deps.now,
     );
