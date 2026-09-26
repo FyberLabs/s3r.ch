@@ -15,6 +15,7 @@ export async function GET(request: Request) {
       idp: backup.idp,
       linked: owner !== null,
       owner,
+      hypermeshWallet: backup.hypermeshWallet,
     });
   } catch (error) {
     return (

@@ -42,6 +42,10 @@ import {
 } from "@/lib/identity/indicators";
 import { buildSiweMessage } from "@/lib/identity/siwe";
 import {
+  HYPERMESH_WALLET_DECLINE_KEY,
+  walletPromptForOAuth,
+} from "@/lib/identity/wallet-prompt";
+import {
   PrfUnavailableError,
   createPrfCredential,
   detectPrfAvailability,
@@ -69,7 +73,11 @@ type SessionPayload = {
 
 type BackupIdp = "microsoft" | "github" | "google" | null;
 
-type BackupState = { idp: BackupIdp; linked: boolean };
+type BackupState = {
+  idp: BackupIdp;
+  linked: boolean;
+  hypermeshWallet: string | null;
+};
 
 function backupLabel(idp: BackupIdp): string {
   if (idp === "microsoft") return "Microsoft";
@@ -95,6 +103,7 @@ function IdentityBarInner() {
 
   const [session, setSession] = useState<SessionPayload | null>(null);
   const [backup, setBackup] = useState<BackupState | undefined>(undefined);
+  const [hypermeshDeclined, setHypermeshDeclined] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [meshLine, setMeshLine] = useState<string | null>(null);
@@ -141,8 +150,20 @@ function IdentityBarInner() {
         setBackup(undefined);
         return;
       }
-      const payload = (await response.json()) as { idp?: BackupIdp; linked?: boolean };
-      setBackup({ idp: payload.idp ?? null, linked: payload.linked === true });
+      const payload = (await response.json()) as {
+        idp?: BackupIdp;
+        linked?: boolean;
+        hypermeshWallet?: string | null;
+      };
+      const hypermeshWallet =
+        typeof payload.hypermeshWallet === "string" && payload.hypermeshWallet
+          ? payload.hypermeshWallet
+          : null;
+      setBackup({
+        idp: payload.idp ?? null,
+        linked: payload.linked === true,
+        hypermeshWallet,
+      });
     } catch {
       setBackup(undefined);
     }
@@ -152,6 +173,10 @@ function IdentityBarInner() {
     void refreshSession();
     void refreshBackup();
   }, [refreshSession, refreshBackup]);
+
+  useEffect(() => {
+    setHypermeshDeclined(sessionStorage.getItem(HYPERMESH_WALLET_DECLINE_KEY) === "no");
+  }, []);
 
   useEffect(() => {
     const flag = new URLSearchParams(window.location.search).get("oauth");
@@ -369,8 +394,9 @@ function IdentityBarInner() {
     }
   }
 
-  async function onSignIn() {
-    if (!address) {
+  async function onSignIn(signingAddress?: string) {
+    const wallet = signingAddress || address;
+    if (!wallet) {
       setMessage("Connect a wallet first.");
       return;
     }
@@ -387,7 +413,7 @@ function IdentityBarInner() {
 
       const prepared = buildSiweMessage({
         domain: window.location.host,
-        address,
+        address: wallet,
         uri: window.location.origin,
         chainId: walletChainId,
         nonce: nonceBody.nonce,
@@ -443,6 +469,36 @@ function IdentityBarInner() {
       setMessage(error instanceof Error ? error.message : "Sign-in failed.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  function onNoHypermeshWallet() {
+    sessionStorage.setItem(HYPERMESH_WALLET_DECLINE_KEY, "no");
+    setHypermeshDeclined(true);
+    setMessage(null);
+  }
+
+  async function onYesHypermeshWallet() {
+    const want = backup?.hypermeshWallet;
+    if (!want) return;
+    setMessage(null);
+    try {
+      let current = address ?? null;
+      if (!isConnected || !current) {
+        if (!injected || !hasInjectedProvider()) {
+          setMessage("No injected wallet found.");
+          return;
+        }
+        const connected = await connect({ connector: injected });
+        current = connected.accounts[0] ?? null;
+      }
+      if (!current || current.toLowerCase() !== want.toLowerCase()) {
+        setMessage(`Switch to ${truncateAddress(want)}, then choose Yes again.`);
+        return;
+      }
+      await onSignIn(current);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Connect failed.");
     }
   }
 
@@ -694,6 +750,12 @@ function IdentityBarInner() {
     }
   }
 
+  const walletAsk = backup
+    ? walletPromptForOAuth({
+        hypermeshWallet: backup.hypermeshWallet,
+        declined: hypermeshDeclined,
+      })
+    : { kind: "none" as const };
   const showWrap =
     Boolean(session) && meshKind === "plaintext" && prfAvailable !== false;
   const showPrfMissing =
@@ -763,7 +825,35 @@ function IdentityBarInner() {
           </>
         ) : (
           <>
-            {!isConnected ? (
+            {backup && walletAsk.kind === "hypermesh" ? (
+              <>
+                <p className="basis-full text-xs text-ink-muted" role="status">
+                  {walletAsk.copy}
+                </p>
+                <button
+                  type="button"
+                  disabled={busy || connecting}
+                  onClick={() => void onYesHypermeshWallet()}
+                  className={btnPrimary}
+                >
+                  Yes
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={onNoHypermeshWallet}
+                  className={btnSecondary}
+                >
+                  No
+                </button>
+              </>
+            ) : null}
+            {backup && walletAsk.kind === "create" ? (
+              <p className="basis-full text-xs text-ink-muted" role="status">
+                {walletAsk.copy}
+              </p>
+            ) : null}
+            {walletAsk.kind === "hypermesh" ? null : !isConnected ? (
               <>
                 <button
                   type="button"
@@ -799,14 +889,16 @@ function IdentityBarInner() {
                 Wallet {truncateAddress(address ?? "")} · not signed in
               </p>
             )}
-            <button
-              type="button"
-              disabled={busy || !isConnected}
-              onClick={() => void onSignIn()}
-              className={btnPrimary}
-            >
-              Sign in with wallet
-            </button>
+            {walletAsk.kind === "hypermesh" ? null : (
+              <button
+                type="button"
+                disabled={busy || !isConnected}
+                onClick={() => void onSignIn()}
+                className={btnPrimary}
+              >
+                Sign in with wallet
+              </button>
+            )}
             {backup ? (
               <p className="basis-full text-xs text-ink-muted">
                 {backupLabel(backup.idp)} · {backup.linked ? "linked" : "not linked"}
