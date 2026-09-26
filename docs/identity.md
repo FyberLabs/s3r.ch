@@ -49,7 +49,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - Farcaster SIWF, Lens OAuth, or RSS3 login. Indicators are held claims after SIWE, not session subjects.
 - Importing `FyberLabs/SociACL` as a crate, NAPI, WASM, or npm package. Light Check is re-typed from the consume contract (`docs/s3rch-check.d.ts`).
 - Friend-of-friend, Social Light hop UI, Elect / wills / Case C, or any verb beyond `see`. Hop may factor Check in TS; it is not a grant and has no public-page UI.
-- NextAuth, Keycloak, or email magic link on this app. Email / phone confirm is a held claim after SIWE, not a session.
+- NextAuth or email magic link on this app. Email / phone confirm is a held claim after SIWE, not a session. Keycloak OAuth backup is planned ([oauth-idp.md](oauth-idp.md)), not shipped in this slice.
 - Meetings, live streams, hop UI, Elect / wills / Case C. Live chat and presence over Gun subscriptions ship; they are not a TURN/WebRTC mesh. `gun/lib/webrtc` + STUN + signed-in allocate ships as a hop. Allocate is not a public mesh.
 - ActivityPub / Nostr / RSS / RSS3 outbound. Farcaster + ATProto outbound **do** ship as an explicit SIWE action (not auto-bridge). Inbound pull for those networks stays a separate path. Native post ≠ bridging out.
 - Popular / Novel columns, likes / views / engagement scores. Network **does** ship as the live mesh view (not a finished P2P mesh claim).
