@@ -1,1 +1,1 @@
-replaced-by-script
+@file:///agent/repos/s3r.ch/lib/forum.ts
