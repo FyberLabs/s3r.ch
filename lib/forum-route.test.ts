@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { GET, POST } from "../app/api/forum/route";
+import { GET as sessionGET } from "../app/api/identity/session/route";
 import { oauthSessionCookieName, sessionCookieName } from "./identity/cookies";
 import { linkLoginPaths } from "./identity/link";
 import { signBackupSession } from "./identity/oauth";
@@ -127,11 +128,66 @@ describe("forum route resolves a login, then honors invites", { concurrency: 1 }
       assert.equal((await GET(both)).status, 200);
       assert.equal((await GET(req(stranger))).status, 401);
 
+      const bobSession = await sessionGET(sessionReq(bob));
+      assert.equal(bobSession.status, 200);
+      const bobBody = (await bobSession.json()) as { address: string; owner: string };
+      assert.equal(bobBody.address, BOB);
+      assert.equal(bobBody.owner, ALICE);
+      const daveSession = await sessionGET(sessionReq(dave));
+      const daveBody = (await daveSession.json()) as { address: string; owner: string };
+      assert.equal(daveBody.address, DAVE);
+      assert.equal(daveBody.owner, DAVE);
+      assert.equal((await sessionGET(sessionReq(carol))).status, 401);
+
+      const minted = await post(bob, { action: "token" });
+      assert.equal(minted.status, 200);
+      assert.equal(minted.body.owner, ALICE);
+      const forumToken = minted.body.token as string;
+      assert.equal(forumToken.includes("hm_"), false);
+      const asToken = await GET(
+        new Request("http://localhost/api/forum", {
+          headers: { "x-s3rch-forum-token": forumToken },
+        }),
+      );
+      assert.equal(asToken.status, 200);
+      const tokenView = (await asToken.json()) as {
+        channel: { owner: string };
+        messages: { body: string }[];
+      };
+      assert.equal(tokenView.channel.owner, ALICE);
+      assert.deepEqual(
+        tokenView.messages.map((row) => row.body),
+        ["alice only", "from carol"],
+      );
+      const remint = await POST(
+        new Request("http://localhost/api/forum", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-s3rch-forum-token": forumToken,
+          },
+          body: JSON.stringify({ action: "token" }),
+        }),
+      );
+      assert.equal(remint.status, 403);
+      assert.equal((await remint.json()).reason, "forum-token");
+      assert.equal(
+        (
+          await GET(
+            new Request("http://localhost/api/forum", {
+              headers: { "x-s3rch-forum-token": "not-a-token" },
+            }),
+          )
+        ).status,
+        401,
+      );
+
       const sessionRoute = readFileSync(
         fileURLToPath(new URL("../app/api/identity/session/route.ts", import.meta.url)),
         "utf8",
       );
-      assert.equal(sessionRoute.includes("ownerForWallet"), false);
+      assert.equal(sessionRoute.includes("ownerForWallet"), true);
+      assert.equal(sessionRoute.includes("address: session.address"), true);
       assert.equal(sessionRoute.includes("ownerForOAuth"), false);
     } finally {
       if (previousForum === undefined) delete process.env.S3RCH_FORUM;
@@ -146,6 +202,12 @@ describe("forum route resolves a login, then honors invites", { concurrency: 1 }
 function req(cookie?: string): Request {
   return new Request("http://localhost/api/forum", {
     headers: cookie ? { cookie } : {},
+  });
+}
+
+function sessionReq(cookie: string): Request {
+  return new Request("http://localhost/api/identity/session", {
+    headers: { cookie },
   });
 }
 

@@ -8,7 +8,7 @@ Parent: [identity.md](identity.md). Hypermesh plane: [auth-kit](https://github.c
 
 | Rule | Meaning |
 | --- | --- |
-| Wallet first | Default CTA is connect wallet → SIWE. Session subject for Gun, Check, and AI forum owner is the checksummed address (after link). |
+| Wallet first | Default CTA is connect wallet → SIWE. Gun and Check object owner, and the AI forum actor, are the sociacl checksummed address after link. The Gun mesh key stays on the wallet that signed. |
 | OAuth backup | Panopticon Keycloak OIDC is allowed when the renter cannot SIWE yet, or prefers the same Microsoft / GitHub / Google account used on Hypermesh. |
 | Same IdP plane | No second IdP stack on s3r.ch Azure. Same `controlplane` realm as Hypermesh portal / CLI / visor. |
 | Same brokers | `microsoft` (Entra), `github`, `google`. Reuse Keycloak’s existing apps. Do not register s3r.ch-only OAuth apps that skip Keycloak. |

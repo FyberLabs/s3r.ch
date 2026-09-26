@@ -69,7 +69,7 @@ import { RoomsList } from "@/components/RoomsList";
 import { TagChips } from "@/components/TagChips";
 import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
-import { useIdentitySession } from "@/components/useIdentitySession";
+import { objectOwner, useIdentitySession } from "@/components/useIdentitySession";
 import {
   browserGunOptions,
   listenThenConnectSeedPeer,
@@ -366,7 +366,7 @@ export function FeedStream() {
 
   useEffect(() => {
     const gun = gunRef.current;
-    const address = session?.address;
+    const address = session ? objectOwner(session) : undefined;
     if (!gun || !gunReady || !address || !see?.ready) {
       setGrantedItems([]);
       setGrantedRooms([]);
@@ -379,7 +379,7 @@ export function FeedStream() {
 
     const ingest = (kind: GrantInboxKind, data: unknown, key: string) => {
       const acl = seeRef.current?.acl;
-      const who = sessionRef.current?.address;
+      const who = sessionRef.current ? objectOwner(sessionRef.current) : undefined;
       if (!acl || !who || cancelled) return;
       const now = Math.floor(Date.now() / 1000);
       if (data == null) {
@@ -443,7 +443,7 @@ export function FeedStream() {
       cancelled = true;
       for (const off of offs) off();
     };
-  }, [gunReady, session?.address, see?.ready]);
+  }, [gunReady, session?.owner, session?.address, see?.ready]);
 
   useEffect(() => {
     setSelected(readDiscoverTagQuery());
@@ -642,7 +642,7 @@ export function FeedStream() {
       setConfirmShareId(item.id);
       return;
     }
-    const prepared = prepareShareIntoMesh(see.acl, item, session.address);
+    const prepared = prepareShareIntoMesh(see.acl, item, objectOwner(session));
     if ("denied" in prepared) {
       setShareMessage("Could not share.");
       setConfirmShareId(null);
@@ -671,7 +671,7 @@ export function FeedStream() {
       setConfirmShareId(null);
       return;
     }
-    const prepared = prepareUnshareIntoMesh(see.acl, item, session.address);
+    const prepared = prepareUnshareIntoMesh(see.acl, item, objectOwner(session));
     if ("denied" in prepared) {
       setShareMessage("Could not unshare this post.");
       setConfirmUnshareId(null);
@@ -701,7 +701,7 @@ export function FeedStream() {
       setConfirmShareRoomId(room.id);
       return;
     }
-    const prepared = prepareShareRoomIntoMesh(see.acl, room, session.address);
+    const prepared = prepareShareRoomIntoMesh(see.acl, room, objectOwner(session));
     if ("denied" in prepared) {
       setRoomShareMessage("Could not share.");
       setConfirmShareRoomId(null);
@@ -723,7 +723,7 @@ export function FeedStream() {
       const preparedChat = preparePublishRoomChat(
         see.acl,
         row,
-        session.address,
+        objectOwner(session),
         publicIds,
       );
       if ("denied" in preparedChat) continue;
@@ -740,7 +740,7 @@ export function FeedStream() {
       const preparedPresence = preparePublishRoomPresence(
         see.acl,
         row,
-        session.address,
+        objectOwner(session),
         publicIds,
       );
       if ("denied" in preparedPresence) continue;
@@ -770,7 +770,7 @@ export function FeedStream() {
       setConfirmShareRoomId(null);
       return;
     }
-    const prepared = prepareUnshareRoomIntoMesh(see.acl, room, session.address);
+    const prepared = prepareUnshareRoomIntoMesh(see.acl, room, objectOwner(session));
     if ("denied" in prepared) {
       setRoomShareMessage("Could not unshare this room.");
       setConfirmUnshareRoomId(null);
@@ -793,7 +793,7 @@ export function FeedStream() {
   }
 
   const composeRoomId =
-    tab === "mine" && openRoom && ownsRoom(openRoom, session?.address)
+    tab === "mine" && openRoom && ownsRoom(openRoom, session ? objectOwner(session) : undefined)
       ? openRoom.id
       : undefined;
 
@@ -910,12 +910,12 @@ export function FeedStream() {
         mine={tab === "mine"}
         network={tab === "network"}
         granted={tab === "granted"}
-          owned={ownsRoom(openRoom, session?.address)}
+          owned={ownsRoom(openRoom, session ? objectOwner(session) : undefined)}
           shared={publishedRooms.has(openRoom.id)}
           confirmShare={confirmShareRoomId === openRoom.id}
           confirmUnshare={confirmUnshareRoomId === openRoom.id}
           shareMessage={roomShareMessage}
-          sessionAddress={session?.address ?? null}
+          sessionAddress={session ? objectOwner(session) : null}
           onClose={() => {
             setOpenRoomId(null);
             setRoomShareMessage(null);
@@ -951,7 +951,7 @@ export function FeedStream() {
             const prepared = preparePublishRoomChat(
               see.acl,
               next,
-              session.address,
+              objectOwner(session),
               publishedRooms,
             );
             if ("denied" in prepared) return;
@@ -997,7 +997,7 @@ export function FeedStream() {
         <FeedItems
           items={visible}
           mine={tab === "mine"}
-          sessionAddress={session?.address ?? null}
+          sessionAddress={session ? objectOwner(session) : null}
           published={published}
           confirmShareId={confirmShareId}
           confirmUnshareId={confirmUnshareId}
@@ -1022,7 +1022,7 @@ export function FeedStream() {
               const prepared = prepareSharePulledIntoMesh(
                 see.acl,
                 item,
-                session.address,
+                objectOwner(session),
               );
               if ("denied" in prepared) continue;
               gun.get("s3rch").get("items").get(prepared.key).put(prepared.node);

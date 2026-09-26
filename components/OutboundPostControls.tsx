@@ -8,7 +8,7 @@ import {
   type OutboundStatusRow,
 } from "@/lib/outbound";
 import type { OutboundResult } from "@/lib/bridges";
-import { useIdentitySession } from "@/components/useIdentitySession";
+import { objectOwner, useIdentitySession } from "@/components/useIdentitySession";
 import { btnSecondary } from "@/lib/brand-ui";
 
 export const POST_TO_FARCASTER_COPY = "Post to Farcaster";
@@ -53,7 +53,7 @@ export function OutboundPostControls({ item }: { item: FeedItem }) {
     };
   }, [session]);
 
-  if (!session || !canOutboundPost(item, session.address)) return null;
+  if (!session || !canOutboundPost(item, objectOwner(session))) return null;
 
   async function publish(network: OutboundNetworkId) {
     if (confirm !== network) {

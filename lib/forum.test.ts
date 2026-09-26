@@ -562,6 +562,8 @@ describe("forum route", () => {
     assert.equal(route.includes("session.address"), true);
     assert.equal(route.includes("ownerForWallet"), true);
     assert.equal(route.includes("ownerForOAuth"), true);
+    assert.equal(route.includes("readForumBotToken"), true);
+    assert.equal(route.includes("x-s3rch-forum-token"), true);
     assert.equal(route.includes("X-Api-Key"), false);
     assert.equal(route.includes("authorization"), false);
     assert.equal(route.includes("SEED_SECRET"), false);

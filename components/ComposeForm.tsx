@@ -6,7 +6,7 @@ import type { FeedItem } from "@/lib/feed-types";
 import { splitTags } from "@/lib/feed-types";
 import { roomTag } from "@/lib/rooms";
 import { useSeeAcl } from "@/components/SeeAclProvider";
-import { useIdentitySession } from "@/components/useIdentitySession";
+import { objectOwner, useIdentitySession } from "@/components/useIdentitySession";
 import { btnPrimary, field, panel } from "@/lib/brand-ui";
 
 export function ComposeForm({
@@ -31,7 +31,7 @@ export function ComposeForm({
     );
   }
 
-  const sessionAddress = session.address;
+  const sessionAddress = objectOwner(session);
 
   async function submit() {
     setBusy(true);

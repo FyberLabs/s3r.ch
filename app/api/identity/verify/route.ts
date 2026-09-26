@@ -12,7 +12,7 @@ import {
   setIdentityCookie,
 } from "@/lib/identity/http";
 import { readNonceToken } from "@/lib/identity/nonce";
-import { linkLoginPaths } from "@/lib/identity/link";
+import { linkLoginPaths, ownerForWallet } from "@/lib/identity/link";
 import { readBackupFromRequest } from "@/lib/identity/oauth";
 import { signSessionToken } from "@/lib/identity/session";
 import { verifySiweLogin } from "@/lib/identity/siwe";
@@ -101,5 +101,11 @@ export async function POST(request: Request) {
     linked = false;
   }
 
-  return Response.json({ address: result.address, chainId: result.chainId, linked });
+  const owner = ownerForWallet(result.address) ?? result.address;
+  return Response.json({
+    address: result.address,
+    chainId: result.chainId,
+    linked,
+    owner,
+  });
 }

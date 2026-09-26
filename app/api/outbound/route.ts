@@ -12,6 +12,7 @@ import {
   readSessionFromRequest,
   secretFailureResponse,
 } from "@/lib/identity/http";
+import { ownerForWallet } from "@/lib/identity/link";
 import { readSessionToken } from "@/lib/identity/session";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
   if (!parsed.ok) {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
-  if (!canOutboundPost(parsed.item, session.address)) {
+  if (!canOutboundPost(parsed.item, session.owner)) {
     return Response.json({ error: "You can only post your own note." }, { status: 403 });
   }
 
@@ -61,7 +62,7 @@ export async function POST(request: Request) {
 async function requireSession(
   request: Request,
 ): Promise<
-  | { ok: true; address: string }
+  | { ok: true; address: string; owner: string }
   | { ok: false; response: Response }
 > {
   let secret: string;
@@ -86,7 +87,11 @@ async function requireSession(
 
   try {
     const session = await readSessionToken(token, secret);
-    return { ok: true, address: session.address };
+    return {
+      ok: true,
+      address: session.address,
+      owner: ownerForWallet(session.address) ?? session.address,
+    };
   } catch {
     return {
       ok: false,

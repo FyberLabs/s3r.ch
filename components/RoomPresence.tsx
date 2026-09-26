@@ -12,7 +12,7 @@ import {
 } from "@/lib/presence";
 import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
-import { useIdentitySession } from "@/components/useIdentitySession";
+import { objectOwner, useIdentitySession } from "@/components/useIdentitySession";
 import { panel } from "@/lib/brand-ui";
 
 export function RoomPresence({
@@ -107,7 +107,7 @@ function PresenceAnnounce({
 }) {
   const session = useIdentitySession();
   const see = useSeeAcl();
-  const sessionAddress = session?.address ?? null;
+  const sessionAddress = session ? objectOwner(session) : null;
 
   useEffect(() => {
     if (!sessionAddress || !see?.acl) return;

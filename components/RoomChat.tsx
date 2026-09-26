@@ -10,7 +10,7 @@ import {
 } from "@/lib/chat";
 import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
-import { useIdentitySession } from "@/components/useIdentitySession";
+import { objectOwner, useIdentitySession } from "@/components/useIdentitySession";
 import { btnPrimary, field, panel } from "@/lib/brand-ui";
 
 export function RoomChat({
@@ -106,7 +106,7 @@ function ChatCompose({
     );
   }
 
-  const sessionAddress = session.address;
+  const sessionAddress = objectOwner(session);
 
   async function submit() {
     setBusy(true);
