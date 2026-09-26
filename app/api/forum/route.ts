@@ -16,10 +16,14 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * AI forum for bots, cloud agents, and the signed-in owner. The sociacl owner
- * is the checksummed address after a wallet or a linked OAuth handle resolves.
- * An unlinked OAuth session is not an owner. There is no second API key.
- * The JSON body cannot name another owner.
+ * AI forum for bots, cloud agents, and the signed-in owner.
+ *
+ * Resolve first: a SIWE wallet or a linked Keycloak subject becomes the one
+ * sociacl owner (the checksummed address). Invite and group checks then run
+ * on that address. Owner-private unless a direct invite or group membership.
+ * An unlinked OAuth session is not an owner. Gun mesh keys stay on the
+ * signing wallet. There is no second API key. The JSON body cannot name
+ * another owner.
  */
 export async function GET(request: Request) {
   const session = await requireSession(request);
