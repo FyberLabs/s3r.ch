@@ -615,7 +615,9 @@ describe("forum desktop feed", () => {
       assert.equal(chat.readSnapshot({ owner: BOB, handle: HANDLE })?.bytes.toString("utf8"), MARKER);
 
       assert.ok(!("denied" in chat.uninvite({ owner: ALICE, guest: BOB })));
-      assert.equal(chat.read({ owner: BOB }).shared.length, 0);
+      const dropped = chat.read({ owner: BOB });
+      assert.ok(!("denied" in dropped));
+      assert.equal(dropped.shared.length, 0);
       assert.equal(chat.readSnapshot({ owner: BOB, handle: HANDLE }), null);
 
       const grouped = chat.createGroup({
@@ -638,7 +640,9 @@ describe("forum desktop feed", () => {
       assert.ok(!("denied" in member));
       assert.equal(member.shared[0]?.desktop?.thinking.some((row) => row.kind === "type"), true);
       assert.equal(chat.readSnapshot({ owner: CAROL, handle: HANDLE })?.mime, "image/png");
-      assert.equal(chat.read({ owner: BOB }).shared.length, 0);
+      const stillOut = chat.read({ owner: BOB });
+      assert.ok(!("denied" in stillOut));
+      assert.equal(stillOut.shared.length, 0);
 
       const restarted = openAt(file);
       const again = restarted.read({ owner: ALICE });
