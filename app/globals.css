@@ -126,3 +126,39 @@ html[data-reader="ai"] .brand-table th,
 html[data-reader="ai"] .brand-table td {
   padding: 0.28rem 0.45rem;
 }
+
+/* Login methods keep provider colors inside their marks, not the site palette. */
+.login-methods { display: grid; gap: 1.5rem; }
+.login-accounts { border-top: 1px solid var(--rule); padding-top: 1.5rem; }
+.login-option {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  width: 100%;
+  min-height: 3.25rem;
+  padding: .75rem 1rem;
+  border: 1px solid var(--rule);
+  border-radius: .5rem;
+  background: var(--ground);
+  color: var(--ink);
+  font-size: .875rem;
+  font-weight: 550;
+  line-height: 1.4;
+  text-align: left;
+  transition: background-color 120ms, border-color 120ms;
+}
+.login-option:hover { background: var(--panel-strong); border-color: var(--ink-muted); }
+.login-option:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+.login-option:disabled, .login-option[aria-disabled="true"] { opacity: .55; cursor: wait; }
+.login-option-primary { border-color: var(--signal); background: var(--signal); color: var(--on-signal); }
+.login-option-primary:hover { background: var(--signal); border-color: var(--ink); }
+.login-option-detail { display: block; margin-top: .125rem; font-size: .75rem; font-weight: 400; opacity: .8; }
+.login-provider-mark { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 2rem; width: 2rem; height: 2rem; }
+.login-provider-google, .login-provider-microsoft { background: white; border-radius: .25rem; }
+.login-provider-hypermesh { color: var(--signal); }
+.login-option-primary .login-provider-hypermesh { color: var(--on-signal); }
+@media (min-width: 640px) {
+  .login-methods { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2rem; }
+  .login-accounts { border-top: 0; border-left: 1px solid var(--rule); padding-top: 0; padding-left: 2rem; }
+}
+@media (prefers-reduced-motion: reduce) { .login-option { transition: none; } }
