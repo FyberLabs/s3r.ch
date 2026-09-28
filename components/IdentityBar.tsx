@@ -8,6 +8,7 @@ import {
   useDisconnect,
   useSignMessage,
 } from "wagmi";
+import { SignInOptions } from "@/components/SignInOptions";
 import { IdentityProviders } from "@/components/IdentityProviders";
 import { HeldConfirmControls } from "@/components/HeldConfirmControls";
 import { SeeGrantControls } from "@/components/SeeGrantControls";
@@ -767,7 +768,7 @@ function IdentityBarInner() {
 
   return (
     <div className={`mt-10 ${panel}`}>
-      <h2 className="text-sm font-semibold text-ink">Session</h2>
+      <h2 className="text-lg font-semibold text-ink">{session ? "Your session" : "Sign in to s3r.ch"}</h2>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {session ? (
           <>
@@ -824,108 +825,23 @@ function IdentityBarInner() {
             ) : null}
           </>
         ) : (
-          <>
-            {backup && walletAsk.kind === "hypermesh" ? (
-              <>
-                <p className="basis-full text-xs text-ink-muted" role="status">
-                  {walletAsk.copy}
-                </p>
-                <button
-                  type="button"
-                  disabled={busy || connecting}
-                  onClick={() => void onYesHypermeshWallet()}
-                  className={btnPrimary}
-                >
-                  Yes
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={onNoHypermeshWallet}
-                  className={btnSecondary}
-                >
-                  No
-                </button>
-              </>
-            ) : null}
-            {backup && walletAsk.kind === "create" ? (
-              <p className="basis-full text-xs text-ink-muted" role="status">
-                {walletAsk.copy}
-              </p>
-            ) : null}
-            {walletAsk.kind === "hypermesh" ? null : !isConnected ? (
-              <>
-                <button
-                  type="button"
-                  disabled={connecting || busy}
-                  onClick={() => void onConnect()}
-                  className={btnPrimary}
-                >
-                  Connect wallet
-                </button>
-                {wcConfigured ? (
-                  <button
-                    type="button"
-                    disabled={connecting || busy}
-                    onClick={() => void onWalletConnect()}
-                    className={btnSecondary}
-                  >
-                    WalletConnect
-                  </button>
-                ) : null}
-                {smartWalletConnector ? (
-                  <button
-                    type="button"
-                    disabled={connecting || busy}
-                    onClick={() => void onPasskeyWallet()}
-                    className={btnSecondary}
-                  >
-                    Passkey wallet
-                  </button>
-                ) : null}
-              </>
-            ) : (
-              <p className="text-xs text-ink-muted">
-                Wallet {truncateAddress(address ?? "")} · not signed in
-              </p>
-            )}
-            {walletAsk.kind === "hypermesh" ? null : (
-              <button
-                type="button"
-                disabled={busy || !isConnected}
-                onClick={() => void onSignIn()}
-                className={btnPrimary}
-              >
-                Sign in with wallet
-              </button>
-            )}
-            {backup ? (
-              <p className="basis-full text-xs text-ink-muted">
-                {backupLabel(backup.idp)} · {backup.linked ? "linked" : "not linked"}
-              </p>
-            ) : null}
-            <a
-              href="/api/identity/oauth/start?idp=microsoft"
-              className={btnSecondary}
-            >
-              Continue with Microsoft
-            </a>
-            <a
-              href="/api/identity/oauth/start?idp=github"
-              className={btnSecondary}
-            >
-              Continue with GitHub
-            </a>
-            <a
-              href="/api/identity/oauth/start?idp=google"
-              className={btnSecondary}
-            >
-              Continue with Google
-            </a>
-            <a href="/api/identity/oauth/start" className={btnSecondary}>
-              Hypermesh account
-            </a>
-          </>
+          <SignInOptions
+            connected={isConnected}
+            address={address ? truncateAddress(address) : ""}
+            pending={busy || connecting}
+            walletConnectAvailable={wcConfigured}
+            smartWalletAvailable={Boolean(smartWalletConnector)}
+            accountLabel={backup ? backupLabel(backup.idp) : undefined}
+            linked={backup?.linked}
+            walletPrompt={walletAsk.kind === "none" ? undefined : walletAsk.copy}
+            useExistingWallet={walletAsk.kind === "hypermesh"}
+            onConnect={() => void onConnect()}
+            onWalletConnect={() => void onWalletConnect()}
+            onPasskeyWallet={() => void onPasskeyWallet()}
+            onSignIn={() => void onSignIn()}
+            onUseExisting={() => void onYesHypermeshWallet()}
+            onDeclineExisting={onNoHypermeshWallet}
+          />
         )}
       </div>
       {showWrap ? (
@@ -1003,7 +919,7 @@ function IdentityBarInner() {
       {showPrfMissing ? (
         <p className="mt-3 text-xs text-ink-muted">{WRAP_UNAVAILABLE_COPY}</p>
       ) : null}
-      {message ? <p className="mt-3 text-xs text-ink-muted">{message}</p> : null}
+      {message ? <p role="status" className="mt-4 text-sm text-ink-muted">{message}</p> : null}
     </div>
   );
 }

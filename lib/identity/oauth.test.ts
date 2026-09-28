@@ -1,3 +1,6 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { SignInOptions } from "../../components/SignInOptions";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -479,13 +482,21 @@ describe("OAuth stays off Gun and off the SIWE owner", () => {
     assert.match(src, /written to Gun/);
     const forum = readFileSync(new URL("../forum.ts", import.meta.url), "utf8");
     assert.equal(forum.includes("oauth"), false);
-    const bar = readFileSync(new URL("../../components/IdentityBar.tsx", import.meta.url), "utf8");
-    assert.match(bar, /Connect wallet/);
+    const bar = renderToStaticMarkup(createElement(SignInOptions, {
+      connected: false, address: "", pending: false,
+      walletConnectAvailable: false, smartWalletAvailable: true,
+      useExistingWallet: false,
+      onConnect() {}, onWalletConnect() {}, onPasskeyWallet() {},
+      onSignIn() {}, onUseExisting() {}, onDeclineExisting() {},
+    }));
+    assert.match(bar, /Browser wallet/);
     assert.match(bar, /Continue with Microsoft/);
-    assert.match(bar, /href="\/api\/identity\/oauth\/start\?idp=microsoft"/);
-    assert.match(bar, /href="\/api\/identity\/oauth\/start\?idp=github"/);
-    assert.match(bar, /href="\/api\/identity\/oauth\/start\?idp=google"/);
+    for (const idp of ["microsoft", "github", "google"]) {
+      assert.ok(bar.includes(`href="/api/identity/oauth/start?idp=${idp}"`));
+    }
     assert.match(bar, /href="\/api\/identity\/oauth\/start"/);
-    assert.match(bar, /Hypermesh account/);
+    assert.match(bar, /Continue with Hypermesh/);
+    assert.equal(bar.includes("Sign in with wallet"), false);
+    assert.equal(bar.includes("WalletConnect"), false);
   });
 });
