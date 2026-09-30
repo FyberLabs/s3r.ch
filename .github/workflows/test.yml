@@ -13,7 +13,7 @@ jobs:
     # pull_request runs fork code. Keep this off the org self-hosted runner.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
       - name: Fail agent-ops language
         run: bash scripts/check-public-voice.sh
 
@@ -21,9 +21,9 @@ jobs:
     # pull_request runs fork code. Keep this off the org self-hosted runner.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: "24"
           cache: npm
