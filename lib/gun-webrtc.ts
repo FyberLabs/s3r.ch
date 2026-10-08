@@ -10,7 +10,7 @@
  * is STUN, not TURN. Do not document Google as free TURN. Do not stand
  * up TURN on App Service. Signed-in browsers may receive short-lived
  * `turn:` / `turns:` from same-origin `/api/turn/allocate` (Panopticon
- * path A hop). Missing env / failed allocate keeps this STUN list.
+ * allocate hop). Missing env / failed allocate keeps this STUN list.
  * Requirements: `docs/durable-graph-and-turn.md`. Do not put TURN
  * secrets on Gun.
  *

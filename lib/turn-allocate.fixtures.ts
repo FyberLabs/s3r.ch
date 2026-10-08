@@ -1,6 +1,6 @@
 /**
  * Panopticon allocate JSON fixtures. Shape matches
- * `products/turn/docs/turn-allocate-v0.md` (path A). No live secret.
+ * `products/turn/docs/turn-allocate-v0.md` (Panopticon TURN allocate). No live secret.
  */
 
 export const ALLOCATE_EXPIRES_AT = "2026-09-09T02:05:00+00:00";

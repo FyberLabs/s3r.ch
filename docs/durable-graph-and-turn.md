@@ -1,6 +1,6 @@
 # Durable Gun graph and TURN (2026-09-09)
 
-Durable graph stays requirements-only. **Path A consume is wired:** session-gated `POST /api/turn/allocate` hops to Panopticon `POST /api/v1/turn/allocate` and may set Gun `opt.rtc.iceServers`. This file does **not** deploy coturn, mount a disk, or put the long-lived TURN secret in the browser.
+Durable graph stays requirements-only. **The TURN allocate hop is wired:** session-gated `POST /api/turn/allocate` hops to Panopticon `POST /api/v1/turn/allocate` and may set Gun `opt.rtc.iceServers`. This file does **not** deploy coturn, mount a disk, or put the long-lived TURN secret in the browser.
 
 Parent: [ARCHITECTURE.md](ARCHITECTURE.md). Identity / Check locks stay in [identity.md](identity.md) and [s3rch-check.md](s3rch-check.md). Fyber-wide service lock: [FyberLabs/hypermesh-docs `open-services.md`](https://github.com/FyberLabs/hypermesh-docs/blob/main/open-services.md) (2026-09-02). Infra facts: [FyberLabs/infra `docs/PLATFORM.md`](https://github.com/FyberLabs/infra/blob/main/docs/PLATFORM.md) and [`terraform/s3rch/README.md`](https://github.com/FyberLabs/infra/blob/main/terraform/s3rch/README.md).
 
@@ -29,7 +29,7 @@ From [ARCHITECTURE.md — Steering locks (2026-09-02)](ARCHITECTURE.md#steering-
 | Needed services live in **Panopticon** | Seed, TURN, paid access, oracles we cannot do in-browser: open product network, public APIs, market of equivalents. Do not grow s3r.ch Azure into that service. Do not invent a second control plane. |
 | STUN ≠ TURN | Google `stun.l.google.com:19302` is STUN. It is not free TURN. No TURN on App Service. |
 
-TURN does not deploy **in FyberLabs/infra as a service independent of Panopticon**. Required client-mesh services belong in **Panopticon** (open/public, market-equivalent OK). Azure is not the Gun datastore. An interim coturn is sane **only** under the conditions in **Path B is legal only if** below.
+TURN does not deploy **in FyberLabs/infra as a service independent of Panopticon**. Required client-mesh services belong in **Panopticon** (open/public, market-equivalent OK). Azure is not the Gun datastore. An interim coturn is sane **only** under the conditions in **A standalone relay is allowed only if** below.
 
 | Path | What it is | Lock |
 | --- | --- | --- |
@@ -39,11 +39,11 @@ TURN does not deploy **in FyberLabs/infra as a service independent of Panopticon
 
 This file recommends **A as the product end-state**, plus **optional time-boxed B** for the lab if a relay is needed before the Panopticon product exists. Path C is listed so the tension is visible. Choosing C is a lock change — do it in hypermesh-docs, not by silence here.
 
-### Path B is legal only if
+### A standalone relay is allowed only if
 
 All of these are true before anyone applies Terraform. Otherwise wait for A (lab stays STUN + `/gun`).
 
-1. **Same TURN/URI contract as the eventual Panopticon service.** Allocate response, ICE `urls` / username / credential / TTL shape, and hostname role (`turn.…`) are the contract in [Open-market shape](#open-market-shape-panopticon-path-a--the-uri-contract). Interim mint and product mint are interchangeable. Clients do not learn a second API.
+1. **Same TURN/URI contract as the eventual Panopticon service.** Allocate response, ICE `urls` / username / credential / TTL shape, and hostname role (`turn.…`) are the contract in [Open-market shape](#open-market-shape-panopticon-turn-allocate--the-uri-contract). Interim mint and product mint are interchangeable. Clients do not learn a second API.
 2. **Time-boxed.** The infra VM is labeled interim (config comment + this file). It is not “the Fyber TURN product.”
 3. **No product data on it.** TURN is relay-class only: allocations, auth HMAC, logs. No Gun radisk, no snapshot, no rooms, no grant inbox, no SIWE/SEA material. The Gun seeder stays on App Service (or a later Panopticon seed). Separate process, **separate host**.
 4. **Graduation is DNS/config cutover**, not a permanent second control plane. Flip the allocate base URL / ICE hostname (or CNAME) to the Panopticon operator. Do not keep a parallel mint on s3r.ch Azure.
@@ -55,7 +55,7 @@ Do **not** invent cottage WireGuard or Tailscale as the relay path for s3r.ch **
 | | Near-term lab | Product end-state |
 | --- | --- | --- |
 | **Durable graph** | Keep App Service a seed. Survive recycle of the **public seeder cache** with Azure Blob (the existing `snapshot.json` shape). Do **not** mount radisk as a Mastodon-class origin. Shared rooms / users / granted / chat stay mesh + next seed. Optional later: browser graph persist (not SEA `recall`). | The mesh is the archive. Any durable seed is a Panopticon open relay others can run. App Service stays bootstrap. Azure is not the Gun datastore. |
-| **TURN** | **Optional path B** — only if the four conditions above hold. One small dedicated Linux VM (start **B2s / B2ms**, **East US 2**), public TURN, identical allocate/ICE contract to A. | **Path A.** Panopticon product network with that same public credential API. Cut over DNS/config. The lab VM is retired or becomes one operator behind the façade. |
+| **TURN** | **Optional standalone relay** — only if the four conditions above hold. One small dedicated Linux VM (start **B2s / B2ms**, **East US 2**), public TURN, identical allocate/ICE contract to Panopticon TURN allocate. | **Panopticon TURN allocate.** Panopticon product network with that same public credential API. Cut over DNS/config. The lab VM is retired or becomes one operator behind the façade. |
 
 Graduation from B → A is **cutover of DNS/config**, named below. Until then the lock is not rewritten.
 
@@ -140,7 +140,7 @@ Today (`lib/gun-webrtc.ts`): `opt.rtc.iceServers` defaults to **STUN** (`stun:st
 | Mechanism | Role | Today |
 | --- | --- | --- |
 | **STUN** | Discover reflexive address; punch when NAT is friendly | Google public STUN. Keep it. |
-| **TURN** | Relay media / data when both sides are behind symmetric NAT, or when UDP is blocked | Path A hop when `PANOPTICON_TURN_*` is set and SIWE session is live. Empty env / fail → none. Do not document Google as TURN. |
+| **TURN** | Relay media / data when both sides are behind symmetric NAT, or when UDP is blocked | TURN allocate hop when `PANOPTICON_TURN_*` is set and SIWE session is live. Empty env / fail → none. Do not document Google as TURN. |
 | **Seed `/gun` WebSocket** | Gun DAM over Cloudflare → App Service | Works as the fallback when WebRTC does not. |
 
 TURN is needed when two **browsers** must exchange Gun (or later meeting) traffic and STUN cannot bind. It is not needed for Public snapshot hydrate. It is not a chat server. Chat / presence stay Gun `.on` even after TURN exists.
@@ -165,7 +165,7 @@ TURN without auth is an open relay (abuse, cost). Static secrets in the client a
 | **Never put the long-lived TURN secret on a Gun node** | Graph is replicated. A secret there is public. |
 | Do not put allocate credentials on Gun | Graph is replicated. A credential there is public. |
 
-Lab / product mint: same allocate URI and JSON as path A; session-gated Next hop; checksummed address as `clientHint`; TTL minutes not days. Empty `PANOPTICON_TURN_BASE` / `PANOPTICON_TENANT_ID` / `PANOPTICON_API_KEY` keeps STUN + `/gun`. Unsigned visitors keep STUN + `/gun`. Cutover changes the host, not the path.
+Lab / product mint: same allocate URI and JSON as Panopticon TURN allocate; session-gated Next hop; checksummed address as `clientHint`; TTL minutes not days. Empty `PANOPTICON_TURN_BASE` / `PANOPTICON_TENANT_ID` / `PANOPTICON_API_KEY` keeps STUN + `/gun`. Unsigned visitors keep STUN + `/gun`. Cutover changes the host, not the path.
 
 ### Scale, regions, transports (Azure)
 
@@ -208,7 +208,7 @@ App Service coturn, Cloudflare-as-TURN, and “Google STUN is enough” are not 
 
 **Product end-state: A.** Needed TURN is a Panopticon open product. Public credential API. Market of equivalents. Same URI contract from day one. s3r.ch consumes the API; it does not own the relay. Azure is not the Gun datastore.
 
-**Near-term lab: optional B**, and only if every [Path B is legal only if](#path-b-is-legal-only-if) condition holds. Independent of Panopticon **as a process** — yes, a coturn in FyberLabs/infra can relay before the product network exists. Independent of Panopticon **as the lock** — no. Time-boxed. Identical contract. No product data on the VM. Graduation is DNS/config cutover.
+**Near-term lab: an optional standalone relay**, and only if every [A standalone relay is allowed only if](#a-standalone-relay-is-allowed-only-if) condition holds. Independent of Panopticon **as a process** — yes, a coturn in FyberLabs/infra can relay before the product network exists. Independent of Panopticon **as the lock** — no. Time-boxed. Identical contract. No product data on the VM. Graduation is DNS/config cutover.
 
 **Path C:** do not take it unless the lock is amended in hypermesh-docs. No sibling `open-services.md` PR from this work — we are not proposing that amendment.
 
@@ -238,9 +238,9 @@ No Terraform in this repo. No apply. When Chris wants the lab relay, a sibling *
 
 `terraform/s3rch/README.md` already says: “TURN is later (Panopticon). … Do not add coturn or a Cloudflare Worker here.” That line stays until an infra PR exists. The sketch above is that later layer, not a change to the web-app module.
 
-### Open-market shape (Panopticon, path A) — the URI contract
+### Open-market shape (Panopticon TURN allocate) — the URI contract
 
-This is the contract **path B must implement on day one** so graduation is DNS/config, not a rewrite. When the product network exists, keep it boring and copyable:
+This is the contract **a standalone relay must implement on day one** so graduation is DNS/config, not a rewrite. When the product network exists, keep it boring and copyable:
 
 ```
 POST /api/v1/turn/allocate
@@ -254,7 +254,7 @@ POST /api/v1/turn/allocate
 - No Gun writes. No SEA keys. No Keycloak as s3r.ch login. No graph on the relay.
 - Metering / paid access later (crypto, optional fiat). The API is public even when free so others can sell the same shape.
 - Interim B mint (if any) uses this path and this JSON. Cutover changes the host, not the shape.
-- Fyber’s first operator can be the path-B VM behind this façade, then a CNAME to the Panopticon dataplane.
+- Fyber’s first operator can be the standalone relay VM behind this façade, then a CNAME to the Panopticon dataplane.
 
 Do not invent a second control plane on s3r.ch Azure to do this.
 
@@ -283,14 +283,14 @@ Empty any of the three = STUN-only. Integrator contract: FyberLabs/panopticon [`
 
 ### Operator / infra habit (live TURN)
 
-Same style as `IDENTITY_SESSION_SECRET` / `SEED_SECRET`: App Service application settings, Key Vault for the secret, Terraform in **FyberLabs/infra** `terraform/s3rch`. That infra layer owns the wire. This repo is Path A consume only — no coturn, no Terraform here.
+Same style as `IDENTITY_SESSION_SECRET` / `SEED_SECRET`: App Service application settings, Key Vault for the secret, Terraform in **FyberLabs/infra** `terraform/s3rch`. That infra layer owns the wire. This repo only calls Panopticon TURN allocate — no coturn, no Terraform here.
 
 Checklist for live TURN:
 
 1. Set all three App Service application settings: `PANOPTICON_TURN_BASE`, `PANOPTICON_TENANT_ID`, `PANOPTICON_API_KEY`. Empty or any missing → STUN + `/gun`. No error theater on `/feed`.
 2. Hold `PANOPTICON_API_KEY` in Key Vault (`kv-fyber-cg47`). Terraform wires secret → App Setting. Never git, never `NEXT_PUBLIC_*`, never Gun, never the browser.
 3. `PANOPTICON_TURN_BASE` is the allocate origin (or origin plus `/api/v1` / `/api/v1/turn`). Next hops `POST /api/v1/turn/allocate`.
-4. Do not add coturn to `terraform/s3rch` or this App Service. Relay dataplane stays Panopticon (or a later time-boxed Path B layer), not the seeder.
+4. Do not add coturn to `terraform/s3rch` or this App Service. Relay dataplane stays Panopticon (or a later time-boxed standalone relay), not the seeder.
 
 ---
 
@@ -298,11 +298,11 @@ Checklist for live TURN:
 
 | Question | This file’s answer | If you disagree |
 | --- | --- | --- |
-| End-state? | **Path A** — Panopticon open TURN product. Same allocate/ICE URI contract. Azure is not the Gun datastore. | — |
-| Can TURN live in FyberLabs/infra independent of Panopticon **for the lab**? | **Optional path B**, and only if time-boxed, contract-identical, no product data, graduation = DNS/config cutover. SKU: B2s/B2ms, East US 2, public TURN, separate from the seeder. Not WG/Tailscale for browsers. | Prefer waiting for A: say so; lab stays STUN + `/gun`. |
+| End-state? | **Panopticon TURN allocate** — the open TURN product. Same allocate/ICE URI contract. Azure is not the Gun datastore. | — |
+| Can TURN live in FyberLabs/infra independent of Panopticon **for the lab**? | **Optional standalone relay**, and only if time-boxed, contract-identical, no product data, graduation = DNS/config cutover. SKU: B2s/B2ms, East US 2, public TURN, separate from the seeder. Not WG/Tailscale for browsers. | Prefer waiting for Panopticon TURN allocate: say so; lab stays STUN + `/gun`. |
 | Does B replace Panopticon? | **No.** Lock 5 / `open-services.md` stay. Cutover retires the second plane. | Path C = amend `open-services.md` in hypermesh-docs. Not done here. |
 | Durable graph on App Service disk? | **No** as the archive. Optional Blob of the existing Public snapshot. Mesh (D1) + optional seed relay VM (D3) for shared puts — **not** the TURN host. | Files-mount radisk is the Mastodon slope. |
-| Implement now? | **Path A consume — this slice.** No infra coturn PR. | — |
+| Implement now? | **TURN allocate hop — this slice.** No infra coturn PR. | — |
 | Live TURN on App Service? | Research: three application settings in FyberLabs/infra `terraform/s3rch` (KV for the API key). [Operator / infra habit](#operator--infra-habit-live-turn). | Leave empty → STUN + `/gun`. |
 
 Copy on `/feed` stays: STUN ≠ TURN; seed / snapshot if ICE fails; Network / Granted can be empty; not a finished P2P mesh.
