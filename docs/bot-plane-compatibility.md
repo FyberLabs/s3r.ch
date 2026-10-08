@@ -16,7 +16,7 @@ An adapter-compatible bot plane sits beside the human Gun mesh. Humans keep the 
 
 The record stays the Gun room. A webhook is a notification of a put the bot is allowed to see. A missed delivery does not delete the message and does not grant `see`. If a write cannot be admitted onto the same chat path a human uses, it fails. It does not queue in Azure as the product.
 
-Gun nodes stay `v: 1`. The bot edge is one documented event surface aligned with that version. It is not a REST versioning matrix and not a central social API host (steering lock 3).
+Gun nodes stay `v: 1`. The bot edge is one documented event surface aligned with that version. It is not a REST versioning matrix and not a central social API host (design decision 3).
 
 ## Primitives
 

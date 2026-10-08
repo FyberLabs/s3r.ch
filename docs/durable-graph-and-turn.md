@@ -31,13 +31,13 @@ From [ARCHITECTURE.md — Design decisions (2026-09-02)](ARCHITECTURE.md#design-
 
 TURN does not deploy **in FyberLabs/infra as a service independent of Panopticon**. Required client-mesh services belong in **Panopticon** (open/public, market-equivalent OK). Azure is not the Gun datastore. An interim coturn is sane **only** under the conditions in **A standalone relay is allowed only if** below.
 
-| Option | What it is | Lock |
+| Option | What it is | Decision |
 | --- | --- | --- |
-| **Panopticon TURN allocate** | Panopticon-hosted TURN product (open API, market of equivalents) | Matches the lock. **Recommended end-state.** |
-| **Standalone relay** | Optional, **time-boxed** FyberLabs/infra coturn that already implements the **same TURN/URI contract** as Panopticon TURN allocate. Graduation is DNS/config cutover, not a second control plane. | Lock **stays**. Allowed only if every standalone-relay condition holds. |
-| **Infra-only relay** | Fully independent infra-only forever | Conflicts with the lock unless `open-services.md` is amended. This file does not amend it. |
+| **Panopticon TURN allocate** | Panopticon-hosted TURN product (open API, market of equivalents) | Matches the decision. **Recommended end-state.** |
+| **Standalone relay** | Optional, **time-boxed** FyberLabs/infra coturn that already implements the **same TURN/URI contract** as Panopticon TURN allocate. Graduation is DNS/config cutover, not a second control plane. | Decision **stays**. Allowed only if every standalone-relay condition holds. |
+| **Infra-only relay** | Fully independent infra-only forever | Conflicts with the decision unless `open-services.md` is amended. This file does not amend it. |
 
-This file recommends **Panopticon TURN allocate as the product end-state**, plus an **optional time-boxed standalone relay** for the lab if a relay is needed before the Panopticon product exists. The infra-only relay is listed so the tension is visible. Choosing it is a lock change — do it in hypermesh-docs, not by silence here.
+This file recommends **Panopticon TURN allocate as the product end-state**, plus an **optional time-boxed standalone relay** for the lab if a relay is needed before the Panopticon product exists. The infra-only relay is listed so the tension is visible. Choosing it is a design change — do it in hypermesh-docs, not by silence here.
 
 ### A standalone relay is allowed only if
 
@@ -57,7 +57,7 @@ Do **not** invent cottage WireGuard or Tailscale as the relay path for s3r.ch **
 | **Durable graph** | Keep App Service a seed. Survive recycle of the **public seeder cache** with Azure Blob (the existing `snapshot.json` shape). Do **not** mount radisk as a Mastodon-class origin. Shared rooms / users / granted / chat stay mesh + next seed. Optional later: browser graph persist (not SEA `recall`). | The mesh is the archive. Any durable seed is a Panopticon open relay others can run. App Service stays bootstrap. Azure is not the Gun datastore. |
 | **TURN** | **Optional standalone relay** — only if the four conditions above hold. One small dedicated Linux VM (start **B2s / B2ms**, **East US 2**), public TURN, identical allocate/ICE contract to Panopticon TURN allocate. | **Panopticon TURN allocate.** Panopticon product network with that same public credential API. Cut over DNS/config. The lab VM is retired or becomes one operator behind the façade. |
 
-Graduation from the standalone relay to Panopticon TURN allocate is **cutover of DNS/config**, named below. Until then the lock is not rewritten.
+Graduation from the standalone relay to Panopticon TURN allocate is **cutover of DNS/config**, named below. Until then the decision is not rewritten.
 
 ---
 
@@ -106,7 +106,7 @@ What a durable graph must do without growing App Service into Mastodon:
 | **D3** | Separate Gun relay VM (infra, like GitLab / Odoo / `vm-pano-test`) | Yes as a **relay**, same class as a seed. Data disk can outlive App Service recycle. | One B-series + disk + Caddy. Same compose-VM habit as `terraform/panopticon-test`. | Fine as one operator of a Panopticon seed/relay product. Wrong as a forever s3r.ch-only origin. |
 | **D4** | IPFS / other content-addressed store | No. Different protocol, not Gun HAM-merge, not in the stack. Extra daemon. | Avoid. | Avoid unless a later oracle needs a CID. Do not dual-write the feed. |
 
-**Not an option:** growing the App Service container into a durable social origin (persistent radisk as the product archive, chat server, presence server). That breaks lock 1.
+**Not an option:** growing the App Service container into a durable social origin (persistent radisk as the product archive, chat server, presence server). That breaks decision 1.
 
 ### Recommended durable-graph path
 
@@ -198,9 +198,9 @@ TURN is different:
 
 | Option | Where it runs | Honest tradeoff |
 | --- | --- | --- |
-| **Panopticon TURN allocate** | `products/…` cookie-cutter on [FyberLabs/panopticon](https://github.com/FyberLabs/panopticon) (written before the TURN product existed). Public allocate API. Others can run equivalents ([`open-services.md`](https://github.com/FyberLabs/hypermesh-docs/blob/main/open-services.md), same spirit as `distributed-market.md` “Any Panopticon”). Compute is still a UDP-capable host — ACA Consumption cannot be the relay dataplane. | Matches the lock. Slower for the lab: no product network exists yet. Control plane (issue creds, meter later) ≠ the relay process. |
-| **Standalone relay (time-boxed infra coturn)** | New FyberLabs/infra layer (sketch below). **Same allocate/ICE URI contract as Panopticon TURN allocate** from day one. s3r.ch mints against that contract. | Allowed only if the four standalone-relay conditions hold. Fastest lab path. **Does not amend the lock.** Risk: ossifies as “the Fyber TURN” if cutover never happens. |
-| **Infra-only relay (forever)** | Same VM, never a Panopticon API, never a market. | Conflicts with lock 5 / `open-services.md`. Only if that lock is amended in hypermesh-docs. This PR does not. |
+| **Panopticon TURN allocate** | `products/…` cookie-cutter on [FyberLabs/panopticon](https://github.com/FyberLabs/panopticon) (written before the TURN product existed). Public allocate API. Others can run equivalents ([`open-services.md`](https://github.com/FyberLabs/hypermesh-docs/blob/main/open-services.md), same spirit as `distributed-market.md` “Any Panopticon”). Compute is still a UDP-capable host — ACA Consumption cannot be the relay dataplane. | Matches the decision. Slower for the lab: no product network exists yet. Control plane (issue creds, meter later) ≠ the relay process. |
+| **Standalone relay (time-boxed infra coturn)** | New FyberLabs/infra layer (sketch below). **Same allocate/ICE URI contract as Panopticon TURN allocate** from day one. s3r.ch mints against that contract. | Allowed only if the four standalone-relay conditions hold. Fastest lab path. **Does not change the decision.** Risk: ossifies as “the Fyber TURN” if cutover never happens. |
+| **Infra-only relay (forever)** | Same VM, never a Panopticon API, never a market. | Conflicts with decision 5 / `open-services.md`. Only if that decision is amended in hypermesh-docs. This PR does not. |
 
 App Service coturn, Cloudflare-as-TURN, and “Google STUN is enough” are not options.
 
@@ -208,9 +208,9 @@ App Service coturn, Cloudflare-as-TURN, and “Google STUN is enough” are not 
 
 **Product end-state: Panopticon TURN allocate.** Needed TURN is a Panopticon open product. Public credential API. Market of equivalents. Same URI contract from day one. s3r.ch consumes the API; it does not own the relay. Azure is not the Gun datastore.
 
-**Near-term lab: an optional standalone relay**, and only if every [A standalone relay is allowed only if](#a-standalone-relay-is-allowed-only-if) condition holds. Independent of Panopticon **as a process** — yes, a coturn in FyberLabs/infra can relay before the product network exists. Independent of Panopticon **as the lock** — no. Time-boxed. Identical contract. No product data on the VM. Graduation is DNS/config cutover.
+**Near-term lab: an optional standalone relay**, and only if every [A standalone relay is allowed only if](#a-standalone-relay-is-allowed-only-if) condition holds. Independent of Panopticon **as a process** — yes, a coturn in FyberLabs/infra can relay before the product network exists. Independent of Panopticon **as the decision** — no. Time-boxed. Identical contract. No product data on the VM. Graduation is DNS/config cutover.
 
-**Infra-only relay:** do not take it unless the lock is amended in hypermesh-docs. No sibling `open-services.md` PR from this work — we are not proposing that amendment.
+**Infra-only relay:** do not take it unless the decision is amended in hypermesh-docs. No sibling `open-services.md` PR from this work — we are not proposing that amendment.
 
 ### Graduation (standalone relay → Panopticon TURN allocate): DNS / config cutover
 
@@ -300,7 +300,7 @@ Checklist for live TURN:
 | --- | --- | --- |
 | End-state? | **Panopticon TURN allocate** — the open TURN product. Same allocate/ICE URI contract. Azure is not the Gun datastore. | — |
 | Can TURN live in FyberLabs/infra independent of Panopticon **for the lab**? | **Optional standalone relay**, and only if time-boxed, contract-identical, no product data, graduation = DNS/config cutover. SKU: B2s/B2ms, East US 2, public TURN, separate from the seeder. Not WG/Tailscale for browsers. | Prefer waiting for Panopticon TURN allocate: say so; lab stays STUN + `/gun`. |
-| Does a standalone relay replace Panopticon? | **No.** Lock 5 / `open-services.md` stay. Cutover retires the second plane. | An infra-only relay = amend `open-services.md` in hypermesh-docs. Not done here. |
+| Does a standalone relay replace Panopticon? | **No.** Decision 5 / `open-services.md` stay. Cutover retires the second plane. | An infra-only relay = amend `open-services.md` in hypermesh-docs. Not done here. |
 | Durable graph on App Service disk? | **No** as the archive. Optional Blob of the existing Public snapshot. Mesh (D1) + optional seed relay VM (D3) for shared puts — **not** the TURN host. | Files-mount radisk is the Mastodon slope. |
 | Implement now? | **TURN allocate hop — this slice.** No infra coturn PR. | — |
 | Live TURN on App Service? | Research: three application settings in FyberLabs/infra `terraform/s3rch` (KV for the API key). [Operator / infra habit](#operator--infra-habit-live-turn). | Leave empty → STUN + `/gun`. |
