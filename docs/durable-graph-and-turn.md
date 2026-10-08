@@ -234,7 +234,7 @@ No Terraform in this repo. No apply. When Chris wants the lab relay, a sibling *
 | Secrets | Long-lived auth secret in `kv-fyber-cg47`; UAMI read | Commit the secret; `NEXT_PUBLIC_*`; put it on Gun |
 | NSG | Allow **UDP 3478** + the chosen relay range, and **443/tcp** if TURNS, from `0.0.0.0/0` (browser clients). Lock admin SSH to existing admin paths (Tailscale / jump) | PE-only ingress. Public SSH. Uncapped relay ports |
 | Shared use | One public TURN for s3r.ch Gun first; Hypermesh may share the **TURN contract** | Put coturn on `vm-pano-test` / `wg.test`. Send `/feed` through Tailscale |
-| s3r.ch consume (this slice) | Mint against the **same** allocate URI contract as A → `opt.rtc.iceServers` = STUN + time-limited `turn:` / `turns:` | A second mint API. Static password on live ICE. Product key in `NEXT_PUBLIC_*` |
+| s3r.ch consume (this slice) | Mint against the **same** allocate URI contract as Panopticon TURN allocate → `opt.rtc.iceServers` = STUN + time-limited `turn:` / `turns:` | A second mint API. Static password on live ICE. Product key in `NEXT_PUBLIC_*` |
 
 `terraform/s3rch/README.md` already says: “TURN is later (Panopticon). … Do not add coturn or a Cloudflare Worker here.” That line stays until an infra PR exists. The sketch above is that later layer, not a change to the web-app module.
 
