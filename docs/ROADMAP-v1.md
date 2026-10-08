@@ -1,10 +1,10 @@
 # s3r.ch v1 roadmap (remaining)
 
-2026-09-22. Updated remaining-work list. Detail and locks stay in [ARCHITECTURE.md](ARCHITECTURE.md). Bot-plane draft: [bot-plane-compatibility.md](bot-plane-compatibility.md).
+2026-09-22. Updated remaining-work list. Detail and decisions stay in [ARCHITECTURE.md](ARCHITECTURE.md). Bot-plane draft: [bot-plane-compatibility.md](bot-plane-compatibility.md).
 
-Open source s3r.ch is compatibility with familiar client shapes, not a clone of Discord, Slack, Linear, or Jira. Gun is the graph. Azure App Service is a seed peer, not the chat server. Panopticon is the open service plane (TURN, oracles, payments). Do not invent a second control plane.
+Open source s3r.ch is compatibility with familiar client shapes, not a clone of Discord, Slack, Linear, or Jira. Gun is the graph. Azure App Service is a seed peer, not the chat server. Panopticon is the open service plane (TURN, oracles, payments). Do not add a second control plane.
 
-Bot plane and light project objects below are **planned v1**. They are not live. The P0 target is a draft for Product review.
+Bot plane and light project objects below are **planned v1**. They are not live. The P0 target is a draft for review.
 
 ## Already largely shipped
 

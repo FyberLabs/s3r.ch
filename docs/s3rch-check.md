@@ -29,7 +29,7 @@ Grant **delivery** of a Gun-stored object the dest Check already allows is a hol
 
 Later, on request: more verbs on the TS spec. Not this cut.
 
-## Locked Gun paths (do not fork)
+## Fixed Gun paths (do not fork)
 
 ```
 gun.get('s3rch').get('items').get(encodeKey(id))  → GunFeedNode
@@ -48,7 +48,7 @@ gun.get('s3rch').get('acl').get(aclPrincipalKey(owner))
 
 `aclKey`: `encodeKey` then `/` → `_` so dest-ACL souls stay five segments. Not a second `encodeKey` for items or users.
 
-Held-claim object id is the **claim id itself** (`ens:name.eth`, `unstoppable:…`, `fc:…` / `farcaster:…`, `lens:…`, `rss3:0x…`, `email:…`, `phone:…`, `kyc:<issuer>:…`), linked from `GunUserNode.indicators` on `s3rch/users/<wallet>`. Mesh Check treats those ids the same as `GunFeedNode` ids. Do not invent `s3rch/users/<wallet>/claims/…`. Overlay uses the same `GunUserNode` shape until s3r.ch `prepareShareUserIntoMesh` / `prepareShareClaimIntoMesh`. Posts / rooms stay opaque `CheckObjectId`s — s3r.ch owns those souls.
+Held-claim object id is the **claim id itself** (`ens:name.eth`, `unstoppable:…`, `fc:…` / `farcaster:…`, `lens:…`, `rss3:0x…`, `email:…`, `phone:…`, `kyc:<issuer>:…`), linked from `GunUserNode.indicators` on `s3rch/users/<wallet>`. Mesh Check treats those ids the same as `GunFeedNode` ids. There is no `s3rch/users/<wallet>/claims/…` path. Overlay uses the same `GunUserNode` shape until s3r.ch `prepareShareUserIntoMesh` / `prepareShareClaimIntoMesh`. Posts / rooms stay opaque `CheckObjectId`s — s3r.ch owns those souls.
 
 The Rust crate remains the full plane. See [FyberLabs/SociACL docs/gun.md](https://github.com/FyberLabs/SociACL/blob/master/docs/gun.md) for that map. Social Light hop wire: [FyberLabs/SociACL docs/social-light.md](https://github.com/FyberLabs/SociACL/blob/master/docs/social-light.md).
 

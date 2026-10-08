@@ -2,7 +2,7 @@
 # Fail if committed files use internal agent-ops language.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-pattern='Research Bot|Developer Bot|Soft Soft|Fast-Grok|Ready-to-Paste|Cursor Composer|If you are an AI|chris@192\.168\.6\.50'
+pattern='Research Bot|Developer Bot|Dev Bot|Product Developer|Product review|Greenlight|Steering locks|Do not invent|Soft Soft|Fast-Grok|Ready-to-Paste|Cursor Composer|If you are an AI|chris@192\.168\.6\.50'
 matches="$(git grep -nE "$pattern" -- \
   ':!scripts/check-public-voice.sh' \
   ':!**/node_modules/**' \

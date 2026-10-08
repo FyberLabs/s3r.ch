@@ -13,7 +13,7 @@
  * Never Gun. Never localStorage. Never Stripe / core/payment-service.
  * Never SIWE-as-Panopticon-login. Never Keycloak as s3r.ch login.
  * Fail soft: missing env / 401 / 503 / network / bad JSON → caller keeps
- * the public page. Do not invent a SociACL grant. Do not hard-paywall.
+ * the public page. Never create a SociACL grant. Do not hard-paywall.
  */
 
 export const PANOPTICON_PAYMENTS_PREFIX = "/api/v1/payments/v0";
@@ -128,7 +128,7 @@ export function normalizePaymentsBase(raw: string): string | null {
   }
 }
 
-/** Join operator base to the locked receipt or intent path. */
+/** Join operator base to the fixed receipt or intent path. */
 export function panopticonPaymentsUrl(
   base: string,
   verb: "receipt" | "intent",

@@ -57,7 +57,7 @@ describe("oracles consume / payments consume", () => {
     assert.equal(doc.includes("oracles-unconfigured"), true);
     assert.equal(doc.includes("unauthorized"), true);
     assert.equal(doc.includes("Never `NEXT_PUBLIC_*`"), true);
-    assert.equal(doc.includes("Do not invent a SociACL grant"), true);
+    assert.equal(doc.includes("Never create a SociACL grant"), true);
     assert.equal(doc.includes("Not Stripe"), true);
   });
 

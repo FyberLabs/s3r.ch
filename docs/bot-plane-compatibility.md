@@ -1,8 +1,8 @@
 # Bot plane compatibility (Slack/Discord-shaped, not clones)
 
-2026-09-22. **Planned v1.** Draft for Product review — not signed off, and not implemented. No routes, tokens, or webhooks ship with this note.
+2026-09-22. **Planned v1.** Draft for review — not approved, and not implemented. No routes, tokens, or webhooks ship with this note.
 
-Parent locks: [ARCHITECTURE.md](ARCHITECTURE.md). Remaining work: [ROADMAP-v1.md](ROADMAP-v1.md). Grants: [s3rch-check.md](s3rch-check.md). Human sessions: [identity.md](identity.md).
+Parent decisions: [ARCHITECTURE.md](ARCHITECTURE.md). Remaining work: [ROADMAP-v1.md](ROADMAP-v1.md). Grants: [s3rch-check.md](s3rch-check.md). Human sessions: [identity.md](identity.md).
 
 ## Why
 
@@ -16,7 +16,7 @@ An adapter-compatible bot plane sits beside the human Gun mesh. Humans keep the 
 
 The record stays the Gun room. A webhook is a notification of a put the bot is allowed to see. A missed delivery does not delete the message and does not grant `see`. If a write cannot be admitted onto the same chat path a human uses, it fails. It does not queue in Azure as the product.
 
-Gun nodes stay `v: 1`. The bot edge is one documented event surface aligned with that version. It is not a REST versioning matrix and not a central social API host (steering lock 3).
+Gun nodes stay `v: 1`. The bot edge is one documented event surface aligned with that version. It is not a REST versioning matrix and not a central social API host (design decision 3).
 
 ## Primitives
 
@@ -35,7 +35,7 @@ Threads, reactions, tokens, and webhooks are the target shape. They are not on t
 
 ## P0 target
 
-Chris Hamilton’s lean, for Product to accept or amend: a **neutral OpenAPI event + write surface**, documented as s3r.ch-native, plus **thin adapters** that remap to Slack Events / Incoming Webhooks and Discord interactions enough that Bolt, n8n, and Cursor-style bots can attach without a custom s3r.ch SDK on day one.
+Proposed direction, open for review: a **neutral OpenAPI event + write surface**, documented as s3r.ch-native, plus **thin adapters** that remap to Slack Events / Incoming Webhooks and Discord interactions enough that Bolt, n8n, and Cursor-style bots can attach without a custom s3r.ch SDK on day one.
 
 Day-one native events and writes:
 

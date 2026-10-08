@@ -13,7 +13,7 @@ const CHAINS = [mainnet, sepolia, base, optimism, arbitrum, polygon] as const;
 
 /**
  * Reown Cloud / WalletConnect project id from the Next.js public env.
- * Trimmed; empty or unset → null (no WalletConnect). Do not invent an id.
+ * Trimmed; empty or unset → null (no WalletConnect). No default id.
  * Injected + Coinbase Smart Wallet stay present either way.
  */
 export function walletConnectProjectId(

@@ -1,6 +1,6 @@
 /**
- * Shared instrument classes. Text on signal is locked #0E0F0C
- * (never paper --ground). Do not invent brand hex here.
+ * Shared instrument classes. Text on signal is fixed at #0E0F0C
+ * (never paper --ground). No new brand hex here.
  */
 export const onSignal = "text-on-signal";
 

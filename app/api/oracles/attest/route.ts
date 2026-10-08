@@ -13,7 +13,7 @@ export const runtime = "nodejs";
  * Session-gated hop to Panopticon `POST /api/v1/oracles/v0/attest`.
  * SIWE stays on this origin. Product API key stays on the server.
  * Empty env / hop fail → 503; keep browser-first SIWE / ENS / ERC-1271.
- * Plane `ok: false` is HTTP 200. Do not invent a grant from a miss.
+ * Plane `ok: false` is HTTP 200. Never create a grant from a miss.
  */
 export async function POST(request: Request): Promise<Response> {
   let secret: string;

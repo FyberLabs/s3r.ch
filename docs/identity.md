@@ -1,6 +1,6 @@
 # s3r.ch user identity (2026-09-08)
 
-Source of truth for login on this Next app. Product decisions agreed with Chris Hamilton (cchamilt).
+Source of truth for login on this Next app.
 
 This kit is **s3r.ch login** (wallet first) and, later, a Hypermesh **wallet door**. The Hypermesh portal stays Keycloak. **Do not make OIDC primary login on s3r.ch.** Panopticon Keycloak OAuth is a **backup** door only, with the same brokers Hypermesh already uses (Microsoft, GitHub, Google). See [oauth-idp.md](oauth-idp.md).
 
@@ -58,9 +58,9 @@ Components here are written so they can be extracted into a shared kit later. Th
 - Dumping user posts into the public seed / `GET /api/feed` snapshot / lab seeder by default.
 - Changing seed Gun, Cloudflare, GitHub Actions, or `lib/auth.ts` seed helper (that file is `SEED_SECRET` only).
 
-## Locks
+## Decisions
 
-| Lock | Why |
+| Decision | Why |
 | --- | --- |
 | Session key is the checksummed address | ENS, Unstoppable name, fname, Lens handle, RSS3 id, email, phone, KYC attestation, Keycloak `sub`, and SEA `pub` are never the session subject. EOA or ERC-1271 contract address only |
 | Gun and Check object owner is the sociacl owner | A second linked wallet reads and writes those objects as the first checksummed address. The mesh key, wrap, and chain lookups stay on the wallet that signed. Linked OAuth with no signing wallet does not mint a Gun key. With no bound hyperme.sh wallet, the session bar asks them to create or connect one first |
@@ -100,7 +100,7 @@ Pinned to current majors compatible with Next.js 16, React 19, and Node 24:
 
 No SimpleWebAuthn. The PRF helper uses native `navigator.credentials.create` / `get` with `extensions.prf`.
 
-WalletConnect is **gated**. Do not invent a Reown project id in this repo or in CI. An empty `NEXT_PUBLIC_WC_PROJECT_ID` (the default) keeps the Docker image without WalletConnect; injected + Smart Wallet still ship. Smart Wallet is **ungated** and does not use a CDP Project ID.
+WalletConnect is **gated**. Never commit a Reown project id to this repo or CI. An empty `NEXT_PUBLIC_WC_PROJECT_ID` (the default) keeps the Docker image without WalletConnect; injected + Smart Wallet still ship. Smart Wallet is **ungated** and does not use a CDP Project ID.
 
 ## Module map
 
@@ -162,7 +162,7 @@ WalletConnect is **gated**. Do not invent a Reown project id in this repo or in 
 | `lib/turn-ice.ts` | Browser `/api/turn/allocate` fetch, STUN fallback, re-allocate before `expiresAt` |
 | `app/api/turn/allocate` | `GET`/`POST` — SIWE cookie, then hop. 401 unsigned; 503 empty env / hop fail |
 | `lib/oracles-attest.ts` | Server hop to Panopticon `POST /api/v1/oracles/v0/attest`. `PANOPTICON_ORACLES_BASE` + shared tenant/key. Session-gated. Fail soft |
-| `app/api/oracles/attest` | `POST` `{ kind, subject }` — SIWE cookie, then hop (`clientHint` locked to `s3rch-next`). 401 unsigned; 503 empty env / hop fail; 200 plane JSON including `ok: false` |
+| `app/api/oracles/attest` | `POST` `{ kind, subject }` — SIWE cookie, then hop (`clientHint` fixed to `s3rch-next`). 401 unsigned; 503 empty env / hop fail; 200 plane JSON including `ok: false` |
 | `lib/payments-access.ts` | Server hop to Panopticon payments receipt/intent. `PANOPTICON_PAYMENTS_BASE` + shared tenant/key. Session-gated. Fail soft |
 | `app/api/payments/receipt` | `POST` — SIWE cookie, then hop `POST /api/v1/payments/v0/receipt`. 401 unsigned; 503 empty env / hop fail |
 | `app/api/payments/intent` | `POST` — optional quote hop. Same session/env habit as receipt |
@@ -409,7 +409,7 @@ After `POST /api/identity/verify` succeeds, the client:
 
 Legacy lab records may still be **plaintext in IndexedDB**. PRF wrap replaces that `seaPair` field when the user wraps.
 
-Locks that stay:
+Decisions that stay:
 
 - Never `sessionStorage`.
 - Never `user.recall({ sessionStorage: true })`.
@@ -479,13 +479,13 @@ Source of truth: [s3rch-check.md](s3rch-check.md) / [s3rch-check.d.ts](s3rch-che
 
 Dest ACL is lab-local (memory / IndexedDB) for immediate privilege-down, plus Gun `s3rch/acl` `MeshSeeGrant` so peers evaluate the same Check after HAM-merge. Grants are `IdentitySeeGrant` / `MeshSeeGrant` records only. Public mesh vs mine still applies: a grant is not share-into-mesh and is not written onto `s3rch/items|rooms|users`. Delivery is a separate holder put onto `s3rch/granted/<accessor>`. Share-into-mesh is a separate confirm + `items.put` of an already-admitted GunFeedNode, `rooms.put` of an already-admitted GunRoomNode, or `users.put` of an already-admitted GunUserNode (full node or a selected claim). Unshare is a separate confirm + tombstone / republish put on those same public paths. It does not call `cancelSee`. Observation can wait. Delivery must not resurrect those unshare tombstones. Grant ≠ share ≠ delivery ≠ unshare.
 
-Claim object id is the claim id, linked from the user node (`ens:name.eth`, `email:…`, `phone:…`, `kyc:<issuer>:…`). Do not invent `s3rch/users/{wallet}/claims/…`.
+Claim object id is the claim id, linked from the user node (`ens:name.eth`, `email:…`, `phone:…`, `kyc:<issuer>:…`). There is no `s3rch/users/{wallet}/claims/…` path.
 
 Quiet `/feed` IdentityBar: grant see + revoke after SIWE on held claims. Publish / unshare user node and share / unshare claim after SIWE (confirm + admit + put). Quiet Grant see / Revoke on own Mine native posts and own Mine rooms. Unshare is on the Mine share controls, not on the grant row. No hop UI. No Elect / wills / Case C. Social Light hop may factor Check in TS; it cannot mint a grant. Compose, new room, sending chat, announcing presence, writing a user node, and pulling allowed lab sources require a live SIWE cookie session. Login stays EIP-4361. No email login, no Keycloak, no second IdP.
 
 ## Follow-ups
 
-- Operator: App Service WebSockets + HTTP/2 so the already-wired same-origin `/gun` peer can stay up (Cloudflare + Azure ARR can still drop the socket; snapshot stays on Public). `gun/lib/webrtc` + STUN, the session-gated TURN allocate hop, the Network tab, the Granted tab, the Gun user node, unshare, live mesh delivery, and signed-in browser pull (Mine until share) already ship. Empty `PANOPTICON_TURN_*` stays STUN. No TURN secrets on Gun. Durable graph stays requirements-only: [durable-graph-and-turn.md](durable-graph-and-turn.md). Product end-state is Panopticon. Optional time-boxed infra coturn only with the same URI contract and DNS/config cutover — not a second control plane, not WG/Tailscale for browsers. Still later: meetings/streams. Room presence already ships. Google STUN ≠ TURN. Long-term low/no server footprint, TURN-class relays, Panopticon-hosted needed services, oracles/validators, versioned Gun `v`, and later crypto (or optional fiat) payments: [ARCHITECTURE.md — Steering locks (2026-09-02)](ARCHITECTURE.md#steering-locks-2026-09-02). Do not grow s3r.ch Azure into that service in this PR.
+- Operator: App Service WebSockets + HTTP/2 so the already-wired same-origin `/gun` peer can stay up (Cloudflare + Azure ARR can still drop the socket; snapshot stays on Public). `gun/lib/webrtc` + STUN, the session-gated TURN allocate hop, the Network tab, the Granted tab, the Gun user node, unshare, live mesh delivery, and signed-in browser pull (Mine until share) already ship. Empty `PANOPTICON_TURN_*` stays STUN. No TURN secrets on Gun. Durable graph stays requirements-only: [durable-graph-and-turn.md](durable-graph-and-turn.md). Product end-state is Panopticon. Optional time-boxed infra coturn only with the same URI contract and DNS/config cutover — not a second control plane, not WG/Tailscale for browsers. Still later: meetings/streams. Room presence already ships. Google STUN ≠ TURN. Long-term low/no server footprint, TURN-class relays, Panopticon-hosted needed services, oracles/validators, versioned Gun `v`, and later crypto (or optional fiat) payments: [ARCHITECTURE.md — Design decisions (2026-09-02)](ARCHITECTURE.md#design-decisions-2026-09-02). Do not grow s3r.ch Azure into that service in this PR.
 - SNS / Solana names (not this slice; ENS remains primary mainnet reverse+forward. Unstoppable is a held claim after SIWE, not login).
 - Live vendor send / KYC issuer after SIWE (not as login). Confirm already ships as a private held claim. Mesh-wide Check + hop factor ship; hop UI and friend-of-friend do not. Do not import `FyberLabs/SociACL`.
 - Azure Key Vault for `IDENTITY_SESSION_SECRET` (wired in FyberLabs/infra `terraform/s3rch`) and later `UNSTOPPABLE_API_KEY`.

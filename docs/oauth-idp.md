@@ -4,7 +4,7 @@ Status: start, callback, secondary Continue, and two-way SIWE link ship. 2026-09
 Wallet / SIWE stays **primary**. OAuth through Panopticon Keycloak is **backup**.
 Parent: [identity.md](identity.md). Hypermesh plane: [auth-kit](https://github.com/FyberLabs/hypermesh-docs/blob/main/auth-kit.md), [customer-interfaces](https://github.com/FyberLabs/hypermesh-docs/blob/main/customer-interfaces.md). Brokers: [panopticon Keycloak README](https://github.com/FyberLabs/panopticon/blob/main/infra/keycloak/README.md).
 
-## Lock
+## Decision
 
 | Rule | Meaning |
 | --- | --- |
@@ -37,4 +37,4 @@ Broker callbacks stay on the Keycloak host. s3r.ch is a Keycloak **client** with
 
 ## Renter how-to
 
-Product how-tos live with the Hypermesh project notes (account setup + AI forum). This file is the identity lock for implementers.
+Product how-tos live with the Hypermesh project notes (account setup + AI forum). This file is the identity design for implementers.

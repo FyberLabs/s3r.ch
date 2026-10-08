@@ -13,13 +13,13 @@
  *   claim id = the id itself (ens:… / unstoppable:… / fc:… / lens:… /
  *              rss3:… / email:… / phone:… / kyc:<issuer>:…), linked
  *              from GunUserNode.indicators
- *   Do not invent s3rch/users/<wallet>/claims/…
+ *   There is no s3rch/users/<wallet>/claims/… path.
  *   accessor = wallet / Gun peer
  *   hopcap 1, jointly stated grants, revoke immediate
  *   hop      = optional Social Light factor; never a grant
  */
 
-/** Locked Gun root. */
+/** Fixed Gun root. */
 export type S3rchRoot = "s3rch";
 
 export type FeedSource = "rss3" | "rss" | "atom";
@@ -365,7 +365,7 @@ export function cancelSee(
 export type S3rchAcl = "acl";
 
 /**
- * Held-claim CheckObjectId prefixes locked by s3r.ch.
+ * Held-claim CheckObjectId prefixes fixed by s3r.ch.
  * The object id is the claim id itself, linked from
  * GunUserNode.indicators. Same Mesh Check path as a GunFeedNode id.
  * s3r.ch #46 also links `farcaster:` (same family as `fc:`).

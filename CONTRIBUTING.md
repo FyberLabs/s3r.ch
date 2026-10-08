@@ -18,7 +18,7 @@ New issues get a `needs-triage` label. That is first-pass intake only.
 Use the **[Review findings](.github/ISSUE_TEMPLATE/ai-review.yml)** form for a cluster of related findings from a code or docs review.
 
 - Cite docs paths you actually read: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/identity.md](docs/identity.md), [docs/s3rch-check.md](docs/s3rch-check.md), [docs/durable-graph-and-turn.md](docs/durable-graph-and-turn.md), [docs/pull-relay.md](docs/pull-relay.md).
-- Say whether you ran the app or reviewed docs only. Do not invent stack traces.
+- Say whether you ran the app or reviewed docs only. Only include stack traces you actually saw.
 - Do not file Hypermesh, Panopticon, AKS, or other-repo infra here.
 - Do not dump credentials, SIWE signatures, Gun SEA keys, cookies, or PII.
 - Do not treat this lab as a live search product or as the Hypermesh backlog.
