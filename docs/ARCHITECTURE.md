@@ -243,19 +243,19 @@ Docs only. Full options, threat/ops, and lab-vs-product pick: [durable-graph-and
 
 ## TURN (allocate hop)
 
-Full ICE / auth / Cloudflare / A-B-C: [durable-graph-and-turn.md](durable-graph-and-turn.md).
+Full ICE / auth / Cloudflare / relay options: [durable-graph-and-turn.md](durable-graph-and-turn.md).
 
 Keep STUN. Signed-in `/feed` may `POST /api/turn/allocate` (cookie session). The Next server hops to Panopticon `POST /api/v1/turn/allocate` with `PANOPTICON_TURN_BASE`, `PANOPTICON_TENANT_ID`, and `PANOPTICON_API_KEY`. Empty env = STUN-only. Browser gets `{ iceServers, expiresAt }` and mutates Gun `opt.rtc` (re-allocate before expiry). TURN is for symmetric NAT (and later meetings), not snapshot hydrate, and not a chat server. No TURN on App Service. Orange-cloud `/gun` WebSocket stays. Time-limited credentials; long-lived secret stays on the Panopticon operator — never on Gun, never `NEXT_PUBLIC_*`, never the browser.
 
 **Recommend:** Panopticon TURN allocate as the end state, plus an optional **time-boxed** standalone coturn in infra that already implements the **same allocate / ICE URI contract**, so graduation is **DNS/config cutover**, not a second control plane. Azure is not the Gun datastore. Do **not** send s3r.ch browsers through cottage WireGuard or Tailscale (Tailscale stays admin SSH).
 
-If B happens later (not this PR): small dedicated Linux VM (**B2s / B2ms**, **East US 2**), one region, **separate host** from the Gun seeder, public TURN (do not PE-only), NSG UDP 3478 + capped relay range and 443 if TURNS, rate-limit early, no AKS / no gold HA until metrics say so. No product data on the relay.
+If a standalone relay happens later (not this PR): small dedicated Linux VM (**B2s / B2ms**, **East US 2**), one region, **separate host** from the Gun seeder, public TURN (do not PE-only), NSG UDP 3478 + capped relay range and 443 if TURNS, rate-limit early, no AKS / no gold HA until metrics say so. No product data on the relay.
 
-| Path | Near-term lab | Product end-state | Lock |
+| Option | Near-term lab | Product end-state | Lock |
 | --- | --- | --- | --- |
-| **A** Panopticon TURN product (open API, market of equivalents) | **This slice** hops allocate when env is set | **Recommended** | Matches lock 5 |
-| **B** Time-boxed infra coturn, identical URI contract, DNS cutover | **Optional**, only if every B condition in the design note holds | Retired or one operator of A | Lock **stays** |
-| **C** Infra-only forever | Conflicts | Conflicts | Requires amending `open-services.md` — not done here |
+| **Panopticon TURN allocate** (open TURN product; open API, market of equivalents) | **This slice** hops allocate when env is set | **Recommended** | Matches lock 5 |
+| **Standalone relay**: time-boxed infra coturn, identical URI contract, DNS cutover | **Optional**, only if every standalone-relay condition in the design note holds | Retired or one operator of Panopticon TURN allocate | Lock **stays** |
+| **Infra-only relay** (forever) | Conflicts | Conflicts | Requires amending `open-services.md` — not done here |
 
 This PR does not deploy a relay or add coturn to FyberLabs/infra. Live ICE may include allocate TURN when env is set.
 
