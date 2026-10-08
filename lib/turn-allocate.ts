@@ -1,5 +1,5 @@
 /**
- * Server hop: s3r.ch SIWE session → Panopticon TURN allocate (path A).
+ * Server hop: s3r.ch SIWE session → Panopticon TURN allocate.
  *
  * Contract: FyberLabs/panopticon `products/turn/docs/turn-allocate-v0.md`.
  * `POST /api/v1/turn/allocate` → `{ iceServers, expiresAt }`.

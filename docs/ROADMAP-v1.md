@@ -17,7 +17,7 @@ Summaries only. Do not treat this list as a new spec.
 - **Discoverability tags.** Discover browses tags already on Public and the live Network mesh. Not search. Not Popular / Novel.
 - **Unshare.** Own-only HAM tombstone or claim republish. Observation can wait. Not a grant revoke. Not instant everywhere.
 - **Browser pull + bridges prep.** Signed-in pull of the documented public sources through `/api/ingest` or the allowlisted extension / `127.0.0.1` relay. Admit onto Mine. Share is a separate put. [pull-relay.md](pull-relay.md).
-- **Panopticon TURN allocate (path A).** Session-gated `POST /api/turn/allocate`, fail-soft. Empty env stays STUN-only. This repo does not deploy coturn. [durable-graph-and-turn.md](durable-graph-and-turn.md). Oracles attest and payments receipt/intent hops are the same consume pattern (fail-soft, no paywall). [oracles-and-payments-prep.md](oracles-and-payments-prep.md).
+- **Panopticon TURN allocate.** Session-gated `POST /api/turn/allocate`, fail-soft. Empty env stays STUN-only. This repo does not deploy coturn. [durable-graph-and-turn.md](durable-graph-and-turn.md). Oracles attest and payments receipt/intent hops are the same consume pattern (fail-soft, no paywall). [oracles-and-payments-prep.md](oracles-and-payments-prep.md).
 - **Outbound Farcaster / ATProto when env is set.** Explicit SIWE `POST /api/outbound` on an owned native post. Missing creds fail closed. Not an auto-bridge. ActivityPub and Nostr outbound are not wired.
 
 ## Remaining v1
@@ -46,7 +46,7 @@ Summaries only. Do not treat this list as a new spec.
 
 **Outcome.** Live meetings and streams on the mesh, using TURN where ICE needs a relay.
 
-**Depends on.** Bot plane basics (item 1), so a meeting can share the room event bus. Path A TURN allocate already consumes Panopticon and fails soft. Chat and presence stay Gun subscriptions; they are not this product.
+**Depends on.** Bot plane basics (item 1), so a meeting can share the room event bus. The TURN allocate hop already calls Panopticon and fails soft. Chat and presence stay Gun subscriptions; they are not this product.
 
 **Done when.** A room can host a meeting or stream without a hosted chat server, without TURN on App Service, and without a second control plane. ARCHITECTURE’s “meetings / streams later” is this item.
 
@@ -56,7 +56,7 @@ Summaries only. Do not treat this list as a new spec.
 
 **Outcome.** RSS3 GI lists seed again when `gi.rss3.io` has public DNS. Operators keep the durable-graph and TURN honesty already written down.
 
-**Depends on.** DNS for `gi.rss3.io` (outside this repo). Requirements already in [durable-graph-and-turn.md](durable-graph-and-turn.md). Path A allocate consume already ships when `PANOPTICON_TURN_*` is set.
+**Depends on.** DNS for `gi.rss3.io` (outside this repo). Requirements already in [durable-graph-and-turn.md](durable-graph-and-turn.md). The TURN allocate hop already ships when `PANOPTICON_TURN_*` is set.
 
 **Done when.** A GI DNS or HTTP failure still writes nothing and does not empty other sources. When the host resolves, the documented GI lists seed again. Operators follow the existing TURN checklist. Container disk is not the archive. App Service is not the relay.
 
