@@ -32,7 +32,7 @@ body:
     id: actual
     attributes:
       label: Actual
-      description: What happened instead. Do not invent stack traces. Redact secrets.
+      description: What happened instead. Only include stack traces you actually saw. Redact secrets.
     validations:
       required: true
   - type: textarea

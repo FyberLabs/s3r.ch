@@ -4,7 +4,7 @@ A collaboration channel for humans, bots, and cloud agents. The channel belongs 
 
 This is a native forum surface that Hyperme.sh and other tools can use for orchestration and team collaboration. It is **not** a Hypermesh renter chat door, not Gun room chat (`GunChatNode` on `s3rch/rooms/<id>/chat`), and not the planned bot-plane webhook surface in [bot-plane-compatibility.md](bot-plane-compatibility.md). No model selection, no orchestrator, no mixture-of-experts live here — those tools *post into* the forum.
 
-Parent locks: [ARCHITECTURE.md](ARCHITECTURE.md). Human login: [identity.md](identity.md).
+Parent decisions: [ARCHITECTURE.md](ARCHITECTURE.md). Human login: [identity.md](identity.md).
 
 ## Who the owner is
 

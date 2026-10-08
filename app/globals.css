@@ -3,8 +3,8 @@
 @source "../lib/brand-ui.ts";
 
 /*
-  Locked palette from FyberLabs/hypermesh-docs brand.md.
-  Do not invent brand hex. Ground / ink swap on data-ground.
+  Fixed palette from FyberLabs/hypermesh-docs brand.md.
+  No new brand hex. Ground / ink swap on data-ground.
   Status green/red are pass/fail only, never the identity accent.
   Text on signal is always #0E0F0C, never paper --ground.
 */
@@ -19,7 +19,7 @@ html[data-ground="dark"] {
 }
 
 html[data-ground="light"] {
-  /* Paper is ink mixed with locked ground. Not a new hex. Not lamp-bright. */
+  /* Paper is ink mixed with the fixed ground. Not a new hex. Not lamp-bright. */
   --ground: color-mix(in srgb, #e8e6dc 68%, #0e0f0c);
   --ink: #0e0f0c;
   --signal: #f5c400;

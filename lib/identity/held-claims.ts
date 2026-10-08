@@ -2,7 +2,7 @@
  * Held-claim ids linked from the user node.
  *
  * Claim object id is the claim id (e.g. `ens:vitalik.eth`).
- * Do not invent `s3rch/users/{wallet}/claims/…`.
+ * There is no `s3rch/users/{wallet}/claims/…` path.
  */
 
 import { getAddress } from "viem";

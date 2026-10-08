@@ -4,7 +4,7 @@ Internal contract. Not a public `/` or `/feed` essay.
 
 Signed-in browsers still use same-origin `POST /api/ingest` as a CORS proxy. Direct browser-to-source still fails in a naked tab. This path is **additive**: a page handshake to an unpacked MV3 extension (`extensions/s3rch-pull`) or a `127.0.0.1` relay that fetches the **same documented source family** and hands rows into the existing Mine admit / share flow.
 
-## Locks
+## Decisions
 
 - Allowlist only (Farcaster hub, ATProto AppView, documented RSS/Atom, ActivityPub actors, Nostr `nos.lol`, optional RSS3 GI). Not an arbitrary URL proxy.
 - `/api/ingest` stays valid. Extension / relay miss falls back to it.

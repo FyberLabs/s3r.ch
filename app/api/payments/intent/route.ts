@@ -14,7 +14,7 @@ export const runtime = "nodejs";
  * Optional quote hop — a client that already knows pay-to can skip this.
  * SIWE stays on this origin. Product API key stays on the server.
  * Empty env / hop fail → 503; plane 200 (ok true or false) is passed through.
- * Do not invent a SociACL grant. Do not hard-paywall.
+ * Never create a SociACL grant. Do not hard-paywall.
  */
 export async function POST(request: Request): Promise<Response> {
   let secret: string;

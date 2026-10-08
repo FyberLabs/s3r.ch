@@ -30,7 +30,7 @@ export type {
   IdentitySeeGrant,
 } from "@/lib/feed-types";
 
-/** Locked Gun root. */
+/** Fixed Gun root. */
 export type S3rchRoot = "s3rch";
 
 export const S3RCH_ROOT = "s3rch" as const;
@@ -445,7 +445,7 @@ export function isAclId(id: string): boolean {
 }
 
 /**
- * Wallet as we name them → locked `s3rch/users/<wallet>`.
+ * Wallet as we name them → fixed `s3rch/users/<wallet>`.
  * A soul path is left as-is. Not a second user node.
  */
 export function accessorAliases(id: AccessorId): string[] {
@@ -492,7 +492,7 @@ export function grantNamesObject(
   return false;
 }
 
-/** Wallet claim or existing user soul → locked `s3rch/users/<wallet>`. */
+/** Wallet claim or existing user soul → fixed `s3rch/users/<wallet>`. */
 export function userObjectId(claimId: string): CheckObjectId | undefined {
   const trimmed = claimId.trim();
   if (!trimmed) return undefined;
@@ -513,7 +513,7 @@ export function grantNamesAccessor(
   return sameAccessor(grant.accessor, accessor);
 }
 
-/** Owner of the object or a locked soul alias (item / room / user). */
+/** Owner of the object or a fixed soul alias (item / room / user). */
 export function ownerOwnsObject(
   acl: SeeAcl,
   owner: AccessorId,

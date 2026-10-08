@@ -3,7 +3,7 @@
  *
  * Contract: FyberLabs/panopticon `products/oracles/docs/oracles-attest-v0.md`.
  * `POST /api/v1/oracles/v0/attest` → `{ ok, kind, subject, status, observedAt, digest?, upstream }`.
- * Hop `clientHint` is locked to `s3rch-next`.
+ * Hop `clientHint` is fixed to `s3rch-next`.
  *
  * Env (server-only, empty = no hop):
  *   PANOPTICON_ORACLES_BASE  origin or origin+/api/v1[/oracles[/v0]]
@@ -97,7 +97,7 @@ export function normalizeOraclesBase(raw: string): string | null {
   }
 }
 
-/** Join operator base to the locked attest path. */
+/** Join operator base to the fixed attest path. */
 export function panopticonAttestUrl(base: string): string {
   const trimmed = base.replace(/\/+$/, "");
   if (trimmed.endsWith(PANOPTICON_ATTEST_PATH)) return trimmed;
@@ -269,7 +269,7 @@ export async function hopPanopticonAttest(input: {
 /**
  * Next-route body. Unsigned → 401. Bad kind/subject → 400.
  * Missing env / hop fail → 503. Plane 200 (including `ok: false`) → 200.
- * Never returns the product API key. Do not invent a grant from a miss.
+ * Never returns the product API key. Never create a grant from a miss.
  */
 export async function sessionGatedAttest(input: {
   sessionAddress: string | null;

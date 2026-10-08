@@ -19,14 +19,14 @@ Empty any of the three settings for a hop (the default) is **fail-soft**:
 
 - Keep today’s browser-first SIWE ecrecover, ERC-1271, ENS reverse+forward.
 - Do not hard-fail `/feed`. Do not hard-paywall a page or connection.
-- Do not invent a SociACL grant from a missing `digest` or receipt.
-- Do not invent credentials.
+- Never create a SociACL grant from a missing `digest` or receipt.
+- Never commit placeholder credentials.
 
 Never put tenant or API key in `NEXT_PUBLIC_*`, Gun, `localStorage`, or the browser.
 
 ## Oracles hop
 
-SIWE stays on the s3r.ch origin. `POST /api/oracles/attest` is session-gated like `/api/turn/allocate`. Next hops `POST /api/v1/oracles/v0/attest` with `X-Tenant-ID` + `X-Api-Key`. Hop `clientHint` is locked to `s3rch-next`. `/verify` later. No UI paywall.
+SIWE stays on the s3r.ch origin. `POST /api/oracles/attest` is session-gated like `/api/turn/allocate`. Next hops `POST /api/v1/oracles/v0/attest` with `X-Tenant-ID` + `X-Api-Key`. Hop `clientHint` is fixed to `s3rch-next`. `/verify` later. No UI paywall.
 
 | Outcome | Next status | Body |
 | --- | --- | --- |
@@ -90,7 +90,7 @@ Fail-soft plane statuses (HTTP 200, `ok: false`): `not_found` \| `unverified` \|
 
 - **Signed-in hop → plane.** Cookie SIWE session + `PANOPTICON_PAYMENTS_BASE=https://api.test.hyperme.sh` + tenant + key. Next `POST /api/payments/receipt` `{ resource, txRef }` hops `POST https://api.test.hyperme.sh/api/v1/payments/v0/receipt` with `X-Tenant-ID` + `X-Api-Key`. Plane JSON (`ok` / `status` / `accessUntil`) is the 200 body. Optional intent is the same habit on `/api/payments/intent`.
 - **Unauth 401.** No session cookie → `{ error: "unauthorized" }`. Product API key is never sent from the browser.
-- **Empty env fail-soft.** Missing `PANOPTICON_PAYMENTS_BASE` / tenant / key → `503 { error: "payments-unconfigured" }`. Network / plane 401 / 503 / bad JSON → `503 { error: "payments-unavailable" }`. Keep `/feed` usable. Do not invent a SociACL grant from `accessUntil: null`.
+- **Empty env fail-soft.** Missing `PANOPTICON_PAYMENTS_BASE` / tenant / key → `503 { error: "payments-unconfigured" }`. Network / plane 401 / 503 / bad JSON → `503 { error: "payments-unavailable" }`. Keep `/feed` usable. Never create a SociACL grant from `accessUntil: null`.
 
 ## Integrator contracts
 

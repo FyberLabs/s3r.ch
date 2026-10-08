@@ -1,8 +1,8 @@
 # Bot plane compatibility (Slack/Discord-shaped, not clones)
 
-2026-09-22. **Planned v1.** Draft for Product review — not signed off, and not implemented. No routes, tokens, or webhooks ship with this note.
+2026-09-22. **Planned v1.** Draft for review — not approved, and not implemented. No routes, tokens, or webhooks ship with this note.
 
-Parent locks: [ARCHITECTURE.md](ARCHITECTURE.md). Remaining work: [ROADMAP-v1.md](ROADMAP-v1.md). Grants: [s3rch-check.md](s3rch-check.md). Human sessions: [identity.md](identity.md).
+Parent decisions: [ARCHITECTURE.md](ARCHITECTURE.md). Remaining work: [ROADMAP-v1.md](ROADMAP-v1.md). Grants: [s3rch-check.md](s3rch-check.md). Human sessions: [identity.md](identity.md).
 
 ## Why
 
@@ -35,7 +35,7 @@ Threads, reactions, tokens, and webhooks are the target shape. They are not on t
 
 ## P0 target
 
-Chris Hamilton’s lean, for Product to accept or amend: a **neutral OpenAPI event + write surface**, documented as s3r.ch-native, plus **thin adapters** that remap to Slack Events / Incoming Webhooks and Discord interactions enough that Bolt, n8n, and Cursor-style bots can attach without a custom s3r.ch SDK on day one.
+Proposed direction, open for review: a **neutral OpenAPI event + write surface**, documented as s3r.ch-native, plus **thin adapters** that remap to Slack Events / Incoming Webhooks and Discord interactions enough that Bolt, n8n, and Cursor-style bots can attach without a custom s3r.ch SDK on day one.
 
 Day-one native events and writes:
 

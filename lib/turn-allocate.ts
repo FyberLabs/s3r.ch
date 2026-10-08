@@ -77,7 +77,7 @@ export function normalizeTurnBase(raw: string): string | null {
   }
 }
 
-/** Join operator base to the locked allocate path. */
+/** Join operator base to the fixed allocate path. */
 export function panopticonAllocateUrl(base: string): string {
   const trimmed = base.replace(/\/+$/, "");
   if (trimmed.endsWith(PANOPTICON_ALLOCATE_PATH)) return trimmed;

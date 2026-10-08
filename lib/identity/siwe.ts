@@ -82,7 +82,7 @@ export function canVerifySiweContractOnChain(chainId: number): boolean {
  * HTTP URL later if it flakes.
  *
  * `verifyMessage` here is ERC-1271 for deployed smart accounts and EIP-6492
- * for counterfactual / undeployed wrappers. Do not invent a second verify path.
+ * for counterfactual / undeployed wrappers. Do not add a second verify path.
  */
 export function createMainnetSiweVerifyClient(): SiweSignatureVerifier {
   const client = createPublicClient({

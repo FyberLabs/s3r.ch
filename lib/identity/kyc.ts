@@ -123,7 +123,7 @@ export function createNotConfiguredKycIssuer(id = "env"): KycIssuer {
   };
 }
 
-/** Fixture when no issuer URL. Swap the HTTP issuer in when Chris sets one. */
+/** Fixture when no issuer URL. Swap the HTTP issuer in when an operator sets one. */
 export function activeKycIssuer(
   env: NodeJS.ProcessEnv = process.env,
 ): KycIssuer {
@@ -156,7 +156,7 @@ export type KycHttpResult =
 
 /**
  * Session-gated attestation. Issuer APIs are UrlLeaf until dest admits
- * the claim id onto the overlay. Do not invent a missing issuer.
+ * the claim id onto the overlay. A missing issuer is never filled in.
  */
 export async function attestKycForSession(params: {
   sessionAddress: string | null | undefined;
