@@ -10,9 +10,10 @@
  * An OAuth sub with no handle is unlinked and is not an owner.
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { getAddress } from "viem";
+import { identityLinkPath } from "../../identity-storage.cjs";
 
 export const LINK_FILE_V = 1;
 
@@ -39,6 +40,7 @@ export type LinkDenied = { denied: true; reason: "already-linked" | "bad-handle"
 export type LinkStore = {
   load(): { ok: true; file: IdentityLinkFile } | { ok: false; reason: "store-unreadable" | "unknown-version" };
   save(file: IdentityLinkFile): void;
+  withLock?<T>(action: () => T): T;
 };
 
 const SUB_MAX = 256;
@@ -48,7 +50,7 @@ export function emptyLinkFile(): IdentityLinkFile {
 }
 
 export function linkFilePath(): string {
-  return process.env.S3RCH_IDENTITY_LINKS || `${process.cwd()}/data/identity-links.json`;
+  return identityLinkPath();
 }
 
 export class FileLinkStore implements LinkStore {
@@ -72,11 +74,30 @@ export class FileLinkStore implements LinkStore {
     return parseLinkFile(parsed);
   }
 
+  withLock<T>(action: () => T): T {
+    mkdirSync(dirname(this.filePath), { recursive: true, mode: 0o700 });
+    const lock = `${this.filePath}.lock`;
+    // Atomic across processes on the mounted volume. Contention denies the write.
+    // Never steal a lock: a crashed writer requires operator recovery.
+    mkdirSync(lock, { mode: 0o700 });
+    try {
+      return action();
+    } finally {
+      rmdirSync(lock);
+    }
+  }
+
   save(file: IdentityLinkFile): void {
     const dir = dirname(this.filePath);
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
     const tmp = `${this.filePath}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(file), "utf8");
+    const fd = openSync(tmp, "w", 0o600);
+    try {
+      writeFileSync(fd, JSON.stringify(file), "utf8");
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
     renameSync(tmp, this.filePath);
   }
 }
@@ -104,7 +125,7 @@ export function openLinks(store: LinkStore): Links {
     return { ok: true, file: loaded.file };
   }
 
-  function link(input: { wallet: string; sub: string; idp: LinkIdp | null }): { owner: string } | LinkDenied {
+  function linkUnlocked(input: { wallet: string; sub: string; idp: LinkIdp | null }): { owner: string } | LinkDenied {
     const wallet = checksum(input.wallet);
     const sub = cleanSub(input.sub);
     const idp = cleanIdp(input.idp);
@@ -150,6 +171,14 @@ export function openLinks(store: LinkStore): Links {
     return { owner: wallet };
   }
 
+  function link(input: { wallet: string; sub: string; idp: LinkIdp | null }): { owner: string } | LinkDenied {
+    try {
+      return store.withLock ? store.withLock(() => linkUnlocked(input)) : linkUnlocked(input);
+    } catch {
+      return { denied: true, reason: "store-unreadable" };
+    }
+  }
+
   function commit(file: IdentityLinkFile): LinkDenied | null {
     try {
       store.save(file);
@@ -163,7 +192,7 @@ export function openLinks(store: LinkStore): Links {
     const address = checksum(wallet);
     if (!address) return null;
     const opened = load();
-    if ("denied" in opened) return address;
+    if ("denied" in opened) return process.env.NODE_ENV === "production" ? null : address;
     return personForWallet(opened.file, address)?.owner ?? address;
   }
 

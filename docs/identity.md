@@ -112,7 +112,7 @@ WalletConnect is **gated**. Never commit a Reown project id to this repo or CI. 
 | `lib/identity/nonce.ts` | Random SIWE nonce + signed cookie payload |
 | `lib/identity/session.ts` | Signed SIWE session `{ address, chainId, iat, exp }` |
 | `lib/identity/oauth.ts` | Backup OAuth: PKCE start, code exchange, backup cookie `{ sub, idp }`. No provider tokens. Not Gun. If a SIWE cookie is already present, the callback links both handles |
-| `lib/identity/link.ts` | JSON handles on one sociacl owner. `S3RCH_IDENTITY_LINKS` or `data/identity-links.json`. Not Gun. No tokens |
+| `lib/identity/link.ts` | JSON handles on one sociacl owner. `S3RCH_IDENTITY_LINKS` on a durable mount in production; `data/identity-links.json` in development. See [storage](identity-storage.md). Not Gun. No tokens |
 | `app/api/identity/oauth/start` | Redirect to Keycloak, or `/feed?oauth=unconfigured` when the issuer is missing |
 | `app/api/identity/oauth/callback` | Backup session cookie. Clears the PKCE cookie. Never the SIWE cookie. `?oauth=conflict` when the two paths already belong to different owners |
 | `app/api/identity/oauth/link` | `POST` binds the current SIWE cookie and the current backup cookie. 401 if either is missing. 409 `already-linked` |

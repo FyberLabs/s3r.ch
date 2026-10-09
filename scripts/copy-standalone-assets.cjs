@@ -15,4 +15,5 @@ function copy(src, dest) {
 copy(path.join(__dirname, "..", ".next", "static"), path.join(standalone, ".next", "static"));
 copy(path.join(__dirname, "..", "public"), path.join(standalone, "public"));
 copy(path.join(__dirname, "..", "gun-preload.cjs"), path.join(standalone, "gun-preload.cjs"));
+copy(path.join(__dirname, "..", "identity-storage.cjs"), path.join(standalone, "identity-storage.cjs"));
 console.log("[s3r.ch] standalone assets copied");

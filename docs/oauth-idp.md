@@ -32,7 +32,7 @@ Broker callbacks stay on the Keycloak host. s3r.ch is a Keycloak **client** with
 
 1. Keycloak client `s3rch-web` on `controlplane` (Panopticon realm import + live upsert). Public PKCE. Exact callback URIs. No new brokers.
 2. Start + callback routes; backup session cookie; tokens never stored and never on Gun. Missing issuer fails closed.
-3. Two-way link. OAuth then SIWE, or SIWE then OAuth, writes both handles onto one sociacl owner in `S3RCH_IDENTITY_LINKS` (default `data/identity-links.json`). The first linked wallet is the owner. A later wallet is another handle. Two existing owners do not merge (`already-linked`). Unlinked OAuth is not an owner. The file is not Gun and stores no provider tokens. A link-disk failure does not fail the login.
+3. Two-way link. OAuth then SIWE, or SIWE then OAuth, writes both handles onto one sociacl owner in `S3RCH_IDENTITY_LINKS` (development default `data/identity-links.json`; production requires an explicit mounted path). The first linked wallet is the owner. A later wallet is another handle. Two existing owners do not merge (`already-linked`). Unlinked OAuth is not an owner. The file is not Gun and stores no provider tokens. An unavailable identity store refuses linking; in production it also refuses wallet owner resolution. Startup validates the mounted storage.
 4. UI: primary Connect wallet / Sign in with wallet. Secondary Continue with Microsoft / GitHub / Google, or Hypermesh account, hitting the start route. Callback reads Panopticon `GET /auth/siwe/me` with the access token, then drops the token. A bound address is the hyperme.sh wallet handoff. Yes connects it by SIWE. No does not.
 
 ## Renter how-to
