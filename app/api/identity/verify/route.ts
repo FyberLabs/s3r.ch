@@ -73,19 +73,6 @@ export async function POST(request: Request) {
     return Response.json({ error: result.error }, { status });
   }
 
-  const session = await signSessionToken(
-    { address: result.address, chainId: result.chainId },
-    secret,
-  );
-  const secure = requestIsSecure(request);
-  await setIdentityCookie(
-    sessionCookieName(secure),
-    session,
-    secure,
-    SESSION_TTL_SECONDS,
-  );
-  await setIdentityCookie(nonceCookieName(secure), "", secure, 0);
-
   let linked = false;
   try {
     const backup = await readBackupFromRequest(request);
@@ -101,7 +88,21 @@ export async function POST(request: Request) {
     linked = false;
   }
 
-  const owner = ownerForWallet(result.address) ?? result.address;
+  const owner = ownerForWallet(result.address);
+  if (!owner) return Response.json({ error: "Identity store unavailable" }, { status: 503 });
+  const session = await signSessionToken(
+    { address: result.address, chainId: result.chainId },
+    secret,
+  );
+  const secure = requestIsSecure(request);
+  await setIdentityCookie(
+    sessionCookieName(secure),
+    session,
+    secure,
+    SESSION_TTL_SECONDS,
+  );
+  await setIdentityCookie(nonceCookieName(secure), "", secure, 0);
+
   return Response.json({
     address: result.address,
     chainId: result.chainId,

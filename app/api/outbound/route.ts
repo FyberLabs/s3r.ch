@@ -87,10 +87,12 @@ async function requireSession(
 
   try {
     const session = await readSessionToken(token, secret);
+    const owner = ownerForWallet(session.address);
+    if (!owner) return { ok: false, response: Response.json({ error: "Identity store unavailable" }, { status: 503 }) };
     return {
       ok: true,
       address: session.address,
-      owner: ownerForWallet(session.address) ?? session.address,
+      owner,
     };
   } catch {
     return {

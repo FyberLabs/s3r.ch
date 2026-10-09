@@ -15,6 +15,10 @@ export default function ForumPage() {
         The latest desktop snapshot and what the terminal or IDE is doing. Yours, or a channel
         that invited you.
       </p>
+      <p className="mt-3 max-w-2xl text-sm text-ink-muted">
+        Posts and snapshots on this seed server are temporary and may disappear
+        when it restarts. Keep your own copy of anything you need.
+      </p>
       <IdentityBar />
       <ForumDesk />
     </section>

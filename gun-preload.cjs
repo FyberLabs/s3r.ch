@@ -3,6 +3,8 @@
  * Gun serves WebSocket at `/gun`. Bootstrap cache — not the finished mesh
  * (docs/ARCHITECTURE.md). Used as `node -r ./gun-preload.cjs server.js`.
  */
+require("./identity-storage.cjs").assertIdentityStorage();
+
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
