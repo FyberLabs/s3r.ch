@@ -82,22 +82,16 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Require durable identity storage configuration
+      - name: Require identity blob storage configuration
         run: |
           set -euo pipefail
-          storage_settings=$(az webapp config appsettings list \
+          storage_settings="$RUNNER_TEMP/identity-blob-settings.json"
+          az webapp config appsettings list \
             --resource-group rg-s3rch-fyberlabs-prod \
             --name s3rch-fyberlabs-prod \
-            --query "[?name=='S3RCH_IDENTITY_STORAGE_ROOT' || name=='S3RCH_IDENTITY_LINKS' || name=='WEBSITES_ENABLE_APP_SERVICE_STORAGE'].{name:name,value:value}" -o json)
-          export storage_settings
-          python3 - <<'PYCODE'
-          import json, os, sys
-          settings = {item["name"]: item["value"] for item in json.loads(os.environ["storage_settings"])}
-          if (settings.get("S3RCH_IDENTITY_STORAGE_ROOT") != "/home"
-              or settings.get("S3RCH_IDENTITY_LINKS") != "/home/s3rch-identity/identity-links.json"
-              or settings.get("WEBSITES_ENABLE_APP_SERVICE_STORAGE", "").lower() != "true"):
-              sys.exit("Configure and migrate durable account-link storage before deploying; see docs/identity-storage.md")
-          PYCODE
+            --query "[?name=='S3RCH_IDENTITY_BLOB_ACCOUNT' || name=='S3RCH_IDENTITY_BLOB_CONTAINER'].{name:name,value:value}" \
+            -o json > "$storage_settings"
+          python3 scripts/require-identity-blob-settings.py "$storage_settings"
 
       - name: Get ACR token
         id: acr

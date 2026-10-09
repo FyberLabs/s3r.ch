@@ -17,4 +17,6 @@ copy(path.join(__dirname, "..", "public"), path.join(standalone, "public"));
 copy(path.join(__dirname, "..", "gun-preload.cjs"), path.join(standalone, "gun-preload.cjs"));
 copy(path.join(__dirname, "..", "identity-storage.cjs"), path.join(standalone, "identity-storage.cjs"));
 copy(path.join(__dirname, "..", "identity-link-schema.cjs"), path.join(standalone, "identity-link-schema.cjs"));
+copy(path.join(__dirname, "..", "identity-blob.cjs"), path.join(standalone, "identity-blob.cjs"));
+copy(path.join(__dirname, "..", "identity-blob-worker.cjs"), path.join(standalone, "identity-blob-worker.cjs"));
 console.log("[s3r.ch] standalone assets copied");

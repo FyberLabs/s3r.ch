@@ -11,6 +11,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@azure/identity": "^4.13.3",
+    "@azure/storage-blob": "^12.34.0",
     "@coinbase/wallet-sdk": "^4.4.0",
     "@faker-js/faker": "^10.6.0",
     "@farcaster/core": "^0.20.0",
