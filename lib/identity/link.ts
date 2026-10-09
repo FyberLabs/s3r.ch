@@ -38,6 +38,11 @@ export type IdentityLinkFile = {
 
 export type LinkDenied = { denied: true; reason: "already-linked" | "bad-handle" | "store-unreadable" };
 
+/**
+ * Account-link storage. `FileLinkStore` writes one JSON file on a mounted
+ * volume. The Panopticon routes this app calls do not store these links; see
+ * docs/identity-storage.md. Another class can implement this later.
+ */
 export type LinkStore = {
   load(): { ok: true; file: IdentityLinkFile } | { ok: false; reason: "store-unreadable" | "unknown-version" };
   save(file: IdentityLinkFile): void;

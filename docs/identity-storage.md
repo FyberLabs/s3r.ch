@@ -1,15 +1,23 @@
 # Durable account-link storage
 
 Account links are account data. They must survive replacement containers and
-recycles. A control-plane identity service remains the preferred long-term
-owner; this change implements issue #98's mounted-volume fallback without
-introducing another service inside the frontend.
+recycles. The preferred home is a control-plane account service. No such API
+exists on the Panopticon routes this app already calls, so links stay on a
+mounted volume behind `LinkStore`. `FileLinkStore` is that volume adapter. A
+later account API can replace the class without changing link rules.
+
+These are the routes checked:
+
+- TURN allocate, oracles attest, and payments receipt/intent (`PANOPTICON_TURN_BASE`, `PANOPTICON_ORACLES_BASE`, `PANOPTICON_PAYMENTS_BASE`, plus the shared tenant id and API key). They allocate relays, attestations, and payment receipts. They do not read or write an account link.
+- `GET /auth/siwe/me` and `POST /auth/siwe/bind`. They bind one wallet to the Keycloak subject of a bearer token. This app does not keep that token, a wallet-only sign-in has no Keycloak subject, and the record is one address per subject rather than the handles on one checksummed owner.
+- User-service organization identity-provider links. They bind an enterprise organization after an admin proves control of that organization. They are not a wallet or OAuth-subject handle store.
 
 Production requires an absolute `S3RCH_IDENTITY_LINKS` path beneath
 `S3RCH_IDENTITY_STORAGE_ROOT`. Startup checks that the root is a Linux mount,
 rejects container/memory layers, symlink escapes, missing/unreadable files and
 malformed JSON or unsupported versions, and checks write access. There is no production default
-under `/app/data`. Development keeps the existing local default.
+under `/app/data`. Development keeps the existing local default. The process
+refuses to start when those settings are missing.
 
 For Azure App Service, use:
 
@@ -39,8 +47,8 @@ setting can recycle the current container before its local links are saved.
    explicitly initialize `{"v":1,"people":[]}`. A missing file fails startup.
 4. Set the two identity path settings, deploy the new image, create a synthetic
    wallet/OAuth link and verify the owner mapping. Replace the container and
-   recycle the app, then verify the same mapping again. Keep the issue open until
-   both live checks pass. Retain the export securely until acceptance is complete.
+   recycle the app, then verify the same mapping again. Retain the export
+   securely until that live check passes.
 
 ## Writes and recovery
 
