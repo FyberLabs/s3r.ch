@@ -10,7 +10,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 
 - EIP-4361 **Sign-In with Ethereum** (SIWE).
 - **Keycloak OAuth backup** on the existing Panopticon `controlplane` realm (public PKCE client `s3rch-web`, brokers `microsoft` / `github` / `google`). `GET /api/identity/oauth/start` and `GET /api/identity/oauth/callback` set a backup cookie separate from the SIWE cookie. Provider tokens are not stored and are not written to Gun. Empty or unknown `S3RCH_OAUTH_ISSUER` fails closed. Unlinked OAuth is not an owner. A SIWE session and the backup cookie bind both ways onto one sociacl owner (the checksummed address) in the durable identity document. Gun and Check objects are owned by that address. The Gun mesh key stays on the wallet that signed the mesh-link statement. If Panopticon `GET /auth/siwe/me` returns a bound wallet, the session bar asks whether to connect that hyperme.sh wallet. Yes signs in with that address and links it as a handle. No leaves OAuth-only access: forum only when already linked, Gun still refused. No bound wallet keeps the create-or-connect ask. The access token is not stored. No mesh key is minted for the OAuth cookie.
-- Signed **HttpOnly cookie session** bound to a **checksummed** Ethereum address (never ENS, never email, never a SEA pub).
+- Signed **HttpOnly cookie session** bound to a **checksummed** Ethereum address (never ENS, never email, never a SEA pub). The first wallet sign-in, and the first OAuth backup session, ask the person to confirm they are at least 18. The time is stored on the identity record in the same durable document. No session cookie is issued without it. A record that already has the time is not asked again.
 - Quiet connect / sign-in / sign-out on `/feed` (injected wallet by default).
 - **Coinbase Smart Wallet onramp** (wagmi `coinbaseWallet` with `preference.options: "smartWalletOnly"`). Ungated — no project id. Creates or opens a passkey smart account so someone not in crypto yet can get an address, then SIWE as today. Not a second IdP. Not email/phone login. Not `@coinbase/cdp-wagmi`.
 - **WalletConnect** (QR / mobile) as a wagmi connector, **gated** on `NEXT_PUBLIC_WC_PROJECT_ID` at **build time**. Empty / unset keeps injected + Smart Wallet (no WalletConnect). WalletConnect is a connector, not a new identity provider. Sign-in is still SIWE after a session address exists.
@@ -112,9 +112,10 @@ WalletConnect is **gated**. Never commit a Reown project id to this repo or CI. 
 | `lib/identity/nonce.ts` | Random SIWE nonce + signed cookie payload |
 | `lib/identity/session.ts` | Signed SIWE session `{ address, chainId, iat, exp }` |
 | `lib/identity/oauth.ts` | Backup OAuth: PKCE start, code exchange, backup cookie `{ sub, idp }`. No provider tokens. Not Gun. If a SIWE cookie is already present, the callback links both handles |
-| `lib/identity/link.ts` | JSON handles on one sociacl owner. One private Azure Blob in production (`S3RCH_IDENTITY_BLOB_ACCOUNT`, `S3RCH_IDENTITY_BLOB_CONTAINER`); `data/identity-links.json` in development. See [storage](identity-storage.md). Not Gun. No tokens |
+| `lib/identity/link.ts` | JSON handles on one sociacl owner, including `ageConfirmedAt`. One private Azure Blob in production (`S3RCH_IDENTITY_BLOB_ACCOUNT`, `S3RCH_IDENTITY_BLOB_CONTAINER`); `data/identity-links.json` in development. See [storage](identity-storage.md). Not Gun. No tokens |
+| `lib/identity/age.ts` | First wallet sign-in stores the 18+ confirmation on that identity record and mints a session token only after it is present |
 | `app/api/identity/oauth/start` | Redirect to Keycloak, or `/feed?oauth=unconfigured` when the issuer is missing |
-| `app/api/identity/oauth/callback` | Backup session cookie. Clears the PKCE cookie. Never the SIWE cookie. `?oauth=conflict` when the two paths already belong to different owners |
+| `app/api/identity/oauth/callback` | Backup session cookie when this identity already confirmed they are at least 18. Otherwise `/feed?oauth=age` and no session cookie. Clears the PKCE cookie. Never the SIWE cookie. `?oauth=conflict` when the two paths already belong to different owners |
 | `app/api/identity/oauth/link` | `POST` binds the current SIWE cookie and the current backup cookie. 401 if either is missing. 409 `already-linked` |
 | `app/api/identity/oauth/session` | `{ idp, linked, owner }` for the backup door. `owner` is the checksummed address when linked, otherwise null. No Keycloak subject |
 | `lib/identity/siwe.ts` | Parse, domain/nonce/expiry checks, EOA ecrecover then ERC-1271 / EIP-6492 |
@@ -171,7 +172,8 @@ WalletConnect is **gated**. Never commit a Reown project id to this repo or CI. 
 | `lib/feed-discover.ts` | Client Discover corpus (Public seed + shared rooms + live Network mesh). Inventory tag counts, `?tag=` parse, owner snippet. Not search / Popular / Mine |
 | `lib/feed-tabs.ts` | Public = seed; Mine = overlay; Network = live shared Gun mesh; Granted = grant inbox (not snapshot, not overlay, not Public) |
 | `app/api/identity/nonce` | `GET` — issue nonce cookie, return `{ nonce }` |
-| `app/api/identity/verify` | `POST` `{ message, signature }` — verify SIWE, set session |
+| `app/api/identity/verify` | `POST` `{ message, signature, ageConfirmed? }` — verify SIWE. First sign-in requires `ageConfirmed: true` before the session cookie. A stored confirmation skips the ask |
+| `app/api/identity/oauth/age` | `POST` `{ ageConfirmed: true }` — store the OAuth confirmation, then set the backup session cookie |
 | `app/api/identity/session` | `GET` — current `{ address, chainId }` or 401 |
 | `app/api/identity/ens` | `GET ?address=` — session-gated ENS claim for the session address only |
 | `app/api/identity/unstoppable` | `GET ?address=` — session-gated Unstoppable claim for the session address only |

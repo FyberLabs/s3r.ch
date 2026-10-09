@@ -5,6 +5,7 @@ const viem_1 = require("viem");
 const LINK_FILE_V = 1;
 const IDPS = ["microsoft", "github", "google"];
 const SUB_MAX = 256;
+const AGE_STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 function parseLinkFile(value) {
     if (!value || typeof value !== "object")
         return { ok: false, reason: "store-unreadable" };
@@ -46,7 +47,13 @@ function parseLinkFile(value) {
             return { ok: false, reason: "store-unreadable" };
         people.push(person);
     }
-    return { ok: true, file: { v: LINK_FILE_V, people } };
+    const oauthAge = readOauthAge(record.oauthAge);
+    if (oauthAge === null)
+        return { ok: false, reason: "store-unreadable" };
+    const file = { v: LINK_FILE_V, people };
+    if (oauthAge.length)
+        file.oauthAge = oauthAge;
+    return { ok: true, file };
 }
 function asPerson(value) {
     if (!isRecord(value) || !Array.isArray(value.handles))
@@ -61,7 +68,41 @@ function asPerson(value) {
             return null;
         handles.push(parsed);
     }
-    return { owner, handles };
+    const age = readAge(value.ageConfirmedAt);
+    if (age === null)
+        return null;
+    const person = { owner, handles };
+    if (age)
+        person.ageConfirmedAt = age;
+    return person;
+}
+function readAge(value) {
+    if (value === undefined)
+        return undefined;
+    if (typeof value !== "string" || !AGE_STAMP.test(value) || !Number.isFinite(Date.parse(value)))
+        return null;
+    return value;
+}
+function readOauthAge(value) {
+    if (value === undefined)
+        return [];
+    if (!Array.isArray(value))
+        return null;
+    const rows = [];
+    const seen = new Set();
+    for (const row of value) {
+        if (!isRecord(row))
+            return null;
+        const sub = cleanSub(row.sub);
+        const confirmedAt = readAge(row.confirmedAt);
+        if (!sub || !confirmedAt)
+            return null;
+        if (seen.has(sub))
+            return null;
+        seen.add(sub);
+        rows.push({ sub, confirmedAt });
+    }
+    return rows;
 }
 function asHandle(value) {
     if (!isRecord(value))

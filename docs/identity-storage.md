@@ -5,7 +5,10 @@ Service recycle. The preferred home is a control-plane account service. No such
 API exists on the Panopticon routes this app already calls, so production stores
 the same JSON document in one private Azure Blob behind `LinkStore`.
 `BlobLinkStore` is that adapter. Development and tests keep `FileLinkStore`.
-A later account API can replace the class without changing link rules.
+A later account API can replace the class without changing link rules. The same
+document stores the time a person confirmed they are at least 18
+(`ageConfirmedAt` on that person, or `oauthAge` until an OAuth subject is a
+handle).
 
 These are the routes checked:
 

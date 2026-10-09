@@ -1,3 +1,4 @@
+import { completeWalletSignIn } from "@/lib/identity/age";
 import { SESSION_TTL_SECONDS } from "@/lib/identity/config";
 import {
   nonceCookieName,
@@ -12,9 +13,8 @@ import {
   setIdentityCookie,
 } from "@/lib/identity/http";
 import { readNonceToken } from "@/lib/identity/nonce";
-import { linkLoginPaths, ownerForWallet } from "@/lib/identity/link";
+import { linkLoginPaths } from "@/lib/identity/link";
 import { readBackupFromRequest } from "@/lib/identity/oauth";
-import { signSessionToken } from "@/lib/identity/session";
 import { verifySiweLogin } from "@/lib/identity/siwe";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +23,7 @@ export const runtime = "nodejs";
 type VerifyBody = {
   message?: unknown;
   signature?: unknown;
+  ageConfirmed?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -73,9 +74,26 @@ export async function POST(request: Request) {
     return Response.json({ error: result.error }, { status });
   }
 
+  let backup: Awaited<ReturnType<typeof readBackupFromRequest>> = null;
+  try {
+    backup = await readBackupFromRequest(request);
+  } catch {
+    backup = null;
+  }
+
+  const prepared = await completeWalletSignIn({
+    address: result.address,
+    chainId: result.chainId,
+    ageConfirmed: body.ageConfirmed === true,
+    secret,
+    oauthSub: backup?.sub ?? null,
+  });
+  if (!prepared.ok) {
+    return Response.json({ error: prepared.error }, { status: prepared.status });
+  }
+
   let linked = false;
   try {
-    const backup = await readBackupFromRequest(request);
     if (backup) {
       const bound = linkLoginPaths({
         wallet: result.address,
@@ -88,16 +106,10 @@ export async function POST(request: Request) {
     linked = false;
   }
 
-  const owner = ownerForWallet(result.address);
-  if (!owner) return Response.json({ error: "Identity store unavailable" }, { status: 503 });
-  const session = await signSessionToken(
-    { address: result.address, chainId: result.chainId },
-    secret,
-  );
   const secure = requestIsSecure(request);
   await setIdentityCookie(
     sessionCookieName(secure),
-    session,
+    prepared.token,
     secure,
     SESSION_TTL_SECONDS,
   );
@@ -107,6 +119,6 @@ export async function POST(request: Request) {
     address: result.address,
     chainId: result.chainId,
     linked,
-    owner,
+    owner: prepared.owner,
   });
 }

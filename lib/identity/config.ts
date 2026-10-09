@@ -49,4 +49,6 @@ export const COOKIE_BASE = {
   confirm: "s3rch-confirm",
   oauth: "s3rch-oauth",
   oauthPkce: "s3rch-oauth-pkce",
+  /** Short-lived OAuth proof waiting for age confirmation. Not a session. */
+  oauthAge: "s3rch-oauth-age",
 } as const;

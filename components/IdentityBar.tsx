@@ -8,6 +8,7 @@ import {
   useDisconnect,
   useSignMessage,
 } from "wagmi";
+import { AgeConfirmation } from "@/components/AgeConfirmation";
 import { SignInOptions } from "@/components/SignInOptions";
 import { IdentityProviders } from "@/components/IdentityProviders";
 import { HeldConfirmControls } from "@/components/HeldConfirmControls";
@@ -122,6 +123,9 @@ function IdentityBarInner() {
   const [wrapWithPaper, setWrapWithPaper] = useState(false);
   const [paperPaste, setPaperPaste] = useState("");
   const [paperReveal, setPaperReveal] = useState<string | null>(null);
+  const [needsAge, setNeedsAge] = useState(false);
+  const [ageChecked, setAgeChecked] = useState(false);
+  const [oauthAgePending, setOauthAgePending] = useState(false);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -184,6 +188,10 @@ function IdentityBarInner() {
     if (flag === "unconfigured") setMessage("Hypermesh sign-in is not configured.");
     if (flag === "denied") setMessage("Hypermesh sign-in did not finish.");
     if (flag === "conflict") setMessage("That Hypermesh account is already linked to another wallet.");
+    if (flag === "age") {
+      setNeedsAge(true);
+      setOauthAgePending(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -425,15 +433,22 @@ function IdentityBarInner() {
       const verifyRes = await fetch("/api/identity/verify", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: prepared, signature }),
+        body: JSON.stringify({ message: prepared, signature, ageConfirmed: ageChecked }),
       });
       const verifyBody = (await verifyRes.json()) as SessionPayload & {
         error?: string;
         owner?: string;
       };
+      if (verifyBody.error === "age-confirmation-required") {
+        setNeedsAge(true);
+        setMessage(null);
+        return;
+      }
       if (!verifyRes.ok) {
         throw new Error(verifyBody.error || "Verify failed.");
       }
+      setNeedsAge(false);
+      setAgeChecked(false);
       setSession({
         address: verifyBody.address,
         chainId: verifyBody.chainId,
@@ -468,6 +483,42 @@ function IdentityBarInner() {
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onConfirmAge() {
+    if (!ageChecked) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/identity/oauth/age", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ageConfirmed: true }),
+      });
+      const payload = (await response.json()) as { error?: string; conflict?: boolean };
+      if (payload.error === "age-confirmation-required") {
+        setNeedsAge(true);
+        return;
+      }
+      if (!response.ok) {
+        setMessage("Sign-in did not finish.");
+        return;
+      }
+      setNeedsAge(false);
+      setAgeChecked(false);
+      setOauthAgePending(false);
+      if (payload.conflict) {
+        setMessage("That Hypermesh account is already linked to another wallet.");
+      }
+      await refreshBackup();
+      const url = new URL(window.location.href);
+      url.searchParams.delete("oauth");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+    } catch {
+      setMessage("Sign-in did not finish.");
     } finally {
       setBusy(false);
     }
@@ -769,6 +820,21 @@ function IdentityBarInner() {
   return (
     <div className={`mt-10 ${panel}`}>
       <h2 className="text-lg font-semibold text-ink">{session ? "Your session" : "Sign in to s3r.ch"}</h2>
+      {needsAge ? (
+        <div>
+          <AgeConfirmation checked={ageChecked} disabled={busy} onChange={setAgeChecked} />
+          {oauthAgePending ? (
+            <button
+              type="button"
+              className={`${btnPrimary} mt-3`}
+              disabled={busy || !ageChecked}
+              onClick={() => void onConfirmAge()}
+            >
+              Continue
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {session ? (
           <>

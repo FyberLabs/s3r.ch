@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import { generateKeyPair, SignJWT } from "jose";
 import { LOCAL_SESSION_SECRET, OAUTH_CLIENT_ID, OAUTH_REDIRECT_URIS } from "./config";
 import { oauthPkceCookieName, oauthSessionCookieName, sessionCookieName } from "./cookies";
-import { linkLoginPaths, ownerForOAuth } from "./link";
+import { FileLinkStore, linkLoginPaths, openLinks, ownerForOAuth } from "./link";
 import { readSessionToken, signSessionToken } from "./session";
 import {
   ALLOWED_OAUTH_ISSUERS,
@@ -117,6 +117,15 @@ describe("OAuth start", () => {
 
 describe("OAuth callback", () => {
   it("sets a backup session and drops the provider tokens", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "s3rch-oauth-age-"));
+    const file = join(dir, "identity-links.json");
+    const previous = process.env.S3RCH_IDENTITY_LINKS;
+    process.env.S3RCH_IDENTITY_LINKS = file;
+    const confirmed = openLinks(new FileLinkStore(file)).saveOAuthAge(
+      "kc-user-1",
+      "2026-10-09T00:00:00.000Z",
+    );
+    assert.equal("confirmedAt" in confirmed, true);
     const { publicKey, privateKey } = await generateKeyPair("RS256");
     const started = await beginOAuth(
       startRequest("http://127.0.0.1:3000/api/identity/oauth/start?idp=github"),
@@ -176,6 +185,9 @@ describe("OAuth callback", () => {
       createHash("sha256").update(pkcePayload.verifier ?? "").digest("base64url"),
       challenge,
     );
+    if (previous === undefined) delete process.env.S3RCH_IDENTITY_LINKS;
+    else process.env.S3RCH_IDENTITY_LINKS = previous;
+    rmSync(dir, { recursive: true, force: true });
 
     const route = readFileSync(
       new URL("../../app/api/identity/oauth/session/route.ts", import.meta.url),
@@ -248,6 +260,8 @@ describe("OAuth callback", () => {
     const alice = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
     const bob = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
     try {
+      const seeded = openLinks(new FileLinkStore(file)).saveWalletAge(alice, "2026-10-09T00:00:00.000Z");
+      assert.equal("denied" in seeded, false);
       const siwe = await signSessionToken({ address: alice, chainId: 1 }, SECRET);
       const started = await beginOAuth(
         startRequest("http://127.0.0.1:3000/api/identity/oauth/start"),
@@ -390,6 +404,12 @@ describe("hyperme.sh wallet handoff", () => {
       null,
     );
 
+    const dir = mkdtempSync(join(tmpdir(), "s3rch-oauth-wallet-"));
+    const file = join(dir, "identity-links.json");
+    const previousLinks = process.env.S3RCH_IDENTITY_LINKS;
+    process.env.S3RCH_IDENTITY_LINKS = file;
+    const confirmed = openLinks(new FileLinkStore(file)).saveOAuthAge("kc-user-1", "2026-10-09T00:00:00.000Z");
+    assert.equal("confirmedAt" in confirmed, true);
     const { publicKey, privateKey } = await generateKeyPair("RS256");
     const started = await beginOAuth(
       startRequest("http://127.0.0.1:3000/api/identity/oauth/start?idp=github"),
@@ -429,6 +449,9 @@ describe("hyperme.sh wallet handoff", () => {
     const claims = await readBackupSession(token, SECRET);
     assert.equal(claims.hypermeshWallet, wallet);
     assert.equal("address" in claims, false);
+    if (previousLinks === undefined) delete process.env.S3RCH_IDENTITY_LINKS;
+    else process.env.S3RCH_IDENTITY_LINKS = previousLinks;
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 
