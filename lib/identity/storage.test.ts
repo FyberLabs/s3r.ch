@@ -78,3 +78,63 @@ describe("durable account links", () => {
     } finally { rmSync(volume, { recursive: true, force: true }); }
   });
 });
+
+
+describe("production identity loss", () => {
+  it("does not recreate a disappeared store or accept a lost mount", () => {
+    const volume = mkdtempSync(join(tmpdir(), "s3rch-production-"));
+    const file = join(volume, "links.json");
+    const moduleUrl = new URL("./link.ts", import.meta.url).href;
+    const tsx = createRequire(import.meta.url).resolve("tsx");
+    const program = `
+      import fs from "node:fs";
+      import assert from "node:assert/strict";
+      const read = fs.readFileSync;
+      let mounted = true;
+      fs.readFileSync = function(path, ...args) {
+        if (path === "/proc/self/mountinfo") return mounted ? "1 2 0:1 / ${volume} rw - cifs durable rw" : "";
+        return read.call(this, path, ...args);
+      };
+      const {FileLinkStore, openLinks} = await import(${JSON.stringify(moduleUrl)});
+      const file = ${JSON.stringify(file)};
+      fs.writeFileSync(file, JSON.stringify({v:1,people:[]}));
+      const store = new FileLinkStore(file);
+      const links = openLinks(store);
+      assert.equal(links.ownerForWallet("${WALLET}"), "${WALLET}");
+      fs.unlinkSync(file);
+      process.env.IDENTITY_SESSION_SECRET = "production-fixture-identity-secret-32-characters";
+      const {signSessionToken} = await import(${JSON.stringify(new URL("./session.ts", import.meta.url).href)});
+      const {sessionCookieName} = await import(${JSON.stringify(new URL("./cookies.ts", import.meta.url).href)});
+      const token = await signSessionToken({address:"${WALLET}",chainId:1},process.env.IDENTITY_SESSION_SECRET);
+      const request = new Request("https://s3rch.test/api", {headers:{cookie:sessionCookieName(true)+"="+token}});
+      const sessionRoute = await import(${JSON.stringify(new URL("../../app/api/identity/session/route.ts", import.meta.url).href)});
+      assert.equal((await sessionRoute.GET(request)).status,503);
+      const outboundRoute = await import(${JSON.stringify(new URL("../../app/api/outbound/route.ts", import.meta.url).href)});
+      assert.equal((await outboundRoute.GET(request)).status,503);
+      assert.equal(links.ownerForWallet("${WALLET}"), null);
+      assert.equal(links.link({wallet:"${WALLET}",sub:"missing",idp:null}).denied, true);
+      assert.equal(fs.existsSync(file), false);
+      fs.writeFileSync(file, JSON.stringify({v:1,people:[]}));
+      mounted = false;
+      assert.equal(links.ownerForWallet("${WALLET}"), null);
+      assert.equal(links.link({wallet:"${WALLET}",sub:"unmounted",idp:null}).denied, true);
+      assert.deepEqual(JSON.parse(read(file,"utf8")), {v:1,people:[]});
+    `;
+    try {
+      const result = spawnSync(process.execPath, ["--import", tsx, "--input-type=module", "-e", program], {
+        env: {...process.env, NODE_ENV:"production", S3RCH_IDENTITY_STORAGE_ROOT:volume, S3RCH_IDENTITY_LINKS:file}, encoding:"utf8"
+      });
+      assert.equal(result.status, 0, result.stderr);
+    } finally { rmSync(volume,{recursive:true,force:true}); }
+  });
+
+  it("startup uses the same complete account schema as request-time reads", () => {
+    const {parseLinkFile} = createRequire(import.meta.url)("../../identity-link-schema.cjs");
+    for (const people of [
+      [{owner:"invalid",handles:[]}],
+      [{owner:WALLET,handles:[{kind:"oauth",sub:"kc",idp:null}]}],
+      [{owner:WALLET,handles:[{kind:"wallet",address:WALLET},{kind:"wallet",address:WALLET}]}],
+      [{owner:WALLET,handles:[{kind:"wallet",address:WALLET},{kind:"oauth",sub:"kc",idp:"invalid"}]}],
+    ]) assert.equal(parseLinkFile({v:1,people}).ok,false);
+  });
+});

@@ -13,7 +13,8 @@
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { getAddress } from "viem";
-import { identityLinkPath } from "../../identity-storage.cjs";
+import { parseLinkFile as parseStoredLinkFile } from "../../identity-link-schema.cjs";
+import { assertIdentityStorage, identityLinkPath } from "../../identity-storage.cjs";
 
 export const LINK_FILE_V = 1;
 
@@ -59,10 +60,11 @@ export class FileLinkStore implements LinkStore {
   load(): ReturnType<LinkStore["load"]> {
     let raw: string;
     try {
+      assertIdentityStorage();
       raw = readFileSync(this.filePath, "utf8");
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOENT") return { ok: true, file: emptyLinkFile() };
+      if (code === "ENOENT" && process.env.NODE_ENV !== "production") return { ok: true, file: emptyLinkFile() };
       return { ok: false, reason: "store-unreadable" };
     }
     let parsed: unknown;
@@ -75,6 +77,7 @@ export class FileLinkStore implements LinkStore {
   }
 
   withLock<T>(action: () => T): T {
+    assertIdentityStorage();
     mkdirSync(dirname(this.filePath), { recursive: true, mode: 0o700 });
     const lock = `${this.filePath}.lock`;
     // Atomic across processes on the mounted volume. Contention denies the write.
@@ -88,6 +91,7 @@ export class FileLinkStore implements LinkStore {
   }
 
   save(file: IdentityLinkFile): void {
+    assertIdentityStorage();
     const dir = dirname(this.filePath);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const tmp = `${this.filePath}.${process.pid}.tmp`;
@@ -228,66 +232,7 @@ export function ownerForOAuth(sub: string): string | null {
 }
 
 export function parseLinkFile(value: unknown): ReturnType<LinkStore["load"]> {
-  if (!value || typeof value !== "object") return { ok: false, reason: "store-unreadable" };
-  const record = value as Record<string, unknown>;
-  if (record.v !== LINK_FILE_V) {
-    if (typeof record.v === "number") return { ok: false, reason: "unknown-version" };
-    return { ok: false, reason: "store-unreadable" };
-  }
-  if (!Array.isArray(record.people)) return { ok: false, reason: "store-unreadable" };
-  const people: IdentityPerson[] = [];
-  const owners = new Set<string>();
-  const wallets = new Set<string>();
-  const subs = new Set<string>();
-  for (const row of record.people) {
-    const person = asPerson(row);
-    if (!person) return { ok: false, reason: "store-unreadable" };
-    if (owners.has(person.owner)) return { ok: false, reason: "store-unreadable" };
-    owners.add(person.owner);
-    let ownsWallet = false;
-    for (const handle of person.handles) {
-      if (handle.kind === "wallet") {
-        if (wallets.has(handle.address)) return { ok: false, reason: "store-unreadable" };
-        wallets.add(handle.address);
-        if (handle.address === person.owner) ownsWallet = true;
-      } else {
-        if (subs.has(handle.sub)) return { ok: false, reason: "store-unreadable" };
-        subs.add(handle.sub);
-      }
-    }
-    if (!ownsWallet) return { ok: false, reason: "store-unreadable" };
-    people.push(person);
-  }
-  return { ok: true, file: { v: LINK_FILE_V, people } };
-}
-
-function asPerson(value: unknown): IdentityPerson | null {
-  if (!isRecord(value) || !Array.isArray(value.handles)) return null;
-  const owner = checksum(value.owner);
-  if (!owner) return null;
-  const handles: LoginHandle[] = [];
-  for (const handle of value.handles) {
-    const parsed = asHandle(handle);
-    if (!parsed) return null;
-    handles.push(parsed);
-  }
-  return { owner, handles };
-}
-
-function asHandle(value: unknown): LoginHandle | null {
-  if (!isRecord(value)) return null;
-  if (value.kind === "wallet") {
-    const address = checksum(value.address);
-    if (!address) return null;
-    return { kind: "wallet", address };
-  }
-  if (value.kind === "oauth") {
-    const sub = cleanSub(value.sub);
-    const idp = cleanIdp(value.idp);
-    if (!sub || idp === "invalid") return null;
-    return { kind: "oauth", sub, idp };
-  }
-  return null;
+  return parseStoredLinkFile(value);
 }
 
 function personForWallet(file: IdentityLinkFile, wallet: string): IdentityPerson | undefined {

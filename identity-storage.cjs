@@ -1,6 +1,7 @@
 // Production identities must live on an explicitly mounted volume.
 const fs = require("node:fs");
 const path = require("node:path");
+const { parseLinkFile } = require("./identity-link-schema.cjs");
 
 function identityLinkPath(env = process.env, cwd = process.cwd()) {
   if (env.NODE_ENV !== "production") {
@@ -52,7 +53,7 @@ function assertIdentityStorage(env = process.env) {
   if (fs.existsSync(file)) {
     fs.accessSync(file, fs.constants.R_OK | fs.constants.W_OK);
     const contents = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (contents.v !== 1 || !Array.isArray(contents.people)) {
+    if (!parseLinkFile(contents).ok) {
       throw new Error("s3r.ch: identity store is invalid; refusing to start");
     }
   }
