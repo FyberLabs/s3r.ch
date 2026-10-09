@@ -12,7 +12,7 @@ TURN already ships `PANOPTICON_TURN_BASE` + shared tenant/key. There is no gener
 | --- | --- |
 | `PANOPTICON_ORACLES_BASE` | Attest origin, or origin plus `/api/v1` / `/api/v1/oracles` / `/api/v1/oracles/v0`. Empty = no hop. Lab: `https://api.test.hyperme.sh`. |
 | `PANOPTICON_PAYMENTS_BASE` | Intent/receipt origin, or origin plus `/api/v1` / `/api/v1/payments` / `/api/v1/payments/v0`. Empty = no hop. Lab: `https://api.test.hyperme.sh`. |
-| `PANOPTICON_TENANT_ID` | Shared with TURN. Marketplace tenant UUID (`X-Tenant-ID`). |
+| `PANOPTICON_TENANT_ID` | Shared with TURN. Marketplace tenant UUID (`X-Tenant-ID`). Deploy sets it from GitHub variable `S3RCH_PANOPTICON_TENANT_ID`. Not in git. |
 | `PANOPTICON_API_KEY` | Shared with TURN. Product API key (`X-Api-Key`, purpose=service). Hold in Key Vault. Never `NEXT_PUBLIC_*`. |
 
 Empty any of the three settings for a hop (the default) is **fail-soft**:
@@ -103,6 +103,6 @@ TURN consume (already live, unchanged): [`products/turn/docs/turn-allocate-v0.md
 
 ## Operator / infra habit
 
-Same as TURN / `IDENTITY_SESSION_SECRET` / `SEED_SECRET`: App Service application settings, Key Vault (`kv-fyber-cg47`) for `PANOPTICON_API_KEY`, Terraform in **FyberLabs/infra** `terraform/s3rch`. That layer sets `PANOPTICON_ORACLES_BASE` and `PANOPTICON_PAYMENTS_BASE` (TURN twin). This repo is s3r.ch consume only — it does not wire ACA and does not add Terraform here.
+App Service application settings. Key Vault (`kv-fyber-cg47`) secret name `s3rch-panopticon-api-key` for `PANOPTICON_API_KEY`. Terraform in **FyberLabs/infra** `terraform/s3rch` sets `PANOPTICON_TURN_BASE`, `PANOPTICON_ORACLES_BASE`, and `PANOPTICON_PAYMENTS_BASE`. This repo's Deploy sets `PANOPTICON_TENANT_ID` from GitHub variable `S3RCH_PANOPTICON_TENANT_ID`. This repo does not wire ACA and does not add Terraform here.
 
 Empty oracles or payments env stays fail-soft.

@@ -283,14 +283,15 @@ Empty any of the three = STUN-only. Integrator contract: FyberLabs/panopticon [`
 
 ### Operator / infra habit (live TURN)
 
-Same style as `IDENTITY_SESSION_SECRET` / `SEED_SECRET`: App Service application settings, Key Vault for the secret, Terraform in **FyberLabs/infra** `terraform/s3rch`. That infra layer owns the wire. This repo only calls Panopticon TURN allocate — no coturn, no Terraform here.
+Same style as `IDENTITY_SESSION_SECRET` / `SEED_SECRET` for the secret: App Service application settings. Key Vault secret name `s3rch-panopticon-api-key` and the `*_BASE` hostnames stay in Terraform in **FyberLabs/infra** `terraform/s3rch`. `PANOPTICON_TENANT_ID` is owned here: Deploy writes that App Service setting from the GitHub variable `S3RCH_PANOPTICON_TENANT_ID` (repository variable, or the same name on the `prod` environment). The UUID is not in git. An unset variable fails deploy and does not clear the live setting. This repo does not deploy coturn and does not add Terraform.
 
 Checklist for live TURN:
 
-1. Set all three App Service application settings: `PANOPTICON_TURN_BASE`, `PANOPTICON_TENANT_ID`, `PANOPTICON_API_KEY`. Empty or any missing → STUN + `/gun`. No error theater on `/feed`.
-2. Hold `PANOPTICON_API_KEY` in Key Vault (`kv-fyber-cg47`). Terraform wires secret → App Setting. Never git, never `NEXT_PUBLIC_*`, never Gun, never the browser.
-3. `PANOPTICON_TURN_BASE` is the allocate origin (or origin plus `/api/v1` / `/api/v1/turn`). Next hops `POST /api/v1/turn/allocate`.
-4. Do not add coturn to `terraform/s3rch` or this App Service. Relay dataplane stays Panopticon (or a later time-boxed standalone relay), not the seeder.
+1. App Service settings: `PANOPTICON_TURN_BASE`, `PANOPTICON_TENANT_ID`, `PANOPTICON_API_KEY`. Empty or any missing → STUN + `/gun`. No error theater on `/feed`.
+2. Hold `PANOPTICON_API_KEY` in Key Vault (`kv-fyber-cg47`, secret `s3rch-panopticon-api-key`). Terraform wires secret → App Setting. Never git, never `NEXT_PUBLIC_*`, never Gun, never the browser.
+3. `PANOPTICON_TURN_BASE` (and the oracles and payments bases) stay infra hostnames. Next hops `POST /api/v1/turn/allocate`.
+4. `PANOPTICON_TENANT_ID` is set by this repo's Deploy from `S3RCH_PANOPTICON_TENANT_ID`.
+5. Do not add coturn to `terraform/s3rch` or this App Service. Relay dataplane stays Panopticon (or a later time-boxed standalone relay), not the seeder.
 
 ---
 
@@ -303,6 +304,6 @@ Checklist for live TURN:
 | Does a standalone relay replace Panopticon? | **No.** Decision 5 / `open-services.md` stay. Cutover retires the second plane. | An infra-only relay = amend `open-services.md` in hypermesh-docs. Not done here. |
 | Durable graph on App Service disk? | **No** as the archive. Optional Blob of the existing Public snapshot. Mesh (D1) + optional seed relay VM (D3) for shared puts — **not** the TURN host. | Files-mount radisk is the Mastodon slope. |
 | Implement now? | **TURN allocate hop — this slice.** No infra coturn PR. | — |
-| Live TURN on App Service? | Research: three application settings in FyberLabs/infra `terraform/s3rch` (KV for the API key). [Operator / infra habit](#operator--infra-habit-live-turn). | Leave empty → STUN + `/gun`. |
+| Live TURN on App Service? | Three application settings. Bases and the API key Key Vault secret stay in FyberLabs/infra `terraform/s3rch`. `PANOPTICON_TENANT_ID` is written by this repo's Deploy from GitHub variable `S3RCH_PANOPTICON_TENANT_ID`. [Operator / infra habit](#operator--infra-habit-live-turn). | Leave empty → STUN + `/gun`. |
 
 Copy on `/feed` stays: STUN ≠ TURN; seed / snapshot if ICE fails; Network / Granted can be empty; not a finished P2P mesh.
