@@ -1,64 +1,65 @@
 # Durable account-link storage
 
-Account links are account data. They must survive replacement containers and
-recycles. A control-plane identity service remains the preferred long-term
-owner; this change implements issue #98's mounted-volume fallback without
-introducing another service inside the frontend.
+Account links are account data. They must survive a new container and an App
+Service recycle. The preferred home is a control-plane account service. No such
+API exists on the Panopticon routes this app already calls, so production stores
+the same JSON document in one private Azure Blob behind `LinkStore`.
+`BlobLinkStore` is that adapter. Development and tests keep `FileLinkStore`.
+A later account API can replace the class without changing link rules.
 
-Production requires an absolute `S3RCH_IDENTITY_LINKS` path beneath
-`S3RCH_IDENTITY_STORAGE_ROOT`. Startup checks that the root is a Linux mount,
-rejects container/memory layers, symlink escapes, missing/unreadable files and
-malformed JSON or unsupported versions, and checks write access. There is no production default
-under `/app/data`. Development keeps the existing local default.
+These are the routes checked:
 
-For Azure App Service, use:
+- TURN allocate, oracles attest, and payments receipt/intent (`PANOPTICON_TURN_BASE`, `PANOPTICON_ORACLES_BASE`, `PANOPTICON_PAYMENTS_BASE`, plus the shared tenant id and API key). They allocate relays, attestations, and payment receipts. They do not read or write an account link.
+- `GET /auth/siwe/me` and `POST /auth/siwe/bind`. They bind one wallet to the Keycloak subject of a bearer token. This app does not keep that token, a wallet-only sign-in has no Keycloak subject, and the record is one address per subject rather than the handles on one checksummed owner.
+- User-service organization identity-provider links. They bind an enterprise organization after an admin proves control of that organization. They are not a wallet or OAuth-subject handle store.
 
-- `WEBSITES_ENABLE_APP_SERVICE_STORAGE=true`
-- `S3RCH_IDENTITY_STORAGE_ROOT=/home`
-- `S3RCH_IDENTITY_LINKS=/home/s3rch-identity/identity-links.json`
+There is no production default under `/app/data` or `/home`. A container-local
+file is not durable, and this app cannot read an old file out of `/app/data`.
+The first production start begins with an empty document. Nothing is imported.
 
-Azure documents `/home` persistence when App Service storage is enabled in
-[custom container configuration](https://learn.microsoft.com/en-us/azure/app-service/configure-custom-container?pivots=container-linux).
-The deploy workflow checks those settings before building/deploying the new
-image. It deliberately does not turn storage on automatically: changing that
-setting can recycle the current container before its local links are saved.
+## App Service settings
 
-## First migration
+The app reads these application settings and no storage key or connection string:
 
-1. Pause new account linking and securely export the current running container's
-   `/app/data/identity-links.json` before any setting change or restart. Use the
-   actual `S3RCH_IDENTITY_LINKS` value if one is already configured. Do not put
-   identity records in logs, Git or build artifacts. Existing links already lost
-   on previous redeploys cannot be recovered by this change.
-2. Enable persistent App Service storage. From the app container, verify `/home`
-   is a separate mount in `/proc/self/mountinfo`; Kudu's filesystem alone is not
-   proof that the application container has the mount.
-3. Create `/home/s3rch-identity` accessible only to the app identity and import
-   the exported file as `identity-links.json` with mode 0600. Validate version 1
-   and preserve the exact owner/handle mapping. If there has never been any link,
-   explicitly initialize `{"v":1,"people":[]}`. A missing file fails startup.
-4. Set the two identity path settings, deploy the new image, create a synthetic
-   wallet/OAuth link and verify the owner mapping. Replace the container and
-   recycle the app, then verify the same mapping again. Keep the issue open until
-   both live checks pass. Retain the export securely until acceptance is complete.
+- `S3RCH_IDENTITY_BLOB_ACCOUNT` — storage account name (3–24 lowercase letters and digits)
+- `S3RCH_IDENTITY_BLOB_CONTAINER` — blob container name
 
-## Writes and recovery
+The document is the single blob `identity-links.json` in that container. The
+endpoint is `https://<S3RCH_IDENTITY_BLOB_ACCOUNT>.blob.core.windows.net`.
+Auth is `DefaultAzureCredential` limited to the App Service managed identity.
+A system-assigned identity needs no extra setting. A user-assigned identity
+also needs `AZURE_CLIENT_ID` set to that identity's client id (not a secret).
 
-A link update holds an atomic directory lock around its complete read/write
-transaction. A competing process is refused instead of overwriting another
-process's links. Writes use a mode-0600 temporary file, fsync it, and atomically
-rename it. No provider token is stored. Reads see the old or new complete file.
+Give that identity the **Storage Blob Data Contributor** role on the storage
+account or on the container. The container must already exist and its public
+access level must be **Private**. The app does not create the container and
+does not change its access policy. Startup fails if the account, container, or
+identity cannot be used. A missing blob is created as `{"v":1,"people":[]}`.
+A blob that is not valid version-1 JSON fails startup and is left unchanged.
 
-A crashed writer can leave `identity-links.json.lock`. New links then fail
-closed. Stop all app writers, validate the saved file, remove that lock directory
-and restart. Do not delete a lock while a writer may still be active. For scale
-or stronger recovery requirements, replace the file adapter with the control-plane
-identity service rather than extending this fallback into a database.
+The deploy workflow checks the two settings before it builds or deploys.
+`WEBSITES_ENABLE_APP_SERVICE_STORAGE`, `S3RCH_IDENTITY_STORAGE_ROOT`, and
+`S3RCH_IDENTITY_LINKS` are not required.
 
-The forum/Gun seed cache remains temporary. The forum page tells users posts and
-snapshots can disappear on restart. These caches do not move into account storage.
+Development still uses `S3RCH_IDENTITY_LINKS` or `data/identity-links.json`.
+That file is not read in production.
 
-Validation here uses separate Node processes in different container directories
-sharing one explicit store, and tests path/mount validation and writer contention.
-That establishes application behavior; Azure redeploy/recycle acceptance remains
-pending.
+## Writes
+
+A blob write sends `If-Match` with the ETag from the read. The first create
+sends `If-None-Match: *`. A conflict (HTTP 412 or 409) retries the whole
+read-modify-write. The document stores the same owner and handle records as
+the development file, and no provider token. Request handling does not
+recreate a blob that disappears after startup.
+
+The development file still writes a mode-0600 temporary file and renames it.
+A second development writer is refused while `identity-links.json.lock` is
+present. Stop writers, check the file, remove that directory, and start again.
+
+The forum and Gun seed cache stay temporary. The forum page says posts and
+snapshots on the seed server can disappear when it restarts. Those caches are
+not stored in the identity blob.
+
+Tests use an injected blob client, including a second process reading a link
+written by the first, and a conditional-write conflict that is retried. They
+do not call live Azure.

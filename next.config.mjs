@@ -12,6 +12,8 @@ const nextConfig = {
     // (next build: Failed to collect /api/outbound).
     "@faker-js/faker",
     "@farcaster/core",
+    "@azure/identity",
+    "@azure/storage-blob",
   ],
   // TypeScript 7 ships the native tsc CLI, not the JS compiler API
   // Next's default typecheck backend still calls. Use the project tsc.

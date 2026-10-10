@@ -4,8 +4,9 @@
  * Sociacl refuses co-ownership: an object has one owner. Here that owner is
  * the checksummed address that owns s3r.ch data. A wallet address and a
  * Keycloak `sub` are handles on that owner, not a second ownership system.
- * The binding stays in this JSON file. It is not written to Gun, and it
- * does not store provider tokens.
+ * The binding stays in one JSON document. It is not written to Gun, and it
+ * does not store provider tokens. Production keeps that document in one
+ * private Azure Blob. Development keeps it in a local file.
  *
  * An OAuth sub with no handle is unlinked and is not an owner.
  */
@@ -13,8 +14,15 @@
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { getAddress } from "viem";
+import {
+  createProductionBlobClient,
+  IDENTITY_BLOB_MAX_BYTES,
+  IDENTITY_BLOB_NAME,
+  readBlobConfig,
+  type IdentityBlobClient,
+} from "../../identity-blob.cjs";
 import { parseLinkFile as parseStoredLinkFile } from "../../identity-link-schema.cjs";
-import { assertIdentityStorage, identityLinkPath } from "../../identity-storage.cjs";
+import { identityLinkPath } from "../../identity-storage.cjs";
 
 export const LINK_FILE_V = 1;
 
@@ -38,6 +46,10 @@ export type IdentityLinkFile = {
 
 export type LinkDenied = { denied: true; reason: "already-linked" | "bad-handle" | "store-unreadable" };
 
+/**
+ * Account-link storage. Production uses `BlobLinkStore` (one private blob).
+ * Development and tests use `FileLinkStore`. See docs/identity-storage.md.
+ */
 export type LinkStore = {
   load(): { ok: true; file: IdentityLinkFile } | { ok: false; reason: "store-unreadable" | "unknown-version" };
   save(file: IdentityLinkFile): void;
@@ -57,10 +69,18 @@ export function linkFilePath(): string {
 export class FileLinkStore implements LinkStore {
   constructor(private readonly filePath: string) {}
 
+  private refuseProduction(): void {
+    if (process.env.NODE_ENV === "production") {
+      const error = new Error("s3r.ch: file identity storage is not used in production") as NodeJS.ErrnoException;
+      error.code = "ERR_PRODUCTION_FILE_STORE";
+      throw error;
+    }
+  }
+
   load(): ReturnType<LinkStore["load"]> {
     let raw: string;
     try {
-      assertIdentityStorage();
+      this.refuseProduction();
       raw = readFileSync(this.filePath, "utf8");
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
@@ -77,11 +97,11 @@ export class FileLinkStore implements LinkStore {
   }
 
   withLock<T>(action: () => T): T {
-    assertIdentityStorage();
+    this.refuseProduction();
     mkdirSync(dirname(this.filePath), { recursive: true, mode: 0o700 });
     const lock = `${this.filePath}.lock`;
-    // Atomic across processes on the mounted volume. Contention denies the write.
-    // Never steal a lock: a crashed writer requires operator recovery.
+    // One development writer at a time. Contention denies the write.
+    // Never steal the directory: a crashed writer requires operator recovery.
     mkdirSync(lock, { mode: 0o700 });
     try {
       return action();
@@ -91,7 +111,7 @@ export class FileLinkStore implements LinkStore {
   }
 
   save(file: IdentityLinkFile): void {
-    assertIdentityStorage();
+    this.refuseProduction();
     const dir = dirname(this.filePath);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const tmp = `${this.filePath}.${process.pid}.tmp`;
@@ -103,6 +123,93 @@ export class FileLinkStore implements LinkStore {
       closeSync(fd);
     }
     renameSync(tmp, this.filePath);
+  }
+}
+
+const BLOB_WRITE_ATTEMPTS = 5;
+
+function isBlobConflict(error: unknown): boolean {
+  return !!error && typeof error === "object" && (error as { code?: string }).code === "blob-conflict";
+}
+
+/**
+ * One JSON document in one private blob. Writes send If-Match (or If-None-Match
+ * when the blob is still absent). A conflict retries the whole read-modify-write.
+ */
+export class BlobLinkStore implements LinkStore {
+  private etag: string | null = null;
+  private missing = true;
+
+  constructor(
+    private readonly client: IdentityBlobClient,
+    private readonly blobName = IDENTITY_BLOB_NAME,
+  ) {}
+
+  load(): ReturnType<LinkStore["load"]> {
+    let downloaded: ReturnType<IdentityBlobClient["download"]>;
+    try {
+      downloaded = this.client.download(this.blobName);
+    } catch {
+      return { ok: false, reason: "store-unreadable" };
+    }
+    if (!downloaded.found) {
+      this.missing = true;
+      this.etag = null;
+      if (process.env.NODE_ENV === "production") return { ok: false, reason: "store-unreadable" };
+      return { ok: true, file: emptyLinkFile() };
+    }
+    if (!downloaded.etag || Buffer.byteLength(downloaded.text) > IDENTITY_BLOB_MAX_BYTES) {
+      this.etag = null;
+      this.missing = false;
+      return { ok: false, reason: "store-unreadable" };
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(downloaded.text) as unknown;
+    } catch {
+      this.etag = null;
+      return { ok: false, reason: "store-unreadable" };
+    }
+    const result = parseLinkFile(parsed);
+    if (!result.ok) {
+      this.etag = null;
+      return result;
+    }
+    this.missing = false;
+    this.etag = downloaded.etag;
+    return result;
+  }
+
+  withLock<T>(action: () => T): T {
+    let last: unknown;
+    for (let attempt = 0; attempt < BLOB_WRITE_ATTEMPTS; attempt++) {
+      try {
+        return action();
+      } catch (error) {
+        if (!isBlobConflict(error)) throw error;
+        last = error;
+      }
+    }
+    throw last;
+  }
+
+  save(file: IdentityLinkFile): void {
+    const body = JSON.stringify(file);
+    if (Buffer.byteLength(body) > IDENTITY_BLOB_MAX_BYTES) {
+      throw new Error("s3r.ch: identity document is too large");
+    }
+    if (this.missing || !this.etag) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("s3r.ch: identity blob is missing");
+      }
+      const uploaded = this.client.upload(this.blobName, body, { ifNoneMatch: "*" });
+      this.etag = uploaded.etag;
+      this.missing = false;
+      return;
+    }
+    const uploaded = this.client.upload(this.blobName, body, { ifMatch: this.etag });
+    this.etag = uploaded.etag;
+    this.missing = false;
   }
 }
 
@@ -187,7 +294,8 @@ export function openLinks(store: LinkStore): Links {
     try {
       store.save(file);
       return null;
-    } catch {
+    } catch (error) {
+      if (isBlobConflict(error)) throw error;
       return { denied: true, reason: "store-unreadable" };
     }
   }
@@ -211,7 +319,31 @@ export function openLinks(store: LinkStore): Links {
   return { link, ownerForWallet, ownerForOAuth };
 }
 
+const installedStoreKey = "__s3rchIdentityLinkStore";
+let productionLinks: Links | undefined;
+
+function installedStore(): LinkStore | undefined {
+  return (globalThis as { [installedStoreKey]?: LinkStore })[installedStoreKey];
+}
+
+/** Tests install one store so every copy of this module, including route handlers, shares it. */
+export function useLinkStore(store: LinkStore | null): void {
+  const g = globalThis as { [installedStoreKey]?: LinkStore };
+  if (store) g[installedStoreKey] = store;
+  else delete g[installedStoreKey];
+  productionLinks = undefined;
+}
+
 export function getLinks(): Links {
+  const installed = installedStore();
+  if (installed) return openLinks(installed);
+  if (process.env.NODE_ENV === "production") {
+    if (!productionLinks) {
+      const config = readBlobConfig(process.env);
+      productionLinks = openLinks(new BlobLinkStore(createProductionBlobClient(config)));
+    }
+    return productionLinks;
+  }
   return openLinks(new FileLinkStore(linkFilePath()));
 }
 
@@ -220,15 +352,29 @@ export function linkLoginPaths(input: {
   sub: string;
   idp: LinkIdp | null;
 }): { owner: string } | LinkDenied {
-  return getLinks().link(input);
+  try {
+    return getLinks().link(input);
+  } catch {
+    return { denied: true, reason: "store-unreadable" };
+  }
 }
 
 export function ownerForWallet(wallet: string): string | null {
-  return getLinks().ownerForWallet(wallet);
+  try {
+    return getLinks().ownerForWallet(wallet);
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") throw error;
+    return null;
+  }
 }
 
 export function ownerForOAuth(sub: string): string | null {
-  return getLinks().ownerForOAuth(sub);
+  try {
+    return getLinks().ownerForOAuth(sub);
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") throw error;
+    return null;
+  }
 }
 
 export function parseLinkFile(value: unknown): ReturnType<LinkStore["load"]> {
