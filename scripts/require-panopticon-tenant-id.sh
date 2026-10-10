@@ -9,7 +9,7 @@ tenant_id="$(printf '%s' "${S3RCH_PANOPTICON_TENANT_ID:-}" | tr -d '[:space:]')"
 
 if [ -z "$tenant_id" ]; then
   echo "GitHub variable S3RCH_PANOPTICON_TENANT_ID is unset." >&2
-  echo "Create it on this repository or the prod environment before deploy." >&2
+  echo "Create it as a repository variable or a prod environment variable." >&2
   echo "Refusing to update App Service so PANOPTICON_TENANT_ID is not cleared." >&2
   exit 1
 fi

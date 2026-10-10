@@ -69,6 +69,20 @@ KYC_ISSUER_URL=
 
 `ATPROTO_IDENTIFIER` + `ATPROTO_APP_PASSWORD` enable Bluesky outbound through `ATPROTO_PDS_BASE` (default `https://bsky.social` — not the public AppView). Empty = *Bluesky app password is not configured.* Never `NEXT_PUBLIC_*`. Do not put app passwords or signer keys on Gun.
 
+## Deploy variables
+
+Deploy (`.github/workflows/deploy.yml`) and the seed workflow use these settings:
+
+| Name | Required | Role |
+| --- | --- | --- |
+| `ACR_NAME` | yes | Container registry name. Set in the Deploy workflow env. |
+| `ACR_LOGIN_SERVER` | yes | Registry host used to push the image and point App Service at it. Set in the Deploy workflow env. |
+| `SEED_URL` | no | GitHub variable for `.github/workflows/seed.yml`. Unset posts to the prod `/api/seed` URL. |
+| `NEXT_PUBLIC_WC_PROJECT_ID` | no | GitHub variable passed as a Docker build-arg. Empty leaves WalletConnect off. |
+| `S3RCH_PANOPTICON_TENANT_ID` | yes | The Panopticon marketplace tenant id the app uses, set as `PANOPTICON_TENANT_ID` on the App Service; it is an identifier, not a secret. |
+
+Create `S3RCH_PANOPTICON_TENANT_ID` as a repository variable or a `prod` environment variable. Do not commit the value. Deploy checks it before checkout and image push. An unset value fails the job and does not clear the live App Service setting.
+
 ## Development
 
 ```bash

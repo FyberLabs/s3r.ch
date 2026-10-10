@@ -31,6 +31,7 @@ describe("require-panopticon-tenant-id", () => {
     assert.notEqual(result.status, 0);
     const text = `${result.stdout}${result.stderr}`;
     assert.match(text, /S3RCH_PANOPTICON_TENANT_ID is unset/);
+    assert.match(text, /repository variable or a prod environment variable/);
     assert.match(text, /PANOPTICON_TENANT_ID is not cleared/);
     assert.equal(result.stdout, "");
   });
@@ -76,7 +77,7 @@ describe("deploy workflow owns PANOPTICON_TENANT_ID", () => {
   const workflow = readFileSync(
     new URL("../.github/workflows/deploy.yml", import.meta.url),
     "utf8",
-  );
+  ).replace(/\r\n/g, "\n");
 
   it("reads the repo variable and sets only that App Service setting", () => {
     assert.match(workflow, /S3RCH_PANOPTICON_TENANT_ID: \$\{\{ vars\.S3RCH_PANOPTICON_TENANT_ID \}\}/);
@@ -85,6 +86,46 @@ describe("deploy workflow owns PANOPTICON_TENANT_ID", () => {
     assert.equal(
       /PANOPTICON_TENANT_ID[:=]\s*["']?[0-9a-fA-F]{8}-/.test(workflow),
       false,
+    );
+  });
+
+  it("preflights a missing tenant id before checkout and image push", () => {
+    const deploy = workflow.slice(workflow.indexOf("\n  deploy:\n"));
+    const preflight = deploy.indexOf("name: Require Panopticon tenant id");
+    const checkout = deploy.indexOf("actions/checkout@");
+    const push = deploy.indexOf("docker/build-push-action@");
+    const scriptStep = deploy.indexOf("bash scripts/require-panopticon-tenant-id.sh\n");
+    assert.ok(preflight >= 0 && preflight < checkout && checkout < scriptStep && scriptStep < push);
+    assert.match(deploy.slice(0, checkout), /repository variable or a prod environment variable/);
+    assert.match(deploy.slice(0, checkout), /PANOPTICON_TENANT_ID is not cleared/);
+    const script = readFileSync(SCRIPT, "utf8");
+    const uuidPattern =
+      "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
+    assert.equal(script.includes(uuidPattern), true);
+    assert.equal(deploy.slice(0, checkout).includes(uuidPattern), false);
+  });
+
+  it("skips Azure logout when the job never signed in", () => {
+    const deploy = workflow.slice(workflow.indexOf("\n  deploy:\n"));
+    const logout = deploy.slice(deploy.indexOf("name: Log out of Azure and ACR"));
+    assert.match(logout, /az account show >\/dev\/null 2>&1/);
+    assert.match(logout, /\[ -d "\$AZURE_CONFIG_DIR" \] && az account show/);
+  });
+
+  it("documents the tenant id with the other deploy variables", () => {
+    const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+    for (const name of [
+      "ACR_NAME",
+      "ACR_LOGIN_SERVER",
+      "SEED_URL",
+      "NEXT_PUBLIC_WC_PROJECT_ID",
+      "S3RCH_PANOPTICON_TENANT_ID",
+    ]) {
+      assert.equal(readme.includes(name), true, name);
+    }
+    assert.match(
+      readme,
+      /Panopticon marketplace tenant id the app uses, set as `PANOPTICON_TENANT_ID` on the App Service; it is an identifier, not a secret/,
     );
   });
 
