@@ -23,8 +23,11 @@ import {
   OAUTH_REDIRECT_URIS,
   SESSION_TTL_SECONDS,
 } from "./config";
+import { AGE_CONFIRMATION_REQUIRED } from "./age";
 import {
   cookieOptions,
+  oauthAgeCookieName,
+  oauthAgeCookieNames,
   oauthPkceCookieName,
   oauthPkceCookieNames,
   oauthSessionCookieName,
@@ -36,7 +39,7 @@ import {
   sessionCookieNames,
 } from "./cookies";
 import { secretFailureResponse } from "./http";
-import { linkLoginPaths } from "./link";
+import { getLinks, linkLoginPaths, ownerForOAuth } from "./link";
 import { getIdentitySecret, secretKey } from "./secret";
 import { readSessionToken } from "./session";
 
@@ -227,6 +230,42 @@ export async function signBackupSession(
     .sign(secretKey(secret));
 }
 
+async function signAgePending(
+  input: { sub: string; idp: OAuthIdp | null; hypermeshWallet?: string | null },
+  secret: string,
+  now = Date.now(),
+): Promise<string> {
+  const sub = assertSub(input.sub);
+  const iat = Math.floor(now / 1000);
+  const hypermeshWallet = input.hypermeshWallet ? getAddress(input.hypermeshWallet) : undefined;
+  return new SignJWT({
+    kind: "oauth-age",
+    idp: input.idp ?? "",
+    ...(hypermeshWallet ? { hypermeshWallet } : {}),
+  })
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setSubject(sub)
+    .setIssuedAt(iat)
+    .setExpirationTime(iat + OAUTH_PKCE_TTL_SECONDS)
+    .sign(secretKey(secret));
+}
+
+async function readAgePending(token: string, secret: string): Promise<BackupSession> {
+  const { payload } = await jwtVerify(token, secretKey(secret), { algorithms: ["HS256"] });
+  if (payload.kind !== "oauth-age") throw new OAuthFlowError("Age confirmation is invalid.");
+  if (typeof payload.iat !== "number" || typeof payload.exp !== "number") {
+    throw new OAuthFlowError("Age confirmation is invalid.");
+  }
+  const sub = typeof payload.sub === "string" ? payload.sub : "";
+  return {
+    sub: assertSub(sub),
+    idp: asIdp(payload.idp),
+    hypermeshWallet: checksumWallet(payload.hypermeshWallet),
+    iat: payload.iat,
+    exp: payload.exp,
+  };
+}
+
 export async function readBackupSession(token: string, secret: string): Promise<BackupSession> {
   const { payload } = await jwtVerify(token, secretKey(secret), { algorithms: ["HS256"] });
   if (payload.kind !== "oauth-backup") throw new OAuthFlowError("Backup session is invalid.");
@@ -380,6 +419,23 @@ function clearPkce(secure: boolean): string[] {
   ];
 }
 
+function clearAge(secure: boolean): string[] {
+  return [
+    clearCookie(oauthAgeCookieName(secure), secure),
+    clearCookie(oauthAgeCookieName(!secure), !secure),
+  ];
+}
+
+async function linkedWalletAddress(request: Request, secret: string): Promise<string | null> {
+  const siwe = readCookie(request.headers.get("cookie"), sessionCookieNames());
+  if (!siwe) return null;
+  try {
+    return (await readSessionToken(siwe, secret)).address;
+  } catch {
+    return null;
+  }
+}
+
 export async function beginOAuth(
   request: Request,
   env: EnvLike = process.env,
@@ -479,6 +535,24 @@ export async function finishOAuth(
             fetchImpl: walletFetch,
           })
         : null;
+    const wallet = await linkedWalletAddress(request, secret);
+    const age = getLinks().ageStatusForOAuth(verified.sub, wallet);
+    if ("unavailable" in age) throw new OAuthFlowError("Identity store unavailable.");
+    if ("needs" in age) {
+      const pending = await signAgePending(
+        { sub: verified.sub, idp, hypermeshWallet },
+        secret,
+        deps.now,
+      );
+      return appRedirect("/feed?oauth=age", [
+        serializeCookie(
+          oauthAgeCookieName(secure),
+          pending,
+          cookieOptions(secure, OAUTH_PKCE_TTL_SECONDS),
+        ),
+        ...clearPkce(secure),
+      ]);
+    }
     const session = await signBackupSession(
       { sub: verified.sub, idp, hypermeshWallet },
       secret,
@@ -492,6 +566,7 @@ export async function finishOAuth(
         cookieOptions(secure, SESSION_TTL_SECONDS),
       ),
       ...clearPkce(secure),
+      ...clearAge(secure),
     ]);
   } catch {
     return denied();
@@ -504,16 +579,99 @@ async function linkWalletOnCallback(
   sub: string,
   idp: OAuthIdp | null,
 ): Promise<string> {
-  const siwe = readCookie(request.headers.get("cookie"), sessionCookieNames());
-  if (!siwe) return "/feed";
+  const wallet = await linkedWalletAddress(request, secret);
+  if (!wallet) return "/feed";
   try {
-    const claims = await readSessionToken(siwe, secret);
-    const bound = linkLoginPaths({ wallet: claims.address, sub, idp });
+    const bound = linkLoginPaths({ wallet, sub, idp });
     if ("denied" in bound && bound.reason === "already-linked") return "/feed?oauth=conflict";
   } catch {
     return "/feed";
   }
   return "/feed";
+}
+
+/** Issues the backup session only after the age confirmation is stored. */
+export async function acceptOAuthAge(
+  request: Request,
+  env: EnvLike = process.env,
+  now = Date.now(),
+): Promise<Response> {
+  let secret: string;
+  try {
+    secret = getIdentitySecret(env);
+  } catch (error) {
+    return (
+      secretFailureResponse(error) ??
+      Response.json({ error: "Identity session is not configured." }, { status: 500 })
+    );
+  }
+
+  let body: { ageConfirmed?: unknown };
+  try {
+    body = (await request.json()) as { ageConfirmed?: unknown };
+  } catch {
+    return Response.json({ error: "Expected JSON." }, { status: 400 });
+  }
+  if (body.ageConfirmed !== true) {
+    return Response.json({ error: AGE_CONFIRMATION_REQUIRED }, { status: 403 });
+  }
+
+  const pendingToken = readCookie(request.headers.get("cookie"), oauthAgeCookieNames());
+  if (!pendingToken) return Response.json({ error: "unauthorized" }, { status: 401 });
+  let pending: BackupSession;
+  try {
+    pending = await readAgePending(pendingToken, secret);
+  } catch {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const saved = getLinks().saveOAuthAge(pending.sub, new Date(now).toISOString());
+  if ("denied" in saved) {
+    const status = saved.reason === "store-unreadable" ? 503 : 400;
+    return Response.json(
+      { error: saved.reason === "store-unreadable" ? "Identity store unavailable" : saved.reason },
+      { status },
+    );
+  }
+
+  const wallet = await linkedWalletAddress(request, secret);
+  let linked = false;
+  let conflict = false;
+  let owner = ownerForOAuth(pending.sub);
+  if (wallet) {
+    const bound = linkLoginPaths({ wallet, sub: pending.sub, idp: pending.idp });
+    if (!("denied" in bound)) {
+      linked = true;
+      owner = bound.owner;
+    } else if (bound.reason === "already-linked") {
+      conflict = true;
+    }
+  }
+
+  const session = await signBackupSession(
+    { sub: pending.sub, idp: pending.idp, hypermeshWallet: pending.hypermeshWallet },
+    secret,
+    now,
+  );
+  const secure = requestIsSecure(request);
+  const headers = new Headers({ "Cache-Control": "no-store" });
+  headers.append(
+    "Set-Cookie",
+    serializeCookie(oauthSessionCookieName(secure), session, cookieOptions(secure, SESSION_TTL_SECONDS)),
+  );
+  for (const cookie of [...clearAge(secure), ...clearPkce(secure)]) {
+    headers.append("Set-Cookie", cookie);
+  }
+  return Response.json(
+    {
+      idp: pending.idp,
+      linked,
+      conflict,
+      owner,
+      hypermeshWallet: pending.hypermeshWallet,
+    },
+    { headers },
+  );
 }
 
 export async function readBackupFromRequest(

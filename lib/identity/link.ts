@@ -37,11 +37,20 @@ export type IdentityPerson = {
   /** Sociacl owner. Checksummed address. Not an OAuth sub. */
   owner: string;
   handles: LoginHandle[];
+  /** ISO time the person confirmed they are at least 18. Absent until then. */
+  ageConfirmedAt?: string;
+};
+
+/** Confirmation for an OAuth subject that is not a handle on an owner yet. */
+export type OAuthAgeConfirmation = {
+  sub: string;
+  confirmedAt: string;
 };
 
 export type IdentityLinkFile = {
   v: typeof LINK_FILE_V;
   people: IdentityPerson[];
+  oauthAge?: OAuthAgeConfirmation[];
 };
 
 export type LinkDenied = { denied: true; reason: "already-linked" | "bad-handle" | "store-unreadable" };
@@ -213,10 +222,20 @@ export class BlobLinkStore implements LinkStore {
   }
 }
 
+export type AgeStatus = { confirmedAt: string } | { needs: true } | { unavailable: true };
+
 export type Links = {
   link(input: { wallet: string; sub: string; idp: LinkIdp | null }): { owner: string } | LinkDenied;
   ownerForWallet(wallet: string): string | null;
   ownerForOAuth(sub: string): string | null;
+  ageStatusForWallet(wallet: string, oauthSub?: string | null): AgeStatus;
+  ageStatusForOAuth(sub: string, wallet?: string | null): AgeStatus;
+  saveWalletAge(
+    wallet: string,
+    confirmedAt: string,
+    oauthSub?: string | null,
+  ): { owner: string; confirmedAt: string } | LinkDenied;
+  saveOAuthAge(sub: string, confirmedAt: string): { confirmedAt: string } | LinkDenied;
 };
 
 export function openLinks(store: LinkStore): Links {
@@ -255,26 +274,34 @@ export function openLinks(store: LinkStore): Links {
         return { denied: true, reason: "already-linked" };
       }
       addWalletHandle(bySub, wallet);
+      attachAge(file, bySub, sub);
       const saved = commit(file);
       if (saved) return saved;
       return { owner: bySub.owner };
     }
     if (byWallet && !bySub) {
       addOAuthHandle(byWallet, sub, idp);
+      attachAge(file, byWallet, sub);
       const saved = commit(file);
       if (saved) return saved;
       return { owner: byWallet.owner };
     }
     if (byWallet && bySub) {
       addOAuthHandle(byWallet, sub, idp);
+      if (attachAge(file, byWallet, sub)) {
+        const saved = commit(file);
+        if (saved) return saved;
+      }
       return { owner: byWallet.owner };
     }
+    const knownAge = stampForSub(file, sub);
     const person: IdentityPerson = {
       owner: wallet,
       handles: [
         { kind: "wallet", address: wallet },
         { kind: "oauth", sub, idp },
       ],
+      ...(knownAge ? { ageConfirmedAt: knownAge } : {}),
     };
     file.people.push(person);
     const saved = commit(file);
@@ -291,6 +318,7 @@ export function openLinks(store: LinkStore): Links {
   }
 
   function commit(file: IdentityLinkFile): LinkDenied | null {
+    if (file.oauthAge && file.oauthAge.length === 0) delete file.oauthAge;
     try {
       store.save(file);
       return null;
@@ -316,7 +344,101 @@ export function openLinks(store: LinkStore): Links {
     return personForSub(opened.file, cleaned)?.owner ?? null;
   }
 
-  return { link, ownerForWallet, ownerForOAuth };
+  function ageStatusForWallet(wallet: string, oauthSub?: string | null): AgeStatus {
+    const address = checksum(wallet);
+    if (!address) return { needs: true };
+    const opened = load();
+    if ("denied" in opened) return { unavailable: true };
+    const person = personForWallet(opened.file, address);
+    if (person?.ageConfirmedAt) return { confirmedAt: person.ageConfirmedAt };
+    if (oauthSub) {
+      const fromSub = stampForSub(opened.file, oauthSub);
+      if (fromSub) return { confirmedAt: fromSub };
+    }
+    return { needs: true };
+  }
+
+  function ageStatusForOAuth(sub: string, wallet?: string | null): AgeStatus {
+    const cleaned = cleanSub(sub);
+    if (!cleaned) return { needs: true };
+    const opened = load();
+    if ("denied" in opened) return { unavailable: true };
+    const fromSub = stampForSub(opened.file, cleaned);
+    if (fromSub) return { confirmedAt: fromSub };
+    const address = wallet ? checksum(wallet) : null;
+    const person = address ? personForWallet(opened.file, address) : undefined;
+    if (person?.ageConfirmedAt) return { confirmedAt: person.ageConfirmedAt };
+    return { needs: true };
+  }
+
+  function saveWalletAge(
+    wallet: string,
+    confirmedAt: string,
+    oauthSub?: string | null,
+  ): { owner: string; confirmedAt: string } | LinkDenied {
+    return locked(() => {
+      const address = checksum(wallet);
+      const provided = cleanAgeStamp(confirmedAt);
+      if (!address || !provided) return { denied: true, reason: "bad-handle" };
+      const opened = load();
+      if ("denied" in opened) return opened;
+      const file = opened.file;
+      const person = personForWallet(file, address);
+      const fromSub = oauthSub ? stampForSub(file, oauthSub) : null;
+      const stamp = person?.ageConfirmedAt ?? fromSub ?? provided;
+      if (person?.ageConfirmedAt) return { owner: person.owner, confirmedAt: person.ageConfirmedAt };
+      if (person) person.ageConfirmedAt = stamp;
+      else {
+        file.people.push({
+          owner: address,
+          handles: [{ kind: "wallet", address }],
+          ageConfirmedAt: stamp,
+        });
+      }
+      const saved = commit(file);
+      if (saved) return saved;
+      return { owner: person?.owner ?? address, confirmedAt: stamp };
+    });
+  }
+
+  function saveOAuthAge(sub: string, confirmedAt: string): { confirmedAt: string } | LinkDenied {
+    return locked(() => {
+      const cleaned = cleanSub(sub);
+      const provided = cleanAgeStamp(confirmedAt);
+      if (!cleaned || !provided) return { denied: true, reason: "bad-handle" };
+      const opened = load();
+      if ("denied" in opened) return opened;
+      const file = opened.file;
+      const existing = stampForSub(file, cleaned);
+      if (existing) return { confirmedAt: existing };
+      const person = personForSub(file, cleaned);
+      if (person) person.ageConfirmedAt = provided;
+      const rows = file.oauthAge ?? [];
+      rows.push({ sub: cleaned, confirmedAt: provided });
+      file.oauthAge = rows;
+      const saved = commit(file);
+      if (saved) return saved;
+      return { confirmedAt: provided };
+    });
+  }
+
+  function locked<T>(action: () => T): T {
+    try {
+      return store.withLock ? store.withLock(action) : action();
+    } catch {
+      return { denied: true, reason: "store-unreadable" } as T;
+    }
+  }
+
+  return {
+    link,
+    ownerForWallet,
+    ownerForOAuth,
+    ageStatusForWallet,
+    ageStatusForOAuth,
+    saveWalletAge,
+    saveOAuthAge,
+  };
 }
 
 const installedStoreKey = "__s3rchIdentityLinkStore";
@@ -379,6 +501,29 @@ export function ownerForOAuth(sub: string): string | null {
 
 export function parseLinkFile(value: unknown): ReturnType<LinkStore["load"]> {
   return parseStoredLinkFile(value);
+}
+
+const AGE_STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+function cleanAgeStamp(value: string): string | null {
+  if (!AGE_STAMP.test(value) || !Number.isFinite(Date.parse(value))) return null;
+  return value;
+}
+
+function stampForSub(file: IdentityLinkFile, sub: string): string | null {
+  const cleaned = cleanSub(sub);
+  if (!cleaned) return null;
+  const person = personForSub(file, cleaned);
+  if (person?.ageConfirmedAt) return person.ageConfirmedAt;
+  return file.oauthAge?.find((row) => row.sub === cleaned)?.confirmedAt ?? null;
+}
+
+function attachAge(file: IdentityLinkFile, person: IdentityPerson, sub: string): boolean {
+  if (person.ageConfirmedAt) return false;
+  const stamp = stampForSub(file, sub);
+  if (!stamp) return false;
+  person.ageConfirmedAt = stamp;
+  return true;
 }
 
 function personForWallet(file: IdentityLinkFile, wallet: string): IdentityPerson | undefined {

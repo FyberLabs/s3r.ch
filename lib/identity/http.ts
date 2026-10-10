@@ -5,6 +5,7 @@ import {
   cookieOptions,
   nonceCookieName,
   nonceCookieNames,
+  oauthAgeCookieName,
   oauthPkceCookieName,
   oauthSessionCookieName,
   readCookie,
@@ -70,6 +71,8 @@ export async function clearIdentityCookies(): Promise<void> {
     oauthSessionCookieName(false),
     oauthPkceCookieName(true),
     oauthPkceCookieName(false),
+    oauthAgeCookieName(true),
+    oauthAgeCookieName(false),
   ];
   for (const name of names) {
     const secure = name.startsWith("__Host-");
