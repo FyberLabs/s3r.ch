@@ -283,7 +283,7 @@ Empty any of the three = STUN-only. Integrator contract: FyberLabs/panopticon [`
 
 ### Operator / infra habit (live TURN)
 
-Same style as `IDENTITY_SESSION_SECRET` / `SEED_SECRET` for the secret: App Service application settings. Key Vault secret name `s3rch-panopticon-api-key` and the `*_BASE` hostnames stay in Terraform in **FyberLabs/infra** `terraform/s3rch`. `PANOPTICON_TENANT_ID` is owned here: Deploy writes that App Service setting from the GitHub variable `S3RCH_PANOPTICON_TENANT_ID` (repository variable, or the same name on the `prod` environment). The UUID is not in git. An unset variable fails deploy and does not clear the live setting. This repo does not deploy coturn and does not add Terraform.
+Same style as `IDENTITY_SESSION_SECRET` / `SEED_SECRET` for the secret: App Service application settings. Key Vault secret name `s3rch-panopticon-api-key` and the `*_BASE` hostnames stay in Terraform in **FyberLabs/infra** `terraform/s3rch`. `PANOPTICON_TENANT_ID` is owned here: Deploy writes that App Service setting from the GitHub variable `S3RCH_PANOPTICON_TENANT_ID` (required repository variable, or the same name on the `prod` environment). It is the Panopticon marketplace tenant id the app uses, set as `PANOPTICON_TENANT_ID` on the App Service; it is an identifier, not a secret. The UUID is not in git. An unset variable fails deploy before checkout and image push and does not clear the live setting. This repo does not deploy coturn and does not add Terraform.
 
 Checklist for live TURN:
 

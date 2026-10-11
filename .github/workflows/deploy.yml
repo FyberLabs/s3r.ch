@@ -51,6 +51,21 @@ jobs:
       # Not the Azure Entra tenant. Never commit the value.
       S3RCH_PANOPTICON_TENANT_ID: ${{ vars.S3RCH_PANOPTICON_TENANT_ID }}
     steps:
+      # The value is already on the job env, so a missing variable can fail
+      # before checkout and image push. UUID checks stay in
+      # scripts/require-panopticon-tenant-id.sh (before the build, and again
+      # before the App Service write).
+      - name: Require Panopticon tenant id
+        run: |
+          set -euo pipefail
+          tenant_id="$(printf '%s' "${S3RCH_PANOPTICON_TENANT_ID:-}" | tr -d '[:space:]')"
+          if [ -z "$tenant_id" ]; then
+            echo "GitHub variable S3RCH_PANOPTICON_TENANT_ID is unset." >&2
+            echo "Create it as a repository variable or a prod environment variable." >&2
+            echo "Refusing to update App Service so PANOPTICON_TENANT_ID is not cleared." >&2
+            exit 1
+          fi
+
       # az and azure/login keep account state in ~/.azure, outside the checkout.
       # docker/login-action writes the registry token to ~/.docker/config.json.
       # The shared runners do not wipe the home directory between jobs.
@@ -68,8 +83,8 @@ jobs:
 
       - uses: actions/checkout@v7.0.1
 
-      # Fail before image build or any App Service write. An unset variable
-      # must not reach `az webapp config appsettings set` and clear the setting.
+      # Full guard before image build or any App Service write. An unset or
+      # non-UUID value must not reach `az webapp config appsettings set`.
       - name: Require Panopticon tenant id
         run: bash scripts/require-panopticon-tenant-id.sh
 
@@ -250,7 +265,9 @@ jobs:
         run: |
           set -euo pipefail
           # Only the per-job directories. Do not log out a shared ~/.azure.
-          if [ -d "$AZURE_CONFIG_DIR" ]; then
+          # `az logout` prints "ERROR: There are no active accounts." when
+          # this job never signed in (the config dir exists after isolate).
+          if [ -d "$AZURE_CONFIG_DIR" ] && az account show >/dev/null 2>&1; then
             az logout || true
           fi
           if [ -f "$DOCKER_CONFIG/config.json" ]; then
