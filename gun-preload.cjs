@@ -2,8 +2,12 @@
  * Attach a same-process Gun seed peer to Next's HTTP server before listen().
  * Gun serves WebSocket at `/gun`. Bootstrap cache — not the finished mesh
  * (docs/ARCHITECTURE.md). Used as `node -r ./gun-preload.cjs server.js`.
+ *
+ * Identity storage is checked in the background. A storage failure does not
+ * stop the process: the feed, the forum and /gun keep working, and account
+ * linking returns 503 until the check passes (see identity-health.cjs).
  */
-require("./identity-storage.cjs").assertIdentityStorage();
+require("./identity-health.cjs").startIdentityMonitor();
 
 const fs = require("node:fs");
 const http = require("node:http");
