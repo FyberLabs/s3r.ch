@@ -5,9 +5,9 @@
  *
  * Identity storage is checked in the background. A storage failure does not
  * stop the process: the feed, the forum and /gun keep working, and account
- * linking returns 503 until the check passes (see identity-health.cjs).
+ * linking returns 503 until the check passes (see identity-monitor.cjs).
  */
-require("./identity-health.cjs").startIdentityMonitor();
+require("./identity-monitor.cjs").startIdentityMonitor();
 
 const fs = require("node:fs");
 const http = require("node:http");

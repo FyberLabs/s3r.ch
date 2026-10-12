@@ -37,6 +37,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/identity-link-schema.cjs ./identi
 COPY --from=builder --chown=nextjs:nodejs /app/identity-blob.cjs ./identity-blob.cjs
 COPY --from=builder --chown=nextjs:nodejs /app/identity-blob-worker.cjs ./identity-blob-worker.cjs
 COPY --from=builder --chown=nextjs:nodejs /app/identity-health.cjs ./identity-health.cjs
+COPY --from=builder --chown=nextjs:nodejs /app/identity-monitor.cjs ./identity-monitor.cjs
 COPY --from=builder --chown=nextjs:nodejs /app/identity-probe-worker.cjs ./identity-probe-worker.cjs
 
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data

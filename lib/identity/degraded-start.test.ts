@@ -6,7 +6,10 @@ import { POST as oauthLink } from "../../app/api/identity/oauth/link/route";
 import { getLinks, identityLinksWritable, openLinks, useLinkStore, type IdentityLinkFile, type LinkStore } from "./link";
 
 const require = createRequire(import.meta.url);
-const monitor = require("../../identity-health.cjs") as typeof import("../../identity-health.cjs");
+const monitor = {
+  ...(require("../../identity-health.cjs") as typeof import("../../identity-health.cjs")),
+  ...(require("../../identity-monitor.cjs") as typeof import("../../identity-monitor.cjs")),
+};
 const WALLET = "0x1111111111111111111111111111111111111111";
 
 function memoryStore(): LinkStore & { saves: number } {

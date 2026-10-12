@@ -20,5 +20,6 @@ copy(path.join(__dirname, "..", "identity-link-schema.cjs"), path.join(standalon
 copy(path.join(__dirname, "..", "identity-blob.cjs"), path.join(standalone, "identity-blob.cjs"));
 copy(path.join(__dirname, "..", "identity-blob-worker.cjs"), path.join(standalone, "identity-blob-worker.cjs"));
 copy(path.join(__dirname, "..", "identity-health.cjs"), path.join(standalone, "identity-health.cjs"));
+copy(path.join(__dirname, "..", "identity-monitor.cjs"), path.join(standalone, "identity-monitor.cjs"));
 copy(path.join(__dirname, "..", "identity-probe-worker.cjs"), path.join(standalone, "identity-probe-worker.cjs"));
 console.log("[s3r.ch] standalone assets copied");
