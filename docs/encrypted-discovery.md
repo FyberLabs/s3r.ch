@@ -97,9 +97,11 @@ reader                              shared graph / relays
 
 ## Search
 
-- **Opt-in public index.** Only public or explicitly opted-in fields (handle, tags, topic, public post text) go into a plaintext index (`s3rch/index/tag/<tag>/<itemId>`), extending the current tags-first Discover. Private items never enter it.
-- **Local search after decryption.** Each client builds a local full-text index (IndexedDB, e.g. a MiniSearch-style inverted index) over items it has decrypted. This is the default for private content.
-- **Group keyed tokens (optional).** For group search without a central index: members compute `T = HMAC(G_g,e.searchKey, normalize(term))` and publish `s3rch/gsearch/<groupTag>/<T>/<itemId>`. Members query by the same token. Non-members see opaque tokens. Leaks: term frequency and repetition within the group, and query patterns to the serving relay. Tokens are rotated with the group epoch. Not suitable for small groups or low-entropy terms (guessable by a former member who kept old keys).
+Search follows a three-tier index model.
+
+1. **One public index, public content only.** Public or explicitly published fields (handle, tags, topic, public post text) go into one plaintext index (`s3rch/index/tag/<tag>/<itemId>`), extending the current tags-first Discover. Any peer can read and serve it. Private items never enter it.
+2. **One index per private group, readable only by members.** Each group keeps its own index, maintained by group members or the group's relay. Index entries are encrypted under the group's v2 group key for the current epoch (`G_g,e`), so non-members and relays see only ciphertext. Lookups can use keyed tokens, `T = HMAC(G_g,e.searchKey, normalize(term))` at `s3rch/gsearch/<groupTag>/<T>/<itemId>`, so a member queries by token without decrypting the whole index. The index is rebuilt or re-keyed when the group epoch bumps (membership change), so a removed member cannot read entries written after removal. Leaks to the serving relay: token frequency and query patterns within the group. Small groups or guessable terms can make tokens linkable; members may fall back to fetching and decrypting the whole index.
+3. **Individuals: push/pull delivery, then a local index.** For one-to-one or small personal shares, owners push wrapped keys to readers' inboxes and readers pull them (see Discovery flow). These sets are much smaller, so each device indexes what it has decrypted locally (IndexedDB, e.g. a MiniSearch-style inverted index, encrypted at rest). No shared index exists for this tier.
 
 ## Privacy
 
@@ -140,7 +142,7 @@ SociACL's `cancelSee` / `undelegate` is immediate at CHECK. Under encryption it 
 
 ## Proposed SociACL spec additions
 
-These are proposals for FyberLabs/SociACL. Nothing below exists today.
+These are proposals for FyberLabs/SociACL. Nothing below exists today. SociACL Dev Bot is drafting the matching SociACL spec PR, which will be cross-linked here once it is open.
 
 1. **Wrapped-key grant edge.** A `delegate`/see grant variant that carries `{ epoch, wrappedKey, recipientKeyId }`, signed by the owner. CHECK semantics unchanged; the edge additionally lets the recipient decrypt epoch `e`. Defines which key types are allowed (SEA P-256 epub to start).
 2. **Private discovery.** A storage rule that grant rows need not be plaintext: an encrypted/blinded `MeshSeeGrant` form that the accessor (and optionally a designated verifier) can present to CHECK as a signed grant proof, so CHECK can be evaluated without publishing `s3rch/acl/<owner>/<object>/<accessor>` in clear. Includes the inbox tag derivation.
@@ -153,7 +155,7 @@ These are proposals for FyberLabs/SociACL. Nothing below exists today.
 2. Should private items carry `owner` in clear so peers can CHECK without decrypting, or keep authorship hidden?
 3. Per-device SEA pairs, or one pair per wallet/account shared across devices as today?
 4. On revoke, re-encrypt existing items (costly) or only protect new epochs?
-5. Is group key search (keyed tokens) worth its leakage, or is local-only search enough for v1?
+5. ~~Is group search worth its leakage?~~ Resolved: three tiers, as described under Search (public index; per-group member-only index with v2 group keys per epoch; personal push/pull with on-device indexing).
 6. Who may write to someone's inbox: anyone (with spam filtering), only jointly stated `friend`/`in-network`, or only via an org relay?
 7. Migration: encrypt existing Mine/granted content in place, or only new content? Plaintext `s3rch/granted` and `s3rch/acl` rows stay readable to anyone who already replicated them.
 8. Do you want the SociACL additions above proposed upstream now, or after a prototype here?
