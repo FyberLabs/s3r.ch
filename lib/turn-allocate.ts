@@ -22,6 +22,7 @@
  */
 
 import { iceServerUrls } from "./gun-webrtc";
+import { recordIntegrationHop } from "./dependency-health";
 
 export const PANOPTICON_ALLOCATE_PATH = "/api/v1/turn/allocate";
 export const DEFAULT_ALLOCATE_TTL_SEC = 300;
@@ -290,6 +291,7 @@ export async function sessionGatedAllocate(input: {
     clientHint: input.sessionAddress,
     fetchImpl: input.fetchImpl,
   });
+  recordIntegrationHop("turn", allocated !== null);
   if (!allocated) {
     const fallback = staticAllocation(env, now);
     if (fallback) return { status: 200, body: fallback };

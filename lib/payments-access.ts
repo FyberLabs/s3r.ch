@@ -16,6 +16,8 @@
  * the public page. Never create a SociACL grant. Do not hard-paywall.
  */
 
+import { recordIntegrationHop } from "./dependency-health";
+
 export const PANOPTICON_PAYMENTS_PREFIX = "/api/v1/payments/v0";
 export const PANOPTICON_RECEIPT_PATH = "/api/v1/payments/v0/receipt";
 export const PANOPTICON_INTENT_PATH = "/api/v1/payments/v0/intent";
@@ -422,6 +424,7 @@ export async function sessionGatedIntent(input: {
     body: parsed,
     fetchImpl: input.fetchImpl,
   });
+  recordIntegrationHop("payments", quoted !== null);
   if (!quoted) {
     return { status: 503, body: { error: "payments-unavailable" } };
   }
@@ -451,6 +454,7 @@ export async function sessionGatedReceipt(input: {
     body: parsed,
     fetchImpl: input.fetchImpl,
   });
+  recordIntegrationHop("payments", receipt !== null);
   if (!receipt) {
     return { status: 503, body: { error: "payments-unavailable" } };
   }
