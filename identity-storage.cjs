@@ -10,12 +10,17 @@ function identityLinkPath(env = process.env, cwd = process.cwd()) {
   return env.S3RCH_IDENTITY_LINKS || path.join(cwd, "data", "identity-links.json");
 }
 
-function assertIdentityStorage(env = process.env, clientFactory) {
+function assertIdentityStorage(env = process.env, clientFactory, options = {}) {
   if (env.NODE_ENV !== "production") return;
   const blob = require("./identity-blob.cjs");
   const config = blob.readBlobConfig(env);
   const factory = clientFactory || blob.createProductionBlobClient;
-  blob.assertBlobReady(config, factory(config));
+  const client = factory(config);
+  try {
+    blob.assertBlobReady(config, client, options);
+  } finally {
+    if (client && typeof client.close === "function") client.close();
+  }
 }
 
 module.exports = { identityLinkPath, assertIdentityStorage };

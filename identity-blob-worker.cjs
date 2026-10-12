@@ -33,6 +33,7 @@ function failure(error) {
   if (status === 412 || status === 409) return { ok: false, code: "blob-conflict", status };
   if (status === 404) return { ok: false, status, reason: "not-found" };
   if (status === 401 || status === 403) return { ok: false, status, reason: "forbidden" };
+  if (status === 413) return { ok: false, status, reason: "too-large" };
   return { ok: false, status, reason: "unreachable" };
 }
 

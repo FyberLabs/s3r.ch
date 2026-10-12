@@ -22,6 +22,7 @@ import {
   type IdentityBlobClient,
 } from "../../identity-blob.cjs";
 import { parseLinkFile as parseStoredLinkFile } from "../../identity-link-schema.cjs";
+import { identityClient, identityHealth, identityWritable } from "../../identity-health.cjs";
 import { identityLinkPath } from "../../identity-storage.cjs";
 
 export const LINK_FILE_V = 1;
@@ -443,6 +444,26 @@ export function openLinks(store: LinkStore): Links {
 
 const installedStoreKey = "__s3rchIdentityLinkStore";
 let productionLinks: Links | undefined;
+let productionClient: IdentityBlobClient | null = null;
+
+/**
+ * Stands in while identity storage is unavailable. Reads report
+ * "store-unreadable" and writes throw, so every identity write path takes its
+ * existing 503 branch and nothing is written.
+ */
+export const unavailableLinkStore: LinkStore = {
+  load() {
+    return { ok: false, reason: "store-unreadable" };
+  },
+  save() {
+    throw new Error("s3r.ch: identity storage is unavailable");
+  },
+};
+
+/** True when account links can be written. Always true outside production. */
+export function identityLinksWritable(): boolean {
+  return identityWritable(process.env);
+}
 
 function installedStore(): LinkStore | undefined {
   return (globalThis as { [installedStoreKey]?: LinkStore })[installedStoreKey];
@@ -457,12 +478,25 @@ export function useLinkStore(store: LinkStore | null): void {
 }
 
 export function getLinks(): Links {
+  if (!identityLinksWritable()) return openLinks(unavailableLinkStore);
   const installed = installedStore();
   if (installed) return openLinks(installed);
   if (process.env.NODE_ENV === "production") {
-    if (!productionLinks) {
+    // The monitor opens the client off the request path and swaps it after a
+    // recovery. Without the preload (status "unchecked") connect here as before.
+    const monitored = identityClient();
+    if (monitored) {
+      if (!productionLinks || productionClient !== monitored) {
+        productionLinks = openLinks(new BlobLinkStore(monitored));
+        productionClient = monitored;
+      }
+      return productionLinks;
+    }
+    if (identityHealth().status !== "unchecked") return openLinks(unavailableLinkStore);
+    if (!productionLinks || productionClient !== null) {
       const config = readBlobConfig(process.env);
       productionLinks = openLinks(new BlobLinkStore(createProductionBlobClient(config)));
+      productionClient = null;
     }
     return productionLinks;
   }
