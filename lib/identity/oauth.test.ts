@@ -26,6 +26,10 @@ import {
   signBackupSession,
 } from "./oauth";
 
+// Logins pin the provider issuer in the link store; keep this file's store
+// separate from other test files running in parallel.
+process.env.S3RCH_IDENTITY_LINKS ??= join(mkdtempSync(join(tmpdir(), "s3rch-links-")), "identity-links.json");
+
 const ISSUER = "https://auth.example.org/realms/controlplane";
 const WALLET_URL = "https://api.example.org/auth/siwe/me";
 const SECRET = LOCAL_SESSION_SECRET;

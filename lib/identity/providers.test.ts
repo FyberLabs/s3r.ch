@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { generateKeyPair, SignJWT } from "jose";
@@ -11,6 +14,10 @@ import {
   publicLoginProviders,
   readLoginProviders,
 } from "./providers";
+
+// Logins pin the provider issuer in the link store; keep this file's store
+// separate from other test files running in parallel.
+process.env.S3RCH_IDENTITY_LINKS ??= path.join(mkdtempSync(path.join(tmpdir(), "s3rch-links-")), "identity-links.json");
 
 const OTHER = {
   id: "partner",
