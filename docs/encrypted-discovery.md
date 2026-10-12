@@ -180,7 +180,7 @@ The user decides on each revoke. The UI asks: **rotate going forward only** (new
 
 ## Proposed SociACL spec additions
 
-These are proposals for FyberLabs/SociACL. Nothing below exists today. These are being proposed upstream now: SociACL Dev Bot is drafting the matching SociACL spec PR, which will be cross-linked here once it is open. Item 2 also covers the reader-side grant proof and revocation tokens described under *CHECK without a visible owner*.
+These are proposals for FyberLabs/SociACL. The matching spec change is [FyberLabs/SociACL#20](https://github.com/FyberLabs/SociACL/pull/20) (wrapped-key grants); none of it is implemented in s3r.ch yet. Item 2 also covers the reader-side grant proof and revocation tokens described under *CHECK without a visible owner*.
 
 1. **Wrapped-key grant edge.** A `delegate`/see grant variant that carries `{ epoch, wrappedKey, recipientKeyId }`, signed by the owner. CHECK semantics unchanged; the edge additionally lets the recipient decrypt epoch `e`. Defines which key types are allowed (SEA P-256 epub to start).
 2. **Private discovery.** A storage rule that grant rows need not be plaintext: an encrypted/blinded `MeshSeeGrant` form that the accessor (and optionally a designated verifier) can present to CHECK as a signed grant proof, so CHECK can be evaluated without publishing `s3rch/acl/<owner>/<object>/<accessor>` in clear. Includes the inbox tag derivation.
@@ -205,4 +205,4 @@ When a new protocol version is applied, existing data is encrypted in place: eac
    - Structured or searchable encryption with volume hiding (research grade).
 6. **Resolved:** inbox write policy is the user's choice, defaulting to public with spam filtering.
 7. **Resolved:** a new protocol version encrypts existing data in place. Plaintext peers already copied stays exposed.
-8. **Resolved:** the SociACL additions are proposed upstream now. SociACL Dev Bot is drafting that PR, and it will be cross-linked here.
+8. **Resolved:** the SociACL additions are proposed upstream in [FyberLabs/SociACL#20](https://github.com/FyberLabs/SociACL/pull/20).
