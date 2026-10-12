@@ -43,7 +43,7 @@ s3rch/items/<itemId>          { v: 2, enc: 1, ct, iv, alg, owner, ver, ts? }
 
 - `itemId` is random (128-bit), not derived from content or author, so the id does not link items.
 - `ct` is the SEA/AES-GCM ciphertext of the existing `GunFeedNode` body (or room / claim node). `ver` matches the SociACL object version.
-- `owner` is optional on the wire. Including it lets peers run CHECK without decrypting but leaks authorship. Default: omit for private items, store owner inside `ct`, and carry a signed owner proof in the grant (below).
+- Authorship is hidden by default: `owner` is not on the wire for private items. It sits inside `ct` and inside each wrapped-key entry. See *Author fast path* and *CHECK without a visible owner*.
 - Public items stay `v: 1` plaintext on `s3rch/items`. Encryption is per item, not per network.
 
 ### Content keys and epochs
@@ -63,10 +63,29 @@ plaintext of ct:
 
 - Wrapping uses SEA's ECDH (`SEA.secret(readerEpub, ephemeralPair)`) with a fresh ephemeral pair per entry, then `SEA.encrypt`. The entry is unlinkable to the sender on the wire.
 - `sig` is the owner's SEA signature over `(item, e, reader pub, from, until)`, so the reader can tell a real grant from junk and can present it to CHECK.
-- `tag(readerEpub, slot)` is a blinded inbox address that only the reader (and the sender for that entry) can compute. Two options, decision open (see questions):
-  - **(a) Static rendezvous:** reader publishes a signed `inboxPub` on its user node; tag = `H(ECDH(sender, inboxPub) || slot)`. Each sender-reader pair gets its own unlinkable lane; reader must check each known sender's lane.
-  - **(b) Shared bucket:** tag = `H(readerEpub || day)` truncated to k bits, so many readers share a bucket. Reader scans the bucket and trial-decrypts. Larger k = less scanning, more linkability.
+- `tag` is a private per-pair lane: each reader publishes a signed `inboxPub` on its account node, and `tag = H(ECDH(senderPair, inboxPub) || slot)`, where `slot` is a day or sequence number. Only the sender and the reader can derive it. Each sender-reader pair gets its own unlinkable lane, and the reader polls only the lanes of senders it knows (plus a first-contact lane, below). Shared buckets with trial decryption are not used: scanning shared buckets is inefficient.
+- **First contact:** a sender the reader has never seen writes a signed introduction, encrypted to `inboxPub` and carrying the sender's pub, to a first-contact lane derived from the reader alone, `H(inboxPub || "intro" || day)`. That lane is subject to the reader's inbox write policy (see Privacy). After the first intro, traffic moves to the per-pair lane.
 - This replaces the plaintext `s3rch/granted/<accessor>/…` delivery copy. The inbox holds keys and pointers, never plaintext content.
+
+### Author fast path
+
+The author must find and unwrap their own items cheaply without anyone else learning authorship. For each item, the author writes a self-wrapped entry into their own author lane:
+
+```
+s3rch/inbox/<H(accountKeyDerivedSecret || "author" || slot)>/<entryId>   { eph, ct, iv }
+```
+
+The lane tag is derived from a secret only the account holds, so to others it looks like any other inbox lane. The entry wraps `K_item,e` to the account's own epub and also holds the item id and epoch. The author lists their items by scanning one lane, with no trial decryption. On rotation (epoch bump), the author re-writes the self-wrapped entry.
+
+### CHECK without a visible owner
+
+Today `checkSee` runs on a peer's merged graph and reads the plaintext `MeshSeeGrant` at `s3rch/acl/<owner>/<object>/<accessor>`. With hidden owners, that row cannot be public. Authorization moves to the reader side:
+
+- The wrapped-key entry carries a **grant proof**: the owner's signature over `(itemId, epoch, accessor pub, from, until, object version)`, plus the owner's account-key binding (pub signed by the login provider or wallet).
+- The reader decrypts the entry and runs CHECK locally against that proof, which holds the same facts as today's `IdentitySeeGrant`. It's the reader's own client checking its own access.
+- When a peer or relay must authorize an action (a reply, a write into a group, a server-side action), the reader presents the grant proof to that verifier over a direct channel. The verifier learns the owner for that one item only. The mesh at large never sees it.
+- Revocation stays immediate at the verifier: the owner publishes a revocation token `H(itemId || epoch || accessor || nonce)` under the author lane or an item-keyed revocation lane. The verifier checks that the token is absent and that the epoch is current. A revoked reader can't show a proof for the new epoch.
+- This needs the SociACL "private discovery" addition (spec section below). Current SociACL CHECK reads a plaintext graph.
 
 ### Groups
 
@@ -79,11 +98,11 @@ The light contract has no group predicate yet, so v1 has two modes:
 
 ```
 reader                              shared graph / relays
-  |  for each lane or bucket tag t:        |
+  |  for each known lane tag t:            |
   |---- get s3rch/inbox/<t>  (since cursor) -->
   |<--- entries (ciphertext only) ----------|
-  |  trial-decrypt; verify owner sig        |
-  |  CHECK(see, item, me) on merged graph   |
+  |  unwrap; verify grant proof             |
+  |  CHECK(see, item, me) on grant proof    |
   |---- get s3rch/items/<itemId> ---------->|
   |<--- ct -------------------------------- |
   |  decrypt with K_item,e; index locally   |
@@ -91,16 +110,33 @@ reader                              shared graph / relays
 
 - **Pagination:** inbox entries are keyed `<entryId> = <hlc>-<rand>` (hybrid logical clock prefix), so a reader reads by lexical range. Gun has no native range queries; use the `gun/lib/lex` `.get({'.': {'>': cursor}})` form, which relay peers can serve, and fall back to full-node fetch on peers that ignore it.
 - **Incremental sync:** reader keeps a per-tag cursor in IndexedDB and subscribes (`.map().on`) to its active tags. Daily rotating tags bound how far back a scan goes; missed days are walked once at login.
-- **Multi-device:** devices of one wallet share the SEA pair today (`docs/identity.md`). If per-device pairs are added, the owner wraps to each device epub, or the user publishes a wallet-level "device set" key. Open question.
+- **Multi-device:** one SEA key pair per account. Senders wrap only to the account epub, never per device. See *Device enrollment and revocation*.
 - **Group discovery (v2):** read group inbox tags for each held `G_g,e`.
 - **Authorization:** decryption is not authorization. `checkSee` / `checkSeeGrant` run on the reader's merged graph before an item is displayed as granted, and any relay doing work for the reader runs CHECK too. Because grant rows become encrypted (below), CHECK needs an input it can verify without the plaintext access graph; see the spec additions.
+
+## Device enrollment and revocation
+
+Each account has one SEA key pair. Devices get it through enrollment from a device that's already enrolled:
+
+1. The new device creates a temporary ECDH pair and shows a pairing code (a QR code holding its temporary pub plus a short random secret).
+2. The existing device scans the code, and the user confirms on both screens that a short authentication string matches.
+3. The existing device encrypts the account key pair to the new device's temporary pub and binds it to the pairing secret, then sends it over a direct channel or a one-time encrypted inbox entry that expires quickly.
+4. The new device stores the account pair in IndexedDB, encrypted at rest with a non-exportable WebCrypto key, and signs a device record (`deviceId`, `devicePub`, enrolled time) with the account key. Records live on the account node.
+5. If the user still has a login provider session or wallet (SIWE), enrollment can also require a fresh login on the new device as a second factor.
+
+**Revoking a device.** Because every device holds the same account key, revoking a device means rotating the account key:
+
+- Generate a new account pair on a trusted device, sign a succession record with the old key (`old pub → new pub`, revoked `deviceId`), and re-bind the new pub to the account through the login provider or wallet.
+- Re-enroll the remaining devices with the new key, using the enrollment step above.
+- Publish a new `inboxPub`. Senders move to new lanes, and lanes under the old key are drained, then abandoned.
+- Content keys the revoked device already held stay exposed, just like a revoked reader. The user gets the same prompt as for reader revocation: rotate going forward only, or re-encrypt existing items.
 
 ## Search
 
 Search follows a three-tier index model.
 
 1. **One public index, public content only.** Public or explicitly published fields (handle, tags, topic, public post text) go into one plaintext index (`s3rch/index/tag/<tag>/<itemId>`), extending the current tags-first Discover. Any peer can read and serve it. Private items never enter it.
-2. **One index per private group, readable only by members.** Each group keeps its own index, maintained by group members or the group's relay. Index entries are encrypted under the group's v2 group key for the current epoch (`G_g,e`), so non-members and relays see only ciphertext. Lookups can use keyed tokens, `T = HMAC(G_g,e.searchKey, normalize(term))` at `s3rch/gsearch/<groupTag>/<T>/<itemId>`, so a member queries by token without decrypting the whole index. The index is rebuilt or re-keyed when the group epoch bumps (membership change), so a removed member cannot read entries written after removal. Leaks to the serving relay: token frequency and query patterns within the group. Small groups or guessable terms can make tokens linkable; members may fall back to fetching and decrypting the whole index.
+2. **One index per private group, readable only by members.** Each group keeps its own index, maintained by group members or the group's relay. Index entries are encrypted under the group's v2 group key for the current epoch (`G_g,e`), so non-members and relays see only ciphertext. Lookups could use keyed tokens (**needs discussion; look for a better approach**), `T = HMAC(G_g,e.searchKey, normalize(term))` at `s3rch/gsearch/<groupTag>/<T>/<itemId>`, so a member queries by token without decrypting the whole index. The index is rebuilt or re-keyed when the group epoch bumps (membership change), so a removed member cannot read entries written after removal. Leaks to the serving relay: token frequency and query patterns within the group. Small groups or guessable terms can make tokens linkable; members may fall back to fetching and decrypting the whole index.
 3. **Individuals: push/pull delivery, then a local index.** For one-to-one or small personal shares, owners push wrapped keys to readers' inboxes and readers pull them (see Discovery flow). These sets are much smaller, so each device indexes what it has decrypted locally (IndexedDB, e.g. a MiniSearch-style inverted index, encrypted at rest). No shared index exists for this tier.
 
 ## Privacy
@@ -112,12 +148,14 @@ Search follows a three-tier index model.
 | Former reader | old content | old content (cannot be clawed back); not new epochs |
 
 - **Metadata leakage:** sizes (pad to buckets, e.g. 1/4/16/64 KiB), timing (owners may batch grant writes), fan-out (number of inbox entries written at once reveals audience size; batch or add dummy entries), and owner field (omit on private items).
-- **Enumeration resistance:** random item ids; inbox tags are keyed, so nobody can list "all grants to wallet X" without the reader's secret or the sender's lane secret. Under option (b) buckets, an observer learns that a reader is one of the bucket's members.
-- **Spam:** anyone can write to an inbox tag. Entries without a valid owner signature are dropped. Relays may rate-limit writes per tag. Proof-of-work or a SociACL `friend`/`in-network` precondition for writing to lane (a) is an option.
+- **Enumeration resistance:** random item ids; inbox tags are keyed, so nobody can list "all grants to wallet X" without the reader's secret or the sender's lane secret.
+- **Inbox write policy:** the user decides. The default is **public**: anyone can write to the first-contact lane, with spam filtering (entries without a valid signature are dropped, relays rate-limit per lane, and clients may require a small proof-of-work). Users can restrict intros to jointly stated `friend` or `in-network` principals, or to their org relay. Per-pair lanes accept only the paired sender anyway.
 
 ## Revocation and re-keying
 
 SociACL's `cancelSee` / `undelegate` is immediate at CHECK. Under encryption it is not enough: the revoked reader still holds `K_item,e`.
+
+The user decides on each revoke. The UI asks: **rotate going forward only** (new epoch for future content, cheap) or **re-encrypt existing items** (new epoch plus re-encryption of the affected items, costly). It shows the item count and an estimated cost for the second choice.
 
 - **Forward secrecy for new content:** on revoke, bump epoch, generate `K_item,e+1`, wrap to the remaining readers. Cost O(remaining readers) per affected item, or O(remaining members) once for a group key in v2.
 - **Existing content:** cannot be revoked from someone who already decrypted. Optional lazy re-encryption: re-encrypt the item under `e+1` and tombstone the old ciphertext, so a revoked reader who did not cache it loses access. Cost O(item size).
@@ -128,7 +166,7 @@ SociACL's `cancelSee` / `undelegate` is immediate at CHECK. Under encryption it 
 ## Performance on Gun
 
 - **Fan-out:** v1 writes one inbox entry per reader per item. Fine for personal sharing (tens of readers). Groups beyond ~50 members should wait for v2 group keys.
-- **Reads:** a reader touches only its own tags plus the items it can decrypt. No global scan. Trial-decryption cost under bucket option (b) is one ECDH per entry; keep buckets small.
+- **Reads:** a reader touches only its own tags plus the items it can decrypt. No global scan. Each entry costs one ECDH to unwrap; there is no trial decryption of other readers' entries.
 - **Caching:** clients cache decrypted items and keys in IndexedDB (encrypted at rest with a key derived from the SEA pair). Relays cache ciphertext only.
 - **Relay roles:** the `/gun` seed peer and any durable relay (`docs/durable-graph-and-turn.md`) store and serve ciphertext and inbox entries, may enforce write rate limits and size caps, and never hold content keys. Optional "mailbox relays" can be chosen per user to keep inbox tags off the general mesh. Relays must not mint `see` (existing rule).
 - **Gun limits:** large nodes and wide maps replicate poorly; shard inbox tags by day and item ciphertext by chunk if over ~64 KiB.
@@ -142,20 +180,29 @@ SociACL's `cancelSee` / `undelegate` is immediate at CHECK. Under encryption it 
 
 ## Proposed SociACL spec additions
 
-These are proposals for FyberLabs/SociACL. Nothing below exists today. SociACL Dev Bot is drafting the matching SociACL spec PR, which will be cross-linked here once it is open.
+These are proposals for FyberLabs/SociACL. Nothing below exists today. These are being proposed upstream now: SociACL Dev Bot is drafting the matching SociACL spec PR, which will be cross-linked here once it is open. Item 2 also covers the reader-side grant proof and revocation tokens described under *CHECK without a visible owner*.
 
 1. **Wrapped-key grant edge.** A `delegate`/see grant variant that carries `{ epoch, wrappedKey, recipientKeyId }`, signed by the owner. CHECK semantics unchanged; the edge additionally lets the recipient decrypt epoch `e`. Defines which key types are allowed (SEA P-256 epub to start).
 2. **Private discovery.** A storage rule that grant rows need not be plaintext: an encrypted/blinded `MeshSeeGrant` form that the accessor (and optionally a designated verifier) can present to CHECK as a signed grant proof, so CHECK can be evaluated without publishing `s3rch/acl/<owner>/<object>/<accessor>` in clear. Includes the inbox tag derivation.
 3. **Rotation on revoke.** Make `cancelSee` / `undelegate` on an encrypted object require an epoch bump and a re-wrap to remaining grantees; CHECK denies decryption-dependent actions for any grant on an older epoch.
 4. **Group predicates on the light surface.** Add `same-group` (and possibly `named-circle`) to `s3rch-check.d.ts`, hop 1, with a group-key epoch tied to group membership changes.
 
-## Open questions for Chris
+## Migration
 
-1. Inbox addressing: per-sender lanes (a: more private, reader checks each known sender) or shared buckets (b: simpler, trial-decrypt, some linkability)?
-2. Should private items carry `owner` in clear so peers can CHECK without decrypting, or keep authorship hidden?
-3. Per-device SEA pairs, or one pair per wallet/account shared across devices as today?
-4. On revoke, re-encrypt existing items (costly) or only protect new epochs?
-5. ~~Is group search worth its leakage?~~ Resolved: three tiers, as described under Search (public index; per-group member-only index with v2 group keys per epoch; personal push/pull with on-device indexing).
-6. Who may write to someone's inbox: anyone (with spam filtering), only jointly stated `friend`/`in-network`, or only via an org relay?
-7. Migration: encrypt existing Mine/granted content in place, or only new content? Plaintext `s3rch/granted` and `s3rch/acl` rows stay readable to anyone who already replicated them.
-8. Do you want the SociACL additions above proposed upstream now, or after a prototype here?
+When a new protocol version is applied, existing data is encrypted in place: each client re-encrypts its own Mine and granted items, writes wrapped-key entries and author-lane entries, and tombstones the plaintext `s3rch/items`, `s3rch/granted` and `s3rch/acl` rows. Plaintext that peers already copied stays exposed. Tombstones can't recall it.
+
+## Decisions and open questions
+
+1. **Resolved:** inbox addressing uses a private per-pair lane that only the sender and reader can derive. Shared-bucket trial decryption is dropped as inefficient.
+2. **Resolved:** authorship is hidden by default. The author fast path is a self-wrapped key in an author-only lane, and CHECK moves to reader-presented grant proofs.
+3. **Resolved:** one SEA key pair per account. Devices get it through enrollment from an existing device, and revoking a device rotates the account key.
+4. **Resolved:** on each revoke the user chooses, through a UI prompt, between rotating going forward and re-encrypting existing items.
+5. **Open: group search. Needs discussion; look for a better approach than keyed tokens.** Candidates:
+   - Members fetch the group's encrypted index and search it locally (simple, no query leakage, bandwidth grows with the group).
+   - The group relay runs search inside a trusted execution environment (strong usability, adds trust in hardware).
+   - Encrypted Bloom filters or sharded indexes per epoch, with members fetching only matching shards (less leakage than tokens, some false positives).
+   - Private information retrieval (PIR) against the relay's index (hides queries, expensive).
+   - Structured or searchable encryption with volume hiding (research grade).
+6. **Resolved:** inbox write policy is the user's choice, defaulting to public with spam filtering.
+7. **Resolved:** a new protocol version encrypts existing data in place. Plaintext peers already copied stays exposed.
+8. **Resolved:** the SociACL additions are proposed upstream now. SociACL Dev Bot is drafting that PR, and it will be cross-linked here.
