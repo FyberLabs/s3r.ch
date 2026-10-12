@@ -9,8 +9,16 @@
  *   PANOPTICON_TENANT_ID   marketplace tenant UUID (`X-Tenant-ID`)
  *   PANOPTICON_API_KEY     product API key (`X-Api-Key`). Never NEXT_PUBLIC_*.
  *
- * Never Gun. Never localStorage. Never the long-lived TURN secret.
- * Fail soft: missing env / 401 / 503 / network / bad JSON → caller keeps STUN.
+ * Optional static fallback (server-only), used when the hop above is not
+ * configured or fails:
+ *   S3RCH_TURN_URLS         comma-separated turn:/turns:/stun: URLs
+ *   S3RCH_TURN_USERNAME     required when a turn: URL is listed
+ *   S3RCH_TURN_CREDENTIAL   required when a turn: URL is listed
+ *
+ * Never Gun. Never localStorage. Never the long-lived TURN secret of the
+ * allocate service. A static credential is handed to signed-in browsers, so
+ * use one scoped to this relay.
+ * Fail soft: nothing configured / 401 / 503 / network / bad JSON → caller keeps STUN.
  */
 
 import { iceServerUrls } from "./gun-webrtc";
@@ -24,6 +32,9 @@ export const ALLOCATE_USER_AGENT = "s3r.ch-turn-allocate/0.1 (Fyber Labs)";
 export const ENV_TURN_BASE = "PANOPTICON_TURN_BASE";
 export const ENV_TENANT_ID = "PANOPTICON_TENANT_ID";
 export const ENV_API_KEY = "PANOPTICON_API_KEY";
+export const ENV_STATIC_TURN_URLS = "S3RCH_TURN_URLS";
+export const ENV_STATIC_TURN_USERNAME = "S3RCH_TURN_USERNAME";
+export const ENV_STATIC_TURN_CREDENTIAL = "S3RCH_TURN_CREDENTIAL";
 
 export type EnvLike = Record<string, string | undefined>;
 
@@ -226,19 +237,52 @@ export async function hopPanopticonAllocate(input: {
 }
 
 /**
- * Next-route body. Unsigned → 401. Missing env / hop fail → 503.
- * 200 is the Panopticon JSON. Never returns the product API key.
+ * Static relay from S3RCH_TURN_*. Null when unset or when any URL is not a
+ * public stun:/turn: URL, or a turn: URL has no username and credential.
+ */
+export function readStaticTurnServer(env: EnvLike = process.env): TurnIceServer | null {
+  const urls = trimEnv(env[ENV_STATIC_TURN_URLS])
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+  if (urls.length === 0) return null;
+  return admitIceServer({
+    urls,
+    username: trimEnv(env[ENV_STATIC_TURN_USERNAME]) || undefined,
+    credential: trimEnv(env[ENV_STATIC_TURN_CREDENTIAL]) || undefined,
+  });
+}
+
+function staticAllocation(env: EnvLike | undefined, now: number): TurnAllocateOk | null {
+  const server = readStaticTurnServer(env);
+  if (!server) return null;
+  // Same lifetime as an allocation so the browser asks again and picks up rotation.
+  return {
+    iceServers: [server],
+    expiresAt: new Date(now + DEFAULT_ALLOCATE_TTL_SEC * 1000).toISOString(),
+  };
+}
+
+/**
+ * Next-route body. Unsigned → 401. Allocate hop first, then the static relay.
+ * Neither available → 503 and the browser stays STUN-only.
+ * Never returns the product API key.
  */
 export async function sessionGatedAllocate(input: {
   sessionAddress: string | null;
   env?: EnvLike;
   fetchImpl?: typeof fetch;
+  now?: number;
 }): Promise<AllocateRouteResult> {
   if (!input.sessionAddress) {
     return { status: 401, body: { error: "unauthorized" } };
   }
-  const cfg = readTurnAllocateEnv(input.env);
+  const env = input.env ?? process.env;
+  const now = input.now ?? Date.now();
+  const cfg = readTurnAllocateEnv(env);
   if (!cfg) {
+    const fallback = staticAllocation(env, now);
+    if (fallback) return { status: 200, body: fallback };
     return { status: 503, body: { error: "turn-unconfigured" } };
   }
   const allocated = await hopPanopticonAllocate({
@@ -247,6 +291,8 @@ export async function sessionGatedAllocate(input: {
     fetchImpl: input.fetchImpl,
   });
   if (!allocated) {
+    const fallback = staticAllocation(env, now);
+    if (fallback) return { status: 200, body: fallback };
     return { status: 503, body: { error: "turn-unavailable" } };
   }
   return { status: 200, body: allocated };
