@@ -450,7 +450,9 @@ export async function beginOAuth(
   const requested = parseProviderParam(params.get("provider"));
   if (requested === "invalid") return appRedirect("/feed?oauth=denied");
   if (oidcProviders(env).length === 0) return appRedirect("/feed?oauth=unconfigured");
-  const provider = findOidcProvider(env, requested);
+  // Links without ?provider= predate configurable providers and carry
+  // Panopticon broker hints, so they only go to the default provider.
+  const provider = findOidcProvider(env, requested ?? DEFAULT_OIDC_PROVIDER_ID);
   if (!provider) return appRedirect("/feed?oauth=denied");
 
   const secure = requestIsSecure(request);

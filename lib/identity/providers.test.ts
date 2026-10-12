@@ -223,6 +223,21 @@ describe("OAuth flow with a second provider", () => {
     assert.deepEqual(seen, ["https://auth.example.org/realms/controlplane/protocol/openid-connect/token"]);
   });
 
+  it("sends links without ?provider= only to the default provider", async () => {
+    const withDefault = await beginOAuth(
+      new Request("http://127.0.0.1:3000/api/identity/oauth/start?idp=microsoft"),
+      listEnv([OTHER, { id: "panopticon", kind: "oidc", issuer: "https://auth.example.org/realms/controlplane" }]),
+    );
+    assert.match(withDefault.headers.get("location") ?? "", /^https:\/\/auth\.example\.org\//);
+    const without = await beginOAuth(new Request("http://127.0.0.1:3000/api/identity/oauth/start"), listEnv([OTHER]));
+    assert.equal(without.headers.get("location"), "/feed?oauth=denied");
+  });
+
+  it("accepts opaque client ids", () => {
+    assert.equal(findOidcProvider(listEnv([{ ...OTHER, clientId: "tenant/app+web@x" }]))?.clientId, "tenant/app+web@x");
+    assert.equal(findOidcProvider(listEnv([{ ...OTHER, clientId: "has space" }])), null);
+  });
+
   it("refuses an unknown provider id", async () => {
     const started = await beginOAuth(
       new Request("http://127.0.0.1:3000/api/identity/oauth/start?provider=nope"),

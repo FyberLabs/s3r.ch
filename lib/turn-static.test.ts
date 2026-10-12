@@ -37,7 +37,8 @@ describe("static TURN fallback", () => {
 
   it("accepts public IPv6 relays and rejects private IPv6 ones", () => {
     assert.ok(readStaticTurnServer({ ...STATIC_ENV, S3RCH_TURN_URLS: "turn:[2606:4700::1]:3478" }));
-    for (const host of ["[::1]", "[fd00::1]", "[fe80::1]", "[::ffff:10.0.0.1]"]) {
+    assert.ok(readStaticTurnServer({ ...STATIC_ENV, S3RCH_TURN_URLS: "turn:[::ffff:8.8.8.8]:3478" }));
+    for (const host of ["[::1]", "[0:0:0:0:0:0:0:1]", "[::]", "[fd00::1]", "[fe80::1]", "[::ffff:10.0.0.1]", "[0:0:0:0:0:ffff:a00:1]"]) {
       assert.equal(readStaticTurnServer({ ...STATIC_ENV, S3RCH_TURN_URLS: `turn:${host}:3478` }), null, host);
     }
   });

@@ -55,7 +55,8 @@ export const DEFAULT_OIDC_PROVIDER_ID = "panopticon";
 export const SIWE_PROVIDER: SiweProvider = { id: "siwe", kind: "siwe", label: "Wallet" };
 
 const PROVIDER_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
-const CLIENT_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+// OAuth client ids are opaque: any visible ASCII, no spaces.
+const CLIENT_ID = /^[\x21-\x7e]{1,256}$/;
 const LABEL_MAX = 64;
 
 function isLoopback(hostname: string): boolean {

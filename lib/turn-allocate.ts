@@ -154,17 +154,41 @@ function isBlockedRelayHost(host: string): boolean {
   return false;
 }
 
-/** Loopback, unspecified, unique-local, link-local, and IPv4-mapped private ranges. */
+/** Eight 16-bit words, or null when the text is not an IPv6 address. Browser-safe. */
+export function parseIpv6(host: string): number[] | null {
+  let text = host;
+  const tail: number[] = [];
+  const v4 = text.match(/^(.*:)(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const bytes = v4.slice(2).map(Number);
+    if (bytes.some((n) => n > 255)) return null;
+    tail.push((bytes[0] << 8) | bytes[1], (bytes[2] << 8) | bytes[3]);
+    text = v4[1].endsWith("::") ? v4[1] : v4[1].slice(0, -1);
+  }
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const parse = (part: string) => (part ? part.split(":") : []);
+  const head = parse(halves[0]);
+  const rest = halves.length === 2 ? parse(halves[1]) : [];
+  if (![...head, ...rest].every((word) => /^[0-9a-f]{1,4}$/i.test(word))) return null;
+  const known = head.length + rest.length + tail.length;
+  if (halves.length === 1 && known !== 8) return null;
+  if (halves.length === 2 && known > 7) return null;
+  const zeros = halves.length === 2 ? new Array(8 - known).fill(0) : [];
+  return [...head.map((w) => parseInt(w, 16)), ...zeros, ...rest.map((w) => parseInt(w, 16)), ...tail];
+}
+
+/** Unspecified, loopback, unique-local, link-local, and IPv4-mapped private ranges. */
 function isBlockedIpv6(host: string): boolean {
-  if (host === "::" || host === "::1") return true;
-  const first = host.split(":")[0] ?? "";
-  const word = first === "" ? 0 : parseInt(first, 16);
-  if (!Number.isFinite(word)) return true;
-  if ((word & 0xfe00) === 0xfc00) return true; // fc00::/7
-  if ((word & 0xffc0) === 0xfe80) return true; // fe80::/10
-  const mapped = host.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) return isBlockedRelayHost(mapped[1]);
-  if (host.startsWith("::ffff:")) return true;
+  const words = parseIpv6(host);
+  if (!words) return true;
+  if (words.slice(0, 7).every((w) => w === 0) && (words[7] === 0 || words[7] === 1)) return true;
+  if ((words[0] & 0xfe00) === 0xfc00) return true; // fc00::/7
+  if ((words[0] & 0xffc0) === 0xfe80) return true; // fe80::/10
+  if (words.slice(0, 5).every((w) => w === 0) && words[5] === 0xffff) {
+    const v4 = [words[6] >> 8, words[6] & 255, words[7] >> 8, words[7] & 255].join(".");
+    return isBlockedRelayHost(v4);
+  }
   return false;
 }
 

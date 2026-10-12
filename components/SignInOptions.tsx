@@ -38,13 +38,13 @@ export function accountOptions(providers: readonly PublicProvider[]): AccountOpt
     const base = `${START}?provider=${encodeURIComponent(provider.id)}`;
     if (provider.id === DEFAULT_OIDC_ID) {
       options.push(
-        { key: "microsoft", mark: "microsoft", label: "Microsoft", href: `${base}&idp=microsoft` },
-        { key: "github", mark: "github", label: "GitHub", href: `${base}&idp=github` },
-        { key: "google", mark: "google", label: "Google", href: `${base}&idp=google` },
-        { key: provider.id, mark: "hypermesh", label: "Hypermesh", href: base },
+        { key: "broker:microsoft", mark: "microsoft", label: "Microsoft", href: `${base}&idp=microsoft` },
+        { key: "broker:github", mark: "github", label: "GitHub", href: `${base}&idp=github` },
+        { key: "broker:google", mark: "google", label: "Google", href: `${base}&idp=google` },
+        { key: `provider:${provider.id}`, mark: "hypermesh", label: "Hypermesh", href: base },
       );
     } else {
-      options.push({ key: provider.id, mark: "wallet", label: provider.label, href: base });
+      options.push({ key: `provider:${provider.id}`, mark: "wallet", label: provider.label, href: base });
     }
   }
   return options;
