@@ -37,6 +37,18 @@ function withProduction<T>(action: () => T): T {
 }
 
 const quietLog = { log() {}, error() {} };
+let closed = 0;
+function fakeClient() {
+  return {
+    close: async () => {
+      closed += 1;
+      return 0;
+    },
+    assertReachable() {},
+    download: () => ({ found: false as const }),
+    upload: () => ({ etag: "1" }),
+  };
+}
 
 afterEach(() => {
   monitor.resetIdentityHealthForTests("unchecked");
@@ -60,6 +72,7 @@ describe("identity storage monitor", () => {
         pending.push(fn);
         return 0;
       },
+      connect: async () => fakeClient(),
       log: quietLog,
     });
     const generation = monitor.identityGeneration();
@@ -91,6 +104,7 @@ describe("identity storage monitor", () => {
         pending.push(fn);
         return 0;
       },
+      connect: async () => fakeClient(),
       log: quietLog,
     });
     await handle.done;
@@ -111,6 +125,7 @@ describe("identity storage monitor", () => {
         scheduled += 1;
         return 0;
       },
+      connect: async () => fakeClient(),
       log: quietLog,
     });
     await new Promise((resolve) => setImmediate(resolve));
@@ -118,6 +133,51 @@ describe("identity storage monitor", () => {
     assert.equal(monitor.identityHealth().status, "invalid");
     assert.equal(monitor.identityWritable({ NODE_ENV: "production" }), false);
     assert.equal(scheduled, 1);
+  });
+
+  it("only the first successful check may create the blob, and outages close the client", async () => {
+    const creates: boolean[] = [];
+    const results = [{ ok: true }, { ok: false, message: "s3r.ch: identity blob is missing; not recreating it while running." }];
+    const pending: Array<() => void> = [];
+    closed = 0;
+    const handle = monitor.startIdentityMonitor({
+      env: { NODE_ENV: "production" },
+      probe: async ({ create }) => {
+        creates.push(create);
+        return results.shift() ?? { ok: true };
+      },
+      connect: async () => fakeClient(),
+      schedule: (fn) => {
+        pending.push(fn);
+        return 0;
+      },
+      log: quietLog,
+    });
+    await handle.done;
+    assert.ok(monitor.identityClient());
+    pending.shift()!();
+    await new Promise((resolve) => setImmediate(resolve));
+    handle.stop();
+    assert.deepEqual(creates, [true, false]);
+    assert.equal(monitor.identityHealth().status, "invalid");
+    assert.equal(monitor.identityClient(), null);
+    assert.equal(closed, 1);
+  });
+
+  it("a failed client start counts as a failed check", async () => {
+    const handle = monitor.startIdentityMonitor({
+      env: { NODE_ENV: "production" },
+      probe: async () => ({ ok: true }),
+      connect: async () => {
+        throw new Error("s3r.ch: identity blob worker did not start within 60s");
+      },
+      schedule: () => 0,
+      log: quietLog,
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    handle.stop();
+    assert.equal(monitor.identityHealth().status, "unavailable");
+    assert.match(String(monitor.identityHealth().reason), /did not start/);
   });
 
   it("caps the retry delay", () => {
@@ -135,7 +195,7 @@ describe("identity storage monitor", () => {
       const saved = { account: process.env.S3RCH_IDENTITY_BLOB_ACCOUNT, container: process.env.S3RCH_IDENTITY_BLOB_CONTAINER };
       delete process.env.S3RCH_IDENTITY_BLOB_ACCOUNT;
       delete process.env.S3RCH_IDENTITY_BLOB_CONTAINER;
-      const probe = monitor.probeInWorker(20000);
+      const probe = monitor.probeInWorker({}, 20000);
       if (saved.account !== undefined) process.env.S3RCH_IDENTITY_BLOB_ACCOUNT = saved.account;
       if (saved.container !== undefined) process.env.S3RCH_IDENTITY_BLOB_CONTAINER = saved.container;
       return probe;
@@ -194,5 +254,52 @@ describe("health", () => {
     assert.equal(body.dependencies.identity.writable, false);
     assert.ok(["ok", "not-attached"].includes(body.dependencies.gun.status));
     assert.ok(["configured", "not-configured"].includes(body.dependencies.panopticon.status));
+  });
+});
+
+describe("request-time blob client", () => {
+  it("starts the worker without blocking the event loop", async () => {
+    const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "s3rch-async-bridge-"));
+    const file = join(dir, "worker.cjs");
+    writeFileSync(file, `
+      require("node:worker_threads").parentPort.on("message", (msg) => {
+        setTimeout(() => {
+          msg.port.postMessage({ ok: true });
+          const shared = new Int32Array(msg.shared);
+          Atomics.store(shared, 0, 1);
+          Atomics.notify(shared, 0);
+        }, 300);
+      });
+    `);
+    const { createWorkerBridge } = require("../../identity-blob.cjs");
+    let ticks = 0;
+    const ticker = setInterval(() => (ticks += 1), 20);
+    try {
+      const bridge = await createWorkerBridge(file, {}, 3000, 5000);
+      await bridge.terminate();
+    } finally {
+      clearInterval(ticker);
+      rmSync(dir, { recursive: true, force: true });
+    }
+    assert.ok(ticks >= 5, `event loop ran ${ticks} ticks while the worker started`);
+  });
+
+  it("a later check reports a deleted blob instead of recreating it", () => {
+    const { assertBlobReady } = require("../../identity-blob.cjs");
+    let uploads = 0;
+    const client = {
+      assertReachable() {},
+      download: () => ({ found: false }),
+      upload: () => {
+        uploads += 1;
+        return { etag: "1" };
+      },
+    };
+    const config = { account: "s3rchlinks", container: "identity", url: "https://s3rchlinks.blob.core.windows.net" };
+    assert.throws(() => assertBlobReady(config, client, { create: false }), /identity blob is missing/);
+    assert.equal(uploads, 0);
   });
 });

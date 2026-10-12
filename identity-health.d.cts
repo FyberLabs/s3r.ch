@@ -1,3 +1,5 @@
+import type { IdentityBlobClient } from "./identity-blob.cjs";
+
 export type IdentityHealthStatus = "unchecked" | "ok" | "checking" | "unavailable" | "invalid";
 
 export type IdentityHealth = {
@@ -15,3 +17,5 @@ export function identityHealth(): IdentityHealth;
 export function identityGeneration(): number;
 export function identityWritable(env?: NodeJS.ProcessEnv | Record<string, string | undefined>): boolean;
 export function resetIdentityHealthForTests(status?: IdentityHealthStatus): void;
+export function setIdentityClient(client: IdentityBlobClient | null): void;
+export function identityClient(): IdentityBlobClient | null;

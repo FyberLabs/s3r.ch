@@ -11,6 +11,7 @@ export type IdentityBlobDownload =
 export type IdentityBlobConditions = { ifMatch?: string; ifNoneMatch?: "*" };
 
 export type IdentityBlobClient = {
+  close?(): Promise<number>;
   assertReachable(): void;
   download(blobName: string): IdentityBlobDownload;
   upload(blobName: string, text: string, conditions: IdentityBlobConditions): { etag: string };
@@ -34,6 +35,13 @@ export function interpretBlobReply(message: { ok?: boolean; code?: string; reaso
   text?: string;
 };
 export function createProductionBlobClient(config: BlobConfig): IdentityBlobClient;
-export function assertBlobReady(config: BlobConfig, client: IdentityBlobClient): void;
+export function assertBlobReady(config: BlobConfig, client: IdentityBlobClient, options?: { create?: boolean }): void;
 export const DEFAULT_WORKER_START_TIMEOUT_MS: number;
 export function workerStartTimeoutMs(env?: NodeJS.ProcessEnv | Record<string, string | undefined>): number;
+export function createWorkerBridge(
+  workerPath: string,
+  initMessage: Record<string, unknown>,
+  timeoutMs?: number,
+  startTimeoutMs?: number,
+): Promise<{ call(message: Record<string, unknown>): Record<string, unknown>; terminate(): Promise<number> }>;
+export function createProductionBlobClientAsync(config: BlobConfig): Promise<IdentityBlobClient>;

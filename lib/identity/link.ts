@@ -22,7 +22,7 @@ import {
   type IdentityBlobClient,
 } from "../../identity-blob.cjs";
 import { parseLinkFile as parseStoredLinkFile } from "../../identity-link-schema.cjs";
-import { identityGeneration, identityWritable } from "../../identity-health.cjs";
+import { identityClient, identityHealth, identityWritable } from "../../identity-health.cjs";
 import { identityLinkPath } from "../../identity-storage.cjs";
 
 export const LINK_FILE_V = 1;
@@ -444,7 +444,7 @@ export function openLinks(store: LinkStore): Links {
 
 const installedStoreKey = "__s3rchIdentityLinkStore";
 let productionLinks: Links | undefined;
-let productionGeneration = -1;
+let productionClient: IdentityBlobClient | null = null;
 
 /**
  * Stands in while identity storage is unavailable. Reads report
@@ -482,12 +482,21 @@ export function getLinks(): Links {
   const installed = installedStore();
   if (installed) return openLinks(installed);
   if (process.env.NODE_ENV === "production") {
-    // A recovery bumps the generation; reconnect instead of reusing a dead bridge.
-    const generation = identityGeneration();
-    if (!productionLinks || productionGeneration !== generation) {
+    // The monitor opens the client off the request path and swaps it after a
+    // recovery. Without the preload (status "unchecked") connect here as before.
+    const monitored = identityClient();
+    if (monitored) {
+      if (!productionLinks || productionClient !== monitored) {
+        productionLinks = openLinks(new BlobLinkStore(monitored));
+        productionClient = monitored;
+      }
+      return productionLinks;
+    }
+    if (identityHealth().status !== "unchecked") return openLinks(unavailableLinkStore);
+    if (!productionLinks || productionClient !== null) {
       const config = readBlobConfig(process.env);
       productionLinks = openLinks(new BlobLinkStore(createProductionBlobClient(config)));
-      productionGeneration = generation;
+      productionClient = null;
     }
     return productionLinks;
   }
