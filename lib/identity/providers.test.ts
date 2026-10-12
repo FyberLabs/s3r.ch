@@ -46,6 +46,11 @@ describe("login provider list", () => {
     assert.equal(oidc.clientId, "s3rch-web");
     assert.equal(oidc.walletLookupUrl, "https://api.example.org/auth/siwe/me");
     assert.equal(oidc.tokenEndpoint, "https://auth.example.org/realms/controlplane/protocol/openid-connect/token");
+    const slash = readLoginProviders({
+      S3RCH_OAUTH_ISSUER: "https://auth.example.org/realms/controlplane",
+      S3RCH_OAUTH_WALLET_URL: "https://api.example.org/auth/siwe/me/",
+    }).providers[1];
+    assert.equal(slash.kind === "oidc" && slash.walletLookupUrl, "https://api.example.org/auth/siwe/me/");
   });
 
   it("reads an explicit list and always keeps SIWE", () => {

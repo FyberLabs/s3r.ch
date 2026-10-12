@@ -125,8 +125,12 @@ export function allocateRequestBody(clientHint?: string): {
 }
 
 function iceUrlHost(url: string): string | null {
-  const match = url.match(/^(stun|stuns|turn|turns):(\[[0-9A-Fa-f:.]+\]|[^:?\[\]]+)(?::\d+)?(?:\?.*)?$/i);
+  const match = url.match(/^(stun|stuns|turn|turns):(\[[0-9A-Fa-f:.]+\]|[^:?\[\]]+)(?::(\d{1,5}))?(?:\?.*)?$/i);
   if (!match) return null;
+  if (match[3] !== undefined) {
+    const port = Number(match[3]);
+    if (port < 1 || port > 65535) return null;
+  }
   return match[2].replace(/^\[|\]$/g, "").toLowerCase();
 }
 

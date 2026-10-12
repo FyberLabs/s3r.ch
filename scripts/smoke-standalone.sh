@@ -16,7 +16,7 @@ pid=$!
 trap 'kill "$pid" 2>/dev/null || true; rm -rf "$data"' EXIT
 
 for _ in $(seq 1 30); do
-  if curl -fsS "http://127.0.0.1:$port/api/health" >/dev/null 2>&1; then break; fi
+  if curl --max-time 5 -fsS "http://127.0.0.1:$port/api/health" >/dev/null 2>&1; then break; fi
   if ! kill -0 "$pid" 2>/dev/null; then cat "$log"; echo "server exited" >&2; exit 1; fi
   sleep 1
 done
@@ -25,7 +25,7 @@ fail=0
 check() {
   local path="$1" want="$2"
   local got
-  got="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port$path")"
+  got="$(curl --max-time 10 -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port$path")"
   if [ "$got" != "$want" ]; then
     echo "$path: expected $want, got $got" >&2
     fail=1
@@ -39,7 +39,7 @@ check /feed 200
 check /forum 200
 check /api/identity/providers 200
 
-health="$(curl -fsS "http://127.0.0.1:$port/api/health")"
+health="$(curl --max-time 5 -fsS "http://127.0.0.1:$port/api/health")"
 echo "$health"
 echo "$health" | grep -Fq '"panopticon":{"status":"not-configured"' || { echo "panopticon should be not-configured" >&2; fail=1; }
 echo "$health" | grep -Fq '"gun":{"status":"ok"}' || { echo "gun peer should be attached" >&2; fail=1; }

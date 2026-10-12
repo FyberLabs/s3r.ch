@@ -103,7 +103,7 @@ function oidcFrom(
   if (typeof clientId !== "string" || !CLIENT_ID.test(clientId)) return `provider "${id}": invalid clientId`;
   let walletLookupUrl: string | null = null;
   if (row.walletLookupUrl !== undefined && row.walletLookupUrl !== null && row.walletLookupUrl !== "") {
-    walletLookupUrl = normalizeProviderUrl(row.walletLookupUrl);
+    walletLookupUrl = exactProviderUrl(row.walletLookupUrl);
     if (!walletLookupUrl) return `provider "${id}": walletLookupUrl must be an https URL`;
   }
   const endpoints = {

@@ -24,6 +24,8 @@ describe("static TURN fallback", () => {
     assert.equal(readStaticTurnServer({ S3RCH_TURN_URLS: "turn:relay.example.org:3478" }), null);
     assert.equal(readStaticTurnServer({ ...STATIC_ENV, S3RCH_TURN_URLS: "turn:10.0.0.4:3478" }), null);
     assert.equal(readStaticTurnServer({}), null);
+    assert.equal(readStaticTurnServer({ ...STATIC_ENV, S3RCH_TURN_URLS: "turn:relay.example.org:70000" }), null);
+    assert.equal(readStaticTurnServer({ ...STATIC_ENV, S3RCH_TURN_URLS: "turn:relay.example.org:0" }), null);
   });
 
   it("treats upper-case TURN schemes as TURN and still requires credentials", () => {
