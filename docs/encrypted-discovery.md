@@ -45,26 +45,29 @@ s3rch/items/<itemId>          { v: 2, enc: 1, ct, iv, alg, owner, ver, ts? }
 - `ct` is the SEA/AES-GCM ciphertext of the existing `GunFeedNode` body (or room / claim node). `ver` matches the SociACL object version.
 - Authorship is hidden by default: `owner` is not on the wire for private items. It sits inside `ct` and inside each wrapped-key entry. See *Author fast path* and *CHECK without a visible owner*.
 - Public items stay `v: 1` plaintext on `s3rch/items`. Encryption is per item, not per network.
+- **Owner authentication of the ciphertext.** Every grantee of a shared item knows `K_item,e`, so AES-GCM only proves the writer held the content key, not that the owner wrote the content. Inside `ct`, the body therefore carries `osig`, the owner's SEA signature over `(itemId, e, rev, H(body))`, and the `iv`/`ct` pair is also covered by `msig` in the owner-signed revision manifest (below), which binds `H(ct)`. Readers reject any item whose ciphertext digest does not match a manifest signed by the owner's account key, so a grantee cannot write a replacement node, forged `owner` included, at the same path. Relays can additionally require that writes to `s3rch/items/<itemId>` be immutable once set (new revisions go to `s3rch/items/<itemId>/r/<rev>`), so a dominating HAM update cannot displace a valid revision.
 
 ### Content keys and epochs
 
 - One random 256-bit content key `K_item,e` per item per epoch `e`.
 - The epoch bumps on every revoke (and on SociACL object version bump caused by privilege-down). New content after a revoke is encrypted under the new key.
 - Old ciphertext stays under the old key unless the owner re-encrypts (see Revocation).
+- **Serializing epochs across devices.** Every enrolled device holds the account key, so two devices could each pick a different random key for `e+1`. Each rotation is therefore an owner-signed revision manifest `{ itemId, e, rev, parent, keyId = H(K_item,e), ctDigest }` with a unique `rev` id and a `parent` pointer to the manifest it supersedes. Wraps name the `keyId` they carry. If two manifests claim the same `e` with the same parent, the winner is chosen deterministically (lowest `H(manifest)`), and the losing device re-wraps its content under the winner's key once it sees the conflict. A device must have synced the latest manifest for an item before it writes new content; content that names a superseded manifest (for example from a device that was offline during a rotation) is rejected by readers and must be re-issued under the current epoch.
 
 ### Wrapped-key grant (inbox entry)
 
 ```
 s3rch/inbox/<tag(readerEpub, slot)>/<entryId>
-  { v: 1, eph, ct, iv }          // ECDH(eph, readerEpub) → AES-GCM
+  { v: 1, eph, ct, iv, wsig }    // ECDH(eph, readerEpub) → AES-GCM
 plaintext of ct:
   { item: <itemId>, e, key: K_item,e, owner, grantSoul?, from, until?, sig }
 ```
 
+- **Writer-authenticated, immutable entries.** The per-pair tag hides the lane but is not a write ACL, and the relay serving the reader learns tags and entry ids. Each entry therefore carries `wsig`, a signature over `(tag, entryId, H(eph || ct || iv))` by a per-lane writer key `W = derive(ECDH(senderPair, inboxPub), "writer")`. The reader publishes the lane's writer pub alongside the lane in its own state, and relays that know the lane reject entries without a valid `wsig`. Entries are write-once: relays refuse any update to an existing `entryId`, and readers keep the first valid value they see and ignore later conflicting ones, so a dominating HAM update cannot replace a legitimate entry.
 - Wrapping uses SEA's ECDH (`SEA.secret(readerEpub, ephemeralPair)`) with a fresh ephemeral pair per entry, then `SEA.encrypt`. The entry is unlinkable to the sender on the wire.
 - `sig` is the owner's SEA signature over `(item, e, reader pub, from, until)`, so the reader can tell a real grant from junk and can present it to CHECK.
 - `tag` is a private per-pair lane: each reader publishes a signed `inboxPub` on its account node, and `tag = H(ECDH(senderPair, inboxPub) || slot)`, where `slot` is a day or sequence number. Only the sender and the reader can derive it. Each sender-reader pair gets its own unlinkable lane, and the reader polls only the lanes of senders it knows (plus a first-contact lane, below). Shared buckets with trial decryption are not used: scanning shared buckets is inefficient.
-- **First contact:** a sender the reader has never seen writes a signed introduction, encrypted to `inboxPub` and carrying the sender's pub, to a first-contact lane derived from the reader alone, `H(inboxPub || "intro" || day)`. That lane is subject to the reader's inbox write policy (see Privacy). After the first intro, traffic moves to the per-pair lane.
+- **First contact:** a sender the reader has never seen writes a signed introduction, encrypted to `inboxPub` and carrying the sender's signing `pub` and encryption `epub` (SEA keeps these as separate fields, see `SeaPair` in `lib/identity/sea.ts`), with the signature covering both. The reader verifies the signature and the sender's account binding, then derives the per-pair lane from `ECDH(inboxPair, sender epub)`. The introduction goes to a first-contact lane derived from the reader alone, `H(inboxPub || "intro" || day)`. That lane is subject to the reader's inbox write policy (see Privacy). After the first intro, traffic moves to the per-pair lane.
 - This replaces the plaintext `s3rch/granted/<accessor>/…` delivery copy. The inbox holds keys and pointers, never plaintext content.
 
 ### Author fast path
@@ -84,7 +87,8 @@ Today `checkSee` runs on a peer's merged graph and reads the plaintext `MeshSeeG
 - The wrapped-key entry carries a **grant proof**: the owner's signature over `(itemId, epoch, accessor pub, from, until, object version)`, plus the owner's account-key binding (pub signed by the login provider or wallet).
 - The reader decrypts the entry and runs CHECK locally against that proof, which holds the same facts as today's `IdentitySeeGrant`. It's the reader's own client checking its own access.
 - When a peer or relay must authorize an action (a reply, a write into a group, a server-side action), the reader presents the grant proof to that verifier over a direct channel. The verifier learns the owner for that one item only. The mesh at large never sees it.
-- Revocation stays immediate at the verifier: the owner publishes a revocation token `H(itemId || epoch || accessor || nonce)` under the author lane or an item-keyed revocation lane. The verifier checks that the token is absent and that the epoch is current. A revoked reader can't show a proof for the new epoch.
+- **Proof of possession.** The grant proof names the accessor but does not show that the presenter controls that accessor's key, so a leaked proof could be replayed. The verifier sends a fresh nonce, and the presenter returns the proof plus a signature over `(nonce, verifier id, H(proof))` made with the accessor's SEA private key. The verifier checks that signature against the accessor pub named in the proof and checks that pub's account binding.
+- **Revocation and freshness.** The owner publishes a revocation token `H(itemId || epoch || accessor || nonce)` under the author lane or an item-keyed revocation lane. Absence of a token in an eventually replicated graph does not prove a grant is live, because a stale or partitioned verifier may not have received it yet. For server-side actions, the verifier therefore needs positive freshness: a status statement `{ itemId, e, issuedAt }` signed by the owner's account key (any enrolled device can issue it), or by an online authority the owner designates, no older than a short window (for example 5 minutes). Without a fresh statement the verifier refuses the action. Revocation is then immediate up to that window for verifiers that require freshness. Reader-side display, which works offline, only stops at the next epoch the reader learns about; that weaker guarantee is accepted for offline reads.
 - This needs the SociACL "private discovery" addition (spec section below). Current SociACL CHECK reads a plaintext graph.
 
 ### Groups
@@ -109,7 +113,7 @@ reader                              shared graph / relays
 ```
 
 - **Pagination:** inbox entries are keyed `<entryId> = <hlc>-<rand>` (hybrid logical clock prefix), so a reader reads by lexical range. Gun has no native range queries; use the `gun/lib/lex` `.get({'.': {'>': cursor}})` form, which relay peers can serve, and fall back to full-node fetch on peers that ignore it.
-- **Incremental sync:** reader keeps a per-tag cursor in IndexedDB and subscribes (`.map().on`) to its active tags. Daily rotating tags bound how far back a scan goes; missed days are walked once at login.
+- **Incremental sync:** HLC keys are only monotonic per device, and one account can write from several devices or restore a stale clock, so the greatest key seen is not a lossless cursor. Each entry also carries a per-device id and sequence number inside `ct`, and the reader keeps a per-tag, per-device high-water mark. On login and on reconnect the reader rescans each daily shard it has not marked complete and deduplicates by `entryId`; a shard is marked complete only after the day has ended and a full rescan finds nothing new. The lex `> cursor` query is an optimization for live updates, never the only path. The reader also subscribes (`.map().on`) to its active tags.
 - **Multi-device:** one SEA key pair per account. Senders wrap only to the account epub, never per device. See *Device enrollment and revocation*.
 - **Group discovery (v2):** read group inbox tags for each held `G_g,e`.
 - **Authorization:** decryption is not authorization. `checkSee` / `checkSeeGrant` run on the reader's merged graph before an item is displayed as granted, and any relay doing work for the reader runs CHECK too. Because grant rows become encrypted (below), CHECK needs an input it can verify without the plaintext access graph; see the spec additions.
@@ -149,7 +153,7 @@ Search follows a three-tier index model.
 
 - **Metadata leakage:** sizes (pad to buckets, e.g. 1/4/16/64 KiB), timing (owners may batch grant writes), fan-out (number of inbox entries written at once reveals audience size; batch or add dummy entries), and owner field (omit on private items).
 - **Enumeration resistance:** random item ids; inbox tags are keyed, so nobody can list "all grants to wallet X" without the reader's secret or the sender's lane secret.
-- **Inbox write policy:** the user decides. The default is **public**: anyone can write to the first-contact lane, with spam filtering (entries without a valid signature are dropped, relays rate-limit per lane, and clients may require a small proof-of-work). Users can restrict intros to jointly stated `friend` or `in-network` principals, or to their org relay. Per-pair lanes accept only the paired sender anyway.
+- **Inbox write policy:** the user decides. The default is **public**: anyone can write to the first-contact lane. Self-signatures alone don't stop spam, since anyone can make new SEA pairs, so admission to a public first-contact lane requires a mandatory resource proof (proof-of-work sized by the reader's relay, or an account binding from a login provider the reader accepts). Relays apply quotas per sender key and per source, separate from the reader's capacity: one sender exhausting its own quota cannot block introductions from others, and the lane keeps a reserved share for senders with an account binding. Users can restrict intros to jointly stated `friend` or `in-network` principals, or to their org relay. Per-pair lanes accept only the paired sender anyway.
 
 ## Revocation and re-keying
 
@@ -189,7 +193,7 @@ These are proposals for FyberLabs/SociACL. The matching spec change is [FyberLab
 
 ## Migration
 
-When a new protocol version is applied, existing data is encrypted in place: each client re-encrypts its own Mine and granted items, writes wrapped-key entries and author-lane entries, and tombstones the plaintext `s3rch/items`, `s3rch/granted` and `s3rch/acl` rows. Plaintext that peers already copied stays exposed. Tombstones can't recall it.
+When a new protocol version is applied, existing data is encrypted in place, driven by each owner: the owner's client re-encrypts the items it owns (Mine), picks the content key, writes wrapped-key entries with fresh grant proofs for every current grantee, writes author-lane entries, and then tombstones its plaintext `s3rch/items`, `s3rch/granted` and `s3rch/acl` rows. Grantees never re-encrypt objects in their Granted tab, because they cannot choose the key, enumerate other grantees or sign proofs; they keep reading the old representation until the owner's wrapped-key entry arrives, then drop their plaintext copy. Plaintext that peers already copied stays exposed. Tombstones can't recall it.
 
 ## Decisions and open questions
 
