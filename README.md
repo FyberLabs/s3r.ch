@@ -45,12 +45,13 @@ PANOPTICON_API_KEY=
 PANOPTICON_ORACLES_BASE=
 PANOPTICON_PAYMENTS_BASE=
 S3RCH_TURN_URLS=
-S3RCH_TURN_USERNAME=
-S3RCH_TURN_CREDENTIAL=
+S3RCH_TURN_SECRET=
+S3RCH_TURN_TTL_SEC=
 S3RCH_OAUTH_ISSUER=
 S3RCH_OAUTH_CLIENT_ID=
 S3RCH_OAUTH_WALLET_URL=
 S3RCH_LOGIN_PROVIDERS=
+S3RCH_LOGIN_PROVIDER_ISSUER_MOVE=
 CONFIRM_SEND_URL=
 CONFIRM_FIXTURE=
 KYC_ISSUER_URL=
@@ -95,7 +96,8 @@ Deploy (`.github/workflows/deploy.yml`) and the seed workflow use these settings
 The site builds and runs with no `PANOPTICON_*` settings. GunDB, the feed, the forum and SIWE sign-in do not need it.
 
 - `/api/payments/*` and `/api/oracles/attest` return 503 (`*-unconfigured`, or `*-unavailable` when a configured service does not answer).
-- `/api/turn/allocate` uses the static relay in `S3RCH_TURN_URLS` (with `S3RCH_TURN_USERNAME` and `S3RCH_TURN_CREDENTIAL` for `turn:` URLs) when set; otherwise it returns 503 and browsers stay STUN-only. The static credential is handed to signed-in browsers, so use one scoped to that relay.
+- `/api/turn/allocate` uses the relay in `S3RCH_TURN_URLS` when set; otherwise it returns 503 and browsers stay STUN-only. For `turn:` URLs each request gets a short-lived credential in the TURN REST format that coturn's `use-auth-secret` checks: username `<expiry unix ts>:<random id>`, credential base64(HMAC-SHA1(`S3RCH_TURN_SECRET`, username)), valid for `S3RCH_TURN_TTL_SEC` (default 3600). The secret never leaves the server. A fixed `S3RCH_TURN_USERNAME` / `S3RCH_TURN_CREDENTIAL` is only used with `S3RCH_TURN_INSECURE_STATIC_CREDENTIAL=1` (off by default), because it is handed to every signed-in browser.
+- Each login provider's issuer is pinned in the identity store (`providerIssuers`) the first time someone logs in with it. If the configured issuer later differs, that provider's logins are refused and logged, so repointing a provider id cannot take over its accounts. To approve a move, set `S3RCH_LOGIN_PROVIDER_ISSUER_MOVE=<provider id>:<new issuer>` (comma-separated for several); the next login updates the pin and logs it. Account keys do not change.
 - `/api/health` reports each integration as `not-configured`, `configured`, `ok` or `unreachable`.
 
 ### Login providers

@@ -220,6 +220,27 @@ export function findOidcProvider(env: EnvLike, id?: string | null): OidcProvider
   return list.find((provider) => provider.id === id) ?? null;
 }
 
+export const ENV_ISSUER_MOVE = "S3RCH_LOGIN_PROVIDER_ISSUER_MOVE";
+
+/**
+ * Operator approval for moving a provider to a new issuer:
+ * `S3RCH_LOGIN_PROVIDER_ISSUER_MOVE=<provider id>:<new issuer>[,<id>:<issuer>...]`.
+ * Returns the approved issuer for `providerId`, compared exactly against the
+ * configured issuer (trailing slashes ignored), or null.
+ */
+export function approvedIssuerMove(env: Record<string, string | undefined>, providerId: string): string | null {
+  const raw = env[ENV_ISSUER_MOVE]?.trim();
+  if (!raw) return null;
+  for (const entry of raw.split(",")) {
+    const cut = entry.indexOf(":");
+    if (cut < 1) continue;
+    if (entry.slice(0, cut).trim() !== providerId) continue;
+    const issuer = normalizeProviderUrl(entry.slice(cut + 1).trim());
+    if (issuer) return issuer.replace(/\/+$/, "");
+  }
+  return null;
+}
+
 const SUBJECT_MAX = 256;
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 /** Marks a hashed key. encodeURIComponent never emits "%h" (h is not hex). */

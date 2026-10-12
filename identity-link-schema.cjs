@@ -50,9 +50,14 @@ function parseLinkFile(value) {
     const oauthAge = readOauthAge(record.oauthAge);
     if (oauthAge === null)
         return { ok: false, reason: "store-unreadable" };
+    const providerIssuers = readProviderIssuers(record.providerIssuers);
+    if (providerIssuers === null)
+        return { ok: false, reason: "store-unreadable" };
     const file = { v: LINK_FILE_V, people };
     if (oauthAge.length)
         file.oauthAge = oauthAge;
+    if (Object.keys(providerIssuers).length)
+        file.providerIssuers = providerIssuers;
     return { ok: true, file };
 }
 function asPerson(value) {
@@ -103,6 +108,23 @@ function readOauthAge(value) {
         rows.push({ sub, confirmedAt });
     }
     return rows;
+}
+const PROVIDER_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
+/** Pinned issuer per login provider id: `{ "<id>": "https://..." }`. */
+function readProviderIssuers(value) {
+    if (value === undefined)
+        return {};
+    if (!isRecord(value) || Array.isArray(value))
+        return null;
+    const pins = {};
+    for (const [id, issuer] of Object.entries(value)) {
+        if (!PROVIDER_ID.test(id))
+            return null;
+        if (typeof issuer !== "string" || !issuer || issuer.length > 2048)
+            return null;
+        pins[id] = issuer;
+    }
+    return pins;
 }
 function asHandle(value) {
     if (!isRecord(value))

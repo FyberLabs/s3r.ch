@@ -1,22 +1,57 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { HOP_ENV } from "./turn-allocate.fixtures";
-import { readStaticTurnServer, sessionGatedAllocate } from "./turn-allocate";
+import { createHmac } from "node:crypto";
+import { readStaticTurnServer, sessionGatedAllocate, turnRestCredential } from "./turn-allocate";
 
 const ADDRESS = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const STATIC_ENV = {
   S3RCH_TURN_URLS: "turn:relay.example.org:3478, turns:relay.example.org:5349",
-  S3RCH_TURN_USERNAME: "s3rch",
-  S3RCH_TURN_CREDENTIAL: "relay-secret",
+  S3RCH_TURN_SECRET: "relay-secret",
 };
 const NOW = Date.parse("2026-10-12T12:00:00.000Z");
 
 describe("static TURN fallback", () => {
-  it("reads a public relay with credentials", () => {
-    assert.deepEqual(readStaticTurnServer(STATIC_ENV), {
+  it("mints a TURN REST credential per request", () => {
+    const server = readStaticTurnServer(STATIC_ENV, NOW, "sess1");
+    const username = `${NOW / 1000 + 3600}:sess1`;
+    assert.deepEqual(server, {
       urls: ["turn:relay.example.org:3478", "turns:relay.example.org:5349"],
+      username,
+      credential: createHmac("sha1", "relay-secret").update(username).digest("base64"),
+    });
+    // Known vector: coturn computes the same value with static-auth-secret.
+    assert.deepEqual(turnRestCredential("north", 1700000000, "u"), {
+      username: "1700000000:u",
+      credential: "S5t0cXb+5/BonfPqCeQ8Z01i5VE=",
+    });
+    const a = readStaticTurnServer(STATIC_ENV, NOW);
+    const b = readStaticTurnServer(STATIC_ENV, NOW);
+    assert.notEqual(a?.username, b?.username, "opaque id differs per request");
+    assert.ok(!JSON.stringify(a).includes("relay-secret"), "secret never reaches the client");
+  });
+
+  it("honours S3RCH_TURN_TTL_SEC and falls back to one hour", () => {
+    const ttl = (v: string | undefined) =>
+      Number(readStaticTurnServer({ ...STATIC_ENV, S3RCH_TURN_TTL_SEC: v }, NOW, "s")?.username?.split(":")[0]) - NOW / 1000;
+    assert.equal(ttl(undefined), 3600);
+    assert.equal(ttl("600"), 600);
+    assert.equal(ttl("5"), 3600);
+    assert.equal(ttl("abc"), 3600);
+  });
+
+  it("refuses the fixed username/password unless the insecure flag is set", () => {
+    const fixed = {
+      S3RCH_TURN_URLS: "turn:relay.example.org:3478",
+      S3RCH_TURN_USERNAME: "s3rch",
+      S3RCH_TURN_CREDENTIAL: "fixed",
+    };
+    assert.equal(readStaticTurnServer(fixed), null);
+    assert.equal(readStaticTurnServer({ ...fixed, S3RCH_TURN_INSECURE_STATIC_CREDENTIAL: "0" }), null);
+    assert.deepEqual(readStaticTurnServer({ ...fixed, S3RCH_TURN_INSECURE_STATIC_CREDENTIAL: "1" }), {
+      urls: "turn:relay.example.org:3478",
       username: "s3rch",
-      credential: "relay-secret",
+      credential: "fixed",
     });
   });
 
@@ -30,11 +65,9 @@ describe("static TURN fallback", () => {
 
   it("treats upper-case TURN schemes as TURN and still requires credentials", () => {
     assert.equal(readStaticTurnServer({ S3RCH_TURN_URLS: "TURN:relay.example.org:3478" }), null);
-    assert.deepEqual(readStaticTurnServer({ ...STATIC_ENV, S3RCH_TURN_URLS: "TURNS:relay.example.org:5349" }), {
-      urls: "turns:relay.example.org:5349",
-      username: "s3rch",
-      credential: "relay-secret",
-    });
+    const server = readStaticTurnServer({ ...STATIC_ENV, S3RCH_TURN_URLS: "TURNS:relay.example.org:5349" }, NOW, "s");
+    assert.equal(server?.urls, "turns:relay.example.org:5349");
+    assert.equal(server?.username, `${NOW / 1000 + 3600}:s`);
   });
 
   it("accepts public IPv6 relays and rejects private IPv6 ones", () => {
@@ -54,7 +87,7 @@ describe("static TURN fallback", () => {
   it("serves the static relay when the allocate service is not configured", async () => {
     const result = await sessionGatedAllocate({ sessionAddress: ADDRESS, env: STATIC_ENV, now: NOW });
     assert.equal(result.status, 200);
-    assert.equal(result.body && "expiresAt" in result.body && result.body.expiresAt, "2026-10-12T12:05:00.000Z");
+    assert.equal(result.body && "expiresAt" in result.body && result.body.expiresAt, "2026-10-12T13:00:00.000Z");
   });
 
   it("serves the static relay when the allocate service fails", async () => {

@@ -12,15 +12,25 @@
  * Optional static fallback (server-only), used when the hop above is not
  * configured or fails:
  *   S3RCH_TURN_URLS         comma-separated turn:/turns:/stun: URLs
- *   S3RCH_TURN_USERNAME     required when a turn: URL is listed
- *   S3RCH_TURN_CREDENTIAL   required when a turn: URL is listed
+ *   S3RCH_TURN_SECRET       shared secret of the relay (coturn
+ *                           `use-auth-secret` / `static-auth-secret`); required
+ *                           when a turn: URL is listed
+ *   S3RCH_TURN_TTL_SEC      credential lifetime, default 3600 (60..86400)
+ *
+ * Each request gets a short-lived credential in the TURN REST format:
+ * username `<expiry unix ts>:<random id>`, credential
+ * base64(HMAC-SHA1(secret, username)). The secret never leaves the server.
+ *
+ * Insecure, off by default: S3RCH_TURN_INSECURE_STATIC_CREDENTIAL=1 with
+ * S3RCH_TURN_USERNAME / S3RCH_TURN_CREDENTIAL hands that fixed credential to
+ * every signed-in browser. Only for relays without REST auth.
  *
  * Never Gun. Never localStorage. Never the long-lived TURN secret of the
- * allocate service. A static credential is handed to signed-in browsers, so
- * use one scoped to this relay.
+ * allocate service.
  * Fail soft: nothing configured / 401 / 503 / network / bad JSON → caller keeps STUN.
  */
 
+import { createHmac, randomBytes } from "node:crypto";
 import { iceServerUrls } from "./gun-webrtc";
 import { recordIntegrationHop } from "./dependency-health";
 
@@ -36,6 +46,10 @@ export const ENV_API_KEY = "PANOPTICON_API_KEY";
 export const ENV_STATIC_TURN_URLS = "S3RCH_TURN_URLS";
 export const ENV_STATIC_TURN_USERNAME = "S3RCH_TURN_USERNAME";
 export const ENV_STATIC_TURN_CREDENTIAL = "S3RCH_TURN_CREDENTIAL";
+export const ENV_STATIC_TURN_SECRET = "S3RCH_TURN_SECRET";
+export const ENV_STATIC_TURN_TTL = "S3RCH_TURN_TTL_SEC";
+export const ENV_STATIC_TURN_INSECURE = "S3RCH_TURN_INSECURE_STATIC_CREDENTIAL";
+export const DEFAULT_STATIC_TURN_TTL_SEC = 3600;
 
 export type EnvLike = Record<string, string | undefined>;
 
@@ -280,31 +294,74 @@ export async function hopPanopticonAllocate(input: {
   }
 }
 
-/**
- * Static relay from S3RCH_TURN_*. Null when unset or when any URL is not a
- * public stun:/turn: URL, or a turn: URL has no username and credential.
- */
-export function readStaticTurnServer(env: EnvLike = process.env): TurnIceServer | null {
-  const urls = trimEnv(env[ENV_STATIC_TURN_URLS])
+function staticTurnUrls(env: EnvLike): string[] {
+  return trimEnv(env[ENV_STATIC_TURN_URLS])
     .split(",")
     // ICE URI schemes are case-insensitive; the TURN credential check is not.
     .map((url) => url.trim().replace(/^[A-Za-z]+:/, (scheme) => scheme.toLowerCase()))
     .filter(Boolean);
+}
+
+export function staticTurnTtlSec(env: EnvLike = process.env): number {
+  const raw = trimEnv(env[ENV_STATIC_TURN_TTL]);
+  if (!/^\d+$/.test(raw)) return DEFAULT_STATIC_TURN_TTL_SEC;
+  const ttl = Number(raw);
+  return ttl >= 60 && ttl <= 86_400 ? ttl : DEFAULT_STATIC_TURN_TTL_SEC;
+}
+
+function insecureStaticEnabled(env: EnvLike): boolean {
+  return /^(1|true|yes)$/i.test(trimEnv(env[ENV_STATIC_TURN_INSECURE]));
+}
+
+/** TURN REST credential (coturn `use-auth-secret`). */
+export function turnRestCredential(
+  secret: string,
+  expiresAtSec: number,
+  sessionId: string,
+): { username: string; credential: string } {
+  const username = `${expiresAtSec}:${sessionId}`;
+  const credential = createHmac("sha1", secret).update(username).digest("base64");
+  return { username, credential };
+}
+
+/**
+ * Static relay from S3RCH_TURN_*, with a freshly minted credential. Null when
+ * unset, when any URL is not a public stun:/turn: URL, or when a turn: URL is
+ * listed without S3RCH_TURN_SECRET (or the explicit insecure fixed credential).
+ */
+export function readStaticTurnServer(
+  env: EnvLike = process.env,
+  now: number = Date.now(),
+  sessionId: string = randomBytes(16).toString("base64url"),
+): TurnIceServer | null {
+  const urls = staticTurnUrls(env);
   if (urls.length === 0) return null;
-  return admitIceServer({
-    urls,
-    username: trimEnv(env[ENV_STATIC_TURN_USERNAME]) || undefined,
-    credential: trimEnv(env[ENV_STATIC_TURN_CREDENTIAL]) || undefined,
-  });
+  const secret = trimEnv(env[ENV_STATIC_TURN_SECRET]);
+  if (secret) {
+    const expires = Math.floor(now / 1000) + staticTurnTtlSec(env);
+    return admitIceServer({ urls, ...turnRestCredential(secret, expires, sessionId) });
+  }
+  if (insecureStaticEnabled(env)) {
+    return admitIceServer({
+      urls,
+      username: trimEnv(env[ENV_STATIC_TURN_USERNAME]) || undefined,
+      credential: trimEnv(env[ENV_STATIC_TURN_CREDENTIAL]) || undefined,
+    });
+  }
+  // STUN-only lists need no credential.
+  return admitIceServer({ urls });
 }
 
 function staticAllocation(env: EnvLike | undefined, now: number): TurnAllocateOk | null {
-  const server = readStaticTurnServer(env);
+  const server = readStaticTurnServer(env, now);
   if (!server) return null;
-  // Same lifetime as an allocation so the browser asks again and picks up rotation.
+  const minted = Boolean(trimEnv((env ?? process.env)[ENV_STATIC_TURN_SECRET]));
+  // Minted credentials: refresh when they expire. Otherwise the allocation
+  // lifetime, so the browser asks again and picks up rotation.
+  const ttlSec = minted ? staticTurnTtlSec(env) : DEFAULT_ALLOCATE_TTL_SEC;
   return {
     iceServers: [server],
-    expiresAt: new Date(now + DEFAULT_ALLOCATE_TTL_SEC * 1000).toISOString(),
+    expiresAt: new Date(now + ttlSec * 1000).toISOString(),
   };
 }
 

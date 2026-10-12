@@ -8,7 +8,9 @@ the same JSON document in one private Azure Blob behind `LinkStore`.
 A later account API can replace the class without changing link rules. The same
 document stores the time a person confirmed they are at least 18
 (`ageConfirmedAt` on that person, or `oauthAge` until an OAuth subject is a
-handle).
+handle), and the issuer pinned for each login provider (`providerIssuers`,
+`{"<provider id>": "<issuer>"}`). Logins are refused when the configured issuer
+differs from the pin unless `S3RCH_LOGIN_PROVIDER_ISSUER_MOVE` approves it.
 
 These are the routes checked:
 

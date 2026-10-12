@@ -41,7 +41,14 @@ import {
 } from "./cookies";
 import { identityUnavailableResponse, secretFailureResponse } from "./http";
 import { getLinks, identityLinksWritable, linkLoginPaths, ownerForOAuth } from "./link";
-import { DEFAULT_OIDC_PROVIDER_ID, findOidcProvider, oidcProviders, providerSubject, type OidcProvider } from "./providers";
+import {
+  approvedIssuerMove,
+  DEFAULT_OIDC_PROVIDER_ID,
+  findOidcProvider,
+  oidcProviders,
+  providerSubject,
+  type OidcProvider,
+} from "./providers";
 import { getIdentitySecret, secretKey } from "./secret";
 import { readSessionToken } from "./session";
 
@@ -555,6 +562,7 @@ export async function finishOAuth(
       key: deps.key ?? jwksFor(provider.jwksUri),
       clientId: provider.clientId,
     });
+    if (!pinIssuer(env, provider)) throw new OAuthFlowError("Login provider issuer changed.");
     // Any subject shape is accepted; providerSubject encodes it into a key
     // that cannot collide with another provider's.
     const subject = providerSubject(provider, token.sub);
@@ -605,6 +613,31 @@ export async function finishOAuth(
   } catch {
     return denied();
   }
+}
+
+/**
+ * Pins the provider's issuer in the identity store on first use and refuses
+ * logins when the configured issuer no longer matches the pin, so repointing a
+ * provider id at another issuer cannot take over that provider's accounts.
+ * An operator approves a move with S3RCH_LOGIN_PROVIDER_ISSUER_MOVE.
+ */
+function pinIssuer(env: Record<string, string | undefined>, provider: OidcProvider): boolean {
+  const issuer = provider.issuer.replace(/\/+$/, "");
+  const result = getLinks().checkProviderIssuer(provider.id, issuer, approvedIssuerMove(env, provider.id));
+  if ("denied" in result) return false;
+  if (!result.ok) {
+    console.error(
+      `s3r.ch: login provider "${provider.id}" refused: configured issuer ${issuer} differs from pinned ${result.pinned}. ` +
+        `Set S3RCH_LOGIN_PROVIDER_ISSUER_MOVE=${provider.id}:${issuer} to approve the move.`,
+    );
+    return false;
+  }
+  if (result.pinned === "moved") {
+    console.warn(`s3r.ch: login provider "${provider.id}" issuer moved from ${result.previous} to ${issuer} (approved by S3RCH_LOGIN_PROVIDER_ISSUER_MOVE).`);
+  } else if (result.pinned === "first-use") {
+    console.info(`s3r.ch: login provider "${provider.id}" issuer pinned to ${issuer}.`);
+  }
+  return true;
 }
 
 async function linkWalletOnCallback(
