@@ -6,6 +6,7 @@ import { beginOAuth, finishOAuth } from "./oauth";
 import {
   findOidcProvider,
   normalizeProviderUrl,
+  decodeProviderSubject,
   providerSubject,
   publicLoginProviders,
   readLoginProviders,
@@ -97,18 +98,60 @@ describe("login provider list", () => {
     assert.equal(normalizeProviderUrl("https://a.example/#x"), null);
   });
 
-  it("namespaces subjects per provider and blocks look-alike default subjects", () => {
+  it("keeps existing UUID account keys unchanged", () => {
+    const uuid = "f81d4fae-7dec-11d0-a765-00a0c91e6bf6";
+    assert.equal(providerSubject({ id: "panopticon" }, uuid), uuid);
     assert.equal(providerSubject({ id: "panopticon" }, "abc"), "abc");
-    assert.equal(providerSubject({ id: "partner" }, "abc"), "partner:abc");
-    assert.equal(providerSubject({ id: "panopticon" }, "partner:abc"), null);
-    // Also after that provider is removed from the config.
-    assert.equal(providerSubject({ id: "panopticon" }, "retired-org:abc"), null);
-    assert.equal(providerSubject({ id: "panopticon" }, "f81d4fae-7dec-11d0-a765-00a0c91e6bf6"), "f81d4fae-7dec-11d0-a765-00a0c91e6bf6");
   });
 
-  it("refuses namespaced subjects over the store limit", () => {
+  it("encodes colon-shaped subjects instead of refusing them", () => {
+    assert.equal(providerSubject({ id: "panopticon" }, "partner:abc"), "panopticon:partner%3Aabc");
+    assert.equal(providerSubject({ id: "partner" }, "abc"), "partner:abc");
+    assert.equal(providerSubject({ id: "partner" }, "a:b"), "partner:a%3Ab");
+    assert.equal(decodeProviderSubject("panopticon:partner%3Aabc").sub, "partner:abc");
+  });
+
+  it("accepts LDAP-style f:<provider>:<user> subjects", () => {
+    const sub = "f:3a1c9e2b-0d4f-4c1e-9f7a-2b6d8e0c1a55:jdoe";
+    const key = providerSubject({ id: "panopticon" }, sub);
+    assert.equal(key, `panopticon:${encodeURIComponent(sub)}`);
+    assert.deepEqual(decodeProviderSubject(key), { provider: "panopticon", sub });
+    assert.equal(providerSubject({ id: "panopticon" }, sub), key, "stable");
+  });
+
+  it("never lets one provider's subject equal another provider's key", () => {
+    const attempts: Array<[string, string]> = [
+      ["panopticon", "partner:abc"],
+      ["partner", "abc"],
+      ["panopticon", "partner%3Aabc"],
+      ["partner", "x:abc"],
+      ["partner:x", "abc"],
+      ["panopticon", "panopticon:abc"],
+      ["panopticon", "abc"],
+      ["panopticon", "0x" + "a".repeat(40)],
+      ["partner", "%h" + "A".repeat(43)],
+      ["partner", "y".repeat(400)],
+      ["partner", "y".repeat(401)],
+      ["panopticon", "a b"],
+      ["panopticon", "a%20b"],
+    ];
+    const keys = new Map<string, string>();
+    for (const [id, sub] of attempts) {
+      const key = providerSubject({ id }, sub);
+      assert.ok(key.length <= 256, key);
+      const prev = keys.get(key);
+      assert.equal(prev, undefined, `${id}/${sub} collides with ${prev}`);
+      keys.set(key, `${id}/${sub}`);
+    }
+  });
+
+  it("hashes keys that would exceed the store limit", () => {
     assert.equal(providerSubject({ id: "partner" }, "x".repeat(248)), `partner:${"x".repeat(248)}`);
-    assert.equal(providerSubject({ id: "partner" }, "x".repeat(249)), null);
+    const long = providerSubject({ id: "partner" }, "x".repeat(249));
+    assert.match(long, /^partner:%h[A-Za-z0-9_-]{43}$/);
+    assert.equal(providerSubject({ id: "partner" }, "x".repeat(249)), long);
+    assert.equal(decodeProviderSubject(long).sub, null);
+    assert.match(providerSubject({ id: "panopticon" }, "z".repeat(257)), /^panopticon:%h/);
   });
 
   it("reserves the siwe id for wallet sign-in", () => {

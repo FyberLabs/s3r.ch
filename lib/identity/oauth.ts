@@ -152,6 +152,14 @@ function asIdp(value: unknown): OAuthIdp | null {
   return null;
 }
 
+/** Raw `sub` from a provider token. Opaque; only empty, huge or control characters are refused. */
+function rawProviderSub(value: unknown): string {
+  if (typeof value !== "string" || value.length < 1 || value.length > 4096 || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new OAuthFlowError("OAuth subject is missing.");
+  }
+  return value;
+}
+
 function assertSub(value: unknown): string {
   if (typeof value !== "string" || value.length < 1 || value.length > SUB_MAX) {
     throw new OAuthFlowError("OAuth subject is missing.");
@@ -389,7 +397,7 @@ export async function verifyBackupIdToken(
     algorithms: ["RS256", "PS256", "ES256"],
   });
   return {
-    sub: assertSub(payload.sub),
+    sub: rawProviderSub(payload.sub),
     idp: asIdp(payload.idp_provider),
   };
 }
@@ -547,8 +555,9 @@ export async function finishOAuth(
       key: deps.key ?? jwksFor(provider.jwksUri),
       clientId: provider.clientId,
     });
+    // Any subject shape is accepted; providerSubject encodes it into a key
+    // that cannot collide with another provider's.
     const subject = providerSubject(provider, token.sub);
-    if (!subject) return denied();
     const verified = { ...token, sub: subject };
     const idp = verified.idp ?? pending.idp;
     const walletFetch = deps.walletFetch ?? (deps.fetchImpl ? undefined : fetch);

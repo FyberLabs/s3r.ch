@@ -31,6 +31,7 @@
  * which is how existing account links were stored.
  */
 
+import { createHash } from "node:crypto";
 import { OAUTH_CLIENT_ID } from "./config";
 
 export type EnvLike = Record<string, string | undefined>;
@@ -220,20 +221,50 @@ export function findOidcProvider(env: EnvLike, id?: string | null): OidcProvider
 }
 
 const SUBJECT_MAX = 256;
-const NAMESPACED = /^[a-z0-9][a-z0-9-]{0,31}:/;
+const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+/** Marks a hashed key. encodeURIComponent never emits "%h" (h is not hex). */
+const HASH_MARK = "%h";
 
 /**
- * Subject stored in sessions and account links for this provider, or null
- * when it cannot be stored safely:
- * - a bare subject from the default provider that looks namespaced
- *   (`<id>:...`) is refused whether or not that provider is configured now,
- *   so removing a provider cannot hand its links to the default provider;
- * - a namespaced subject longer than the 256-character store limit.
+ * Account key for a provider subject. Total and injective:
+ *
+ * - Default provider (`panopticon`), subject with no ":", no whitespace, not
+ *   address-shaped and at most 256 characters: the subject itself. This is
+ *   how every existing account link was stored (Keycloak UUIDs), so those
+ *   keys do not change.
+ * - Anything else: `<provider id>:<encodeURIComponent(subject)>`. Provider
+ *   ids cannot contain ":", so the prefix names exactly one provider, and
+ *   plain default keys never contain ":", so they cannot equal a namespaced
+ *   key. encodeURIComponent escapes ":", "%" and whitespace and is reversible
+ *   (see decodeProviderSubject).
+ * - When that key would exceed 256 characters (the store limit):
+ *   `<provider id>:%h<sha256(subject), base64url>`. Encoded subjects never
+ *   contain "%h", so a hashed key cannot equal an encoded one. Stable, not
+ *   reversible.
  */
-export function providerSubject(provider: Pick<OidcProvider, "id">, sub: string): string | null {
-  if (provider.id === DEFAULT_OIDC_PROVIDER_ID) return NAMESPACED.test(sub) ? null : sub;
-  const subject = `${provider.id}:${sub}`;
-  return subject.length > SUBJECT_MAX ? null : subject;
+export function providerSubject(provider: Pick<OidcProvider, "id">, sub: string): string {
+  if (
+    provider.id === DEFAULT_OIDC_PROVIDER_ID &&
+    !sub.includes(":") &&
+    !/\s/.test(sub) &&
+    !ADDRESS.test(sub) &&
+    sub.length <= SUBJECT_MAX
+  ) {
+    return sub;
+  }
+  const encoded = `${provider.id}:${encodeURIComponent(sub)}`;
+  if (encoded.length <= SUBJECT_MAX) return encoded;
+  return `${provider.id}:${HASH_MARK}${createHash("sha256").update(sub, "utf8").digest("base64url")}`;
+}
+
+/** Inverse of providerSubject. Hashed keys return `sub: null`. */
+export function decodeProviderSubject(key: string): { provider: string; sub: string | null } {
+  const cut = key.indexOf(":");
+  if (cut < 0) return { provider: DEFAULT_OIDC_PROVIDER_ID, sub: key };
+  const provider = key.slice(0, cut);
+  const rest = key.slice(cut + 1);
+  if (rest.startsWith(HASH_MARK)) return { provider, sub: null };
+  return { provider, sub: decodeURIComponent(rest) };
 }
 
 /** Public list for the sign-in UI. No client ids or endpoints. */
