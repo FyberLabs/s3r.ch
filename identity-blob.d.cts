@@ -23,6 +23,7 @@ export function createBlockingWorker(
   workerPath: string,
   initMessage: Record<string, unknown>,
   timeoutMs?: number,
+  startTimeoutMs?: number,
 ): {
   call(message: Record<string, unknown>): { ok?: boolean; code?: string; echo?: number; etag?: string; text?: string };
   terminate(): Promise<number>;
@@ -34,3 +35,5 @@ export function interpretBlobReply(message: { ok?: boolean; code?: string; reaso
 };
 export function createProductionBlobClient(config: BlobConfig): IdentityBlobClient;
 export function assertBlobReady(config: BlobConfig, client: IdentityBlobClient): void;
+export const DEFAULT_WORKER_START_TIMEOUT_MS: number;
+export function workerStartTimeoutMs(env?: NodeJS.ProcessEnv | Record<string, string | undefined>): number;

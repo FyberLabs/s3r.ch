@@ -7,7 +7,14 @@ const { setIdentityHealth, identityState } = require("./identity-health.cjs");
 
 const RETRY_MIN_MS = 5000;
 const RETRY_MAX_MS = 5 * 60 * 1000;
-const PROBE_TIMEOUT_MS = 60000;
+// Worker start plus a reachability check, a read and possibly a create.
+// Parsed here, not imported, so the preload does not load the Azure SDK.
+function probeTimeoutMs(env = process.env) {
+  const raw = Number(String(env.S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS || "").trim());
+  const start = Number.isInteger(raw) && raw >= 1000 ? Math.min(raw, 200000) : 60000;
+  return start + 90000;
+}
+const PROBE_TIMEOUT_MS = probeTimeoutMs();
 
 function classifyFailure(error) {
   const message = error instanceof Error ? error.message : String(error || "");
