@@ -3,7 +3,14 @@
  * Gun serves WebSocket at `/gun`. Bootstrap cache — not the finished mesh
  * (docs/ARCHITECTURE.md). Used as `node -r ./gun-preload.cjs server.js`.
  */
-require("./identity-storage.cjs").assertIdentityStorage();
+// Workers inherit `-r ./gun-preload.cjs`. Only the main thread checks storage
+// and attaches Gun.
+if (require("node:worker_threads").isMainThread) {
+  require("./identity-storage.cjs").assertIdentityStorage();
+  attachGun();
+}
+
+function attachGun() {
 
 const fs = require("node:fs");
 const http = require("node:http");
@@ -31,3 +38,4 @@ http.Server.prototype.listen = function patchedListen(...args) {
   }
   return origListen.apply(this, args);
 };
+}
