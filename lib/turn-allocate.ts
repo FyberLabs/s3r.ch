@@ -244,7 +244,8 @@ export async function hopPanopticonAllocate(input: {
 export function readStaticTurnServer(env: EnvLike = process.env): TurnIceServer | null {
   const urls = trimEnv(env[ENV_STATIC_TURN_URLS])
     .split(",")
-    .map((url) => url.trim())
+    // ICE URI schemes are case-insensitive; the TURN credential check is not.
+    .map((url) => url.trim().replace(/^[A-Za-z]+:/, (scheme) => scheme.toLowerCase()))
     .filter(Boolean);
   if (urls.length === 0) return null;
   return admitIceServer({

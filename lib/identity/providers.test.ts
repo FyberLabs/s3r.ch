@@ -98,12 +98,32 @@ describe("login provider list", () => {
   });
 
   it("namespaces subjects per provider and blocks look-alike default subjects", () => {
-    const providers = readLoginProviders(
-      listEnv([{ id: "panopticon", kind: "oidc", issuer: "https://auth.example.org/realms/controlplane" }, OTHER]),
-    ).providers;
-    assert.equal(providerSubject({ id: "panopticon" }, "abc", providers), "abc");
-    assert.equal(providerSubject({ id: "partner" }, "abc", providers), "partner:abc");
-    assert.equal(providerSubject({ id: "panopticon" }, "partner:abc", providers), null);
+    assert.equal(providerSubject({ id: "panopticon" }, "abc"), "abc");
+    assert.equal(providerSubject({ id: "partner" }, "abc"), "partner:abc");
+    assert.equal(providerSubject({ id: "panopticon" }, "partner:abc"), null);
+    // Also after that provider is removed from the config.
+    assert.equal(providerSubject({ id: "panopticon" }, "retired-org:abc"), null);
+    assert.equal(providerSubject({ id: "panopticon" }, "f81d4fae-7dec-11d0-a765-00a0c91e6bf6"), "f81d4fae-7dec-11d0-a765-00a0c91e6bf6");
+  });
+
+  it("refuses namespaced subjects over the store limit", () => {
+    assert.equal(providerSubject({ id: "partner" }, "x".repeat(248)), `partner:${"x".repeat(248)}`);
+    assert.equal(providerSubject({ id: "partner" }, "x".repeat(249)), null);
+  });
+
+  it("reserves the siwe id for wallet sign-in", () => {
+    const { providers, errors } = readLoginProviders(
+      listEnv([{ id: "siwe", kind: "oidc", issuer: "https://login.example.org" }, { id: "wallet", kind: "siwe" }]),
+    );
+    assert.deepEqual(providers.map((p) => p.id), ["siwe"]);
+    assert.equal(providers[0].kind, "siwe");
+    assert.ok(errors.some((e) => /reserved/.test(e)));
+  });
+
+  it("keeps an explicit issuer exactly, including a trailing slash", () => {
+    const provider = findOidcProvider(listEnv([{ ...OTHER, issuer: "https://login.example.org/tenant/" }]));
+    assert.equal(provider?.issuer, "https://login.example.org/tenant/");
+    assert.equal(provider?.tokenEndpoint, "https://login.example.org/tenant/protocol/openid-connect/token");
   });
 
   it("exposes ids, kinds and labels only", () => {

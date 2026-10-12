@@ -64,6 +64,12 @@ function isLoopback(hostname: string): boolean {
 
 /** https, or http on loopback. No credentials, query or fragment. Trailing slashes removed. */
 export function normalizeProviderUrl(raw: unknown): string | null {
+  const exact = exactProviderUrl(raw);
+  return exact === null ? null : exact.replace(/\/+$/, "");
+}
+
+/** Same checks, but the value is kept as written (OIDC issuers compare exactly). */
+export function exactProviderUrl(raw: unknown): string | null {
   if (typeof raw !== "string" || !raw.trim()) return null;
   let url: URL;
   try {
@@ -73,7 +79,7 @@ export function normalizeProviderUrl(raw: unknown): string | null {
   }
   if (url.username || url.password || url.search || url.hash) return null;
   if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopback(url.hostname))) return null;
-  return url.toString().replace(/\/+$/, "");
+  return raw.trim();
 }
 
 function cleanLabel(raw: unknown, fallback: string): string {
@@ -82,9 +88,15 @@ function cleanLabel(raw: unknown, fallback: string): string {
   return label && label.length <= LABEL_MAX ? label : fallback;
 }
 
-function oidcFrom(row: Record<string, unknown>, id: string): OidcProvider | string {
-  const issuer = normalizeProviderUrl(row.issuer);
+function oidcFrom(
+  row: Record<string, unknown>,
+  id: string,
+  options: { trimIssuer?: boolean } = {},
+): OidcProvider | string {
+  if (id === SIWE_PROVIDER.id) return `provider "${id}": the id "siwe" is reserved for wallet sign-in`;
+  const issuer = options.trimIssuer ? normalizeProviderUrl(row.issuer) : exactProviderUrl(row.issuer);
   if (!issuer) return `provider "${id}": issuer must be an https URL`;
+  const base = issuer.replace(/\/+$/, "");
   const clientId = row.clientId === undefined ? OAUTH_CLIENT_ID : row.clientId;
   if (typeof clientId !== "string" || !CLIENT_ID.test(clientId)) return `provider "${id}": invalid clientId`;
   let walletLookupUrl: string | null = null;
@@ -93,9 +105,9 @@ function oidcFrom(row: Record<string, unknown>, id: string): OidcProvider | stri
     if (!walletLookupUrl) return `provider "${id}": walletLookupUrl must be an https URL`;
   }
   const endpoints = {
-    authorizationEndpoint: `${issuer}/protocol/openid-connect/auth`,
-    tokenEndpoint: `${issuer}/protocol/openid-connect/token`,
-    jwksUri: `${issuer}/protocol/openid-connect/certs`,
+    authorizationEndpoint: `${base}/protocol/openid-connect/auth`,
+    tokenEndpoint: `${base}/protocol/openid-connect/token`,
+    jwksUri: `${base}/protocol/openid-connect/certs`,
   };
   for (const key of Object.keys(endpoints) as (keyof typeof endpoints)[]) {
     if (row[key] === undefined) continue;
@@ -127,6 +139,8 @@ function defaultProviders(env: EnvLike): { providers: LoginProvider[]; errors: s
       label: "Panopticon",
     },
     DEFAULT_OIDC_PROVIDER_ID,
+    // Keycloak issuers have no trailing slash; keep accepting `.../realm/`.
+    { trimIssuer: true },
   );
   if (typeof built === "string") errors.push(built);
   else providers.push(built);
@@ -164,6 +178,10 @@ export function readLoginProviders(env: EnvLike = process.env): { providers: Log
       continue;
     }
     if (row.kind === "siwe") {
+      if (id !== SIWE_PROVIDER.id) {
+        errors.push(`provider "${id}": a siwe entry must use the id "siwe"`);
+        continue;
+      }
       seen.add(id);
       providers.push({ id, kind: "siwe", label: cleanLabel(row.label, SIWE_PROVIDER.label) });
       continue;
@@ -199,21 +217,21 @@ export function findOidcProvider(env: EnvLike, id?: string | null): OidcProvider
   return list.find((provider) => provider.id === id) ?? null;
 }
 
+const SUBJECT_MAX = 256;
+const NAMESPACED = /^[a-z0-9][a-z0-9-]{0,31}:/;
+
 /**
- * Subject stored in sessions and account links for this provider. Null when a
- * bare subject from the default provider looks like another provider's
- * namespaced subject, so it cannot impersonate that provider's user.
+ * Subject stored in sessions and account links for this provider, or null
+ * when it cannot be stored safely:
+ * - a bare subject from the default provider that looks namespaced
+ *   (`<id>:...`) is refused whether or not that provider is configured now,
+ *   so removing a provider cannot hand its links to the default provider;
+ * - a namespaced subject longer than the 256-character store limit.
  */
-export function providerSubject(
-  provider: Pick<OidcProvider, "id">,
-  sub: string,
-  providers: readonly Pick<LoginProvider, "id" | "kind">[] = [],
-): string | null {
-  if (provider.id !== DEFAULT_OIDC_PROVIDER_ID) return `${provider.id}:${sub}`;
-  const clash = providers.some(
-    (other) => other.kind === "oidc" && other.id !== provider.id && sub.startsWith(`${other.id}:`),
-  );
-  return clash ? null : sub;
+export function providerSubject(provider: Pick<OidcProvider, "id">, sub: string): string | null {
+  if (provider.id === DEFAULT_OIDC_PROVIDER_ID) return NAMESPACED.test(sub) ? null : sub;
+  const subject = `${provider.id}:${sub}`;
+  return subject.length > SUBJECT_MAX ? null : subject;
 }
 
 /** Public list for the sign-in UI. No client ids or endpoints. */

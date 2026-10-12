@@ -41,7 +41,7 @@ import {
 } from "./cookies";
 import { identityUnavailableResponse, secretFailureResponse } from "./http";
 import { getLinks, identityLinksWritable, linkLoginPaths, ownerForOAuth } from "./link";
-import { findOidcProvider, oidcProviders, providerSubject, readLoginProviders, type OidcProvider } from "./providers";
+import { findOidcProvider, oidcProviders, providerSubject, type OidcProvider } from "./providers";
 import { getIdentitySecret, secretKey } from "./secret";
 import { readSessionToken } from "./session";
 
@@ -543,7 +543,7 @@ export async function finishOAuth(
       key: deps.key ?? jwksFor(provider.jwksUri),
       clientId: provider.clientId,
     });
-    const subject = providerSubject(provider, token.sub, readLoginProviders(env).providers);
+    const subject = providerSubject(provider, token.sub);
     if (!subject) return denied();
     const verified = { ...token, sub: subject };
     const idp = verified.idp ?? pending.idp;

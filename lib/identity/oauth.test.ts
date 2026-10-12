@@ -516,14 +516,30 @@ describe("OAuth stays off Gun and off the SIWE owner", () => {
       useExistingWallet: false,
       onConnect() {}, onWalletConnect() {}, onPasskeyWallet() {},
       onSignIn() {}, onUseExisting() {}, onDeclineExisting() {},
+      providers: [
+        { id: "siwe", kind: "siwe", label: "Wallet" },
+        { id: "panopticon", kind: "oidc", label: "Panopticon" },
+        { id: "partner", kind: "oidc", label: "Partner org" },
+      ],
     }));
     assert.match(bar, /Browser wallet/);
     assert.match(bar, /Continue with Microsoft/);
     for (const idp of ["microsoft", "github", "google"]) {
-      assert.ok(bar.includes(`href="/api/identity/oauth/start?idp=${idp}"`));
+      assert.ok(bar.includes(`href="/api/identity/oauth/start?provider=panopticon&amp;idp=${idp}"`));
     }
-    assert.match(bar, /href="\/api\/identity\/oauth\/start"/);
+    assert.match(bar, /href="\/api\/identity\/oauth\/start\?provider=panopticon"/);
     assert.match(bar, /Continue with Hypermesh/);
+    assert.match(bar, /href="\/api\/identity\/oauth\/start\?provider=partner"/);
+    assert.match(bar, /Continue with Partner org/);
+    const walletOnly = renderToStaticMarkup(createElement(SignInOptions, {
+      connected: false, address: "", pending: false,
+      walletConnectAvailable: false, smartWalletAvailable: false,
+      useExistingWallet: false,
+      onConnect() {}, onWalletConnect() {}, onPasskeyWallet() {},
+      onSignIn() {}, onUseExisting() {}, onDeclineExisting() {},
+      providers: [{ id: "siwe", kind: "siwe", label: "Wallet" }],
+    }));
+    assert.equal(walletOnly.includes("Use an existing account"), false);
     assert.equal(bar.includes("Sign in with wallet"), false);
     assert.equal(bar.includes("WalletConnect"), false);
   });

@@ -1,6 +1,9 @@
+import { useEffect, useState } from "react";
 import { ProviderMark, type Provider } from "@/components/ProviderMark";
 
 const option = "login-option";
+
+export type PublicProvider = { id: string; kind: string; label: string };
 
 type Props = {
   connected: boolean;
@@ -18,17 +21,56 @@ type Props = {
   onSignIn: () => void;
   onUseExisting: () => void;
   onDeclineExisting: () => void;
+  /** Provider list known up front (tests, server render). Otherwise fetched. */
+  providers?: PublicProvider[];
 };
 
-const accounts: { provider: Provider; label: string; href: string }[] = [
-  { provider: "microsoft", label: "Microsoft", href: "/api/identity/oauth/start?idp=microsoft" },
-  { provider: "github", label: "GitHub", href: "/api/identity/oauth/start?idp=github" },
-  { provider: "google", label: "Google", href: "/api/identity/oauth/start?idp=google" },
-  { provider: "hypermesh", label: "Hypermesh", href: "/api/identity/oauth/start" },
-];
+type AccountOption = { key: string; mark: Provider; label: string; href: string };
+
+const START = "/api/identity/oauth/start";
+const DEFAULT_OIDC_ID = "panopticon";
+
+/** Brokered sign-ins on the default provider, plus one entry per other provider. */
+export function accountOptions(providers: readonly PublicProvider[]): AccountOption[] {
+  const options: AccountOption[] = [];
+  for (const provider of providers) {
+    if (provider.kind !== "oidc") continue;
+    const base = `${START}?provider=${encodeURIComponent(provider.id)}`;
+    if (provider.id === DEFAULT_OIDC_ID) {
+      options.push(
+        { key: "microsoft", mark: "microsoft", label: "Microsoft", href: `${base}&idp=microsoft` },
+        { key: "github", mark: "github", label: "GitHub", href: `${base}&idp=github` },
+        { key: "google", mark: "google", label: "Google", href: `${base}&idp=google` },
+        { key: provider.id, mark: "hypermesh", label: "Hypermesh", href: base },
+      );
+    } else {
+      options.push({ key: provider.id, mark: "wallet", label: provider.label, href: base });
+    }
+  }
+  return options;
+}
+
+function useAccountOptions(initial?: PublicProvider[]): AccountOption[] {
+  const [options, setOptions] = useState<AccountOption[]>(() => accountOptions(initial ?? []));
+  useEffect(() => {
+    if (initial) return;
+    let cancelled = false;
+    fetch("/api/identity/providers", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : { providers: [] }))
+      .then((body: { providers?: PublicProvider[] }) => {
+        if (!cancelled) setOptions(accountOptions(Array.isArray(body.providers) ? body.providers : []));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [initial]);
+  return options;
+}
 
 /** Presentation only: wallet signing and account linking stay in IdentityBar. */
 export function SignInOptions(props: Props) {
+  const accounts = useAccountOptions(props.providers);
   return (
     <div className="w-full">
       <p className="max-w-xl text-sm leading-relaxed text-ink-muted">
@@ -74,18 +116,18 @@ export function SignInOptions(props: Props) {
             </div>
           )}
         </section>
-        <section aria-label="Account sign-in" className="login-accounts min-w-0">
+        {accounts.length > 0 ? <section aria-label="Account sign-in" className="login-accounts min-w-0">
           <h3 className="text-sm font-semibold text-ink">Use an existing account</h3>
-          <p className="mt-1 mb-4 text-xs text-ink-muted">Continue through your Hypermesh account</p>
+          <p className="mt-1 mb-4 text-xs text-ink-muted">Then link it to your wallet</p>
           <div className="grid gap-2">
-            {accounts.map(({ provider, label, href }) => (
-              <a key={provider} href={props.pending ? undefined : href} aria-disabled={props.pending || undefined} className={option}>
-                <ProviderMark provider={provider} /><span>Continue with {label}</span>
+            {accounts.map(({ key, mark, label, href }) => (
+              <a key={key} href={props.pending ? undefined : href} aria-disabled={props.pending || undefined} className={option}>
+                <ProviderMark provider={mark} /><span>Continue with {label}</span>
               </a>
             ))}
           </div>
           {props.accountLabel ? <p className="mt-3 text-xs text-ink-muted" role="status">{props.accountLabel} · {props.linked ? "Wallet linked" : "Wallet not linked yet"}</p> : null}
-        </section>
+        </section> : null}
       </div>
     </div>
   );
