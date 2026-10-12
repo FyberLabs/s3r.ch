@@ -1,8 +1,17 @@
 // Azure Blob worker for the identity document. The parent blocks on a reply
 // port so LinkStore can stay synchronous. One private blob holds the document.
 const { parentPort } = require("node:worker_threads");
-const { DefaultAzureCredential } = require("@azure/identity");
-const { BlobServiceClient } = require("@azure/storage-blob");
+// The parent blocks while it waits, so it cannot see an "error" event.
+// Report a load failure in the init reply instead.
+let DefaultAzureCredential;
+let BlobServiceClient;
+let loadError = null;
+try {
+  ({ DefaultAzureCredential } = require("@azure/identity"));
+  ({ BlobServiceClient } = require("@azure/storage-blob"));
+} catch (error) {
+  loadError = error;
+}
 
 const MAX_BYTES = 1048576;
 let replyPort = null;
@@ -87,6 +96,10 @@ parentPort.on("message", async (msg) => {
     if (msg && msg.op === "init") {
       replyPort = msg.port;
       shared = new Int32Array(msg.shared);
+      if (loadError) {
+        reply({ ok: false, reason: "load-failed", detail: String(loadError && loadError.message).slice(0, 300) });
+        return;
+      }
       const credential = new DefaultAzureCredential();
       const service = new BlobServiceClient(`https://${msg.account}.blob.core.windows.net`, credential);
       container = service.getContainerClient(msg.container);
