@@ -73,6 +73,8 @@ export function normalizeProviderUrl(raw: unknown): string | null {
 /** Same checks, but the value is kept as written (OIDC issuers compare exactly). */
 export function exactProviderUrl(raw: unknown): string | null {
   if (typeof raw !== "string" || !raw.trim()) return null;
+  // Same limit as the issuer pins stored in the identity document.
+  if (raw.trim().length > 2048) return null;
   let url: URL;
   try {
     url = new URL(raw.trim());
@@ -226,7 +228,7 @@ export const ENV_ISSUER_MOVE = "S3RCH_LOGIN_PROVIDER_ISSUER_MOVE";
  * Operator approval for moving a provider to a new issuer:
  * `S3RCH_LOGIN_PROVIDER_ISSUER_MOVE=<provider id>:<new issuer>[,<id>:<issuer>...]`.
  * Returns the approved issuer for `providerId`, compared exactly against the
- * configured issuer (trailing slashes ignored), or null.
+ * configured issuer, or null.
  */
 export function approvedIssuerMove(env: Record<string, string | undefined>, providerId: string): string | null {
   const raw = env[ENV_ISSUER_MOVE]?.trim();
@@ -235,8 +237,8 @@ export function approvedIssuerMove(env: Record<string, string | undefined>, prov
     const cut = entry.indexOf(":");
     if (cut < 1) continue;
     if (entry.slice(0, cut).trim() !== providerId) continue;
-    const issuer = normalizeProviderUrl(entry.slice(cut + 1).trim());
-    if (issuer) return issuer.replace(/\/+$/, "");
+    const issuer = exactProviderUrl(entry.slice(cut + 1).trim());
+    if (issuer) return issuer;
   }
   return null;
 }

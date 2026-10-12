@@ -101,6 +101,7 @@ describe("login provider list", () => {
     assert.equal(normalizeProviderUrl("http://a.example"), null);
     assert.equal(normalizeProviderUrl("https://u:p@a.example"), null);
     assert.equal(normalizeProviderUrl("https://a.example/#x"), null);
+    assert.equal(normalizeProviderUrl("https://a.example/" + "x".repeat(2040)), null);
   });
 
   it("keeps existing UUID account keys unchanged", () => {

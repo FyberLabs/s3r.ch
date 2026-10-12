@@ -139,7 +139,7 @@ export function allocateRequestBody(clientHint?: string): {
 }
 
 function iceUrlHost(url: string): string | null {
-  const match = url.match(/^(stun|stuns|turn|turns):(\[[0-9A-Fa-f:.]+\]|[^:?\[\]]+)(?::(\d{1,5}))?(?:\?.*)?$/i);
+  const match = url.match(/^(stun|stuns|turn|turns):(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(?::(\d{1,5}))?(?:\?.*)?$/i);
   if (!match) return null;
   if (match[3] !== undefined) {
     const port = Number(match[3]);

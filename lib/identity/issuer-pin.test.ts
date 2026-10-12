@@ -66,9 +66,21 @@ describe("login provider issuer pinning", () => {
     assert.notEqual(await login(env(OLD), OLD), "/feed?oauth=denied");
   });
 
-  it("refuses a provider whose configured issuer changed", async () => {
+  it("refuses a provider whose configured issuer changed, before the token request", async () => {
     fresh();
     await login(env(OLD), OLD);
+    let tokenCalls = 0;
+    const e = env(NEW);
+    const started = await beginOAuth(new Request("http://127.0.0.1:3000/api/identity/oauth/start?provider=partner"), e);
+    const state = new URL(started.headers.get("location") ?? "").searchParams.get("state") ?? "";
+    const pkce = (started.headers.getSetCookie().find((row) => row.startsWith(`${oauthPkceCookieName(false)}=`)) ?? "").split(";")[0];
+    const finished = await finishOAuth(
+      new Request(`http://127.0.0.1:3000/api/identity/oauth/callback?code=c&state=${state}`, { headers: { cookie: pkce } }),
+      e,
+      { fetchImpl: async () => { tokenCalls += 1; return Response.json({}); } },
+    );
+    assert.equal(finished.headers.get("location"), "/feed?oauth=denied");
+    assert.equal(tokenCalls, 0);
     assert.equal(await login(env(NEW), NEW), "/feed?oauth=denied");
     assert.deepEqual(pins(), { partner: OLD });
   });
@@ -84,7 +96,13 @@ describe("login provider issuer pinning", () => {
   it("moves the pin when the operator approves the new issuer", async () => {
     fresh();
     await login(env(OLD), OLD);
-    const move = { S3RCH_LOGIN_PROVIDER_ISSUER_MOVE: `partner:${NEW}/` };
+    // Issuers compare exactly: a trailing slash is a different issuer.
+    assert.equal(
+      await login(env(NEW, { S3RCH_LOGIN_PROVIDER_ISSUER_MOVE: `partner:${NEW}/` }), NEW),
+      "/feed?oauth=denied",
+    );
+    assert.equal(await login(env(`${OLD}/`), `${OLD}/`), "/feed?oauth=denied");
+    const move = { S3RCH_LOGIN_PROVIDER_ISSUER_MOVE: `partner:${NEW}` };
     assert.notEqual(await login(env(NEW, move), NEW), "/feed?oauth=denied");
     assert.deepEqual(pins(), { partner: NEW });
     // The approval only moves to the named issuer; the old one is now refused.
@@ -108,5 +126,6 @@ describe("login provider issuer pinning", () => {
     assert.equal(approvedIssuerMove({ S3RCH_LOGIN_PROVIDER_ISSUER_MOVE: `partner:${NEW}` }, "partner"), NEW);
     assert.equal(approvedIssuerMove({ S3RCH_LOGIN_PROVIDER_ISSUER_MOVE: "partner:http://x.example" }, "partner"), null);
     assert.equal(approvedIssuerMove({}, "partner"), null);
+    assert.equal(approvedIssuerMove({ S3RCH_LOGIN_PROVIDER_ISSUER_MOVE: `partner:${NEW}/` }, "partner"), `${NEW}/`);
   });
 });

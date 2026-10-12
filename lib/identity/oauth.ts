@@ -544,6 +544,8 @@ export async function finishOAuth(
   const provider: OidcProvider | null = findOidcProvider(env, pending.provider ?? DEFAULT_OIDC_PROVIDER_ID);
   if (!provider) return denied();
   const issuer = provider.issuer;
+  // Before the code and verifier go to the token endpoint.
+  if (!pinIssuer(env, provider)) return denied();
 
   try {
     const exchanged = await exchangeCode(
@@ -562,7 +564,6 @@ export async function finishOAuth(
       key: deps.key ?? jwksFor(provider.jwksUri),
       clientId: provider.clientId,
     });
-    if (!pinIssuer(env, provider)) throw new OAuthFlowError("Login provider issuer changed.");
     // Any subject shape is accepted; providerSubject encodes it into a key
     // that cannot collide with another provider's.
     const subject = providerSubject(provider, token.sub);
@@ -622,7 +623,8 @@ export async function finishOAuth(
  * An operator approves a move with S3RCH_LOGIN_PROVIDER_ISSUER_MOVE.
  */
 function pinIssuer(env: Record<string, string | undefined>, provider: OidcProvider): boolean {
-  const issuer = provider.issuer.replace(/\/+$/, "");
+  // Exactly the issuer jwtVerify checks.
+  const issuer = provider.issuer;
   const result = getLinks().checkProviderIssuer(provider.id, issuer, approvedIssuerMove(env, provider.id));
   if ("denied" in result) return false;
   if (!result.ok) {
