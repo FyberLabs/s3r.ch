@@ -66,7 +66,8 @@ function workerEnv() {
 // of seconds on a busy App Service plan. Keep the default well under the
 // App Service container start limit (230 s by default).
 const DEFAULT_WORKER_START_TIMEOUT_MS = 60000;
-const MAX_WORKER_START_TIMEOUT_MS = 200000;
+// Capped so the later blob checks (20 s each) still fit in the 230 s window.
+const MAX_WORKER_START_TIMEOUT_MS = 120000;
 
 function workerStartTimeoutMs(env = process.env) {
   const raw = String(env.S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS || "").trim();
@@ -79,7 +80,9 @@ function workerStartTimeoutMs(env = process.env) {
 function createBlockingWorker(workerPath, initMessage, timeoutMs = 20000, startTimeoutMs = workerStartTimeoutMs()) {
   const { port1, port2 } = new MessageChannel();
   const shared = new Int32Array(new SharedArrayBuffer(4));
-  const worker = new Worker(workerPath, { env: workerEnv() });
+  // execArgv: [] keeps `node -r ./gun-preload.cjs` from running the preload,
+  // and with it another storage check, inside this worker.
+  const worker = new Worker(workerPath, { env: workerEnv(), execArgv: [] });
   let failed = null;
   worker.on("error", (error) => {
     failed = error;

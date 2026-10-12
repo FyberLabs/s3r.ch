@@ -20,7 +20,7 @@ describe("identity blob worker start", () => {
     assert.equal(DEFAULT_WORKER_START_TIMEOUT_MS, 60000);
     assert.equal(workerStartTimeoutMs({}), 60000);
     assert.equal(workerStartTimeoutMs({ S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS: "90000" }), 90000);
-    assert.equal(workerStartTimeoutMs({ S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS: "999999" }), 200000);
+    assert.equal(workerStartTimeoutMs({ S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS: "999999" }), 120000);
     assert.equal(workerStartTimeoutMs({ S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS: "abc" }), 60000);
     assert.equal(workerStartTimeoutMs({ S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS: "10" }), 60000);
   });
@@ -54,5 +54,42 @@ describe("identity blob worker start", () => {
     } finally {
       done();
     }
+  });
+
+  it("does not pass -r preloads into the worker", () => {
+    const { file, done } = fixture(`
+      require("node:worker_threads").parentPort.on("message", (msg) => {
+        msg.port.postMessage({ ok: true, execArgv: process.execArgv });
+        const shared = new Int32Array(msg.shared);
+        Atomics.store(shared, 0, 1);
+        Atomics.notify(shared, 0);
+      });
+    `);
+    try {
+      const bridge = createBlockingWorker(file, {}, 3000, 5000);
+      bridge.terminate();
+    } finally {
+      done();
+    }
+    const source = require("node:fs").readFileSync(new URL("../../identity-blob.cjs", import.meta.url), "utf8");
+    assert.match(source, /new Worker\(workerPath, \{ env: workerEnv\(\), execArgv: \[\] \}\)/);
+  });
+
+  it("the preload skips the storage check inside worker threads", () => {
+    const { spawnSync } = require("node:child_process");
+    const program = `
+      const { Worker } = require("node:worker_threads");
+      const w = new Worker("require('node:worker_threads').parentPort.postMessage('ran')", { eval: true });
+      w.on("message", (m) => { process.stdout.write(m); w.terminate(); });
+    `;
+    // NODE_ENV is not production, so the main-thread check is a no-op too; the
+    // worker must not throw while loading the inherited preload.
+    const result = spawnSync(process.execPath, ["-r", "./gun-preload.cjs", "-e", program], {
+      cwd: new URL("../../", import.meta.url),
+      env: { ...process.env, NODE_ENV: "test" },
+      encoding: "utf8",
+      timeout: 20000,
+    });
+    assert.equal(result.stdout, "ran", result.stderr);
   });
 });
