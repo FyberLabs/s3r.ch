@@ -27,6 +27,14 @@ export function secretFailureResponse(error: unknown): Response | null {
   );
 }
 
+/** Identity storage is down. Only identity writes see this; the rest of the site keeps working. */
+export function identityUnavailableResponse(): Response {
+  return Response.json(
+    { error: "Account linking is temporarily unavailable. Try again later.", reason: "identity-storage-unavailable" },
+    { status: 503, headers: { "Retry-After": "60", "Cache-Control": "no-store" } },
+  );
+}
+
 export async function readNonceFromRequest(
   request: Request,
 ): Promise<string | undefined> {

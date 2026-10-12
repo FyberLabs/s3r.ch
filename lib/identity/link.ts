@@ -22,6 +22,7 @@ import {
   type IdentityBlobClient,
 } from "../../identity-blob.cjs";
 import { parseLinkFile as parseStoredLinkFile } from "../../identity-link-schema.cjs";
+import { identityClient, identityHealth, identityWritable } from "../../identity-health.cjs";
 import { identityLinkPath } from "../../identity-storage.cjs";
 
 export const LINK_FILE_V = 1;
@@ -51,7 +52,14 @@ export type IdentityLinkFile = {
   v: typeof LINK_FILE_V;
   people: IdentityPerson[];
   oauthAge?: OAuthAgeConfirmation[];
+  /** Issuer pinned for each login provider id on first use. */
+  providerIssuers?: Record<string, string>;
 };
+
+export type IssuerPinResult =
+  | { ok: true; pinned: "existing" | "first-use" | "moved"; previous?: string }
+  | { ok: false; reason: "issuer-changed"; pinned: string }
+  | LinkDenied;
 
 export type LinkDenied = { denied: true; reason: "already-linked" | "bad-handle" | "store-unreadable" };
 
@@ -236,6 +244,12 @@ export type Links = {
     oauthSub?: string | null,
   ): { owner: string; confirmedAt: string } | LinkDenied;
   saveOAuthAge(sub: string, confirmedAt: string): { confirmedAt: string } | LinkDenied;
+  /**
+   * Check `issuer` against the one pinned for `providerId`. No pin yet: pin it.
+   * Different pin: refuse, unless `approvedIssuer` equals `issuer`, which
+   * moves the pin.
+   */
+  checkProviderIssuer(providerId: string, issuer: string, approvedIssuer?: string | null): IssuerPinResult;
 };
 
 export function openLinks(store: LinkStore): Links {
@@ -312,6 +326,38 @@ export function openLinks(store: LinkStore): Links {
   function link(input: { wallet: string; sub: string; idp: LinkIdp | null }): { owner: string } | LinkDenied {
     try {
       return store.withLock ? store.withLock(() => linkUnlocked(input)) : linkUnlocked(input);
+    } catch {
+      return { denied: true, reason: "store-unreadable" };
+    }
+  }
+
+  function checkProviderIssuerUnlocked(
+    providerId: string,
+    issuer: string,
+    approvedIssuer?: string | null,
+  ): IssuerPinResult {
+    const opened = load();
+    if ("denied" in opened) return opened;
+    const file = opened.file;
+    const pinned = file.providerIssuers?.[providerId];
+    if (pinned === issuer) return { ok: true, pinned: "existing" };
+    if (pinned !== undefined && approvedIssuer !== issuer) {
+      return { ok: false, reason: "issuer-changed", pinned };
+    }
+    file.providerIssuers = { ...(file.providerIssuers ?? {}), [providerId]: issuer };
+    const saved = commit(file);
+    if (saved) return saved;
+    return pinned === undefined ? { ok: true, pinned: "first-use" } : { ok: true, pinned: "moved", previous: pinned };
+  }
+
+  function checkProviderIssuer(
+    providerId: string,
+    issuer: string,
+    approvedIssuer?: string | null,
+  ): IssuerPinResult {
+    const run = () => checkProviderIssuerUnlocked(providerId, issuer, approvedIssuer);
+    try {
+      return store.withLock ? store.withLock(run) : run();
     } catch {
       return { denied: true, reason: "store-unreadable" };
     }
@@ -438,11 +484,32 @@ export function openLinks(store: LinkStore): Links {
     ageStatusForOAuth,
     saveWalletAge,
     saveOAuthAge,
+    checkProviderIssuer,
   };
 }
 
 const installedStoreKey = "__s3rchIdentityLinkStore";
 let productionLinks: Links | undefined;
+let productionClient: IdentityBlobClient | null = null;
+
+/**
+ * Stands in while identity storage is unavailable. Reads report
+ * "store-unreadable" and writes throw, so every identity write path takes its
+ * existing 503 branch and nothing is written.
+ */
+export const unavailableLinkStore: LinkStore = {
+  load() {
+    return { ok: false, reason: "store-unreadable" };
+  },
+  save() {
+    throw new Error("s3r.ch: identity storage is unavailable");
+  },
+};
+
+/** True when account links can be written. Always true outside production. */
+export function identityLinksWritable(): boolean {
+  return identityWritable(process.env);
+}
 
 function installedStore(): LinkStore | undefined {
   return (globalThis as { [installedStoreKey]?: LinkStore })[installedStoreKey];
@@ -457,12 +524,25 @@ export function useLinkStore(store: LinkStore | null): void {
 }
 
 export function getLinks(): Links {
+  if (!identityLinksWritable()) return openLinks(unavailableLinkStore);
   const installed = installedStore();
   if (installed) return openLinks(installed);
   if (process.env.NODE_ENV === "production") {
-    if (!productionLinks) {
+    // The monitor opens the client off the request path and swaps it after a
+    // recovery. Without the preload (status "unchecked") connect here as before.
+    const monitored = identityClient();
+    if (monitored) {
+      if (!productionLinks || productionClient !== monitored) {
+        productionLinks = openLinks(new BlobLinkStore(monitored));
+        productionClient = monitored;
+      }
+      return productionLinks;
+    }
+    if (identityHealth().status !== "unchecked") return openLinks(unavailableLinkStore);
+    if (!productionLinks || productionClient !== null) {
       const config = readBlobConfig(process.env);
       productionLinks = openLinks(new BlobLinkStore(createProductionBlobClient(config)));
+      productionClient = null;
     }
     return productionLinks;
   }

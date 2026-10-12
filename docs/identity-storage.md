@@ -8,7 +8,9 @@ the same JSON document in one private Azure Blob behind `LinkStore`.
 A later account API can replace the class without changing link rules. The same
 document stores the time a person confirmed they are at least 18
 (`ageConfirmedAt` on that person, or `oauthAge` until an OAuth subject is a
-handle).
+handle), and the issuer pinned for each login provider (`providerIssuers`,
+`{"<provider id>": "<issuer>"}`). Logins are refused when the configured issuer
+differs from the pin unless `S3RCH_LOGIN_PROVIDER_ISSUER_MOVE` approves it.
 
 These are the routes checked:
 
@@ -36,9 +38,28 @@ also needs `AZURE_CLIENT_ID` set to that identity's client id (not a secret).
 Give that identity the **Storage Blob Data Contributor** role on the storage
 account or on the container. The container must already exist and its public
 access level must be **Private**. The app does not create the container and
-does not change its access policy. Startup fails if the account, container, or
-identity cannot be used. A missing blob is created as `{"v":1,"people":[]}`.
-A blob that is not valid version-1 JSON fails startup and is left unchanged.
+does not change its access policy. A missing blob is created as
+`{"v":1,"people":[]}`.
+
+## When storage is unavailable
+
+The site does not need this blob to serve the feed, the forum or `/gun`, so a
+storage problem does not stop the process. The preload checks the blob on a
+worker thread in the background:
+
+- If the account, container or identity cannot be used, `identity` is
+  `unavailable` in `/api/health`. Account linking, OAuth link writes and age
+  confirmations return HTTP 503 with `Retry-After`. Wallet sign-in also returns
+  503, because it reads the stored age confirmation.
+- A blob that is not valid version-1 JSON is reported as `invalid`, with the
+  same 503 behavior. The blob is left unchanged and is never overwritten: the
+  write path refuses a document it cannot parse. The process keeps serving so
+  the rest of the site stays up while an operator restores the blob.
+- The check retries with backoff, from 5 seconds up to 5 minutes. When it
+  passes, writes are enabled again without a restart.
+
+`/api/health` always answers 200 while the process serves requests. It lists
+`gun`, `identity` and `panopticon` separately.
 
 The deploy workflow checks the two settings before it builds or deploys.
 `WEBSITES_ENABLE_APP_SERVICE_STORAGE`, `S3RCH_IDENTITY_STORAGE_ROOT`, and
