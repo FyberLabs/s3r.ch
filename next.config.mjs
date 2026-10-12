@@ -14,6 +14,10 @@ const nextConfig = {
     "@farcaster/core",
     "@azure/identity",
     "@azure/storage-blob",
+    // gun-preload.cjs loads identity-link-schema.cjs, which require()s viem
+    // outside the Next bundle. Keep viem external so standalone tracing
+    // copies its CommonJS build (node_modules/viem/_cjs).
+    "viem",
   ],
   // TypeScript 7 ships the native tsc CLI, not the JS compiler API
   // Next's default typecheck backend still calls. Use the project tsc.
