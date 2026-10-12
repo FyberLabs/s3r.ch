@@ -303,3 +303,43 @@ describe("request-time blob client", () => {
     assert.equal(uploads, 0);
   });
 });
+
+describe("review follow-ups", () => {
+  it("healthy periodic checks keep the existing client", async () => {
+    let connects = 0;
+    const pending: Array<() => void> = [];
+    closed = 0;
+    const handle = monitor.startIdentityMonitor({
+      env: { NODE_ENV: "production" },
+      probe: async () => ({ ok: true }),
+      connect: async () => {
+        connects += 1;
+        return fakeClient();
+      },
+      schedule: (fn) => {
+        pending.push(fn);
+        return 0;
+      },
+      log: quietLog,
+    });
+    await handle.done;
+    const first = monitor.identityClient();
+    pending.shift()!();
+    await new Promise((resolve) => setImmediate(resolve));
+    handle.stop();
+    assert.equal(connects, 1);
+    assert.equal(monitor.identityClient(), first);
+    assert.equal(closed, 0);
+  });
+
+  it("an oversized document is reported as invalid", () => {
+    const { interpretBlobReply } = require("../../identity-blob.cjs");
+    let message = "";
+    try {
+      interpretBlobReply({ ok: false, status: 413, reason: "too-large" });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    assert.equal(monitor.classifyFailure(message).status, "invalid");
+  });
+});

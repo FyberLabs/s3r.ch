@@ -191,6 +191,9 @@ function interpretBlobReply(message) {
       "s3r.ch: identity blob storage refused access. Assign the Storage Blob Data Contributor role to the app identity.",
     );
   }
+  if (message && message.reason === "too-large") {
+    throw new Error("s3r.ch: identity store is invalid; the document is larger than 1 MiB");
+  }
   if (message && message.reason === "not-found") {
     throw new Error("s3r.ch: identity blob container is missing or unreachable");
   }

@@ -3,7 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { Worker } = require("node:worker_threads");
-const { setIdentityHealth, identityState, setIdentityClient } = require("./identity-health.cjs");
+const { setIdentityHealth, identityState, setIdentityClient, identityClient } = require("./identity-health.cjs");
 
 const RETRY_MIN_MS = 5000;
 const RETRY_MAX_MS = 5 * 60 * 1000;
@@ -108,12 +108,15 @@ function startIdentityMonitor(options = {}) {
       result = await probe({ create: !provisioned });
       if (result && result.ok) {
         provisioned = true;
-        const client = await connect();
-        if (stopped) {
-          if (client && typeof client.close === "function") client.close();
-          return;
+        // Keep a working client across healthy periodic checks.
+        if (!identityClient() || current.status !== "ok") {
+          const client = await connect();
+          if (stopped) {
+            if (client && typeof client.close === "function") client.close();
+            return;
+          }
+          setIdentityClient(client);
         }
-        setIdentityClient(client);
       }
     } catch (error) {
       result = { ok: false, message: error && error.message };
