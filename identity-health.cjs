@@ -12,14 +12,12 @@ const RETRY_MIN_MS = 5000;
 const RETRY_MAX_MS = 5 * 60 * 1000;
 const PROBE_TIMEOUT_MS = 60000;
 
-function initialStatus(env = process.env) {
-  return env.NODE_ENV === "production" ? "checking" : "ok";
-}
-
 function state() {
   if (!globalThis[STATE_KEY]) {
     globalThis[STATE_KEY] = {
-      status: initialStatus(),
+      // "unchecked" until a monitor starts. A server started without the
+      // preload behaves as before: each request reaches the blob directly.
+      status: "unchecked",
       reason: null,
       checkedAt: null,
       attempts: 0,
@@ -30,7 +28,7 @@ function state() {
   return globalThis[STATE_KEY];
 }
 
-/** status: "ok" | "checking" | "unavailable" | "invalid" */
+/** status: "unchecked" | "ok" | "checking" | "unavailable" | "invalid" */
 function setIdentityHealth(status, reason = null, now = Date.now()) {
   const current = state();
   if (status === "ok" && current.status !== "ok") current.generation += 1;
@@ -52,7 +50,8 @@ function identityGeneration() {
 /** Writes are allowed outside production, and in production only after a passing check. */
 function identityWritable(env = process.env) {
   if (env.NODE_ENV !== "production") return true;
-  return state().status === "ok";
+  const { status } = state();
+  return status === "ok" || status === "unchecked";
 }
 
 function classifyFailure(error) {

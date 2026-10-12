@@ -27,18 +27,19 @@ describe("identity storage configuration", () => {
     assert.equal(identityLinkPath({ NODE_ENV: "test", S3RCH_IDENTITY_LINKS: "/tmp/links.json" }), "/tmp/links.json");
   });
 
-  it("the production entrypoint refuses to start without blob settings", () => {
+  it("the production entrypoint starts without blob settings and reports identity as unavailable", () => {
     const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: "production" };
     delete env.S3RCH_IDENTITY_BLOB_ACCOUNT;
     delete env.S3RCH_IDENTITY_BLOB_CONTAINER;
     delete env.S3RCH_IDENTITY_LINKS;
     delete env.S3RCH_IDENTITY_STORAGE_ROOT;
-    const result = spawnSync(process.execPath, ["-r", "./gun-preload.cjs", "-e", "process.stdout.write('started')"], {
-      cwd: new URL("../../", import.meta.url), env, encoding: "utf8",
+    const program = "setTimeout(() => process.stdout.write('started ' + require('./identity-health.cjs').identityHealth().status), 3000)";
+    const result = spawnSync(process.execPath, ["-r", "./gun-preload.cjs", "-e", program], {
+      cwd: new URL("../../", import.meta.url), env, encoding: "utf8", timeout: 30000,
     });
-    assert.notEqual(result.status, 0);
+    assert.equal(result.status, 0, result.stderr);
     assert.match(result.stderr, /S3RCH_IDENTITY_BLOB_ACCOUNT/);
-    assert.equal(result.stdout.includes("started"), false);
+    assert.equal(result.stdout, "started unavailable");
   });
 
   it("production does not write the development identity file", () => {

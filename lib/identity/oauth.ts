@@ -38,8 +38,8 @@ import {
   serializeCookie,
   sessionCookieNames,
 } from "./cookies";
-import { secretFailureResponse } from "./http";
-import { getLinks, linkLoginPaths, ownerForOAuth } from "./link";
+import { identityUnavailableResponse, secretFailureResponse } from "./http";
+import { getLinks, identityLinksWritable, linkLoginPaths, ownerForOAuth } from "./link";
 import { getIdentitySecret, secretKey } from "./secret";
 import { readSessionToken } from "./session";
 
@@ -625,13 +625,11 @@ export async function acceptOAuthAge(
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  if (!identityLinksWritable()) return identityUnavailableResponse();
   const saved = getLinks().saveOAuthAge(pending.sub, new Date(now).toISOString());
   if ("denied" in saved) {
-    const status = saved.reason === "store-unreadable" ? 503 : 400;
-    return Response.json(
-      { error: saved.reason === "store-unreadable" ? "Identity store unavailable" : saved.reason },
-      { status },
-    );
+    if (saved.reason === "store-unreadable") return identityUnavailableResponse();
+    return Response.json({ error: saved.reason }, { status: 400 });
   }
 
   const wallet = await linkedWalletAddress(request, secret);

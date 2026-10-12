@@ -22,6 +22,7 @@ import {
   type IdentityBlobClient,
 } from "../../identity-blob.cjs";
 import { parseLinkFile as parseStoredLinkFile } from "../../identity-link-schema.cjs";
+import { identityGeneration, identityWritable } from "../../identity-health.cjs";
 import { identityLinkPath } from "../../identity-storage.cjs";
 
 export const LINK_FILE_V = 1;
@@ -443,6 +444,26 @@ export function openLinks(store: LinkStore): Links {
 
 const installedStoreKey = "__s3rchIdentityLinkStore";
 let productionLinks: Links | undefined;
+let productionGeneration = -1;
+
+/**
+ * Stands in while identity storage is unavailable. Reads report
+ * "store-unreadable" and writes throw, so every identity write path takes its
+ * existing 503 branch and nothing is written.
+ */
+export const unavailableLinkStore: LinkStore = {
+  load() {
+    return { ok: false, reason: "store-unreadable" };
+  },
+  save() {
+    throw new Error("s3r.ch: identity storage is unavailable");
+  },
+};
+
+/** True when account links can be written. Always true outside production. */
+export function identityLinksWritable(): boolean {
+  return identityWritable(process.env);
+}
 
 function installedStore(): LinkStore | undefined {
   return (globalThis as { [installedStoreKey]?: LinkStore })[installedStoreKey];
@@ -457,12 +478,16 @@ export function useLinkStore(store: LinkStore | null): void {
 }
 
 export function getLinks(): Links {
+  if (!identityLinksWritable()) return openLinks(unavailableLinkStore);
   const installed = installedStore();
   if (installed) return openLinks(installed);
   if (process.env.NODE_ENV === "production") {
-    if (!productionLinks) {
+    // A recovery bumps the generation; reconnect instead of reusing a dead bridge.
+    const generation = identityGeneration();
+    if (!productionLinks || productionGeneration !== generation) {
       const config = readBlobConfig(process.env);
       productionLinks = openLinks(new BlobLinkStore(createProductionBlobClient(config)));
+      productionGeneration = generation;
     }
     return productionLinks;
   }
