@@ -3,7 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { Worker } = require("node:worker_threads");
-const { setIdentityHealth, identityState } = require("./identity-health.cjs");
+const { setIdentityHealth, identityState, setIdentityClient } = require("./identity-health.cjs");
 
 const RETRY_MIN_MS = 5000;
 const RETRY_MAX_MS = 5 * 60 * 1000;
@@ -19,6 +19,7 @@ const PROBE_TIMEOUT_MS = probeTimeoutMs();
 function classifyFailure(error) {
   const message = error instanceof Error ? error.message : String(error || "");
   if (/identity store is invalid/.test(message)) return { status: "invalid", reason: message };
+  if (/identity blob is missing/.test(message)) return { status: "invalid", reason: message };
   if (/configure S3RCH_IDENTITY_BLOB_ACCOUNT/.test(message)) return { status: "unavailable", reason: message };
   return { status: "unavailable", reason: message || "s3r.ch: identity blob storage is unreachable" };
 }
@@ -36,10 +37,13 @@ function probeWorkerFile() {
 }
 
 /** Runs the blocking storage check on a worker thread so the event loop keeps serving. */
-function probeInWorker(timeoutMs = PROBE_TIMEOUT_MS) {
+function probeInWorker(options = {}, timeoutMs = PROBE_TIMEOUT_MS) {
   return new Promise((resolve) => {
     let settled = false;
-    const worker = new Worker(probeWorkerFile(), { execArgv: [] });
+    const worker = new Worker(probeWorkerFile(), {
+      execArgv: [],
+      workerData: { create: options.create !== false },
+    });
     const finish = (result) => {
       if (settled) return;
       settled = true;
@@ -65,6 +69,12 @@ function probeInWorker(timeoutMs = PROBE_TIMEOUT_MS) {
 function startIdentityMonitor(options = {}) {
   const env = options.env || process.env;
   const probe = options.probe || probeInWorker;
+  // Opens the request-time blob client without blocking the event loop.
+  const connect = options.connect || (async () => {
+    const blob = require("./identity-blob.cjs");
+    return blob.createProductionBlobClientAsync(blob.readBlobConfig(env));
+  });
+  let provisioned = false;
   const log = options.log || console;
   const schedule = options.schedule || ((fn, ms) => {
     const timer = setTimeout(fn, ms);
@@ -94,7 +104,17 @@ function startIdentityMonitor(options = {}) {
     current.attempts += 1;
     let result;
     try {
-      result = await probe();
+      // Only the first successful check may create a missing blob.
+      result = await probe({ create: !provisioned });
+      if (result && result.ok) {
+        provisioned = true;
+        const client = await connect();
+        if (stopped) {
+          if (client && typeof client.close === "function") client.close();
+          return;
+        }
+        setIdentityClient(client);
+      }
     } catch (error) {
       result = { ok: false, message: error && error.message };
     }
@@ -112,6 +132,7 @@ function startIdentityMonitor(options = {}) {
       return;
     }
     const failure = classifyFailure(result && result.message);
+    setIdentityClient(null);
     setIdentityHealth(failure.status, failure.reason, now());
     const delay = retryDelay(current.attempts);
     current.nextRetryAt = new Date(now() + delay).toISOString();

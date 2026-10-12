@@ -9,9 +9,13 @@ const IDENTITY_BLOB_NAME = "identity-links.json";
 const IDENTITY_BLOB_MAX_BYTES = 1048576;
 const EMPTY_DOCUMENT = JSON.stringify({ v: 1, people: [] });
 
-// Loaded here so the standalone server trace includes the SDK the worker uses.
-require("@azure/identity");
-require("@azure/storage-blob");
+// Never called. It names the SDK the worker uses so the standalone server
+// trace includes it, without loading it on the main thread.
+// eslint-disable-next-line no-unused-vars
+function traceWorkerDependencies() {
+  require("@azure/identity");
+  require("@azure/storage-blob");
+}
 
 const ACCOUNT_NAME = /^[a-z0-9]{3,24}$/;
 const CONTAINER_NAME = /^[a-z0-9](?:[a-z0-9]|-(?!-)){1,61}[a-z0-9]$/;
@@ -77,7 +81,7 @@ function workerStartTimeoutMs(env = process.env) {
   return Math.min(value, MAX_WORKER_START_TIMEOUT_MS);
 }
 
-function createBlockingWorker(workerPath, initMessage, timeoutMs = 20000, startTimeoutMs = workerStartTimeoutMs()) {
+function openBridge(workerPath, initMessage, timeoutMs) {
   const { port1, port2 } = new MessageChannel();
   const shared = new Int32Array(new SharedArrayBuffer(4));
   // execArgv: [] keeps `node -r ./gun-preload.cjs` from running the preload,
@@ -102,8 +106,7 @@ function createBlockingWorker(workerPath, initMessage, timeoutMs = 20000, startT
     return `s3r.ch: identity blob worker failed: ${detail}`;
   }
 
-  function waitForReply(waitMs, phase) {
-    const status = Atomics.wait(shared, 0, 0, waitMs);
+  function readReply(status, waitMs, phase) {
     if (failed) throw new Error(failedReason());
     if (status === "timed-out") {
       const seconds = Math.round(waitMs / 1000);
@@ -124,7 +127,7 @@ function createBlockingWorker(workerPath, initMessage, timeoutMs = 20000, startT
     if (failed) throw new Error(failedReason());
     Atomics.store(shared, 0, 0);
     worker.postMessage(message);
-    return waitForReply(timeoutMs, "call");
+    return readReply(Atomics.wait(shared, 0, 0, timeoutMs), timeoutMs, "call");
   }
 
   Atomics.store(shared, 0, 0);
@@ -132,24 +135,52 @@ function createBlockingWorker(workerPath, initMessage, timeoutMs = 20000, startT
     { ...initMessage, op: "init", port: port2, shared: shared.buffer },
     [port2],
   );
-  let ready;
-  try {
-    ready = waitForReply(startTimeoutMs, "start");
-  } catch (error) {
-    worker.terminate();
-    throw error;
+  return { worker, shared, readReply, call };
+}
+
+function finishStart(bridge, readyOrError) {
+  if (readyOrError instanceof Error) {
+    bridge.worker.terminate();
+    throw readyOrError;
   }
+  const ready = readyOrError;
   if (!ready.ok) {
-    worker.terminate();
+    bridge.worker.terminate();
     const detail = ready.detail ? `: ${ready.detail}` : "";
     throw new Error(`s3r.ch: identity blob worker failed to start (${ready.reason || "unknown"}${ready.status ? ` ${ready.status}` : ""})${detail}`);
   }
   return {
-    call,
+    call: bridge.call,
     terminate() {
-      return worker.terminate();
+      return bridge.worker.terminate();
     },
   };
+}
+
+/** Blocks the calling thread until the worker is ready. Use off the request thread. */
+function createBlockingWorker(workerPath, initMessage, timeoutMs = 20000, startTimeoutMs = workerStartTimeoutMs()) {
+  const bridge = openBridge(workerPath, initMessage, timeoutMs);
+  let ready;
+  try {
+    ready = bridge.readReply(Atomics.wait(bridge.shared, 0, 0, startTimeoutMs), startTimeoutMs, "start");
+  } catch (error) {
+    ready = error instanceof Error ? error : new Error(String(error));
+  }
+  return finishStart(bridge, ready);
+}
+
+/** Same bridge, but waits for the worker start without blocking the event loop. */
+async function createWorkerBridge(workerPath, initMessage, timeoutMs = 20000, startTimeoutMs = workerStartTimeoutMs()) {
+  const bridge = openBridge(workerPath, initMessage, timeoutMs);
+  let ready;
+  try {
+    const waiting = Atomics.waitAsync(bridge.shared, 0, 0, startTimeoutMs);
+    const status = waiting.async ? await waiting.value : waiting.value;
+    ready = bridge.readReply(status, startTimeoutMs, "start");
+  } catch (error) {
+    ready = error instanceof Error ? error : new Error(String(error));
+  }
+  return finishStart(bridge, ready);
 }
 
 function interpretBlobReply(message) {
@@ -167,11 +198,23 @@ function interpretBlobReply(message) {
 }
 
 function createProductionBlobClient(config) {
-  const bridge = createBlockingWorker(workerFile(), {
-    account: config.account,
-    container: config.container,
-  });
+  return blobClientOver(
+    createBlockingWorker(workerFile(), { account: config.account, container: config.container }),
+  );
+}
+
+/** Starts the bridge without blocking the event loop. The returned client is synchronous. */
+async function createProductionBlobClientAsync(config) {
+  return blobClientOver(
+    await createWorkerBridge(workerFile(), { account: config.account, container: config.container }),
+  );
+}
+
+function blobClientOver(bridge) {
   return {
+    close() {
+      return bridge.terminate();
+    },
     assertReachable() {
       interpretBlobReply(bridge.call({ op: "reachable" }));
     },
@@ -188,7 +231,13 @@ function createProductionBlobClient(config) {
   };
 }
 
-function assertBlobReady(config, client) {
+/**
+ * create: true provisions a missing blob (first start). A later check passes
+ * create: false so a blob deleted while running is reported, not replaced
+ * with an empty document.
+ */
+function assertBlobReady(config, client, options = {}) {
+  const create = options.create !== false;
   try {
     client.assertReachable();
   } catch (error) {
@@ -201,6 +250,9 @@ function assertBlobReady(config, client) {
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("s3r.ch:")) throw error;
     throw new Error("s3r.ch: identity blob storage is unreachable");
+  }
+  if (!downloaded.found && !create) {
+    throw new Error("s3r.ch: identity blob is missing; not recreating it while running. Restore identity-links.json");
   }
   if (!downloaded.found) {
     try {
@@ -241,6 +293,8 @@ module.exports = {
   blobServiceUrl,
   blobConflict,
   createBlockingWorker,
+  createWorkerBridge,
+  createProductionBlobClientAsync,
   workerStartTimeoutMs,
   DEFAULT_WORKER_START_TIMEOUT_MS,
   interpretBlobReply,

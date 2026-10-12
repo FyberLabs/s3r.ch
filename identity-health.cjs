@@ -49,13 +49,32 @@ function identityWritable(env = process.env) {
   return status === "ok" || status === "unchecked";
 }
 
+const CLIENT_KEY = Symbol.for("s3rch.identityClient");
+
+/** Request-time blob client opened by the monitor. Replacing it closes the old one. */
+function setIdentityClient(client) {
+  const previous = globalThis[CLIENT_KEY];
+  if (previous && previous !== client && typeof previous.close === "function") {
+    Promise.resolve(previous.close()).catch(() => {});
+  }
+  if (client) globalThis[CLIENT_KEY] = client;
+  else delete globalThis[CLIENT_KEY];
+}
+
+function identityClient() {
+  return globalThis[CLIENT_KEY] || null;
+}
+
 function resetIdentityHealthForTests(status = "ok") {
   delete globalThis[STATE_KEY];
+  delete globalThis[CLIENT_KEY];
   state().status = status;
 }
 
 module.exports = {
   identityState: state,
+  setIdentityClient,
+  identityClient,
   setIdentityHealth,
   identityHealth,
   identityGeneration,
