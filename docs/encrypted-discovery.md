@@ -38,7 +38,8 @@ Recipient-side discovery. Readers do not ask the network "what can I see". Each 
 ### Items
 
 ```
-s3rch/items/<itemId>          { v: 2, enc: 1, ct, iv, alg, owner, ver, ts? }
+s3rch/items/<itemId>          { v: 2, enc: 1, ct, iv, alg, ver, ts? }   // no owner field
+s3rch/items/<itemId>/r/<rev>  { v: 2, enc: 1, ct, iv, alg, ver }       // later revisions
 ```
 
 - `itemId` is random (128-bit), not derived from content or author, so the id does not link items.
@@ -63,11 +64,12 @@ plaintext of ct:
   { item: <itemId>, e, key: K_item,e, owner, grantSoul?, from, until?, sig }
 ```
 
-- **Writer-authenticated, immutable entries.** The per-pair tag hides the lane but is not a write ACL, and the relay serving the reader learns tags and entry ids. Each entry therefore carries `wsig`, a signature over `(tag, entryId, H(eph || ct || iv))` by a per-lane writer key `W = derive(ECDH(senderPair, inboxPub), "writer")`. The reader publishes the lane's writer pub alongside the lane in its own state, and relays that know the lane reject entries without a valid `wsig`. Entries are write-once: relays refuse any update to an existing `entryId`, and readers keep the first valid value they see and ignore later conflicting ones, so a dominating HAM update cannot replace a legitimate entry.
+- **Writer-authenticated, immutable entries.** The per-pair tag hides the lane but is not a write ACL, and the relay serving the reader learns tags and entry ids. Each entry therefore carries `wsig`, a signature over `(tag, entryId, H(eph || ct || iv))` by a per-lane writer key `W = derive(ECDH(senderPair, inboxPub), "writer")`. The writer pub is never published next to the lane or on the reader's account node, since that would link the lane to the reader. The reader gives it only to the relays it chooses, over a private authenticated subscription, and those relays reject entries without a valid `wsig`. Entries are write-once: relays refuse any update to an existing `entryId`, and readers keep the first valid value they see and ignore later conflicting ones, so a dominating HAM update cannot replace a legitimate entry.
 - Wrapping uses SEA's ECDH (`SEA.secret(readerEpub, ephemeralPair)`) with a fresh ephemeral pair per entry, then `SEA.encrypt`. The entry is unlinkable to the sender on the wire.
 - `sig` is the owner's SEA signature over the grant tuple `(item, e, rev, keyId, reader pub, from, until, object version)`; this is the exact tuple the grant proof below refers to, so the reader can tell a real grant from junk and can present it to CHECK.
 - `tag` is a private per-pair lane: each reader publishes a signed `inboxPub` on its account node, and `tag = H(ECDH(senderPair, inboxPub) || slot)`, where `slot` is a day or sequence number. Only the sender and the reader can derive it. Each sender-reader pair gets its own unlinkable lane, and the reader polls only the lanes of senders it knows (plus a first-contact lane, below). Shared buckets with trial decryption are not used: scanning shared buckets is inefficient.
 - **First contact:** a sender the reader has never seen writes a signed introduction, encrypted to `inboxPub` and carrying the sender's signing `pub` and encryption `epub` (SEA keeps these as separate fields, see `SeaPair` in `lib/identity/sea.ts`), with the signature covering both. The reader verifies the signature and the sender's account binding, then derives the per-pair lane from `ECDH(inboxPair, sender epub)`. The introduction goes to a first-contact lane derived from the reader alone, `H(inboxPub || "intro" || day)`. That lane is subject to the reader's inbox write policy (see Privacy). After the first intro, traffic moves to the per-pair lane.
+- **Time bounds in the key schedule.** `from` and `until` are not left to the recipient's CHECK alone. The owner delivers the wrap only once `from` is reached, and when `until` passes the owner rotates the item to a new epoch going forward without the expired reader, the same cheap rotation as a revoke (no re-encryption of existing items). Content written before `until` stays readable to that reader, as with any former reader.
 - This replaces the plaintext `s3rch/granted/<accessor>/…` delivery copy. The inbox holds keys and pointers, never plaintext content.
 
 ### Author fast path
@@ -107,13 +109,13 @@ reader                              shared graph / relays
   |<--- entries (ciphertext only) ----------|
   |  unwrap; verify grant proof             |
   |  CHECK(see, item, me) on grant proof    |
-  |---- get s3rch/items/<itemId> ---------->|
+  |---- get s3rch/items/<itemId>/r/<rev> -->|   (rev from verified grant/status)
   |<--- ct -------------------------------- |
   |  decrypt with K_item,e; index locally   |
 ```
 
 - **Pagination:** inbox entries are keyed `<entryId> = <hlc>-<rand>` (hybrid logical clock prefix), so a reader reads by lexical range. Gun has no native range queries; use the `gun/lib/lex` `.get({'.': {'>': cursor}})` form, which relay peers can serve, and fall back to full-node fetch on peers that ignore it.
-- **Incremental sync:** HLC keys are only monotonic per device, and one account can write from several devices or restore a stale clock, so the greatest key seen is not a lossless cursor. Each entry also carries a per-device id and sequence number inside `ct`, and the reader keeps a per-tag, per-device high-water mark. On login and on reconnect the reader rescans each daily shard it has not marked complete and deduplicates by `entryId`; a shard is not closed by an empty rescan. The reader keeps rescanning each daily shard for a retention window (for example 30 days), and senders may write a signed close marker for a lane and day listing their last sequence per device, which lets the reader close the shard early once it has every listed sequence. The lex `> cursor` query is an optimization for live updates, never the only path. The reader also subscribes (`.map().on`) to its active tags.
+- **Incremental sync:** HLC keys are only monotonic per device, and one account can write from several devices or restore a stale clock, so the greatest key seen is not a lossless cursor. Each entry also carries a per-device id and sequence number inside `ct`, and the reader keeps a per-tag, per-device high-water mark. On login and on reconnect the reader rescans each daily shard it has not marked complete and deduplicates by `entryId`; a shard is not closed by an empty rescan. The reader keeps rescanning each daily shard for a retention window (for example 30 days), and a shard can close early only on close markers from every writer device of the sender account: each enrolled device signs its own marker `{ lane, day, deviceId, lastSeq }` with its device key, and the reader closes the shard once it holds a marker from every device in the sender's current device records and every listed sequence. A missing marker from any device keeps the shard open for the full window. The lex `> cursor` query is an optimization for live updates, never the only path. The reader also subscribes (`.map().on`) to its active tags.
 - **Multi-device:** one SEA key pair per account. Senders wrap only to the account epub, never per device. See *Device enrollment and revocation*.
 - **Group discovery (v2):** read group inbox tags for each held `G_g,e`.
 - **Authorization:** decryption is not authorization. `checkSee` / `checkSeeGrant` run on the reader's merged graph before an item is displayed as granted, and any relay doing work for the reader runs CHECK too. Because grant rows become encrypted (below), CHECK needs an input it can verify without the plaintext access graph; see the spec additions.
@@ -125,7 +127,7 @@ Each account has one SEA key pair. Devices get it through enrollment from a devi
 1. The new device creates a temporary ECDH pair and shows a pairing code (a QR code holding its temporary pub plus a short random secret).
 2. The existing device scans the code, and the user confirms on both screens that a short authentication string matches.
 3. The existing device encrypts the account key pair to the new device's temporary pub and binds it to the pairing secret, then sends it over a direct channel or a one-time encrypted inbox entry that expires quickly.
-4. The new device stores the account pair in IndexedDB, encrypted at rest with a non-exportable WebCrypto key, and signs a device record (`deviceId`, `devicePub`, enrolled time) with the account key. Records live on the account node.
+4. The same transfer carries the account's inbox pair (the private half of `inboxPub`), the author-lane secret and the lane state (known senders, writer keys, per-device high-water marks), so the new device can derive every lane and open introductions. The new device stores these and the account pair in IndexedDB, encrypted at rest with a non-exportable WebCrypto key, and signs a device record (`deviceId`, `devicePub`, enrolled time) with the account key. Records live on the account node.
 5. If the user still has a login provider session or wallet (SIWE), enrollment can also require a fresh login on the new device as a second factor.
 
 **Revoking a device.** Because every device holds the same account key, revoking a device means rotating the account key:
@@ -133,7 +135,7 @@ Each account has one SEA key pair. Devices get it through enrollment from a devi
 - Generate a new account pair on a trusted device, sign a succession record with the old key (`old pub → new pub`, revoked `deviceId`), and re-bind the new pub to the account through the login provider or wallet.
 - Re-enroll the remaining devices with the new key, using the enrollment step above.
 - The account's current key is defined by a monotonic binding: the login provider or wallet signs `{ account, keyPub, seq }`, and readers and verifiers keep the highest `seq` they have seen and reject manifests, grant proofs and status statements signed by an older key, whatever succession records the old key signs. A competing successor signed only by the old key is ignored.
-- Re-key before abandoning the old key: a trusted device, still holding the old pair, re-wraps the account's owned content keys and author-lane entries to the new account epub, and the succession record lets grant owners reissue active wraps and grant proofs to the new pub. Re-enrolled devices receive the old pair only for the duration of this hand-over, and it is deleted once the re-wrap completes.
+- Re-key before abandoning the old key: a trusted device, still holding the old pair, re-wraps the account's owned content keys and author-lane entries to the new account epub, re-signs with the new key the current revision manifest of every item the account owns, reissues its outbound grant proofs (and status statements) to existing grantees under the new key, and the succession record lets grant owners reissue active wraps and grant proofs to the new pub. Readers reject old-key signatures only after the new binding is in place, so the hand-over publishes new-key manifests and proofs before the old binding is superseded. Re-enrolled devices receive the old pair only for the duration of this hand-over, and it is deleted once the re-wrap completes.
 - Publish a new `inboxPub`. Senders move to new lanes, and lanes under the old key are drained, then abandoned.
 - Content keys the revoked device already held stay exposed, just like a revoked reader. The user gets the same prompt as for reader revocation: rotate going forward only, or re-encrypt existing items.
 
