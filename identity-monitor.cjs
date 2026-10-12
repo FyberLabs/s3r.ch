@@ -7,7 +7,8 @@ const { setIdentityHealth, identityState } = require("./identity-health.cjs");
 
 const RETRY_MIN_MS = 5000;
 const RETRY_MAX_MS = 5 * 60 * 1000;
-const PROBE_TIMEOUT_MS = 60000;
+// Worker start plus a reachability check, a read and possibly a create.
+const PROBE_TIMEOUT_MS = require("./identity-blob.cjs").workerStartTimeoutMs() + 90000;
 
 function classifyFailure(error) {
   const message = error instanceof Error ? error.message : String(error || "");
