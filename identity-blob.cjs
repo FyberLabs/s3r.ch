@@ -62,10 +62,27 @@ function workerEnv() {
   return env;
 }
 
-function createBlockingWorker(workerPath, initMessage, timeoutMs = 20000) {
+// Loading @azure/identity and @azure/storage-blob in the worker can take tens
+// of seconds on a busy App Service plan. Keep the default well under the
+// App Service container start limit (230 s by default).
+const DEFAULT_WORKER_START_TIMEOUT_MS = 60000;
+// Capped so the later blob checks (20 s each) still fit in the 230 s window.
+const MAX_WORKER_START_TIMEOUT_MS = 120000;
+
+function workerStartTimeoutMs(env = process.env) {
+  const raw = String(env.S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS || "").trim();
+  if (!raw) return DEFAULT_WORKER_START_TIMEOUT_MS;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1000) return DEFAULT_WORKER_START_TIMEOUT_MS;
+  return Math.min(value, MAX_WORKER_START_TIMEOUT_MS);
+}
+
+function createBlockingWorker(workerPath, initMessage, timeoutMs = 20000, startTimeoutMs = workerStartTimeoutMs()) {
   const { port1, port2 } = new MessageChannel();
   const shared = new Int32Array(new SharedArrayBuffer(4));
-  const worker = new Worker(workerPath, { env: workerEnv() });
+  // execArgv: [] keeps `node -r ./gun-preload.cjs` from running the preload,
+  // and with it another storage check, inside this worker.
+  const worker = new Worker(workerPath, { env: workerEnv(), execArgv: [] });
   let failed = null;
   worker.on("error", (error) => {
     failed = error;
@@ -80,23 +97,34 @@ function createBlockingWorker(workerPath, initMessage, timeoutMs = 20000) {
     }
   });
 
-  function waitForReply() {
-    const status = Atomics.wait(shared, 0, 0, timeoutMs);
-    if (failed || status === "timed-out") {
-      throw new Error("s3r.ch: identity blob storage is unreachable");
+  function failedReason() {
+    const detail = failed && failed.message ? failed.message : "unknown error";
+    return `s3r.ch: identity blob worker failed: ${detail}`;
+  }
+
+  function waitForReply(waitMs, phase) {
+    const status = Atomics.wait(shared, 0, 0, waitMs);
+    if (failed) throw new Error(failedReason());
+    if (status === "timed-out") {
+      const seconds = Math.round(waitMs / 1000);
+      throw new Error(
+        phase === "start"
+          ? `s3r.ch: identity blob worker did not start within ${seconds}s (S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS)`
+          : `s3r.ch: identity blob storage did not answer within ${seconds}s`,
+      );
     }
     const received = receiveMessageOnPort(port1);
     if (!received || !received.message) {
-      throw new Error("s3r.ch: identity blob storage is unreachable");
+      throw new Error("s3r.ch: identity blob worker sent no reply");
     }
     return received.message;
   }
 
   function call(message) {
-    if (failed) throw new Error("s3r.ch: identity blob storage is unreachable");
+    if (failed) throw new Error(failedReason());
     Atomics.store(shared, 0, 0);
     worker.postMessage(message);
-    return waitForReply();
+    return waitForReply(timeoutMs, "call");
   }
 
   Atomics.store(shared, 0, 0);
@@ -104,8 +132,18 @@ function createBlockingWorker(workerPath, initMessage, timeoutMs = 20000) {
     { ...initMessage, op: "init", port: port2, shared: shared.buffer },
     [port2],
   );
-  const ready = waitForReply();
-  if (!ready.ok) throw new Error("s3r.ch: identity blob storage is unreachable");
+  let ready;
+  try {
+    ready = waitForReply(startTimeoutMs, "start");
+  } catch (error) {
+    worker.terminate();
+    throw error;
+  }
+  if (!ready.ok) {
+    worker.terminate();
+    const detail = ready.detail ? `: ${ready.detail}` : "";
+    throw new Error(`s3r.ch: identity blob worker failed to start (${ready.reason || "unknown"}${ready.status ? ` ${ready.status}` : ""})${detail}`);
+  }
   return {
     call,
     terminate() {
@@ -203,6 +241,8 @@ module.exports = {
   blobServiceUrl,
   blobConflict,
   createBlockingWorker,
+  workerStartTimeoutMs,
+  DEFAULT_WORKER_START_TIMEOUT_MS,
   interpretBlobReply,
   createProductionBlobClient,
   assertBlobReady,
