@@ -125,7 +125,7 @@ export function allocateRequestBody(clientHint?: string): {
 }
 
 function iceUrlHost(url: string): string | null {
-  const match = url.match(/^(stun|stuns|turn|turns):([^:?]+)(?::\d+)?(?:\?.*)?$/i);
+  const match = url.match(/^(stun|stuns|turn|turns):(\[[0-9A-Fa-f:.]+\]|[^:?\[\]]+)(?::\d+)?(?:\?.*)?$/i);
   if (!match) return null;
   return match[2].replace(/^\[|\]$/g, "").toLowerCase();
 }
@@ -140,6 +140,7 @@ function isBlockedRelayHost(host: string): boolean {
   ) {
     return true;
   }
+  if (host.includes(":")) return isBlockedIpv6(host);
   const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (!ipv4) return false;
   const parts = ipv4.slice(1).map(Number);
@@ -150,6 +151,20 @@ function isBlockedRelayHost(host: string): boolean {
   if (a === 192 && b === 168) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 100 && b >= 64 && b <= 127) return true;
+  return false;
+}
+
+/** Loopback, unspecified, unique-local, link-local, and IPv4-mapped private ranges. */
+function isBlockedIpv6(host: string): boolean {
+  if (host === "::" || host === "::1") return true;
+  const first = host.split(":")[0] ?? "";
+  const word = first === "" ? 0 : parseInt(first, 16);
+  if (!Number.isFinite(word)) return true;
+  if ((word & 0xfe00) === 0xfc00) return true; // fc00::/7
+  if ((word & 0xffc0) === 0xfe80) return true; // fe80::/10
+  const mapped = host.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return isBlockedRelayHost(mapped[1]);
+  if (host.startsWith("::ffff:")) return true;
   return false;
 }
 

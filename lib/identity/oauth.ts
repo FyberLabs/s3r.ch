@@ -41,7 +41,7 @@ import {
 } from "./cookies";
 import { identityUnavailableResponse, secretFailureResponse } from "./http";
 import { getLinks, identityLinksWritable, linkLoginPaths, ownerForOAuth } from "./link";
-import { findOidcProvider, oidcProviders, providerSubject, type OidcProvider } from "./providers";
+import { DEFAULT_OIDC_PROVIDER_ID, findOidcProvider, oidcProviders, providerSubject, type OidcProvider } from "./providers";
 import { getIdentitySecret, secretKey } from "./secret";
 import { readSessionToken } from "./session";
 
@@ -522,7 +522,9 @@ export async function finishOAuth(
   const redirectUri = callbackUriFor(requestHost(request), secure);
   if (!redirectUri || redirectUri !== pending.redirectUri) return denied();
 
-  const provider: OidcProvider | null = findOidcProvider(env, pending.provider);
+  // A PKCE cookie from before providers were configurable belongs to the
+  // default provider, never to whichever provider is listed first now.
+  const provider: OidcProvider | null = findOidcProvider(env, pending.provider ?? DEFAULT_OIDC_PROVIDER_ID);
   if (!provider) return denied();
   const issuer = provider.issuer;
 

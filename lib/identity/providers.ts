@@ -111,7 +111,8 @@ function oidcFrom(
   };
   for (const key of Object.keys(endpoints) as (keyof typeof endpoints)[]) {
     if (row[key] === undefined) continue;
-    const value = normalizeProviderUrl(row[key]);
+    // Explicit endpoints are used exactly as written.
+    const value = exactProviderUrl(row[key]);
     if (!value) return `provider "${id}": ${key} must be an https URL`;
     endpoints[key] = value;
   }

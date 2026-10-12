@@ -120,6 +120,11 @@ describe("login provider list", () => {
     assert.ok(errors.some((e) => /reserved/.test(e)));
   });
 
+  it("keeps explicit endpoints exactly as written", () => {
+    const provider = findOidcProvider(listEnv([{ ...OTHER, tokenEndpoint: "https://login.partner.example/oauth/token/" }]));
+    assert.equal(provider?.tokenEndpoint, "https://login.partner.example/oauth/token/");
+  });
+
   it("keeps an explicit issuer exactly, including a trailing slash", () => {
     const provider = findOidcProvider(listEnv([{ ...OTHER, issuer: "https://login.example.org/tenant/" }]));
     assert.equal(provider?.issuer, "https://login.example.org/tenant/");
@@ -177,6 +182,45 @@ describe("OAuth flow with a second provider", () => {
     assert.equal(tokenUrl, "https://login.partner.example/realms/main/protocol/openid-connect/token");
     assert.equal(finished.status, 302);
     assert.notEqual(finished.headers.get("location"), "/feed?oauth=denied");
+  });
+
+  it("sends a legacy PKCE cookie only to the default provider", async () => {
+    const { SignJWT } = await import("jose");
+    const { secretKey } = await import("./secret");
+    const { LOCAL_SESSION_SECRET } = await import("./config");
+    const iat = Math.floor(Date.now() / 1000);
+    const legacy = await new SignJWT({
+      kind: "oauth-pkce",
+      state: "s".repeat(43),
+      verifier: "v".repeat(43),
+      redirectUri: "http://127.0.0.1:3000/api/identity/oauth/callback",
+      idp: "",
+    })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setSubject("oauth-pkce")
+      .setIssuedAt(iat)
+      .setExpirationTime(iat + 600)
+      .sign(secretKey(LOCAL_SESSION_SECRET));
+    const seen: string[] = [];
+    const request = () =>
+      new Request(`http://127.0.0.1:3000/api/identity/oauth/callback?code=c&state=${"s".repeat(43)}`, {
+        headers: { cookie: `${oauthPkceCookieName(false)}=${legacy}` },
+      });
+    const fetchImpl = async (url: string | URL | Request) => {
+      seen.push(String(url));
+      return new Response("no", { status: 400 });
+    };
+    // Partner first, panopticon absent: denied without contacting anyone.
+    const denied = await finishOAuth(request(), listEnv([OTHER]), { fetchImpl });
+    assert.equal(denied.headers.get("location"), "/feed?oauth=denied");
+    assert.deepEqual(seen, []);
+    // Partner first, panopticon present: the code goes to panopticon.
+    await finishOAuth(
+      request(),
+      listEnv([OTHER, { id: "panopticon", kind: "oidc", issuer: "https://auth.example.org/realms/controlplane" }]),
+      { fetchImpl },
+    );
+    assert.deepEqual(seen, ["https://auth.example.org/realms/controlplane/protocol/openid-connect/token"]);
   });
 
   it("refuses an unknown provider id", async () => {
