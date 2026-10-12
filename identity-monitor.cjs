@@ -39,7 +39,7 @@ function probeWorkerFile() {
 function probeInWorker(timeoutMs = PROBE_TIMEOUT_MS) {
   return new Promise((resolve) => {
     let settled = false;
-    const worker = new Worker(probeWorkerFile());
+    const worker = new Worker(probeWorkerFile(), { execArgv: [] });
     const finish = (result) => {
       if (settled) return;
       settled = true;
@@ -100,11 +100,15 @@ function startIdentityMonitor(options = {}) {
     }
     if (stopped) return;
     if (result && result.ok) {
-      const wasDown = current.status !== "ok" && current.attempts > 1;
+      const wasDown = current.status === "unavailable" || current.status === "invalid";
       setIdentityHealth("ok", null, now());
-      current.nextRetryAt = null;
+      current.attempts = 0;
       if (wasDown) log.log("[s3r.ch] identity storage is reachable again; account linking is enabled");
       resolveDone();
+      // Keep checking at the slow interval so a later outage shows in health
+      // and disables writes.
+      current.nextRetryAt = new Date(now() + RETRY_MAX_MS).toISOString();
+      timer = schedule(attempt, RETRY_MAX_MS);
       return;
     }
     const failure = classifyFailure(result && result.message);

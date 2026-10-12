@@ -74,8 +74,32 @@ describe("identity storage monitor", () => {
     assert.equal(monitor.identityHealth().status, "ok");
     assert.equal(monitor.identityWritable({ NODE_ENV: "production" }), true);
     assert.equal(monitor.identityGeneration(), generation + 1);
-    assert.deepEqual(delays, [monitor.RETRY_MIN_MS, monitor.RETRY_MIN_MS * 2]);
-    assert.equal(pending.length, 0);
+    assert.deepEqual(delays, [monitor.RETRY_MIN_MS, monitor.RETRY_MIN_MS * 2, monitor.RETRY_MAX_MS]);
+    assert.equal(pending.length, 1);
+    handle.stop();
+  });
+
+  it("keeps checking after success and notices a later outage", async () => {
+    const results = [{ ok: true }, { ok: false, message: "s3r.ch: identity blob storage is unreachable" }];
+    const delays: number[] = [];
+    const pending: Array<() => void> = [];
+    const handle = monitor.startIdentityMonitor({
+      env: { NODE_ENV: "production" },
+      probe: async () => results.shift() ?? { ok: true },
+      schedule: (fn, ms) => {
+        delays.push(ms);
+        pending.push(fn);
+        return 0;
+      },
+      log: quietLog,
+    });
+    await handle.done;
+    assert.equal(monitor.identityHealth().status, "ok");
+    pending.shift()!();
+    await new Promise((resolve) => setImmediate(resolve));
+    handle.stop();
+    assert.equal(monitor.identityHealth().status, "unavailable");
+    assert.deepEqual(delays, [monitor.RETRY_MAX_MS, monitor.RETRY_MIN_MS]);
   });
 
   it("an invalid identity document disables writes but does not stop the process", async () => {

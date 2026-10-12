@@ -7,7 +7,14 @@
  * stop the process: the feed, the forum and /gun keep working, and account
  * linking returns 503 until the check passes (see identity-monitor.cjs).
  */
-require("./identity-monitor.cjs").startIdentityMonitor();
+// Workers inherit `-r ./gun-preload.cjs`. Only the main thread starts the
+// identity monitor and attaches Gun.
+if (require("node:worker_threads").isMainThread) {
+  require("./identity-monitor.cjs").startIdentityMonitor();
+  attachGun();
+}
+
+function attachGun() {
 
 const fs = require("node:fs");
 const http = require("node:http");
@@ -35,3 +42,4 @@ http.Server.prototype.listen = function patchedListen(...args) {
   }
   return origListen.apply(this, args);
 };
+}
