@@ -52,7 +52,14 @@ export type IdentityLinkFile = {
   v: typeof LINK_FILE_V;
   people: IdentityPerson[];
   oauthAge?: OAuthAgeConfirmation[];
+  /** Issuer pinned for each login provider id on first use. */
+  providerIssuers?: Record<string, string>;
 };
+
+export type IssuerPinResult =
+  | { ok: true; pinned: "existing" | "first-use" | "moved"; previous?: string }
+  | { ok: false; reason: "issuer-changed"; pinned: string }
+  | LinkDenied;
 
 export type LinkDenied = { denied: true; reason: "already-linked" | "bad-handle" | "store-unreadable" };
 
@@ -237,6 +244,12 @@ export type Links = {
     oauthSub?: string | null,
   ): { owner: string; confirmedAt: string } | LinkDenied;
   saveOAuthAge(sub: string, confirmedAt: string): { confirmedAt: string } | LinkDenied;
+  /**
+   * Check `issuer` against the one pinned for `providerId`. No pin yet: pin it.
+   * Different pin: refuse, unless `approvedIssuer` equals `issuer`, which
+   * moves the pin.
+   */
+  checkProviderIssuer(providerId: string, issuer: string, approvedIssuer?: string | null): IssuerPinResult;
 };
 
 export function openLinks(store: LinkStore): Links {
@@ -313,6 +326,38 @@ export function openLinks(store: LinkStore): Links {
   function link(input: { wallet: string; sub: string; idp: LinkIdp | null }): { owner: string } | LinkDenied {
     try {
       return store.withLock ? store.withLock(() => linkUnlocked(input)) : linkUnlocked(input);
+    } catch {
+      return { denied: true, reason: "store-unreadable" };
+    }
+  }
+
+  function checkProviderIssuerUnlocked(
+    providerId: string,
+    issuer: string,
+    approvedIssuer?: string | null,
+  ): IssuerPinResult {
+    const opened = load();
+    if ("denied" in opened) return opened;
+    const file = opened.file;
+    const pinned = file.providerIssuers?.[providerId];
+    if (pinned === issuer) return { ok: true, pinned: "existing" };
+    if (pinned !== undefined && approvedIssuer !== issuer) {
+      return { ok: false, reason: "issuer-changed", pinned };
+    }
+    file.providerIssuers = { ...(file.providerIssuers ?? {}), [providerId]: issuer };
+    const saved = commit(file);
+    if (saved) return saved;
+    return pinned === undefined ? { ok: true, pinned: "first-use" } : { ok: true, pinned: "moved", previous: pinned };
+  }
+
+  function checkProviderIssuer(
+    providerId: string,
+    issuer: string,
+    approvedIssuer?: string | null,
+  ): IssuerPinResult {
+    const run = () => checkProviderIssuerUnlocked(providerId, issuer, approvedIssuer);
+    try {
+      return store.withLock ? store.withLock(run) : run();
     } catch {
       return { denied: true, reason: "store-unreadable" };
     }
@@ -439,6 +484,7 @@ export function openLinks(store: LinkStore): Links {
     ageStatusForOAuth,
     saveWalletAge,
     saveOAuthAge,
+    checkProviderIssuer,
   };
 }
 

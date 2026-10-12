@@ -44,6 +44,14 @@ PANOPTICON_TENANT_ID=
 PANOPTICON_API_KEY=
 PANOPTICON_ORACLES_BASE=
 PANOPTICON_PAYMENTS_BASE=
+S3RCH_TURN_URLS=
+S3RCH_TURN_SECRET=
+S3RCH_TURN_TTL_SEC=
+S3RCH_OAUTH_ISSUER=
+S3RCH_OAUTH_CLIENT_ID=
+S3RCH_OAUTH_WALLET_URL=
+S3RCH_LOGIN_PROVIDERS=
+S3RCH_LOGIN_PROVIDER_ISSUER_MOVE=
 CONFIRM_SEND_URL=
 CONFIRM_FIXTURE=
 KYC_ISSUER_URL=
@@ -55,7 +63,7 @@ KYC_ISSUER_URL=
 
 `UNSTOPPABLE_API_KEY` is optional and **server-side only**. Empty keeps Polygon on-chain Unstoppable lookup; a miss is a quiet empty claim. Never put it in `NEXT_PUBLIC_*`. Never commit a UD partner key.
 
-`PANOPTICON_TURN_BASE`, `PANOPTICON_TENANT_ID`, and `PANOPTICON_API_KEY` are optional and **server-side only**. All three App Service application settings are required for live TURN; empty or any missing keeps STUN + `/gun` (no error theater on `/feed`). `PANOPTICON_TURN_BASE` is the allocate origin (or origin+/api/v1[/turn]); Next hops `POST /api/v1/turn/allocate`. FyberLabs/infra `terraform/s3rch` holds the API key in Key Vault (secret name `s3rch-panopticon-api-key`) and wires that secret and the `*_BASE` hostnames. Deploy writes `PANOPTICON_TENANT_ID` from the GitHub variable `S3RCH_PANOPTICON_TENANT_ID` and refreshes Key Vault references. An unset variable fails the deploy and does not clear the live setting. Never `NEXT_PUBLIC_*`, never Gun, never the browser, never git. This repo does not deploy coturn; it only calls Panopticon TURN allocate. Contract: FyberLabs/panopticon `products/turn/docs/turn-allocate-v0.md`. Checklist: [docs/durable-graph-and-turn.md](docs/durable-graph-and-turn.md#operator--infra-habit-live-turn).
+`PANOPTICON_TURN_BASE`, `PANOPTICON_TENANT_ID`, and `PANOPTICON_API_KEY` are optional and **server-side only**. All three App Service application settings are required for live TURN; empty or any missing keeps STUN + `/gun` (no error theater on `/feed`). `PANOPTICON_TURN_BASE` is the allocate origin (or origin+/api/v1[/turn]); Next hops `POST /api/v1/turn/allocate`. FyberLabs/infra `terraform/s3rch` holds the API key in Key Vault (secret name `s3rch-panopticon-api-key`) and wires that secret and the `*_BASE` hostnames. Deploy writes `PANOPTICON_TENANT_ID` from the GitHub variable `S3RCH_PANOPTICON_TENANT_ID` when it is set, and refreshes Key Vault references. An unset variable skips that write and leaves the live setting unchanged. Never `NEXT_PUBLIC_*`, never Gun, never the browser, never git. This repo does not deploy coturn; it only calls Panopticon TURN allocate. Contract: FyberLabs/panopticon `products/turn/docs/turn-allocate-v0.md`. Checklist: [docs/durable-graph-and-turn.md](docs/durable-graph-and-turn.md#operator--infra-habit-live-turn).
 
 `PANOPTICON_ORACLES_BASE` is optional and **server-side only**. Together with the shared `PANOPTICON_TENANT_ID` + `PANOPTICON_API_KEY`, it enables a SIWE-gated hop: `POST /api/oracles/attest` → Panopticon `POST /api/v1/oracles/v0/attest`. Empty or any missing keeps today’s browser-first SIWE / ENS / ERC-1271 (no error theater on `/feed`, no invented grant from a missing digest). `PANOPTICON_ORACLES_BASE` is the attest origin (or origin+/api/v1[/oracles[/v0]]). Lab: `https://api.test.hyperme.sh`. Never `NEXT_PUBLIC_*`. Never Gun. Contract: FyberLabs/panopticon [`oracles-attest-v0.md`](https://github.com/FyberLabs/panopticon/blob/main/products/oracles/docs/oracles-attest-v0.md). Smoke: [docs/oracles-and-payments-prep.md](docs/oracles-and-payments-prep.md).
 
@@ -79,9 +87,22 @@ Deploy (`.github/workflows/deploy.yml`) and the seed workflow use these settings
 | `ACR_LOGIN_SERVER` | yes | Registry host used to push the image and point App Service at it. Set in the Deploy workflow env. |
 | `SEED_URL` | no | GitHub variable for `.github/workflows/seed.yml`. Unset posts to the prod `/api/seed` URL. |
 | `NEXT_PUBLIC_WC_PROJECT_ID` | no | GitHub variable passed as a Docker build-arg. Empty leaves WalletConnect off. |
-| `S3RCH_PANOPTICON_TENANT_ID` | yes | The Panopticon marketplace tenant id the app uses, set as `PANOPTICON_TENANT_ID` on the App Service; it is an identifier, not a secret. |
+| `S3RCH_PANOPTICON_TENANT_ID` | no | The Panopticon marketplace tenant id the app uses, set as `PANOPTICON_TENANT_ID` on the App Service; it is an identifier, not a secret. |
 
-Create `S3RCH_PANOPTICON_TENANT_ID` as a repository variable or a `prod` environment variable. Do not commit the value. Deploy checks it before checkout and image push. An unset value fails the job and does not clear the live App Service setting.
+`S3RCH_PANOPTICON_TENANT_ID` is optional. Create it as a repository variable or a `prod` environment variable when the site uses Panopticon integrations. Do not commit the value. Deploy checks it before the image push: a set value that is not a UUID fails the job. An unset value skips the App Service write and never clears the live setting.
+
+### Running without Panopticon
+
+The site builds and runs with no `PANOPTICON_*` settings. GunDB, the feed, the forum and SIWE sign-in do not need it.
+
+- `/api/payments/*` and `/api/oracles/attest` return 503 (`*-unconfigured`, or `*-unavailable` when a configured service does not answer).
+- `/api/turn/allocate` uses the relay in `S3RCH_TURN_URLS` when set; otherwise it returns 503 and browsers stay STUN-only. For `turn:` URLs each request gets a short-lived credential in the TURN REST format that coturn's `use-auth-secret` checks: username `<expiry unix ts>:<random id>`, credential base64(HMAC-SHA1(`S3RCH_TURN_SECRET`, username)), valid for `S3RCH_TURN_TTL_SEC` (default 3600). The secret never leaves the server. A fixed `S3RCH_TURN_USERNAME` / `S3RCH_TURN_CREDENTIAL` is only used with `S3RCH_TURN_INSECURE_STATIC_CREDENTIAL=1` (off by default), because it is handed to every signed-in browser.
+- Each login provider's issuer is pinned in the identity store (`providerIssuers`) the first time someone logs in with it. If the configured issuer later differs, that provider's logins are refused and logged, so repointing a provider id cannot take over its accounts. To approve a move, set `S3RCH_LOGIN_PROVIDER_ISSUER_MOVE=<provider id>:<new issuer>` (comma-separated for several); the next login updates the pin and logs it. Account keys do not change.
+- `/api/health` reports each integration as `not-configured`, `configured`, `ok` or `unreachable`.
+
+### Login providers
+
+SIWE (wallet) sign-in is always on. OIDC providers are backup sign-ins that bind to a wallet. With `S3RCH_LOGIN_PROVIDERS` unset, the list is SIWE plus one provider with id `panopticon` built from `S3RCH_OAUTH_ISSUER` (and optional `S3RCH_OAUTH_CLIENT_ID`, default `s3rch-web`, and `S3RCH_OAUTH_WALLET_URL`). Leave `S3RCH_OAUTH_ISSUER` unset to run with SIWE only. `S3RCH_LOGIN_PROVIDERS` takes a JSON array to configure several providers; see `lib/identity/providers.ts`. `GET /api/identity/providers` lists ids and labels for the UI, and `/api/identity/oauth/start?provider=<id>` picks one.
 
 ## Development
 

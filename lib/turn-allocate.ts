@@ -9,11 +9,30 @@
  *   PANOPTICON_TENANT_ID   marketplace tenant UUID (`X-Tenant-ID`)
  *   PANOPTICON_API_KEY     product API key (`X-Api-Key`). Never NEXT_PUBLIC_*.
  *
- * Never Gun. Never localStorage. Never the long-lived TURN secret.
- * Fail soft: missing env / 401 / 503 / network / bad JSON → caller keeps STUN.
+ * Optional static fallback (server-only), used when the hop above is not
+ * configured or fails:
+ *   S3RCH_TURN_URLS         comma-separated turn:/turns:/stun: URLs
+ *   S3RCH_TURN_SECRET       shared secret of the relay (coturn
+ *                           `use-auth-secret` / `static-auth-secret`); required
+ *                           when a turn: URL is listed
+ *   S3RCH_TURN_TTL_SEC      credential lifetime, default 3600 (60..86400)
+ *
+ * Each request gets a short-lived credential in the TURN REST format:
+ * username `<expiry unix ts>:<random id>`, credential
+ * base64(HMAC-SHA1(secret, username)). The secret never leaves the server.
+ *
+ * Insecure, off by default: S3RCH_TURN_INSECURE_STATIC_CREDENTIAL=1 with
+ * S3RCH_TURN_USERNAME / S3RCH_TURN_CREDENTIAL hands that fixed credential to
+ * every signed-in browser. Only for relays without REST auth.
+ *
+ * Never Gun. Never localStorage. Never the long-lived TURN secret of the
+ * allocate service.
+ * Fail soft: nothing configured / 401 / 503 / network / bad JSON → caller keeps STUN.
  */
 
+import { createHmac, randomBytes } from "node:crypto";
 import { iceServerUrls } from "./gun-webrtc";
+import { recordIntegrationHop } from "./dependency-health";
 
 export const PANOPTICON_ALLOCATE_PATH = "/api/v1/turn/allocate";
 export const DEFAULT_ALLOCATE_TTL_SEC = 300;
@@ -24,6 +43,13 @@ export const ALLOCATE_USER_AGENT = "s3r.ch-turn-allocate/0.1 (Fyber Labs)";
 export const ENV_TURN_BASE = "PANOPTICON_TURN_BASE";
 export const ENV_TENANT_ID = "PANOPTICON_TENANT_ID";
 export const ENV_API_KEY = "PANOPTICON_API_KEY";
+export const ENV_STATIC_TURN_URLS = "S3RCH_TURN_URLS";
+export const ENV_STATIC_TURN_USERNAME = "S3RCH_TURN_USERNAME";
+export const ENV_STATIC_TURN_CREDENTIAL = "S3RCH_TURN_CREDENTIAL";
+export const ENV_STATIC_TURN_SECRET = "S3RCH_TURN_SECRET";
+export const ENV_STATIC_TURN_TTL = "S3RCH_TURN_TTL_SEC";
+export const ENV_STATIC_TURN_INSECURE = "S3RCH_TURN_INSECURE_STATIC_CREDENTIAL";
+export const DEFAULT_STATIC_TURN_TTL_SEC = 3600;
 
 export type EnvLike = Record<string, string | undefined>;
 
@@ -113,8 +139,12 @@ export function allocateRequestBody(clientHint?: string): {
 }
 
 function iceUrlHost(url: string): string | null {
-  const match = url.match(/^(stun|stuns|turn|turns):([^:?]+)(?::\d+)?(?:\?.*)?$/i);
+  const match = url.match(/^(stun|stuns|turn|turns):(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(?::(\d{1,5}))?(?:\?.*)?$/i);
   if (!match) return null;
+  if (match[3] !== undefined) {
+    const port = Number(match[3]);
+    if (port < 1 || port > 65535) return null;
+  }
   return match[2].replace(/^\[|\]$/g, "").toLowerCase();
 }
 
@@ -128,6 +158,7 @@ function isBlockedRelayHost(host: string): boolean {
   ) {
     return true;
   }
+  if (host.includes(":")) return isBlockedIpv6(host);
   const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (!ipv4) return false;
   const parts = ipv4.slice(1).map(Number);
@@ -138,6 +169,44 @@ function isBlockedRelayHost(host: string): boolean {
   if (a === 192 && b === 168) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 100 && b >= 64 && b <= 127) return true;
+  return false;
+}
+
+/** Eight 16-bit words, or null when the text is not an IPv6 address. Browser-safe. */
+export function parseIpv6(host: string): number[] | null {
+  let text = host;
+  const tail: number[] = [];
+  const v4 = text.match(/^(.*:)(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const bytes = v4.slice(2).map(Number);
+    if (bytes.some((n) => n > 255)) return null;
+    tail.push((bytes[0] << 8) | bytes[1], (bytes[2] << 8) | bytes[3]);
+    text = v4[1].endsWith("::") ? v4[1] : v4[1].slice(0, -1);
+  }
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const parse = (part: string) => (part ? part.split(":") : []);
+  const head = parse(halves[0]);
+  const rest = halves.length === 2 ? parse(halves[1]) : [];
+  if (![...head, ...rest].every((word) => /^[0-9a-f]{1,4}$/i.test(word))) return null;
+  const known = head.length + rest.length + tail.length;
+  if (halves.length === 1 && known !== 8) return null;
+  if (halves.length === 2 && known > 7) return null;
+  const zeros = halves.length === 2 ? new Array(8 - known).fill(0) : [];
+  return [...head.map((w) => parseInt(w, 16)), ...zeros, ...rest.map((w) => parseInt(w, 16)), ...tail];
+}
+
+/** Unspecified, loopback, unique-local, link-local, and IPv4-mapped private ranges. */
+function isBlockedIpv6(host: string): boolean {
+  const words = parseIpv6(host);
+  if (!words) return true;
+  if (words.slice(0, 7).every((w) => w === 0) && (words[7] === 0 || words[7] === 1)) return true;
+  if ((words[0] & 0xfe00) === 0xfc00) return true; // fc00::/7
+  if ((words[0] & 0xffc0) === 0xfe80) return true; // fe80::/10
+  if (words.slice(0, 5).every((w) => w === 0) && words[5] === 0xffff) {
+    const v4 = [words[6] >> 8, words[6] & 255, words[7] >> 8, words[7] & 255].join(".");
+    return isBlockedRelayHost(v4);
+  }
   return false;
 }
 
@@ -225,20 +294,97 @@ export async function hopPanopticonAllocate(input: {
   }
 }
 
+function staticTurnUrls(env: EnvLike): string[] {
+  return trimEnv(env[ENV_STATIC_TURN_URLS])
+    .split(",")
+    // ICE URI schemes are case-insensitive; the TURN credential check is not.
+    .map((url) => url.trim().replace(/^[A-Za-z]+:/, (scheme) => scheme.toLowerCase()))
+    .filter(Boolean);
+}
+
+export function staticTurnTtlSec(env: EnvLike = process.env): number {
+  const raw = trimEnv(env[ENV_STATIC_TURN_TTL]);
+  if (!/^\d+$/.test(raw)) return DEFAULT_STATIC_TURN_TTL_SEC;
+  const ttl = Number(raw);
+  return ttl >= 60 && ttl <= 86_400 ? ttl : DEFAULT_STATIC_TURN_TTL_SEC;
+}
+
+function insecureStaticEnabled(env: EnvLike): boolean {
+  return /^(1|true|yes)$/i.test(trimEnv(env[ENV_STATIC_TURN_INSECURE]));
+}
+
+/** TURN REST credential (coturn `use-auth-secret`). */
+export function turnRestCredential(
+  secret: string,
+  expiresAtSec: number,
+  sessionId: string,
+): { username: string; credential: string } {
+  const username = `${expiresAtSec}:${sessionId}`;
+  const credential = createHmac("sha1", secret).update(username).digest("base64");
+  return { username, credential };
+}
+
 /**
- * Next-route body. Unsigned → 401. Missing env / hop fail → 503.
- * 200 is the Panopticon JSON. Never returns the product API key.
+ * Static relay from S3RCH_TURN_*, with a freshly minted credential. Null when
+ * unset, when any URL is not a public stun:/turn: URL, or when a turn: URL is
+ * listed without S3RCH_TURN_SECRET (or the explicit insecure fixed credential).
+ */
+export function readStaticTurnServer(
+  env: EnvLike = process.env,
+  now: number = Date.now(),
+  sessionId: string = randomBytes(16).toString("base64url"),
+): TurnIceServer | null {
+  const urls = staticTurnUrls(env);
+  if (urls.length === 0) return null;
+  const secret = trimEnv(env[ENV_STATIC_TURN_SECRET]);
+  if (secret) {
+    const expires = Math.floor(now / 1000) + staticTurnTtlSec(env);
+    return admitIceServer({ urls, ...turnRestCredential(secret, expires, sessionId) });
+  }
+  if (insecureStaticEnabled(env)) {
+    return admitIceServer({
+      urls,
+      username: trimEnv(env[ENV_STATIC_TURN_USERNAME]) || undefined,
+      credential: trimEnv(env[ENV_STATIC_TURN_CREDENTIAL]) || undefined,
+    });
+  }
+  // STUN-only lists need no credential.
+  return admitIceServer({ urls });
+}
+
+function staticAllocation(env: EnvLike | undefined, now: number): TurnAllocateOk | null {
+  const server = readStaticTurnServer(env, now);
+  if (!server) return null;
+  const minted = Boolean(trimEnv((env ?? process.env)[ENV_STATIC_TURN_SECRET]));
+  // Minted credentials: refresh when they expire. Otherwise the allocation
+  // lifetime, so the browser asks again and picks up rotation.
+  const ttlSec = minted ? staticTurnTtlSec(env) : DEFAULT_ALLOCATE_TTL_SEC;
+  return {
+    iceServers: [server],
+    expiresAt: new Date(now + ttlSec * 1000).toISOString(),
+  };
+}
+
+/**
+ * Next-route body. Unsigned → 401. Allocate hop first, then the static relay.
+ * Neither available → 503 and the browser stays STUN-only.
+ * Never returns the product API key.
  */
 export async function sessionGatedAllocate(input: {
   sessionAddress: string | null;
   env?: EnvLike;
   fetchImpl?: typeof fetch;
+  now?: number;
 }): Promise<AllocateRouteResult> {
   if (!input.sessionAddress) {
     return { status: 401, body: { error: "unauthorized" } };
   }
-  const cfg = readTurnAllocateEnv(input.env);
+  const env = input.env ?? process.env;
+  const now = input.now ?? Date.now();
+  const cfg = readTurnAllocateEnv(env);
   if (!cfg) {
+    const fallback = staticAllocation(env, now);
+    if (fallback) return { status: 200, body: fallback };
     return { status: 503, body: { error: "turn-unconfigured" } };
   }
   const allocated = await hopPanopticonAllocate({
@@ -246,7 +392,10 @@ export async function sessionGatedAllocate(input: {
     clientHint: input.sessionAddress,
     fetchImpl: input.fetchImpl,
   });
+  recordIntegrationHop("turn", allocated !== null);
   if (!allocated) {
+    const fallback = staticAllocation(env, now);
+    if (fallback) return { status: 200, body: fallback };
     return { status: 503, body: { error: "turn-unavailable" } };
   }
   return { status: 200, body: allocated };

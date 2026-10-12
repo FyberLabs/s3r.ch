@@ -15,6 +15,8 @@
  * browser-first SIWE / ENS / ERC-1271. Plane `ok: false` is HTTP 200.
  */
 
+import { recordIntegrationHop } from "./dependency-health";
+
 export const PANOPTICON_ATTEST_PATH = "/api/v1/oracles/v0/attest";
 export const DEFAULT_CLIENT_HINT = "s3rch-next";
 export const ATTEST_FETCH_MS = 8_000;
@@ -293,6 +295,7 @@ export async function sessionGatedAttest(input: {
     request,
     fetchImpl: input.fetchImpl,
   });
+  recordIntegrationHop("oracles", observed !== null);
   if (!observed) {
     return { status: 503, body: { error: "oracles-unavailable" } };
   }
