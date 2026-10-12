@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -26,21 +26,24 @@ function runRequire(
 }
 
 describe("require-panopticon-tenant-id", () => {
-  it("fails when the GitHub variable is unset and does not print a value", () => {
-    const result = runRequire(undefined);
-    assert.notEqual(result.status, 0);
-    const text = `${result.stdout}${result.stderr}`;
-    assert.match(text, /S3RCH_PANOPTICON_TENANT_ID is unset/);
-    assert.match(text, /repository variable or a prod environment variable/);
-    assert.match(text, /PANOPTICON_TENANT_ID is not cleared/);
-    assert.equal(result.stdout, "");
+  it("skips when the GitHub variable is unset and writes no id file", () => {
+    const dir = mkdtempSync(join(tmpdir(), "panopticon-tenant-"));
+    const outPath = join(dir, "id");
+    try {
+      const result = runRequire(undefined, { outPath });
+      assert.equal(result.status, 0);
+      assert.match(result.stdout, /S3RCH_PANOPTICON_TENANT_ID is unset; skipping/);
+      assert.match(result.stdout, /left unchanged, not cleared/);
+      assert.equal(existsSync(outPath), false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
-  it("fails when the variable is blank", () => {
+  it("treats a blank variable as unset", () => {
     const result = runRequire("  \n");
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /is unset/);
-    assert.equal(result.stdout, "");
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /is unset; skipping/);
   });
 
   it("fails on a non-UUID without echoing it", () => {
@@ -89,15 +92,15 @@ describe("deploy workflow owns PANOPTICON_TENANT_ID", () => {
     );
   });
 
-  it("preflights a missing tenant id before checkout and image push", () => {
+  it("checks a set tenant id before image push and skips the write when unset", () => {
     const deploy = workflow.slice(workflow.indexOf("\n  deploy:\n"));
-    const preflight = deploy.indexOf("name: Require Panopticon tenant id");
     const checkout = deploy.indexOf("actions/checkout@");
     const push = deploy.indexOf("docker/build-push-action@");
     const scriptStep = deploy.indexOf("bash scripts/require-panopticon-tenant-id.sh\n");
-    assert.ok(preflight >= 0 && preflight < checkout && checkout < scriptStep && scriptStep < push);
-    assert.match(deploy.slice(0, checkout), /repository variable or a prod environment variable/);
-    assert.match(deploy.slice(0, checkout), /PANOPTICON_TENANT_ID is not cleared/);
+    assert.ok(checkout >= 0 && checkout < scriptStep && scriptStep < push);
+    assert.equal(deploy.slice(0, checkout).includes("Require Panopticon tenant id"), false);
+    const write = deploy.slice(deploy.indexOf("name: Set Panopticon tenant id"));
+    assert.ok(write.indexOf('if [ ! -s "$id_file" ]') < write.indexOf("az webapp config appsettings set"));
     const script = readFileSync(SCRIPT, "utf8");
     const uuidPattern =
       "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
