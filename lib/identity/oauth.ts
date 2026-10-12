@@ -1,5 +1,6 @@
 /**
- * Backup OAuth door. Panopticon Keycloak, public PKCE client `s3rch-web`.
+ * Backup OAuth door. Any configured OIDC provider (see providers.ts); the
+ * default is a Keycloak realm with the public PKCE client `s3rch-web`.
  *
  * The SIWE cookie stays the session subject for Gun and Check. The forum
  * owner is the sociacl checksummed address after a handle resolves. This
@@ -10,7 +11,7 @@
  * Unlinked OAuth is not an owner. A SIWE session and this cookie can bind
  * both ways onto one sociacl owner (the checksummed address). The binding
  * is not this cookie and is not written to Gun.
- * Missing or unknown issuer config fails closed.
+ * Missing or invalid provider config fails closed.
  */
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
@@ -40,19 +41,12 @@ import {
 } from "./cookies";
 import { identityUnavailableResponse, secretFailureResponse } from "./http";
 import { getLinks, identityLinksWritable, linkLoginPaths, ownerForOAuth } from "./link";
+import { findOidcProvider, oidcProviders, providerSubject, readLoginProviders, type OidcProvider } from "./providers";
 import { getIdentitySecret, secretKey } from "./secret";
 import { readSessionToken } from "./session";
 
 export const OAUTH_IDPS = ["microsoft", "github", "google"] as const;
 export type OAuthIdp = (typeof OAUTH_IDPS)[number];
-
-/** Issuers this app will send a browser to. Anything else fails closed. */
-export const ALLOWED_OAUTH_ISSUERS = [
-  "https://auth.test.hyperme.sh/realms/controlplane",
-  "https://auth.hyperme.sh/realms/controlplane",
-  "http://localhost:8081/realms/controlplane",
-  "http://127.0.0.1:8081/realms/controlplane",
-] as const;
 
 const SUB_MAX = 256;
 const CODE_MAX = 2048;
@@ -81,13 +75,11 @@ type PkcePending = {
   verifier: string;
   redirectUri: string;
   idp: OAuthIdp | null;
+  /** Provider id. Absent on cookies issued before providers were configurable. */
+  provider: string | null;
 };
 
-type EnvLike = {
-  S3RCH_OAUTH_ISSUER?: string;
-  IDENTITY_SESSION_SECRET?: string;
-  NODE_ENV?: string;
-};
+type EnvLike = Record<string, string | undefined>;
 
 export type OAuthDeps = {
   fetchImpl?: typeof fetch;
@@ -97,22 +89,14 @@ export type OAuthDeps = {
   now?: number;
 };
 
-/**
- * Panopticon auth-service wallet bind, via the public API edge.
- * `user_wallet_bindings.wallet_address`. Not payment-service ledger USDC,
- * and not a host `usdc_pubkey`. No other API host is documented here.
- */
-const HYPERMESH_WALLET_URLS: Record<string, string> = {
-  "https://auth.test.hyperme.sh/realms/controlplane":
-    "https://api.test.hyperme.sh/auth/siwe/me",
-};
-
+/** Issuer of the default OIDC provider, or null when none is configured. */
 export function readOAuthIssuer(env: EnvLike = process.env): string | null {
-  const raw = env.S3RCH_OAUTH_ISSUER?.trim() ?? "";
-  if (!raw) return null;
-  const normalized = raw.replace(/\/+$/, "");
-  if (!(ALLOWED_OAUTH_ISSUERS as readonly string[]).includes(normalized)) return null;
-  return normalized;
+  return findOidcProvider(env)?.issuer ?? null;
+}
+
+function parseProviderParam(raw: string | null): string | null | "invalid" {
+  if (raw === null || raw === "") return null;
+  return /^[a-z0-9][a-z0-9-]{0,31}$/.test(raw) ? raw : "invalid";
 }
 
 export function callbackUriFor(host: string, secure: boolean): string | null {
@@ -140,9 +124,11 @@ export function buildAuthorizeUrl(input: {
   state: string;
   challenge: string;
   idp: OAuthIdp | null;
+  clientId?: string;
+  authorizationEndpoint?: string;
 }): string {
-  const url = new URL(`${input.issuer}/protocol/openid-connect/auth`);
-  url.searchParams.set("client_id", OAUTH_CLIENT_ID);
+  const url = new URL(input.authorizationEndpoint ?? `${input.issuer}/protocol/openid-connect/auth`);
+  url.searchParams.set("client_id", input.clientId ?? OAUTH_CLIENT_ID);
   url.searchParams.set("redirect_uri", input.redirectUri);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", "openid");
@@ -184,6 +170,7 @@ async function signPkce(pending: PkcePending, secret: string, now: number): Prom
     verifier: pending.verifier,
     redirectUri: pending.redirectUri,
     idp: pending.idp ?? "",
+    provider: pending.provider ?? "",
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setSubject("oauth-pkce")
@@ -207,6 +194,7 @@ async function readPkce(token: string, secret: string): Promise<PkcePending> {
     verifier: payload.verifier,
     redirectUri: payload.redirectUri,
     idp: asIdp(payload.idp),
+    provider: typeof payload.provider === "string" && payload.provider ? payload.provider : null,
   };
 }
 
@@ -294,13 +282,17 @@ function checksumWallet(value: unknown): string | null {
   }
 }
 
-/** One read of the bound wallet. The access token is not stored. Failure is no wallet. */
-export async function lookupHypermeshWallet(input: {
-  issuer: string;
+/**
+ * One read of the wallet the provider has bound to this account, from the
+ * provider's `walletLookupUrl` (expects `{ bound, wallet_address }`). The
+ * access token is not stored. No URL or any failure is no wallet.
+ */
+export async function lookupProviderWallet(input: {
+  url: string | null;
   accessToken: string;
   fetchImpl: typeof fetch;
 }): Promise<string | null> {
-  const url = HYPERMESH_WALLET_URLS[input.issuer];
+  const url = input.url;
   if (!url || !input.accessToken || input.accessToken.length > 8192) return null;
   try {
     const response = await input.fetchImpl(url, {
@@ -325,6 +317,8 @@ async function exchangeCode(
     code: string;
     verifier: string;
     redirectUri: string;
+    clientId?: string;
+    tokenEndpoint?: string;
   },
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ idToken: string; accessToken: string | null }> {
@@ -332,12 +326,12 @@ async function exchangeCode(
     grant_type: "authorization_code",
     code: input.code,
     redirect_uri: input.redirectUri,
-    client_id: OAUTH_CLIENT_ID,
+    client_id: input.clientId ?? OAUTH_CLIENT_ID,
     code_verifier: input.verifier,
   });
   let response: Response;
   try {
-    response = await fetchImpl(`${input.issuer}/protocol/openid-connect/token`, {
+    response = await fetchImpl(input.tokenEndpoint ?? `${input.issuer}/protocol/openid-connect/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body,
@@ -373,11 +367,11 @@ export async function exchangeCodeForIdToken(
   return (await exchangeCode(input, fetchImpl)).idToken;
 }
 
-function jwksFor(issuer: string): JWTVerifyGetKey {
-  const existing = jwksByIssuer.get(issuer);
+function jwksFor(jwksUri: string): JWTVerifyGetKey {
+  const existing = jwksByIssuer.get(jwksUri);
   if (existing) return existing;
-  const created = createRemoteJWKSet(new URL(`${issuer}/protocol/openid-connect/certs`));
-  jwksByIssuer.set(issuer, created);
+  const created = createRemoteJWKSet(new URL(jwksUri));
+  jwksByIssuer.set(jwksUri, created);
   return created;
 }
 
@@ -386,11 +380,12 @@ export async function verifyBackupIdToken(
   input: {
     issuer: string;
     key: JWTVerifyGetKey | Uint8Array | CryptoKey;
+    clientId?: string;
   },
 ): Promise<{ sub: string; idp: OAuthIdp | null }> {
   const { payload } = await jwtVerify(idToken, input.key, {
     issuer: input.issuer,
-    audience: OAUTH_CLIENT_ID,
+    audience: input.clientId ?? OAUTH_CLIENT_ID,
     algorithms: ["RS256", "PS256", "ES256"],
   });
   return {
@@ -451,20 +446,32 @@ export async function beginOAuth(
     );
   }
 
-  const issuer = readOAuthIssuer(env);
-  if (!issuer) return appRedirect("/feed?oauth=unconfigured");
+  const params = new URL(request.url).searchParams;
+  const requested = parseProviderParam(params.get("provider"));
+  if (requested === "invalid") return appRedirect("/feed?oauth=denied");
+  if (oidcProviders(env).length === 0) return appRedirect("/feed?oauth=unconfigured");
+  const provider = findOidcProvider(env, requested);
+  if (!provider) return appRedirect("/feed?oauth=denied");
 
   const secure = requestIsSecure(request);
   const redirectUri = callbackUriFor(requestHost(request), secure);
   if (!redirectUri) return appRedirect("/feed?oauth=denied");
 
-  const idp = parseIdpHint(new URL(request.url).searchParams.get("idp"));
+  const idp = parseIdpHint(params.get("idp"));
   if (idp === "invalid") return appRedirect("/feed?oauth=denied");
 
   const { verifier, challenge } = createPkcePair();
   const state = randomBytes(32).toString("base64url");
-  const pkce = await signPkce({ state, verifier, redirectUri, idp }, secret, now);
-  const location = buildAuthorizeUrl({ issuer, redirectUri, state, challenge, idp });
+  const pkce = await signPkce({ state, verifier, redirectUri, idp, provider: provider.id }, secret, now);
+  const location = buildAuthorizeUrl({
+    issuer: provider.issuer,
+    redirectUri,
+    state,
+    challenge,
+    idp,
+    clientId: provider.clientId,
+    authorizationEndpoint: provider.authorizationEndpoint,
+  });
   return appRedirect(location, [
     serializeCookie(
       oauthPkceCookieName(secure),
@@ -492,8 +499,7 @@ export async function finishOAuth(
   const secure = requestIsSecure(request);
   const denied = () => appRedirect("/feed?oauth=denied", clearPkce(secure));
 
-  const issuer = readOAuthIssuer(env);
-  if (!issuer) return appRedirect("/feed?oauth=unconfigured", clearPkce(secure));
+  if (oidcProviders(env).length === 0) return appRedirect("/feed?oauth=unconfigured", clearPkce(secure));
 
   const url = new URL(request.url);
   if (url.searchParams.get("error")) return denied();
@@ -516,21 +522,36 @@ export async function finishOAuth(
   const redirectUri = callbackUriFor(requestHost(request), secure);
   if (!redirectUri || redirectUri !== pending.redirectUri) return denied();
 
+  const provider: OidcProvider | null = findOidcProvider(env, pending.provider);
+  if (!provider) return denied();
+  const issuer = provider.issuer;
+
   try {
     const exchanged = await exchangeCode(
-      { issuer, code, verifier: pending.verifier, redirectUri },
+      {
+        issuer,
+        code,
+        verifier: pending.verifier,
+        redirectUri,
+        clientId: provider.clientId,
+        tokenEndpoint: provider.tokenEndpoint,
+      },
       deps.fetchImpl,
     );
-    const verified = await verifyBackupIdToken(exchanged.idToken, {
+    const token = await verifyBackupIdToken(exchanged.idToken, {
       issuer,
-      key: deps.key ?? jwksFor(issuer),
+      key: deps.key ?? jwksFor(provider.jwksUri),
+      clientId: provider.clientId,
     });
+    const subject = providerSubject(provider, token.sub, readLoginProviders(env).providers);
+    if (!subject) return denied();
+    const verified = { ...token, sub: subject };
     const idp = verified.idp ?? pending.idp;
     const walletFetch = deps.walletFetch ?? (deps.fetchImpl ? undefined : fetch);
     const hypermeshWallet =
       exchanged.accessToken && walletFetch
-        ? await lookupHypermeshWallet({
-            issuer,
+        ? await lookupProviderWallet({
+            url: provider.walletLookupUrl,
             accessToken: exchanged.accessToken,
             fetchImpl: walletFetch,
           })

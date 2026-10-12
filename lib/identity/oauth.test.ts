@@ -13,23 +13,23 @@ import { oauthPkceCookieName, oauthSessionCookieName, sessionCookieName } from "
 import { FileLinkStore, linkLoginPaths, openLinks, ownerForOAuth } from "./link";
 import { readSessionToken, signSessionToken } from "./session";
 import {
-  ALLOWED_OAUTH_ISSUERS,
   beginOAuth,
   buildAuthorizeUrl,
   callbackUriFor,
   createPkcePair,
   exchangeCodeForIdToken,
   finishOAuth,
-  lookupHypermeshWallet,
+  lookupProviderWallet,
   parseIdpHint,
   readBackupSession,
   readOAuthIssuer,
   signBackupSession,
 } from "./oauth";
 
-const ISSUER = "https://auth.test.hyperme.sh/realms/controlplane";
+const ISSUER = "https://auth.example.org/realms/controlplane";
+const WALLET_URL = "https://api.example.org/auth/siwe/me";
 const SECRET = LOCAL_SESSION_SECRET;
-const ENV = { S3RCH_OAUTH_ISSUER: ISSUER, NODE_ENV: "test" };
+const ENV = { S3RCH_OAUTH_ISSUER: ISSUER, S3RCH_OAUTH_WALLET_URL: WALLET_URL, NODE_ENV: "test" };
 
 function startRequest(url: string, proto = "http"): Request {
   return new Request(url, { headers: { "x-forwarded-proto": proto } });
@@ -43,11 +43,16 @@ function cookiePair(response: Response, name: string): string {
 }
 
 describe("OAuth config fails closed", () => {
-  it("accepts only the known controlplane issuers", () => {
+  it("accepts a configured https issuer and rejects unsafe ones", () => {
     assert.equal(readOAuthIssuer({}), null);
-    assert.equal(readOAuthIssuer({ S3RCH_OAUTH_ISSUER: "https://evil.example/realms/controlplane" }), null);
+    assert.equal(readOAuthIssuer({ S3RCH_OAUTH_ISSUER: "http://auth.example.org/realms/controlplane" }), null);
+    assert.equal(readOAuthIssuer({ S3RCH_OAUTH_ISSUER: "https://auth.example.org/realms/controlplane?x=1" }), null);
+    assert.equal(readOAuthIssuer({ S3RCH_OAUTH_ISSUER: "not a url" }), null);
     assert.equal(readOAuthIssuer({ S3RCH_OAUTH_ISSUER: `${ISSUER}/` }), ISSUER);
-    assert.equal(readOAuthIssuer({ S3RCH_OAUTH_ISSUER: "http://127.0.0.1:8081/realms/controlplane" }), ALLOWED_OAUTH_ISSUERS[3]);
+    assert.equal(
+      readOAuthIssuer({ S3RCH_OAUTH_ISSUER: "http://127.0.0.1:8081/realms/controlplane" }),
+      "http://127.0.0.1:8081/realms/controlplane",
+    );
   });
 
   it("allows only the declared callback URIs", () => {
@@ -357,43 +362,43 @@ describe("backup session is not the SIWE session", () => {
   });
 });
 
-describe("hyperme.sh wallet handoff", () => {
+describe("provider wallet handoff", () => {
   it("reads the bound address and does not keep the access token", async () => {
     const wallet = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
     let auth = "";
-    const found = await lookupHypermeshWallet({
-      issuer: ISSUER,
+    const found = await lookupProviderWallet({
+      url: WALLET_URL,
       accessToken: "provider-access-token",
       fetchImpl: async (url, init) => {
         const headers = init?.headers as { Authorization?: string } | undefined;
         auth = headers?.Authorization ?? "";
-        assert.equal(url, "https://api.test.hyperme.sh/auth/siwe/me");
+        assert.equal(url, WALLET_URL);
         return Response.json({ bound: true, wallet_address: wallet.toLowerCase() });
       },
     });
     assert.equal(found, wallet);
     assert.equal(auth, "Bearer provider-access-token");
     assert.equal(
-      await lookupHypermeshWallet({
-        issuer: ISSUER,
+      await lookupProviderWallet({
+        url: WALLET_URL,
         accessToken: "provider-access-token",
         fetchImpl: async () => new Response("missing", { status: 404 }),
       }),
       null,
     );
     assert.equal(
-      await lookupHypermeshWallet({
-        issuer: "http://127.0.0.1:8081/realms/controlplane",
+      await lookupProviderWallet({
+        url: null,
         accessToken: "provider-access-token",
         fetchImpl: async () => {
-          throw new Error("localhost has no wallet URL");
+          throw new Error("no wallet URL is configured");
         },
       }),
       null,
     );
     assert.equal(
-      await lookupHypermeshWallet({
-        issuer: ISSUER,
+      await lookupProviderWallet({
+        url: WALLET_URL,
         accessToken: "provider-access-token",
         fetchImpl: async () =>
           Response.json({
