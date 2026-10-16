@@ -9,17 +9,18 @@
  */
 import type { SeaPair } from "./identity/sea";
 import { canonicalJson } from "./views-canonical";
+import { defaultLock } from "./views-store";
 
 export { canonicalJson };
-import { CONFLICTS_MAX, mergeVersionChecked, parseVersion, VIEWS_MAX, type ViewsState, type ViewVersion } from "./views-store";
+import { CONFLICTS_MAX, countEntries, ENTRIES_MAX, isLiveEntry, mergeVersionChecked, parseVersion, TOMBSTONES_MAX, VIEWS_MAX, type ViewsState, type ViewVersion } from "./views-store";
 import { isSafeKey } from "./views-vv";
 import type { Notice } from "./views-window";
 
 export const BACKUP_FILE_KIND = "s3rch-views-backup";
 export const BACKUP_FILE_MAX_BYTES = 5 * 1024 * 1024;
 export const BACKUP_MAX_MANIFESTS = 16;
-/** Every version a state can hold: VIEWS_MAX views × (current + CONFLICTS_MAX copies). */
-export const BACKUP_MAX_ENTRIES = VIEWS_MAX * (1 + CONFLICTS_MAX);
+/** Every version a state can hold: each entry × (current + CONFLICTS_MAX copies). */
+export const BACKUP_MAX_ENTRIES = ENTRIES_MAX * (1 + CONFLICTS_MAX);
 const HKDF_SALT = "s3rch-views-backup-v1";
 
 export type EncryptedRecord = { v: 1; iv: string; ct: string };
@@ -126,19 +127,39 @@ export async function verifyManifest(pub: string, m: Manifest): Promise<boolean>
  * Build this device's backup: one encrypted record per current version and conflicting
  * copy (tombstones included), and a signed manifest. `seq` must increase on every write.
  */
-export async function buildBackup(state: ViewsState, pair: SeaPair, writerId: string, seq: number): Promise<{ manifest: Manifest; records: Record<string, EncryptedRecord> }> {
+/**
+ * Local cache from a version's canonical plaintext digest to its stored record, so an
+ * unchanged version keeps its ciphertext and address across backups. Never published.
+ */
+export type RecordCache = Map<string, { address: string; record: EncryptedRecord }>;
+
+export async function buildBackup(
+  state: ViewsState,
+  pair: SeaPair,
+  writerId: string,
+  seq: number,
+  cache: RecordCache = new Map(),
+): Promise<{ manifest: Manifest; records: Record<string, EncryptedRecord> }> {
   if (!isSafeKey(writerId)) throw new Error("writerId is empty or reserved");
   const key = await deriveBackupKey(pair);
   const records: Record<string, EncryptedRecord> = {};
   const entries: ManifestEntry[] = [];
+  const used = new Set<string>();
   for (const entry of Object.values(state.views)) {
     for (const version of [entry.current, ...entry.conflicts]) {
-      const record = await encryptVersion(key, state.owner, version);
-      const address = await recordAddress(record);
-      records[address] = record;
-      entries.push({ id: version.id, address });
+      const digest = await sha256Hex(`${state.owner}\n${canonicalJson(version)}`);
+      let hit = cache.get(digest);
+      if (!hit) {
+        const record = await encryptVersion(key, state.owner, version);
+        hit = { address: await recordAddress(record), record };
+        cache.set(digest, hit);
+      }
+      used.add(digest);
+      records[hit.address] = hit.record;
+      entries.push({ id: version.id, address: hit.address });
     }
   }
+  for (const k of [...cache.keys()]) if (!used.has(k)) cache.delete(k);
   entries.sort((a, b) => (a.id + a.address < b.id + b.address ? -1 : 1));
   const manifest = await signManifest(pair, { v: 1, owner: state.owner, writerId, seq, entries });
   return { manifest, records };
@@ -200,11 +221,13 @@ export async function restoreBackup(
         continue;
       }
       const prior = Object.hasOwn(views, e.id) ? views[e.id] : undefined;
-      if (!prior && Object.keys(views).length >= VIEWS_MAX) {
+      const merged = mergeVersionChecked(prior, version);
+      const counts = countEntries({ ...state, views });
+      const becomesLive = isLiveEntry(merged.entry) && !(prior && isLiveEntry(prior));
+      if ((becomesLive && counts.live >= VIEWS_MAX) || (!prior && !becomesLive && counts.tombstones >= TOMBSTONES_MAX)) {
         notices.push({ message: `View limit reached; view ${e.id} was not restored` });
         continue;
       }
-      const merged = mergeVersionChecked(prior, version);
       if (merged.overflow) {
         notices.push({ windowId: undefined, message: `View ${e.id} has too many conflicting copies; resolve them and restore again` });
         continue;
@@ -257,11 +280,11 @@ export async function restoreBackupFile(state: ViewsState, pair: SeaPair, text: 
 /** Minimal chain interface of an authenticated Gun user (`gun.user()`), so tests can use a fake. */
 export type GraphChain = {
   get(key: string): GraphChain;
-  put(value: string, cb?: (ack: { err?: string }) => void): unknown;
+  put(value: string | null, cb?: (ack: { err?: string }) => void): unknown;
   once(cb: (value: unknown) => void): unknown;
 };
 
-function putString(chain: GraphChain, value: string): Promise<void> {
+function putString(chain: GraphChain, value: string | null): Promise<void> {
   return new Promise((resolve, reject) => {
     chain.put(value, (ack) => (ack?.err ? reject(new Error(ack.err)) : resolve()));
   });
@@ -284,11 +307,29 @@ function safeParse(text: string): unknown {
  * `~<pub>/s3rch-views-records/<address>` and `~<pub>/s3rch-views/<writerId>`.
  * The manifest is written last so it never names a record that is not stored yet.
  */
-export async function writeBackupToGraph(user: GraphChain, backup: { manifest: Manifest; records: Record<string, EncryptedRecord> }): Promise<void> {
-  for (const [address, record] of Object.entries(backup.records)) {
-    await putString(user.get("s3rch-views-records").get(address), JSON.stringify(record));
-  }
-  await putString(user.get("s3rch-views").get(backup.manifest.writerId), JSON.stringify(backup.manifest));
+export async function writeBackupToGraph(
+  user: GraphChain,
+  backup: { manifest: Manifest; records: Record<string, EncryptedRecord> },
+  lock: <T>(name: string, run: () => Promise<T>) => Promise<T> = defaultLock(),
+): Promise<"written" | "stale"> {
+  const { manifest } = backup;
+  // Serialized per writer across tabs; a lower or equal seq never replaces a published manifest.
+  return lock(`s3rch-views-backup:${manifest.owner}:${manifest.writerId}`, async () => {
+    const slot = user.get("s3rch-views").get(manifest.writerId);
+    const existing = await readString(slot);
+    const prior = isManifestShape(existing) && existing.owner === manifest.owner ? existing : null;
+    if (prior && prior.seq >= manifest.seq) return "stale";
+    const known = new Set(prior?.entries.map((e) => e.address) ?? []);
+    for (const [address, record] of Object.entries(backup.records)) {
+      if (known.has(address)) continue;
+      await putString(user.get("s3rch-views-records").get(address), JSON.stringify(record));
+    }
+    await putString(slot, JSON.stringify(manifest));
+    // Reclaim records the previous manifest named and the new one does not.
+    const now = new Set(manifest.entries.map((e) => e.address));
+    for (const address of known) if (!now.has(address)) await putString(user.get("s3rch-views-records").get(address), null);
+    return "written";
+  });
 }
 
 /** Read the manifests for the given writer ids and restore from the user's graph copy. */

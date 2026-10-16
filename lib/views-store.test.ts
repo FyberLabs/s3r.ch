@@ -9,6 +9,7 @@ import {
   mergeVersion,
   parseState,
   RECENTS_MAX,
+  VIEWS_MAX,
   resolveConflict,
   saveView,
   toggleFavorite,
@@ -92,6 +93,15 @@ describe("views state", () => {
     assert.equal(s.recents.length, RECENTS_MAX);
     assert.equal(s.recents[0]?.ref.source, "r10");
     assert.equal(s.recents.filter((r) => r.ref.source === "r10").length, 1);
+  });
+
+  it("frees live capacity after deletion", () => {
+    let s = emptyState(ALICE, "d1");
+    for (let i = 0; i < VIEWS_MAX; i++) s = saveView(s, view(`v${i}`)).state;
+    assert.throws(() => saveView(s, view("extra")));
+    s = deleteView(s, "v0");
+    s = saveView(s, view("extra")).state;
+    assert.equal(listViews(s).length, VIEWS_MAX);
   });
 
   it("rejects reserved view ids", () => {

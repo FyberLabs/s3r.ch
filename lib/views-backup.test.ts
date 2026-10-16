@@ -40,7 +40,8 @@ function fakeGraph(): GraphChain & { data: Map<string, string> } {
   const at = (path: string): GraphChain => ({
     get: (k) => at(`${path}/${k}`),
     put: (v, cb) => {
-      data.set(path, v);
+      if (v === null) data.delete(path);
+      else data.set(path, v);
       cb?.({});
     },
     once: (cb) => cb(data.get(path)),
@@ -151,6 +152,26 @@ describe("backup", () => {
     const again = await buildBackup(r.state, pair, "wx", 1);
     const r2 = await restoreBackup(emptyState(ALICE, "dy"), pair, [again.manifest], async (a) => again.records[a]);
     assert.equal(r2.state.views.v1?.conflicts.length, 3);
+  });
+
+  it("reuses ciphertext for unchanged versions, ignores stale manifests and reclaims old records", async () => {
+    const pair = await testPair();
+    const cache = new Map();
+    let s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    s = saveView(s, view("v2", "b")).state;
+    const first = await buildBackup(s, pair, "w", 1, cache);
+    s = saveView(s, view("v2", "b2")).state;
+    const second = await buildBackup(s, pair, "w", 2, cache);
+    const v1addr = (m: typeof first.manifest) => m.entries.find((e) => e.id === "v1")!.address;
+    assert.equal(v1addr(first.manifest), v1addr(second.manifest));
+    const g = fakeGraph();
+    assert.equal(await writeBackupToGraph(g, first), "written");
+    assert.equal(await writeBackupToGraph(g, second), "written");
+    assert.equal(await writeBackupToGraph(g, first), "stale");
+    const recordKeys = [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/"));
+    assert.equal(recordKeys.length, 2);
+    const r = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g, ["w"]);
+    assert.equal(r.state.views.v2?.current.view?.title, "b2");
   });
 
   it("rejects oversized and malformed files before use", () => {

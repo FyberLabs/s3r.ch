@@ -11,7 +11,11 @@ import { loadView, type Notice, type View } from "./views-window";
 
 export const RECENTS_MAX = 20;
 export const FAVORITES_MAX = 200;
+/** Live Views (any non-deleted version). */
 export const VIEWS_MAX = 100;
+/** Entries whose every version is a tombstone. Kept so stale copies cannot bring a View back. */
+export const TOMBSTONES_MAX = 1000;
+export const ENTRIES_MAX = VIEWS_MAX + TOMBSTONES_MAX;
 /** Unresolved concurrent copies kept per View (in addition to the current one). */
 export const CONFLICTS_MAX = 3;
 
@@ -69,7 +73,7 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
   const state = emptyState(owner, deviceId);
   if (!isRecord(input) || input.v !== 1 || input.owner !== state.owner) return { state, notices };
   if (isRecord(input.views)) {
-    for (const [id, raw] of Object.entries(input.views).slice(0, VIEWS_MAX)) {
+    for (const [id, raw] of Object.entries(input.views).slice(0, ENTRIES_MAX)) {
       if (!isRecord(raw) || !isSafeKey(id)) continue;
       const current = parseVersion(raw.current, notices);
       if (!current || current.id !== id) {
@@ -111,12 +115,31 @@ export function saveView(state: ViewsState, view: View): { state: ViewsState; no
   if (prior && prior.conflicts.length) throw new Error("resolve conflicting copies first");
   const base = prior ? prior.current.vv : {};
   const isNew = !prior;
-  if (isNew && Object.keys(state.views).length >= VIEWS_MAX) throw new Error(`at most ${VIEWS_MAX} views`);
+  if (isNew) {
+    const { live } = countEntries(state);
+    if (live >= VIEWS_MAX) throw new Error(`at most ${VIEWS_MAX} views`);
+    if (Object.keys(state.views).length >= ENTRIES_MAX) throw new Error("too many deleted views are retained");
+  }
   const current: ViewVersion = { id: view.id, vv: bumpVV(base, state.deviceId), view: loaded.view };
   return { state: { ...state, views: { ...state.views, [view.id]: { current, conflicts: [] } } }, notices: loaded.notices };
 }
 
 /** Delete locally: writes a tombstone that dominates every known version. */
+export function isLiveEntry(entry: ViewEntry): boolean {
+  return [entry.current, ...entry.conflicts].some((v) => !v.deleted);
+}
+
+/** Live entries count against VIEWS_MAX; tombstone-only entries against TOMBSTONES_MAX. */
+export function countEntries(state: ViewsState): { live: number; tombstones: number } {
+  let live = 0;
+  let tombstones = 0;
+  for (const e of Object.values(state.views)) {
+    if (isLiveEntry(e)) live += 1;
+    else tombstones += 1;
+  }
+  return { live, tombstones };
+}
+
 function entryOf(state: ViewsState, id: string): ViewEntry | undefined {
   return Object.hasOwn(state.views, id) ? state.views[id] : undefined;
 }
