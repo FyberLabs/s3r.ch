@@ -46,17 +46,12 @@ describe("version vectors", () => {
 
   it("reads retired components from the retirement map", () => {
     const retired = { r: 5 };
-    // Only a compacted vector reads a missing retired component as its final counter.
-    assert.equal(compareVV({ a: 1, "@": 1 }, { a: 1, r: 5 }, retired), "equal");
-    assert.equal(compareVV({ a: 1, "@": 1 }, { a: 1, r: 3 }, retired), "after");
-    // A vector that never saw the retired device still predates its edits.
-    assert.equal(compareVV({ a: 1 }, { a: 1, r: 5 }, retired), "before");
-    assert.deepEqual(compactVV({ a: 1, r: 5 }, retired), { a: 1, "@": 1 });
+    assert.equal(compareVV({ a: 1 }, { a: 1, r: 5 }, retired), "equal");
+    assert.equal(compareVV({ a: 1 }, { a: 1, r: 3 }, retired), "after");
+    assert.deepEqual(compactVV({ a: 1, r: 5 }, retired), { a: 1 });
     assert.deepEqual(compactVV({ a: 1, r: 3 }, retired), { a: 1, r: 3 });
-    assert.deepEqual(joinVV(retired, { r: 3 }, { a: 1, "@": 1 }), { a: 1, "@": 1 });
-    assert.deepEqual(joinVV(retired, { r: 3 }, { a: 1 }), { a: 1, r: 3 });
-    assert.deepEqual(bumpVV({ "@": 1 }, "r", retired), { r: 6, "@": 1 });
-    assert.throws(() => bumpVV({}, "@"));
+    assert.deepEqual(joinVV(retired, { r: 3 }, { a: 1 }), { a: 1 });
+    assert.deepEqual(bumpVV({}, "r", retired), { r: 6 });
   });
 });
 

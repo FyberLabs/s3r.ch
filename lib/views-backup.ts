@@ -13,7 +13,7 @@ import { defaultLock } from "./views-store";
 
 export { canonicalJson };
 import { CONFLICTS_MAX, countEntries, mergePrefs, mergeRetired, ENTRIES_MAX, isLiveEntry, mergeVersion, mergeVersionChecked, parseVersion, RETIRED_MAX, TOMBSTONES_MAX, VIEWS_MAX, type ViewsState, type ViewVersion } from "./views-store";
-import { isDeviceId, isSafeKey, isVersionVector, type VersionVector } from "./views-vv";
+import { isSafeKey, isVersionVector, type VersionVector } from "./views-vv";
 import type { Notice } from "./views-window";
 
 export const BACKUP_FILE_KIND = "s3rch-views-backup";
@@ -248,7 +248,7 @@ function isManifestShape(value: unknown): value is Manifest {
   const m = value as Manifest;
   return (
     typeof m === "object" && m !== null && m.v === 1 && typeof m.owner === "string" && typeof m.writerId === "string" && isSafeKey(m.writerId) &&
-    typeof m.deviceId === "string" && isDeviceId(m.deviceId) && !Object.hasOwn(m.retired ?? {}, "@") && isVersionVector(m.retired) && Object.keys(m.retired).length <= RETIRED_MAX &&
+    typeof m.deviceId === "string" && isSafeKey(m.deviceId) && isVersionVector(m.retired) && Object.keys(m.retired).length <= RETIRED_MAX &&
     Number.isSafeInteger(m.seq) && m.seq >= 0 && typeof m.sig === "string" && Array.isArray(m.entries) && m.entries.length <= BACKUP_MAX_ENTRIES &&
     m.entries.every((e) => typeof e === "object" && e !== null && typeof e.id === "string" && isSafeKey(e.id) && typeof e.address === "string" && /^[0-9a-f]{64}$/.test(e.address)) &&
     (m.prefs === undefined || (typeof m.prefs === "string" && /^[0-9a-f]{64}$/.test(m.prefs)))
@@ -283,12 +283,13 @@ export async function restoreBackup(
     const prior = latest.get(m.writerId);
     if (!prior || m.seq > prior.seq) latest.set(m.writerId, m);
   }
-  // Versions are merged under the local retirement map; the incoming maps are adopted only
-  // afterwards, so a restored retirement cannot make a version that predates it look newer.
-  // The union is taken as a whole (or not at all), independent of manifest order.
-  const retired = state.retired;
-  const adopted = mergeRetired(retired, ...[...latest.values()].map((m) => m.retired));
-  if (!adopted) notices.push({ message: "Retirement map is full; retired devices from this restore were not merged" });
+  // Retirement maps are merged first, so versions compare under the same map.
+  let retired = state.retired;
+  for (const m of latest.values()) {
+    const next = mergeRetired(retired, m.retired);
+    if (next) retired = next;
+    else notices.push({ message: "Retirement map is full; one backup's retired devices were not merged" });
+  }
   const prefsInputs: unknown[] = [];
   for (const m of latest.values()) {
     if (m.prefs) {
@@ -335,7 +336,7 @@ export async function restoreBackup(
   }
   enforceLimits(state.views, views, notices);
   const prefsState = mergePrefs({ ...state, retired }, prefsInputs);
-  return { state: { ...state, retired: adopted ?? retired, views, recents: prefsState.recents, favorites: prefsState.favorites, favoritesVV: prefsState.favoritesVV }, notices };
+  return { state: { ...state, retired, views, recents: prefsState.recents, favorites: prefsState.favorites, favoritesVV: prefsState.favoritesVV }, notices };
 }
 
 /**
@@ -507,24 +508,19 @@ function addressesOf(m: Manifest): string[] {
   return [...m.entries.map((e) => e.address), ...(m.prefs ? [m.prefs] : [])];
 }
 
-/**
- * Remove every stored record in a writer's namespace that `keep` does not name. Best effort;
- * returns false if any deletion failed (it is found again by the next sweep).
- */
-async function sweepRecords(recordsOf: GraphChain, keep: string[]): Promise<boolean> {
+/** Remove every stored record in a writer's namespace that `keep` does not name. Best effort. */
+async function sweepRecords(recordsOf: GraphChain, keep: string[]): Promise<void> {
   const keepSet = new Set(keep);
   const node = await new Promise<unknown>((resolve) => recordsOf.once(resolve));
-  if (typeof node !== "object" || node === null) return true;
-  let ok = true;
+  if (typeof node !== "object" || node === null) return;
   for (const [address, value] of Object.entries(node as Record<string, unknown>)) {
     if (address === "_" || value === null || value === undefined || keepSet.has(address)) continue;
     try {
       await putString(recordsOf.get(address), null);
     } catch {
-      ok = false;
+      /* found again by the next sweep */
     }
   }
-  return ok;
 }
 
 function isIndexValue(v: unknown): boolean {
@@ -594,39 +590,27 @@ export async function pruneWriters(
   const key = await deriveBackupKey(pair);
   const pruned: string[] = [];
   let retired = state.retired;
-  // Every index entry up to GRAPH_SCAN_MAX is considered, so active writers near the top of
-  // the index never hide superseded ones below them.
+  let checked = 0;
   for (const w of (await listGraphWriters(user)).slice(0, GRAPH_SCAN_MAX)) {
     if (w === own.writerId) continue;
+    if (checked >= BACKUP_MAX_MANIFESTS) break;
     const slot = user.get("s3rch-views").get(w);
-    const indexRow = user.get("s3rch-views-writers").get(w);
-    const recordsOf = user.get("s3rch-views-records").get(w);
     const m = await readString(slot);
-    if (m === undefined) {
-      // Tombstoned by an earlier prune whose record deletions did not all succeed: retry.
-      if (await sweepRecords(recordsOf, [])) await putString(indexRow, null).catch(() => {});
-      continue;
-    }
     if (!isManifestShape(m) || m.owner !== state.owner || m.writerId !== w || m.deviceId === state.deviceId || !(await verifyManifest(pair.pub, m))) continue;
+    checked++;
+    const recordsOf = user.get("s3rch-views-records").get(w);
     if (!(await supersededBy(state, key, m, (a) => readString(recordsOf.get(a))))) continue;
-    // Keep the retirements it carries, plus its own device's final counter.
     const final = finalCounter(state, m.deviceId);
-    const next = mergeRetired(retired, m.retired, final > 0 ? { [m.deviceId]: final } : {});
-    if (!next) break; // retirement map is full; stop pruning
-    const done = await lock(`s3rch-views-backup:${m.owner}:${w}`, async () => {
-      // Graph writes have no compare-and-swap. Re-read right before and after tombstoning; if
-      // the writer published something else meanwhile, stop and leave its records and index
-      // row in place (its next backup republishes in full and repairs records).
-      const before = await readString(slot);
-      if (!isManifestShape(before) || manifestBody(before) !== manifestBody(m)) return false;
+    if (final > 0) {
+      const next = mergeRetired(retired, { [m.deviceId]: final });
+      if (!next) break; // retirement map is full; stop pruning
+      retired = next;
+    }
+    await lock(`s3rch-views-backup:${m.owner}:${w}`, async () => {
       await putString(slot, null);
-      if ((await readString(slot)) !== undefined) return false;
-      // The index row stays until every record is gone, so a failed deletion is retried above.
-      if (await sweepRecords(recordsOf, [])) await putString(indexRow, null);
-      return true;
+      await sweepRecords(recordsOf, []);
+      await putString(user.get("s3rch-views-writers").get(w), null);
     });
-    if (!done) continue;
-    retired = next;
     pruned.push(w);
   }
   return { state: { ...state, retired }, pruned };

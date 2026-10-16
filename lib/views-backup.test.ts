@@ -430,7 +430,7 @@ describe("backup", () => {
     assert.deepEqual(await listGraphWriters(g), ["wNew"]);
     // The next edit drops the retired component; a stale export still compares as older.
     s = saveView(r.state, view("v1", "b")).state;
-    assert.deepEqual(s.views.v1?.current.vv, { dNew: 1, "@": 1 });
+    assert.deepEqual(s.views.v1?.current.vv, { dNew: 1 });
     assert.equal(compareVV(old.views.v1!.current.vv, s.views.v1!.current.vv, s.retired), "before");
     assert.equal(mergeVersion(s.views.v1, old.views.v1!.current, s.retired), s.views.v1);
     // The retirement map is published and merged on restore.
@@ -463,52 +463,5 @@ describe("backup", () => {
     const s = (await restoreFromGraph(emptyState(ALICE, "dNew"), pair, g)).state;
     const r = await pruneWriters(g, s, pair, await buildBackup(s, pair, "wNew", 1));
     assert.deepEqual(r.pruned, []);
-  });
-
-  it("keeps the index row until a pruned writer's records are gone", async () => {
-    const pair = await testPair();
-    const g = fakeGraph();
-    const old = saveView(emptyState(ALICE, "dOld"), view("v1", "a")).state;
-    await writeBackupToGraph(g, await buildBackup(old, pair, "wOld", 1), { pub: pair.pub, now: () => 1 });
-    const s = (await restoreFromGraph(emptyState(ALICE, "dNew"), pair, g)).state;
-    const b = await buildBackup(s, pair, "wNew", 1);
-    await writeBackupToGraph(g, b, { pub: pair.pub, now: () => 2 });
-    // The manifest tombstone succeeds; the first record deletion fails.
-    let deletes = 0;
-    const origGet = g.get.bind(g);
-    (g as { get: GraphChain["get"] }).get = (k: string) => {
-      const c = origGet(k);
-      if (k !== "s3rch-views-records") return c;
-      return { ...c, get: (w: string) => { const r = c.get(w); return { ...r, get: (a: string) => { const x = r.get(a); return { ...x, put: (v, cb) => (v === null && deletes++ === 0 ? cb?.({ err: "unavailable" }) : x.put(v, cb)) } as GraphChain; } } as GraphChain; } } as GraphChain;
-    };
-    const r = await pruneWriters(g, s, pair, b);
-    assert.deepEqual(r.pruned, ["wOld"]);
-    assert.ok(g.data.has("~/s3rch-views-writers/wOld"));
-    await pruneWriters(g, r.state, pair, b);
-    assert.ok(![...g.data.keys()].some((k) => k.includes("wOld")));
-  });
-
-  it("carries a pruned writer's retirement map forward", async () => {
-    const pair = await testPair();
-    const g = fakeGraph();
-    const old = { ...saveView(emptyState(ALICE, "dOld"), view("v1", "a")).state, retired: { dGone: 4 } };
-    await writeBackupToGraph(g, await buildBackup(old, pair, "wOld", 1), { pub: pair.pub, now: () => 1 });
-    // A device that has the views but not the retirement map.
-    const s = { ...(await restoreFromGraph(emptyState(ALICE, "dNew"), pair, g)).state, retired: {} };
-    const b = await buildBackup(s, pair, "wNew", 1);
-    await writeBackupToGraph(g, b, { pub: pair.pub, now: () => 2 });
-    const r = await pruneWriters(g, s, pair, b);
-    assert.deepEqual(r.state.retired, { dGone: 4, dOld: 1 });
-  });
-
-  it("merges versions before adopting a restored retirement map", async () => {
-    const pair = await testPair();
-    // Local copy predates device B; the backup has B's newer edit and retires B.
-    const local = { ...emptyState(ALICE, "dA"), views: { v1: { current: { id: "v1", vv: { dA: 1 }, view: view("v1", "old") }, conflicts: [] } } };
-    const remote = { ...emptyState(ALICE, "dC"), retired: { dB: 1 }, views: { v1: { current: { id: "v1", vv: { dA: 1, dB: 1 }, view: view("v1", "new") }, conflicts: [] } } };
-    const b = await buildBackup(remote, pair, "wC", 1);
-    const r = await restoreBackup(local, pair, [b.manifest], async (a) => b.records[a]);
-    assert.equal(r.state.views.v1?.current.view?.title, "new");
-    assert.deepEqual(r.state.retired, { dB: 1 });
   });
 });

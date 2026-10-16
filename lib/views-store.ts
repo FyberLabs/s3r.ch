@@ -6,7 +6,7 @@
 import { getAddress } from "viem";
 import { formatShareable, sameSource, validateSourceRef, type SourceRef } from "./views-source-ref";
 import { canonicalJson } from "./views-canonical";
-import { bumpVV, compactVV, compareVV, isDeviceId, isSafeKey, isVersionVector, joinVV, maxVV, type VersionVector } from "./views-vv";
+import { bumpVV, compactVV, compareVV, isSafeKey, isVersionVector, joinVV, maxVV, type VersionVector } from "./views-vv";
 import { loadView, type Notice, type View } from "./views-window";
 
 export const RECENTS_MAX = 20;
@@ -59,7 +59,7 @@ export function mergeRetired(...maps: VersionVector[]): VersionVector | null {
 }
 
 export function emptyState(owner: string, deviceId: string): ViewsState {
-  if (!isDeviceId(deviceId)) throw new Error("deviceId is empty or reserved");
+  if (!isSafeKey(deviceId)) throw new Error("deviceId is empty or reserved");
   return { owner: getAddress(owner), deviceId, views: {}, recents: [], favorites: [], favoritesVV: {}, retired: {}, v: 1 };
 }
 
@@ -134,7 +134,7 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
   }
   if (isVersionVector(input.favoritesVV)) state.favoritesVV = { ...input.favoritesVV };
   if (input.retired !== undefined) {
-    if (isVersionVector(input.retired) && !Object.hasOwn(input.retired, "@") && Object.keys(input.retired).length <= RETIRED_MAX) state.retired = { ...input.retired };
+    if (isVersionVector(input.retired) && Object.keys(input.retired).length <= RETIRED_MAX) state.retired = { ...input.retired };
     else notices.push({ message: "Saved retirement map could not be read" });
   }
   return { state, notices };
