@@ -308,8 +308,9 @@ describe("backup", () => {
     assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/")).length, 2);
   });
 
-  it("rejects _ as a writer id", async () => {
+  it("rejects _ as a writer id and invalid sequence numbers", async () => {
     const pair = await testPair();
+    for (const seq of [-1, 1.5, Number.NaN, 2 ** 53]) await assert.rejects(buildBackup(emptyState(ALICE, "d1"), pair, "w", seq));
     await assert.rejects(buildBackup(emptyState(ALICE, "d1"), pair, "_", 1));
   });
 

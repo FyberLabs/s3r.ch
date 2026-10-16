@@ -162,6 +162,7 @@ export async function buildBackup(
   cache: RecordCache = new Map(),
 ): Promise<{ manifest: Manifest; records: Record<string, EncryptedRecord> }> {
   if (!isSafeKey(writerId)) throw new Error("writerId is empty or reserved");
+  if (!Number.isSafeInteger(seq) || seq < 0) throw new Error("seq must be a nonnegative safe integer");
   const key = await deriveBackupKey(pair);
   // Cache identities include the key pair, so a replaced pair never reuses old ciphertext.
   const keyId = await sha256Hex(`${pair.pub}\n${pair.epub}`);
@@ -400,6 +401,8 @@ export async function writeBackupToGraph(
   now: () => number = Date.now,
 ): Promise<"written" | "stale"> {
   const { manifest } = backup;
+  // Publish only what restore accepts.
+  if (!isManifestShape(manifest)) throw new Error("manifest is invalid");
   // Serialized per writer across tabs; a lower or equal seq never replaces a published manifest.
   return lock(`s3rch-views-backup:${manifest.owner}:${manifest.writerId}`, async () => {
     const slot = user.get("s3rch-views").get(manifest.writerId);
