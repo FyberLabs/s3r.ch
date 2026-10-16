@@ -127,7 +127,7 @@ describe("backup", () => {
     const pair = await testPair();
     const s = saveView(emptyState(ALICE, "d1"), view("v1", "graph")).state;
     const g = fakeGraph();
-    await writeBackupToGraph(g, await buildBackup(s, pair, "w1", 1));
+    await writeBackupToGraph(g, await buildBackup(s, pair, "w1", 1), { pub: pair.pub });
     assert.ok([...g.data.keys()].some((k) => k === "~/s3rch-views/w1"));
     const r = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g);
     assert.equal(r.state.views.v1?.current.view?.title, "graph");
@@ -179,15 +179,15 @@ describe("backup", () => {
     const v1addr = (m: typeof first.manifest) => m.entries.find((e) => e.id === "v1")!.address;
     assert.equal(v1addr(first.manifest), v1addr(second.manifest));
     const g = fakeGraph();
-    assert.equal(await writeBackupToGraph(g, first), "written");
-    assert.equal(await writeBackupToGraph(g, second), "written");
-    assert.equal(await writeBackupToGraph(g, first), "stale");
+    assert.equal(await writeBackupToGraph(g, first, { pub: pair.pub }), "written");
+    assert.equal(await writeBackupToGraph(g, second, { pub: pair.pub }), "written");
+    assert.equal(await writeBackupToGraph(g, first, { pub: pair.pub }), "stale");
     const recordKeys = [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/"));
     assert.equal(recordKeys.length, 3);
     g.data.set(recordKeys[1]!, JSON.stringify({ v: 1, iv: "AAAAAAAAAAAAAAAA", ct: "corrupt" }));
     g.data.delete(recordKeys[0]!);
     const third = await buildBackup(s, pair, "w", 3, cache);
-    assert.equal(await writeBackupToGraph(g, third), "written");
+    assert.equal(await writeBackupToGraph(g, third, { pub: pair.pub }), "written");
     assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/")).length, 3);
     const repaired = await restoreFromGraph(emptyState(ALICE, "d4"), pair, g, ["w"]);
     assert.equal(repaired.notices.length, 0);
@@ -260,14 +260,14 @@ describe("backup", () => {
     const g = fakeGraph();
     let s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
     const first = await buildBackup(s, pair, "w", 1);
-    await writeBackupToGraph(g, first);
+    await writeBackupToGraph(g, first, { pub: pair.pub });
     s = saveView(s, view("v1", "b")).state;
     const second = await buildBackup(s, pair, "w", 2);
     g.failDeletes = 2;
-    assert.equal(await writeBackupToGraph(g, second), "written");
+    assert.equal(await writeBackupToGraph(g, second, { pub: pair.pub }), "written");
     const count = () => [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/")).length;
     assert.equal(count(), 4);
-    assert.equal(await writeBackupToGraph(g, second), "stale");
+    assert.equal(await writeBackupToGraph(g, second, { pub: pair.pub }), "stale");
     assert.equal(count(), 2);
     
   });
@@ -295,17 +295,45 @@ describe("backup", () => {
     const g = fakeGraph();
     const s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
     const first = await buildBackup(s, pair, "w", 1);
-    await writeBackupToGraph(g, first);
+    await writeBackupToGraph(g, first, { pub: pair.pub });
     const s2 = saveView(s, view("v1", "b")).state;
     const failing: GraphChain = {
       get: (k) => (k === "s3rch-views" ? { get: () => ({ get: () => failing, once: (cb) => cb(g.data.get("~/s3rch-views/w")), put: (_v, cb) => cb?.({ err: "down" }) }), once: () => undefined, put: () => undefined } : g.get(k)),
       once: g.once,
       put: g.put,
     } as GraphChain;
-    await assert.rejects(writeBackupToGraph(failing, await buildBackup(s2, pair, "w", 2)));
+    await assert.rejects(writeBackupToGraph(failing, await buildBackup(s2, pair, "w", 2), { pub: pair.pub }));
     const s3 = saveView(s2, view("v1", "c")).state;
-    await writeBackupToGraph(g, await buildBackup(s3, pair, "w", 3));
+    await writeBackupToGraph(g, await buildBackup(s3, pair, "w", 3), { pub: pair.pub });
     assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/")).length, 2);
+  });
+
+  it("refuses to publish a manifest with a bad signature", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    const b = await buildBackup(s, pair, "w", 1);
+    await writeBackupToGraph(g, b, { pub: pair.pub });
+    const forged = { ...b, manifest: { ...b.manifest, seq: 9 } };
+    await assert.rejects(writeBackupToGraph(g, forged, { pub: pair.pub }));
+    const r = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g);
+    assert.equal(r.state.views.v1?.current.view?.title, "a");
+  });
+
+  it("keeps a favorite removal over an older writer's copy", async () => {
+    const pair = await testPair();
+    const ref = (source: string) => ({ network: NET, owner: ALICE, source, kind: "chat" as const, v: 1 as const });
+    const a = toggleFavorite(emptyState(ALICE, "dA"), ref("x"));
+    const ba = await buildBackup(a, pair, "wA", 1);
+    let b = (await restoreBackup(emptyState(ALICE, "dB"), pair, [ba.manifest], async (k) => ba.records[k])).state;
+    assert.equal(b.favorites.length, 1);
+    b = toggleFavorite(b, ref("x"));
+    const bb = await buildBackup(b, pair, "wB", 1);
+    const records = { ...ba.records, ...bb.records };
+    for (const order of [[ba.manifest, bb.manifest], [bb.manifest, ba.manifest]]) {
+      const r = await restoreBackup(emptyState(ALICE, "dC"), pair, order, async (k) => records[k]);
+      assert.equal(r.state.favorites.length, 0);
+    }
   });
 
   it("rejects _ as a writer id and invalid sequence numbers", async () => {
@@ -319,11 +347,11 @@ describe("backup", () => {
     const g = fakeGraph();
     const s = saveView(emptyState(ALICE, "d1"), view("v1", "x")).state;
     const b = await buildBackup(s, pair, "old", 1);
-    await writeBackupToGraph(g, b, undefined, () => 1000);
-    await writeBackupToGraph(g, await buildBackup(s, pair, "new", 1), undefined, () => 2000);
+    await writeBackupToGraph(g, b, { pub: pair.pub, now: () => 1000 });
+    await writeBackupToGraph(g, await buildBackup(s, pair, "new", 1), { pub: pair.pub, now: () => 2000 });
     assert.deepEqual(await listGraphWriters(g), ["new", "old"]);
     g.data.delete("~/s3rch-views-writers/old");
-    assert.equal(await writeBackupToGraph(g, b), "stale");
+    assert.equal(await writeBackupToGraph(g, b, { pub: pair.pub }), "stale");
     assert.ok(g.data.has("~/s3rch-views-writers/old"));
   });
 

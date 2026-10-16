@@ -35,12 +35,14 @@ export type ViewsState = {
   views: Record<string, ViewEntry>;
   recents: RecentEntry[];
   favorites: SourceRef[];
+  /** Version vector of the favorites list as a whole, so removals win over stale copies. */
+  favoritesVV: VersionVector;
   v: 1;
 };
 
 export function emptyState(owner: string, deviceId: string): ViewsState {
   if (!isSafeKey(deviceId)) throw new Error("deviceId is empty or reserved");
-  return { owner: getAddress(owner), deviceId, views: {}, recents: [], favorites: [], v: 1 };
+  return { owner: getAddress(owner), deviceId, views: {}, recents: [], favorites: [], favoritesVV: {}, v: 1 };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -80,7 +82,8 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
         notices.push({ message: `Saved view ${id} could not be read and was skipped` });
         continue;
       }
-      const conflicts = (Array.isArray(raw.conflicts) ? raw.conflicts : [])
+      // Bound the input before validating each element.
+      const conflicts = (Array.isArray(raw.conflicts) ? raw.conflicts.slice(0, CONFLICTS_MAX) : [])
         .map((c) => parseVersion(c, notices))
         .filter((c): c is ViewVersion => c !== null && c.id === id)
         .slice(0, CONFLICTS_MAX);
@@ -108,6 +111,7 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
     }
     state.favorites = state.favorites.slice(0, FAVORITES_MAX);
   }
+  if (isVersionVector(input.favoritesVV)) state.favoritesVV = { ...input.favoritesVV };
   return { state, notices };
 }
 
@@ -222,7 +226,9 @@ export function listViews(state: ViewsState): { view: View; conflicted: boolean 
 
 /**
  * Merge recents and favorites from a backup. Recents are combined by most recent `at`,
- * unique and capped; favorites are the union, capped. Input is validated like stored state.
+ * unique and capped. Favorites are merged as one versioned list: copies dominated by another
+ * copy are dropped (so a removal wins over the stale copy it replaced), and only truly
+ * concurrent copies are combined. Input is validated like stored state.
  */
 export function mergePrefs(state: ViewsState, incoming: unknown[]): ViewsState {
   // All inputs are aggregated and ordered before capping, so the result does not depend on
@@ -236,11 +242,20 @@ export function mergePrefs(state: ViewsState, incoming: unknown[]): ViewsState {
     (a, b) => b.at - a.at || (key(a.ref) < key(b.ref) ? -1 : key(a.ref) > key(b.ref) ? 1 : 0),
   );
   for (const r of allRecents) if (!recents.some((x) => sameSource(x.ref, r.ref))) recents.push(r);
-  // Local favorites first, then incoming ones in canonical order.
-  const favorites = [...state.favorites];
-  const incomingFavs = parsed.flatMap((p) => p.favorites).sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
-  for (const f of incomingFavs) if (!favorites.some((x) => sameSource(x, f))) favorites.push(f);
-  return { ...state, recents: recents.slice(0, RECENTS_MAX), favorites: favorites.slice(0, FAVORITES_MAX) };
+  const copies = [{ favorites: state.favorites, vv: state.favoritesVV, local: true }, ...parsed.map((p) => ({ favorites: p.favorites, vv: p.favoritesVV, local: false }))];
+  const survivors = copies.filter((c) => !copies.some((o) => o !== c && (compareVV(c.vv, o.vv) === "before" || (compareVV(c.vv, o.vv) === "equal" && !c.local && o.local))));
+  // Deduplicate equal remote copies, then combine: local copy first, the rest in canonical order.
+  const favorites: SourceRef[] = [];
+  const localSurvivor = survivors.find((c) => c.local);
+  if (localSurvivor) favorites.push(...localSurvivor.favorites);
+  const rest = survivors.filter((c) => !c.local).flatMap((c) => c.favorites).sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+  for (const f of rest) if (!favorites.some((x) => sameSource(x, f))) favorites.push(f);
+  return {
+    ...state,
+    recents: recents.slice(0, RECENTS_MAX),
+    favorites: favorites.slice(0, FAVORITES_MAX),
+    favoritesVV: maxVV(...copies.map((c) => c.vv)),
+  };
 }
 
 /** Record that a source was opened or added. Most recent first, unique, capped. */
@@ -263,9 +278,10 @@ export function isFavorite(state: ViewsState, ref: SourceRef): boolean {
 export function toggleFavorite(state: ViewsState, ref: SourceRef): ViewsState {
   const checked = validateSourceRef(ref);
   if (!checked.ok) throw new Error(checked.error);
-  if (isFavorite(state, ref)) return { ...state, favorites: state.favorites.filter((f) => !sameSource(f, ref)) };
+  const favoritesVV = bumpVV(state.favoritesVV, state.deviceId);
+  if (isFavorite(state, ref)) return { ...state, favorites: state.favorites.filter((f) => !sameSource(f, ref)), favoritesVV };
   if (state.favorites.length >= FAVORITES_MAX) throw new Error(`at most ${FAVORITES_MAX} favorites`);
-  return { ...state, favorites: [...state.favorites, checked.value] };
+  return { ...state, favorites: [...state.favorites, checked.value], favoritesVV };
 }
 
 /* ---------- persistence ---------- */

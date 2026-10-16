@@ -183,7 +183,7 @@ export async function buildBackup(
       entries.push({ id: version.id, address: hit.address });
     }
   }
-  const prefsPlain = canonicalJson({ recents: state.recents, favorites: state.favorites });
+  const prefsPlain = canonicalJson({ recents: state.recents, favorites: state.favorites, favoritesVV: state.favoritesVV });
   const prefsDigest = await sha256Hex(`${keyId}\n${state.owner}\n${writerId}\nprefs\n${prefsPlain}`);
   let prefsHit = cache.get(prefsDigest);
   if (!prefsHit) {
@@ -284,7 +284,7 @@ export async function restoreBackup(
   }
   enforceLimits(state.views, views, notices);
   const prefsState = mergePrefs(state, prefsInputs);
-  return { state: { ...state, views, recents: prefsState.recents, favorites: prefsState.favorites }, notices };
+  return { state: { ...state, views, recents: prefsState.recents, favorites: prefsState.favorites, favoritesVV: prefsState.favoritesVV }, notices };
 }
 
 /**
@@ -397,12 +397,13 @@ function safeParse(text: string): unknown {
 export async function writeBackupToGraph(
   user: GraphChain,
   backup: { manifest: Manifest; records: Record<string, EncryptedRecord> },
-  lock: <T>(name: string, run: () => Promise<T>) => Promise<T> = defaultLock(),
-  now: () => number = Date.now,
+  opts: { pub: string; lock?: <T>(name: string, run: () => Promise<T>) => Promise<T>; now?: () => number },
 ): Promise<"written" | "stale"> {
   const { manifest } = backup;
-  // Publish only what restore accepts.
-  if (!isManifestShape(manifest)) throw new Error("manifest is invalid");
+  const lock = opts.lock ?? defaultLock();
+  const now = opts.now ?? Date.now;
+  // Publish only what restore accepts: valid shape and a signature by this user's key.
+  if (!isManifestShape(manifest) || !(await verifyManifest(opts.pub, manifest))) throw new Error("manifest is invalid");
   // Serialized per writer across tabs; a lower or equal seq never replaces a published manifest.
   return lock(`s3rch-views-backup:${manifest.owner}:${manifest.writerId}`, async () => {
     const slot = user.get("s3rch-views").get(manifest.writerId);
