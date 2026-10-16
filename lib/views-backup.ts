@@ -19,6 +19,8 @@ import type { Notice } from "./views-window";
 export const BACKUP_FILE_KIND = "s3rch-views-backup";
 export const BACKUP_FILE_MAX_BYTES = 5 * 1024 * 1024;
 export const BACKUP_MAX_MANIFESTS = 16;
+/** Writer-index entries looked up on restore while collecting BACKUP_MAX_MANIFESTS manifests. */
+export const GRAPH_SCAN_MAX = 256;
 /** Every version a state can hold: each entry × (current + CONFLICTS_MAX copies). */
 export const BACKUP_MAX_ENTRIES = ENTRIES_MAX * (1 + CONFLICTS_MAX);
 const HKDF_SALT = "s3rch-views-backup-v1";
@@ -495,7 +497,9 @@ export function listGraphWriters(user: GraphChain): Promise<string[]> {
 export async function restoreFromGraph(state: ViewsState, pair: SeaPair, user: GraphChain, writerIds?: string[]): Promise<{ state: ViewsState; notices: Notice[] }> {
   const manifests: unknown[] = [];
   const ids = writerIds ?? (await listGraphWriters(user));
-  for (const w of ids.slice(0, BACKUP_MAX_MANIFESTS)) {
+  // Skip entries whose manifest is gone, so they do not use up the manifest limit.
+  for (const w of ids.slice(0, GRAPH_SCAN_MAX)) {
+    if (manifests.length >= BACKUP_MAX_MANIFESTS) break;
     const m = await readString(user.get("s3rch-views").get(w));
     if (m !== undefined) manifests.push(m);
   }

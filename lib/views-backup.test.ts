@@ -363,6 +363,16 @@ describe("backup", () => {
     assert.ok(g.data.has("~/s3rch-views-writers/w"));
   });
 
+  it("skips writer-index entries whose manifest is missing", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    await writeBackupToGraph(g, await buildBackup(s, pair, "real", 1), { pub: pair.pub, now: () => 1 });
+    for (let i = 0; i < 20; i++) g.data.set(`~/s3rch-views-writers/gone${i}`, String(100 + i));
+    const r = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g);
+    assert.equal(r.state.views.v1?.current.view?.title, "a");
+  });
+
   it("rejects _ as a writer id and invalid sequence numbers", async () => {
     const pair = await testPair();
     for (const seq of [-1, 1.5, Number.NaN, 2 ** 53]) await assert.rejects(buildBackup(emptyState(ALICE, "d1"), pair, "w", seq));

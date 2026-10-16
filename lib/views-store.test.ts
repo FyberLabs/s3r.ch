@@ -87,6 +87,12 @@ describe("views state", () => {
     assert.equal(merged.conflicts.length, 0);
   });
 
+  it("picks the same current copy regardless of merge order", () => {
+    const a: ViewVersion = { id: "v1", vv: { d1: 2 }, view: view("v1", "A") };
+    const b: ViewVersion = { id: "v1", vv: { d1: 1, d2: 1 }, view: view("v1", "B") };
+    assert.deepEqual(mergeVersion(mergeVersion(undefined, a), b), mergeVersion(mergeVersion(undefined, b), a));
+  });
+
   it("joins concurrent tombstones into one", () => {
     const a: ViewVersion = { id: "v1", vv: { d1: 2 }, deleted: true };
     const b: ViewVersion = { id: "v1", vv: { d1: 1, d2: 1 }, deleted: true };

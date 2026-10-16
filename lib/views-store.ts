@@ -210,7 +210,12 @@ function mergeInner(entry: ViewEntry | undefined, incoming: ViewVersion): ViewEn
     return entry;
   }
   const survivors = known.filter((k) => compareVV(incoming.vv, k.vv) !== "after");
-  const all = [incoming, ...survivors];
+  // Deterministic order, so replicas that know the same versions show the same current one.
+  const all = [incoming, ...survivors].sort((a, b) => {
+    const x = canonicalJson(a);
+    const y = canonicalJson(b);
+    return x < y ? -1 : x > y ? 1 : 0;
+  });
   // Concurrent deletions agree: join them into one tombstone instead of a hidden conflict.
   if (all.every((v) => v.deleted)) return { current: { id: incoming.id, vv: maxVV(...all.map((v) => v.vv)), deleted: true }, conflicts: [] };
   const [current, ...conflicts] = all;
@@ -228,6 +233,17 @@ export function listViews(state: ViewsState): { view: View; conflicted: boolean 
 }
 
 /**
+ * Order for recents, used everywhere: later `at` first; on equal times, the greater full
+ * reference first. Negative means `a` comes first (and wins deduplication).
+ */
+export function compareRecent(a: RecentEntry, b: RecentEntry): number {
+  if (a.at !== b.at) return b.at - a.at;
+  const x = formatShareable(a.ref);
+  const y = formatShareable(b.ref);
+  return x > y ? -1 : x < y ? 1 : 0;
+}
+
+/**
  * Merge recents and favorites from a backup. Recents are combined by most recent `at`,
  * unique and capped. Favorites are merged as one versioned list: copies dominated by another
  * copy are dropped (so a removal wins over the stale copy it replaced), and only truly
@@ -242,9 +258,7 @@ export function mergePrefs(state: ViewsState, incoming: unknown[]): ViewsState {
   // Full shareable form, so references that differ only in binding hints still sort deterministically.
   const key = (r: SourceRef) => formatShareable(r);
   const recents: RecentEntry[] = [];
-  const allRecents = [...state.recents, ...parsed.flatMap((p) => p.recents)].sort(
-    (a, b) => b.at - a.at || (key(a.ref) < key(b.ref) ? -1 : key(a.ref) > key(b.ref) ? 1 : 0),
-  );
+  const allRecents = [...state.recents, ...parsed.flatMap((p) => p.recents)].sort(compareRecent);
   for (const r of allRecents) if (!recents.some((x) => sameSource(x.ref, r.ref))) recents.push(r);
   const copies = [{ favorites: state.favorites, vv: state.favoritesVV, local: true }, ...parsed.map((p) => ({ favorites: p.favorites, vv: p.favoritesVV, local: false }))];
   const survivors = copies.filter((c) => !copies.some((o) => o !== c && (compareVV(c.vv, o.vv) === "before" || (compareVV(c.vv, o.vv) === "equal" && !c.local && o.local))));
@@ -272,11 +286,8 @@ export function touchRecent(state: ViewsState, ref: SourceRef, at: number): View
   const prior = state.recents.find((r) => sameSource(r.ref, ref));
   const incoming = { ref: checked.value, at };
   // The later event wins with its own reference; on a tie, the greater full reference wins.
-  const entry =
-    prior && (prior.at > at || (prior.at === at && formatShareable(prior.ref) > formatShareable(checked.value))) ? prior : incoming;
-  const recents = [entry, ...state.recents.filter((r) => !sameSource(r.ref, ref))]
-    .sort((x, y) => y.at - x.at)
-    .slice(0, RECENTS_MAX);
+  const entry = prior && compareRecent(prior, incoming) < 0 ? prior : incoming;
+  const recents = [entry, ...state.recents.filter((r) => !sameSource(r.ref, ref))].sort(compareRecent).slice(0, RECENTS_MAX);
   return { ...state, recents };
 }
 
