@@ -6,7 +6,7 @@
 import { getAddress } from "viem";
 import { formatShareable, sameSource, validateSourceRef, type SourceRef } from "./views-source-ref";
 import { canonicalJson } from "./views-canonical";
-import { bumpVV, compareVV, isSafeKey, isVersionVector, maxVV, type VersionVector } from "./views-vv";
+import { bumpVV, compactVV, compareVV, isSafeKey, isVersionVector, joinVV, maxVV, type VersionVector } from "./views-vv";
 import { loadView, type Notice, type View } from "./views-window";
 
 export const RECENTS_MAX = 20;
@@ -18,6 +18,8 @@ export const TOMBSTONES_MAX = 1000;
 export const ENTRIES_MAX = VIEWS_MAX + TOMBSTONES_MAX;
 /** Unresolved concurrent copies kept per View (in addition to the current one). */
 export const CONFLICTS_MAX = 3;
+/** Retired devices remembered in the retirement map. */
+export const RETIRED_MAX = 4096;
 
 /** One version of a View. A tombstone has `deleted: true` and no `view`. */
 export type ViewVersion =
@@ -37,12 +39,28 @@ export type ViewsState = {
   favorites: SourceRef[];
   /** Version vector of the favorites list as a whole, so removals win over stale copies. */
   favoritesVV: VersionVector;
+  /**
+   * Per-account retirement map, `deviceId → final counter`, for devices whose backup manifest
+   * was pruned. Published in every manifest; see compareVV and compactVV.
+   */
+  retired: VersionVector;
   v: 1;
 };
 
+/** Next local vector: dominates `vectors`, bumped for this device, retired components dropped. */
+function nextVV(state: ViewsState, ...vectors: VersionVector[]): VersionVector {
+  return compactVV(bumpVV(joinVV(state.retired, ...vectors), state.deviceId, state.retired), state.retired);
+}
+
+/** Union of retirement maps, or null if it would exceed RETIRED_MAX. */
+export function mergeRetired(...maps: VersionVector[]): VersionVector | null {
+  const out = maxVV(...maps);
+  return Object.keys(out).length > RETIRED_MAX ? null : out;
+}
+
 export function emptyState(owner: string, deviceId: string): ViewsState {
   if (!isSafeKey(deviceId)) throw new Error("deviceId is empty or reserved");
-  return { owner: getAddress(owner), deviceId, views: {}, recents: [], favorites: [], favoritesVV: {}, v: 1 };
+  return { owner: getAddress(owner), deviceId, views: {}, recents: [], favorites: [], favoritesVV: {}, retired: {}, v: 1 };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -115,6 +133,10 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
     state.favorites = state.favorites.slice(0, FAVORITES_MAX);
   }
   if (isVersionVector(input.favoritesVV)) state.favoritesVV = { ...input.favoritesVV };
+  if (input.retired !== undefined) {
+    if (isVersionVector(input.retired) && Object.keys(input.retired).length <= RETIRED_MAX) state.retired = { ...input.retired };
+    else notices.push({ message: "Saved retirement map could not be read" });
+  }
   return { state, notices };
 }
 
@@ -133,7 +155,7 @@ export function saveView(state: ViewsState, view: View): { state: ViewsState; no
     if (live >= VIEWS_MAX) throw new Error(`at most ${VIEWS_MAX} views`);
     if (!prior && Object.keys(state.views).length >= ENTRIES_MAX) throw new Error("too many deleted views are retained");
   }
-  const current: ViewVersion = { id: view.id, vv: bumpVV(base, state.deviceId), view: loaded.view };
+  const current: ViewVersion = { id: view.id, vv: nextVV(state, base), view: loaded.view };
   return { state: { ...state, views: { ...state.views, [view.id]: { current, conflicts: [] } } }, notices: loaded.notices };
 }
 
@@ -163,7 +185,7 @@ export function deleteView(state: ViewsState, id: string): ViewsState {
   if (isLiveEntry(prior) && countEntries(state).tombstones >= TOMBSTONES_MAX) {
     throw new Error("too many deleted views are retained");
   }
-  const vv = bumpVV(maxVV(prior.current.vv, ...prior.conflicts.map((c) => c.vv)), state.deviceId);
+  const vv = nextVV(state, prior.current.vv, ...prior.conflicts.map((c) => c.vv));
   return { ...state, views: { ...state.views, [id]: { current: { id, vv, deleted: true }, conflicts: [] } } };
 }
 
@@ -179,7 +201,7 @@ export function resolveConflict(state: ViewsState, id: string, chosen: ViewVersi
   if (chosen.deleted && isLiveEntry(entry) && countEntries(state).tombstones >= TOMBSTONES_MAX) {
     throw new Error("too many deleted views are retained");
   }
-  const vv = bumpVV(maxVV(...all.map((v) => v.vv)), state.deviceId);
+  const vv = nextVV(state, ...all.map((v) => v.vv));
   const current: ViewVersion = chosen.deleted ? { id, vv, deleted: true } : { id, vv, view: chosen.view };
   return { ...state, views: { ...state.views, [id]: { current, conflicts: [] } } };
 }
@@ -189,8 +211,8 @@ export function resolveConflict(state: ViewsState, id: string, chosen: ViewVersi
  * dominated by a known one is ignored; one that dominates replaces those it dominates;
  * concurrent versions are kept as conflicting copies.
  */
-export function mergeVersion(entry: ViewEntry | undefined, incoming: ViewVersion): ViewEntry {
-  return mergeVersionChecked(entry, incoming).entry;
+export function mergeVersion(entry: ViewEntry | undefined, incoming: ViewVersion, retired: VersionVector = {}): ViewEntry {
+  return mergeVersionChecked(entry, incoming, retired).entry;
 }
 
 /**
@@ -198,22 +220,22 @@ export function mergeVersion(entry: ViewEntry | undefined, incoming: ViewVersion
  * exist; the first ones in canonical order are kept (independent of arrival order) and the
  * caller tells the user.
  */
-export function mergeVersionChecked(entry: ViewEntry | undefined, incoming: ViewVersion): { entry: ViewEntry; overflow: boolean } {
-  const merged = mergeInner(entry, incoming);
+export function mergeVersionChecked(entry: ViewEntry | undefined, incoming: ViewVersion, retired: VersionVector = {}): { entry: ViewEntry; overflow: boolean } {
+  const merged = mergeInner(entry, incoming, retired);
   if (merged.conflicts.length <= CONFLICTS_MAX) return { entry: merged, overflow: false };
   return { entry: { current: merged.current, conflicts: merged.conflicts.slice(0, CONFLICTS_MAX) }, overflow: true };
 }
 
-function mergeInner(entry: ViewEntry | undefined, incoming: ViewVersion): ViewEntry {
+function mergeInner(entry: ViewEntry | undefined, incoming: ViewVersion, retired: VersionVector): ViewEntry {
   if (!entry) return { current: incoming, conflicts: [] };
   const known = [entry.current, ...entry.conflicts];
   if (known.some((k) => {
-    const o = compareVV(incoming.vv, k.vv);
+    const o = compareVV(incoming.vv, k.vv, retired);
     return o === "before" || o === "equal";
   })) {
     return entry;
   }
-  const survivors = known.filter((k) => compareVV(incoming.vv, k.vv) !== "after");
+  const survivors = known.filter((k) => compareVV(incoming.vv, k.vv, retired) !== "after");
   // Deterministic order, so replicas that know the same versions show the same current one.
   const all = [incoming, ...survivors].sort((a, b) => {
     const x = canonicalJson(a);
@@ -221,7 +243,7 @@ function mergeInner(entry: ViewEntry | undefined, incoming: ViewVersion): ViewEn
     return x < y ? -1 : x > y ? 1 : 0;
   });
   // Concurrent deletions agree: join them into one tombstone instead of a hidden conflict.
-  if (all.every((v) => v.deleted)) return { current: { id: incoming.id, vv: maxVV(...all.map((v) => v.vv)), deleted: true }, conflicts: [] };
+  if (all.every((v) => v.deleted)) return { current: { id: incoming.id, vv: joinVV(retired, ...all.map((v) => v.vv)), deleted: true }, conflicts: [] };
   const [current, ...conflicts] = all;
   return { current: current!, conflicts };
 }
@@ -265,7 +287,7 @@ export function mergePrefs(state: ViewsState, incoming: unknown[]): ViewsState {
   const allRecents = [...state.recents, ...parsed.flatMap((p) => p.recents)].sort(compareRecent);
   for (const r of allRecents) if (!recents.some((x) => sameSource(x.ref, r.ref))) recents.push(r);
   const copies = [{ favorites: state.favorites, vv: state.favoritesVV, local: true }, ...parsed.map((p) => ({ favorites: p.favorites, vv: p.favoritesVV, local: false }))];
-  const survivors = copies.filter((c) => !copies.some((o) => o !== c && (compareVV(c.vv, o.vv) === "before" || (compareVV(c.vv, o.vv) === "equal" && !c.local && o.local))));
+  const survivors = copies.filter((c) => !copies.some((o) => o !== c && (compareVV(c.vv, o.vv, state.retired) === "before" || (compareVV(c.vv, o.vv, state.retired) === "equal" && !c.local && o.local))));
   // A single surviving copy is kept as is. Concurrent copies are combined in one deterministic
   // order before capping, so every replica that sees the same copies keeps the same list.
   let favorites: SourceRef[] = [];
@@ -278,7 +300,7 @@ export function mergePrefs(state: ViewsState, incoming: unknown[]): ViewsState {
     ...state,
     recents: recents.slice(0, RECENTS_MAX),
     favorites: favorites.slice(0, FAVORITES_MAX),
-    favoritesVV: maxVV(...copies.map((c) => c.vv)),
+    favoritesVV: joinVV(state.retired, ...copies.map((c) => c.vv)),
   };
 }
 
@@ -302,7 +324,7 @@ export function isFavorite(state: ViewsState, ref: SourceRef): boolean {
 export function toggleFavorite(state: ViewsState, ref: SourceRef): ViewsState {
   const checked = validateSourceRef(ref);
   if (!checked.ok) throw new Error(checked.error);
-  const favoritesVV = bumpVV(state.favoritesVV, state.deviceId);
+  const favoritesVV = nextVV(state, state.favoritesVV);
   if (isFavorite(state, ref)) return { ...state, favorites: state.favorites.filter((f) => !sameSource(f, ref)), favoritesVV };
   if (state.favorites.length >= FAVORITES_MAX) throw new Error(`at most ${FAVORITES_MAX} favorites`);
   return { ...state, favorites: [...state.favorites, checked.value], favoritesVV };

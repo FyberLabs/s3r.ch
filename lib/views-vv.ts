@@ -10,8 +10,13 @@ export function isSafeKey(key: string): boolean {
   return key !== "" && key !== "_" && key !== "__proto__" && !(key in Object.prototype);
 }
 
-function component(v: VersionVector, key: string): number {
-  return Object.hasOwn(v, key) ? v[key]! : 0;
+/**
+ * A component, reading a missing one as its final counter in the retirement map
+ * (`deviceId → final counter` of retired devices), else 0.
+ */
+function component(v: VersionVector, key: string, retired: VersionVector = {}): number {
+  if (Object.hasOwn(v, key)) return v[key]!;
+  return Object.hasOwn(retired, key) ? retired[key]! : 0;
 }
 
 export type VVOrder = "equal" | "before" | "after" | "concurrent";
@@ -25,13 +30,13 @@ export function isVersionVector(value: unknown): value is VersionVector {
   return Object.entries(value).every(([k, v]) => isSafeKey(k) && isCounter(v));
 }
 
-/** Order of `a` relative to `b`. */
-export function compareVV(a: VersionVector, b: VersionVector): VVOrder {
+/** Order of `a` relative to `b`; missing components that are retired read as their final counter. */
+export function compareVV(a: VersionVector, b: VersionVector, retired: VersionVector = {}): VVOrder {
   let aAhead = false;
   let bAhead = false;
   for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    const x = component(a, key);
-    const y = component(b, key);
+    const x = component(a, key, retired);
+    const y = component(b, key, retired);
     if (x > y) aAhead = true;
     else if (y > x) bAhead = true;
   }
@@ -48,10 +53,33 @@ export function maxVV(...vectors: VersionVector[]): VersionVector {
   return out;
 }
 
-/** Increment this device's component. */
-export function bumpVV(v: VersionVector, deviceId: string): VersionVector {
+/** Increment this device's component (continuing from its final counter if it was retired). */
+export function bumpVV(v: VersionVector, deviceId: string, retired: VersionVector = {}): VersionVector {
   if (!isSafeKey(deviceId)) throw new Error("deviceId is empty or reserved");
-  const n = component(v, deviceId);
+  const n = component(v, deviceId, retired);
   if (n >= Number.MAX_SAFE_INTEGER) throw new Error("version counter is exhausted");
   return { ...v, [deviceId]: n + 1 };
+}
+
+/**
+ * Compaction: drop components that equal their retired device's final counter. Comparisons
+ * read them back from the retirement map, so ordering is unchanged.
+ */
+export function compactVV(v: VersionVector, retired: VersionVector): VersionVector {
+  const out: VersionVector = {};
+  for (const [k, n] of Object.entries(v)) if (!(Object.hasOwn(retired, k) && retired[k] === n)) out[k] = n;
+  return out;
+}
+
+/**
+ * Component-wise maximum under a retirement map: a missing retired component counts as its
+ * final counter, so `{ r: 3 }` joined with a vector that dropped `r` (final 5) reads as 5.
+ * The result is compacted.
+ */
+export function joinVV(retired: VersionVector, ...vectors: VersionVector[]): VersionVector {
+  const out: VersionVector = {};
+  for (const key of new Set(vectors.flatMap((v) => Object.keys(v)))) {
+    out[key] = Math.max(...vectors.map((v) => component(v, key, retired)));
+  }
+  return compactVV(out, retired);
 }
