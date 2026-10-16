@@ -277,11 +277,8 @@ export async function restoreBackup(
       }
       const prior = Object.hasOwn(views, e.id) ? views[e.id] : undefined;
       const merged = mergeVersionChecked(prior, version);
-      if (merged.overflow) {
-        notices.push({ windowId: undefined, message: `View ${e.id} has too many conflicting copies; resolve them and restore again` });
-        continue;
-      }
       views[e.id] = merged.entry;
+      if (merged.overflow) notices.push({ message: `View ${e.id} has more than ${CONFLICTS_MAX} conflicting copies; extra copies were dropped` });
     }
   }
   enforceLimits(state.views, views, notices);
