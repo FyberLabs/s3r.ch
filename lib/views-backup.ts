@@ -271,16 +271,14 @@ export async function restoreBackup(
   const views = { ...state.views };
   // Keep only the highest seq per writer.
   const latest = new Map<string, Manifest>();
-  // Count only verified manifests toward the limit; look at a bounded number in total.
-  let verified = 0;
+  // Count distinct verified writers toward the limit; look at a bounded number in total.
   for (const m of manifests.slice(0, GRAPH_SCAN_MAX)) {
-    if (verified >= BACKUP_MAX_MANIFESTS) break;
     if (!isManifestShape(m) || m.owner !== state.owner || !(await verifyManifest(pair.pub, m))) {
       notices.push({ message: "A backup manifest could not be verified and was skipped" });
       continue;
     }
-    verified++;
     const prior = latest.get(m.writerId);
+    if (!prior && latest.size >= BACKUP_MAX_MANIFESTS) continue;
     if (!prior || m.seq > prior.seq) latest.set(m.writerId, m);
   }
   // Versions are merged under the local retirement map; the incoming maps are adopted only
@@ -589,8 +587,13 @@ export async function pruneWriters(
   const own = backup.manifest;
   const lock = opts.lock ?? defaultLock();
   const published = await readString(user.get("s3rch-views").get(own.writerId));
-  // Only a published manifest of this state can supersede others.
-  if (!isManifestShape(published) || manifestBody(published) !== manifestBody(own) || own.deviceId !== state.deviceId) return { state, pruned: [] };
+  // Only a published, verified manifest of this state can supersede others.
+  if (
+    !isManifestShape(published) || manifestBody(published) !== manifestBody(own) || own.deviceId !== state.deviceId ||
+    !(await verifyManifest(pair.pub, published))
+  ) {
+    return { state, pruned: [] };
+  }
   const key = await deriveBackupKey(pair);
   const pruned: string[] = [];
   let retired = state.retired;
@@ -602,7 +605,7 @@ export async function pruneWriters(
     const indexRow = user.get("s3rch-views-writers").get(w);
     const recordsOf = user.get("s3rch-views-records").get(w);
     const m = await readString(slot);
-    if (m === undefined) {
+    if (isPruneTombstone(m, w)) {
       // Tombstoned by an earlier prune whose record deletions did not all succeed: retry.
       if (await sweepRecords(recordsOf, [])) await putString(indexRow, null).catch(() => {});
       continue;
@@ -613,23 +616,32 @@ export async function pruneWriters(
     const final = finalCounter(state, m.deviceId);
     const next = mergeRetired(retired, m.retired, final > 0 ? { [m.deviceId]: final } : {});
     if (!next) break; // retirement map is full; stop pruning
+    retired = next;
+    // The manifest being deleted may be the only copy of these retirements, so delete only
+    // once the published manifest already carries them; otherwise the caller publishes the
+    // returned state and a later call deletes.
+    if (canonicalJson(mergeRetired(published.retired, next)) !== canonicalJson(published.retired)) continue;
     const done = await lock(`s3rch-views-backup:${m.owner}:${w}`, async () => {
       // Graph writes have no compare-and-swap. Re-read right before and after tombstoning; if
       // the writer published something else meanwhile, stop and leave its records and index
       // row in place (its next backup republishes in full and repairs records).
       const before = await readString(slot);
       if (!isManifestShape(before) || manifestBody(before) !== manifestBody(m)) return false;
-      await putString(slot, null);
-      if ((await readString(slot)) !== undefined) return false;
+      const tombstone = { pruned: w };
+      await putString(slot, JSON.stringify(tombstone));
+      if (!isPruneTombstone(await readString(slot), w)) return false;
       // The index row stays until every record is gone, so a failed deletion is retried above.
       if (await sweepRecords(recordsOf, [])) await putString(indexRow, null);
       return true;
     });
-    if (!done) continue;
-    retired = next;
-    pruned.push(w);
+    if (done) pruned.push(w);
   }
   return { state: { ...state, retired }, pruned };
+}
+
+/** Explicit marker left in a pruned writer's manifest slot, so cleanup is retried only for it. */
+function isPruneTombstone(value: unknown, writerId: string): boolean {
+  return typeof value === "object" && value !== null && Object.keys(value).length === 1 && (value as { pruned?: unknown }).pruned === writerId;
 }
 
 /** Whether merging every version and the prefs of `m` into `state` would change nothing. */
