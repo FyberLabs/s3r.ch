@@ -83,10 +83,13 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
         continue;
       }
       // Bound the input before validating each element.
-      const conflicts = (Array.isArray(raw.conflicts) ? raw.conflicts.slice(0, CONFLICTS_MAX) : [])
+      const rawConflicts = Array.isArray(raw.conflicts) ? raw.conflicts.slice(0, CONFLICTS_MAX) : [];
+      const conflicts = rawConflicts
         .map((c) => parseVersion(c, notices))
-        .filter((c): c is ViewVersion => c !== null && c.id === id)
-        .slice(0, CONFLICTS_MAX);
+        .filter((c): c is ViewVersion => c !== null && c.id === id);
+      if (conflicts.length < rawConflicts.length) {
+        notices.push({ message: `A conflicting copy of saved view ${id} could not be read and was discarded` });
+      }
       const entry = { current, conflicts };
       const counts = countEntries(state);
       if (isLiveEntry(entry) ? counts.live >= VIEWS_MAX : counts.tombstones >= TOMBSTONES_MAX) {

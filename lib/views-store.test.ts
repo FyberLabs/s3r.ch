@@ -94,6 +94,14 @@ describe("views state", () => {
     assert.deepEqual(mergeVersion(mergeVersion(undefined, a), b), mergeVersion(mergeVersion(undefined, b), a));
   });
 
+  it("reports a conflicting copy that cannot be read", () => {
+    const v: ViewVersion = { id: "v1", vv: { d1: 1 }, view: view("v1", "a") };
+    const stored = { ...emptyState(ALICE, "d1"), views: { v1: { current: v, conflicts: [{ id: "v1", vv: "bad" }] } } };
+    const { state: s, notices } = parseState(stored, ALICE, "d1");
+    assert.equal(s.views.v1?.conflicts.length, 0);
+    assert.ok(notices.some((n) => n.message.includes("conflicting copy")));
+  });
+
   it("keeps the same capped conflicts regardless of arrival order", () => {
     const vs: ViewVersion[] = [1, 2, 3, 4, 5, 6, 7].map((i) => ({ id: "v1", vv: { [`d${i}`]: 1 }, view: view("v1", `t${i}`) }));
     const fold = (list: ViewVersion[]) => list.reduce<ViewEntry | undefined>((e, v) => mergeVersionChecked(e, v).entry, undefined);

@@ -363,6 +363,15 @@ describe("backup", () => {
     assert.ok(g.data.has("~/s3rch-views-writers/w"));
   });
 
+  it("counts only verified manifests toward the restore limit", async () => {
+    const pair = await testPair();
+    const s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    const b = await buildBackup(s, pair, "real", 1);
+    const bad = Array.from({ length: 20 }, () => ({ ...b.manifest, sig: "x" }));
+    const r = await restoreBackup(emptyState(ALICE, "d2"), pair, [...bad, b.manifest], async (a) => b.records[a]);
+    assert.equal(r.state.views.v1?.current.view?.title, "a");
+  });
+
   it("skips writer-index entries whose manifest is missing", async () => {
     const pair = await testPair();
     const g = fakeGraph();

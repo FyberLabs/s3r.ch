@@ -21,6 +21,22 @@ export const BACKUP_FILE_MAX_BYTES = 5 * 1024 * 1024;
 export const BACKUP_MAX_MANIFESTS = 16;
 /** Writer-index entries looked up on restore while collecting BACKUP_MAX_MANIFESTS manifests. */
 export const GRAPH_SCAN_MAX = 256;
+/** Record lookups in flight at once during a restore. */
+const FETCH_CONCURRENCY = 8;
+
+/** Map with at most `limit` calls in flight; results keep input order. */
+async function mapPool<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
 /** Every version a state can hold: each entry × (current + CONFLICTS_MAX copies). */
 export const BACKUP_MAX_ENTRIES = ENTRIES_MAX * (1 + CONFLICTS_MAX);
 const HKDF_SALT = "s3rch-views-backup-v1";
@@ -232,11 +248,15 @@ export async function restoreBackup(
   const views = { ...state.views };
   // Keep only the highest seq per writer.
   const latest = new Map<string, Manifest>();
-  for (const m of manifests.slice(0, BACKUP_MAX_MANIFESTS)) {
+  // Count only verified manifests toward the limit; look at a bounded number in total.
+  let verified = 0;
+  for (const m of manifests.slice(0, GRAPH_SCAN_MAX)) {
+    if (verified >= BACKUP_MAX_MANIFESTS) break;
     if (!isManifestShape(m) || m.owner !== state.owner || !(await verifyManifest(pair.pub, m))) {
       notices.push({ message: "A backup manifest could not be verified and was skipped" });
       continue;
     }
+    verified++;
     const prior = latest.get(m.writerId);
     if (!prior || m.seq > prior.seq) latest.set(m.writerId, m);
   }
@@ -259,13 +279,16 @@ export async function restoreBackup(
       if (parsed === null) notices.push({ message: "Saved recents and favorites from one device could not be read" });
       else prefsInputs.push(parsed);
     }
-    for (const e of m.entries) {
-      let raw: unknown;
+    // Fetch with bounded concurrency; merge below in manifest order.
+    const fetched = await mapPool(m.entries, FETCH_CONCURRENCY, async (e) => {
       try {
-        raw = await fetchRecord(e.address, m.writerId);
+        return await fetchRecord(e.address, m.writerId);
       } catch {
-        raw = undefined;
+        return undefined;
       }
+    });
+    for (const [i, e] of m.entries.entries()) {
+      const raw = fetched[i];
       if (!isRecordShape(raw) || (await recordAddress(raw)) !== e.address) {
         notices.push({ message: `Backup record for view ${e.id} is missing or altered` });
         continue;
@@ -292,14 +315,15 @@ export async function restoreBackup(
  * fall back to their local version (or are left out), highest id first, with a notice.
  */
 function enforceLimits(before: ViewsState["views"], after: ViewsState["views"], notices: Notice[]): void {
-  const count = () => countEntries({ views: after } as ViewsState);
+
   // Changed entries, last id first; reverting all of them yields the local state, which was
   // within both limits, so this always terminates within the limits.
   const changed = Object.keys(after)
     .filter((id) => !Object.hasOwn(before, id) || before[id] !== after[id])
     .sort()
     .reverse();
-  let c = count();
+  // Counted once, then updated as entries are reverted.
+  const c = countEntries({ views: after } as ViewsState);
   const pending = new Set(changed);
   let progressed = true;
   while (progressed && (c.live > VIEWS_MAX || c.tombstones > TOMBSTONES_MAX)) {
@@ -309,12 +333,17 @@ function enforceLimits(before: ViewsState["views"], after: ViewsState["views"], 
       if (c.live <= VIEWS_MAX && c.tombstones <= TOMBSTONES_MAX) break;
       const live = isLiveEntry(after[id]!);
       if ((live && c.live <= VIEWS_MAX) || (!live && c.tombstones <= TOMBSTONES_MAX)) continue;
-      if (Object.hasOwn(before, id)) after[id] = before[id]!;
-      else delete after[id];
+      const old = Object.hasOwn(before, id) ? before[id]! : undefined;
+      if (live) c.live--;
+      else c.tombstones--;
+      if (old) {
+        after[id] = old;
+        if (isLiveEntry(old)) c.live++;
+        else c.tombstones++;
+      } else delete after[id];
       pending.delete(id);
       progressed = true;
       notices.push({ message: `View limit reached; view ${id} was not restored` });
-      c = count();
     }
   }
 }
