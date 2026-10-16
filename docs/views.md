@@ -31,7 +31,9 @@ So today the "servers" a user can browse are: s3r.ch rooms (owned, shared, grant
 - **View**: a saved, named set of windows plus layout. Stored locally in IndexedDB with an encrypted backup (§5).
 
 ```ts
-// network: "s3rch:<host>" (this or another deployment) | "atproto" | "farcaster" | "nostr" | "activitypub" | "rss" | ...
+// network: "s3rch:" + scheme + "://" + host + ":" + port + "#" + keyFingerprint  (this or another deployment;
+//          scheme, host and explicit port are kept, keyFingerprint = SHA-256 of the permitted key, so a changed key
+//          or scheme is a different network and is shown as such) | "atproto" | "farcaster" | "nostr" | "activitypub" | "rss" | ...
 // owner:   stable id: checksummed wallet / org id / DID / FID / Nostr hex pubkey / actor id URL / feed origin (never a handle)
 // source:  provider-local id (room id, forum channel, feed URL, stream id)
 type SourceRef = { network: string; owner: string; source: string; kind: "chat"|"forum"|"feed"|"stream"|"voice"; v: 1 };
@@ -192,7 +194,7 @@ On mobile, step 1 comes *after* selection, because the quick add default covers 
 ### 3.11 Empty, error, offline
 - No sources joined: "Nothing to add yet" + actions [Paste a link] [Browse public rooms] [Pull a feed].
 - No search match: "No matches in sources you've joined" + [Paste URL].
-- Seed peer/WebRTC down: the picker still lists Mine and recents from local Gun. Network and Granted rows are greyed: "Needs connection". Additions are queued locally and sync later.
+- Seed peer/WebRTC down: the picker still lists Views, recents and favorites from IndexedDB, plus the held-claim overlay and dest ACL that are already in IndexedDB. Mine posts and rooms are in memory only today (browser Gun runs with `localStorage: false`), so they are **not** promised offline and are not listed after a reload. Network and Granted rows are greyed: "Needs connection". View changes are saved to IndexedDB; nothing else is queued.
 - Ingest failure for a provider: that server node shows "Couldn't load · Retry"; other providers are unaffected.
 - Window whose source is gone or unshared: "This source is no longer available" [Replace] [Remove].
 
@@ -205,7 +207,7 @@ On mobile, step 1 comes *after* selection, because the quick add default covers 
 **Request object** (Gun, `s3rch/requests/<owner>/<id>`, where `id = H("s3rch-request" || requester || canonical SourceRef)`. The key is deterministic per requester and source, so two tabs or devices write the same slot and the one-pending rule converges under HAM):
 ```ts
 type AccessRequest = {
-  id: string; requester: string;            // wallet / org principal
+  id: string; requester: string;            // checksummed wallet only in v0; org principals come later
   source: string;                           // canonical SourceRef
   scope: "read" | "read+post";
   // message bodies live in child nodes, one per recipient key, so copies never compete under HAM:
@@ -218,11 +220,13 @@ type AccessRequest = {
 };
 ```
 - **Signatures cover the whole request.** A status change signs requester, owner, source and scope as well as id, status and ts, so an approval cannot be replayed onto a changed request. Readers recompute the encoding from the stored fields and drop rows whose fields do not match the signature.
-- **Owner encryption key.** The requester needs the owner's (or each admin's) SEA `epub`. Today `GunUserNode` (`s3rch/users/<wallet>`) carries no key. v0 adds `pub` and `epub` to the user node. The existing wallet-signed mesh link (`buildMeshLinkStatement` in `lib/identity/mesh-link.ts`) signs only `SEA pub`, so a peer could swap `epub`. A new statement version signs both `SEA pub` and `SEA epub`, and readers verify that the wallet signature covers the exact `epub` they encrypt to (PR 24, PR 26). Until a user has signed the new statement, requests to them carry no message body. Org sources list admin wallets whose user nodes carry the same binding.
+- **Bounded namespace.** `s3rch/requests/<owner>` accepts only keys equal to `H("s3rch-request" || requester || SourceRef)` for a requester wallet whose signature verifies; readers and the owner's client ignore unsigned, invalid or mismatched entries without further work. Each owner client processes at most a configurable number of pending requests per requester and in total, oldest first. The seed peer applies per-session and per-owner write limits on this path and rejects puts that fail the key or signature check (PR 11, PR 31).
+- **Requesters are wallet users in v0.** Only wallet principals have SEA signing and encryption keys, can sign `withdrawn`, and have a `s3rch/granted/<wallet>` inbox. Org principals as requesters come later.
+- **Owner encryption key.** The requester needs the owner's (or each admin's) SEA `epub`. Today `GunUserNode` (`s3rch/users/<wallet>`) carries no key. The wallet-signed mesh link (`lib/identity/mesh-link.ts`) stays private: [identity.md](identity.md) keeps it in IndexedDB, and `lib/users.ts` rejects `walletSignature` and similar fields on the public user node. So v0 publishes `pub` and a **SEA-signed statement** `{epub, wallet, ts}` signed by that `pub` on the user node; requesters verify the signature against `pub`. The wallet-to-`pub` link is not publicly verifiable today, because the user node itself is unsigned. *Dependency:* the seed peer, which sees the SIWE session when the user publishes, signs an attestation `{wallet, pub, ts}` that requesters verify with the seed key (PR 24, PR 26). Until both exist, requests carry no message body. Org sources list admin wallets whose user nodes carry the same binding.
 - **Who may write status:** `withdrawn` is signed by the requester. `approved` and `declined` are signed by the owner or an org admin. `revoked` is signed by the owner or an admin and is set when the grant is cancelled. Nobody else may write status, and readers verify `statusSig` against the allowed signer set and drop anything else.
 - The canonical signed encoding and an approve→grant helper come from SociACL (SociACL #46).
 - **Limits:** one pending request per requester per source, enforced by the deterministic key above. After a decline, a cooldown applies before that requester can ask again; its length is a setting per source/owner, not a fixed number.
-- **Decisions live in an owner-controlled record.** Approve, decline and revoke are also written to `s3rch/request-decisions/<owner>/<id>/<decidedAt>` as append-only entries signed by the owner or an admin (same signed fields as `statusSig`). Readers ignore entries without a valid signature. The requester can rewrite their own `pending` slot, but the owner's client and every reader evaluate it against the latest signed decision: a `pending` written inside the cooldown after a signed decline is ignored (PR 11).
+- **Decisions live in an owner-controlled record.** Approve, decline and revoke are also written to `s3rch/request-decisions/<owner>/<id>/<decidedAt>` as append-only entries signed by the owner or an admin The signature covers every field used for identity or ordering: `id, requester, owner, source, scope, status, decidedAt, decidedBy, v`, and the entry key must equal the signed `decidedAt`. Readers ignore entries without a valid signature or with a key that does not match, and order only by the signed `decidedAt`. The requester can rewrite their own `pending` slot, but the owner's client and every reader evaluate it against the latest signed decision: a `pending` written inside the cooldown after a signed decline is ignored (PR 11).
 
 **Policy per source** (s3r.ch policy, evaluated on the owner's or admin's client before any grant is written; SociACL itself has no standing deny):
 - `public`: anyone may read and **no request is needed** to read. Requests exist only for `read+post`, which is auto- or manually approved per the owner's setting.
@@ -240,7 +244,7 @@ Order: explicit deny (s3r.ch policy), then member/public auto rules, then the ma
 - For `read+post` it also writes a **post grant**: a new owner-signed row with the same shape and cancel rule as the see grant (SociACL #45). Check returns `canPost` only if `canSee` also passes. The UI shows read+post only when both grants are live.
 - **Post grants are enforced when writes are accepted, not only in the UI.** Gun accepts any put, so hiding the composer is not a boundary. This needs three things:
   - *Authenticated author.* `GunChatNode` is unsigned today (`lib/identity/check.ts`), so a claimed `author` proves nothing. Chat nodes gain a SEA signature by the author's mesh key over (id, room, author, body, ts, v), and readers verify it against the author's wallet-signed mesh link (PR 27). *v0 limitation:* until PR 27 lands, mesh chat in rooms that are not public is not authorization-safe, and Views shows those rooms read-only.
-  - *Time the sender does not control.* `ts` is chosen by the sender, so it is never used for authorization. A node is accepted only if `canPost` is live at **acceptance time**: the seed peer checks the grant when it receives the put, and each reader checks it when it first observes the node (local receipt time). A node whose `ts` differs from observed time by more than a configurable skew is dropped. History synced later is accepted only from the seed peer's accepted set.
+  - *Time the sender does not control.* `ts` is chosen by the sender, so it is never used for authorization. A node is accepted only if `canPost` is live at **acceptance time**: the seed peer checks the grant when it receives the put, and each reader checks it when it first observes the node (local receipt time). A node whose `ts` differs from observed time by more than a configurable skew is dropped. History synced later is accepted only with a **seed acceptance receipt**: on accepting a put, the seed peer signs `{room, messageId, H(node), acceptedAt}`, and periodically signs a checkpoint over the accepted set for a room. A returning reader verifies the receipt or checkpoint with the seed key and drops messages without one (PR 31).
   - *Enforcement points.* Readers drop nodes that fail either check, and the seed peer (`lib/gun-server.ts`) rejects them on shared room paths (PR 23). Forum posts are already checked server-side by `/api/forum`.
 - Check never reads the request. Cancelling either grant is immediate on the destination ACL, and the request becomes `revoked`.
 - Forum channels: the existing `invite` and `group-add` actions grant see **and post** ([forum.md](forum.md)), so they are used only for `read+post`. Approving `read` needs a new read-only forum action (`invite-read`: see without post) on `POST /api/forum` (PR 20). *v0 limitation:* until then, forum `read` requests stay in the manual queue and cannot be approved as read-only.
@@ -252,8 +256,8 @@ The composer belongs to a window. Merged feed windows and read-only sources have
 
 ## 5. Persistence and sharing
 - **Local store: IndexedDB.** Browser Gun runs with `localStorage: false` (`lib/gun-peer.ts`) and the seed peer's radisk is not durable storage, so the Gun graph is not a save location. Views, recents and favorites live in an origin-scoped IndexedDB store, using the same pattern as the SEA pair store (`lib/identity/idb.ts`).
-- **Backup: encrypted blob.** On change, the client serializes the Views store, encrypts it with `SEA.encrypt` under a key derived from the user's SEA pair, and puts the ciphertext on the user's own SEA graph (`~<pub>/s3rch-views`, not `s3rch/*`). The same ciphertext can be exported as a file. A new device needs the SEA pair to decrypt either copy, and today that pair lives only in the old origin's IndexedDB. Recovery uses the planned auth kit: the WebAuthn PRF envelope (v1, ≥2 KEKs: PRF + secondary paper key, see [identity.md](identity.md)) is exported as an encrypted key file together with the Views backup. A new device unlocks it with a synced passkey's PRF or the paper key, restores the SEA pair, then decrypts the Views backup (PR 29). *v0 limitation:* without an exported envelope, Views cannot be restored on a new device. The mesh copy is best-effort replication, not an archive; the file export is the durable backup.
-- **Share as template**: an exported JSON of windows + layout + `SourceRef`s only (no messages, no grants). The recipient's picker opens it with every row access-checked; anything they can't read shows `Request`.
+- **Backup: per-device encrypted records.** On change, each device serializes its Views store with per-View `updatedAt` and a device id, encrypts it with `SEA.encrypt` under a key derived from the user's SEA pair, and puts it at `~<pub>/s3rch-views/<deviceId>` (not `s3rch/*`), so devices never overwrite each other. On restore, the client decrypts every device record and merges per View: newest `updatedAt` wins, deletions are kept as tombstones, ties break by device id (PR 2). The same ciphertext can be exported as a file. A new device needs the SEA pair to decrypt either copy, and today that pair lives only in the old origin's IndexedDB. Recovery uses the planned auth kit: the WebAuthn PRF envelope (v1, ≥2 KEKs: PRF + secondary paper key, see [identity.md](identity.md)) is exported as an encrypted key file together with the Views backup. A new device unlocks it with a synced passkey's PRF or the paper key, restores the SEA pair, then decrypts the Views backup (PR 29). *v0 limitation:* without an exported envelope, Views cannot be restored on a new device. The mesh copy is best-effort replication, not an archive; the file export is the durable backup.
+- **Share as template**: an exported JSON of windows + layout + `SourceRef`s only (no messages, no grants). Export sanitizes every URL-bearing component: userinfo is removed, and query parameters are dropped unless they are on a per-provider allowlist of known non-secret parameters (default: drop all). Sources whose URL cannot be made credential-free are exported as a placeholder the recipient must fill in (PR 10). The recipient's picker opens it with every row access-checked; anything they can't read shows `Request`.
 
 ## 6. Layout (secondary)
 Desktop: a resizable split tree. An optional **stage** (largest tile, one stream/voice) sits beside a chat rail (split or tabbed; chat is never merged) and a grid of other windows. Per-window unread badge, focus (`F`, maximize) and pop-out (separate browser window). Video tiles: at most 4 playing at once to start with, extras paused with a poster.
@@ -309,7 +313,10 @@ Mobile: one stage with a swipeable window strip; chat as a bottom sheet; PiP for
 | Read-only forum invite (`invite-read`) | Missing (PR 20) |
 | Encrypted content for non-public sources ([encrypted-discovery.md](encrypted-discovery.md)) | Design only; separate track. v0 keeps locked content off shared paths |
 | Group-membership check in s3r.ch Check (port of SociACL `checkGroupSee`) | Exists in SociACL; missing in s3r.ch (PR 30). `members` falls back to manual until ported |
-| Mesh-link statement v2 binding `SEA pub` + `SEA epub` | Missing (PR 26) |
+| SEA-signed `epub` statement on the user node + seed-signed wallet-to-`pub` attestation (mesh link stays private) | Missing (PR 24, PR 26) |
+| Seed acceptance receipts / signed checkpoints for mesh chat | Missing (PR 31) |
+| Request namespace bounds (key check, caps, seed write limits) | Missing (PR 11, PR 31) |
+| Template export URL sanitizing (userinfo, query allowlist) | Missing (PR 10) |
 | Signed `GunChatNode` (author mesh-key signature) | Missing; chat nodes are unsigned today (PR 27) |
 | Owner-signed grant rows (see, post, cancel, group edges) + verification before accept | Missing. SociACL [#49](https://github.com/FyberLabs/SociACL/issues/49) (PR 28) |
 | Encrypted SEA key export / PRF envelope recovery for new devices | PRF wrap exists; export and restore flow missing (PR 29) |
@@ -342,7 +349,7 @@ Until #45 lands, v0 windows show read-only for s3r.ch sources the user does not 
 7. Swap/move/replace + undo stack + drag-and-drop with menu equivalents.
 8. URL/invite resolver + paste entry + command palette.
 9. Mobile full-screen picker sheet + long-press "Add to view" + mobile layout.
-10. Template export/import.
+10. Template export/import with URL credential stripping.
 11. Access requests: encrypted request object + signed status + limits/cooldown + requester form + owner queue + grant-on-approve (manual policy). Depends on SociACL #45 (post grant) and #46 (request encoding + helper).
 12. Request policies: public / group / org auto-approve, evaluated on the owner's or an org admin's online client; pending queue on connect.
 13. Origin tree (one isolated Gun instance per network): org owners + other s3r.ch networks added by URL + permitted key; `SourceRef` network field wired through.
@@ -355,11 +362,12 @@ v0 additions :
 23. Post-grant enforcement on mesh writes (reader filter + seed peer put filter). Depends on SociACL #45.
 24. `pub` / `epub` on the user node with wallet-signed binding.
 25. Public visibility Check wrapper.
-26. Mesh-link statement v2 (`SEA pub` + `SEA epub`).
+26. SEA-signed `epub` statement on the user node + seed-signed wallet-to-`pub` attestation.
 27. Signed `GunChatNode` + reader verification. Prerequisite for PR 23.
 28. Owner-signed grant row verification in Check and readers. Depends on SociACL #49 (and #45 for post rows).
 29. SEA key export / PRF envelope recovery bundled with the Views backup.
 30. Port SociACL `checkGroupSee` into s3r.ch Check (members auto-approve).
+31. Seed peer: signed acceptance receipts and checkpoints for mesh chat; write limits on `s3rch/requests`.
 
 Post-v0:
 16. Real search function.
