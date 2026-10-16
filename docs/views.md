@@ -220,9 +220,15 @@ type AccessRequest = {
 };
 ```
 - **Signatures cover the whole request.** A status change signs requester, owner, source and scope as well as id, status and ts, so an approval cannot be replayed onto a changed request. Readers recompute the encoding from the stored fields and drop rows whose fields do not match the signature.
-- **Bounded namespace.** `s3rch/requests/<owner>` accepts only keys equal to `H("s3rch-request" || requester || SourceRef)` for a requester wallet whose signature verifies; readers and the owner's client ignore unsigned, invalid or mismatched entries without further work. Each owner client processes at most a configurable number of pending requests per requester and in total, oldest first. The seed peer applies per-session and per-owner write limits on this path and rejects puts that fail the key or signature check (PR 11, PR 31).
+- **Bounded namespace.** `s3rch/requests/<owner>` accepts only keys equal to `H("s3rch-request" || requester || SourceRef)` for a requester wallet whose signature verifies; readers and the owner's client ignore unsigned, invalid or mismatched entries without further work. Each owner client processes at most a configurable number of pending requests per requester and in total, oldest first. These limits are enforced by clients. A seed peer may also apply per-session and per-owner write limits on this path and drop puts that fail the key or signature check, but only as an optimization: no client trusts the seed, and the design works with no seed at all (PR 11, PR 26).
 - **Requesters are wallet users in v0.** Only wallet principals have SEA signing and encryption keys, can sign `withdrawn`, and have a `s3rch/granted/<wallet>` inbox. Org principals as requesters come later.
-- **Owner encryption key.** The requester needs the owner's (or each admin's) SEA `epub`. Today `GunUserNode` (`s3rch/users/<wallet>`) carries no key. The wallet-signed mesh link (`lib/identity/mesh-link.ts`) stays private: [identity.md](identity.md) keeps it in IndexedDB, and `lib/users.ts` rejects `walletSignature` and similar fields on the public user node. So v0 publishes `pub` and a **SEA-signed statement** `{epub, wallet, ts}` signed by that `pub` on the user node; requesters verify the signature against `pub`. The wallet-to-`pub` link is not publicly verifiable today, because the user node itself is unsigned. *Dependency:* the seed peer, which sees the SIWE session when the user publishes, signs an attestation `{wallet, pub, ts}` that requesters verify with the seed key (PR 24, PR 26). Until both exist, requests carry no message body. Org sources list admin wallets whose user nodes carry the same binding.
+- **Owner key binding (no third-party authority).** The requester needs a key for the owner (or each admin) that is provably controlled by the owner's wallet. s3r.ch runs mostly on GunDB with no central party, so no seed peer or service vouches for keys.
+  - **Self-published, wallet-signed, scoped.** For each source that accepts requests, the owner generates a **source-scoped request key pair** (SEA `pub`/`epub`, separate from their global mesh pair) and publishes a binding at `s3rch/bindings/<owner>/<H(SourceRef)>`: an EIP-4361-style message (EIP-191 `personal_sign`), with domain, owner address, SourceRef, scoped `pub`, scoped `epub`, `issuedAt`, `expiresAt` and a monotonic `counter`, signed by the owner's wallet. Any client verifies it with the same code path as SIWE login (`lib/identity/siwe.ts`): EOA ecrecover, plus ERC-1271 / EIP-6492 for contract wallets. That code verifies contract wallets on mainnet only today; on other chains bindings are EOA-only, as for login.
+  - **Replacement and expiry.** The binding with the highest valid `counter` that has not expired wins; a binding signed with a lower counter is ignored, so old bindings cannot be replayed. Rotating the key or revoking the binding means signing a higher counter (a revocation has empty keys).
+  - **Relation to [identity.md](identity.md).** The global wallet-to-mesh-key link (`lib/identity/mesh-link.ts`) stays private in IndexedDB, and `lib/users.ts` still rejects signature fields on the user node. The scoped binding is a deliberate, narrower disclosure and does not publish the global mesh `pub`. *Privacy tradeoff:* a source-scoped binding publicly reveals which wallet owns that source, and a reader can link all sources whose bindings name the same wallet. An owner who wants sources unlinkable can create them from a fresh wallet, which works today because any wallet can sign in. A delegated key (one wallet authorizing another key to sign bindings) is not supported by s3r.ch's identity code today, so it is listed as later work.
+  - **Org sources:** each admin publishes the same kind of binding for their own wallet, scoped to the org source, and the org source lists its admin wallets. Readers verify each admin binding the same way.
+  - **Chat authors** use the same mechanism, scoped to the room: an author publishes a room-scoped binding for the key that signs their chat nodes.
+  - Requests use the scoped `epub` to encrypt message bodies and the requester's own scoped binding to sign. Until PR 24 lands, requests carry no message body.
 - **Who may write status:** `withdrawn` is signed by the requester. `approved` and `declined` are signed by the owner or an org admin. `revoked` is signed by the owner or an admin and is set when the grant is cancelled. Nobody else may write status, and readers verify `statusSig` against the allowed signer set and drop anything else.
 - The canonical signed encoding and an approve→grant helper come from SociACL (SociACL #46).
 - **Limits:** one pending request per requester per source, enforced by the deterministic key above. After a decline, a cooldown applies before that requester can ask again; its length is a setting per source/owner, not a fixed number.
@@ -243,9 +249,12 @@ Order: explicit deny (s3r.ch policy), then member/public auto rules, then the ma
 - On approve, the owner's client writes the see grant (`IdentitySeeGrant{claimId=source object, accessor=requester, from, until}`) and delivers onto `s3rch/granted/<requester>`.
 - For `read+post` it also writes a **post grant**: a new owner-signed row with the same shape and cancel rule as the see grant (SociACL #45). Check returns `canPost` only if `canSee` also passes. The UI shows read+post only when both grants are live.
 - **Post grants are enforced when writes are accepted, not only in the UI.** Gun accepts any put, so hiding the composer is not a boundary. This needs three things:
-  - *Authenticated author.* `GunChatNode` is unsigned today (`lib/identity/check.ts`), so a claimed `author` proves nothing. Chat nodes gain a SEA signature by the author's mesh key over (id, room, author, body, ts, v), and readers verify it against the author's wallet-signed mesh link (PR 27). *v0 limitation:* until PR 27 lands, mesh chat in rooms that are not public is not authorization-safe, and Views shows those rooms read-only.
-  - *Time the sender does not control.* `ts` is chosen by the sender, so it is never used for authorization. A node is accepted only if `canPost` is live at **acceptance time**: the seed peer checks the grant when it receives the put, and each reader checks it when it first observes the node (local receipt time). A node whose `ts` differs from observed time by more than a configurable skew is dropped. History synced later is accepted only with a **seed acceptance receipt**: on accepting a put, the seed peer signs `{room, messageId, H(node), acceptedAt}`, and periodically signs a checkpoint over the accepted set for a room. A returning reader verifies the receipt or checkpoint with the seed key and drops messages without one (PR 31).
-  - *Enforcement points.* Readers drop nodes that fail either check, and the seed peer (`lib/gun-server.ts`) rejects them on shared room paths (PR 23). Forum posts are already checked server-side by `/api/forum`.
+  - *Authenticated author.* `GunChatNode` is unsigned today (`lib/identity/check.ts`), so a claimed `author` proves nothing. Chat nodes gain a SEA signature by the author's mesh key over (id, room, author, body, ts, v), and readers verify it against the author's room-scoped wallet-signed binding (PR 24, PR 27). *v0 limitation:* until PR 27 lands, mesh chat in rooms that are not public is not authorization-safe, and Views shows those rooms read-only.
+  - *Validity judged by the reader, with no trusted acceptance time.* `ts` is chosen by the sender. Each reader checks, when it first observes a node, that the author signature verifies and that an owner-signed post grant (SociACL #45, signature verification #49) was live and not cancelled. Grant and cancel rows are owner-signed with validity windows; a cancel row carries an owner-signed **effective time**.
+    - *What a reader can prove offline:* the author wrote this exact body, and the owner granted posting for a window that contains the node's claimed `ts` and had not cancelled before that time.
+    - *What a reader cannot prove:* when the node was really written. Without a trusted clock, a former grant holder can backdate a new message into an old grant window. Local first-observed time limits this only for readers who were online.
+    - *Mitigations:* (1) readers drop nodes whose `ts` is far from their own first-observed time (configurable skew); (2) a cancel row's effective time cuts off everything claimed after it; (3) the owner signs a **per-room epoch** `{room, epoch, startsAt, counter}`, and authors must include the current epoch in the signed node, so after the owner bumps the epoch (on revoke or periodically) a removed author cannot produce valid nodes for the new epoch, and backdating is limited to the epoch that was live when they had access (PR 31).
+  - *Enforcement points.* Readers drop nodes that fail these checks (PR 23). A seed peer (`lib/gun-server.ts`) may run the same checks to avoid relaying junk, as an optimization only; correctness never depends on it. Forum posts are already checked server-side by `/api/forum`.
 - Check never reads the request. Cancelling either grant is immediate on the destination ACL, and the request becomes `revoked`.
 - Forum channels: the existing `invite` and `group-add` actions grant see **and post** ([forum.md](forum.md)), so they are used only for `read+post`. Approving `read` needs a new read-only forum action (`invite-read`: see without post) on `POST /api/forum` (PR 20). *v0 limitation:* until then, forum `read` requests stay in the manual queue and cannot be approved as read-only.
 
@@ -307,15 +316,15 @@ Mobile: one stage with a swipeable window strip; chat as a bottom sheet; PiP for
 | RSS/Atom autodiscovery from HTML pages | Missing (PR 21) |
 | Ingest parameterized by validated identity (fixed endpoint templates, rate limits) | Missing; adapters read fixed lists today (PR 21) |
 | Per-user outbound credential binding (Bluesky, Farcaster) | Missing; outbound uses deployment-wide env credentials (PR 22) |
-| Post-grant enforcement on mesh write acceptance (readers + seed peer) | Missing (PR 23) |
-| Owner/admin `pub` + `epub` on the user node, bound by the wallet-signed mesh link | Missing (PR 24) |
+| Post-grant enforcement by readers (author signature + owner-signed grant/cancel rows) | Missing (PR 23) |
+| Owner-signed, source-scoped key bindings (EIP-4361/EIP-191, ERC-1271 on mainnet), counter + expiry | Missing; reuses SIWE verification code (PR 24) |
 | Public visibility semantics in a Check wrapper | Missing (PR 25) |
 | Read-only forum invite (`invite-read`) | Missing (PR 20) |
 | Encrypted content for non-public sources ([encrypted-discovery.md](encrypted-discovery.md)) | Design only; separate track. v0 keeps locked content off shared paths |
 | Group-membership check in s3r.ch Check (port of SociACL `checkGroupSee`) | Exists in SociACL; missing in s3r.ch (PR 30). `members` falls back to manual until ported |
-| SEA-signed `epub` statement on the user node + seed-signed wallet-to-`pub` attestation (mesh link stays private) | Missing (PR 24, PR 26) |
-| Seed acceptance receipts / signed checkpoints for mesh chat | Missing (PR 31) |
-| Request namespace bounds (key check, caps, seed write limits) | Missing (PR 11, PR 31) |
+| Per-room owner-signed epoch + cancel rows with effective time | Missing (PR 31) |
+| Request namespace bounds (key check, caps, client-enforced limits; optional seed limits as optimization) | Missing (PR 11, PR 26) |
+| Delegated binding keys | Missing; later work |
 | Template export URL sanitizing (userinfo, query allowlist) | Missing (PR 10) |
 | Signed `GunChatNode` (author mesh-key signature) | Missing; chat nodes are unsigned today (PR 27) |
 | Owner-signed grant rows (see, post, cancel, group edges) + verification before accept | Missing. SociACL [#49](https://github.com/FyberLabs/SociACL/issues/49) (PR 28) |
@@ -331,7 +340,7 @@ Mobile: one stage with a swipeable window strip; chat as a bottom sheet; PiP for
 
 | SociACL issue | Unblocks s3r.ch PRs | Phase |
 | --- | --- | --- |
-| [#45](https://github.com/FyberLabs/SociACL/issues/45) Owner-signed post grant (read+post) | 4 (inline canPost state), 5 (targeted composer posting), 11, 12, 23, 28 | v0 |
+| [#45](https://github.com/FyberLabs/SociACL/issues/45) Owner-signed post grant (read+post) | 4 (inline canPost state), 5 (targeted composer posting), 11, 12, 23, 28, 31 | v0 |
 | [#46](https://github.com/FyberLabs/SociACL/issues/46) Signed access requests + approve-to-grant helper; members auto-approve via `checkGroupSee` | 11, 12, 30 | v0 |
 | [#49](https://github.com/FyberLabs/SociACL/issues/49) Owner-signature verification of public-path see, post and cancel rows and group membership edges | 28, 23 | v0 |
 | [#47](https://github.com/FyberLabs/SociACL/issues/47) Permission-filtered search | 17 | post-v0, blocked on SociACL #31 |
@@ -359,15 +368,15 @@ v0 additions :
 20. Forum `invite-read` action (see without post) on `POST /api/forum`.
 21. Parameterized ingest by validated identity + RSS/Atom autodiscovery.
 22. Per-user outbound credential binding for Bluesky / Farcaster.
-23. Post-grant enforcement on mesh writes (reader filter + seed peer put filter). Depends on SociACL #45.
-24. `pub` / `epub` on the user node with wallet-signed binding.
+23. Post-grant enforcement by readers (author signature + owner-signed grant/cancel rows). Depends on SociACL #45, #49 and PR 27.
+24. Owner-signed, source/room-scoped key bindings: EIP-4361/EIP-191 signing and verification (reusing `lib/identity/siwe.ts`), monotonic counter, expiry, admin bindings.
 25. Public visibility Check wrapper.
-26. SEA-signed `epub` statement on the user node + seed-signed wallet-to-`pub` attestation.
-27. Signed `GunChatNode` + reader verification. Prerequisite for PR 23.
+26. Client-enforced request rate limits and caps; optional seed write limits as a non-trust optimization.
+27. Signed `GunChatNode` (author room-scoped key, includes room epoch) + reader verification. Depends on PR 24; prerequisite for PR 23.
 28. Owner-signed grant row verification in Check and readers. Depends on SociACL #49 (and #45 for post rows).
 29. SEA key export / PRF envelope recovery bundled with the Views backup.
 30. Port SociACL `checkGroupSee` into s3r.ch Check (members auto-approve).
-31. Seed peer: signed acceptance receipts and checkpoints for mesh chat; write limits on `s3rch/requests`.
+31. Per-room owner-signed epoch and owner-signed cancel rows with effective time.
 
 Post-v0:
 16. Real search function.
