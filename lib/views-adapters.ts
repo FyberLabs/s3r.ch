@@ -26,14 +26,18 @@ function makeRef(input: Omit<SourceRef, "v">): Result<SourceRef> {
   return validateSourceRef({ ...input, v: 1 });
 }
 
+function nativeOnly(network: string): Result<SourceRef> | null {
+  return network.startsWith("s3rch:") ? null : { ok: false, error: "rooms and forum channels exist only on s3r.ch networks" };
+}
+
 /** A native room on an s3r.ch network is a chat source owned by the room owner. */
 export function roomSourceRef(network: string, room: Pick<GunRoomNode, "id" | "owner">): Result<SourceRef> {
-  return makeRef({ network, owner: room.owner, source: room.id, kind: "chat" });
+  return nativeOnly(network) ?? makeRef({ network, owner: room.owner, source: room.id, kind: "chat" });
 }
 
 /** A forum channel on an s3r.ch network. */
 export function forumSourceRef(network: string, channel: Pick<ForumChannel, "id" | "owner">): Result<SourceRef> {
-  return makeRef({ network, owner: channel.owner, source: channel.id, kind: "forum" });
+  return nativeOnly(network) ?? makeRef({ network, owner: channel.owner, source: channel.id, kind: "forum" });
 }
 
 /**

@@ -91,7 +91,12 @@ describe("view loading", () => {
     assert.equal(new Set(ids).size, 2);
     assert.equal(ids[0], "a");
     assert.match(r.notices[0]?.message ?? "", /Duplicate/);
-    assert.equal(r.view.layout?.type, "split");
+    assert.deepEqual(r.view.layout, {
+      type: "split",
+      dir: "row",
+      sizes: [0.5, 0.5],
+      children: ids.map((windowId) => ({ type: "leaf", windowId })),
+    });
   });
 
   it("uses null layout for an empty view", () => {
@@ -109,6 +114,11 @@ describe("layout bounds", () => {
     assert.deepEqual(repairLayout(deep, ["a"]), defaultLayout(["a"]));
     const wide = { type: "split", dir: "row", sizes: [], children: Array.from({ length: 100 }, () => ({ type: "leaf", windowId: "a" })) };
     assert.equal(layoutWithinBounds(wide), false);
+  });
+
+  it("normalizes huge sizes without overflow", () => {
+    const t = { type: "split", dir: "row", sizes: [Number.MAX_VALUE, Number.MAX_VALUE], children: [{ type: "leaf", windowId: "a" }, { type: "leaf", windowId: "b" }] };
+    assert.deepEqual((repairLayout(t, ["a", "b"]) as { sizes: number[] }).sizes, [0.5, 0.5]);
   });
 
   it("collapses single-child splits and fixes bad sizes", () => {
@@ -138,5 +148,7 @@ describe("adapters", () => {
     assert.equal(feedRow(feed.value, item)?.permalink, "https://x.test/1");
     assert.equal(feedRow(feed.value, { ...item, ts: Number.NaN }), null);
     assert.equal(roomSourceRef(NET, { id: "r1", owner: "alice" }).ok, false);
+    assert.equal(roomSourceRef("farcaster", { id: "r1", owner: "3" }).ok, false);
+    assert.equal(forumSourceRef("farcaster", { id: "c1", owner: "3" }).ok, false);
   });
 });

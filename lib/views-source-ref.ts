@@ -76,6 +76,15 @@ function isPublicHostname(host: string): boolean {
   // Reject all-numeric hosts (dotted IPv4 and similar); the last label of a real name is not numeric.
   if (/^[0-9]+$/.test(labels[labels.length - 1] ?? "")) return false;
   if (host === "localhost" || host.endsWith(".localhost")) return false;
+  // WHATWG URL parsing turns alternate IPv4 spellings (hex, octal, short forms) into dotted IPv4;
+  // the host is accepted only if parsing leaves it unchanged and it is not an IP literal.
+  let parsed: string;
+  try {
+    parsed = new URL(`https://${host}/`).hostname;
+  } catch {
+    return false;
+  }
+  if (parsed !== host || /^[0-9.]+$/.test(parsed) || parsed.startsWith("[")) return false;
   return true;
 }
 
@@ -103,6 +112,25 @@ export function validateNetwork(network: string): Result<string> {
   return { ok: true, value: network };
 }
 
+/** True when the string has no unpaired UTF-16 surrogates, so it can be percent-encoded. */
+export function isWellFormed(value: string): boolean {
+  return !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(value);
+}
+
+const MAX_UINT64 = (BigInt(1) << BigInt(64)) - BigInt(1);
+
+/** did:web:<host>[%3A<port>](:<path segment>)* */
+function isDidWeb(value: string): boolean {
+  const rest = value.slice("did:web:".length);
+  const segments = rest.split(":");
+  const [hostPart, ...path] = segments;
+  if (!hostPart) return false;
+  const m = /^([a-z0-9.-]+)(?:%3A([0-9]{1,5}))?$/.exec(hostPart);
+  if (!m || !m[1] || !isPublicHostname(m[1])) return false;
+  if (m[2] !== undefined && (Number(m[2]) < 1 || Number(m[2]) > 65535)) return false;
+  return path.every((seg) => /^(?:[A-Za-z0-9._~-]|%[0-9A-F]{2})+$/.test(seg));
+}
+
 function isHttpsUrl(value: string): boolean {
   try {
     const u = new URL(value);
@@ -114,7 +142,7 @@ function isHttpsUrl(value: string): boolean {
 
 /** Owner must be the stable identifier for its network, never a handle. */
 export function validateOwner(network: string, owner: string): Result<string> {
-  if (owner === "" || owner.length > MAX_COMPONENT) return fail("owner is empty or too long");
+  if (owner === "" || owner.length > MAX_COMPONENT || !isWellFormed(owner)) return fail("owner is empty, too long or malformed");
   if (network.startsWith("s3rch:")) {
     if (!isAddress(owner, { strict: false }) || getAddress(owner) !== owner) {
       return fail("s3r.ch owner must be a checksummed wallet address");
@@ -123,9 +151,13 @@ export function validateOwner(network: string, owner: string): Result<string> {
   }
   switch (network) {
     case "atproto":
-      return /^did:(plc:[a-z2-7]{24}|web:[a-z0-9.-]+)$/.test(owner) ? { ok: true, value: owner } : fail("ATProto owner must be a DID");
+      return /^did:plc:[a-z2-7]{24}$/.test(owner) || (owner.startsWith("did:web:") && isDidWeb(owner))
+        ? { ok: true, value: owner }
+        : fail("ATProto owner must be a DID");
     case "farcaster":
-      return /^[1-9][0-9]{0,15}$/.test(owner) ? { ok: true, value: owner } : fail("Farcaster owner must be an FID");
+      return /^[1-9][0-9]{0,19}$/.test(owner) && BigInt(owner) <= MAX_UINT64
+        ? { ok: true, value: owner }
+        : fail("Farcaster owner must be an FID");
     case "nostr":
       return HEX64.test(owner) ? { ok: true, value: owner } : fail("Nostr owner must be a lowercase hex pubkey");
     case "activitypub":
@@ -161,7 +193,9 @@ export function validateSourceRef(input: unknown): Result<SourceRef> {
   if (typeof owner !== "string") return fail("owner missing");
   const own = validateOwner(network, owner);
   if (!own.ok) return own;
-  if (typeof source !== "string" || source === "" || source.length > MAX_COMPONENT) return fail("source is empty or too long");
+  if (typeof source !== "string" || source === "" || source.length > MAX_COMPONENT || !isWellFormed(source)) {
+    return fail("source is empty, too long or malformed");
+  }
   if (!isSourceKind(kind)) return fail("unknown kind");
   const ref: SourceRef = { network, owner, source, kind, v: 1 };
   const isS3rch = network.startsWith("s3rch:");

@@ -107,10 +107,11 @@ export function defaultLayout(windowIds: string[]): LayoutTree | null {
  * already-placed windows, remove empty splits, collapse single-child splits, renormalize
  * sizes, and append unplaced windows. Returns null only when there are no windows.
  */
-export function repairLayout(layout: unknown, windowIds: string[]): LayoutTree | null {
+export function repairLayout(layout: unknown, windowIds: string[], ambiguousIds: ReadonlySet<string> = new Set()): LayoutTree | null {
   if (windowIds.length === 0) return null;
   if (!layoutWithinBounds(layout)) return defaultLayout(windowIds);
-  const alive = new Set(windowIds);
+  // Leaves naming an ambiguous (duplicated) id are dropped; those windows are re-appended.
+  const alive = new Set(windowIds.filter((id) => !ambiguousIds.has(id)));
   const placed = new Set<string>();
 
   function walk(node: unknown): LayoutTree | null {
@@ -134,8 +135,17 @@ export function repairLayout(layout: unknown, windowIds: string[]): LayoutTree |
     });
     if (kids.length === 0) return null;
     if (kids.length === 1) return kids[0]!;
-    const total = sizes.reduce((a, b) => a + b, 0);
-    return { type: "split", dir: node.dir, sizes: sizes.map((s) => s / total), children: kids };
+    // Scale by the largest size first so the sum cannot overflow to Infinity.
+    const max = Math.max(...sizes);
+    const scaled = sizes.map((s) => s / max);
+    const total = scaled.reduce((a, b) => a + b, 0);
+    const normalized = scaled.map((s) => s / total);
+    return {
+      type: "split",
+      dir: node.dir,
+      sizes: normalized.every((s) => Number.isFinite(s) && s > 0) ? normalized : kids.map(() => 1 / kids.length),
+      children: kids,
+    };
   }
 
   let tree = walk(layout);
@@ -180,6 +190,7 @@ export function loadView(input: unknown, newId: () => string): ViewLoadResult {
   const notices: Notice[] = [];
   const kept: ViewWindow[] = [];
   const seen = new Set<string>();
+  const ambiguous = new Set<string>();
   for (const raw of windows) {
     const r = validateWindow(raw);
     if (!r.ok) {
@@ -189,6 +200,7 @@ export function loadView(input: unknown, newId: () => string): ViewLoadResult {
     }
     const w = r.value;
     if (seen.has(w.id)) {
+      ambiguous.add(w.id);
       let fresh = newId();
       while (fresh === "" || seen.has(fresh)) fresh = newId();
       notices.push({ windowId: fresh, message: `Duplicate window id ${w.id} replaced` });
@@ -198,5 +210,5 @@ export function loadView(input: unknown, newId: () => string): ViewLoadResult {
     kept.push(w);
   }
   const ids = kept.map((w) => w.id);
-  return { ok: true, view: { id, title, windows: kept, layout: repairLayout(layout, ids), v: 1 }, notices };
+  return { ok: true, view: { id, title, windows: kept, layout: repairLayout(layout, ids, ambiguous), v: 1 }, notices };
 }
