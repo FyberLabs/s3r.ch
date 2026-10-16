@@ -12,7 +12,7 @@ import { canonicalJson } from "./views-canonical";
 import { defaultLock } from "./views-store";
 
 export { canonicalJson };
-import { CONFLICTS_MAX, mergePrefs, ENTRIES_MAX, isLiveEntry, mergeVersionChecked, parseVersion, TOMBSTONES_MAX, VIEWS_MAX, type ViewsState, type ViewVersion } from "./views-store";
+import { CONFLICTS_MAX, countEntries, mergePrefs, ENTRIES_MAX, isLiveEntry, mergeVersionChecked, parseVersion, TOMBSTONES_MAX, VIEWS_MAX, type ViewsState, type ViewVersion } from "./views-store";
 import { isSafeKey } from "./views-vv";
 import type { Notice } from "./views-window";
 
@@ -286,26 +286,32 @@ export async function restoreBackup(
 /**
  * Apply the live and tombstone limits to the fully merged result, so tombstones in a later
  * manifest free slots before replacements are counted. Entries that would exceed a limit
- * fall back to their local version (or are left out), in id order, with a notice.
+ * fall back to their local version (or are left out), highest id first, with a notice.
  */
 function enforceLimits(before: ViewsState["views"], after: ViewsState["views"], notices: Notice[]): void {
-  const wasLive = (id: string) => Object.hasOwn(before, id) && isLiveEntry(before[id]!);
-  const ids = Object.keys(after).sort();
-  let live = ids.filter((id) => isLiveEntry(after[id]!) && wasLive(id)).length;
-  let tombstones = ids.filter((id) => !isLiveEntry(after[id]!) && Object.hasOwn(before, id)).length;
-  const revert = (id: string) => {
-    if (Object.hasOwn(before, id)) after[id] = before[id]!;
-    else delete after[id];
-    notices.push({ message: `View limit reached; view ${id} was not restored` });
-  };
-  for (const id of ids) {
-    const entry = after[id]!;
-    if (isLiveEntry(entry) && !wasLive(id)) {
-      if (live < VIEWS_MAX) live += 1;
-      else revert(id);
-    } else if (!isLiveEntry(entry) && !Object.hasOwn(before, id)) {
-      if (tombstones < TOMBSTONES_MAX) tombstones += 1;
-      else revert(id);
+  const count = () => countEntries({ views: after } as ViewsState);
+  // Changed entries, last id first; reverting all of them yields the local state, which was
+  // within both limits, so this always terminates within the limits.
+  const changed = Object.keys(after)
+    .filter((id) => !Object.hasOwn(before, id) || before[id] !== after[id])
+    .sort()
+    .reverse();
+  let c = count();
+  const pending = new Set(changed);
+  let progressed = true;
+  while (progressed && (c.live > VIEWS_MAX || c.tombstones > TOMBSTONES_MAX)) {
+    progressed = false;
+    for (const id of changed) {
+      if (!pending.has(id)) continue;
+      if (c.live <= VIEWS_MAX && c.tombstones <= TOMBSTONES_MAX) break;
+      const live = isLiveEntry(after[id]!);
+      if ((live && c.live <= VIEWS_MAX) || (!live && c.tombstones <= TOMBSTONES_MAX)) continue;
+      if (Object.hasOwn(before, id)) after[id] = before[id]!;
+      else delete after[id];
+      pending.delete(id);
+      progressed = true;
+      notices.push({ message: `View limit reached; view ${id} was not restored` });
+      c = count();
     }
   }
 }
@@ -403,7 +409,10 @@ export async function writeBackupToGraph(
     const known = new Set(prior ? addressesOf(prior) : []);
     for (const [address, record] of Object.entries(backup.records)) {
       // Rewrite a known record if it is no longer readable (for example, lost by partial retention).
-      if (known.has(address) && isRecordShape(await readString(recordsOf.get(address)))) continue;
+      if (known.has(address)) {
+        const stored = await readString(recordsOf.get(address));
+        if (isRecordShape(stored) && (await recordAddress(stored)) === address) continue;
+      }
       await putString(recordsOf.get(address), JSON.stringify(record));
     }
     await putString(slot, JSON.stringify(manifest));

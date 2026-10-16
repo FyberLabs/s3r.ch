@@ -176,10 +176,13 @@ describe("backup", () => {
     assert.equal(await writeBackupToGraph(g, first), "stale");
     const recordKeys = [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/"));
     assert.equal(recordKeys.length, 3);
+    g.data.set(recordKeys[1]!, JSON.stringify({ v: 1, iv: "AAAAAAAAAAAAAAAA", ct: "corrupt" }));
     g.data.delete(recordKeys[0]!);
     const third = await buildBackup(s, pair, "w", 3, cache);
     assert.equal(await writeBackupToGraph(g, third), "written");
     assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/")).length, 3);
+    const repaired = await restoreFromGraph(emptyState(ALICE, "d4"), pair, g, ["w"]);
+    assert.equal(repaired.notices.length, 0);
     const r = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g, ["w"]);
     assert.equal(r.state.views.v2?.current.view?.title, "b2");
   });
@@ -214,6 +217,22 @@ describe("backup", () => {
     const live = Object.values(r.state.views).filter((e) => !e.current.deleted).length;
     assert.equal(live, VIEWS_MAX);
     assert.equal(r.notices.length, 0);
+  });
+
+  it("counts live-to-tombstone transitions against the tombstone limit", async () => {
+    const pair = await testPair();
+    const { deleteView, TOMBSTONES_MAX, countEntries } = await import("./views-store");
+    let local = emptyState(ALICE, "d1");
+    local = saveView(local, view("keep", "x")).state;
+    const views = { ...local.views };
+    for (let i = 0; i < TOMBSTONES_MAX; i++) views[`t${i}`] = { current: { id: `t${i}`, vv: { d1: 1 }, deleted: true }, conflicts: [] };
+    local = { ...local, views };
+    const remote = deleteView(local, "keep");
+    const b = await buildBackup(remote, pair, "w", 1);
+    const r = await restoreBackup(local, pair, [b.manifest], async (a) => b.records[a]);
+    assert.ok(countEntries(r.state).tombstones <= TOMBSTONES_MAX);
+    assert.equal(r.state.views.keep?.current.deleted, undefined);
+    assert.equal(r.notices.length, 1);
   });
 
   it("indexes writers by recency and repairs a missing index entry", async () => {
