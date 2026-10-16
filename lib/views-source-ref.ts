@@ -131,7 +131,7 @@ function isDidWeb(value: string): boolean {
   const m = /^([a-z0-9.-]+)(?:%3[Aa]([0-9]{1,5}))?$/.exec(hostPart);
   if (!m || !m[1] || !isPublicHostname(m[1])) return false;
   if (m[2] !== undefined && (Number(m[2]) < 1 || Number(m[2]) > 65535)) return false;
-  return path.every((seg) => /^(?:[A-Za-z0-9._~-]|%[0-9A-F]{2})+$/.test(seg));
+  return path.every((seg) => /^(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})+$/.test(seg));
 }
 
 function isHttpsUrl(value: string): boolean {

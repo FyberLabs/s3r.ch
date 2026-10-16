@@ -29,6 +29,7 @@ describe("SourceRef validation", () => {
       ["farcaster", "18446744073709551615"],
       ["atproto", "did:web:example.com"],
       ["atproto", "did:web:example.com%3a8443"],
+      ["atproto", "did:web:example.com:users%3aalice"],
       ["atproto", "did:web:example.com%3A8443:users:alice"],
       ["nostr", "b".repeat(64)],
       ["activitypub", "https://social.example/users/a"],
