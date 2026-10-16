@@ -116,6 +116,24 @@ describe("views state", () => {
     assert.throws(() => deleteView(s, "keep"), /deleted views/);
   });
 
+  it("applies live and tombstone limits when loading stored state", () => {
+    const views: Record<string, unknown> = {};
+    for (let i = 0; i < VIEWS_MAX + 5; i++) views[`v${i}`] = { current: { id: `v${i}`, vv: { d1: 1 }, view: view(`v${i}`) }, conflicts: [] };
+    const { state, notices } = parseState({ owner: ALICE, deviceId: "x", v: 1, views, recents: [], favorites: [] }, ALICE, "d1");
+    assert.equal(Object.keys(state.views).length, VIEWS_MAX);
+    assert.equal(notices.length, 5);
+  });
+
+  it("refuses resolving to a deletion past the tombstone limit", async () => {
+    const { TOMBSTONES_MAX } = await import("./views-store");
+    const del: ViewVersion = { id: "c", vv: { d2: 1 }, deleted: true };
+    let s: ViewsState = { ...emptyState(ALICE, "d1"), views: { c: { current: { id: "c", vv: { d1: 1 }, view: view("c") }, conflicts: [del] } } };
+    const views = { ...s.views };
+    for (let i = 0; i < TOMBSTONES_MAX; i++) views[`t${i}`] = { current: { id: `t${i}`, vv: { d1: 1 }, deleted: true }, conflicts: [] };
+    s = { ...s, views };
+    assert.throws(() => resolveConflict(s, "c", del), /deleted views/);
+  });
+
   it("rejects reserved view ids", () => {
     assert.throws(() => saveView(emptyState(ALICE, "d1"), view("toString")));
     assert.throws(() => saveView(emptyState(ALICE, "d1"), view("__proto__")));
@@ -152,6 +170,24 @@ describe("views state", () => {
 });
 
 describe("store", () => {
+  it("shares the fallback lock across separately created stores", async () => {
+    const { defaultLock } = await import("./views-store");
+    const order: string[] = [];
+    const a = defaultLock();
+    const b = defaultLock();
+    await Promise.all([
+      a("k", async () => {
+        order.push("a-start");
+        await new Promise((r) => setTimeout(r, 10));
+        order.push("a-end");
+      }),
+      b("k", async () => {
+        order.push("b");
+      }),
+    ]);
+    assert.deepEqual(order, ["a-start", "a-end", "b"]);
+  });
+
   it("serializes concurrent updates so no edit is lost", async () => {
     const store = createMemoryViewsStore();
     await Promise.all(Array.from({ length: 10 }, (_, i) => store.update(ALICE, "d1", (s) => touchRecent(s, ref(`r${i}`), i))));

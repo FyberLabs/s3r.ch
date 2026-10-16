@@ -84,7 +84,13 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
         .map((c) => parseVersion(c, notices))
         .filter((c): c is ViewVersion => c !== null && c.id === id)
         .slice(0, CONFLICTS_MAX);
-      state.views[id] = { current, conflicts };
+      const entry = { current, conflicts };
+      const counts = countEntries(state);
+      if (isLiveEntry(entry) ? counts.live >= VIEWS_MAX : counts.tombstones >= TOMBSTONES_MAX) {
+        notices.push({ message: `Saved view ${id} is over the limit and was skipped` });
+        continue;
+      }
+      state.views[id] = entry;
     }
   }
   if (Array.isArray(input.recents)) {
@@ -162,6 +168,9 @@ export function resolveConflict(state: ViewsState, id: string, chosen: ViewVersi
   const chosenText = canonicalJson(chosen);
   if (chosen.id !== id || (chosen.view && chosen.view.id !== id) || !all.some((v) => canonicalJson(v) === chosenText)) {
     throw new Error("chosen version is not one of this view's copies");
+  }
+  if (chosen.deleted && isLiveEntry(entry) && countEntries(state).tombstones >= TOMBSTONES_MAX) {
+    throw new Error("too many deleted views are retained");
   }
   const vv = bumpVV(maxVV(...all.map((v) => v.vv)), state.deviceId);
   const current: ViewVersion = chosen.deleted ? { id, vv, deleted: true } : { id, vv, view: chosen.view };
@@ -272,11 +281,14 @@ export type ViewsStore = {
 
 type Lock = <T>(name: string, run: () => Promise<T>) => Promise<T>;
 
+/** Shared by every fallback lock in this process, so separate callers still serialize. */
+const fallbackTails = new Map<string, Promise<unknown>>();
+
 /** Web Locks when available, otherwise an in-process queue (single tab or tests). */
 export function defaultLock(): Lock {
   const locks = (globalThis.navigator as { locks?: { request: (n: string, cb: () => Promise<unknown>) => Promise<unknown> } } | undefined)?.locks;
   if (locks) return (name, run) => locks.request(name, run) as Promise<never>;
-  const tails = new Map<string, Promise<unknown>>();
+  const tails = fallbackTails;
   return (name, run) => {
     const prev = tails.get(name) ?? Promise.resolve();
     const next = prev.then(run, run);

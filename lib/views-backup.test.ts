@@ -290,6 +290,24 @@ describe("backup", () => {
     assert.deepEqual(x.state.favorites, y.state.favorites);
   });
 
+  it("reclaims records left by a failed manifest write", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    const first = await buildBackup(s, pair, "w", 1);
+    await writeBackupToGraph(g, first);
+    const s2 = saveView(s, view("v1", "b")).state;
+    const failing: GraphChain = {
+      get: (k) => (k === "s3rch-views" ? { get: () => ({ get: () => failing, once: (cb) => cb(g.data.get("~/s3rch-views/w")), put: (_v, cb) => cb?.({ err: "down" }) }), once: () => undefined, put: () => undefined } : g.get(k)),
+      once: g.once,
+      put: g.put,
+    } as GraphChain;
+    await assert.rejects(writeBackupToGraph(failing, await buildBackup(s2, pair, "w", 2)));
+    const s3 = saveView(s2, view("v1", "c")).state;
+    await writeBackupToGraph(g, await buildBackup(s3, pair, "w", 3));
+    assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/")).length, 2);
+  });
+
   it("rejects _ as a writer id", async () => {
     const pair = await testPair();
     await assert.rejects(buildBackup(emptyState(ALICE, "d1"), pair, "_", 1));
