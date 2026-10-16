@@ -51,5 +51,7 @@ export function maxVV(...vectors: VersionVector[]): VersionVector {
 /** Increment this device's component. */
 export function bumpVV(v: VersionVector, deviceId: string): VersionVector {
   if (!isSafeKey(deviceId)) throw new Error("deviceId is empty or reserved");
-  return { ...v, [deviceId]: component(v, deviceId) + 1 };
+  const n = component(v, deviceId);
+  if (n >= Number.MAX_SAFE_INTEGER) throw new Error("version counter is exhausted");
+  return { ...v, [deviceId]: n + 1 };
 }

@@ -97,7 +97,7 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
     }
   }
   if (Array.isArray(input.recents)) {
-    for (const r of input.recents) {
+    for (const r of input.recents.slice(0, RECENTS_MAX)) {
       if (!isRecord(r) || typeof r.at !== "number" || !Number.isFinite(r.at)) continue;
       const ref = validateSourceRef(r.ref);
       if (ref.ok && !state.recents.some((x) => sameSource(x.ref, ref.value))) state.recents.push({ ref: ref.value, at: r.at });
@@ -105,7 +105,7 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
     state.recents = state.recents.slice(0, RECENTS_MAX);
   }
   if (Array.isArray(input.favorites)) {
-    for (const f of input.favorites) {
+    for (const f of input.favorites.slice(0, FAVORITES_MAX)) {
       const ref = validateSourceRef(f);
       if (ref.ok && !state.favorites.some((x) => sameSource(x, ref.value))) state.favorites.push(ref.value);
     }

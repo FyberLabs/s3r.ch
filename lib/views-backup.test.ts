@@ -267,7 +267,7 @@ describe("backup", () => {
     assert.equal(await writeBackupToGraph(g, second, { pub: pair.pub }), "written");
     const count = () => [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/")).length;
     assert.equal(count(), 4);
-    assert.equal(await writeBackupToGraph(g, second, { pub: pair.pub }), "stale");
+    assert.equal(await writeBackupToGraph(g, second, { pub: pair.pub }), "written");
     assert.equal(count(), 2);
     
   });
@@ -351,8 +351,12 @@ describe("backup", () => {
     await writeBackupToGraph(g, await buildBackup(s, pair, "new", 1), { pub: pair.pub, now: () => 2000 });
     assert.deepEqual(await listGraphWriters(g), ["new", "old"]);
     g.data.delete("~/s3rch-views-writers/old");
-    assert.equal(await writeBackupToGraph(g, b, { pub: pair.pub }), "stale");
+    assert.equal(await writeBackupToGraph(g, b, { pub: pair.pub }), "written");
     assert.ok(g.data.has("~/s3rch-views-writers/old"));
+    const recKey = [...g.data.keys()].find((k) => k.startsWith("~/s3rch-views-records/old/"))!;
+    g.data.delete(recKey);
+    await writeBackupToGraph(g, b, { pub: pair.pub });
+    assert.ok(g.data.has(recKey));
   });
 
   it("rejects oversized and malformed files before use", () => {

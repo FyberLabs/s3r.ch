@@ -411,9 +411,10 @@ export async function writeBackupToGraph(
     const prior = isManifestShape(existing) && existing.owner === manifest.owner ? existing : null;
     const index = user.get("s3rch-views-writers").get(manifest.writerId);
     const recordsOf = user.get("s3rch-views-records").get(manifest.writerId);
-    if (prior && prior.seq >= manifest.seq) {
-      // Refresh the index entry in case an earlier publication failed after the manifest write.
-      if (prior.seq === manifest.seq) await putString(index, String(now()));
+    // An identical manifest is republished in full (records verified and repaired, index
+    // refreshed); any other manifest at a lower or equal seq is stale.
+    const sameAsPublished = prior !== null && canonicalJson(prior) === canonicalJson(manifest);
+    if (prior && prior.seq >= manifest.seq && !sameAsPublished) {
       await sweepRecords(recordsOf, addressesOf(prior));
       return "stale";
     }

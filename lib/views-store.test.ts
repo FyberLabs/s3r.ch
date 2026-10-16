@@ -40,6 +40,7 @@ describe("version vectors", () => {
     assert.equal(compareVV({}, { b: 1 }), "before");
     assert.equal(isVersionVector({ toString: 1 }), false);
     assert.throws(() => bumpVV({}, "constructor"));
+    assert.throws(() => bumpVV({ d: Number.MAX_SAFE_INTEGER }, "d"), /exhausted/);
   });
 });
 
