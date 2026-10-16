@@ -12,7 +12,7 @@ import { canonicalJson } from "./views-canonical";
 import { defaultLock } from "./views-store";
 
 export { canonicalJson };
-import { CONFLICTS_MAX, countEntries, mergePrefs, ENTRIES_MAX, isLiveEntry, mergeVersionChecked, parseVersion, TOMBSTONES_MAX, VIEWS_MAX, type ViewsState, type ViewVersion } from "./views-store";
+import { CONFLICTS_MAX, mergePrefs, ENTRIES_MAX, isLiveEntry, mergeVersionChecked, parseVersion, TOMBSTONES_MAX, VIEWS_MAX, type ViewsState, type ViewVersion } from "./views-store";
 import { isSafeKey } from "./views-vv";
 import type { Notice } from "./views-window";
 
@@ -220,7 +220,7 @@ export async function restoreBackup(
   state: ViewsState,
   pair: SeaPair,
   manifests: unknown[],
-  fetchRecord: (address: string) => Promise<unknown>,
+  fetchRecord: (address: string, writerId: string) => Promise<unknown>,
 ): Promise<{ state: ViewsState; notices: Notice[] }> {
   const notices: Notice[] = [];
   const key = await deriveBackupKey(pair);
@@ -240,7 +240,7 @@ export async function restoreBackup(
     if (m.prefs) {
       let raw: unknown;
       try {
-        raw = await fetchRecord(m.prefs);
+        raw = await fetchRecord(m.prefs, m.writerId);
       } catch {
         raw = undefined;
       }
@@ -257,7 +257,7 @@ export async function restoreBackup(
     for (const e of m.entries) {
       let raw: unknown;
       try {
-        raw = await fetchRecord(e.address);
+        raw = await fetchRecord(e.address, m.writerId);
       } catch {
         raw = undefined;
       }
@@ -272,12 +272,6 @@ export async function restoreBackup(
       }
       const prior = Object.hasOwn(views, e.id) ? views[e.id] : undefined;
       const merged = mergeVersionChecked(prior, version);
-      const counts = countEntries({ ...state, views });
-      const becomesLive = isLiveEntry(merged.entry) && !(prior && isLiveEntry(prior));
-      if ((becomesLive && counts.live >= VIEWS_MAX) || (!prior && !becomesLive && counts.tombstones >= TOMBSTONES_MAX)) {
-        notices.push({ message: `View limit reached; view ${e.id} was not restored` });
-        continue;
-      }
       if (merged.overflow) {
         notices.push({ windowId: undefined, message: `View ${e.id} has too many conflicting copies; resolve them and restore again` });
         continue;
@@ -285,7 +279,35 @@ export async function restoreBackup(
       views[e.id] = merged.entry;
     }
   }
+  enforceLimits(state.views, views, notices);
   return { state: { ...state, views, recents: prefsState.recents, favorites: prefsState.favorites }, notices };
+}
+
+/**
+ * Apply the live and tombstone limits to the fully merged result, so tombstones in a later
+ * manifest free slots before replacements are counted. Entries that would exceed a limit
+ * fall back to their local version (or are left out), in id order, with a notice.
+ */
+function enforceLimits(before: ViewsState["views"], after: ViewsState["views"], notices: Notice[]): void {
+  const wasLive = (id: string) => Object.hasOwn(before, id) && isLiveEntry(before[id]!);
+  const ids = Object.keys(after).sort();
+  let live = ids.filter((id) => isLiveEntry(after[id]!) && wasLive(id)).length;
+  let tombstones = ids.filter((id) => !isLiveEntry(after[id]!) && Object.hasOwn(before, id)).length;
+  const revert = (id: string) => {
+    if (Object.hasOwn(before, id)) after[id] = before[id]!;
+    else delete after[id];
+    notices.push({ message: `View limit reached; view ${id} was not restored` });
+  };
+  for (const id of ids) {
+    const entry = after[id]!;
+    if (isLiveEntry(entry) && !wasLive(id)) {
+      if (live < VIEWS_MAX) live += 1;
+      else revert(id);
+    } else if (!isLiveEntry(entry) && !Object.hasOwn(before, id)) {
+      if (tombstones < TOMBSTONES_MAX) tombstones += 1;
+      else revert(id);
+    }
+  }
 }
 
 /** Serialize backups to one file. Fails rather than producing a file the importer would reject. */
@@ -354,13 +376,15 @@ function safeParse(text: string): unknown {
 
 /**
  * Write records, then the manifest, below the user's own space:
- * `~<pub>/s3rch-views-records/<address>` and `~<pub>/s3rch-views/<writerId>`.
+ * `~<pub>/s3rch-views-records/<writerId>/<address>` and `~<pub>/s3rch-views/<writerId>`.
+ * Records are namespaced per writer, so reclaiming one writer's records never touches another's.
  * The manifest is written last so it never names a record that is not stored yet.
  */
 export async function writeBackupToGraph(
   user: GraphChain,
   backup: { manifest: Manifest; records: Record<string, EncryptedRecord> },
   lock: <T>(name: string, run: () => Promise<T>) => Promise<T> = defaultLock(),
+  now: () => number = Date.now,
 ): Promise<"written" | "stale"> {
   const { manifest } = backup;
   // Serialized per writer across tabs; a lower or equal seq never replaces a published manifest.
@@ -368,35 +392,51 @@ export async function writeBackupToGraph(
     const slot = user.get("s3rch-views").get(manifest.writerId);
     const existing = await readString(slot);
     const prior = isManifestShape(existing) && existing.owner === manifest.owner ? existing : null;
-    if (prior && prior.seq >= manifest.seq) return "stale";
+    const index = user.get("s3rch-views-writers").get(manifest.writerId);
+    if (prior && prior.seq >= manifest.seq) {
+      // Make sure an earlier publication that failed after the manifest write is still indexed.
+      if (!isIndexValue(await readString(index))) await putString(index, String(now()));
+      return "stale";
+    }
+    const recordsOf = user.get("s3rch-views-records").get(manifest.writerId);
     const addressesOf = (m: Manifest) => [...m.entries.map((e) => e.address), ...(m.prefs ? [m.prefs] : [])];
     const known = new Set(prior ? addressesOf(prior) : []);
     for (const [address, record] of Object.entries(backup.records)) {
       // Rewrite a known record if it is no longer readable (for example, lost by partial retention).
-      if (known.has(address) && isRecordShape(await readString(user.get("s3rch-views-records").get(address)))) continue;
-      await putString(user.get("s3rch-views-records").get(address), JSON.stringify(record));
+      if (known.has(address) && isRecordShape(await readString(recordsOf.get(address)))) continue;
+      await putString(recordsOf.get(address), JSON.stringify(record));
     }
     await putString(slot, JSON.stringify(manifest));
     // Writer index in the user's own space, so a new device can find earlier writers.
-    await putString(user.get("s3rch-views-writers").get(manifest.writerId), "1");
+    // The value is the publication time, used only to pick the most recent writers on restore.
+    await putString(index, String(now()));
     // Reclaim records the previous manifest named and the new one does not.
-    const now = new Set(addressesOf(manifest));
-    for (const address of known) if (!now.has(address)) await putString(user.get("s3rch-views-records").get(address), null);
+    const current = new Set(addressesOf(manifest));
+    for (const address of known) if (!current.has(address)) await putString(recordsOf.get(address), null);
     return "written";
   });
 }
 
 /** Read the manifests for the given writer ids and restore from the user's graph copy. */
-/** Writer ids listed in the user's writer index (`~<pub>/s3rch-views-writers`). */
+function isIndexValue(v: unknown): boolean {
+  return typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+}
+
+/**
+ * Writer ids from the user's writer index (`~<pub>/s3rch-views-writers`), most recently
+ * published first. The order only decides which writers are read first on restore.
+ */
 export function listGraphWriters(user: GraphChain): Promise<string[]> {
   return new Promise((resolve) =>
     user.get("s3rch-views-writers").once((node) => {
       if (typeof node !== "object" || node === null) return resolve([]);
-      const ids = Object.entries(node as Record<string, unknown>)
-        .filter(([k, v]) => k !== "_" && isSafeKey(k) && v === "1")
-        .map(([k]) => k)
-        .sort();
-      resolve(ids);
+      const rows: [string, number][] = [];
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        const at = typeof v === "string" && /^[0-9]{1,16}$/.test(v) ? Number(v) : NaN;
+        if (k !== "_" && isSafeKey(k) && isIndexValue(at)) rows.push([k, at]);
+      }
+      rows.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+      resolve(rows.map(([k]) => k));
     }),
   );
 }
@@ -412,5 +452,5 @@ export async function restoreFromGraph(state: ViewsState, pair: SeaPair, user: G
     const m = await readString(user.get("s3rch-views").get(w));
     if (m !== undefined) manifests.push(m);
   }
-  return restoreBackup(state, pair, manifests, (a) => readString(user.get("s3rch-views-records").get(a)));
+  return restoreBackup(state, pair, manifests, (a, w) => readString(user.get("s3rch-views-records").get(w).get(a)));
 }

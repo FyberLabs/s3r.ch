@@ -112,6 +112,12 @@ describe("views state", () => {
     assert.throws(() => saveView(emptyState(ALICE, "d1"), view("__proto__")));
   });
 
+  it("orders recents by time even when updates arrive out of order", () => {
+    let s = touchRecent(emptyState(ALICE, "d1"), ref("new"), 100);
+    s = touchRecent(s, ref("old"), 50);
+    assert.deepEqual(s.recents.map((r) => r.ref.source), ["new", "old"]);
+  });
+
   it("toggles favorites", () => {
     let s = toggleFavorite(emptyState(ALICE, "d1"), ref("a"));
     assert.equal(s.favorites.length, 1);

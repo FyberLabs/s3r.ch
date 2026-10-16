@@ -231,7 +231,12 @@ export function mergePrefs(state: ViewsState, incoming: unknown): ViewsState {
 export function touchRecent(state: ViewsState, ref: SourceRef, at: number): ViewsState {
   const checked = validateSourceRef(ref);
   if (!checked.ok) throw new Error(checked.error);
-  const recents = [{ ref: checked.value, at }, ...state.recents.filter((r) => !sameSource(r.ref, ref))].slice(0, RECENTS_MAX);
+  if (!Number.isFinite(at)) throw new Error("invalid time");
+  const prior = state.recents.find((r) => sameSource(r.ref, ref));
+  const entry = { ref: checked.value, at: prior ? Math.max(prior.at, at) : at };
+  const recents = [entry, ...state.recents.filter((r) => !sameSource(r.ref, ref))]
+    .sort((x, y) => y.at - x.at)
+    .slice(0, RECENTS_MAX);
   return { ...state, recents };
 }
 

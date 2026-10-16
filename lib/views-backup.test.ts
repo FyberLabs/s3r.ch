@@ -9,6 +9,7 @@ import {
   restoreBackup,
   restoreBackupFile,
   restoreFromGraph,
+  listGraphWriters,
   writeBackupToGraph,
   BACKUP_FILE_MAX_BYTES,
   type GraphChain,
@@ -173,12 +174,12 @@ describe("backup", () => {
     assert.equal(await writeBackupToGraph(g, first), "written");
     assert.equal(await writeBackupToGraph(g, second), "written");
     assert.equal(await writeBackupToGraph(g, first), "stale");
-    const recordKeys = [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/"));
+    const recordKeys = [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/"));
     assert.equal(recordKeys.length, 3);
     g.data.delete(recordKeys[0]!);
     const third = await buildBackup(s, pair, "w", 3, cache);
     assert.equal(await writeBackupToGraph(g, third), "written");
-    assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/")).length, 3);
+    assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/")).length, 3);
     const r = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g, ["w"]);
     assert.equal(r.state.views.v2?.current.view?.title, "b2");
   });
@@ -197,6 +198,35 @@ describe("backup", () => {
     const tampered = { ...b.manifest, prefs: b.manifest.entries[0]?.address ?? "0".repeat(64) };
     const r2 = await restoreBackup(emptyState(ALICE, "d3"), pair, [tampered], async (a) => b.records[a]);
     assert.equal(r2.state.favorites.length, 0);
+  });
+
+  it("applies view limits after merging all manifests", async () => {
+    const pair = await testPair();
+    const { deleteView, VIEWS_MAX } = await import("./views-store");
+    let s = emptyState(ALICE, "d1");
+    for (let i = 0; i < VIEWS_MAX; i++) s = saveView(s, view(`z${i}`, "old")).state;
+    const first = await buildBackup(s, pair, "w1", 1);
+    for (let i = 0; i < VIEWS_MAX; i++) s = deleteView(s, `z${i}`);
+    for (let i = 0; i < VIEWS_MAX; i++) s = saveView(s, view(`a${i}`, "new")).state;
+    const second = await buildBackup(s, pair, "w2", 1);
+    const records = { ...first.records, ...second.records };
+    const r = await restoreBackup(emptyState(ALICE, "d2"), pair, [first.manifest, second.manifest], async (a) => records[a]);
+    const live = Object.values(r.state.views).filter((e) => !e.current.deleted).length;
+    assert.equal(live, VIEWS_MAX);
+    assert.equal(r.notices.length, 0);
+  });
+
+  it("indexes writers by recency and repairs a missing index entry", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const s = saveView(emptyState(ALICE, "d1"), view("v1", "x")).state;
+    const b = await buildBackup(s, pair, "old", 1);
+    await writeBackupToGraph(g, b, undefined, () => 1000);
+    await writeBackupToGraph(g, await buildBackup(s, pair, "new", 1), undefined, () => 2000);
+    assert.deepEqual(await listGraphWriters(g), ["new", "old"]);
+    g.data.delete("~/s3rch-views-writers/old");
+    assert.equal(await writeBackupToGraph(g, b), "stale");
+    assert.ok(g.data.has("~/s3rch-views-writers/old"));
   });
 
   it("rejects oversized and malformed files before use", () => {
