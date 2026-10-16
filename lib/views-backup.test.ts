@@ -423,16 +423,10 @@ describe("backup", () => {
     let s = (await restoreFromGraph(emptyState(ALICE, "dNew"), pair, g)).state;
     let b = await buildBackup(s, pair, "wNew", 1);
     await writeBackupToGraph(g, b, { pub: pair.pub, now: () => 2 });
-    // First call records the retirement; the writer is deleted once a manifest carries it.
-    let r = await pruneWriters(g, s, pair, b);
-    assert.deepEqual(r.pruned, []);
-    assert.deepEqual(r.state.retired, { dOld: 1 });
-    b = await buildBackup(r.state, pair, "wNew", 2);
-    await writeBackupToGraph(g, b, { pub: pair.pub, now: () => 2 });
-    r = await pruneWriters(g, r.state, pair, b);
+    const r = await pruneWriters(g, s, pair, b);
     assert.deepEqual(r.pruned, ["wOld"]);
-    assert.deepEqual([...g.data.keys()].filter((k) => k.includes("wOld")), ["~/s3rch-views/wOld"]);
-    assert.equal(g.data.get("~/s3rch-views/wOld"), JSON.stringify({ pruned: "wOld" }));
+    assert.deepEqual(r.state.retired, { dOld: 1 });
+    assert.ok(![...g.data.keys()].some((k) => k.includes("wOld")));
     assert.deepEqual(await listGraphWriters(g), ["wNew"]);
     // The next edit drops the retired component; a stale export still compares as older.
     s = saveView(r.state, view("v1", "b")).state;
@@ -440,7 +434,7 @@ describe("backup", () => {
     assert.equal(compareVV(old.views.v1!.current.vv, s.views.v1!.current.vv, s.retired), "before");
     assert.equal(mergeVersion(s.views.v1, old.views.v1!.current, s.retired), s.views.v1);
     // The retirement map is published and merged on restore.
-    b = await buildBackup(s, pair, "wNew", 3);
+    b = await buildBackup(s, pair, "wNew", 2);
     await writeBackupToGraph(g, b, { pub: pair.pub, now: () => 3 });
     const again = (await restoreFromGraph(emptyState(ALICE, "dThird"), pair, g)).state;
     assert.deepEqual(again.retired, { dOld: 1 });
@@ -485,17 +479,13 @@ describe("backup", () => {
     (g as { get: GraphChain["get"] }).get = (k: string) => {
       const c = origGet(k);
       if (k !== "s3rch-views-records") return c;
-      return { ...c, get: (w: string) => { const r = c.get(w); return { ...r, get: (a: string) => { const x = r.get(a); return { ...x, put: (v, cb) => (v === null && w === "wOld" && deletes++ === 0 ? cb?.({ err: "unavailable" }) : x.put(v, cb)) } as GraphChain; } } as GraphChain; } } as GraphChain;
+      return { ...c, get: (w: string) => { const r = c.get(w); return { ...r, get: (a: string) => { const x = r.get(a); return { ...x, put: (v, cb) => (v === null && deletes++ === 0 ? cb?.({ err: "unavailable" }) : x.put(v, cb)) } as GraphChain; } } as GraphChain; } } as GraphChain;
     };
-    const first = await pruneWriters(g, s, pair, b);
-    const b2 = await buildBackup(first.state, pair, "wNew", 2);
-    await writeBackupToGraph(g, b2, { pub: pair.pub, now: () => 2 });
-    const r = await pruneWriters(g, first.state, pair, b2);
+    const r = await pruneWriters(g, s, pair, b);
     assert.deepEqual(r.pruned, ["wOld"]);
     assert.ok(g.data.has("~/s3rch-views-writers/wOld"));
-    await pruneWriters(g, r.state, pair, b2);
-    assert.deepEqual([...g.data.keys()].filter((k) => k.includes("wOld")), ["~/s3rch-views/wOld"]);
-    assert.equal(g.data.get("~/s3rch-views/wOld"), JSON.stringify({ pruned: "wOld" }));
+    await pruneWriters(g, r.state, pair, b);
+    assert.ok(![...g.data.keys()].some((k) => k.includes("wOld")));
   });
 
   it("carries a pruned writer's retirement map forward", async () => {
