@@ -7,6 +7,7 @@ import {
   emptyState,
   listViews,
   mergeVersion,
+  mergeVersionChecked,
   parseState,
   RECENTS_MAX,
   VIEWS_MAX,
@@ -15,7 +16,7 @@ import {
   toggleFavorite,
   touchRecent,
   type ViewsState,
-  type ViewVersion,
+  type ViewEntry, type ViewVersion,
 } from "./views-store";
 import { bumpVV, compareVV, isVersionVector } from "./views-vv";
 import type { View } from "./views-window";
@@ -91,6 +92,12 @@ describe("views state", () => {
     const a: ViewVersion = { id: "v1", vv: { d1: 2 }, view: view("v1", "A") };
     const b: ViewVersion = { id: "v1", vv: { d1: 1, d2: 1 }, view: view("v1", "B") };
     assert.deepEqual(mergeVersion(mergeVersion(undefined, a), b), mergeVersion(mergeVersion(undefined, b), a));
+  });
+
+  it("keeps the same capped conflicts regardless of arrival order", () => {
+    const vs: ViewVersion[] = [1, 2, 3, 4, 5, 6, 7].map((i) => ({ id: "v1", vv: { [`d${i}`]: 1 }, view: view("v1", `t${i}`) }));
+    const fold = (list: ViewVersion[]) => list.reduce<ViewEntry | undefined>((e, v) => mergeVersionChecked(e, v).entry, undefined);
+    assert.deepEqual(fold(vs), fold([...vs].reverse()));
   });
 
   it("joins concurrent tombstones into one", () => {

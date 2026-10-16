@@ -191,13 +191,14 @@ export function mergeVersion(entry: ViewEntry | undefined, incoming: ViewVersion
 }
 
 /**
- * Same as mergeVersion, but reports `overflow` instead of merging when keeping the incoming
- * version would exceed CONFLICTS_MAX conflicting copies; the caller tells the user.
+ * Same as mergeVersion, but reports `overflow` when more than CONFLICTS_MAX conflicting copies
+ * exist; the first ones in canonical order are kept (independent of arrival order) and the
+ * caller tells the user.
  */
 export function mergeVersionChecked(entry: ViewEntry | undefined, incoming: ViewVersion): { entry: ViewEntry; overflow: boolean } {
   const merged = mergeInner(entry, incoming);
-  if (merged.conflicts.length > CONFLICTS_MAX) return { entry: entry!, overflow: true };
-  return { entry: merged, overflow: false };
+  if (merged.conflicts.length <= CONFLICTS_MAX) return { entry: merged, overflow: false };
+  return { entry: { current: merged.current, conflicts: merged.conflicts.slice(0, CONFLICTS_MAX) }, overflow: true };
 }
 
 function mergeInner(entry: ViewEntry | undefined, incoming: ViewVersion): ViewEntry {
