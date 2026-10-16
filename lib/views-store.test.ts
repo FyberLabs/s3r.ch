@@ -107,6 +107,15 @@ describe("views state", () => {
     assert.throws(() => saveView(s, view("v1")), /at most/);
   });
 
+  it("refuses a delete that would exceed the tombstone limit", async () => {
+    const { TOMBSTONES_MAX } = await import("./views-store");
+    let s = saveView(emptyState(ALICE, "d1"), view("keep")).state;
+    const views = { ...s.views };
+    for (let i = 0; i < TOMBSTONES_MAX; i++) views[`t${i}`] = { current: { id: `t${i}`, vv: { d1: 1 }, deleted: true }, conflicts: [] };
+    s = { ...s, views };
+    assert.throws(() => deleteView(s, "keep"), /deleted views/);
+  });
+
   it("rejects reserved view ids", () => {
     assert.throws(() => saveView(emptyState(ALICE, "d1"), view("toString")));
     assert.throws(() => saveView(emptyState(ALICE, "d1"), view("__proto__")));

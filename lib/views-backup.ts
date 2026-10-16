@@ -163,12 +163,14 @@ export async function buildBackup(
 ): Promise<{ manifest: Manifest; records: Record<string, EncryptedRecord> }> {
   if (!isSafeKey(writerId)) throw new Error("writerId is empty or reserved");
   const key = await deriveBackupKey(pair);
+  // Cache identities include the key pair, so a replaced pair never reuses old ciphertext.
+  const keyId = await sha256Hex(`${pair.pub}\n${pair.epub}`);
   const records: Record<string, EncryptedRecord> = {};
   const entries: ManifestEntry[] = [];
   const used = new Set<string>();
   for (const entry of Object.values(state.views)) {
     for (const version of [entry.current, ...entry.conflicts]) {
-      const digest = await sha256Hex(`${state.owner}\n${canonicalJson(version)}`);
+      const digest = await sha256Hex(`${keyId}\n${state.owner}\n${canonicalJson(version)}`);
       let hit = cache.get(digest);
       if (!hit) {
         const record = await encryptVersion(key, state.owner, version);
@@ -181,7 +183,7 @@ export async function buildBackup(
     }
   }
   const prefsPlain = canonicalJson({ recents: state.recents, favorites: state.favorites });
-  const prefsDigest = await sha256Hex(`${state.owner}\n${writerId}\nprefs\n${prefsPlain}`);
+  const prefsDigest = await sha256Hex(`${keyId}\n${state.owner}\n${writerId}\nprefs\n${prefsPlain}`);
   let prefsHit = cache.get(prefsDigest);
   if (!prefsHit) {
     const record = await encryptBytes(key, prefsAad(state.owner, writerId), prefsPlain);
@@ -235,7 +237,7 @@ export async function restoreBackup(
     const prior = latest.get(m.writerId);
     if (!prior || m.seq > prior.seq) latest.set(m.writerId, m);
   }
-  let prefsState = state;
+  const prefsInputs: unknown[] = [];
   for (const m of latest.values()) {
     if (m.prefs) {
       let raw: unknown;
@@ -252,7 +254,7 @@ export async function restoreBackup(
         parsed = null;
       }
       if (parsed === null) notices.push({ message: "Saved recents and favorites from one device could not be read" });
-      else prefsState = mergePrefs(prefsState, parsed);
+      else prefsInputs.push(parsed);
     }
     for (const e of m.entries) {
       let raw: unknown;
@@ -280,6 +282,7 @@ export async function restoreBackup(
     }
   }
   enforceLimits(state.views, views, notices);
+  const prefsState = mergePrefs(state, prefsInputs);
   return { state: { ...state, views, recents: prefsState.recents, favorites: prefsState.favorites }, notices };
 }
 
@@ -399,13 +402,17 @@ export async function writeBackupToGraph(
     const existing = await readString(slot);
     const prior = isManifestShape(existing) && existing.owner === manifest.owner ? existing : null;
     const index = user.get("s3rch-views-writers").get(manifest.writerId);
+    const recordsOf = user.get("s3rch-views-records").get(manifest.writerId);
+    const cleanup = user.get("s3rch-views-cleanup").get(manifest.writerId);
+    const addressesOf = (m: Manifest) => [...m.entries.map((e) => e.address), ...(m.prefs ? [m.prefs] : [])];
+    // Finish any cleanup an earlier publication could not complete, never touching addresses
+    // the published manifest still names.
+    await drainCleanup(cleanup, recordsOf, new Set(prior ? addressesOf(prior) : []));
     if (prior && prior.seq >= manifest.seq) {
       // Make sure an earlier publication that failed after the manifest write is still indexed.
       if (!isIndexValue(await readString(index))) await putString(index, String(now()));
       return "stale";
     }
-    const recordsOf = user.get("s3rch-views-records").get(manifest.writerId);
-    const addressesOf = (m: Manifest) => [...m.entries.map((e) => e.address), ...(m.prefs ? [m.prefs] : [])];
     const known = new Set(prior ? addressesOf(prior) : []);
     for (const [address, record] of Object.entries(backup.records)) {
       // Rewrite a known record if it is no longer readable (for example, lost by partial retention).
@@ -415,18 +422,45 @@ export async function writeBackupToGraph(
       }
       await putString(recordsOf.get(address), JSON.stringify(record));
     }
+    const current = new Set(addressesOf(manifest));
+    const obsolete = [...known].filter((a) => !current.has(a));
+    // Record the pending cleanup before publishing, so a later call can finish it.
+    if (obsolete.length) {
+      const left = await readString(cleanup);
+      const merged = new Set([...(Array.isArray(left) ? left.filter((a): a is string => typeof a === "string") : []), ...obsolete]);
+      await putString(cleanup, JSON.stringify([...merged].slice(0, BACKUP_MAX_ENTRIES)));
+    }
     await putString(slot, JSON.stringify(manifest));
     // Writer index in the user's own space, so a new device can find earlier writers.
     // The value is the publication time, used only to pick the most recent writers on restore.
     await putString(index, String(now()));
-    // Reclaim records the previous manifest named and the new one does not.
-    const current = new Set(addressesOf(manifest));
-    for (const address of known) if (!current.has(address)) await putString(recordsOf.get(address), null);
+    // Reclaim records the previous manifest named and the new one does not (best effort).
+    await drainCleanup(cleanup, recordsOf, current);
     return "written";
   });
 }
 
-/** Read the manifests for the given writer ids and restore from the user's graph copy. */
+async function drainCleanup(cleanup: GraphChain, recordsOf: GraphChain, keep: Set<string>): Promise<void> {
+  const pending = await readString(cleanup);
+  if (!Array.isArray(pending)) return;
+  let failed = false;
+  for (const a of pending.slice(0, BACKUP_MAX_ENTRIES)) {
+    if (typeof a !== "string" || !/^[0-9a-f]{64}$/.test(a) || keep.has(a)) continue;
+    try {
+      await putString(recordsOf.get(a), null);
+    } catch {
+      failed = true;
+    }
+  }
+  if (!failed) {
+    try {
+      await putString(cleanup, null);
+    } catch {
+      /* retried on the next publication */
+    }
+  }
+}
+
 function isIndexValue(v: unknown): boolean {
   return typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
 }

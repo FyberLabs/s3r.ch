@@ -36,11 +36,16 @@ function view(id: string, title: string): View {
   };
 }
 
-function fakeGraph(): GraphChain & { data: Map<string, string> } {
+function fakeGraph(): GraphChain & { data: Map<string, string>; failDeletes: number } {
   const data = new Map<string, string>();
+  const state = { failDeletes: 0 };
   const at = (path: string): GraphChain => ({
     get: (k) => at(`${path}/${k}`),
     put: (v, cb) => {
+      if (v === null && state.failDeletes > 0) {
+        state.failDeletes -= 1;
+        return cb?.({ err: "unavailable" });
+      }
       if (v === null) data.delete(path);
       else data.set(path, v);
       cb?.({});
@@ -52,7 +57,10 @@ function fakeGraph(): GraphChain & { data: Map<string, string> } {
       cb(Object.keys(children).length ? { _: {}, ...children } : undefined);
     },
   });
-  return Object.assign(at("~"), { data });
+  const root = at("~") as GraphChain & { data: Map<string, string>; failDeletes: number };
+  root.data = data;
+  Object.defineProperty(root, "failDeletes", { get: () => state.failDeletes, set: (n: number) => (state.failDeletes = n) });
+  return root;
 }
 
 describe("canonical JSON", () => {
@@ -221,18 +229,70 @@ describe("backup", () => {
 
   it("counts live-to-tombstone transitions against the tombstone limit", async () => {
     const pair = await testPair();
-    const { deleteView, TOMBSTONES_MAX, countEntries } = await import("./views-store");
+    const { TOMBSTONES_MAX, countEntries } = await import("./views-store");
     let local = emptyState(ALICE, "d1");
     local = saveView(local, view("keep", "x")).state;
     const views = { ...local.views };
     for (let i = 0; i < TOMBSTONES_MAX; i++) views[`t${i}`] = { current: { id: `t${i}`, vv: { d1: 1 }, deleted: true }, conflicts: [] };
     local = { ...local, views };
-    const remote = deleteView(local, "keep");
+    const remote = { ...local, views: { ...local.views, keep: { current: { id: "keep", vv: { d1: 2 }, deleted: true as const }, conflicts: [] } } };
     const b = await buildBackup(remote, pair, "w", 1);
     const r = await restoreBackup(local, pair, [b.manifest], async (a) => b.records[a]);
     assert.ok(countEntries(r.state).tombstones <= TOMBSTONES_MAX);
     assert.equal(r.state.views.keep?.current.deleted, undefined);
     assert.equal(r.notices.length, 1);
+  });
+
+  it("does not reuse cached ciphertext after the key pair changes", async () => {
+    const pair = await testPair();
+    const next = await testPair();
+    const cache = new Map();
+    const s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    await buildBackup(s, pair, "w", 1, cache);
+    const b = await buildBackup(s, next, "w", 2, cache);
+    const r = await restoreBackup(emptyState(ALICE, "d2"), next, [b.manifest], async (a) => b.records[a]);
+    assert.equal(r.notices.length, 0);
+    assert.equal(r.state.views.v1?.current.view?.title, "a");
+  });
+
+  it("retries record cleanup after a failed delete", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    let s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    const first = await buildBackup(s, pair, "w", 1);
+    await writeBackupToGraph(g, first);
+    s = saveView(s, view("v1", "b")).state;
+    const second = await buildBackup(s, pair, "w", 2);
+    g.failDeletes = 2;
+    assert.equal(await writeBackupToGraph(g, second), "written");
+    const count = () => [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/")).length;
+    assert.equal(count(), 4);
+    assert.equal(await writeBackupToGraph(g, second), "stale");
+    assert.equal(count(), 2);
+    assert.equal(g.data.has("~/s3rch-views-cleanup/w"), false);
+  });
+
+  it("merges favorites the same way regardless of manifest order", async () => {
+    const pair = await testPair();
+    const { FAVORITES_MAX } = await import("./views-store");
+    const ref = (source: string) => ({ network: NET, owner: ALICE, source, kind: "chat" as const, v: 1 as const });
+    let a = emptyState(ALICE, "d1");
+    let b = emptyState(ALICE, "d2");
+    for (let i = 0; i < FAVORITES_MAX; i++) {
+      a = toggleFavorite(a, ref(`a${i}`));
+      b = toggleFavorite(b, ref(`b${i}`));
+    }
+    const ba = await buildBackup(a, pair, "wa", 1);
+    const bb = await buildBackup(b, pair, "wb", 1);
+    const records = { ...ba.records, ...bb.records };
+    const x = await restoreBackup(emptyState(ALICE, "d3"), pair, [ba.manifest, bb.manifest], async (k) => records[k]);
+    const y = await restoreBackup(emptyState(ALICE, "d3"), pair, [bb.manifest, ba.manifest], async (k) => records[k]);
+    assert.deepEqual(x.state.favorites, y.state.favorites);
+  });
+
+  it("rejects _ as a writer id", async () => {
+    const pair = await testPair();
+    await assert.rejects(buildBackup(emptyState(ALICE, "d1"), pair, "_", 1));
   });
 
   it("indexes writers by recency and repairs a missing index entry", async () => {

@@ -6,7 +6,8 @@ export type VersionVector = Record<string, number>;
 
 /** Keys usable as plain-object keys without colliding with Object.prototype members. */
 export function isSafeKey(key: string): boolean {
-  return key !== "" && key !== "__proto__" && !(key in Object.prototype);
+  // "_" is reserved for Gun node metadata.
+  return key !== "" && key !== "_" && key !== "__proto__" && !(key in Object.prototype);
 }
 
 function component(v: VersionVector, key: string): number {

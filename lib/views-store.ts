@@ -4,7 +4,7 @@
  * See docs/views.md §2 and §5.
  */
 import { getAddress } from "viem";
-import { sameSource, validateSourceRef, type SourceRef } from "./views-source-ref";
+import { formatCanonical, sameSource, validateSourceRef, type SourceRef } from "./views-source-ref";
 import { canonicalJson } from "./views-canonical";
 import { bumpVV, compareVV, isSafeKey, isVersionVector, maxVV, type VersionVector } from "./views-vv";
 import { loadView, type Notice, type View } from "./views-window";
@@ -147,6 +147,9 @@ function entryOf(state: ViewsState, id: string): ViewEntry | undefined {
 export function deleteView(state: ViewsState, id: string): ViewsState {
   const prior = entryOf(state, id);
   if (!prior) return state;
+  if (isLiveEntry(prior) && countEntries(state).tombstones >= TOMBSTONES_MAX) {
+    throw new Error("too many deleted views are retained");
+  }
   const vv = bumpVV(maxVV(prior.current.vv, ...prior.conflicts.map((c) => c.vv)), state.deviceId);
   return { ...state, views: { ...state.views, [id]: { current: { id, vv, deleted: true }, conflicts: [] } } };
 }
@@ -212,18 +215,22 @@ export function listViews(state: ViewsState): { view: View; conflicted: boolean 
  * Merge recents and favorites from a backup. Recents are combined by most recent `at`,
  * unique and capped; favorites are the union, capped. Input is validated like stored state.
  */
-export function mergePrefs(state: ViewsState, incoming: unknown): ViewsState {
-  const parsed = parseState(
-    { ...(isRecord(incoming) ? incoming : {}), owner: state.owner, v: 1, views: {} },
-    state.owner,
-    state.deviceId,
-  ).state;
+export function mergePrefs(state: ViewsState, incoming: unknown[]): ViewsState {
+  // All inputs are aggregated and ordered before capping, so the result does not depend on
+  // the order of the backups.
+  const parsed = incoming.map(
+    (one) => parseState({ ...(isRecord(one) ? one : {}), owner: state.owner, v: 1, views: {} }, state.owner, state.deviceId).state,
+  );
+  const key = (r: SourceRef) => formatCanonical(r);
   const recents: RecentEntry[] = [];
-  for (const r of [...state.recents, ...parsed.recents].sort((a, b) => b.at - a.at)) {
-    if (!recents.some((x) => sameSource(x.ref, r.ref))) recents.push(r);
-  }
+  const allRecents = [...state.recents, ...parsed.flatMap((p) => p.recents)].sort(
+    (a, b) => b.at - a.at || (key(a.ref) < key(b.ref) ? -1 : key(a.ref) > key(b.ref) ? 1 : 0),
+  );
+  for (const r of allRecents) if (!recents.some((x) => sameSource(x.ref, r.ref))) recents.push(r);
+  // Local favorites first, then incoming ones in canonical order.
   const favorites = [...state.favorites];
-  for (const f of parsed.favorites) if (!favorites.some((x) => sameSource(x, f))) favorites.push(f);
+  const incomingFavs = parsed.flatMap((p) => p.favorites).sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+  for (const f of incomingFavs) if (!favorites.some((x) => sameSource(x, f))) favorites.push(f);
   return { ...state, recents: recents.slice(0, RECENTS_MAX), favorites: favorites.slice(0, FAVORITES_MAX) };
 }
 
