@@ -5,12 +5,15 @@
  */
 import { getAddress } from "viem";
 import { sameSource, validateSourceRef, type SourceRef } from "./views-source-ref";
-import { bumpVV, compareVV, isVersionVector, maxVV, type VersionVector } from "./views-vv";
+import { canonicalJson } from "./views-canonical";
+import { bumpVV, compareVV, isSafeKey, isVersionVector, maxVV, type VersionVector } from "./views-vv";
 import { loadView, type Notice, type View } from "./views-window";
 
 export const RECENTS_MAX = 20;
 export const FAVORITES_MAX = 200;
 export const VIEWS_MAX = 100;
+/** Unresolved concurrent copies kept per View (in addition to the current one). */
+export const CONFLICTS_MAX = 3;
 
 /** One version of a View. A tombstone has `deleted: true` and no `view`. */
 export type ViewVersion =
@@ -32,7 +35,7 @@ export type ViewsState = {
 };
 
 export function emptyState(owner: string, deviceId: string): ViewsState {
-  if (deviceId === "") throw new Error("deviceId is empty");
+  if (!isSafeKey(deviceId)) throw new Error("deviceId is empty or reserved");
   return { owner: getAddress(owner), deviceId, views: {}, recents: [], favorites: [], v: 1 };
 }
 
@@ -46,7 +49,7 @@ const noId = () => {
 
 /** Validate one stored version. Window-level problems are reported as notices. */
 export function parseVersion(input: unknown, notices: Notice[]): ViewVersion | null {
-  if (!isRecord(input) || typeof input.id !== "string" || input.id === "" || !isVersionVector(input.vv)) return null;
+  if (!isRecord(input) || typeof input.id !== "string" || !isSafeKey(input.id) || !isVersionVector(input.vv)) return null;
   if (input.deleted === true) return input.view === undefined ? { id: input.id, vv: { ...input.vv }, deleted: true } : null;
   if (input.deleted !== undefined) return null;
   let loaded;
@@ -67,7 +70,7 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
   if (!isRecord(input) || input.v !== 1 || input.owner !== state.owner) return { state, notices };
   if (isRecord(input.views)) {
     for (const [id, raw] of Object.entries(input.views).slice(0, VIEWS_MAX)) {
-      if (!isRecord(raw)) continue;
+      if (!isRecord(raw) || !isSafeKey(id)) continue;
       const current = parseVersion(raw.current, notices);
       if (!current || current.id !== id) {
         notices.push({ message: `Saved view ${id} could not be read and was skipped` });
@@ -75,7 +78,8 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
       }
       const conflicts = (Array.isArray(raw.conflicts) ? raw.conflicts : [])
         .map((c) => parseVersion(c, notices))
-        .filter((c): c is ViewVersion => c !== null && c.id === id);
+        .filter((c): c is ViewVersion => c !== null && c.id === id)
+        .slice(0, CONFLICTS_MAX);
       state.views[id] = { current, conflicts };
     }
   }
@@ -99,10 +103,13 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
 
 /** Save a local edit: validates the View and bumps this device's vector component. */
 export function saveView(state: ViewsState, view: View): { state: ViewsState; notices: Notice[] } {
+  if (!isSafeKey(view.id)) throw new Error("view id is empty or reserved");
   const loaded = loadView(view, noId);
   if (!loaded.ok) throw new Error(loaded.error);
-  const prior = state.views[view.id];
-  const base = prior ? maxVV(prior.current.vv, ...prior.conflicts.map((c) => c.vv)) : {};
+  const prior = entryOf(state, view.id);
+  // Editing while copies conflict would claim ancestry from copies the user has not chosen.
+  if (prior && prior.conflicts.length) throw new Error("resolve conflicting copies first");
+  const base = prior ? prior.current.vv : {};
   const isNew = !prior;
   if (isNew && Object.keys(state.views).length >= VIEWS_MAX) throw new Error(`at most ${VIEWS_MAX} views`);
   const current: ViewVersion = { id: view.id, vv: bumpVV(base, state.deviceId), view: loaded.view };
@@ -110,8 +117,12 @@ export function saveView(state: ViewsState, view: View): { state: ViewsState; no
 }
 
 /** Delete locally: writes a tombstone that dominates every known version. */
+function entryOf(state: ViewsState, id: string): ViewEntry | undefined {
+  return Object.hasOwn(state.views, id) ? state.views[id] : undefined;
+}
+
 export function deleteView(state: ViewsState, id: string): ViewsState {
-  const prior = state.views[id];
+  const prior = entryOf(state, id);
   if (!prior) return state;
   const vv = bumpVV(maxVV(prior.current.vv, ...prior.conflicts.map((c) => c.vv)), state.deviceId);
   return { ...state, views: { ...state.views, [id]: { current: { id, vv, deleted: true }, conflicts: [] } } };
@@ -119,10 +130,13 @@ export function deleteView(state: ViewsState, id: string): ViewsState {
 
 /** Resolve conflicting copies by picking one; the result dominates every branch it replaces. */
 export function resolveConflict(state: ViewsState, id: string, chosen: ViewVersion): ViewsState {
-  const entry = state.views[id];
+  const entry = entryOf(state, id);
   if (!entry) return state;
   const all = [entry.current, ...entry.conflicts];
-  if (!all.some((v) => v === chosen || compareVV(v.vv, chosen.vv) === "equal")) throw new Error("chosen version is not one of the copies");
+  const chosenText = canonicalJson(chosen);
+  if (chosen.id !== id || (chosen.view && chosen.view.id !== id) || !all.some((v) => canonicalJson(v) === chosenText)) {
+    throw new Error("chosen version is not one of this view's copies");
+  }
   const vv = bumpVV(maxVV(...all.map((v) => v.vv)), state.deviceId);
   const current: ViewVersion = chosen.deleted ? { id, vv, deleted: true } : { id, vv, view: chosen.view };
   return { ...state, views: { ...state.views, [id]: { current, conflicts: [] } } };
@@ -134,6 +148,20 @@ export function resolveConflict(state: ViewsState, id: string, chosen: ViewVersi
  * concurrent versions are kept as conflicting copies.
  */
 export function mergeVersion(entry: ViewEntry | undefined, incoming: ViewVersion): ViewEntry {
+  return mergeVersionChecked(entry, incoming).entry;
+}
+
+/**
+ * Same as mergeVersion, but reports `overflow` instead of merging when keeping the incoming
+ * version would exceed CONFLICTS_MAX conflicting copies; the caller tells the user.
+ */
+export function mergeVersionChecked(entry: ViewEntry | undefined, incoming: ViewVersion): { entry: ViewEntry; overflow: boolean } {
+  const merged = mergeInner(entry, incoming);
+  if (merged.conflicts.length > CONFLICTS_MAX) return { entry: entry!, overflow: true };
+  return { entry: merged, overflow: false };
+}
+
+function mergeInner(entry: ViewEntry | undefined, incoming: ViewVersion): ViewEntry {
   if (!entry) return { current: incoming, conflicts: [] };
   const known = [entry.current, ...entry.conflicts];
   if (known.some((k) => {

@@ -4,6 +4,15 @@
  */
 export type VersionVector = Record<string, number>;
 
+/** Keys usable as plain-object keys without colliding with Object.prototype members. */
+export function isSafeKey(key: string): boolean {
+  return key !== "" && key !== "__proto__" && !(key in Object.prototype);
+}
+
+function component(v: VersionVector, key: string): number {
+  return Object.hasOwn(v, key) ? v[key]! : 0;
+}
+
 export type VVOrder = "equal" | "before" | "after" | "concurrent";
 
 function isCounter(n: unknown): n is number {
@@ -12,7 +21,7 @@ function isCounter(n: unknown): n is number {
 
 export function isVersionVector(value: unknown): value is VersionVector {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  return Object.entries(value).every(([k, v]) => k !== "" && isCounter(v));
+  return Object.entries(value).every(([k, v]) => isSafeKey(k) && isCounter(v));
 }
 
 /** Order of `a` relative to `b`. */
@@ -20,8 +29,8 @@ export function compareVV(a: VersionVector, b: VersionVector): VVOrder {
   let aAhead = false;
   let bAhead = false;
   for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    const x = a[key] ?? 0;
-    const y = b[key] ?? 0;
+    const x = component(a, key);
+    const y = component(b, key);
     if (x > y) aAhead = true;
     else if (y > x) bAhead = true;
   }
@@ -34,12 +43,12 @@ export function compareVV(a: VersionVector, b: VersionVector): VVOrder {
 /** Component-wise maximum. */
 export function maxVV(...vectors: VersionVector[]): VersionVector {
   const out: VersionVector = {};
-  for (const v of vectors) for (const [k, n] of Object.entries(v)) out[k] = Math.max(out[k] ?? 0, n);
+  for (const v of vectors) for (const [k, n] of Object.entries(v)) out[k] = Math.max(component(out, k), n);
   return out;
 }
 
 /** Increment this device's component. */
 export function bumpVV(v: VersionVector, deviceId: string): VersionVector {
-  if (deviceId === "") throw new Error("deviceId is empty");
-  return { ...v, [deviceId]: (v[deviceId] ?? 0) + 1 };
+  if (!isSafeKey(deviceId)) throw new Error("deviceId is empty or reserved");
+  return { ...v, [deviceId]: component(v, deviceId) + 1 };
 }

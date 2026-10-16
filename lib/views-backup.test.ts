@@ -62,7 +62,9 @@ describe("backup", () => {
     const d2 = saveView(emptyState(ALICE, "d2"), view("v1", "from d2")).state;
     const b1 = await buildBackup(d1, pair, "w-d1", 1);
     const b2 = await buildBackup(d2, pair, "w-d2", 1);
-    const text = exportBackupFile([b1, b2]);
+    const exported = exportBackupFile([b1, b2]);
+    assert.ok(exported.ok);
+    const text = exported.text;
     assert.equal(text.includes("from d1"), false);
     const restored = await restoreBackupFile(emptyState(ALICE, "d3"), pair, text);
     assert.equal(restored.notices.length, 0);
@@ -114,6 +116,41 @@ describe("backup", () => {
     assert.ok([...g.data.keys()].some((k) => k === "~/s3rch-views/w1"));
     const r = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g, ["w1"]);
     assert.equal(r.state.views.v1?.current.view?.title, "graph");
+  });
+
+  it("skips records whose fetch fails and keeps the rest", async () => {
+    const pair = await testPair();
+    let s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    s = saveView(s, view("v2", "b")).state;
+    const b = await buildBackup(s, pair, "w", 1);
+    const first = b.manifest.entries[0]!.address;
+    const r = await restoreBackup(emptyState(ALICE, "d2"), pair, [b.manifest], async (a) => {
+      if (a === first) throw new Error("unavailable");
+      return b.records[a];
+    });
+    assert.equal(Object.keys(r.state.views).length, 1);
+    assert.equal(r.notices.length, 1);
+  });
+
+  it("refuses to export a file the importer would reject", async () => {
+    const pair = await testPair();
+    const s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    const b = await buildBackup(s, pair, "w", 1);
+    const big = { ...b, records: { ...b.records, pad: { v: 1 as const, iv: "", ct: "x".repeat(BACKUP_FILE_MAX_BYTES) } } };
+    assert.equal(exportBackupFile([big]).ok, false);
+  });
+
+  it("reports instead of exceeding the conflict cap", async () => {
+    const pair = await testPair();
+    const parts = [];
+    for (let i = 0; i < 6; i++) parts.push(await buildBackup(saveView(emptyState(ALICE, `d${i}`), view("v1", `c${i}`)).state, pair, `w${i}`, 1));
+    const records = Object.assign({}, ...parts.map((p) => p.records));
+    const r = await restoreBackup(emptyState(ALICE, "dx"), pair, parts.map((p) => p.manifest), async (a) => records[a]);
+    assert.equal(r.state.views.v1?.conflicts.length, 3);
+    assert.equal(r.notices.length, 2);
+    const again = await buildBackup(r.state, pair, "wx", 1);
+    const r2 = await restoreBackup(emptyState(ALICE, "dy"), pair, [again.manifest], async (a) => again.records[a]);
+    assert.equal(r2.state.views.v1?.conflicts.length, 3);
   });
 
   it("rejects oversized and malformed files before use", () => {

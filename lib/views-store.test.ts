@@ -16,7 +16,7 @@ import {
   type ViewsState,
   type ViewVersion,
 } from "./views-store";
-import { compareVV } from "./views-vv";
+import { bumpVV, compareVV, isVersionVector } from "./views-vv";
 import type { View } from "./views-window";
 
 const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -36,6 +36,9 @@ describe("version vectors", () => {
     assert.equal(compareVV({ a: 2 }, { a: 1 }), "after");
     assert.equal(compareVV({ a: 1 }, { a: 1, b: 1 }), "before");
     assert.equal(compareVV({ a: 2 }, { a: 1, b: 1 }), "concurrent");
+    assert.equal(compareVV({}, { b: 1 }), "before");
+    assert.equal(isVersionVector({ toString: 1 }), false);
+    assert.throws(() => bumpVV({}, "constructor"));
   });
 });
 
@@ -68,6 +71,10 @@ describe("views state", () => {
     assert.equal(mergeVersion(entry, { id: "v1", vv: { d1: 1 }, view: view("v1", "old") }), entry);
     let s: ViewsState = { ...emptyState(ALICE, "d3"), views: { v1: entry } };
     assert.equal(listViews(s)[0]?.conflicted, true);
+    assert.throws(() => saveView(s, view("v1", "edit")), /resolve/);
+    const otherView: ViewVersion = { id: "v2", vv: { d1: 1, d2: 1 }, view: view("v2", "B") };
+    assert.throws(() => resolveConflict(s, "v1", otherView));
+    assert.throws(() => resolveConflict(s, "v1", { ...b, view: view("v1", "not a copy") }));
     s = resolveConflict(s, "v1", b);
     assert.deepEqual(s.views.v1?.current.vv, { d1: 2, d2: 1, d3: 1 });
     assert.equal(s.views.v1?.conflicts.length, 0);
@@ -85,6 +92,11 @@ describe("views state", () => {
     assert.equal(s.recents.length, RECENTS_MAX);
     assert.equal(s.recents[0]?.ref.source, "r10");
     assert.equal(s.recents.filter((r) => r.ref.source === "r10").length, 1);
+  });
+
+  it("rejects reserved view ids", () => {
+    assert.throws(() => saveView(emptyState(ALICE, "d1"), view("toString")));
+    assert.throws(() => saveView(emptyState(ALICE, "d1"), view("__proto__")));
   });
 
   it("toggles favorites", () => {

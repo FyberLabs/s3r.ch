@@ -8,13 +8,18 @@
  * user's own graph space and can be exported as one file.
  */
 import type { SeaPair } from "./identity/sea";
-import { mergeVersion, parseVersion, VIEWS_MAX, type ViewsState, type ViewVersion } from "./views-store";
+import { canonicalJson } from "./views-canonical";
+
+export { canonicalJson };
+import { CONFLICTS_MAX, mergeVersionChecked, parseVersion, VIEWS_MAX, type ViewsState, type ViewVersion } from "./views-store";
+import { isSafeKey } from "./views-vv";
 import type { Notice } from "./views-window";
 
 export const BACKUP_FILE_KIND = "s3rch-views-backup";
 export const BACKUP_FILE_MAX_BYTES = 5 * 1024 * 1024;
 export const BACKUP_MAX_MANIFESTS = 16;
-export const BACKUP_MAX_ENTRIES = VIEWS_MAX;
+/** Every version a state can hold: VIEWS_MAX views × (current + CONFLICTS_MAX copies). */
+export const BACKUP_MAX_ENTRIES = VIEWS_MAX * (1 + CONFLICTS_MAX);
 const HKDF_SALT = "s3rch-views-backup-v1";
 
 export type EncryptedRecord = { v: 1; iv: string; ct: string };
@@ -37,22 +42,6 @@ function fromB64u(text: string): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(s.length);
   for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
   return out;
-}
-
-/** Canonical JSON: sorted object keys, no whitespace. Only plain JSON values are accepted. */
-export function canonicalJson(value: unknown): string {
-  if (value === null || typeof value === "boolean" || typeof value === "string") return JSON.stringify(value);
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new Error("non-finite number");
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    const keys = Object.keys(obj).filter((k) => obj[k] !== undefined).sort();
-    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`).join(",")}}`;
-  }
-  throw new Error("unsupported value");
 }
 
 async function sha256Hex(text: string): Promise<string> {
@@ -138,7 +127,7 @@ export async function verifyManifest(pub: string, m: Manifest): Promise<boolean>
  * copy (tombstones included), and a signed manifest. `seq` must increase on every write.
  */
 export async function buildBackup(state: ViewsState, pair: SeaPair, writerId: string, seq: number): Promise<{ manifest: Manifest; records: Record<string, EncryptedRecord> }> {
-  if (writerId === "") throw new Error("writerId is empty");
+  if (!isSafeKey(writerId)) throw new Error("writerId is empty or reserved");
   const key = await deriveBackupKey(pair);
   const records: Record<string, EncryptedRecord> = {};
   const entries: ManifestEntry[] = [];
@@ -163,9 +152,9 @@ function isRecordShape(value: unknown): value is EncryptedRecord {
 function isManifestShape(value: unknown): value is Manifest {
   const m = value as Manifest;
   return (
-    typeof m === "object" && m !== null && m.v === 1 && typeof m.owner === "string" && typeof m.writerId === "string" && m.writerId !== "" &&
-    Number.isSafeInteger(m.seq) && m.seq >= 0 && typeof m.sig === "string" && Array.isArray(m.entries) && m.entries.length <= BACKUP_MAX_ENTRIES * 4 &&
-    m.entries.every((e) => typeof e === "object" && e !== null && typeof e.id === "string" && e.id !== "" && typeof e.address === "string" && /^[0-9a-f]{64}$/.test(e.address))
+    typeof m === "object" && m !== null && m.v === 1 && typeof m.owner === "string" && typeof m.writerId === "string" && isSafeKey(m.writerId) &&
+    Number.isSafeInteger(m.seq) && m.seq >= 0 && typeof m.sig === "string" && Array.isArray(m.entries) && m.entries.length <= BACKUP_MAX_ENTRIES &&
+    m.entries.every((e) => typeof e === "object" && e !== null && typeof e.id === "string" && isSafeKey(e.id) && typeof e.address === "string" && /^[0-9a-f]{64}$/.test(e.address))
   );
 }
 
@@ -195,7 +184,12 @@ export async function restoreBackup(
   }
   for (const m of latest.values()) {
     for (const e of m.entries) {
-      const raw = await fetchRecord(e.address);
+      let raw: unknown;
+      try {
+        raw = await fetchRecord(e.address);
+      } catch {
+        raw = undefined;
+      }
       if (!isRecordShape(raw) || (await recordAddress(raw)) !== e.address) {
         notices.push({ message: `Backup record for view ${e.id} is missing or altered` });
         continue;
@@ -205,23 +199,33 @@ export async function restoreBackup(
         notices.push({ message: `Backup record for view ${e.id} could not be decrypted` });
         continue;
       }
-      if (!views[e.id] && Object.keys(views).length >= VIEWS_MAX) {
+      const prior = Object.hasOwn(views, e.id) ? views[e.id] : undefined;
+      if (!prior && Object.keys(views).length >= VIEWS_MAX) {
         notices.push({ message: `View limit reached; view ${e.id} was not restored` });
         continue;
       }
-      views[e.id] = mergeVersion(views[e.id], version);
+      const merged = mergeVersionChecked(prior, version);
+      if (merged.overflow) {
+        notices.push({ windowId: undefined, message: `View ${e.id} has too many conflicting copies; resolve them and restore again` });
+        continue;
+      }
+      views[e.id] = merged.entry;
     }
   }
   return { state: { ...state, views }, notices };
 }
 
-export function exportBackupFile(parts: { manifest: Manifest; records: Record<string, EncryptedRecord> }[]): string {
+/** Serialize backups to one file. Fails rather than producing a file the importer would reject. */
+export function exportBackupFile(parts: { manifest: Manifest; records: Record<string, EncryptedRecord> }[]): { ok: true; text: string } | { ok: false; error: string } {
   const file: BackupFile = { kind: BACKUP_FILE_KIND, v: 1, manifests: [], records: {} };
   for (const p of parts) {
     file.manifests.push(p.manifest);
     Object.assign(file.records, p.records);
   }
-  return JSON.stringify(file);
+  if (file.manifests.length > BACKUP_MAX_MANIFESTS) return { ok: false, error: "too many writers for one file" };
+  const text = JSON.stringify(file);
+  if (enc.encode(text).length > BACKUP_FILE_MAX_BYTES) return { ok: false, error: "backup is larger than the file limit" };
+  return { ok: true, text };
 }
 
 /** Parse an exported file. The size cap is checked before parsing. */
