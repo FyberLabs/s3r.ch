@@ -321,7 +321,8 @@ export async function writeBackupToGraph(
     if (prior && prior.seq >= manifest.seq) return "stale";
     const known = new Set(prior?.entries.map((e) => e.address) ?? []);
     for (const [address, record] of Object.entries(backup.records)) {
-      if (known.has(address)) continue;
+      // Rewrite a known record if it is no longer readable (for example, lost by partial retention).
+      if (known.has(address) && isRecordShape(await readString(user.get("s3rch-views-records").get(address)))) continue;
       await putString(user.get("s3rch-views-records").get(address), JSON.stringify(record));
     }
     await putString(slot, JSON.stringify(manifest));

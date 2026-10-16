@@ -114,11 +114,11 @@ export function saveView(state: ViewsState, view: View): { state: ViewsState; no
   // Editing while copies conflict would claim ancestry from copies the user has not chosen.
   if (prior && prior.conflicts.length) throw new Error("resolve conflicting copies first");
   const base = prior ? prior.current.vv : {};
-  const isNew = !prior;
-  if (isNew) {
+  // A new id, or a tombstoned one being brought back, takes a live slot.
+  if (!prior || !isLiveEntry(prior)) {
     const { live } = countEntries(state);
     if (live >= VIEWS_MAX) throw new Error(`at most ${VIEWS_MAX} views`);
-    if (Object.keys(state.views).length >= ENTRIES_MAX) throw new Error("too many deleted views are retained");
+    if (!prior && Object.keys(state.views).length >= ENTRIES_MAX) throw new Error("too many deleted views are retained");
   }
   const current: ViewVersion = { id: view.id, vv: bumpVV(base, state.deviceId), view: loaded.view };
   return { state: { ...state, views: { ...state.views, [view.id]: { current, conflicts: [] } } }, notices: loaded.notices };

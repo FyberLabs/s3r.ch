@@ -102,6 +102,9 @@ describe("views state", () => {
     s = deleteView(s, "v0");
     s = saveView(s, view("extra")).state;
     assert.equal(listViews(s).length, VIEWS_MAX);
+    s = deleteView(s, "v1");
+    s = saveView(s, view("extra2")).state;
+    assert.throws(() => saveView(s, view("v1")), /at most/);
   });
 
   it("rejects reserved view ids", () => {

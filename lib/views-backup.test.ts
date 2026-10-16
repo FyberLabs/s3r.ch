@@ -170,6 +170,10 @@ describe("backup", () => {
     assert.equal(await writeBackupToGraph(g, first), "stale");
     const recordKeys = [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/"));
     assert.equal(recordKeys.length, 2);
+    g.data.delete(recordKeys[0]!);
+    const third = await buildBackup(s, pair, "w", 3, cache);
+    assert.equal(await writeBackupToGraph(g, third), "written");
+    assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/")).length, 2);
     const r = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g, ["w"]);
     assert.equal(r.state.views.v2?.current.view?.title, "b2");
   });
