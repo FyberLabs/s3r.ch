@@ -269,7 +269,7 @@ describe("backup", () => {
     assert.equal(count(), 4);
     assert.equal(await writeBackupToGraph(g, second), "stale");
     assert.equal(count(), 2);
-    assert.equal(g.data.has("~/s3rch-views-cleanup/w"), false);
+    
   });
 
   it("merges favorites the same way regardless of manifest order", async () => {

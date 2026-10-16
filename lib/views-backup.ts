@@ -386,8 +386,12 @@ function safeParse(text: string): unknown {
 /**
  * Write records, then the manifest, below the user's own space:
  * `~<pub>/s3rch-views-records/<writerId>/<address>` and `~<pub>/s3rch-views/<writerId>`.
- * Records are namespaced per writer, so reclaiming one writer's records never touches another's.
  * The manifest is written last so it never names a record that is not stored yet.
+ *
+ * Reclamation is a sweep, not a queue: records live in a per-writer namespace, so after each
+ * call every record in that namespace that the published manifest does not name is removed.
+ * Leftovers from any earlier failure (a failed manifest write, a failed delete, a crash) are
+ * found by the next sweep without tracking them.
  */
 export async function writeBackupToGraph(
   user: GraphChain,
@@ -403,21 +407,13 @@ export async function writeBackupToGraph(
     const prior = isManifestShape(existing) && existing.owner === manifest.owner ? existing : null;
     const index = user.get("s3rch-views-writers").get(manifest.writerId);
     const recordsOf = user.get("s3rch-views-records").get(manifest.writerId);
-    const cleanup = user.get("s3rch-views-cleanup").get(manifest.writerId);
-    const addressesOf = (m: Manifest) => [...m.entries.map((e) => e.address), ...(m.prefs ? [m.prefs] : [])];
-    // Finish any cleanup an earlier publication could not complete, never touching addresses
-    // the published manifest still names.
-    await drainCleanup(cleanup, recordsOf, new Set(prior ? addressesOf(prior) : []));
     if (prior && prior.seq >= manifest.seq) {
       // Refresh the index entry in case an earlier publication failed after the manifest write.
       if (prior.seq === manifest.seq) await putString(index, String(now()));
+      await sweepRecords(recordsOf, addressesOf(prior));
       return "stale";
     }
     const known = new Set(prior ? addressesOf(prior) : []);
-    // Stage new addresses in the cleanup list before writing them, so records left behind by a
-    // failed manifest write are reclaimed later; the published manifest's addresses are kept.
-    const fresh = Object.keys(backup.records).filter((a) => !known.has(a));
-    if (fresh.length) await addCleanup(cleanup, fresh);
     for (const [address, record] of Object.entries(backup.records)) {
       // Rewrite a known record if it is no longer readable (for example, lost by partial retention).
       if (known.has(address)) {
@@ -426,48 +422,30 @@ export async function writeBackupToGraph(
       }
       await putString(recordsOf.get(address), JSON.stringify(record));
     }
-    const current = new Set(addressesOf(manifest));
-    const obsolete = [...known].filter((a) => !current.has(a));
-    // Record the pending cleanup before publishing, so a later call can finish it.
-    if (obsolete.length) await addCleanup(cleanup, obsolete);
     await putString(slot, JSON.stringify(manifest));
     // Writer index in the user's own space, so a new device can find earlier writers.
     // The value is the publication time, used only to pick the most recent writers on restore.
     await putString(index, String(now()));
-    // Reclaim records the previous manifest named and the new one does not (best effort).
-    await drainCleanup(cleanup, recordsOf, current);
+    await sweepRecords(recordsOf, addressesOf(manifest));
     return "written";
   });
 }
 
-/** Every address one manifest may name: its entries plus the preferences record. */
-const MANIFEST_MAX_ADDRESSES = BACKUP_MAX_ENTRIES + 1;
-/** Pending cleanup can hold one manifest's staged addresses plus the previous one's obsolete ones. */
-const CLEANUP_MAX = 2 * MANIFEST_MAX_ADDRESSES;
-
-async function addCleanup(cleanup: GraphChain, addresses: string[]): Promise<void> {
-  const left = await readString(cleanup);
-  const merged = new Set([...(Array.isArray(left) ? left.filter((a): a is string => typeof a === "string") : []), ...addresses]);
-  await putString(cleanup, JSON.stringify([...merged].slice(0, CLEANUP_MAX)));
+function addressesOf(m: Manifest): string[] {
+  return [...m.entries.map((e) => e.address), ...(m.prefs ? [m.prefs] : [])];
 }
 
-async function drainCleanup(cleanup: GraphChain, recordsOf: GraphChain, keep: Set<string>): Promise<void> {
-  const pending = await readString(cleanup);
-  if (!Array.isArray(pending)) return;
-  let failed = false;
-  for (const a of pending.slice(0, CLEANUP_MAX)) {
-    if (typeof a !== "string" || !/^[0-9a-f]{64}$/.test(a) || keep.has(a)) continue;
+/** Remove every stored record in a writer's namespace that `keep` does not name. Best effort. */
+async function sweepRecords(recordsOf: GraphChain, keep: string[]): Promise<void> {
+  const keepSet = new Set(keep);
+  const node = await new Promise<unknown>((resolve) => recordsOf.once(resolve));
+  if (typeof node !== "object" || node === null) return;
+  for (const [address, value] of Object.entries(node as Record<string, unknown>)) {
+    if (address === "_" || value === null || value === undefined || keepSet.has(address)) continue;
     try {
-      await putString(recordsOf.get(a), null);
+      await putString(recordsOf.get(address), null);
     } catch {
-      failed = true;
-    }
-  }
-  if (!failed) {
-    try {
-      await putString(cleanup, null);
-    } catch {
-      /* retried on the next publication */
+      /* found again by the next sweep */
     }
   }
 }
