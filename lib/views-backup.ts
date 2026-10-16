@@ -248,16 +248,14 @@ export async function restoreBackup(
   const views = { ...state.views };
   // Keep only the highest seq per writer.
   const latest = new Map<string, Manifest>();
-  // Count only verified manifests toward the limit; look at a bounded number in total.
-  let verified = 0;
+  // Count distinct verified writers toward the limit; look at a bounded number in total.
   for (const m of manifests.slice(0, GRAPH_SCAN_MAX)) {
-    if (verified >= BACKUP_MAX_MANIFESTS) break;
     if (!isManifestShape(m) || m.owner !== state.owner || !(await verifyManifest(pair.pub, m))) {
       notices.push({ message: "A backup manifest could not be verified and was skipped" });
       continue;
     }
-    verified++;
     const prior = latest.get(m.writerId);
+    if (!prior && latest.size >= BACKUP_MAX_MANIFESTS) continue;
     if (!prior || m.seq > prior.seq) latest.set(m.writerId, m);
   }
   const prefsInputs: unknown[] = [];

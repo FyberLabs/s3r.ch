@@ -363,6 +363,18 @@ describe("backup", () => {
     assert.ok(g.data.has("~/s3rch-views-writers/w"));
   });
 
+  it("counts distinct writers toward the restore limit", async () => {
+    const pair = await testPair();
+    const one = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    const two = saveView(emptyState(ALICE, "d2"), view("v2", "b")).state;
+    const history = await Promise.all(Array.from({ length: 20 }, (_, i) => buildBackup(one, pair, "w1", i)));
+    const b2 = await buildBackup(two, pair, "w2", 1);
+    const records = Object.assign({}, ...history.map((h) => h.records), b2.records);
+    const r = await restoreBackup(emptyState(ALICE, "d3"), pair, [...history.map((h) => h.manifest), b2.manifest], async (a) => records[a]);
+    assert.equal(r.state.views.v1?.current.view?.title, "a");
+    assert.equal(r.state.views.v2?.current.view?.title, "b");
+  });
+
   it("counts only verified manifests toward the restore limit", async () => {
     const pair = await testPair();
     const s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
