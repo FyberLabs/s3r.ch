@@ -87,6 +87,13 @@ describe("views state", () => {
     assert.equal(merged.conflicts.length, 0);
   });
 
+  it("joins concurrent tombstones into one", () => {
+    const a: ViewVersion = { id: "v1", vv: { d1: 2 }, deleted: true };
+    const b: ViewVersion = { id: "v1", vv: { d1: 1, d2: 1 }, deleted: true };
+    const e = mergeVersion(mergeVersion(undefined, a), b);
+    assert.deepEqual(e, { current: { id: "v1", vv: { d1: 2, d2: 1 }, deleted: true }, conflicts: [] });
+  });
+
   it("caps recents, dedupes and keeps most recent first", () => {
     let s = emptyState(ALICE, "d1");
     for (let i = 0; i < RECENTS_MAX + 5; i++) s = touchRecent(s, ref(`r${i}`), i);
@@ -187,6 +194,13 @@ describe("store", () => {
       }),
     ]);
     assert.deepEqual(order, ["a-start", "a-end", "b"]);
+  });
+
+  it("returns load notices from update", async () => {
+    const store = createMemoryViewsStore();
+    await store.update(ALICE, "d1", (s) => ({ ...s, views: { bad: { current: { id: "bad", vv: { d1: 1 }, view: { nope: 1 } }, conflicts: [] } } }) as unknown as ViewsState);
+    const r = await store.update(ALICE, "d1", (s) => s);
+    assert.equal(r.notices.length, 1);
   });
 
   it("serializes concurrent updates so no edit is lost", async () => {

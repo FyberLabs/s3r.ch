@@ -408,7 +408,11 @@ export async function writeBackupToGraph(
   return lock(`s3rch-views-backup:${manifest.owner}:${manifest.writerId}`, async () => {
     const slot = user.get("s3rch-views").get(manifest.writerId);
     const existing = await readString(slot);
-    const prior = isManifestShape(existing) && existing.owner === manifest.owner ? existing : null;
+    // Only a verified manifest for this owner and writer can make a publication stale.
+    const prior =
+      isManifestShape(existing) && existing.owner === manifest.owner && existing.writerId === manifest.writerId && (await verifyManifest(opts.pub, existing))
+        ? existing
+        : null;
     const index = user.get("s3rch-views-writers").get(manifest.writerId);
     const recordsOf = user.get("s3rch-views-records").get(manifest.writerId);
     // An identical manifest is republished in full (records verified and repaired, index

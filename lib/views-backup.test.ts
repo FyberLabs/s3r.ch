@@ -336,6 +336,15 @@ describe("backup", () => {
     }
   });
 
+  it("ignores an unverifiable published manifest when checking seq", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    const b = await buildBackup(s, pair, "w", 1);
+    g.data.set("~/s3rch-views/w", JSON.stringify({ ...b.manifest, seq: Number.MAX_SAFE_INTEGER }));
+    assert.equal(await writeBackupToGraph(g, b, { pub: pair.pub }), "written");
+  });
+
   it("rejects _ as a writer id and invalid sequence numbers", async () => {
     const pair = await testPair();
     for (const seq of [-1, 1.5, Number.NaN, 2 ** 53]) await assert.rejects(buildBackup(emptyState(ALICE, "d1"), pair, "w", seq));

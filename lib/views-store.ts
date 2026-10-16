@@ -4,7 +4,7 @@
  * See docs/views.md §2 and §5.
  */
 import { getAddress } from "viem";
-import { formatCanonical, sameSource, validateSourceRef, type SourceRef } from "./views-source-ref";
+import { formatShareable, sameSource, validateSourceRef, type SourceRef } from "./views-source-ref";
 import { canonicalJson } from "./views-canonical";
 import { bumpVV, compareVV, isSafeKey, isVersionVector, maxVV, type VersionVector } from "./views-vv";
 import { loadView, type Notice, type View } from "./views-window";
@@ -210,7 +210,10 @@ function mergeInner(entry: ViewEntry | undefined, incoming: ViewVersion): ViewEn
     return entry;
   }
   const survivors = known.filter((k) => compareVV(incoming.vv, k.vv) !== "after");
-  const [current, ...conflicts] = [incoming, ...survivors];
+  const all = [incoming, ...survivors];
+  // Concurrent deletions agree: join them into one tombstone instead of a hidden conflict.
+  if (all.every((v) => v.deleted)) return { current: { id: incoming.id, vv: maxVV(...all.map((v) => v.vv)), deleted: true }, conflicts: [] };
+  const [current, ...conflicts] = all;
   return { current: current!, conflicts };
 }
 
@@ -236,7 +239,8 @@ export function mergePrefs(state: ViewsState, incoming: unknown[]): ViewsState {
   const parsed = incoming.map(
     (one) => parseState({ ...(isRecord(one) ? one : {}), owner: state.owner, v: 1, views: {} }, state.owner, state.deviceId).state,
   );
-  const key = (r: SourceRef) => formatCanonical(r);
+  // Full shareable form, so references that differ only in binding hints still sort deterministically.
+  const key = (r: SourceRef) => formatShareable(r);
   const recents: RecentEntry[] = [];
   const allRecents = [...state.recents, ...parsed.flatMap((p) => p.recents)].sort(
     (a, b) => b.at - a.at || (key(a.ref) < key(b.ref) ? -1 : key(a.ref) > key(b.ref) ? 1 : 0),
@@ -291,7 +295,8 @@ export type ViewsStore = {
    * Read the state, apply `fn`, and write the result, as one serialized step across tabs.
    * Returns the new state.
    */
-  update(owner: string, deviceId: string, fn: (state: ViewsState) => ViewsState): Promise<ViewsState>;
+  /** Notices are those from validating the stored state before `fn` ran. */
+  update(owner: string, deviceId: string, fn: (state: ViewsState) => ViewsState): Promise<{ state: ViewsState; notices: Notice[] }>;
   read(owner: string, deviceId: string): Promise<{ state: ViewsState; notices: Notice[] }>;
 };
 
@@ -324,11 +329,11 @@ function makeStore(io: RawIO, lock: Lock): ViewsStore {
     async update(owner, deviceId, fn) {
       const key = getAddress(owner);
       return lock(`s3rch-views:${key}`, async () => {
-        const { state } = parseState(await io.get(key), key, deviceId);
+        const { state, notices } = parseState(await io.get(key), key, deviceId);
         const next = fn(state);
         if (next.owner !== key) throw new Error("owner changed");
         await io.put(key, next);
-        return next;
+        return { state: next, notices };
       });
     },
   };
