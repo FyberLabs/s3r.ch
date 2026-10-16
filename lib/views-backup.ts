@@ -12,8 +12,8 @@ import { canonicalJson } from "./views-canonical";
 import { defaultLock } from "./views-store";
 
 export { canonicalJson };
-import { CONFLICTS_MAX, countEntries, mergePrefs, mergeRetired, ENTRIES_MAX, isLiveEntry, mergeVersion, mergeVersionChecked, parseVersion, RETIRED_MAX, TOMBSTONES_MAX, VIEWS_MAX, type ViewsState, type ViewVersion } from "./views-store";
-import { isSafeKey, isVersionVector, type VersionVector } from "./views-vv";
+import { CONFLICTS_MAX, countEntries, mergePrefs, ENTRIES_MAX, isLiveEntry, mergeVersionChecked, parseVersion, TOMBSTONES_MAX, VIEWS_MAX, type ViewsState, type ViewVersion } from "./views-store";
+import { isSafeKey } from "./views-vv";
 import type { Notice } from "./views-window";
 
 export const BACKUP_FILE_KIND = "s3rch-views-backup";
@@ -43,21 +43,8 @@ const HKDF_SALT = "s3rch-views-backup-v1";
 
 export type EncryptedRecord = { v: 1; iv: string; ct: string };
 export type ManifestEntry = { id: string; address: string };
-/**
- * `prefs` is the address of this writer's encrypted recents and favorites record. `deviceId` is
- * the vector component this writer bumps; `retired` is the account's retirement map.
- */
-export type Manifest = {
-  v: 1;
-  owner: string;
-  writerId: string;
-  deviceId: string;
-  seq: number;
-  entries: ManifestEntry[];
-  prefs?: string;
-  retired: VersionVector;
-  sig: string;
-};
+/** `prefs` is the address of this writer's encrypted recents and favorites record. */
+export type Manifest = { v: 1; owner: string; writerId: string; seq: number; entries: ManifestEntry[]; prefs?: string; sig: string };
 export type BackupFile = { kind: typeof BACKUP_FILE_KIND; v: 1; manifests: Manifest[]; records: Record<string, EncryptedRecord> };
 
 const enc = new TextEncoder();
@@ -159,7 +146,7 @@ export async function decryptVersion(key: CryptoKey, owner: string, id: string, 
 }
 
 function manifestBody(m: Omit<Manifest, "sig">): string {
-  return canonicalJson({ v: m.v, owner: m.owner, writerId: m.writerId, deviceId: m.deviceId, seq: m.seq, entries: m.entries, prefs: m.prefs, retired: m.retired });
+  return canonicalJson({ v: m.v, owner: m.owner, writerId: m.writerId, seq: m.seq, entries: m.entries, prefs: m.prefs });
 }
 
 export async function signManifest(pair: Pick<SeaPair, "pub" | "priv">, m: Omit<Manifest, "sig">): Promise<Manifest> {
@@ -226,16 +213,7 @@ export async function buildBackup(
   records[prefsHit.address] = prefsHit.record;
   for (const k of [...cache.keys()]) if (!used.has(k)) cache.delete(k);
   entries.sort((a, b) => (a.id + a.address < b.id + b.address ? -1 : 1));
-  const manifest = await signManifest(pair, {
-    v: 1,
-    owner: state.owner,
-    writerId,
-    deviceId: state.deviceId,
-    seq,
-    entries,
-    prefs: prefsHit.address,
-    retired: state.retired,
-  });
+  const manifest = await signManifest(pair, { v: 1, owner: state.owner, writerId, seq, entries, prefs: prefsHit.address });
   return { manifest, records };
 }
 
@@ -248,7 +226,6 @@ function isManifestShape(value: unknown): value is Manifest {
   const m = value as Manifest;
   return (
     typeof m === "object" && m !== null && m.v === 1 && typeof m.owner === "string" && typeof m.writerId === "string" && isSafeKey(m.writerId) &&
-    typeof m.deviceId === "string" && isSafeKey(m.deviceId) && isVersionVector(m.retired) && Object.keys(m.retired).length <= RETIRED_MAX &&
     Number.isSafeInteger(m.seq) && m.seq >= 0 && typeof m.sig === "string" && Array.isArray(m.entries) && m.entries.length <= BACKUP_MAX_ENTRIES &&
     m.entries.every((e) => typeof e === "object" && e !== null && typeof e.id === "string" && isSafeKey(e.id) && typeof e.address === "string" && /^[0-9a-f]{64}$/.test(e.address)) &&
     (m.prefs === undefined || (typeof m.prefs === "string" && /^[0-9a-f]{64}$/.test(m.prefs)))
@@ -282,13 +259,6 @@ export async function restoreBackup(
     verified++;
     const prior = latest.get(m.writerId);
     if (!prior || m.seq > prior.seq) latest.set(m.writerId, m);
-  }
-  // Retirement maps are merged first, so versions compare under the same map.
-  let retired = state.retired;
-  for (const m of latest.values()) {
-    const next = mergeRetired(retired, m.retired);
-    if (next) retired = next;
-    else notices.push({ message: "Retirement map is full; one backup's retired devices were not merged" });
   }
   const prefsInputs: unknown[] = [];
   for (const m of latest.values()) {
@@ -329,14 +299,14 @@ export async function restoreBackup(
         continue;
       }
       const prior = Object.hasOwn(views, e.id) ? views[e.id] : undefined;
-      const merged = mergeVersionChecked(prior, version, retired);
+      const merged = mergeVersionChecked(prior, version);
       views[e.id] = merged.entry;
       if (merged.overflow) notices.push({ message: `View ${e.id} has more than ${CONFLICTS_MAX} conflicting copies; extra copies were dropped` });
     }
   }
   enforceLimits(state.views, views, notices);
-  const prefsState = mergePrefs({ ...state, retired }, prefsInputs);
-  return { state: { ...state, retired, views, recents: prefsState.recents, favorites: prefsState.favorites, favoritesVV: prefsState.favoritesVV }, notices };
+  const prefsState = mergePrefs(state, prefsInputs);
+  return { state: { ...state, views, recents: prefsState.recents, favorites: prefsState.favorites, favoritesVV: prefsState.favoritesVV }, notices };
 }
 
 /**
@@ -560,100 +530,4 @@ export async function restoreFromGraph(state: ViewsState, pair: SeaPair, user: G
     if (isManifestShape(m) && m.owner === state.owner && m.writerId === w && (await verifyManifest(pair.pub, m))) manifests.push(m);
   }
   return restoreBackup(state, pair, manifests, (a, w) => readString(user.get("s3rch-views-records").get(w).get(a)));
-}
-
-/**
- * Prune superseded writers (docs/views.md §5). Call after `writeBackupToGraph` published
- * `backup`, which was built from `state`. Another writer is superseded when merging its whole
- * manifest (every View version and its recents and favorites) into `state` changes nothing,
- * so the published manifest already holds its state. For each one, this:
- *
- * 1. records its device's final counter (the highest value of that component in `state`) in
- *    the retirement map of the returned state, to be published by the next backup;
- * 2. tombstones its manifest slot, then removes its records and its writer-index row.
- *
- * Writers that cannot be read and verified in full are left alone. Returns the new state
- * (persist it) and the pruned writer ids.
- */
-export async function pruneWriters(
-  user: GraphChain,
-  state: ViewsState,
-  pair: SeaPair,
-  backup: { manifest: Manifest },
-  opts: { lock?: <T>(name: string, run: () => Promise<T>) => Promise<T> } = {},
-): Promise<{ state: ViewsState; pruned: string[] }> {
-  const own = backup.manifest;
-  const lock = opts.lock ?? defaultLock();
-  const published = await readString(user.get("s3rch-views").get(own.writerId));
-  // Only a published manifest of this state can supersede others.
-  if (!isManifestShape(published) || manifestBody(published) !== manifestBody(own) || own.deviceId !== state.deviceId) return { state, pruned: [] };
-  const key = await deriveBackupKey(pair);
-  const pruned: string[] = [];
-  let retired = state.retired;
-  let checked = 0;
-  for (const w of (await listGraphWriters(user)).slice(0, GRAPH_SCAN_MAX)) {
-    if (w === own.writerId) continue;
-    if (checked >= BACKUP_MAX_MANIFESTS) break;
-    const slot = user.get("s3rch-views").get(w);
-    const m = await readString(slot);
-    if (!isManifestShape(m) || m.owner !== state.owner || m.writerId !== w || m.deviceId === state.deviceId || !(await verifyManifest(pair.pub, m))) continue;
-    checked++;
-    const recordsOf = user.get("s3rch-views-records").get(w);
-    if (!(await supersededBy(state, key, m, (a) => readString(recordsOf.get(a))))) continue;
-    const final = finalCounter(state, m.deviceId);
-    if (final > 0) {
-      const next = mergeRetired(retired, { [m.deviceId]: final });
-      if (!next) break; // retirement map is full; stop pruning
-      retired = next;
-    }
-    await lock(`s3rch-views-backup:${m.owner}:${w}`, async () => {
-      await putString(slot, null);
-      await sweepRecords(recordsOf, []);
-      await putString(user.get("s3rch-views-writers").get(w), null);
-    });
-    pruned.push(w);
-  }
-  return { state: { ...state, retired }, pruned };
-}
-
-/** Whether merging every version and the prefs of `m` into `state` would change nothing. */
-async function supersededBy(state: ViewsState, key: CryptoKey, m: Manifest, fetch: (address: string) => Promise<unknown>): Promise<boolean> {
-  const notices: Notice[] = [];
-  const records = await mapPool(addressesOf(m), FETCH_CONCURRENCY, async (a) => {
-    try {
-      const r = await fetch(a);
-      return isRecordShape(r) && (await recordAddress(r)) === a ? r : null;
-    } catch {
-      return null;
-    }
-  });
-  const byAddress = new Map(addressesOf(m).map((a, i) => [a, records[i]] as const));
-  for (const e of m.entries) {
-    const r = byAddress.get(e.address);
-    const version = r ? await decryptVersion(key, state.owner, e.id, r, notices) : null;
-    if (!version) return false;
-    const prior = Object.hasOwn(state.views, e.id) ? state.views[e.id] : undefined;
-    if (!prior || mergeVersion(prior, version, state.retired) !== prior) return false;
-  }
-  if (m.prefs) {
-    const r = byAddress.get(m.prefs);
-    const text = r ? await decryptBytes(key, prefsAad(state.owner, m.writerId), r) : null;
-    const parsed = text === null ? undefined : safeParse(text);
-    if (parsed === undefined) return false;
-    const merged = mergePrefs(state, [parsed]);
-    const prefsOf = (s: ViewsState) => canonicalJson({ r: s.recents, f: s.favorites, v: s.favoritesVV });
-    if (prefsOf(merged) !== prefsOf(state)) return false;
-  }
-  return true;
-}
-
-/** Highest value of a device's component anywhere in `state` (its final counter once retired). */
-function finalCounter(state: ViewsState, deviceId: string): number {
-  let n = Object.hasOwn(state.retired, deviceId) ? state.retired[deviceId]! : 0;
-  const take = (v: VersionVector) => {
-    if (Object.hasOwn(v, deviceId)) n = Math.max(n, v[deviceId]!);
-  };
-  for (const e of Object.values(state.views)) for (const v of [e.current, ...e.conflicts]) take(v.vv);
-  take(state.favoritesVV);
-  return n;
 }

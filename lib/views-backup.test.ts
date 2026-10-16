@@ -11,12 +11,10 @@ import {
   restoreFromGraph,
   listGraphWriters,
   writeBackupToGraph,
-  pruneWriters,
   BACKUP_FILE_MAX_BYTES,
   type GraphChain,
 } from "./views-backup";
-import { emptyState, mergeVersion, saveView, toggleFavorite, touchRecent } from "./views-store";
-import { compareVV } from "./views-vv";
+import { emptyState, saveView, toggleFavorite, touchRecent } from "./views-store";
 import type { View } from "./views-window";
 
 const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -411,57 +409,5 @@ describe("backup", () => {
     assert.equal(parseBackupFile("x".repeat(BACKUP_FILE_MAX_BYTES + 1)).ok, false);
     assert.equal(parseBackupFile("{").ok, false);
     assert.equal(parseBackupFile('{"kind":"other","v":1,"manifests":[],"records":{}}').ok, false);
-  });
-
-  it("prunes a superseded writer and retires its device", async () => {
-    const pair = await testPair();
-    const g = fakeGraph();
-    const pub = { pub: pair.pub, now: () => 1 };
-    // Old device writes, then a restore on a new device takes over its state.
-    const old = saveView(emptyState(ALICE, "dOld"), view("v1", "a")).state;
-    await writeBackupToGraph(g, await buildBackup(old, pair, "wOld", 1), pub);
-    let s = (await restoreFromGraph(emptyState(ALICE, "dNew"), pair, g)).state;
-    let b = await buildBackup(s, pair, "wNew", 1);
-    await writeBackupToGraph(g, b, { pub: pair.pub, now: () => 2 });
-    const r = await pruneWriters(g, s, pair, b);
-    assert.deepEqual(r.pruned, ["wOld"]);
-    assert.deepEqual(r.state.retired, { dOld: 1 });
-    assert.ok(![...g.data.keys()].some((k) => k.includes("wOld")));
-    assert.deepEqual(await listGraphWriters(g), ["wNew"]);
-    // The next edit drops the retired component; a stale export still compares as older.
-    s = saveView(r.state, view("v1", "b")).state;
-    assert.deepEqual(s.views.v1?.current.vv, { dNew: 1 });
-    assert.equal(compareVV(old.views.v1!.current.vv, s.views.v1!.current.vv, s.retired), "before");
-    assert.equal(mergeVersion(s.views.v1, old.views.v1!.current, s.retired), s.views.v1);
-    // The retirement map is published and merged on restore.
-    b = await buildBackup(s, pair, "wNew", 2);
-    await writeBackupToGraph(g, b, { pub: pair.pub, now: () => 3 });
-    const again = (await restoreFromGraph(emptyState(ALICE, "dThird"), pair, g)).state;
-    assert.deepEqual(again.retired, { dOld: 1 });
-    assert.equal(again.views.v1?.current.view?.title, "b");
-  });
-
-  it("keeps a writer whose state is not covered", async () => {
-    const pair = await testPair();
-    const g = fakeGraph();
-    const other = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
-    await writeBackupToGraph(g, await buildBackup(other, pair, "w1", 1), { pub: pair.pub, now: () => 1 });
-    const s = saveView(emptyState(ALICE, "d2"), view("v2", "b")).state;
-    const b = await buildBackup(s, pair, "w2", 1);
-    await writeBackupToGraph(g, b, { pub: pair.pub, now: () => 2 });
-    const r = await pruneWriters(g, s, pair, b);
-    assert.deepEqual(r.pruned, []);
-    assert.deepEqual(r.state.retired, {});
-    assert.ok(g.data.has("~/s3rch-views/w1"));
-  });
-
-  it("does not prune before its own manifest is published", async () => {
-    const pair = await testPair();
-    const g = fakeGraph();
-    const old = saveView(emptyState(ALICE, "dOld"), view("v1", "a")).state;
-    await writeBackupToGraph(g, await buildBackup(old, pair, "wOld", 1), { pub: pair.pub, now: () => 1 });
-    const s = (await restoreFromGraph(emptyState(ALICE, "dNew"), pair, g)).state;
-    const r = await pruneWriters(g, s, pair, await buildBackup(s, pair, "wNew", 1));
-    assert.deepEqual(r.pruned, []);
   });
 });

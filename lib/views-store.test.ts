@@ -18,7 +18,7 @@ import {
   type ViewsState,
   type ViewEntry, type ViewVersion,
 } from "./views-store";
-import { bumpVV, compactVV, compareVV, isVersionVector, joinVV } from "./views-vv";
+import { bumpVV, compareVV, isVersionVector } from "./views-vv";
 import type { View } from "./views-window";
 
 const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -42,16 +42,6 @@ describe("version vectors", () => {
     assert.equal(isVersionVector({ toString: 1 }), false);
     assert.throws(() => bumpVV({}, "constructor"));
     assert.throws(() => bumpVV({ d: Number.MAX_SAFE_INTEGER }, "d"), /exhausted/);
-  });
-
-  it("reads retired components from the retirement map", () => {
-    const retired = { r: 5 };
-    assert.equal(compareVV({ a: 1 }, { a: 1, r: 5 }, retired), "equal");
-    assert.equal(compareVV({ a: 1 }, { a: 1, r: 3 }, retired), "after");
-    assert.deepEqual(compactVV({ a: 1, r: 5 }, retired), { a: 1 });
-    assert.deepEqual(compactVV({ a: 1, r: 3 }, retired), { a: 1, r: 3 });
-    assert.deepEqual(joinVV(retired, { r: 3 }, { a: 1 }), { a: 1 });
-    assert.deepEqual(bumpVV({}, "r", retired), { r: 6 });
   });
 });
 
