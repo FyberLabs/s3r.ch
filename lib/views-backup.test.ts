@@ -13,7 +13,7 @@ import {
   BACKUP_FILE_MAX_BYTES,
   type GraphChain,
 } from "./views-backup";
-import { emptyState, saveView } from "./views-store";
+import { emptyState, saveView, toggleFavorite, touchRecent } from "./views-store";
 import type { View } from "./views-window";
 
 const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -44,7 +44,12 @@ function fakeGraph(): GraphChain & { data: Map<string, string> } {
       else data.set(path, v);
       cb?.({});
     },
-    once: (cb) => cb(data.get(path)),
+    once: (cb) => {
+      if (data.has(path)) return cb(data.get(path));
+      const children: Record<string, string> = {};
+      for (const [k, v] of data) if (k.startsWith(`${path}/`) && !k.slice(path.length + 1).includes("/")) children[k.slice(path.length + 1)] = v;
+      cb(Object.keys(children).length ? { _: {}, ...children } : undefined);
+    },
   });
   return Object.assign(at("~"), { data });
 }
@@ -115,7 +120,7 @@ describe("backup", () => {
     const g = fakeGraph();
     await writeBackupToGraph(g, await buildBackup(s, pair, "w1", 1));
     assert.ok([...g.data.keys()].some((k) => k === "~/s3rch-views/w1"));
-    const r = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g, ["w1"]);
+    const r = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g);
     assert.equal(r.state.views.v1?.current.view?.title, "graph");
   });
 
@@ -169,13 +174,29 @@ describe("backup", () => {
     assert.equal(await writeBackupToGraph(g, second), "written");
     assert.equal(await writeBackupToGraph(g, first), "stale");
     const recordKeys = [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/"));
-    assert.equal(recordKeys.length, 2);
+    assert.equal(recordKeys.length, 3);
     g.data.delete(recordKeys[0]!);
     const third = await buildBackup(s, pair, "w", 3, cache);
     assert.equal(await writeBackupToGraph(g, third), "written");
-    assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/")).length, 2);
+    assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/")).length, 3);
     const r = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g, ["w"]);
     assert.equal(r.state.views.v2?.current.view?.title, "b2");
+  });
+
+  it("backs up and merges recents and favorites", async () => {
+    const pair = await testPair();
+    const ref = (source: string) => ({ network: NET, owner: ALICE, source, kind: "chat" as const, v: 1 as const });
+    let s = toggleFavorite(emptyState(ALICE, "d1"), ref("fav"));
+    s = touchRecent(s, ref("old"), 1);
+    const b = await buildBackup(s, pair, "w", 1);
+    let local = touchRecent(emptyState(ALICE, "d2"), ref("new"), 5);
+    local = toggleFavorite(local, ref("mine"));
+    const r = await restoreBackup(local, pair, [b.manifest], async (a) => b.records[a]);
+    assert.deepEqual(r.state.recents.map((x) => x.ref.source), ["new", "old"]);
+    assert.deepEqual(r.state.favorites.map((x) => x.source), ["mine", "fav"]);
+    const tampered = { ...b.manifest, prefs: b.manifest.entries[0]?.address ?? "0".repeat(64) };
+    const r2 = await restoreBackup(emptyState(ALICE, "d3"), pair, [tampered], async (a) => b.records[a]);
+    assert.equal(r2.state.favorites.length, 0);
   });
 
   it("rejects oversized and malformed files before use", () => {

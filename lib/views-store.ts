@@ -208,6 +208,25 @@ export function listViews(state: ViewsState): { view: View; conflicted: boolean 
   return out.sort((a, b) => a.view.title.localeCompare(b.view.title) || a.view.id.localeCompare(b.view.id));
 }
 
+/**
+ * Merge recents and favorites from a backup. Recents are combined by most recent `at`,
+ * unique and capped; favorites are the union, capped. Input is validated like stored state.
+ */
+export function mergePrefs(state: ViewsState, incoming: unknown): ViewsState {
+  const parsed = parseState(
+    { ...(isRecord(incoming) ? incoming : {}), owner: state.owner, v: 1, views: {} },
+    state.owner,
+    state.deviceId,
+  ).state;
+  const recents: RecentEntry[] = [];
+  for (const r of [...state.recents, ...parsed.recents].sort((a, b) => b.at - a.at)) {
+    if (!recents.some((x) => sameSource(x.ref, r.ref))) recents.push(r);
+  }
+  const favorites = [...state.favorites];
+  for (const f of parsed.favorites) if (!favorites.some((x) => sameSource(x, f))) favorites.push(f);
+  return { ...state, recents: recents.slice(0, RECENTS_MAX), favorites: favorites.slice(0, FAVORITES_MAX) };
+}
+
 /** Record that a source was opened or added. Most recent first, unique, capped. */
 export function touchRecent(state: ViewsState, ref: SourceRef, at: number): ViewsState {
   const checked = validateSourceRef(ref);

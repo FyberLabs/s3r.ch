@@ -12,7 +12,7 @@ import { canonicalJson } from "./views-canonical";
 import { defaultLock } from "./views-store";
 
 export { canonicalJson };
-import { CONFLICTS_MAX, countEntries, ENTRIES_MAX, isLiveEntry, mergeVersionChecked, parseVersion, TOMBSTONES_MAX, VIEWS_MAX, type ViewsState, type ViewVersion } from "./views-store";
+import { CONFLICTS_MAX, countEntries, mergePrefs, ENTRIES_MAX, isLiveEntry, mergeVersionChecked, parseVersion, TOMBSTONES_MAX, VIEWS_MAX, type ViewsState, type ViewVersion } from "./views-store";
 import { isSafeKey } from "./views-vv";
 import type { Notice } from "./views-window";
 
@@ -25,7 +25,8 @@ const HKDF_SALT = "s3rch-views-backup-v1";
 
 export type EncryptedRecord = { v: 1; iv: string; ct: string };
 export type ManifestEntry = { id: string; address: string };
-export type Manifest = { v: 1; owner: string; writerId: string; seq: number; entries: ManifestEntry[]; sig: string };
+/** `prefs` is the address of this writer's encrypted recents and favorites record. */
+export type Manifest = { v: 1; owner: string; writerId: string; seq: number; entries: ManifestEntry[]; prefs?: string; sig: string };
 export type BackupFile = { kind: typeof BACKUP_FILE_KIND; v: 1; manifests: Manifest[]; records: Record<string, EncryptedRecord> };
 
 const enc = new TextEncoder();
@@ -86,6 +87,26 @@ function aad(owner: string, id: string): Uint8Array<ArrayBuffer> {
   return enc.encode(canonicalJson({ owner, id, purpose: "views-record" }));
 }
 
+function prefsAad(owner: string, writerId: string): Uint8Array<ArrayBuffer> {
+  return enc.encode(canonicalJson({ owner, writerId, purpose: "views-prefs" }));
+}
+
+async function encryptBytes(key: CryptoKey, additionalData: Uint8Array<ArrayBuffer>, plaintext: string): Promise<EncryptedRecord> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData }, key, enc.encode(plaintext)));
+  return { v: 1, iv: b64u(iv), ct: b64u(ct) };
+}
+
+async function decryptBytes(key: CryptoKey, additionalData: Uint8Array<ArrayBuffer>, record: EncryptedRecord): Promise<string | null> {
+  try {
+    const iv = fromB64u(record.iv);
+    if (iv.length !== 12) return null;
+    return dec.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData }, key, fromB64u(record.ct)));
+  } catch {
+    return null;
+  }
+}
+
 export async function encryptVersion(key: CryptoKey, owner: string, version: ViewVersion): Promise<EncryptedRecord> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = new Uint8Array(
@@ -107,7 +128,7 @@ export async function decryptVersion(key: CryptoKey, owner: string, id: string, 
 }
 
 function manifestBody(m: Omit<Manifest, "sig">): string {
-  return canonicalJson({ v: m.v, owner: m.owner, writerId: m.writerId, seq: m.seq, entries: m.entries });
+  return canonicalJson({ v: m.v, owner: m.owner, writerId: m.writerId, seq: m.seq, entries: m.entries, prefs: m.prefs });
 }
 
 export async function signManifest(pair: Pick<SeaPair, "pub" | "priv">, m: Omit<Manifest, "sig">): Promise<Manifest> {
@@ -159,9 +180,19 @@ export async function buildBackup(
       entries.push({ id: version.id, address: hit.address });
     }
   }
+  const prefsPlain = canonicalJson({ recents: state.recents, favorites: state.favorites });
+  const prefsDigest = await sha256Hex(`${state.owner}\n${writerId}\nprefs\n${prefsPlain}`);
+  let prefsHit = cache.get(prefsDigest);
+  if (!prefsHit) {
+    const record = await encryptBytes(key, prefsAad(state.owner, writerId), prefsPlain);
+    prefsHit = { address: await recordAddress(record), record };
+    cache.set(prefsDigest, prefsHit);
+  }
+  used.add(prefsDigest);
+  records[prefsHit.address] = prefsHit.record;
   for (const k of [...cache.keys()]) if (!used.has(k)) cache.delete(k);
   entries.sort((a, b) => (a.id + a.address < b.id + b.address ? -1 : 1));
-  const manifest = await signManifest(pair, { v: 1, owner: state.owner, writerId, seq, entries });
+  const manifest = await signManifest(pair, { v: 1, owner: state.owner, writerId, seq, entries, prefs: prefsHit.address });
   return { manifest, records };
 }
 
@@ -175,7 +206,8 @@ function isManifestShape(value: unknown): value is Manifest {
   return (
     typeof m === "object" && m !== null && m.v === 1 && typeof m.owner === "string" && typeof m.writerId === "string" && isSafeKey(m.writerId) &&
     Number.isSafeInteger(m.seq) && m.seq >= 0 && typeof m.sig === "string" && Array.isArray(m.entries) && m.entries.length <= BACKUP_MAX_ENTRIES &&
-    m.entries.every((e) => typeof e === "object" && e !== null && typeof e.id === "string" && isSafeKey(e.id) && typeof e.address === "string" && /^[0-9a-f]{64}$/.test(e.address))
+    m.entries.every((e) => typeof e === "object" && e !== null && typeof e.id === "string" && isSafeKey(e.id) && typeof e.address === "string" && /^[0-9a-f]{64}$/.test(e.address)) &&
+    (m.prefs === undefined || (typeof m.prefs === "string" && /^[0-9a-f]{64}$/.test(m.prefs)))
   );
 }
 
@@ -203,7 +235,25 @@ export async function restoreBackup(
     const prior = latest.get(m.writerId);
     if (!prior || m.seq > prior.seq) latest.set(m.writerId, m);
   }
+  let prefsState = state;
   for (const m of latest.values()) {
+    if (m.prefs) {
+      let raw: unknown;
+      try {
+        raw = await fetchRecord(m.prefs);
+      } catch {
+        raw = undefined;
+      }
+      const text = isRecordShape(raw) && (await recordAddress(raw)) === m.prefs ? await decryptBytes(key, prefsAad(state.owner, m.writerId), raw) : null;
+      let parsed: unknown = null;
+      try {
+        parsed = text === null ? null : JSON.parse(text);
+      } catch {
+        parsed = null;
+      }
+      if (parsed === null) notices.push({ message: "Saved recents and favorites from one device could not be read" });
+      else prefsState = mergePrefs(prefsState, parsed);
+    }
     for (const e of m.entries) {
       let raw: unknown;
       try {
@@ -235,7 +285,7 @@ export async function restoreBackup(
       views[e.id] = merged.entry;
     }
   }
-  return { state: { ...state, views }, notices };
+  return { state: { ...state, views, recents: prefsState.recents, favorites: prefsState.favorites }, notices };
 }
 
 /** Serialize backups to one file. Fails rather than producing a file the importer would reject. */
@@ -319,24 +369,46 @@ export async function writeBackupToGraph(
     const existing = await readString(slot);
     const prior = isManifestShape(existing) && existing.owner === manifest.owner ? existing : null;
     if (prior && prior.seq >= manifest.seq) return "stale";
-    const known = new Set(prior?.entries.map((e) => e.address) ?? []);
+    const addressesOf = (m: Manifest) => [...m.entries.map((e) => e.address), ...(m.prefs ? [m.prefs] : [])];
+    const known = new Set(prior ? addressesOf(prior) : []);
     for (const [address, record] of Object.entries(backup.records)) {
       // Rewrite a known record if it is no longer readable (for example, lost by partial retention).
       if (known.has(address) && isRecordShape(await readString(user.get("s3rch-views-records").get(address)))) continue;
       await putString(user.get("s3rch-views-records").get(address), JSON.stringify(record));
     }
     await putString(slot, JSON.stringify(manifest));
+    // Writer index in the user's own space, so a new device can find earlier writers.
+    await putString(user.get("s3rch-views-writers").get(manifest.writerId), "1");
     // Reclaim records the previous manifest named and the new one does not.
-    const now = new Set(manifest.entries.map((e) => e.address));
+    const now = new Set(addressesOf(manifest));
     for (const address of known) if (!now.has(address)) await putString(user.get("s3rch-views-records").get(address), null);
     return "written";
   });
 }
 
 /** Read the manifests for the given writer ids and restore from the user's graph copy. */
-export async function restoreFromGraph(state: ViewsState, pair: SeaPair, user: GraphChain, writerIds: string[]): Promise<{ state: ViewsState; notices: Notice[] }> {
+/** Writer ids listed in the user's writer index (`~<pub>/s3rch-views-writers`). */
+export function listGraphWriters(user: GraphChain): Promise<string[]> {
+  return new Promise((resolve) =>
+    user.get("s3rch-views-writers").once((node) => {
+      if (typeof node !== "object" || node === null) return resolve([]);
+      const ids = Object.entries(node as Record<string, unknown>)
+        .filter(([k, v]) => k !== "_" && isSafeKey(k) && v === "1")
+        .map(([k]) => k)
+        .sort();
+      resolve(ids);
+    }),
+  );
+}
+
+/**
+ * Restore from the user's graph copy. Without explicit writer ids, the writer index is
+ * read; manifests are still verified, so a bogus index entry only costs one lookup.
+ */
+export async function restoreFromGraph(state: ViewsState, pair: SeaPair, user: GraphChain, writerIds?: string[]): Promise<{ state: ViewsState; notices: Notice[] }> {
   const manifests: unknown[] = [];
-  for (const w of writerIds.slice(0, BACKUP_MAX_MANIFESTS)) {
+  const ids = writerIds ?? (await listGraphWriters(user));
+  for (const w of ids.slice(0, BACKUP_MAX_MANIFESTS)) {
     const m = await readString(user.get("s3rch-views").get(w));
     if (m !== undefined) manifests.push(m);
   }
