@@ -226,7 +226,7 @@ type AccessRequest = {
 
 **Policy per source** (s3r.ch policy, evaluated on the owner's or admin's client before any grant is written; SociACL itself has no standing deny):
 - `public`: anyone may read and **no request is needed** to read. Requests exist only for `read+post`, which is auto- or manually approved per the owner's setting.
-- `members`: members of listed groups/orgs auto-approve at a chosen scope. Membership needs a group-membership check ("is accessor a live direct member of group g at time t", hop 1, no nested groups) on the owner's client. Neither s3r.ch nor the SociACL light surface exports such a check today (SociACL has group set ids in `typescript/src/group.js`; [encrypted-discovery.md](encrypted-discovery.md) notes the `same-group` gap). *Dependency:* SociACL light-surface group membership check (new SociACL issue to file). Until then, `members` policies fall back to the manual queue.
+- `members`: members of listed groups/orgs auto-approve at a chosen scope. Membership needs a group-membership check ("is accessor a live direct member of group g at time t", hop 1, no nested groups) on the owner's client. SociACL provides this as `checkGroupSee` (`typescript/src/group.js`, documented in SociACL `docs/s3rch-check.md`), and SociACL #46 covers using it for members auto-approve. s3r.ch has its own TypeScript Check (`lib/identity/check.ts`) and does not import the SociACL package, so *dependency:* port `checkGroupSee` into s3r.ch's Check (PR 30). Members auto-approve works in v0 once the port exists; until then `members` policies fall back to the manual queue.
 - `manual`: everything goes to the queue.
 Order: explicit deny (s3r.ch policy), then member/public auto rules, then the manual queue. A cancel always wins immediately.
 
@@ -235,7 +235,7 @@ Order: explicit deny (s3r.ch policy), then member/public auto rules, then the ma
 **Owner approval queue:** an "Access requests" panel with a count badge, reachable from source settings and notifications. Each row shows requester identity (ENS / held claims), source, scope and the decrypted message, with **Approve** (scope editable; expiry `until` is always set, defaulting to a configurable per-owner/per-source setting, because `IdentitySeeGrant.until` is required), **Decline**, and **Always approve this group**.
 
 **SociACL mapping:**
-- **Grant rows must be owner-signed.** Today `MeshSeeGrant` (`object, accessor, from, until, stated`) and its `GunAclEdge` carry no signature, on a publicly writable `s3rch/acl` path, so a peer can forge a grant row. Readers and Check must verify an owner (or admin) signature on every grant row before accepting it, and treat unsigned rows as absent. *Dependency:* SociACL #45 covers owner-signed **post** grants; signed **see** grant rows need a new SociACL issue (to file), unless #45 is widened to both. s3r.ch verification is PR 28. *v0 limitation:* until then, mesh grants are hints and access to content that is not public stays limited as described in §3.4.
+- **Grant rows must be owner-signed.** Today `MeshSeeGrant` (`object, accessor, from, until, stated`) and its `GunAclEdge` carry no signature, on a publicly writable `s3rch/acl` path, so a peer can forge a grant row. Readers and Check must verify an owner (or admin) signature on every grant row before accepting it, and treat unsigned rows as absent. *Dependency:* SociACL [#49](https://github.com/FyberLabs/SociACL/issues/49) covers owner-signature verification of public-path see, post and cancel rows and group membership edges; #45 defines the post grant itself. s3r.ch verification is PR 28. *v0 limitation:* until then, mesh grants are hints and access to content that is not public stays limited as described in §3.4.
 - On approve, the owner's client writes the see grant (`IdentitySeeGrant{claimId=source object, accessor=requester, from, until}`) and delivers onto `s3rch/granted/<requester>`.
 - For `read+post` it also writes a **post grant**: a new owner-signed row with the same shape and cancel rule as the see grant (SociACL #45). Check returns `canPost` only if `canSee` also passes. The UI shows read+post only when both grants are live.
 - **Post grants are enforced when writes are accepted, not only in the UI.** Gun accepts any put, so hiding the composer is not a boundary. This needs three things:
@@ -308,10 +308,10 @@ Mobile: one stage with a swipeable window strip; chat as a bottom sheet; PiP for
 | Public visibility semantics in a Check wrapper | Missing (PR 25) |
 | Read-only forum invite (`invite-read`) | Missing (PR 20) |
 | Encrypted content for non-public sources ([encrypted-discovery.md](encrypted-discovery.md)) | Design only; separate track. v0 keeps locked content off shared paths |
-| Planned SociACL group-membership check (`same-group`, direct members, hop 1) | Missing. SociACL issue to file. `members` policy falls back to manual until it lands |
+| Group-membership check in s3r.ch Check (port of SociACL `checkGroupSee`) | Exists in SociACL; missing in s3r.ch (PR 30). `members` falls back to manual until ported |
 | Mesh-link statement v2 binding `SEA pub` + `SEA epub` | Missing (PR 26) |
 | Signed `GunChatNode` (author mesh-key signature) | Missing; chat nodes are unsigned today (PR 27) |
-| Owner-signed see grant rows + verification before accept | Missing. SociACL #45 (post grants); signed see rows need a new SociACL issue (PR 28) |
+| Owner-signed grant rows (see, post, cancel, group edges) + verification before accept | Missing. SociACL [#49](https://github.com/FyberLabs/SociACL/issues/49) (PR 28) |
 | Encrypted SEA key export / PRF envelope recovery for new devices | PRF wrap exists; export and restore flow missing (PR 29) |
 | Owner-signed decision record + per-recipient request bodies | Missing (PR 11) |
 | Join / membership action for rooms | Missing; deferred to bot-plane room membership (ROADMAP item 1) |
@@ -325,9 +325,8 @@ Mobile: one stage with a swipeable window strip; chat as a bottom sheet; PiP for
 | SociACL issue | Unblocks s3r.ch PRs | Phase |
 | --- | --- | --- |
 | [#45](https://github.com/FyberLabs/SociACL/issues/45) Owner-signed post grant (read+post) | 4 (inline canPost state), 5 (targeted composer posting), 11, 12, 23, 28 | v0 |
-| [#46](https://github.com/FyberLabs/SociACL/issues/46) Signed access requests + approve-to-grant helper | 11, 12 | v0 |
-| (to file) Signed see grant rows | 28 | v0 |
-| (to file) Group-membership check (`same-group`, hop 1) | 12 (`members` auto-approve) | v0 |
+| [#46](https://github.com/FyberLabs/SociACL/issues/46) Signed access requests + approve-to-grant helper; members auto-approve via `checkGroupSee` | 11, 12, 30 | v0 |
+| [#49](https://github.com/FyberLabs/SociACL/issues/49) Owner-signature verification of public-path see, post and cancel rows and group membership edges | 28, 23 | v0 |
 | [#47](https://github.com/FyberLabs/SociACL/issues/47) Permission-filtered search | 17 | post-v0, blocked on SociACL #31 |
 | [#48](https://github.com/FyberLabs/SociACL/issues/48) Cross-network requests and grants (security design) | 19 | post-v0 |
 
@@ -358,8 +357,9 @@ v0 additions :
 25. Public visibility Check wrapper.
 26. Mesh-link statement v2 (`SEA pub` + `SEA epub`).
 27. Signed `GunChatNode` + reader verification. Prerequisite for PR 23.
-28. Owner-signed grant row verification in Check and readers. Depends on SociACL #45 and a new SociACL issue for signed see rows.
+28. Owner-signed grant row verification in Check and readers. Depends on SociACL #49 (and #45 for post rows).
 29. SEA key export / PRF envelope recovery bundled with the Views backup.
+30. Port SociACL `checkGroupSee` into s3r.ch Check (members auto-approve).
 
 Post-v0:
 16. Real search function.
