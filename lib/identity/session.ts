@@ -28,9 +28,11 @@ export async function signSessionToken(
 export async function readSessionToken(
   token: string,
   secret: string,
+  now?: number,
 ): Promise<SessionClaims> {
   const { payload } = await jwtVerify(token, secretKey(secret), {
     algorithms: ["HS256"],
+    ...(now === undefined ? {} : { currentDate: new Date(now) }),
   });
   if (typeof payload.address !== "string") {
     throw new Error("Session cookie is missing address.");

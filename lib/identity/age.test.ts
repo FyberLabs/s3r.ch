@@ -77,7 +77,7 @@ describe("age confirmation on wallet sign-in", () => {
       });
       assert.equal(issued.ok, true);
       if (!issued.ok) return;
-      const claims = await readSessionToken(issued.token, SECRET);
+      const claims = await readSessionToken(issued.token, SECRET, now.getTime());
       assert.equal(claims.address, ALICE);
       assert.equal(issued.confirmedAt, now.toISOString());
       const saved = JSON.parse(readFileSync(store.file, "utf8")) as {
@@ -224,7 +224,7 @@ describe("age confirmation on first OAuth sign-in", () => {
       const baked = sessionCookie(accepted);
       assert.ok(baked);
       const token = decodeURIComponent((baked.split(";")[0] ?? "").slice(baked.indexOf("=") + 1));
-      const claims = await readBackupSession(token, SECRET);
+      const claims = await readBackupSession(token, SECRET, Date.parse(STAMP));
       assert.equal(claims.sub, "kc-age");
       const saved = JSON.parse(readFileSync(store.file, "utf8")) as {
         oauthAge?: { sub: string; confirmedAt: string }[];

@@ -194,8 +194,11 @@ async function signPkce(pending: PkcePending, secret: string, now: number): Prom
     .sign(secretKey(secret));
 }
 
-async function readPkce(token: string, secret: string): Promise<PkcePending> {
-  const { payload } = await jwtVerify(token, secretKey(secret), { algorithms: ["HS256"] });
+async function readPkce(token: string, secret: string, now?: number): Promise<PkcePending> {
+  const { payload } = await jwtVerify(token, secretKey(secret), {
+    algorithms: ["HS256"],
+    ...(now === undefined ? {} : { currentDate: new Date(now) }),
+  });
   if (payload.kind !== "oauth-pkce") throw new OAuthFlowError("PKCE cookie is invalid.");
   if (typeof payload.state !== "string" || typeof payload.verifier !== "string") {
     throw new OAuthFlowError("PKCE cookie is invalid.");
@@ -253,8 +256,11 @@ async function signAgePending(
     .sign(secretKey(secret));
 }
 
-async function readAgePending(token: string, secret: string): Promise<BackupSession> {
-  const { payload } = await jwtVerify(token, secretKey(secret), { algorithms: ["HS256"] });
+async function readAgePending(token: string, secret: string, now?: number): Promise<BackupSession> {
+  const { payload } = await jwtVerify(token, secretKey(secret), {
+    algorithms: ["HS256"],
+    ...(now === undefined ? {} : { currentDate: new Date(now) }),
+  });
   if (payload.kind !== "oauth-age") throw new OAuthFlowError("Age confirmation is invalid.");
   if (typeof payload.iat !== "number" || typeof payload.exp !== "number") {
     throw new OAuthFlowError("Age confirmation is invalid.");
@@ -269,8 +275,16 @@ async function readAgePending(token: string, secret: string): Promise<BackupSess
   };
 }
 
-export async function readBackupSession(token: string, secret: string): Promise<BackupSession> {
-  const { payload } = await jwtVerify(token, secretKey(secret), { algorithms: ["HS256"] });
+/** `now` (ms) overrides the clock used for the expiry check; defaults to the real clock. */
+export async function readBackupSession(
+  token: string,
+  secret: string,
+  now?: number,
+): Promise<BackupSession> {
+  const { payload } = await jwtVerify(token, secretKey(secret), {
+    algorithms: ["HS256"],
+    ...(now === undefined ? {} : { currentDate: new Date(now) }),
+  });
   if (payload.kind !== "oauth-backup") throw new OAuthFlowError("Backup session is invalid.");
   if ("address" in payload || "chainId" in payload) {
     throw new OAuthFlowError("Backup session is invalid.");
@@ -530,7 +544,7 @@ export async function finishOAuth(
 
   let pending: PkcePending;
   try {
-    pending = await readPkce(pkceToken, secret);
+    pending = await readPkce(pkceToken, secret, deps.now);
   } catch {
     return denied();
   }
@@ -689,7 +703,7 @@ export async function acceptOAuthAge(
   if (!pendingToken) return Response.json({ error: "unauthorized" }, { status: 401 });
   let pending: BackupSession;
   try {
-    pending = await readAgePending(pendingToken, secret);
+    pending = await readAgePending(pendingToken, secret, now);
   } catch {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
