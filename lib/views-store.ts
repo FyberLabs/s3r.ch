@@ -248,12 +248,14 @@ export function mergePrefs(state: ViewsState, incoming: unknown[]): ViewsState {
   for (const r of allRecents) if (!recents.some((x) => sameSource(x.ref, r.ref))) recents.push(r);
   const copies = [{ favorites: state.favorites, vv: state.favoritesVV, local: true }, ...parsed.map((p) => ({ favorites: p.favorites, vv: p.favoritesVV, local: false }))];
   const survivors = copies.filter((c) => !copies.some((o) => o !== c && (compareVV(c.vv, o.vv) === "before" || (compareVV(c.vv, o.vv) === "equal" && !c.local && o.local))));
-  // Deduplicate equal remote copies, then combine: local copy first, the rest in canonical order.
-  const favorites: SourceRef[] = [];
-  const localSurvivor = survivors.find((c) => c.local);
-  if (localSurvivor) favorites.push(...localSurvivor.favorites);
-  const rest = survivors.filter((c) => !c.local).flatMap((c) => c.favorites).sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
-  for (const f of rest) if (!favorites.some((x) => sameSource(x, f))) favorites.push(f);
+  // A single surviving copy is kept as is. Concurrent copies are combined in one deterministic
+  // order before capping, so every replica that sees the same copies keeps the same list.
+  let favorites: SourceRef[] = [];
+  if (survivors.length === 1) favorites = [...survivors[0]!.favorites];
+  else {
+    const all = survivors.flatMap((c) => c.favorites).sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+    for (const f of all) if (!favorites.some((x) => sameSource(x, f))) favorites.push(f);
+  }
   return {
     ...state,
     recents: recents.slice(0, RECENTS_MAX),
@@ -268,7 +270,10 @@ export function touchRecent(state: ViewsState, ref: SourceRef, at: number): View
   if (!checked.ok) throw new Error(checked.error);
   if (!Number.isFinite(at)) throw new Error("invalid time");
   const prior = state.recents.find((r) => sameSource(r.ref, ref));
-  const entry = { ref: checked.value, at: prior ? Math.max(prior.at, at) : at };
+  const incoming = { ref: checked.value, at };
+  // The later event wins with its own reference; on a tie, the greater full reference wins.
+  const entry =
+    prior && (prior.at > at || (prior.at === at && formatShareable(prior.ref) > formatShareable(checked.value))) ? prior : incoming;
   const recents = [entry, ...state.recents.filter((r) => !sameSource(r.ref, ref))]
     .sort((x, y) => y.at - x.at)
     .slice(0, RECENTS_MAX);

@@ -404,6 +404,11 @@ export async function writeBackupToGraph(
   const now = opts.now ?? Date.now;
   // Publish only what restore accepts: valid shape and a signature by this user's key.
   if (!isManifestShape(manifest) || !(await verifyManifest(opts.pub, manifest))) throw new Error("manifest is invalid");
+  // Every address the manifest names must be supplied and match its content address.
+  for (const address of addressesOf(manifest)) {
+    const record = Object.hasOwn(backup.records, address) ? backup.records[address] : undefined;
+    if (!isRecordShape(record) || (await recordAddress(record)) !== address) throw new Error("backup is missing or has altered records");
+  }
   // Serialized per writer across tabs; a lower or equal seq never replaces a published manifest.
   return lock(`s3rch-views-backup:${manifest.owner}:${manifest.writerId}`, async () => {
     const slot = user.get("s3rch-views").get(manifest.writerId);
@@ -417,7 +422,8 @@ export async function writeBackupToGraph(
     const recordsOf = user.get("s3rch-views-records").get(manifest.writerId);
     // An identical manifest is republished in full (records verified and repaired, index
     // refreshed); any other manifest at a lower or equal seq is stale.
-    const sameAsPublished = prior !== null && canonicalJson(prior) === canonicalJson(manifest);
+    // Signatures are randomized, so compare the signed bodies; both are verified at this point.
+    const sameAsPublished = prior !== null && manifestBody(prior) === manifestBody(manifest);
     if (prior && prior.seq >= manifest.seq && !sameAsPublished) {
       await sweepRecords(recordsOf, addressesOf(prior));
       return "stale";

@@ -205,7 +205,7 @@ describe("backup", () => {
     local = toggleFavorite(local, ref("mine"));
     const r = await restoreBackup(local, pair, [b.manifest], async (a) => b.records[a]);
     assert.deepEqual(r.state.recents.map((x) => x.ref.source), ["new", "old"]);
-    assert.deepEqual(r.state.favorites.map((x) => x.source), ["mine", "fav"]);
+    assert.deepEqual(r.state.favorites.map((x) => x.source), ["fav", "mine"]);
     const tampered = { ...b.manifest, prefs: b.manifest.entries[0]?.address ?? "0".repeat(64) };
     const r2 = await restoreBackup(emptyState(ALICE, "d3"), pair, [tampered], async (a) => b.records[a]);
     assert.equal(r2.state.favorites.length, 0);
@@ -343,6 +343,24 @@ describe("backup", () => {
     const b = await buildBackup(s, pair, "w", 1);
     g.data.set("~/s3rch-views/w", JSON.stringify({ ...b.manifest, seq: Number.MAX_SAFE_INTEGER }));
     assert.equal(await writeBackupToGraph(g, b, { pub: pair.pub }), "written");
+  });
+
+  it("refuses to publish a manifest whose records are missing", async () => {
+    const pair = await testPair();
+    const s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    const b = await buildBackup(s, pair, "w", 1);
+    await assert.rejects(writeBackupToGraph(fakeGraph(), { ...b, records: {} }, { pub: pair.pub }));
+  });
+
+  it("treats a re-signed identical manifest as a retry", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const cache = new Map();
+    const s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    await writeBackupToGraph(g, await buildBackup(s, pair, "w", 1, cache), { pub: pair.pub });
+    g.data.delete("~/s3rch-views-writers/w");
+    assert.equal(await writeBackupToGraph(g, await buildBackup(s, pair, "w", 1, cache), { pub: pair.pub }), "written");
+    assert.ok(g.data.has("~/s3rch-views-writers/w"));
   });
 
   it("rejects _ as a writer id and invalid sequence numbers", async () => {

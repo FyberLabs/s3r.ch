@@ -153,6 +153,13 @@ describe("views state", () => {
     assert.deepEqual(s.recents.map((r) => r.ref.source), ["new", "old"]);
   });
 
+  it("keeps the newer reference when an older touch arrives", () => {
+    const newer = { ...ref("x"), bindingHash: "b".repeat(64) };
+    let s = touchRecent(emptyState(ALICE, "d1"), newer, 100);
+    s = touchRecent(s, ref("x"), 50);
+    assert.deepEqual(s.recents[0], { ref: newer, at: 100 });
+  });
+
   it("toggles favorites", () => {
     let s = toggleFavorite(emptyState(ALICE, "d1"), ref("a"));
     assert.equal(s.favorites.length, 1);
