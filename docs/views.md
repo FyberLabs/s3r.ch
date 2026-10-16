@@ -46,6 +46,10 @@ type Window = { id: string; kind: "chat"|"forum"|"feed"|"stream"|"voice"; source
 //   - mode "tabs":   2..N sources, kind chat | forum | feed
 //   - mode "merged": 2..8 sources, kind feed only
 //   An invalid window is dropped from the loaded View with a visible notice; it is never repaired silently.
+// LayoutTree = { type: "leaf"; windowId: string } | { type: "split"; dir: "row"|"col"; sizes: number[]; children: LayoutTree[] }
+// After dropping windows, the layout is re-validated: leaves must reference unique surviving window ids,
+// splits with 0 children are removed, splits with 1 child collapse into it, sizes are renormalized, and
+// surviving windows without a leaf are appended. If the result is still invalid, the default grid is used (PR 1).
 type View = { id: string; title: string; windows: Window[]; layout: LayoutTree; v: 1 };
 ```
 
@@ -204,8 +208,9 @@ type AccessRequest = {
   id: string; requester: string;            // wallet / org principal
   source: string;                           // canonical SourceRef
   scope: "read" | "read+post";
-  body: string;                              // SEA ECDH-encrypted {message?: string ≤ 280}
-                                            // requester ↔ owner; org sources: one copy per admin key
+  // message bodies live in child nodes, one per recipient key, so copies never compete under HAM:
+  //   s3rch/requests/<owner>/<id>/body/<H(recipient epub)> = SEA ECDH ciphertext of {message?: ≤ 280}
+  //   one entry for the owner; for org sources one entry per admin epub
   status: "pending" | "approved" | "declined" | "withdrawn" | "revoked";
   statusSig: string;                        // signature by an allowed signer over the canonical encoding of
                                             // (id, requester, owner, source, scope, status, ts, v)
@@ -213,10 +218,11 @@ type AccessRequest = {
 };
 ```
 - **Signatures cover the whole request.** A status change signs requester, owner, source and scope as well as id, status and ts, so an approval cannot be replayed onto a changed request. Readers recompute the encoding from the stored fields and drop rows whose fields do not match the signature.
-- **Owner encryption key.** The requester needs the owner's (or each admin's) SEA `epub`. Today `GunUserNode` (`s3rch/users/<wallet>`) carries no key. v0 adds `pub` and `epub` to the user node, bound to the wallet by the existing wallet-signed mesh link (`lib/identity/mesh-link.ts`); readers verify that binding before encrypting (PR 24). Org sources list admin wallets whose user nodes carry the same binding.
+- **Owner encryption key.** The requester needs the owner's (or each admin's) SEA `epub`. Today `GunUserNode` (`s3rch/users/<wallet>`) carries no key. v0 adds `pub` and `epub` to the user node. The existing wallet-signed mesh link (`buildMeshLinkStatement` in `lib/identity/mesh-link.ts`) signs only `SEA pub`, so a peer could swap `epub`. A new statement version signs both `SEA pub` and `SEA epub`, and readers verify that the wallet signature covers the exact `epub` they encrypt to (PR 24, PR 26). Until a user has signed the new statement, requests to them carry no message body. Org sources list admin wallets whose user nodes carry the same binding.
 - **Who may write status:** `withdrawn` is signed by the requester. `approved` and `declined` are signed by the owner or an org admin. `revoked` is signed by the owner or an admin and is set when the grant is cancelled. Nobody else may write status, and readers verify `statusSig` against the allowed signer set and drop anything else.
 - The canonical signed encoding and an approve→grant helper come from SociACL (SociACL #46).
 - **Limits:** one pending request per requester per source, enforced by the deterministic key above. After a decline, a cooldown applies before that requester can ask again; its length is a setting per source/owner, not a fixed number.
+- **Decisions live in an owner-controlled record.** Approve, decline and revoke are also written to `s3rch/request-decisions/<owner>/<id>/<decidedAt>` as append-only entries signed by the owner or an admin (same signed fields as `statusSig`). Readers ignore entries without a valid signature. The requester can rewrite their own `pending` slot, but the owner's client and every reader evaluate it against the latest signed decision: a `pending` written inside the cooldown after a signed decline is ignored (PR 11).
 
 **Policy per source** (s3r.ch policy, evaluated on the owner's or admin's client before any grant is written; SociACL itself has no standing deny):
 - `public`: anyone may read and **no request is needed** to read. Requests exist only for `read+post`, which is auto- or manually approved per the owner's setting.
@@ -229,9 +235,13 @@ Order: explicit deny (s3r.ch policy), then member/public auto rules, then the ma
 **Owner approval queue:** an "Access requests" panel with a count badge, reachable from source settings and notifications. Each row shows requester identity (ENS / held claims), source, scope and the decrypted message, with **Approve** (scope editable; expiry `until` is always set, defaulting to a configurable per-owner/per-source setting, because `IdentitySeeGrant.until` is required), **Decline**, and **Always approve this group**.
 
 **SociACL mapping:**
+- **Grant rows must be owner-signed.** Today `MeshSeeGrant` (`object, accessor, from, until, stated`) and its `GunAclEdge` carry no signature, on a publicly writable `s3rch/acl` path, so a peer can forge a grant row. Readers and Check must verify an owner (or admin) signature on every grant row before accepting it, and treat unsigned rows as absent. *Dependency:* SociACL #45 covers owner-signed **post** grants; signed **see** grant rows need a new SociACL issue (to file), unless #45 is widened to both. s3r.ch verification is PR 28. *v0 limitation:* until then, mesh grants are hints and access to content that is not public stays limited as described in §3.4.
 - On approve, the owner's client writes the see grant (`IdentitySeeGrant{claimId=source object, accessor=requester, from, until}`) and delivers onto `s3rch/granted/<requester>`.
 - For `read+post` it also writes a **post grant**: a new owner-signed row with the same shape and cancel rule as the see grant (SociACL #45). Check returns `canPost` only if `canSee` also passes. The UI shows read+post only when both grants are live.
-- **Post grants are enforced when writes are accepted, not only in the UI.** Gun accepts any put, so hiding the composer is not a boundary. Every reader drops chat/forum nodes whose author lacks a live `canPost` at the node's `ts`, and the seed peer (`lib/gun-server.ts`) rejects such puts on shared room paths (PR 23). Forum posts are already checked server-side by `/api/forum`.
+- **Post grants are enforced when writes are accepted, not only in the UI.** Gun accepts any put, so hiding the composer is not a boundary. This needs three things:
+  - *Authenticated author.* `GunChatNode` is unsigned today (`lib/identity/check.ts`), so a claimed `author` proves nothing. Chat nodes gain a SEA signature by the author's mesh key over (id, room, author, body, ts, v), and readers verify it against the author's wallet-signed mesh link (PR 27). *v0 limitation:* until PR 27 lands, mesh chat in rooms that are not public is not authorization-safe, and Views shows those rooms read-only.
+  - *Time the sender does not control.* `ts` is chosen by the sender, so it is never used for authorization. A node is accepted only if `canPost` is live at **acceptance time**: the seed peer checks the grant when it receives the put, and each reader checks it when it first observes the node (local receipt time). A node whose `ts` differs from observed time by more than a configurable skew is dropped. History synced later is accepted only from the seed peer's accepted set.
+  - *Enforcement points.* Readers drop nodes that fail either check, and the seed peer (`lib/gun-server.ts`) rejects them on shared room paths (PR 23). Forum posts are already checked server-side by `/api/forum`.
 - Check never reads the request. Cancelling either grant is immediate on the destination ACL, and the request becomes `revoked`.
 - Forum channels: the existing `invite` and `group-add` actions grant see **and post** ([forum.md](forum.md)), so they are used only for `read+post`. Approving `read` needs a new read-only forum action (`invite-read`: see without post) on `POST /api/forum` (PR 20). *v0 limitation:* until then, forum `read` requests stay in the manual queue and cannot be approved as read-only.
 
@@ -242,7 +252,7 @@ The composer belongs to a window. Merged feed windows and read-only sources have
 
 ## 5. Persistence and sharing
 - **Local store: IndexedDB.** Browser Gun runs with `localStorage: false` (`lib/gun-peer.ts`) and the seed peer's radisk is not durable storage, so the Gun graph is not a save location. Views, recents and favorites live in an origin-scoped IndexedDB store, using the same pattern as the SEA pair store (`lib/identity/idb.ts`).
-- **Backup: encrypted blob.** On change, the client serializes the Views store, encrypts it with `SEA.encrypt` under a key derived from the user's SEA pair, and puts the ciphertext on the user's own SEA graph (`~<pub>/s3rch-views`, not `s3rch/*`). The same ciphertext can be exported as a file. A new device restores from either after unlocking the SEA pair. The mesh copy is best-effort replication, not an archive; the file export is the durable backup.
+- **Backup: encrypted blob.** On change, the client serializes the Views store, encrypts it with `SEA.encrypt` under a key derived from the user's SEA pair, and puts the ciphertext on the user's own SEA graph (`~<pub>/s3rch-views`, not `s3rch/*`). The same ciphertext can be exported as a file. A new device needs the SEA pair to decrypt either copy, and today that pair lives only in the old origin's IndexedDB. Recovery uses the planned auth kit: the WebAuthn PRF envelope (v1, ≥2 KEKs: PRF + secondary paper key, see [identity.md](identity.md)) is exported as an encrypted key file together with the Views backup. A new device unlocks it with a synced passkey's PRF or the paper key, restores the SEA pair, then decrypts the Views backup (PR 29). *v0 limitation:* without an exported envelope, Views cannot be restored on a new device. The mesh copy is best-effort replication, not an archive; the file export is the durable backup.
 - **Share as template**: an exported JSON of windows + layout + `SourceRef`s only (no messages, no grants). The recipient's picker opens it with every row access-checked; anything they can't read shows `Request`.
 
 ## 6. Layout (secondary)
@@ -298,7 +308,12 @@ Mobile: one stage with a swipeable window strip; chat as a bottom sheet; PiP for
 | Public visibility semantics in a Check wrapper | Missing (PR 25) |
 | Read-only forum invite (`invite-read`) | Missing (PR 20) |
 | Encrypted content for non-public sources ([encrypted-discovery.md](encrypted-discovery.md)) | Design only; separate track. v0 keeps locked content off shared paths |
-| SociACL light-surface group membership check (`same-group`, hop 1) | Missing; SociACL issue to file. `members` policy falls back to manual |
+| Planned SociACL group-membership check (`same-group`, direct members, hop 1) | Missing. SociACL issue to file. `members` policy falls back to manual until it lands |
+| Mesh-link statement v2 binding `SEA pub` + `SEA epub` | Missing (PR 26) |
+| Signed `GunChatNode` (author mesh-key signature) | Missing; chat nodes are unsigned today (PR 27) |
+| Owner-signed see grant rows + verification before accept | Missing. SociACL #45 (post grants); signed see rows need a new SociACL issue (PR 28) |
+| Encrypted SEA key export / PRF envelope recovery for new devices | PRF wrap exists; export and restore flow missing (PR 29) |
+| Owner-signed decision record + per-recipient request bodies | Missing (PR 11) |
 | Join / membership action for rooms | Missing; deferred to bot-plane room membership (ROADMAP item 1) |
 | Views storage: IndexedDB + SEA-encrypted backup (mesh copy + file export) | IndexedDB and SEA helpers exist; Views schema missing (PR 2) |
 | Streams / voice / meetings (WebRTC + Panopticon TURN; relay/SFU for >few viewers) | Missing (ROADMAP item 3). TURN allocate exists |
@@ -309,8 +324,10 @@ Mobile: one stage with a swipeable window strip; chat as a bottom sheet; PiP for
 
 | SociACL issue | Unblocks s3r.ch PRs | Phase |
 | --- | --- | --- |
-| [#45](https://github.com/FyberLabs/SociACL/issues/45) Owner-signed post grant (read+post) | 4 (inline canPost state), 5 (targeted composer posting), 11, 12, 23 | v0 |
+| [#45](https://github.com/FyberLabs/SociACL/issues/45) Owner-signed post grant (read+post) | 4 (inline canPost state), 5 (targeted composer posting), 11, 12, 23, 28 | v0 |
 | [#46](https://github.com/FyberLabs/SociACL/issues/46) Signed access requests + approve-to-grant helper | 11, 12 | v0 |
+| (to file) Signed see grant rows | 28 | v0 |
+| (to file) Group-membership check (`same-group`, hop 1) | 12 (`members` auto-approve) | v0 |
 | [#47](https://github.com/FyberLabs/SociACL/issues/47) Permission-filtered search | 17 | post-v0, blocked on SociACL #31 |
 | [#48](https://github.com/FyberLabs/SociACL/issues/48) Cross-network requests and grants (security design) | 19 | post-v0 |
 
@@ -339,6 +356,10 @@ v0 additions :
 23. Post-grant enforcement on mesh writes (reader filter + seed peer put filter). Depends on SociACL #45.
 24. `pub` / `epub` on the user node with wallet-signed binding.
 25. Public visibility Check wrapper.
+26. Mesh-link statement v2 (`SEA pub` + `SEA epub`).
+27. Signed `GunChatNode` + reader verification. Prerequisite for PR 23.
+28. Owner-signed grant row verification in Check and readers. Depends on SociACL #45 and a new SociACL issue for signed see rows.
+29. SEA key export / PRF envelope recovery bundled with the Views backup.
 
 Post-v0:
 16. Real search function.
