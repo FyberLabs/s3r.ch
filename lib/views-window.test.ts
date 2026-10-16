@@ -121,6 +121,14 @@ describe("layout bounds", () => {
     assert.deepEqual((repairLayout(t, ["a", "b"]) as { sizes: number[] }).sizes, [0.5, 0.5]);
   });
 
+  it("keeps sizes positive after appending missing windows", () => {
+    const t = { type: "split", dir: "row", sizes: [Number.MIN_VALUE, 1], children: [{ type: "leaf", windowId: "a" }, { type: "leaf", windowId: "b" }] };
+    const out = repairLayout(t, ["a", "b", "c", "d"]) as { sizes: number[]; children: unknown[] };
+    assert.equal(out.children.length, 4);
+    assert.ok(out.sizes.every((s) => s > 0));
+    assert.ok(Math.abs(out.sizes.reduce((a, b) => a + b, 0) - 1) < 1e-9);
+  });
+
   it("collapses single-child splits and fixes bad sizes", () => {
     const t = { type: "split", dir: "col", sizes: [-1, Number.NaN], children: [{ type: "leaf", windowId: "a" }, { type: "leaf", windowId: "b" }] };
     assert.deepEqual(repairLayout(t, ["a", "b"]), { type: "split", dir: "col", sizes: [0.5, 0.5], children: t.children });

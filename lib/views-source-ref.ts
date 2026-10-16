@@ -66,6 +66,8 @@ function isOpenProtocol(value: string): value is OpenProtocolNetwork {
   return (OPEN_PROTOCOL_NETWORKS as readonly string[]).includes(value);
 }
 
+const SPECIAL_USE_SUFFIXES = ["localhost", "local", "internal", "home.arpa", "test", "invalid", "example", "onion", "alt"];
+
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /** Public DNS hostname only: lowercase labels, at least one dot, no IP literals. */
@@ -75,7 +77,8 @@ function isPublicHostname(host: string): boolean {
   if (!labels.every((l) => DNS_LABEL.test(l))) return false;
   // Reject all-numeric hosts (dotted IPv4 and similar); the last label of a real name is not numeric.
   if (/^[0-9]+$/.test(labels[labels.length - 1] ?? "")) return false;
-  if (host === "localhost" || host.endsWith(".localhost")) return false;
+  // Special-use names (RFC 6761, RFC 6762, RFC 8375, RFC 9476) never resolve to a public server.
+  if (SPECIAL_USE_SUFFIXES.some((s) => host === s || host.endsWith(`.${s}`))) return false;
   // WHATWG URL parsing turns alternate IPv4 spellings (hex, octal, short forms) into dotted IPv4;
   // the host is accepted only if parsing leaves it unchanged and it is not an IP literal.
   let parsed: string;
@@ -125,7 +128,7 @@ function isDidWeb(value: string): boolean {
   const segments = rest.split(":");
   const [hostPart, ...path] = segments;
   if (!hostPart) return false;
-  const m = /^([a-z0-9.-]+)(?:%3A([0-9]{1,5}))?$/.exec(hostPart);
+  const m = /^([a-z0-9.-]+)(?:%3[Aa]([0-9]{1,5}))?$/.exec(hostPart);
   if (!m || !m[1] || !isPublicHostname(m[1])) return false;
   if (m[2] !== undefined && (Number(m[2]) < 1 || Number(m[2]) > 65535)) return false;
   return path.every((seg) => /^(?:[A-Za-z0-9._~-]|%[0-9A-F]{2})+$/.test(seg));

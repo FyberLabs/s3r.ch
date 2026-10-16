@@ -90,6 +90,31 @@ export function layoutWithinBounds(layout: unknown): boolean {
   return true;
 }
 
+/**
+ * Normalize positive sizes to sum 1. Scales by the largest first so the sum cannot overflow;
+ * falls back to an equal split if any result is not finite and positive (underflow).
+ */
+function normalize(sizes: number[]): number[] {
+  const max = Math.max(...sizes);
+  const scaled = sizes.map((s) => s / max);
+  const total = scaled.reduce((a, b) => a + b, 0);
+  const out = scaled.map((s) => s / total);
+  return out.every((s) => Number.isFinite(s) && s > 0) ? out : sizes.map(() => 1 / sizes.length);
+}
+
+/** Every split has one finite positive size per child. */
+function sizesValid(tree: LayoutTree): boolean {
+  const stack: LayoutTree[] = [tree];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (node.type === "leaf") continue;
+    if (node.sizes.length !== node.children.length) return false;
+    if (!node.sizes.every((s) => Number.isFinite(s) && s > 0)) return false;
+    stack.push(...node.children);
+  }
+  return true;
+}
+
 /** Default grid: one leaf, or a row of leaves with equal sizes. */
 export function defaultLayout(windowIds: string[]): LayoutTree | null {
   if (windowIds.length === 0) return null;
@@ -135,17 +160,7 @@ export function repairLayout(layout: unknown, windowIds: string[], ambiguousIds:
     });
     if (kids.length === 0) return null;
     if (kids.length === 1) return kids[0]!;
-    // Scale by the largest size first so the sum cannot overflow to Infinity.
-    const max = Math.max(...sizes);
-    const scaled = sizes.map((s) => s / max);
-    const total = scaled.reduce((a, b) => a + b, 0);
-    const normalized = scaled.map((s) => s / total);
-    return {
-      type: "split",
-      dir: node.dir,
-      sizes: normalized.every((s) => Number.isFinite(s) && s > 0) ? normalized : kids.map(() => 1 / kids.length),
-      children: kids,
-    };
+    return { type: "split", dir: node.dir, sizes: normalize(sizes), children: kids };
   }
 
   let tree = walk(layout);
@@ -160,14 +175,14 @@ export function repairLayout(layout: unknown, windowIds: string[], ambiguousIds:
         type: "split",
         dir: "row",
         children: [...tree.children, ...leaves],
-        sizes: [...tree.sizes.map((s) => (s * prior) / n), ...leaves.map(() => 1 / n)],
+        sizes: normalize([...tree.sizes.map((s) => s * prior), ...leaves.map(() => 1)]),
       };
     } else {
       const n = 1 + leaves.length;
       tree = { type: "split", dir: "row", children: [tree, ...leaves], sizes: [1 / n, ...leaves.map(() => 1 / n)] };
     }
   }
-  if (!tree || !layoutWithinBounds(tree)) return defaultLayout(windowIds);
+  if (!tree || !layoutWithinBounds(tree) || !sizesValid(tree)) return defaultLayout(windowIds);
   return tree;
 }
 
