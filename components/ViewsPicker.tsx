@@ -149,6 +149,12 @@ export function ViewsPicker(props: ViewsPickerProps) {
   }
 
   function confirm() {
+    // Access can change while the dialog is open (sign-out, lost connection).
+    const stale = selection.filter((s) => !pickOk(s));
+    if (stale.length) {
+      setSelection((sel) => sel.filter(pickOk));
+      return setError(stale.length === 1 ? `${stale[0]!.label} can no longer be added and was removed from the selection` : `${stale.length} sources can no longer be added and were removed from the selection`);
+    }
     const r = applyPick(view, target, selection, { merge: mergeable && merge, newId, pending: access ? (ref) => addsAsPending(access(ref)) : undefined });
     if (!r.ok) return setError(r.error);
     onConfirm(r.view, r.windowIds);

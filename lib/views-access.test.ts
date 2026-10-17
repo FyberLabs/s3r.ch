@@ -76,6 +76,11 @@ describe("window status", () => {
     assert.equal(sourceStatus(settled, finance, locked), "removed");
   });
 
+  it("keeps pending marks while access is indeterminate", () => {
+    assert.equal(settlePending(w, () => ({ kind: "signin" })), w);
+    assert.equal(settlePending(w, () => ({ kind: "needs-connection" })), w);
+  });
+
   it("validates pending against the window's sources", () => {
     assert.ok(validateWindow(w).ok);
     assert.equal(validateWindow({ ...w, pending: [formatCanonical(ref("other"))] }).ok, false);
@@ -98,5 +103,11 @@ describe("pick as pending", () => {
     assert.ok(r2.ok);
     assert.deepEqual(r2.view.windows[0]!.pending, [formatCanonical(finance.ref)]);
     assert.equal(r2.view.windows[0]!.mode, "tabs");
+    // A source already in the window is not marked pending again.
+    const plain = { ...r.view, windows: r.view.windows.map((w, i) => (i === 1 ? { ...w, pending: undefined } : w)) };
+    const other: PickerSource = { ref: ref("finance2", ORG), label: "#finance2" };
+    const r3 = applyPick(plain, { type: "window", windowId: r.windowIds[1]! }, [finance, other], { newId: () => `w${++n}`, pending: () => true });
+    assert.ok(r3.ok);
+    assert.deepEqual(r3.view.windows[1]!.pending, [formatCanonical(other.ref)]);
   });
 });

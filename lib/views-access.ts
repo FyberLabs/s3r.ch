@@ -111,14 +111,15 @@ export function statusLabel(status: SourceStatus): string {
 }
 
 /**
- * Drop pending marks for sources that are no longer locked, so a later revocation shows
- * "Access removed". Returns the same window when nothing changes.
+ * Drop pending marks for sources now positively readable, so a later revocation shows
+ * "Access removed". Indeterminate states (signed out, needs connection) keep the mark.
+ * Returns the same window when nothing changes.
  */
 export function settlePending(window: ViewWindow, access: (ref: SourceRef) => AccessState): ViewWindow {
   if (!window.pending?.length) return window;
   const still = window.pending.filter((key) => {
     const ref = window.sources.find((s) => formatCanonical(s) === key);
-    return ref ? access(ref).kind === "locked" : false;
+    return ref ? access(ref).kind !== "read" : false;
   });
   if (still.length === window.pending.length) return window;
   const next: ViewWindow = { ...window };

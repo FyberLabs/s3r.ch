@@ -29,13 +29,16 @@ const SOURCES: PickerSource[] = [
   s("rss", "https://hn.example", "https://hn.example/rss", "feed", "hn.example"),
 ];
 
+/** A sample source by its source id. */
+const by = (source: string) => SOURCES.find((x) => x.ref.source === source)!.ref;
+
 const VIEW: View = {
   id: "dev",
   title: "Dev + streams",
   v: 1,
   windows: [
-    { id: "w-build", kind: "chat", mode: "single", label: "build-chat", sources: [SOURCES[0]!.ref] },
-    { id: "w-news", kind: "feed", mode: "merged", label: "News", sources: [SOURCES[6]!.ref, SOURCES[8]!.ref] },
+    { id: "w-build", kind: "chat", mode: "single", label: "build-chat", sources: [by("build")] },
+    { id: "w-news", kind: "feed", mode: "merged", label: "News", sources: [by("dev"), by("https://hn.example/rss")] },
   ],
   layout: { type: "split", dir: "row", sizes: [0.5, 0.5], children: [{ type: "leaf", windowId: "w-build" }, { type: "leaf", windowId: "w-news" }] },
 };
@@ -50,7 +53,7 @@ function access(ref: SourceRef): AccessState {
   return { kind: "read", post: ref.owner === ME };
 }
 
-const FIN = SOURCES.find((x) => x.ref.source === "finance")!.ref;
+const FIN = by("finance");
 const STATUS_WINDOWS = [
   { title: "Added as pending", declined: false, window: { id: "p", kind: "chat" as const, mode: "single" as const, sources: [FIN], pending: [formatCanonical(FIN)] } },
   { title: "Request declined", declined: true, window: { id: "d", kind: "chat" as const, mode: "single" as const, sources: [FIN], pending: [formatCanonical(FIN)] } },
@@ -79,8 +82,8 @@ export function PickerPreview({ step, tab, states }: { step: 1 | 2; tab: PickerT
         <ViewsPicker
           view={view}
           sources={SOURCES}
-          recents={[{ ref: SOURCES[0]!.ref, at: 3 }, { ref: SOURCES[6]!.ref, at: 2 }, { ref: SOURCES[7]!.ref, at: 1 }]}
-          favorites={[SOURCES[3]!.ref, SOURCES[8]!.ref]}
+          recents={[{ ref: by("build"), at: 3 }, { ref: by("dev"), at: 2 }, { ref: by("posts"), at: 1 }]}
+          favorites={[by("ops"), by("https://hn.example/rss")]}
           selfNetwork={NET}
           me={ME}
           initialTab={tab}
@@ -90,7 +93,7 @@ export function PickerPreview({ step, tab, states }: { step: 1 | 2; tab: PickerT
           onConfirm={(v) => { setView(v); setOpen(false); }}
           onClose={() => setOpen(false)}
         />
-      ) : (
+      ) : states ? null : (
         <button type="button" className="mt-4 underline" onClick={() => setOpen(true)}>Open picker</button>
       )}
     </main>
