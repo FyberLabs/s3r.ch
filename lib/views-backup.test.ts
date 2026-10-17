@@ -98,7 +98,10 @@ describe("backup", () => {
     assert.equal(r1.notices.length, 1);
 
     const address = b.manifest.entries[0]!.address;
-    const altered = { ...b.records[address]!, ct: b.records[address]!.ct.slice(0, -2) + "AA" };
+    // Change the second-to-last character, which always carries data bits (the last one may
+    // carry only padding bits, so changing it alone can decode to the same bytes).
+    const ct = b.records[address]!.ct;
+    const altered = { ...b.records[address]!, ct: ct.slice(0, -2) + (ct.at(-2) === "A" ? "B" : "A") + ct.at(-1) };
     const r2 = await restoreBackup(emptyState(ALICE, "d2"), pair, [b.manifest], async () => altered);
     assert.deepEqual(r2.state.views, {});
 
