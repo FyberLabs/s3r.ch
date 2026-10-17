@@ -6,7 +6,7 @@ import type { PickerSource, PickerTab } from "@/lib/views-picker";
 import type { SourceKind } from "@/lib/views-source-ref";
 import type { View } from "@/lib/views-window";
 
-const ME = "0xA1b2C3d4E5f60718293a4B5c6D7e8F9012345aFf";
+const ME = "0xA1b2c3D4E5f60718293A4b5C6D7E8F9012345Aff";
 const ORG = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 const NET = `s3rch:https://s3r.ch:443;key=${"a".repeat(64)}`;
 const LAB = `s3rch:https://lab.example:443;key=${"b".repeat(64)}`;

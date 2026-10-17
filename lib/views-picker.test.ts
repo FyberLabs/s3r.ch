@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   applyPick,
+  canAccept,
+  pickable,
   buildBrowseTree,
   canMergeFeeds,
   compatibleKinds,
@@ -144,5 +146,19 @@ describe("applyPick", () => {
     const r = applyPick(first.view, { type: "new" }, [design], { newId: () => (k++ === 0 ? "same" : "other") });
     assert.ok(r.ok);
     assert.deepEqual(r.view.windows.map((w) => w.id), ["same", "other"]);
+  });
+});
+
+describe("targets", () => {
+  it("offers only windows that can take a source and only sources not in them", () => {
+    const first = applyPick(emptyView(), { type: "new" }, [build], { newId });
+    assert.ok(first.ok);
+    const w = first.view.windows[0]!;
+    assert.equal(canAccept(w), true);
+    assert.equal(canAccept({ ...w, kind: "stream" }), false);
+    const t = { type: "window" as const, windowId: w.id };
+    assert.equal(pickable(first.view, t, build.ref), false);
+    assert.equal(pickable(first.view, t, design.ref), true);
+    assert.equal(pickable(first.view, t, news.ref), false);
   });
 });

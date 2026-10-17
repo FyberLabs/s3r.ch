@@ -177,6 +177,18 @@ export function kindsForTarget(view: View, target: PickTarget): SourceKind[] | n
   return w ? [w.kind] : [];
 }
 
+/** Whether an existing window can take another source (stream and voice hold one; cap 8). */
+export function canAccept(w: ViewWindow): boolean {
+  return w.kind !== "stream" && w.kind !== "voice" && w.sources.length < MAX_SOURCES_PER_WINDOW;
+}
+
+/** Whether a source can be picked for a target: right kind, and not already in that window. */
+export function pickable(view: View, target: PickTarget, ref: SourceRef): boolean {
+  if (target.type === "new") return !target.kind || ref.kind === target.kind;
+  const w = view.windows.find((x) => x.id === target.windowId);
+  return !!w && ref.kind === w.kind && !w.sources.some((x) => sameSource(x, ref));
+}
+
 /* ---------- applying a pick ---------- */
 
 export type PickResult = { ok: true; view: View; windowIds: string[] } | { ok: false; error: string };

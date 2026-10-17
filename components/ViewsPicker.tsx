@@ -9,6 +9,8 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { btnPrimary, btnSecondary, btnTabOff, btnTabOn, chipOff, chipOn } from "@/lib/brand-ui";
 import {
   applyPick,
+  canAccept,
+  pickable,
   buildBrowseTree,
   canMergeFeeds,
   filterTree,
@@ -73,9 +75,12 @@ export function ViewsPicker(props: ViewsPickerProps) {
   // Esc closes; focus stays inside the dialog; focus returns to the opener on close.
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
-    dialogRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
     return () => opener?.focus?.();
   }, []);
+  // Focus the first control of each step, so focus never falls outside the dialog.
+  useEffect(() => {
+    dialogRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+  }, [step]);
   function onDialogKey(e: KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Escape") {
       e.preventDefault();
@@ -97,10 +102,13 @@ export function ViewsPicker(props: ViewsPickerProps) {
   }
 
   const targetKinds = kindsForTarget(view, target);
-  const passes = (s: PickerSource) => (!targetKinds || targetKinds.includes(s.ref.kind)) && (kinds.length === 0 || kinds.includes(s.ref.kind));
+  // Only sources that would actually be added: right kind and not already in the target window.
+  const passes = (s: PickerSource) => pickable(view, target, s.ref) && (kinds.length === 0 || kinds.includes(s.ref.kind));
   const known = useMemo(() => [...sources, ...recents.map((r) => ({ ref: r.ref, label: labelFor(r.ref, sources) }))], [sources, recents]);
-  const tree = useMemo(() => filterTree(buildBrowseTree(sources, selfNetwork, me), passes), [sources, selfNetwork, me, kinds, targetKinds?.join()]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tree = useMemo(() => filterTree(buildBrowseTree(sources, selfNetwork, me), passes), [sources, selfNetwork, me, kinds, view, target]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = visibleRows(tree, expanded);
+  // The focused row, falling back to the first visible one when a filter removed it.
+  const activeKey = rows.some((r) => r.node.id === focusKey) ? focusKey : (rows[0]?.node.id ?? null);
   const flat: PickerSource[] =
     tab === "recents"
       ? recents.map((r) => ({ ref: r.ref, label: labelFor(r.ref, known) })).filter(passes)
@@ -123,7 +131,7 @@ export function ViewsPicker(props: ViewsPickerProps) {
   }
 
   function onTreeKey(e: KeyboardEvent<HTMLUListElement>) {
-    const i = rows.findIndex((r) => r.node.id === focusKey);
+    const i = rows.findIndex((r) => r.node.id === activeKey);
     const row = rows[i];
     const move = (j: number) => {
       const next = rows[Math.max(0, Math.min(rows.length - 1, j))];
@@ -199,7 +207,7 @@ export function ViewsPicker(props: ViewsPickerProps) {
                     {rows.map((r) => {
                       const leaves = r.node.source ? [r.node.source] : leavesOf(r.node);
                       const state = triState(selection, leaves);
-                      const focused = (focusKey ?? rows[0]?.node.id) === r.node.id;
+                      const focused = activeKey === r.node.id;
                       return (
                         <li
                           key={r.node.id}
@@ -312,9 +320,9 @@ function StepWindow(props: { view: View; target: PickTarget; onTarget: (t: PickT
           <legend className="py-1">Add to existing:</legend>
           {view.windows.map((w) => (
             <label key={w.id} className="flex items-center gap-2 py-1 pl-5">
-              <input type="radio" name="where" checked={target.type === "window" && target.windowId === w.id} onChange={() => onTarget({ type: "window", windowId: w.id })} />
-              <span>{w.label ?? w.id}</span>
-              <span className="text-xs text-ink-muted">{w.kind} · {w.sources.length === 1 ? "1 source" : `${w.sources.length} sources`}</span>
+              <input type="radio" name="where" disabled={!canAccept(w)} checked={target.type === "window" && target.windowId === w.id} onChange={() => onTarget({ type: "window", windowId: w.id })} />
+              <span className={canAccept(w) ? "" : "opacity-50"}>{w.label ?? w.id}</span>
+              <span className="text-xs text-ink-muted">{w.kind} · {w.sources.length === 1 ? "1 source" : `${w.sources.length} sources`}{canAccept(w) ? "" : " · full"}</span>
             </label>
           ))}
         </fieldset>
