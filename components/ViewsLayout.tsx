@@ -6,6 +6,7 @@
  * dragged or moved with the arrow keys.
  */
 import { Fragment, useRef, type ReactNode } from "react";
+import { boundary } from "@/lib/views-layout";
 import type { LayoutTree } from "@/lib/views-window";
 
 /** Share moved per arrow key press. */
@@ -26,7 +27,7 @@ function Node(props: { node: LayoutTree; path: number[]; leaf: (windowId: string
     <div className={`flex min-h-0 min-w-0 flex-1 ${row ? "flex-row" : "flex-col"}`}>
       {node.children.map((child, i) => (
         <Fragment key={child.type === "leaf" ? child.windowId : `split-${i}`}>
-          {i > 0 ? <Separator row={row} share={node.sizes[i - 1]!} path={props.path} index={i - 1} onResize={props.onResize} /> : null}
+          {i > 0 ? <Separator row={row} position={boundary(node.sizes, i)} path={props.path} index={i - 1} onResize={props.onResize} /> : null}
           <div className="flex min-h-0 min-w-0" style={{ flexGrow: node.sizes[i], flexBasis: 0 }}>
             <Node node={child} path={[...props.path, i]} leaf={props.leaf} onResize={props.onResize} />
           </div>
@@ -36,7 +37,7 @@ function Node(props: { node: LayoutTree; path: number[]; leaf: (windowId: string
   );
 }
 
-function Separator(props: { row: boolean; share: number; path: number[]; index: number; onResize?: ResizeHandler }) {
+function Separator(props: { row: boolean; position: number; path: number[]; index: number; onResize?: ResizeHandler }) {
   const last = useRef<number | null>(null);
   const { row, onResize } = props;
   if (!onResize) return <div aria-hidden="true" className={row ? "w-1" : "h-1"} />;
@@ -52,7 +53,7 @@ function Separator(props: { row: boolean; share: number; path: number[]; index: 
       aria-label="Resize windows"
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={Math.round(props.share * 100)}
+      aria-valuenow={Math.round(props.position * 100)}
       className={`shrink-0 touch-none bg-rule hover:bg-signal focus-visible:bg-signal ${row ? "w-1 cursor-col-resize" : "h-1 cursor-row-resize"}`}
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);

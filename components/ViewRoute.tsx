@@ -35,6 +35,7 @@ const NO_DATA: ViewData = { rows: [], access: () => ({ kind: "on-open" }), sourc
 
 const DEVICE_KEY = "s3rch-views-device";
 
+/** Throws when the browser blocks local storage; callers report it as an open or save error. */
 function deviceId(): string {
   let id = localStorage.getItem(DEVICE_KEY);
   if (!id) {
@@ -42,6 +43,23 @@ function deviceId(): string {
     localStorage.setItem(DEVICE_KEY, id);
   }
   return id;
+}
+
+/** Last-seen times are a convenience: blocked storage means they are kept for this visit only. */
+function readLocal(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocal(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Kept in memory only.
+  }
 }
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
@@ -74,8 +92,8 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
 
   useEffect(() => {
     let live = true;
-    store
-      .read(owner, deviceId())
+    Promise.resolve()
+      .then(() => store.read(owner, deviceId()))
       .then(({ state, notices }) => live && show(state, notices))
       .catch((e: unknown) => live && setError(e instanceof Error ? e.message : String(e)));
     return () => {
@@ -84,24 +102,25 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
   }, [owner, store, show]);
 
   const view = loaded && !("missing" in loaded) ? loaded.view : null;
-  const windowIds = view ? view.windows.map((w) => w.id).join("\n") : null;
+  // Serialized so effects rerun only when the ids change; JSON keeps any id intact.
+  const windowIds = view ? JSON.stringify(view.windows.map((w) => w.id)) : null;
   const key = seenStorageKey(owner, id);
 
   // Another tab's times are merged in, keeping the later time per window, so neither tab
   // moves a window's time back.
   const onSeen = useCallback(
     (next: SeenTimes) => {
-      const ids = windowIds ? windowIds.split("\n") : [];
-      const merged = mergeSeen(parseSeen(localStorage.getItem(key), ids), next);
+      const ids: string[] = windowIds ? JSON.parse(windowIds) : [];
+      const merged = mergeSeen(parseSeen(readLocal(key), ids), next);
       setSeen(merged);
-      localStorage.setItem(key, JSON.stringify(merged));
+      writeLocal(key, JSON.stringify(merged));
     },
     [key, windowIds],
   );
 
   useEffect(() => {
     if (windowIds === null) return;
-    const ids = windowIds ? windowIds.split("\n") : [];
+    const ids: string[] = JSON.parse(windowIds);
     const onStorage = (e: StorageEvent) => {
       if (e.key === key) setSeen((prev) => mergeSeen(prev ?? Object.create(null), parseSeen(e.newValue, ids)));
     };
@@ -112,8 +131,8 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
   // Windows never seen on this device start counting from now; the baseline is stored at once.
   useEffect(() => {
     if (windowIds === null) return;
-    const ids = windowIds ? windowIds.split("\n") : [];
-    const current = seen ?? parseSeen(localStorage.getItem(key), ids);
+    const ids: string[] = JSON.parse(windowIds);
+    const current = seen ?? parseSeen(readLocal(key), ids);
     const missing = ids.filter((w) => !Object.hasOwn(current, w));
     if (missing.length || seen === null) onSeen(markSeen(current, missing, nowSeconds()));
   }, [windowIds, seen, key, onSeen]);
@@ -126,6 +145,11 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
         setError(null);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
+        // Show the stored View again, so a refused edit made from an older copy is undone on screen.
+        Promise.resolve()
+          .then(() => store.read(owner, deviceId()))
+          .then(({ state }) => show(state, []))
+          .catch(() => undefined);
       }
     },
     [owner, store, show],
@@ -188,7 +212,7 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
           seen={seen ?? {}}
           onSeen={onSeen}
           now={nowSeconds}
-          onLayout={(layout: LayoutTree) => void save((v) => ({ ...v, layout }))}
+          onLayout={(layout: LayoutTree) => void save((v) => ({ ...v, layout }), loaded.view)}
           onAdd={() => setPicking(true)}
         />
       )}

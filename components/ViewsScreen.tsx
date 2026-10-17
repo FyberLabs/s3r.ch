@@ -45,6 +45,8 @@ export function ViewsScreen(props: ViewsScreenProps) {
   const leaves = useRef(new Map<string, HTMLElement>());
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
+  /** Whether the current resize gesture has changed the layout. */
+  const changed = useRef(false);
 
   // A saved or reloaded View replaces the local layout.
   useEffect(() => setLayout(view.layout), [view.layout]);
@@ -70,11 +72,14 @@ export function ViewsScreen(props: ViewsScreenProps) {
     latest.current = { seen, onSeen, now, focused };
   });
   useEffect(() => {
-    const leave = () => {
+    const mark = () => {
       const l = latest.current;
       if (l.focused) l.onSeen(markSeen(l.seen, [l.focused], l.now()));
     };
-    const onVisibility = () => document.visibilityState === "hidden" && leave();
+    // A hidden tab was already marked when it was hidden; rows arriving after that were
+    // never on screen, so closing it then doesn't mark them seen.
+    const leave = () => document.visibilityState !== "hidden" && mark();
+    const onVisibility = () => document.visibilityState === "hidden" && mark();
     window.addEventListener("pagehide", leave);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
@@ -120,9 +125,16 @@ export function ViewsScreen(props: ViewsScreenProps) {
         const current = layoutRef.current;
         if (!current) return;
         const next = delta ? resizeSplit(current, path, index, delta) : current;
-        if (next !== current) setLayout(next);
+        if (next !== current) {
+          setLayout(next);
+          changed.current = true;
+        }
         layoutRef.current = next;
-        if (done) props.onLayout!(next);
+        // A click, or a key press at a bound, changes nothing and saves nothing.
+        if (done && changed.current) {
+          changed.current = false;
+          props.onLayout!(next);
+        }
       }
     : undefined;
 

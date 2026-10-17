@@ -11,6 +11,12 @@ import { MAX_WINDOWS, type LayoutTree, type View, type ViewWindow } from "./view
 /** Smallest share a split child can be resized to. */
 export const MIN_SPLIT_SIZE = 0.1;
 
+/** Position of the border before child `i`: the sum of the shares before it, as a share of the split. */
+export function boundary(sizes: number[], i: number): number {
+  const total = sizes.reduce((a, b) => a + b, 0);
+  return total > 0 ? sizes.slice(0, i).reduce((a, b) => a + b, 0) / total : 0;
+}
+
 /** Window ids in reading order (depth first, left to right). */
 export function leafOrder(tree: LayoutTree | null): string[] {
   const out: string[] = [];

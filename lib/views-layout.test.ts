@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { AccessState } from "./views-access";
 import type { ObservedRow } from "./views-decorators";
-import { addedSources, keyAction, leafOrder, markSeen, mergeSeen, MIN_SPLIT_SIZE, minShare, openView, parseSeen, resizeSplit, settleView, unreadCount, type KeyInput } from "./views-layout";
+import { addedSources, boundary, keyAction, leafOrder, markSeen, mergeSeen, MIN_SPLIT_SIZE, minShare, openView, parseSeen, resizeSplit, settleView, unreadCount, type KeyInput } from "./views-layout";
 import { formatCanonical, type SourceRef } from "./views-source-ref";
 import { emptyState, saveView } from "./views-store";
 import type { LayoutTree, View, ViewWindow } from "./views-window";
@@ -32,6 +32,11 @@ describe("layout", () => {
     assert.equal(resizeSplit(TREE, [0], 0, 0.1), TREE);
     assert.equal(resizeSplit(TREE, [], 1, 0.1), TREE);
     assert.equal(resizeSplit(TREE, [], 0, Number.NaN), TREE);
+  });
+
+  it("places each border at the sum of the shares before it", () => {
+    assert.equal(boundary([0.3, 0.4, 0.3], 1), 0.3);
+    assert.ok(Math.abs(boundary([0.3, 0.4, 0.3], 2) - 0.7) < 1e-9);
   });
 
   it("keeps a row of 12 windows resizable by taking space from further neighbours", () => {
