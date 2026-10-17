@@ -9,7 +9,7 @@
  * Rows, access states and the picker's sources come from `data`. Until sources are connected
  * to live data, the route shows each window's slot with no rows.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { btnPrimary, btnSecondary } from "@/lib/brand-ui";
 import type { AccessState } from "@/lib/views-access";
 import type { ObservedRow } from "@/lib/views-decorators";
@@ -81,6 +81,12 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
   const [error, setError] = useState<string | null>(null);
   const [seen, setSeen] = useState<SeenTimes | null>(null);
   const [picking, setPicking] = useState(false);
+  /**
+   * The stored View as this tab last read or wrote it. Checked edits are refused when the
+   * store holds something else (another tab saved since). Writes update it inside the store
+   * update, so this tab's own queued edits never refuse each other.
+   */
+  const known = useRef<View | null>(null);
 
   const show = useCallback(
     (state: ViewsState, notices: Notice[]) => {
@@ -94,12 +100,16 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
     let live = true;
     Promise.resolve()
       .then(() => store.read(owner, deviceId()))
-      .then(({ state, notices }) => live && show(state, notices))
+      .then(({ state, notices }) => {
+        if (!live) return;
+        known.current = openView(state, id)?.view ?? null;
+        show(state, notices);
+      })
       .catch((e: unknown) => live && setError(e instanceof Error ? e.message : String(e)));
     return () => {
       live = false;
     };
-  }, [owner, store, show]);
+  }, [owner, store, show, id]);
 
   const view = loaded && !("missing" in loaded) ? loaded.view : null;
   // Serialized so effects rerun only when the ids change; JSON keeps any id intact.
@@ -148,24 +158,31 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
         // Show the stored View again, so a refused edit made from an older copy is undone on screen.
         Promise.resolve()
           .then(() => store.read(owner, deviceId()))
-          .then(({ state }) => show(state, []))
+          .then(({ state }) => {
+            known.current = openView(state, id)?.view ?? null;
+            show(state, []);
+          })
           .catch(() => undefined);
       }
     },
-    [owner, store, show],
+    [owner, store, show, id],
   );
 
-  /** Save an edit of the stored View. With `base`, refuse if the View changed since then. */
+  /**
+   * Save an edit of the stored View. A `checked` edit (made from what is on screen) is refused
+   * if another tab saved the View since this tab last read or wrote it.
+   */
   const save = useCallback(
-    (edit: (view: View) => View, base?: View, then?: (state: ViewsState, before: View, after: View) => ViewsState) =>
+    (edit: (view: View) => View, checked: boolean, then?: (state: ViewsState, before: View, after: View) => ViewsState) =>
       commit((s) => {
         const found = openView(s, id);
         if (!found) throw new Error("This View was deleted");
-        // A whole-View edit made from an older copy would drop changes saved since.
-        if (base && JSON.stringify(found.view) !== JSON.stringify(base)) throw new Error("This View changed in another tab. Reload and try again.");
+        if (checked && JSON.stringify(found.view) !== JSON.stringify(known.current)) throw new Error("This View changed in another tab. Reload and try again.");
         const after = edit(found.view);
-        const next = saveView(s, after).state;
-        return then ? then(next, found.view, after) : next;
+        const saved = saveView(s, after).state;
+        const next = then ? then(saved, found.view, after) : saved;
+        known.current = openView(next, id)?.view ?? null;
+        return next;
       }),
     [commit, id],
   );
@@ -174,7 +191,7 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
   const conflicted = !!loaded && !("missing" in loaded) && loaded.conflicted;
   useEffect(() => {
     if (!view || conflicted || !settleView(view, data.access)) return;
-    void save((v) => settleView(v, data.access) ?? v);
+    void save((v) => settleView(v, data.access) ?? v, false);
   }, [view, conflicted, data.access, save]);
 
   if (error && !loaded) return <Shell>Couldn&apos;t open this View: {error}</Shell>;
@@ -212,7 +229,7 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
           seen={seen ?? {}}
           onSeen={onSeen}
           now={nowSeconds}
-          onLayout={(layout: LayoutTree) => void save((v) => ({ ...v, layout }), loaded.view)}
+          onLayout={(layout: LayoutTree) => void save((v) => ({ ...v, layout }), true)}
           onAdd={() => setPicking(true)}
         />
       )}
@@ -232,7 +249,7 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
             const at = Date.now();
             void save(
               () => next,
-              loaded.view,
+              true,
               (s, before, after) => addedSources(before, after).reduce((acc, ref) => touchRecent(acc, ref, at), s),
             );
           }}

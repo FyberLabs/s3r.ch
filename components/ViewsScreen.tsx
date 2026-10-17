@@ -5,7 +5,8 @@
  * badge per window and focus. `F` maximizes the focused window and `Esc` restores it;
  * `Alt+1..9` moves focus to window N. A View with no windows shows the empty "+" slot.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { btnSecondary } from "@/lib/brand-ui";
 import type { AccessState } from "@/lib/views-access";
 import type { ObservedRow } from "@/lib/views-decorators";
@@ -43,6 +44,15 @@ export function ViewsScreen(props: ViewsScreenProps) {
   const [focused, setFocused] = useState<string | null>(null);
   const [maximized, setMaximized] = useState<string | null>(null);
   const leaves = useRef(new Map<string, HTMLElement>());
+  /**
+   * One element per window, kept for the life of the screen. Windows render into these
+   * through portals and the layout only moves the elements between its slots, so changing
+   * the layout (adding a window, wrapping a split) never remounts a window or loses its
+   * tab or draft.
+   */
+  const hosts = useRef(new Map<string, HTMLDivElement>());
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   /** Whether the current resize gesture has changed the layout. */
@@ -54,6 +64,19 @@ export function ViewsScreen(props: ViewsScreenProps) {
   const order = useMemo(() => leafOrder(layout), [layout]);
   const byId = useMemo(() => new Map(view.windows.map((w) => [w.id, w])), [view.windows]);
   const shown = maximized && byId.has(maximized) ? maximized : null;
+
+  const hostFor = (id: string) => {
+    let host = hosts.current.get(id);
+    if (!host) {
+      host = document.createElement("div");
+      host.className = "flex min-h-0 min-w-0 flex-1";
+      hosts.current.set(id, host);
+    }
+    return host;
+  };
+  useEffect(() => {
+    for (const id of [...hosts.current.keys()]) if (!byId.has(id)) hosts.current.delete(id);
+  }, [byId]);
 
   const focus = useCallback(
     (id: string) => {
@@ -152,7 +175,7 @@ export function ViewsScreen(props: ViewsScreenProps) {
     );
   }
 
-  const leaf = (id: string) => {
+  const windowEl = (id: string) => {
     const w = byId.get(id);
     if (!w) return null;
     const isMax = shown === id;
@@ -199,10 +222,26 @@ export function ViewsScreen(props: ViewsScreenProps) {
     );
   };
 
+  const leaf = (id: string) => (mounted && byId.has(id) ? <Slot key={id} host={hostFor(id)} /> : null);
+
   return (
     <div className="relative flex min-h-[70vh] flex-1">
       {/* Borders behind a maximized window can't be reached or moved. */}
       <ViewsLayout tree={layout} leaf={leaf} onResize={shown ? undefined : onResize} />
+      {mounted ? order.filter((id) => byId.has(id)).map((id) => createPortal(windowEl(id), hostFor(id), id)) : null}
     </div>
   );
+}
+
+/** A place in the layout that holds a window's element. */
+function Slot({ host }: { host: HTMLDivElement }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current!;
+    el.appendChild(host);
+    return () => {
+      if (host.parentElement === el) el.removeChild(host);
+    };
+  }, [host]);
+  return <div ref={ref} className="flex min-h-0 min-w-0 flex-1" />;
 }
