@@ -34,6 +34,7 @@ import {
 } from "@/lib/views-picker";
 import { SOURCE_KINDS, type SourceKind, type SourceRef } from "@/lib/views-source-ref";
 import type { RecentEntry } from "@/lib/views-store";
+import { accessLabel, addsAsPending, canPick, type AccessState } from "@/lib/views-access";
 import type { View } from "@/lib/views-window";
 
 export type ViewsPickerProps = {
@@ -50,6 +51,8 @@ export type ViewsPickerProps = {
   /** Start on step 2 with a new-window target even without a fixed target (preview only). */
   startOnSources?: boolean;
   newId: () => string;
+  /** Inline access state per source (docs/views.md §3.7). Without it, no badges are shown. */
+  access?: (ref: SourceRef) => AccessState;
   onConfirm: (view: View, windowIds: string[]) => void;
   onClose: () => void;
 };
@@ -61,7 +64,9 @@ function originBadge(ref: SourceRef): string {
 }
 
 export function ViewsPicker(props: ViewsPickerProps) {
-  const { view, sources, recents, favorites, selfNetwork, me, newId, onConfirm, onClose } = props;
+  const { view, sources, recents, favorites, selfNetwork, me, newId, onConfirm, onClose, access } = props;
+  const pickOk = (s: PickerSource) => !access || canPick(access(s.ref));
+  const pickableOf = (list: PickerSource[]) => list.filter(pickOk);
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState<1 | 2>(props.target || props.startOnSources ? 2 : 1);
@@ -144,7 +149,7 @@ export function ViewsPicker(props: ViewsPickerProps) {
   }
 
   function confirm() {
-    const r = applyPick(view, target, selection, { merge: mergeable && merge, newId });
+    const r = applyPick(view, target, selection, { merge: mergeable && merge, newId, pending: access ? (ref) => addsAsPending(access(ref)) : undefined });
     if (!r.ok) return setError(r.error);
     onConfirm(r.view, r.windowIds);
   }
@@ -165,8 +170,9 @@ export function ViewsPicker(props: ViewsPickerProps) {
       if (row.expanded) setExpanded((x) => { const n = new Set(x); n.delete(row.node.id); return n; });
       else if (row.parentId) setFocusKey(row.parentId);
     } else if (e.key === " " && row) {
-      if (row.node.source) toggle(row.node.source);
-      else setSelection((sel) => toggleGroup(sel, leavesOf(row.node)));
+      if (row.node.source) {
+        if (pickOk(row.node.source)) toggle(row.node.source);
+      } else setSelection((sel) => toggleGroup(sel, pickableOf(leavesOf(row.node))));
     } else if (e.key === "Enter" && selection.length && fitsTarget) confirm();
     else return;
     e.preventDefault();
@@ -224,7 +230,8 @@ export function ViewsPicker(props: ViewsPickerProps) {
                 rows.length ? (
                   <ul role="tree" aria-label="Networks" aria-multiselectable="true" onKeyDown={onTreeKey} className="text-sm">
                     {rows.map((r) => {
-                      const leaves = r.node.source ? [r.node.source] : leavesOf(r.node);
+                      const leaves = pickableOf(r.node.source ? [r.node.source] : leavesOf(r.node));
+                      const rowAccess = r.node.source && access ? access(r.node.source.ref) : undefined;
                       const state = triState(selection, leaves);
                       const focused = activeKey === r.node.id;
                       return (
@@ -252,11 +259,13 @@ export function ViewsPicker(props: ViewsPickerProps) {
                             tabIndex={-1}
                             aria-label={`Select ${r.node.label}`}
                             checked={state === "checked"}
+                            disabled={leaves.length === 0}
                             ref={(el) => { if (el) el.indeterminate = state === "mixed"; }}
                             onChange={() => (r.node.source ? toggle(r.node.source) : setSelection((sel) => toggleGroup(sel, leaves)))}
                           />
-                          <span className={r.node.source ? "" : "font-semibold"}>{r.node.label}</span>
+                          <span className={r.node.source ? (leaves.length ? "" : "opacity-50") : "font-semibold"}>{r.node.label}</span>
                           {r.node.source ? <span className="text-xs text-ink-muted">{KIND_LABEL[r.node.source.ref.kind].toLowerCase()}</span> : null}
+                          {rowAccess ? <AccessBadge state={rowAccess} /> : null}
                         </li>
                       );
                     })}
@@ -269,9 +278,10 @@ export function ViewsPicker(props: ViewsPickerProps) {
                   {flat.map((s) => (
                     <li key={sourceKey(s.ref)}>
                       <label className="flex cursor-pointer items-center gap-3 py-2">
-                        <input type="checkbox" checked={isSelected(selection, s.ref)} onChange={() => toggle(s)} />
+                        <input type="checkbox" disabled={!pickOk(s)} checked={isSelected(selection, s.ref)} onChange={() => toggle(s)} />
                         <span>{s.label}</span>
                         <span className="text-xs text-ink-muted">{KIND_LABEL[s.ref.kind].toLowerCase()} · {originBadge(s.ref)}</span>
+                        {access ? <AccessBadge state={access(s.ref)} /> : null}
                       </label>
                     </li>
                   ))}
@@ -368,6 +378,16 @@ function isSkippedRadio(el: HTMLElement): boolean {
   const group = el.form ? el.form.elements.namedItem(el.name) : null;
   const members = group instanceof RadioNodeList ? [...group] : [...document.querySelectorAll<HTMLInputElement>(`input[type="radio"][name="${CSS.escape(el.name)}"]`)];
   return members.some((m) => m instanceof HTMLInputElement && m.checked);
+}
+
+function AccessBadge({ state }: { state: AccessState }) {
+  const tone = state.kind === "read" ? "text-status-pass" : state.kind === "locked" ? "text-signal" : "text-ink-muted";
+  return (
+    <span className={`ml-auto text-xs ${tone}`}>
+      {accessLabel(state)}
+      {addsAsPending(state) ? <span className="text-ink-muted"> · adds as pending</span> : null}
+    </span>
+  );
 }
 
 function Empty() {

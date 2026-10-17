@@ -219,7 +219,12 @@ export type PickResult = { ok: true; view: View; windowIds: string[] } | { ok: f
  *   one source. Sources already in the window are skipped.
  * The result is validated as a whole; nothing is changed on error.
  */
-export function applyPick(view: View, target: PickTarget, selection: PickerSource[], opts: { merge?: boolean; newId: () => string }): PickResult {
+export function applyPick(
+  view: View,
+  target: PickTarget,
+  selection: PickerSource[],
+  opts: { merge?: boolean; newId: () => string; pending?: (ref: SourceRef) => boolean },
+): PickResult {
   if (selection.length === 0) return { ok: false, error: "Nothing selected" };
   let windows: ViewWindow[];
   let touched: string[];
@@ -254,6 +259,16 @@ export function applyPick(view: View, target: PickTarget, selection: PickerSourc
     const mode = w.mode === "merged" ? "merged" : "tabs";
     windows = view.windows.map((x) => (x.id === w.id ? { ...w, sources, mode } : x));
     touched = [w.id];
+  }
+  // Sources picked without access are marked pending in their window (docs/views.md §3.7).
+  const isPending = opts.pending;
+  if (isPending) {
+    windows = windows.map((w) => {
+      if (!touched.includes(w.id)) return w;
+      const keys = [...(w.pending ?? []), ...w.sources.filter((r) => isSelected(selection, r) && isPending(r)).map(sourceKey)];
+      const pending = [...new Set(keys)];
+      return pending.length ? { ...w, pending } : w;
+    });
   }
   const loaded = loadView({ ...view, windows }, opts.newId);
   if (!loaded.ok) return { ok: false, error: loaded.error };

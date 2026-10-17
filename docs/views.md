@@ -51,7 +51,7 @@ type SourceRef = { network: string; owner: string; source: string; kind: "chat"|
 //   components are always escaped and the encoding is injective. Parsing splits on "/" then decodes; a component
 //   that is empty or re-encodes differently is rejected. Identity comparison uses network/owner/source/kind only.
 // shareable string: canonical + "?b=" + pct(bindingHash) + "&r=" + pct(rootBindingHash) + "&rc=" + rootCounter when present, so copied references keep the binding hint.
-type Window = { id: string; kind: "chat"|"forum"|"feed"|"stream"|"voice"; sources: SourceRef[]; mode: "single"|"tabs"|"merged"; label?: string; colorBy?: Record<string,string> };
+type Window = { id: string; kind: "chat"|"forum"|"feed"|"stream"|"voice"; sources: SourceRef[]; mode: "single"|"tabs"|"merged"; label?: string; colorBy?: Record<string,string>; pending?: string[] /* canonical refs added while locked (PR 4) */ };
 // Invariants, checked on every window on create, load and import (PR 1 schema, PR 5 validation, with tests):
 //   - View.windows.length ≤ max windows (12) on create, load and import, checked before layout repair
 //   - before any recursive work, an imported layout is rejected if it exceeds a maximum depth (8) or node count

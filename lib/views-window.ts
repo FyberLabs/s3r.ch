@@ -4,7 +4,7 @@
  * Invalid windows are dropped with a notice, never repaired silently. After drops the
  * layout is repaired; if it cannot be, the default grid is used.
  */
-import { isSourceKind, sameSource, validateSourceRef, type SourceKind, type SourceRef } from "./views-source-ref";
+import { formatCanonical, isSourceKind, sameSource, validateSourceRef, type SourceKind, type SourceRef } from "./views-source-ref";
 
 export const MAX_WINDOWS = 12;
 export const MAX_SOURCES_PER_WINDOW = 8;
@@ -20,6 +20,11 @@ export type ViewWindow = {
   mode: WindowMode;
   label?: string;
   colorBy?: Record<string, string>;
+  /**
+   * Canonical refs (formatCanonical) of sources added while the user had no access. Such a
+   * source shows "Waiting for access" instead of "Access removed" until access arrives.
+   */
+  pending?: string[];
 };
 
 export type LayoutTree =
@@ -39,7 +44,7 @@ const TABBABLE: readonly SourceKind[] = ["chat", "forum", "feed"];
 /** Validate one window's shape, kind and mode. Returns the window or the reason it is invalid. */
 export function validateWindow(input: unknown): { ok: true; value: ViewWindow } | { ok: false; error: string } {
   if (!isRecord(input)) return { ok: false, error: "window is not an object" };
-  const { id, kind, sources, mode, label, colorBy } = input;
+  const { id, kind, sources, mode, label, colorBy, pending } = input;
   if (typeof id !== "string" || id === "") return { ok: false, error: "window id is empty" };
   if (!isSourceKind(kind)) return { ok: false, error: "unknown window kind" };
   if (mode !== "single" && mode !== "tabs" && mode !== "merged") return { ok: false, error: "unknown window mode" };
@@ -70,6 +75,13 @@ export function validateWindow(input: unknown): { ok: true; value: ViewWindow } 
       return { ok: false, error: "colorBy is invalid" };
     }
     window.colorBy = { ...(colorBy as Record<string, string>) };
+  }
+  if (pending !== undefined) {
+    const keys = new Set(refs.map(formatCanonical));
+    if (!Array.isArray(pending) || !pending.every((p) => typeof p === "string" && keys.has(p)) || new Set(pending).size !== pending.length) {
+      return { ok: false, error: "pending must list sources of this window once each" };
+    }
+    if (pending.length) window.pending = [...pending];
   }
   return { ok: true, value: window };
 }
