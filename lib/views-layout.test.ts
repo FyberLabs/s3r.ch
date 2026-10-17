@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { AccessState } from "./views-access";
 import type { ObservedRow } from "./views-decorators";
-import { addedSources, keyAction, leafOrder, markSeen, MIN_SPLIT_SIZE, minShare, openView, parseSeen, resizeSplit, settleView, unreadCount, type KeyInput } from "./views-layout";
+import { addedSources, keyAction, leafOrder, markSeen, mergeSeen, MIN_SPLIT_SIZE, minShare, openView, parseSeen, resizeSplit, settleView, unreadCount, type KeyInput } from "./views-layout";
 import { formatCanonical, type SourceRef } from "./views-source-ref";
 import { emptyState, saveView } from "./views-store";
 import type { LayoutTree, View, ViewWindow } from "./views-window";
@@ -72,11 +72,22 @@ describe("unread", () => {
   });
 
   it("stores last-seen times for the View's windows only", () => {
-    assert.deepEqual(parseSeen(JSON.stringify({ w: 5, gone: 9, x: "1", y: -1 }), ["w", "x", "y"]), { w: 5 });
-    assert.deepEqual(parseSeen("not json", ["w"]), {});
-    assert.deepEqual(parseSeen(JSON.stringify({ constructor: 1 }), ["constructor"]), { constructor: 1 });
-    assert.deepEqual(parseSeen(null, ["w"]), {});
-    assert.deepEqual(markSeen({ w: 50 }, ["w", "v"], 40), { w: 50, v: 40 });
+    assert.deepEqual({ ...parseSeen(JSON.stringify({ w: 5, gone: 9, x: "1", y: -1 }), ["w", "x", "y"]) }, { w: 5 });
+    assert.deepEqual({ ...parseSeen("not json", ["w"]) }, {});
+    assert.deepEqual({ ...parseSeen(JSON.stringify({ constructor: 1 }), ["constructor"]) }, { constructor: 1 });
+    assert.deepEqual({ ...parseSeen(null, ["w"]) }, {});
+    assert.deepEqual({ ...markSeen({ w: 50 }, ["w", "v"], 40) }, { w: 50, v: 40 });
+  });
+
+  it("treats __proto__ as an ordinary window id", () => {
+    const seen = markSeen(parseSeen(null, ["__proto__"]), ["__proto__"], 7);
+    assert.ok(Object.hasOwn(seen, "__proto__"));
+    assert.equal(seen["__proto__"], 7);
+    assert.ok(Object.hasOwn(parseSeen(JSON.stringify(seen), ["__proto__"]), "__proto__"));
+  });
+
+  it("merges another tab's times without moving any back", () => {
+    assert.deepEqual({ ...mergeSeen({ a: 200, b: 100 }, { a: 100, b: 150, c: 5 }) }, { a: 200, b: 150, c: 5 });
   });
 });
 

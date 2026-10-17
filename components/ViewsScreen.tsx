@@ -63,6 +63,27 @@ export function ViewsScreen(props: ViewsScreenProps) {
     [focused, seen, onSeen, now],
   );
 
+  // Rows seen in the focused window count as seen when the user leaves the window, the page
+  // or the tab, so they are not unread on the next visit.
+  const latest = useRef({ seen, onSeen, now, focused });
+  useEffect(() => {
+    latest.current = { seen, onSeen, now, focused };
+  });
+  useEffect(() => {
+    const leave = () => {
+      const l = latest.current;
+      if (l.focused) l.onSeen(markSeen(l.seen, [l.focused], l.now()));
+    };
+    const onVisibility = () => document.visibilityState === "hidden" && leave();
+    window.addEventListener("pagehide", leave);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      document.removeEventListener("visibilitychange", onVisibility);
+      leave();
+    };
+  }, []);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || (e.target instanceof Element && e.target.closest("[role=dialog]"))) return;
@@ -144,7 +165,7 @@ export function ViewsScreen(props: ViewsScreenProps) {
             rows={props.rows}
             label={props.label}
             access={props.access}
-            unread={focused === id ? 0 : unreadCount(w, props.rows, props.access, seen[id])}
+            unread={focused === id ? 0 : unreadCount(w, props.rows, props.access, Object.hasOwn(seen, id) ? seen[id] : undefined)}
             onSend={props.onSend ? (t, text) => props.onSend!(id, t, text) : undefined}
             actions={
               <button
@@ -168,7 +189,8 @@ export function ViewsScreen(props: ViewsScreenProps) {
 
   return (
     <div className="relative flex min-h-[70vh] flex-1">
-      <ViewsLayout tree={layout} leaf={leaf} onResize={onResize} />
+      {/* Borders behind a maximized window can't be reached or moved. */}
+      <ViewsLayout tree={layout} leaf={leaf} onResize={shown ? undefined : onResize} />
     </div>
   );
 }

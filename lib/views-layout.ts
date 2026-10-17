@@ -86,7 +86,10 @@ export function unreadCount(window: ViewWindow, rows: ObservedRow[], access: (re
   return n;
 }
 
-/** Last-seen times by window id, as stored locally per View. */
+/**
+ * Last-seen times by window id, as stored locally per View. Records have no prototype, so a
+ * window id such as `__proto__` is an ordinary key.
+ */
 export type SeenTimes = Record<string, number>;
 
 export function seenStorageKey(owner: string, viewId: string): string {
@@ -95,7 +98,7 @@ export function seenStorageKey(owner: string, viewId: string): string {
 
 /** Parse stored last-seen times, keeping only finite times for the View's windows. */
 export function parseSeen(raw: string | null, windowIds: string[]): SeenTimes {
-  const out: SeenTimes = {};
+  const out: SeenTimes = Object.create(null);
   let value: unknown;
   try {
     value = raw ? JSON.parse(raw) : null;
@@ -112,8 +115,15 @@ export function parseSeen(raw: string | null, windowIds: string[]): SeenTimes {
 
 /** Mark windows seen at `now`; windows never seen before start counting from now. */
 export function markSeen(seen: SeenTimes, ids: string[], now: number): SeenTimes {
-  const next = { ...seen };
-  for (const id of ids) next[id] = Math.max(next[id] ?? 0, now);
+  const next: SeenTimes = Object.assign(Object.create(null), seen);
+  for (const id of ids) next[id] = Math.max(Object.hasOwn(next, id) ? next[id]! : 0, now);
+  return next;
+}
+
+/** Combine two sets of last-seen times (another tab's and ours), keeping the later time per window. */
+export function mergeSeen(a: SeenTimes, b: SeenTimes): SeenTimes {
+  const next: SeenTimes = Object.assign(Object.create(null), a);
+  for (const id of Object.keys(b)) next[id] = Math.max(Object.hasOwn(next, id) ? next[id]! : 0, b[id]!);
   return next;
 }
 

@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { btnPrimary, btnSecondary } from "@/lib/brand-ui";
 import type { AccessState } from "@/lib/views-access";
 import type { ObservedRow } from "@/lib/views-decorators";
-import { addedSources, markSeen, openView, parseSeen, seenStorageKey, settleView, type SeenTimes } from "@/lib/views-layout";
+import { addedSources, markSeen, mergeSeen, openView, parseSeen, seenStorageKey, settleView, type SeenTimes } from "@/lib/views-layout";
 import { labelFor, type PickerSource } from "@/lib/views-picker";
 import type { SourceRef } from "@/lib/views-source-ref";
 import { createIndexedDbViewsStore, resolveConflict, saveView, touchRecent, type ViewsState, type ViewsStore, type ViewVersion } from "@/lib/views-store";
@@ -83,25 +83,40 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
     };
   }, [owner, store, show]);
 
-  const onSeen = useCallback(
-    (next: SeenTimes) => {
-      setSeen(next);
-      localStorage.setItem(seenStorageKey(owner, id), JSON.stringify(next));
-    },
-    [owner, id],
-  );
-
   const view = loaded && !("missing" in loaded) ? loaded.view : null;
   const windowIds = view ? view.windows.map((w) => w.id).join("\n") : null;
+  const key = seenStorageKey(owner, id);
+
+  // Another tab's times are merged in, keeping the later time per window, so neither tab
+  // moves a window's time back.
+  const onSeen = useCallback(
+    (next: SeenTimes) => {
+      const ids = windowIds ? windowIds.split("\n") : [];
+      const merged = mergeSeen(parseSeen(localStorage.getItem(key), ids), next);
+      setSeen(merged);
+      localStorage.setItem(key, JSON.stringify(merged));
+    },
+    [key, windowIds],
+  );
+
+  useEffect(() => {
+    if (windowIds === null) return;
+    const ids = windowIds ? windowIds.split("\n") : [];
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === key) setSeen((prev) => mergeSeen(prev ?? Object.create(null), parseSeen(e.newValue, ids)));
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [key, windowIds]);
 
   // Windows never seen on this device start counting from now; the baseline is stored at once.
   useEffect(() => {
     if (windowIds === null) return;
     const ids = windowIds ? windowIds.split("\n") : [];
-    const current = seen ?? parseSeen(localStorage.getItem(seenStorageKey(owner, id)), ids);
+    const current = seen ?? parseSeen(localStorage.getItem(key), ids);
     const missing = ids.filter((w) => !Object.hasOwn(current, w));
     if (missing.length || seen === null) onSeen(markSeen(current, missing, nowSeconds()));
-  }, [windowIds, seen, owner, id, onSeen]);
+  }, [windowIds, seen, key, onSeen]);
 
   const commit = useCallback(
     async (fn: (state: ViewsState) => ViewsState) => {
@@ -204,10 +219,10 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
   );
 }
 
-/** Live copies of a conflicted View, current first. */
+/** Copies of a conflicted View, current first; a deletion is one of the choices. */
 function copiesOf(state: ViewsState, id: string): ViewVersion[] {
   const entry = state.views[id];
-  return entry ? [entry.current, ...entry.conflicts].filter((v) => v.view) : [];
+  return entry ? [entry.current, ...entry.conflicts] : [];
 }
 
 function Conflicts({ copies, onChoose }: { copies: ViewVersion[]; onChoose: (chosen: ViewVersion) => void }) {
@@ -217,22 +232,39 @@ function Conflicts({ copies, onChoose }: { copies: ViewVersion[]; onChoose: (cho
       <ul className="grid gap-3 sm:grid-cols-2">
         {copies.map((c, i) => (
           <li key={i} className="space-y-2 border border-rule p-3 text-sm">
-            <p className="font-semibold">{c.view!.title}</p>
-            <ul className="text-ink-muted">
-              {c.view!.windows.map((w) => (
-                <li key={w.id}>
-                  {w.label ?? w.kind} · {w.sources.length} {w.sources.length === 1 ? "source" : "sources"}
-                </li>
-              ))}
-              {c.view!.windows.length === 0 ? <li>No windows</li> : null}
-            </ul>
-            <button type="button" className={btnPrimary} onClick={() => onChoose(c)}>
-              Keep this copy
-            </button>
+            {c.view ? (
+              <Copy view={c.view} onKeep={() => onChoose(c)} />
+            ) : (
+              <>
+                <p className="font-semibold">Deleted on another device</p>
+                <button type="button" className={btnSecondary} onClick={() => onChoose(c)}>
+                  Keep it deleted
+                </button>
+              </>
+            )}
           </li>
         ))}
       </ul>
     </div>
+  );
+}
+
+function Copy({ view, onKeep }: { view: View; onKeep: () => void }) {
+  return (
+    <>
+      <p className="font-semibold">{view.title}</p>
+      <ul className="text-ink-muted">
+        {view.windows.map((w) => (
+          <li key={w.id}>
+            {w.label ?? w.kind} · {w.sources.length} {w.sources.length === 1 ? "source" : "sources"}
+          </li>
+        ))}
+        {view.windows.length === 0 ? <li>No windows</li> : null}
+      </ul>
+      <button type="button" className={btnPrimary} onClick={onKeep}>
+        Keep this copy
+      </button>
+    </>
   );
 }
 

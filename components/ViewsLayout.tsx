@@ -13,6 +13,7 @@ export const KEY_STEP = 0.05;
 
 export type ResizeHandler = (path: number[], index: number, delta: number, done: boolean) => void;
 
+/** Without `onResize` (or while a window is maximized) the borders are plain lines, not controls. */
 export function ViewsLayout(props: { tree: LayoutTree; leaf: (windowId: string) => ReactNode; onResize?: ResizeHandler }) {
   return <Node node={props.tree} path={[]} leaf={props.leaf} onResize={props.onResize} />;
 }
