@@ -219,10 +219,17 @@ export type PickResult = { ok: true; view: View; windowIds: string[] } | { ok: f
  *   one source. Sources already in the window are skipped.
  * The result is validated as a whole; nothing is changed on error.
  */
-export function applyPick(view: View, target: PickTarget, selection: PickerSource[], opts: { merge?: boolean; newId: () => string }): PickResult {
+export function applyPick(
+  view: View,
+  target: PickTarget,
+  selection: PickerSource[],
+  opts: { merge?: boolean; newId: () => string; pending?: (ref: SourceRef) => boolean },
+): PickResult {
   if (selection.length === 0) return { ok: false, error: "Nothing selected" };
   let windows: ViewWindow[];
   let touched: string[];
+  // Sources this pick actually adds; only these can be marked pending.
+  let addedRefs: SourceRef[];
   if (target.type === "new") {
     if (target.kind && selection.some((s) => s.ref.kind !== target.kind)) return { ok: false, error: `Only ${target.kind} sources fit a ${target.kind} window` };
     const used = new Set(view.windows.map((w) => w.id));
@@ -242,6 +249,7 @@ export function applyPick(view: View, target: PickTarget, selection: PickerSourc
     if (view.windows.length + added.length > MAX_WINDOWS) return { ok: false, error: `A view holds at most ${MAX_WINDOWS} windows` };
     windows = [...view.windows, ...added];
     touched = added.map((w) => w.id);
+    addedRefs = selection.map((s) => s.ref);
   } else {
     const w = view.windows.find((x) => x.id === target.windowId);
     if (!w) return { ok: false, error: "That window no longer exists" };
@@ -254,6 +262,17 @@ export function applyPick(view: View, target: PickTarget, selection: PickerSourc
     const mode = w.mode === "merged" ? "merged" : "tabs";
     windows = view.windows.map((x) => (x.id === w.id ? { ...w, sources, mode } : x));
     touched = [w.id];
+    addedRefs = extra;
+  }
+  // Sources picked without access are marked pending in their window (docs/views.md §3.7).
+  const isPending = opts.pending;
+  if (isPending) {
+    windows = windows.map((w) => {
+      if (!touched.includes(w.id)) return w;
+      const keys = [...(w.pending ?? []), ...w.sources.filter((r) => addedRefs.some((a) => sameSource(a, r)) && isPending(r)).map(sourceKey)];
+      const pending = [...new Set(keys)];
+      return pending.length ? { ...w, pending } : w;
+    });
   }
   const loaded = loadView({ ...view, windows }, opts.newId);
   if (!loaded.ok) return { ok: false, error: loaded.error };
