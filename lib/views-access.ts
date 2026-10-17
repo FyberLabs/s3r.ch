@@ -72,6 +72,11 @@ export function canPick(state: AccessState): boolean {
   return state.kind !== "signin" && state.kind !== "needs-connection";
 }
 
+/** Whether a window may show a source's rows: only while the source can be read. */
+export function canShowRows(state: AccessState): boolean {
+  return state.kind === "read" || state.kind === "read-only" || state.kind === "read-only-unlinked";
+}
+
 /** A locked row is added as pending. */
 export function addsAsPending(state: AccessState): boolean {
   return state.kind === "locked";

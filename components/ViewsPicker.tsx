@@ -21,8 +21,6 @@ import {
   kindsForTarget,
   labelFor,
   leavesOf,
-  networkHost,
-  shortOwner,
   sourceKey,
   toggleGroup,
   toggleSource,
@@ -34,6 +32,7 @@ import {
 } from "@/lib/views-picker";
 import { SOURCE_KINDS, type SourceKind, type SourceRef } from "@/lib/views-source-ref";
 import type { RecentEntry } from "@/lib/views-store";
+import { originBadge } from "@/lib/views-decorators";
 import { accessLabel, addsAsPending, canPick, type AccessState } from "@/lib/views-access";
 import type { View } from "@/lib/views-window";
 
@@ -59,9 +58,6 @@ export type ViewsPickerProps = {
 
 const KIND_LABEL: Record<SourceKind, string> = { chat: "Chat", forum: "Forum", feed: "Feed", stream: "Stream", voice: "Voice" };
 
-function originBadge(ref: SourceRef): string {
-  return ref.network.startsWith("s3rch:") ? `${networkHost(ref.network)} › ${shortOwner(ref.owner)}` : `${ref.network} › ${shortOwner(ref.owner)}`;
-}
 
 export function ViewsPicker(props: ViewsPickerProps) {
   const { view, sources, recents, favorites, selfNetwork, me, newId, onConfirm, onClose, access } = props;
