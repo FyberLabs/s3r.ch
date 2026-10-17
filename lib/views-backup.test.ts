@@ -98,7 +98,9 @@ describe("backup", () => {
     assert.equal(r1.notices.length, 1);
 
     const address = b.manifest.entries[0]!.address;
-    const altered = { ...b.records[address]!, ct: b.records[address]!.ct.slice(0, -2) + "AA" };
+    // Always change the ciphertext (a fixed suffix can match by chance).
+    const ct = b.records[address]!.ct;
+    const altered = { ...b.records[address]!, ct: ct.slice(0, -2) + (ct.slice(-2) === "AA" ? "BA" : "AA") };
     const r2 = await restoreBackup(emptyState(ALICE, "d2"), pair, [b.manifest], async () => altered);
     assert.deepEqual(r2.state.views, {});
 
