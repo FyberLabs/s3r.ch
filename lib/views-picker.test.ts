@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   applyPick,
   canAccept,
+  capacity,
+  fits,
   pickable,
   buildBrowseTree,
   canMergeFeeds,
@@ -160,5 +162,17 @@ describe("targets", () => {
     assert.equal(pickable(first.view, t, build.ref), false);
     assert.equal(pickable(first.view, t, design.ref), true);
     assert.equal(pickable(first.view, t, news.ref), false);
+  });
+
+  it("reports remaining capacity", () => {
+    const full: View = { ...emptyView(), windows: Array.from({ length: 12 }, (_, i) => ({ id: `x${i}`, kind: "chat" as const, mode: "single" as const, sources: [src(`r${i}`).ref] })) };
+    assert.equal(capacity(full, { type: "new" }), 0);
+    assert.equal(fits(full, { type: "new" }, 1, false), false);
+    assert.equal(capacity(emptyView(), { type: "new" }), 12);
+    assert.equal(fits(emptyView(), { type: "new" }, 2, true), true);
+    const seven: View = { ...emptyView(), windows: [{ id: "t", kind: "chat", mode: "tabs", sources: Array.from({ length: 7 }, (_, i) => src(`s${i}`).ref) }] };
+    assert.equal(capacity(seven, { type: "window", windowId: "t" }), 1);
+    assert.equal(fits(seven, { type: "window", windowId: "t" }, 2, false), false);
+    assert.equal(capacity(seven, { type: "window", windowId: "gone" }), 0);
   });
 });

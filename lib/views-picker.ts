@@ -189,6 +189,23 @@ export function pickable(view: View, target: PickTarget, ref: SourceRef): boolea
   return !!w && ref.kind === w.kind && !w.sources.some((x) => sameSource(x, ref));
 }
 
+/**
+ * How many sources a target can still take: for a new target, the free window slots (one
+ * window per source; a merged feed window needs one slot); for an existing window, its
+ * free source slots.
+ */
+export function capacity(view: View, target: PickTarget): number {
+  if (target.type === "new") return Math.max(0, MAX_WINDOWS - view.windows.length);
+  const w = view.windows.find((x) => x.id === target.windowId);
+  return w && canAccept(w) ? MAX_SOURCES_PER_WINDOW - w.sources.length : 0;
+}
+
+/** Whether `count` selected sources fit the target (`merge`: one merged feed window). */
+export function fits(view: View, target: PickTarget, count: number, merge: boolean): boolean {
+  const cap = capacity(view, target);
+  return target.type === "new" && merge ? cap >= 1 : count <= cap;
+}
+
 /* ---------- applying a pick ---------- */
 
 export type PickResult = { ok: true; view: View; windowIds: string[] } | { ok: false; error: string };

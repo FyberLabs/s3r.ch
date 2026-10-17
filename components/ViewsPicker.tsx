@@ -10,6 +10,8 @@ import { btnPrimary, btnSecondary, btnTabOff, btnTabOn, chipOff, chipOn } from "
 import {
   applyPick,
   canAccept,
+  capacity,
+  fits,
   pickable,
   buildBrowseTree,
   canMergeFeeds,
@@ -79,8 +81,17 @@ export function ViewsPicker(props: ViewsPickerProps) {
   }, []);
   // Focus the first control of each step, so focus never falls outside the dialog.
   useEffect(() => {
-    dialogRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    const d = dialogRef.current;
+    (d?.querySelector<HTMLElement>("[data-autofocus]:not([disabled])") ?? d?.querySelector<HTMLElement>("[data-step] input:not([disabled]), [data-step] button:not([disabled])"))?.focus();
   }, [step]);
+
+  // A new destination clears the kind filters and drops selected sources that no longer fit.
+  function chooseTarget(t: PickTarget) {
+    setTarget(t);
+    setKinds([]);
+    setSelection((sel) => sel.filter((s) => pickable(view, t, s.ref)));
+    setError(null);
+  }
   function onDialogKey(e: KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Escape") {
       e.preventDefault();
@@ -88,7 +99,10 @@ export function ViewsPicker(props: ViewsPickerProps) {
       return;
     }
     if (e.key !== "Tab") return;
-    const items = [...(dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]),input:not([disabled]),[tabindex="0"]') ?? [])];
+    // Only elements reachable by Tab (tree controls with tabIndex -1 are not).
+    const items = [...(dialogRef.current?.querySelectorAll<HTMLElement>("button:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]") ?? [])].filter(
+      (el) => el.tabIndex >= 0,
+    );
     if (!items.length) return;
     const first = items[0]!;
     const last = items[items.length - 1]!;
@@ -103,7 +117,7 @@ export function ViewsPicker(props: ViewsPickerProps) {
 
   const targetKinds = kindsForTarget(view, target);
   // Only sources that would actually be added: right kind and not already in the target window.
-  const passes = (s: PickerSource) => pickable(view, target, s.ref) && (kinds.length === 0 || kinds.includes(s.ref.kind));
+  const passes = (s: PickerSource) => capacity(view, target) > 0 && pickable(view, target, s.ref) && (kinds.length === 0 || kinds.includes(s.ref.kind));
   const known = useMemo(() => [...sources, ...recents.map((r) => ({ ref: r.ref, label: labelFor(r.ref, sources) }))], [sources, recents]);
   const tree = useMemo(() => filterTree(buildBrowseTree(sources, selfNetwork, me), passes), [sources, selfNetwork, me, kinds, view, target]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = visibleRows(tree, expanded);
@@ -117,6 +131,8 @@ export function ViewsPicker(props: ViewsPickerProps) {
         : [];
 
   const mergeable = target.type === "new" && canMergeFeeds(selection);
+  const room = capacity(view, target);
+  const fitsTarget = fits(view, target, selection.length, mergeable && merge);
   const windowKind = target.type === "new" ? target.kind ?? inferKind(selection) : view.windows.find((w) => w.id === target.windowId)?.kind;
 
   function toggle(s: PickerSource) {
@@ -180,7 +196,7 @@ export function ViewsPicker(props: ViewsPickerProps) {
         </header>
 
         {step === 1 ? (
-          <StepWindow view={view} target={target} onTarget={setTarget} onCancel={onClose} onNext={() => setStep(2)} />
+          <StepWindow view={view} target={target} onTarget={chooseTarget} onCancel={onClose} onNext={() => setStep(2)} />
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2 border-b border-rule px-5 py-3">
@@ -280,10 +296,15 @@ export function ViewsPicker(props: ViewsPickerProps) {
                   </label>
                 </fieldset>
               ) : null}
+              {room === 0 ? (
+                <p role="status" className="mt-2 text-sm text-ink-muted">{target.type === "new" ? "This view has no room for another window." : "This window is full."}</p>
+              ) : !fitsTarget ? (
+                <p role="status" className="mt-2 text-sm text-ink-muted">{room === 1 ? "Only 1 more source fits." : `Only ${room} more sources fit.`}</p>
+              ) : null}
               {error ? <p role="alert" className="mt-2 text-sm text-status-fail">{error}</p> : null}
               <div className="mt-3 flex justify-end gap-2">
                 {props.target ? null : <button type="button" className={btnSecondary} onClick={() => setStep(1)}>Back</button>}
-                <button type="button" className={btnPrimary} disabled={selection.length === 0} onClick={confirm}>
+                <button type="button" className={btnPrimary} disabled={selection.length === 0 || !fitsTarget} onClick={confirm}>
                   {selection.length === 1 ? "Add 1 source" : `Add ${selection.length} sources`}
                 </button>
               </div>
@@ -299,15 +320,18 @@ export function ViewsPicker(props: ViewsPickerProps) {
 function StepWindow(props: { view: View; target: PickTarget; onTarget: (t: PickTarget) => void; onCancel: () => void; onNext: () => void }) {
   const { view, target, onTarget } = props;
   const isNew = target.type === "new";
+  const newRoom = capacity(view, { type: "new" }) > 0;
+  const usable = capacity(view, target) > 0;
   return (
-    <div className="px-5 py-4 text-sm">
+    <div data-step className="px-5 py-4 text-sm">
       <p className="mb-3 text-ink-muted">Where should it go?</p>
       <label className="flex items-center gap-2 py-1">
-        <input type="radio" name="where" data-autofocus checked={isNew} onChange={() => onTarget({ type: "new" })} /> New window
+        <input type="radio" name="where" data-autofocus disabled={!newRoom} checked={isNew && newRoom} onChange={() => onTarget({ type: "new" })} /> New window
+        {newRoom ? null : <span className="text-xs text-ink-muted">(view is full)</span>}
         <select
           aria-label="Window kind"
           className="ml-2 border border-rule bg-ground px-2 py-1 text-xs"
-          disabled={!isNew}
+          disabled={!isNew || !newRoom}
           value={isNew && target.kind ? target.kind : "auto"}
           onChange={(e) => onTarget(e.target.value === "auto" ? { type: "new" } : { type: "new", kind: e.target.value as SourceKind })}
         >
@@ -329,7 +353,7 @@ function StepWindow(props: { view: View; target: PickTarget; onTarget: (t: PickT
       ) : null}
       <div className="mt-4 flex justify-end gap-2">
         <button type="button" className={btnSecondary} onClick={props.onCancel}>Cancel</button>
-        <button type="button" className={btnPrimary} onClick={props.onNext}>Next: choose sources</button>
+        <button type="button" className={btnPrimary} disabled={!usable} onClick={props.onNext}>Next: choose sources</button>
       </div>
     </div>
   );
