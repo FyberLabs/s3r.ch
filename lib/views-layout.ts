@@ -2,7 +2,7 @@
  * View route layout helpers (docs/views.md §6, PR 6): window order, split resizing, unread
  * counts, last-seen times and the focus keys (`F` maximize, `Esc` restore, `Alt+1..9`).
  */
-import { canShowRows, type AccessState } from "./views-access";
+import { canShowRows, settlePending, type AccessState } from "./views-access";
 import type { ObservedRow } from "./views-decorators";
 import { sameSource, type SourceRef } from "./views-source-ref";
 import { listViews, type ViewsState } from "./views-store";
@@ -23,13 +23,19 @@ export function leafOrder(tree: LayoutTree | null): string[] {
   return out;
 }
 
+/** The smallest share for each of `n` children: MIN_SPLIT_SIZE, or less when they can't all fit. */
+export function minShare(n: number): number {
+  return Math.min(MIN_SPLIT_SIZE, 1 / (2 * n));
+}
+
 /**
  * Move the border after child `index` of the split at `path` (child indices from the root)
- * by `delta` (a share of that split). Both neighbours keep at least MIN_SPLIT_SIZE; other
- * children are unchanged. An unknown path or index returns the tree unchanged.
+ * by `delta` (a share of that split). The child on the growing side takes the space; the
+ * children on the other side give it up, nearest first, each down to `minShare`. An unknown
+ * path or index, or a move with no room, returns the tree unchanged.
  */
 export function resizeSplit(tree: LayoutTree, path: number[], index: number, delta: number): LayoutTree {
-  if (!Number.isFinite(delta)) return tree;
+  if (!Number.isFinite(delta) || delta === 0) return tree;
   if (path.length) {
     if (tree.type !== "split") return tree;
     const [head, ...rest] = path;
@@ -40,31 +46,44 @@ export function resizeSplit(tree: LayoutTree, path: number[], index: number, del
     return { ...tree, children: tree.children.map((c, i) => (i === head ? next : c)) };
   }
   if (tree.type !== "split" || index < 0 || index + 1 >= tree.sizes.length) return tree;
-  const a = tree.sizes[index]!;
-  const b = tree.sizes[index + 1]!;
-  const lo = Math.min(a, MIN_SPLIT_SIZE);
-  const hi = Math.min(b, MIN_SPLIT_SIZE);
-  const d = Math.max(lo - a, Math.min(b - hi, delta));
-  if (d === 0) return tree;
   const sizes = tree.sizes.slice();
-  sizes[index] = a + d;
-  sizes[index + 1] = b - d;
+  const min = minShare(sizes.length);
+  const grow = delta > 0 ? index : index + 1;
+  const givers: number[] = [];
+  if (delta > 0) for (let j = index + 1; j < sizes.length; j++) givers.push(j);
+  else for (let j = index; j >= 0; j--) givers.push(j);
+  let left = Math.abs(delta);
+  for (const j of givers) {
+    const take = Math.min(left, Math.max(0, sizes[j]! - min));
+    sizes[j] = sizes[j]! - take;
+    left -= take;
+    if (left <= 0) break;
+  }
+  const moved = Math.abs(delta) - left;
+  if (moved <= 0) return tree;
+  sizes[grow] = sizes[grow]! + moved;
   return { ...tree, sizes };
 }
 
 /**
  * New rows in a window since it was last seen: rows from its current, readable sources
- * observed after `seenAt`, each key counted once. A window never seen has none.
+ * first observed after `seenAt`, each key counted once. A window never seen has none.
  */
 export function unreadCount(window: ViewWindow, rows: ObservedRow[], access: (ref: SourceRef) => AccessState, seenAt: number | undefined): number {
   if (seenAt === undefined) return 0;
-  const keys = new Set<string>();
+  // A row seen again keeps its first observation, as in the merged feed.
+  const first = new Map<string, ObservedRow>();
   for (const r of rows) {
-    if (r.observedAt <= seenAt || keys.has(r.row.key)) continue;
-    if (!window.sources.some((s) => sameSource(s, r.row.source)) || !canShowRows(access(r.row.source))) continue;
-    keys.add(r.row.key);
+    const prev = first.get(r.row.key);
+    if (!prev || r.observedAt < prev.observedAt) first.set(r.row.key, r);
   }
-  return keys.size;
+  let n = 0;
+  for (const r of first.values()) {
+    if (r.observedAt <= seenAt) continue;
+    if (!window.sources.some((s) => sameSource(s, r.row.source)) || !canShowRows(access(r.row.source))) continue;
+    n++;
+  }
+  return n;
 }
 
 /** Last-seen times by window id, as stored locally per View. */
@@ -121,4 +140,23 @@ export function keyAction(e: KeyInput, order: string[], focused: string | null, 
 /** The View the route opens: the live copy for `id`, flagged when copies conflict. */
 export function openView(state: ViewsState, id: string): { view: View; conflicted: boolean } | null {
   return listViews(state).find((v) => v.view.id === id) ?? null;
+}
+
+/** Sources a picker edit added: those in `after`'s windows that the same window lacked before. */
+export function addedSources(before: View, after: View): SourceRef[] {
+  const out: SourceRef[] = [];
+  for (const w of after.windows) {
+    const old = before.windows.find((b) => b.id === w.id);
+    for (const ref of w.sources) {
+      if (old?.sources.some((s) => sameSource(s, ref))) continue;
+      if (!out.some((s) => sameSource(s, ref))) out.push(ref);
+    }
+  }
+  return out;
+}
+
+/** Windows with pending marks settled against current access (see settlePending); null if none change. */
+export function settleView(view: View, access: (ref: SourceRef) => AccessState): View | null {
+  const windows = view.windows.map((w) => settlePending(w, access));
+  return windows.some((w, i) => w !== view.windows[i]) ? { ...view, windows } : null;
 }

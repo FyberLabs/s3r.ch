@@ -79,16 +79,17 @@ export function ViewsScreen(props: ViewsScreenProps) {
       } else if (action.type === "maximize") {
         setMaximized(action.windowId);
       } else {
-        // Moving focus while maximized maximizes the newly focused window.
+        // Moving focus while maximized maximizes the newly focused window. The state changes
+        // first; the effect below moves keyboard focus once the window is no longer inert.
         if (shown) setMaximized(action.windowId);
-        leaves.current.get(action.windowId)?.focus();
+        focus(action.windowId);
       }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [order, focused, shown]);
+  }, [order, focused, shown, focus]);
 
-  // Keep keyboard focus on the window that was maximized or restored.
+  // Keep keyboard focus on the focused window after it is focused, maximized or restored.
   useEffect(() => {
     if (focused && !leaves.current.get(focused)?.contains(document.activeElement)) leaves.current.get(focused)?.focus();
   }, [shown, focused]);
