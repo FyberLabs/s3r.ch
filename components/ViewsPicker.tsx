@@ -104,15 +104,18 @@ export function ViewsPicker(props: ViewsPickerProps) {
       (el) => el.tabIndex >= 0 && !isSkippedRadio(el),
     );
     if (!items.length) return;
-    const first = items[0]!;
-    const last = items[items.length - 1]!;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
+    // Tab is handled here for every position, so focus always cycles inside the dialog, even
+    // from an element focused by pointer that is not itself in the tab order.
+    const active = document.activeElement;
+    let idx = active ? items.findIndex((el) => el === active || el.contains(active)) : -1;
+    if (idx === -1 && active) {
+      // The last tabbable element before the focused one (-1 if none).
+      idx = items.reduce((at, el, i) => (el.compareDocumentPosition(active) & Node.DOCUMENT_POSITION_FOLLOWING ? i : at), -1);
     }
+    const n = items.length;
+    const next = e.shiftKey ? (idx <= 0 ? n - 1 : idx - 1) : (idx + 1) % n;
+    e.preventDefault();
+    items[next]!.focus();
   }
 
   const targetKinds = kindsForTarget(view, target);
