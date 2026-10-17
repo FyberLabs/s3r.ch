@@ -13,10 +13,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { btnPrimary, btnSecondary } from "@/lib/brand-ui";
 import type { AccessState } from "@/lib/views-access";
 import type { ObservedRow } from "@/lib/views-decorators";
-import { addedSources, markSeen, mergeSeen, openView, parseSeen, seenStorageKey, settleView, type SeenTimes } from "@/lib/views-layout";
+import { addedSources, editView, markSeen, mergeSeen, openView, parseSeen, seenStorageKey, settleView, type SeenTimes } from "@/lib/views-layout";
 import { labelFor, type PickerSource } from "@/lib/views-picker";
 import type { SourceRef } from "@/lib/views-source-ref";
-import { createIndexedDbViewsStore, resolveConflict, saveView, touchRecent, type ViewsState, type ViewsStore, type ViewVersion } from "@/lib/views-store";
+import { createIndexedDbViewsStore, resolveConflict, touchRecent, type ViewsState, type ViewsStore, type ViewVersion } from "@/lib/views-store";
 import type { LayoutTree, Notice, View } from "@/lib/views-window";
 import { ViewsPicker } from "./ViewsPicker";
 import { ViewsScreen } from "./ViewsScreen";
@@ -150,7 +150,12 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
   const commit = useCallback(
     async (fn: (state: ViewsState) => ViewsState) => {
       try {
-        const { state } = await store.update(owner, deviceId(), fn);
+        // Every write (edit or conflict choice) updates the known copy inside the serialized update.
+        const { state } = await store.update(owner, deviceId(), (s) => {
+          const next = fn(s);
+          known.current = openView(next, id)?.view ?? null;
+          return next;
+        });
         show(state, []);
         setError(null);
       } catch (e) {
@@ -175,14 +180,8 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
   const save = useCallback(
     (edit: (view: View) => View, checked: boolean, then?: (state: ViewsState, before: View, after: View) => ViewsState) =>
       commit((s) => {
-        const found = openView(s, id);
-        if (!found) throw new Error("This View was deleted");
-        if (checked && JSON.stringify(found.view) !== JSON.stringify(known.current)) throw new Error("This View changed in another tab. Reload and try again.");
-        const after = edit(found.view);
-        const saved = saveView(s, after).state;
-        const next = then ? then(saved, found.view, after) : saved;
-        known.current = openView(next, id)?.view ?? null;
-        return next;
+        const r = editView(s, id, known.current, edit, checked);
+        return then ? then(r.state, r.before, r.after) : r.state;
       }),
     [commit, id],
   );

@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { AccessState } from "./views-access";
 import type { ObservedRow } from "./views-decorators";
-import { addedSources, boundary, keyAction, leafOrder, markSeen, mergeSeen, MIN_SPLIT_SIZE, minShare, openView, parseSeen, resizeSplit, settleView, unreadCount, type KeyInput } from "./views-layout";
+import { addedSources, boundary, editView, keyAction, leafOrder, markSeen, mergeSeen, MIN_SPLIT_SIZE, minShare, openView, parseSeen, resizeSplit, settleView, unreadCount, type KeyInput } from "./views-layout";
 import { formatCanonical, type SourceRef } from "./views-source-ref";
-import { emptyState, saveView } from "./views-store";
+import { emptyState, mergeVersion, resolveConflict, saveView } from "./views-store";
 import type { LayoutTree, View, ViewWindow } from "./views-window";
 
 const leaf = (windowId: string): LayoutTree => ({ type: "leaf", windowId });
@@ -139,6 +139,33 @@ describe("picker edits", () => {
     const view: View = { id: "v", title: "V", windows: [{ id: "w", kind: "chat", mode: "single", sources: [ref("a")], pending: [formatCanonical(ref("a"))] }], layout: leaf("w"), v: 1 };
     assert.equal(settleView(view, () => ({ kind: "on-open" })), null);
     assert.deepEqual(settleView(view, () => ({ kind: "read", post: false }))?.windows[0]!.pending, undefined);
+  });
+});
+
+describe("checked edits", () => {
+  const view: View = { id: "v1", title: "Dev", windows: [], layout: null, v: 1 };
+  const rename = (title: string) => (v: View): View => ({ ...v, title });
+  const start = saveView(emptyState("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", "d1"), view).state;
+
+  it("lets this tab's queued edits follow each other and refuses another tab's", () => {
+    let known = openView(start, "v1")!.view;
+    const one = editView(start, "v1", known, rename("a"), true);
+    known = openView(one.state, "v1")!.view;
+    const two = editView(one.state, "v1", known, rename("b"), true);
+    assert.equal(openView(two.state, "v1")!.view.title, "b");
+    // Another tab saved "c"; this tab still knows "b".
+    const other = saveView(two.state, { ...view, title: "c" }).state;
+    assert.throws(() => editView(other, "v1", openView(two.state, "v1")!.view, rename("d"), true), /another tab/);
+    assert.equal(openView(editView(other, "v1", null, rename("d"), false).state, "v1")!.view.title, "d");
+  });
+
+  it("accepts edits after a conflict is resolved to another copy", () => {
+    const entry = mergeVersion(start.views["v1"], { id: "v1", vv: { d2: 1 }, view: { ...view, title: "theirs" } });
+    const conflicted = { ...start, views: { ...start.views, v1: entry } };
+    const theirs = [entry.current, ...entry.conflicts].find((v) => v.view?.title === "theirs")!;
+    const resolved = resolveConflict(conflicted, "v1", theirs);
+    const known = openView(resolved, "v1")!.view;
+    assert.equal(openView(editView(resolved, "v1", known, rename("next"), true).state, "v1")!.view.title, "next");
   });
 });
 

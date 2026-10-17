@@ -5,7 +5,7 @@
 import { canShowRows, settlePending, type AccessState } from "./views-access";
 import type { ObservedRow } from "./views-decorators";
 import { sameSource, type SourceRef } from "./views-source-ref";
-import { listViews, type ViewsState } from "./views-store";
+import { listViews, saveView, type ViewsState } from "./views-store";
 import { MAX_WINDOWS, type LayoutTree, type View, type ViewWindow } from "./views-window";
 
 /** Smallest share a split child can be resized to. */
@@ -175,4 +175,17 @@ export function addedSources(before: View, after: View): SourceRef[] {
 export function settleView(view: View, access: (ref: SourceRef) => AccessState): View | null {
   const windows = view.windows.map((w) => settlePending(w, access));
   return windows.some((w, i) => w !== view.windows[i]) ? { ...view, windows } : null;
+}
+
+/**
+ * Apply an edit to the stored View. A `checked` edit (made from what a tab shows) is refused
+ * when the store holds something other than `known`, the copy that tab last read or wrote,
+ * meaning another tab saved since. Returns the new state with the copies before and after.
+ */
+export function editView(state: ViewsState, id: string, known: View | null, edit: (view: View) => View, checked: boolean): { state: ViewsState; before: View; after: View } {
+  const found = openView(state, id);
+  if (!found) throw new Error("This View was deleted");
+  if (checked && JSON.stringify(found.view) !== JSON.stringify(known)) throw new Error("This View changed in another tab. Reload and try again.");
+  const after = edit(found.view);
+  return { state: saveView(state, after).state, before: found.view, after };
 }
