@@ -9,7 +9,7 @@ import type { View } from "@/lib/views-window";
 const ME = "0xA1b2c3D4E5f60718293A4b5C6D7E8F9012345Aff";
 const ORG = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 const NET = `s3rch:https://s3r.ch:443;key=${"a".repeat(64)}`;
-const LAB = `s3rch:https://lab.example:443;key=${"b".repeat(64)}`;
+const LAB = `s3rch:https://lab.fyberlabs.com:443;key=${"b".repeat(64)}`;
 
 const s = (network: string, owner: string, source: string, kind: SourceKind, label: string): PickerSource => ({ ref: { network, owner, source, kind, v: 1 }, label });
 

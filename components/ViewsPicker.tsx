@@ -164,7 +164,7 @@ export function ViewsPicker(props: ViewsPickerProps) {
     } else if (e.key === " " && row) {
       if (row.node.source) toggle(row.node.source);
       else setSelection((sel) => toggleGroup(sel, leavesOf(row.node)));
-    } else if (e.key === "Enter" && selection.length) confirm();
+    } else if (e.key === "Enter" && selection.length && fitsTarget) confirm();
     else return;
     e.preventDefault();
   }
