@@ -101,7 +101,7 @@ export function ViewsPicker(props: ViewsPickerProps) {
     if (e.key !== "Tab") return;
     // Only elements reachable by Tab (tree controls with tabIndex -1 are not).
     const items = [...(dialogRef.current?.querySelectorAll<HTMLElement>("button:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]") ?? [])].filter(
-      (el) => el.tabIndex >= 0,
+      (el) => el.tabIndex >= 0 && !isSkippedRadio(el),
     );
     if (!items.length) return;
     const first = items[0]!;
@@ -357,6 +357,14 @@ function StepWindow(props: { view: View; target: PickTarget; onTarget: (t: PickT
       </div>
     </div>
   );
+}
+
+/** An unchecked radio whose group has a checked member: Tab skips it (native radio-group behavior). */
+function isSkippedRadio(el: HTMLElement): boolean {
+  if (!(el instanceof HTMLInputElement) || el.type !== "radio" || el.checked || !el.name) return false;
+  const group = el.form ? el.form.elements.namedItem(el.name) : null;
+  const members = group instanceof RadioNodeList ? [...group] : [...document.querySelectorAll<HTMLInputElement>(`input[type="radio"][name="${CSS.escape(el.name)}"]`)];
+  return members.some((m) => m instanceof HTMLInputElement && m.checked);
 }
 
 function Empty() {
