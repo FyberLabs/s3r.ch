@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { ViewsPicker } from "@/components/ViewsPicker";
+import { ViewsWindow } from "@/components/ViewsWindow";
 import { ViewsWindowStatus } from "@/components/ViewsWindowStatus";
+import type { ObservedRow } from "@/lib/views-decorators";
+import type { ViewWindow } from "@/lib/views-window";
 import type { AccessState } from "@/lib/views-access";
 import { formatCanonical, type SourceRef } from "@/lib/views-source-ref";
 import type { PickerSource, PickerTab } from "@/lib/views-picker";
@@ -60,7 +63,65 @@ const STATUS_WINDOWS = [
   { title: "Grant revoked", declined: false, window: { id: "r", kind: "chat" as const, mode: "single" as const, sources: [FIN] } },
 ];
 
+const labelOf = (ref: SourceRef) => SOURCES.find((x) => formatCanonical(x.ref) === formatCanonical(ref))?.label ?? ref.source;
+
+function sample(source: SourceRef, items: [string, string, number][], observedAt = 1_800_000_000): ObservedRow[] {
+  return items.map(([author, body, ts], i) => ({ row: { key: `${formatCanonical(source)}#${i}`, source, id: String(i), author, body, ts }, observedAt }));
+}
+
+const T = 1_800_000_000;
+const WINDOWS: { window: ViewWindow; rows: ObservedRow[] }[] = [
+  {
+    window: { id: "s1", kind: "chat", mode: "single", sources: [by("build")] },
+    rows: sample(by("build"), [["0x9c…", "deploy green on main", T - 120], ["0x41…", "ship it", T - 60]]),
+  },
+  {
+    window: { id: "s2", kind: "chat", mode: "single", sources: [by("ops")] },
+    rows: sample(by("ops"), [["0x70…", "rotating the seed peer at 22:00", T - 300]]),
+  },
+  {
+    window: { id: "m", kind: "feed", mode: "merged", label: "News", sources: [by("dev"), by("posts"), by("https://hn.example/rss")] },
+    rows: [
+      ...sample(by("dev"), [["dwr", "new frames release", T - 30]]),
+      ...sample(by("posts"), [["alice", "notes from the meetup", T - 90]]),
+      // A future timestamp is clamped to the observed time.
+      ...sample(by("https://hn.example/rss"), [["hn", "Show HN: a P2P chat", T + 86_400]], T - 200),
+    ],
+  },
+  {
+    window: { id: "t", kind: "chat", mode: "tabs", label: "Team chats", sources: [by("build"), by("design"), by("ops")] },
+    rows: [
+      ...sample(by("build"), [["0x9c…", "CI is green", T - 10]]),
+      ...sample(by("design"), [["0xA1…", "new picker shots are up", T - 20]]),
+    ],
+  },
+];
+
+function WindowsPreview() {
+  const [last, setLast] = useState<SourceRef | undefined>();
+  const [sent, setSent] = useState<string | null>(null);
+  return (
+    <>
+      <div className="mt-6 grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {WINDOWS.map(({ window, rows }) => (
+          <ViewsWindow key={window.id} window={window} rows={rows} label={labelOf} access={access} lastTarget={last} onSend={(t, text) => { setLast(t); setSent(`Sent to ${labelOf(t)}: ${text}`); }} />
+        ))}
+      </div>
+      {sent ? <p role="status" className="mt-4 text-sm text-ink-muted">{sent}</p> : null}
+    </>
+  );
+}
+
 let n = 0;
+
+export function WindowsPage() {
+  return (
+    <main className="min-h-screen p-8">
+      <p className="text-sm text-ink-muted">View: Dev + streams · split windows, a merged feed and a tabbed window</p>
+      <WindowsPreview />
+    </main>
+  );
+}
 
 export function PickerPreview({ step, tab, states }: { step: 1 | 2; tab: PickerTab; states?: boolean }) {
   const [open, setOpen] = useState(true);
