@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import type { AccessState } from "./views-access";
 import type { ViewRow } from "./views-adapters";
 import { canPostTo, checkSend, chooseTarget, composerTargets } from "./views-composer";
-import { mergeFeedRows, originBadge, sourceColor, SOURCE_PALETTE, windowTitle } from "./views-decorators";
+import { mergeFeedRows, originBadge, sourceColor, SOURCE_PALETTE, windowRows, windowTitle } from "./views-decorators";
 import { formatCanonical, type SourceKind, type SourceRef } from "./views-source-ref";
 import { validateWindow, type ViewWindow } from "./views-window";
 
@@ -58,6 +58,27 @@ describe("merged feed", () => {
     assert.deepEqual(rows.map((r) => r.id), ["a", "b"]);
   });
 
+  it("keeps the earliest observation of a row fetched again", () => {
+    const rows = mergeFeedRows([
+      { row: row(hn, "future", 10_000), observedAt: 500 },
+      { row: row(dev, "mid", 300), observedAt: 300 },
+      { row: row(hn, "future", 10_000), observedAt: 100 },
+    ]);
+    assert.deepEqual(rows.map((r) => r.id), ["mid", "future"]);
+  });
+
+  it("shows only current sources that can be read now", () => {
+    const m: ViewWindow = { id: "m", kind: "feed", mode: "merged", sources: [hn, dev] };
+    const gone: SourceRef = { ...hn, source: "https://hn.example/old" };
+    const observed = [hn, dev, gone].map((s) => ({ row: row(s, s.source, 1), observedAt: 1 }));
+    assert.deepEqual(windowRows(m, observed, () => ({ kind: "read-only" })).map((r) => r.id).sort(), [dev.source, hn.source].sort());
+    assert.deepEqual(windowRows(m, observed, (r) => (r === dev ? { kind: "needs-connection" } : { kind: "read-only" })).map((r) => r.id), [hn.source]);
+    const t: ViewWindow = { id: "t", kind: "chat", mode: "tabs", sources: [ref("a"), ref("b")] };
+    const chat = [ref("a"), ref("b")].map((s) => ({ row: row(s, s.source, 1), observedAt: 1 }));
+    assert.deepEqual(windowRows(t, chat, () => ({ kind: "read", post: false }), ref("b")).map((r) => r.id), ["b"]);
+    assert.deepEqual(windowRows(t, chat, () => ({ kind: "locked", reason: "no-grant" }), ref("b")), []);
+  });
+
   it("rejects merged windows that are not feeds", () => {
     assert.equal(validateWindow({ id: "m", kind: "chat", mode: "merged", sources: [ref("a"), ref("b")] }).ok, false);
     assert.ok(validateWindow({ id: "m", kind: "feed", mode: "merged", sources: [hn, dev] }).ok);
@@ -94,5 +115,7 @@ describe("composer", () => {
     assert.equal(checkSend(targets, b, "hi").ok, false);
     assert.equal(checkSend(targets, null, "hi").ok, false);
     assert.equal(checkSend(targets, a, "   ").ok, false);
+    assert.equal(checkSend(targets, a, "x".repeat(280)).ok, true);
+    assert.equal(checkSend(targets, a, "x".repeat(281)).ok, false);
   });
 });

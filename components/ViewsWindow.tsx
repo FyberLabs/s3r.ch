@@ -11,7 +11,7 @@ import { btnPrimary, field } from "@/lib/brand-ui";
 import type { AccessState } from "@/lib/views-access";
 import type { ViewRow } from "@/lib/views-adapters";
 import { checkSend, chooseTarget, composerTargets } from "@/lib/views-composer";
-import { mergeFeedRows, originBadge, sourceColor, windowTitle, type ObservedRow, type SourceColor } from "@/lib/views-decorators";
+import { originBadge, sourceColor, windowRows, windowTitle, type ObservedRow, type SourceColor } from "@/lib/views-decorators";
 import { formatCanonical, sameSource, type SourceRef } from "@/lib/views-source-ref";
 import type { ViewWindow as Win } from "@/lib/views-window";
 import { ViewsWindowStatus } from "./ViewsWindowStatus";
@@ -62,7 +62,9 @@ export function ViewsWindow(props: ViewsWindowProps) {
   const [replyTo, setReplyTo] = useState<SourceRef | undefined>();
   const titleId = useId();
   const active = w.mode === "tabs" ? w.sources[Math.min(tab, w.sources.length - 1)]! : undefined;
-  const shown = w.mode === "merged" ? mergeFeedRows(props.rows) : props.rows.filter((r) => !active || sameSource(r.row.source, active)).map((r) => r.row).sort((a, b) => b.ts - a.ts);
+  const shown = windowRows(w, props.rows, access, active);
+  // Reply only where the composer can post to the row's source; merged windows have no composer.
+  const canReply = (ref: SourceRef) => !!props.onSend && composerTargets(w, access).some((t) => sameSource(t, ref));
   const removable = w.mode === "merged" && w.sources.length > 2 && props.onRemoveSource;
   return (
     <section aria-labelledby={titleId} className="flex min-h-0 flex-col border border-rule bg-panel">
@@ -91,7 +93,7 @@ export function ViewsWindow(props: ViewsWindowProps) {
       </div>
       <ol className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2 text-sm">
         {shown.map((r) => (
-          <Row key={r.key} row={r} window={w} label={label} chip={w.mode !== "single"} onReply={props.onSend ? () => setReplyTo(r.source) : undefined} />
+          <Row key={r.key} row={r} window={w} label={label} chip={w.mode !== "single"} onReply={canReply(r.source) ? () => setReplyTo(r.source) : undefined} />
         ))}
       </ol>
       {props.onSend ? <Composer window={w} access={access} label={label} replyTo={replyTo} lastTarget={props.lastTarget} onCancelReply={() => setReplyTo(undefined)} onSend={(t, text) => { setReplyTo(undefined); props.onSend!(t, text); }} /> : null}
@@ -132,9 +134,11 @@ function Composer(props: {
   const [error, setError] = useState<string | null>(null);
   const inputId = useId();
   if (targets.length === 0) return null;
-  // A reply targets the replied message's source; otherwise the user's pick, the last target, or the first.
+  // A reply targets the replied message's source; if that can't be posted to, the user picks.
+  // Otherwise the user's pick, the last target, or the first.
   const fallback = chooseTarget(targets, { replyTo: props.replyTo, last: props.lastTarget });
-  const target = props.replyTo ? fallback : picked && targets.some((t) => sameSource(t, picked)) ? picked : fallback;
+  const valid = picked && targets.some((t) => sameSource(t, picked)) ? picked : null;
+  const target = props.replyTo ? (fallback ?? valid) : (valid ?? fallback);
   function send() {
     const r = checkSend(targets, target, text);
     if (!r.ok) return setError(r.error);
@@ -150,7 +154,7 @@ function Composer(props: {
           <span className="text-ink-muted">Post to</span>
           {targets.map((t) => (
             <label key={formatCanonical(t)} className="flex items-center gap-1">
-              <input type="radio" name={`${inputId}-target`} checked={!!target && sameSource(t, target)} onChange={() => setPicked(t)} disabled={!!props.replyTo} />
+              <input type="radio" name={`${inputId}-target`} checked={!!target && sameSource(t, target)} onChange={() => setPicked(t)} disabled={!!props.replyTo && !!fallback} />
               <SourceChip window={props.window} source={t} label={props.label(t)} />
             </label>
           ))}
@@ -158,7 +162,7 @@ function Composer(props: {
       ) : null}
       {props.replyTo ? (
         <p className="mb-2 flex items-center gap-2 text-xs text-ink-muted">
-          {target ? <>Replying in {props.label(props.replyTo)}</> : <span role="alert" className="text-status-fail">You can't post to {props.label(props.replyTo)}.</span>}
+          {fallback ? <>Replying in {props.label(props.replyTo)}</> : <span role="alert" className="text-status-fail">You can't post to {props.label(props.replyTo)}. Choose where to post.</span>}
           <button type="button" className="underline" onClick={props.onCancelReply}>Cancel reply</button>
         </p>
       ) : null}

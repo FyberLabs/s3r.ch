@@ -6,7 +6,8 @@
  * SourceRef to a palette name, and anything else falls back to a color derived from the
  * reference. Color is never the only cue; every chip also carries its text label.
  */
-import { formatCanonical, type SourceRef } from "./views-source-ref";
+import { canShowRows, type AccessState } from "./views-access";
+import { formatCanonical, sameSource, type SourceRef } from "./views-source-ref";
 import type { ViewRow } from "./views-adapters";
 import type { ViewWindow } from "./views-window";
 
@@ -98,23 +99,37 @@ export function windowTitle(window: ViewWindow, labelOf: (ref: SourceRef) => str
   return `${window.kind} · ${window.sources.length} sources`;
 }
 
+/**
+ * Rows a window shows: only from its current sources (the active one in a tabbed window)
+ * that can be read now, so rows loaded before a source was removed or lost access stay
+ * hidden. Merged windows use the merged feed order; others are newest first.
+ */
+export function windowRows(window: ViewWindow, rows: ObservedRow[], access: (ref: SourceRef) => AccessState, active?: SourceRef): ViewRow[] {
+  const visible = rows.filter((r) => {
+    if (active ? !sameSource(r.row.source, active) : !window.sources.some((s) => sameSource(s, r.row.source))) return false;
+    return canShowRows(access(r.row.source));
+  });
+  if (window.mode === "merged") return mergeFeedRows(visible);
+  return visible.map((r) => r.row).sort((a, b) => b.ts - a.ts);
+}
+
 /** A row from a source, with the time the client observed (fetched or received) it. */
 export type ObservedRow = { row: ViewRow; observedAt: number };
 
 /**
  * Merged feed order (docs/views.md §3.5): newest first by `ts` clamped to the observed time,
  * so a future timestamp cannot pin a row to the top; ties by observed time, then by key.
- * Duplicate keys are listed once. Times are Unix seconds.
+ * Duplicate keys are listed once with their earliest observation, so fetching a row again
+ * does not move it up. Times are Unix seconds.
  */
 export function mergeFeedRows(rows: ObservedRow[], limit = 200): ViewRow[] {
-  const seen = new Set<string>();
-  const unique = rows.filter((r) => {
-    if (seen.has(r.row.key)) return false;
-    seen.add(r.row.key);
-    return true;
-  });
+  const first = new Map<string, ObservedRow>();
+  for (const r of rows) {
+    const prev = first.get(r.row.key);
+    if (!prev || r.observedAt < prev.observedAt) first.set(r.row.key, r);
+  }
   const at = (r: ObservedRow) => Math.min(r.row.ts, r.observedAt);
-  return unique
+  return [...first.values()]
     .sort((a, b) => at(b) - at(a) || b.observedAt - a.observedAt || (a.row.key < b.row.key ? -1 : a.row.key > b.row.key ? 1 : 0))
     .slice(0, limit)
     .map((r) => r.row);

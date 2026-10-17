@@ -3,6 +3,7 @@
  * window; merged feed windows and read-only sources have none. In a tabbed window the
  * target is required and shown; one send goes to one source, never to all.
  */
+import { CHAT_BODY_MAX } from "./chat";
 import type { AccessState } from "./views-access";
 import { sameSource, type SourceRef } from "./views-source-ref";
 import type { ViewWindow } from "./views-window";
@@ -34,8 +35,11 @@ export function chooseTarget(targets: SourceRef[], opts: { replyTo?: SourceRef; 
 
 export type SendCheck = { ok: true; target: SourceRef; text: string } | { ok: false; error: string };
 
-/** Validate a send: one postable target from this window and a nonempty message. */
-export function checkSend(targets: SourceRef[], target: SourceRef | null, text: string, maxLength = 4000): SendCheck {
+/**
+ * Validate a send: one postable target from this window and a nonempty message. The default
+ * limit is the native chat and forum limit, the only sources postable for now.
+ */
+export function checkSend(targets: SourceRef[], target: SourceRef | null, text: string, maxLength = CHAT_BODY_MAX): SendCheck {
   const body = text.trim();
   if (!target) return { ok: false, error: "Choose where to post" };
   if (!targets.some((t) => sameSource(t, target))) return { ok: false, error: "You can't post to that source" };
