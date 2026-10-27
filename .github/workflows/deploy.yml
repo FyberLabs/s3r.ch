@@ -4,10 +4,16 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      image_digest:
+        description: "Published GHCR digest (sha256 and 64 hex). Empty builds this ref, same as a master push."
+        required: false
+        type: string
 
 permissions:
   id-token: write
   contents: read
+  packages: read
 
 env:
   IMAGE_REPO: s3rch
@@ -66,6 +72,30 @@ jobs:
             echo "Refusing to update App Service so PANOPTICON_TENANT_ID is not cleared." >&2
             exit 1
           fi
+
+      # Empty on a master push: build and push :sha and :prod, then deploy :prod.
+      # A digest skips that build and deploys the published GHCR image by digest.
+      - name: Choose image source
+        id: published
+        env:
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+        run: |
+          set -euo pipefail
+          digest="${IMAGE_DIGEST:-}"
+          if [ -z "$digest" ]; then
+            echo "use=build" >> "$GITHUB_OUTPUT"
+            echo "Building from this commit."
+            exit 0
+          fi
+          if ! printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+            echo "image_digest must look like sha256:<64 hex characters>." >&2
+            exit 1
+          fi
+          repo="$(printf '%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          echo "use=digest" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "source=ghcr.io/${repo}@${digest}" >> "$GITHUB_OUTPUT"
+          echo "Deploying published image ghcr.io/${repo}@${digest}"
 
       # az and azure/login keep account state in ~/.azure, outside the checkout.
       # docker/login-action writes the registry token to ~/.docker/config.json.
@@ -128,6 +158,7 @@ jobs:
           password: ${{ steps.acr.outputs.token }}
 
       - name: Build and push
+        if: steps.published.outputs.use != 'digest'
         uses: docker/build-push-action@v7.4.0
         with:
           context: .
@@ -137,6 +168,37 @@ jobs:
           tags: |
             ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_REPO }}:${{ github.sha }}
             ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_REPO }}:${{ env.ENV_TAG }}
+
+      - name: Log in to GHCR
+        if: steps.published.outputs.use == 'digest'
+        uses: docker/login-action@v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pull the release image by digest and push it into ACR. App Service
+      # keeps using ACR. DEPLOY_IMAGE is the digest the site is pointed at.
+      - name: Mirror published image into ACR
+        if: steps.published.outputs.use == 'digest'
+        env:
+          SOURCE: ${{ steps.published.outputs.source }}
+          DIGEST: ${{ steps.published.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker pull "$SOURCE"
+          short="${DIGEST#sha256:}"
+          dest_tag="${ACR_LOGIN_SERVER}/${IMAGE_REPO}:ghcr-${short:0:12}"
+          image_id="$(docker image inspect --format '{{.Id}}' "$SOURCE")"
+          docker tag "$image_id" "$dest_tag"
+          push_log="$(docker push "$dest_tag" 2>&1)"
+          printf '%s\n' "$push_log"
+          pushed="$(printf '%s\n' "$push_log" | sed -n 's/.*digest: \(sha256:[0-9a-f]\{64\}\).*/\1/p' | tail -n 1)"
+          if [ -z "$pushed" ]; then
+            echo "ACR push did not report a digest" >&2
+            exit 1
+          fi
+          echo "DEPLOY_IMAGE=${ACR_LOGIN_SERVER}/${IMAGE_REPO}@${pushed}" >> "$GITHUB_ENV"
 
       # The OIDC access token can expire during a long image build.
       # Re-login into this job's AZURE_CONFIG_DIR before App Service commands.
@@ -185,7 +247,12 @@ jobs:
             echo "Active Azure subscription ${ACTIVE_SUBSCRIPTION_ID} does not match AZURE_SUBSCRIPTION_ID"
             exit 1
           fi
-          IMAGE="${ACR_LOGIN}/${IMAGE_REPO}:${ENV_TAG}"
+          if [ -n "${DEPLOY_IMAGE:-}" ]; then
+            IMAGE="$DEPLOY_IMAGE"
+          else
+            IMAGE="${ACR_LOGIN}/${IMAGE_REPO}:${ENV_TAG}"
+          fi
+          echo "Container image ${IMAGE}"
           export SUBSCRIPTION_ID AZURE_RESOURCE_GROUP AZURE_WEBAPP_NAME
 
           az webapp config container set \
@@ -273,4 +340,5 @@ jobs:
           fi
           if [ -f "$DOCKER_CONFIG/config.json" ]; then
             docker logout "${ACR_LOGIN_SERVER}" || true
+            docker logout ghcr.io || true
           fi
