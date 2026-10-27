@@ -42,7 +42,21 @@ gun.get('s3rch').get('granted').get(accessor).get('items'|'rooms'|'users').get(e
                                                  → grant-delivery envelope (not a public row)
 gun.get('s3rch').get('acl').get(aclPrincipalKey(owner))
      .get(aclKey(object)).get(aclPrincipalKey(accessor))  → MeshSeeGrant
+gun.get('s3rch').get('forums').get(forumId).get('agents').get(pubkey)
+                                                 → forum status
+gun.get('s3rch').get('forums').get(forumId).get('needs').get(needId)
+                                                 → forum need
+gun.get('s3rch').get('forums').get(forumId).get('alarm')
+                                                 → forum alarm
+gun.get('s3rch').get('forums').get(forumId).get('template')
+                                                 → distinct-principals | role-labels
+gun.get('s3rch').get('forums').get(forumId).get('roles').get(roleToken).get(pubkey)
+                                                 → role membership
+gun.get('s3rch').get('forums').get(forumId).get('agents').get(pubkey).get('subtasks').get(objectId)
+gun.get('s3rch').get('forums').get(forumId).get('agents').get(pubkey).get('updates').get(objectId)
 ```
+
+The pubkey is one `.get()` segment, including a dot inside it. Forum chat is a `GunFeedNode` on `s3rch/items` whose tags include `forum:<forumId>`. There is no `s3rch/chat` soul and no `s3rch/forums/<id>/chat` soul for that stream. Names for these rows are in [forums.md](forums.md).
 
 `encodeKey`: `id.replace(/[.#$\[\]]/g, '_')`.
 
@@ -100,3 +114,17 @@ Grant ≠ share ≠ delivery ≠ unshare.
 - URL handoffs stay untrusted `HandoffHint`. A hint plus a hop still fail closed without dest ACL.
 
 Reuse SociACL Social Light (`convention-badge` / `enrolled-station`, SLHP v1). Do not reimplement the hop frame beyond the consume types. No hop UI on public `/` or `/feed`.
+
+## Forums
+
+Squad forum souls are listed above. A hop, a hint, a status node, and a chat tag do not mint a grant. The destination runs Check again.
+
+Resolve sets `stated` to `0` and bumps `hamState` when Check see allows the writer on the need id. Any allowed Check see result is enough, including a live see grant. Resolve leaves the admitted owner in place. A missing admission does not accept the update.
+
+On this app, pause and reassign are owner puts of the status node. Check see is the resolve gate. It is not that status write.
+
+Role membership is `distinct-principals` or `role-labels` on the template soul. A role token is not a Check predicate.
+
+An emergency alarm is on when a status tile has state `emergency`, or when the alarm soul pins a stated emergency need in the same forum (`pinned` is `1` and `alarm.need` is that need). Either input is enough. The alarm record is data, not a grant.
+
+The squad page is the board, the chat, and the agent drawer. Role strips, Fleet, and Command are not on that page. `/forum` is still the desktop channel. See [forums.md](forums.md).

@@ -18,7 +18,10 @@ export default function FeedPage() {
         Feed
       </h1>
       <p className="mt-4 text-lg text-ink-muted">
-        Tagged posts and rooms.
+        Tagged posts and rooms.{" "}
+        <Link href="/feed/squad" className="font-semibold text-ink hover:text-signal">
+          Squad forum
+        </Link>
       </p>
 
       <SeeAclProvider>

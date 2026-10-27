@@ -19,6 +19,12 @@ import {
   type GunUserNode,
   type IdentitySeeGrant,
 } from "@/lib/feed-types";
+import {
+  transitionForumNeed,
+  validateForumNeed,
+  type ForumNeed,
+  type ForumNeedDecision,
+} from "./forum-check";
 
 export { fromGunNode, toGunNode };
 export type {
@@ -895,4 +901,104 @@ export function cancelSee(
 ): void {
   if (!ownerOwnsObject(acl, owner, object)) return;
   acl.unstateSeeGrant(owner, accessor, object);
+}
+
+export type {
+  ForumAgentState,
+  ForumAgentStatus,
+  ForumAlarm,
+  ForumChatItem,
+  ForumNeed,
+  ForumNeedDecision,
+  ForumNeedSeverity,
+  ForumRoleMembership,
+  ForumRoleMode,
+  ForumTemplate,
+} from "./forum-check";
+
+export {
+  acceptForumRoles,
+  embeddedPrincipalKey,
+  forumAgentSoul,
+  forumAlarmPins,
+  forumAlarmSoul,
+  forumChatTag,
+  forumChatTagPresent,
+  forumChatTags,
+  forumChatTagWire,
+  forumEmergencyAlarm,
+  forumNeedSoul,
+  forumRoleSoul,
+  forumStatementSoul,
+  forumSubtaskSoul,
+  forumTemplateSoul,
+  forumUpdateSoul,
+  isForumChatExtraTag,
+  isForumObjectId,
+  isRoleToken,
+  isSeaPubkey,
+  isSeparateChatSoul,
+  sameEmbeddedPrincipal,
+  seaToPrincipalKey,
+  transitionForumNeed,
+  validateForumNeed,
+  validateForumStatus,
+} from "./forum-check";
+
+/**
+ * Accept `next` when Check see allows `writer` on `current.id`.
+ * Any allowed Check result passes. A hint and a hop are ignored.
+ * `id`, `forumId`, and `subject` stay. `hamState` must rise.
+ * The admitted owner is not rewritten. This does not elect.
+ */
+export function acceptForumNeedTransition(input: {
+  graph: SeeGraph;
+  current: ForumNeed;
+  next: ForumNeed;
+  writer: AccessorId;
+  now: number;
+  hint?: HandoffHint;
+  hop?: HopFactor;
+}): ForumNeedDecision & { owner: AccessorId | undefined } {
+  void input.hint;
+  void input.hop;
+  const ownerBefore = input.graph.ownerOf(input.current.id);
+  const see = checkSee(input.graph, input.current.id, input.writer, input.now);
+  const ownerAfter = input.graph.ownerOf(input.current.id);
+  if (ownerBefore !== ownerAfter) {
+    return { ok: false, reason: "owner", elect: false, owner: ownerAfter };
+  }
+  const decided = transitionForumNeed(input.current, input.next, see);
+  return { ...decided, owner: ownerAfter };
+}
+
+/**
+ * Resolve is `stated` 0 and `hamState` + 1, through
+ * {@link acceptForumNeedTransition}. Check see is the only gate.
+ */
+export function resolveForumNeed(input: {
+  graph: SeeGraph;
+  writer: AccessorId;
+  need: ForumNeed;
+  now: number;
+  hint?: HandoffHint;
+  hop?: HopFactor;
+}): ForumNeedDecision & { owner: AccessorId | undefined } {
+  if (!validateForumNeed(input.need) || !Number.isSafeInteger(input.need.hamState + 1)) {
+    return {
+      ok: false,
+      reason: "bad-need",
+      elect: false,
+      owner: input.graph.ownerOf(input.need.id),
+    };
+  }
+  return acceptForumNeedTransition({
+    graph: input.graph,
+    current: input.need,
+    next: { ...input.need, stated: 0, hamState: input.need.hamState + 1 },
+    writer: input.writer,
+    now: input.now,
+    hint: input.hint,
+    hop: input.hop,
+  });
 }
