@@ -7,7 +7,7 @@
  */
 
 import { PUBLIC_ACTIVITYPUB_ACTORS, collectOutboxItems } from "./activitypub";
-import { PUBLIC_ATPROTO_SOURCES, normalizeAtprotoPost } from "./atproto";
+import { PUBLIC_ATPROTO_SOURCES, atprotoProvenance, normalizeAtprotoPost } from "./atproto";
 import {
   parseIngestRequest,
   type AllowedSourceClass,
@@ -704,7 +704,7 @@ function assembleAtproto(fetches: readonly PullRelayFetch[]): FeedItem[] {
       continue;
     }
     if (!isRecord(json) || !Array.isArray(json.feed)) continue;
-    const provenance = `atproto:${row.url}`;
+    const provenance = atprotoProvenance(row.url, json.feed);
     for (const raw of json.feed) {
       const item = normalizeAtprotoPost(raw, provenance);
       if (item) items.push(item);

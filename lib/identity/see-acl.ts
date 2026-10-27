@@ -29,6 +29,8 @@ export type SeeAclSnapshot = {
 export type MemorySeeAcl = SeeAcl & {
   snapshot(): SeeAclSnapshot;
   replace(snapshot: SeeAclSnapshot): void;
+  /** Fires after the graph changes so a reader can run Check again. */
+  subscribe(listener: () => void): () => void;
 };
 
 const FORBIDDEN_SECRET_KEYS = [
@@ -105,6 +107,10 @@ function matchesGrantObject(grant: IdentitySeeGrant, object: CheckObjectId): boo
 export function createMemorySeeAcl(seed: SeeAclSnapshot = emptySeeAclSnapshot()): MemorySeeAcl {
   const objects = new Map<CheckObjectId, AccessorId>();
   const grants: IdentitySeeGrant[] = [];
+  const listeners = new Set<() => void>();
+  const notify = () => {
+    for (const listener of [...listeners]) listener();
+  };
 
   const acl: MemorySeeAcl = {
     hasObject(object) {
@@ -117,7 +123,9 @@ export function createMemorySeeAcl(seed: SeeAclSnapshot = emptySeeAclSnapshot())
       return grants.filter((grant) => matchesGrantObject(grant, object));
     },
     putObject(object, owner) {
+      if (objects.get(object) === owner) return;
       objects.set(object, owner);
+      notify();
     },
     stateSeeGrant(_owner, grant) {
       if (!isIdentitySeeGrant(grant)) return;
@@ -134,17 +142,21 @@ export function createMemorySeeAcl(seed: SeeAclSnapshot = emptySeeAclSnapshot())
           existing.from === next.from &&
           existing.until === next.until,
       );
-      if (index >= 0) grants[index] = next;
-      else grants.push(next);
+      if (index >= 0) return;
+      grants.push(next);
+      notify();
     },
     unstateSeeGrant(_owner, accessor, object) {
+      let removed = false;
       for (let i = grants.length - 1; i >= 0; i -= 1) {
         const grant = grants[i];
         if (!grant) continue;
         if (matchesGrantObject(grant, object) && sameAccessor(grant.accessor, accessor)) {
           grants.splice(i, 1);
+          removed = true;
         }
       }
+      if (removed) notify();
     },
     snapshot() {
       return {
@@ -165,6 +177,13 @@ export function createMemorySeeAcl(seed: SeeAclSnapshot = emptySeeAclSnapshot())
         objects.set(row.object, row.owner);
       }
       grants.push(...clean.grants);
+      notify();
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
   };
 
