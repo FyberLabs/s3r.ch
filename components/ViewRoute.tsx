@@ -6,8 +6,9 @@
  * windows (recording the added sources in Recents). A View with conflicting copies shows the
  * copies and opens once one is chosen.
  *
- * Rows, access states and the picker's sources come from `data`. Until sources are connected
- * to live data, the route shows each window's slot with no rows.
+ * Rows, access states and the picker's sources come from `data`. The route fills that from
+ * the signed-in owner's rooms, forum channels and followed feeds. Pass `data` only to supply
+ * a fixed snapshot.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { btnPrimary, btnSecondary } from "@/lib/brand-ui";
@@ -18,6 +19,10 @@ import { labelFor, type PickerSource } from "@/lib/views-picker";
 import type { SourceRef } from "@/lib/views-source-ref";
 import { createIndexedDbViewsStore, resolveConflict, touchRecent, type ViewsState, type ViewsStore, type ViewVersion } from "@/lib/views-store";
 import type { LayoutTree, Notice, View } from "@/lib/views-window";
+import { GunPeerProvider } from "./GunPeerProvider";
+import { MeshAclSync } from "./MeshAclSync";
+import { SeeAclProvider } from "./SeeAclProvider";
+import { useViewLiveData } from "./useViewLiveData";
 import { ViewsPicker } from "./ViewsPicker";
 import { ViewsScreen } from "./ViewsScreen";
 import { objectOwner, useIdentitySession } from "./useIdentitySession";
@@ -29,9 +34,6 @@ export type ViewData = {
   sources: PickerSource[];
   selfNetwork: string;
 };
-
-/** No live data yet: no rows, nothing to browse, and every source is checked when opened. */
-const NO_DATA: ViewData = { rows: [], access: () => ({ kind: "on-open" }), sources: [], selfNetwork: "" };
 
 const DEVICE_KEY = "s3rch-views-device";
 
@@ -62,7 +64,18 @@ function writeLocal(key: string, value: string): void {
   }
 }
 
-export function ViewRoute({ id, data = NO_DATA }: { id: string; data?: ViewData }) {
+export function ViewRoute({ id, data }: { id: string; data?: ViewData }) {
+  return (
+    <SeeAclProvider>
+      <GunPeerProvider>
+        <MeshAclSync />
+        <ViewRouteBody id={id} data={data} />
+      </GunPeerProvider>
+    </SeeAclProvider>
+  );
+}
+
+function ViewRouteBody({ id, data }: { id: string; data?: ViewData }) {
   const session = useIdentitySession();
   const owner = session ? objectOwner(session) : null;
   const store = useMemo(() => (typeof indexedDB === "undefined" ? null : createIndexedDbViewsStore()), []);
@@ -74,7 +87,7 @@ export function ViewRoute({ id, data = NO_DATA }: { id: string; data?: ViewData 
 
 type Loaded = { state: ViewsState; view: View; conflicted: boolean; notices: Notice[] } | { missing: true } | null;
 
-function OwnedView({ id, owner, store, data }: { id: string; owner: string; store: ViewsStore; data: ViewData }) {
+function OwnedView({ id, owner, store, data }: { id: string; owner: string; store: ViewsStore; data?: ViewData }) {
   const [loaded, setLoaded] = useState<Loaded>(null);
   const [error, setError] = useState<string | null>(null);
   const [seen, setSeen] = useState<SeenTimes | null>(null);
@@ -110,6 +123,8 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
   }, [owner, store, show, id]);
 
   const view = loaded && !("missing" in loaded) ? loaded.view : null;
+  const live = useViewLiveData(view, owner, data === undefined);
+  const shown = data ?? live;
   // Serialized so effects rerun only when the ids change; JSON keeps any id intact.
   const windowIds = view ? JSON.stringify(view.windows.map((w) => w.id)) : null;
   const key = seenStorageKey(owner, id);
@@ -223,16 +238,16 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
   // Sources that became readable drop their pending marks (docs/views.md §3.7).
   const conflicted = !!loaded && !("missing" in loaded) && loaded.conflicted;
   useEffect(() => {
-    if (!view || conflicted || !settleView(view, data.access)) return;
-    void save((v) => settleView(v, data.access) ?? v, false);
-  }, [view, conflicted, data.access, save]);
+    if (!view || conflicted || !settleView(view, shown.access)) return;
+    void save((v) => settleView(v, shown.access) ?? v, false);
+  }, [view, conflicted, shown.access, save]);
 
   if (error && !loaded) return <Shell>Couldn&apos;t open this View: {error}</Shell>;
   if (!loaded) return <Shell>Loading…</Shell>;
   if ("missing" in loaded) return <Shell>There is no View with this id on this device.</Shell>;
 
   const { state } = loaded;
-  const label = (ref: SourceRef) => labelFor(ref, data.sources);
+  const label = (ref: SourceRef) => labelFor(ref, shown.sources);
   return (
     <section className="flex min-h-[80vh] flex-col gap-3 px-4 py-4">
       <header className="flex items-center gap-3">
@@ -256,8 +271,8 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
       ) : (
         <ViewsScreen
           view={loaded.view}
-          rows={data.rows}
-          access={data.access}
+          rows={shown.rows}
+          access={shown.access}
           label={label}
           seen={seen ?? {}}
           onSeen={onSeen}
@@ -269,12 +284,12 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
       {picking && !conflicted ? (
         <ViewsPicker
           view={loaded.view}
-          sources={data.sources}
+          sources={shown.sources}
           recents={state.recents}
           favorites={state.favorites}
-          selfNetwork={data.selfNetwork}
+          selfNetwork={shown.selfNetwork}
           me={owner}
-          access={data.access}
+          access={shown.access}
           newId={() => crypto.randomUUID()}
           target={{ type: "new" }}
           onConfirm={(next) => {
