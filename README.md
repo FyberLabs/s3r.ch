@@ -18,6 +18,11 @@ Public intake is [GitHub Issues](https://github.com/FyberLabs/s3r.ch/issues/new/
 - **Tailwind CSS**
 - **Node 24** / npm
 
+## Install
+
+- [Minimal install](docs/install-minimal.md) — core stack with no Panopticon settings: clone, build, run, and the repo Dockerfile.
+- [Panopticon install](docs/install-panopticon.md) — optional OIDC login handler and integrations on top of the minimal guide, including `S3RCH_PANOPTICON_TENANT_ID` on the deploy workflow.
+
 ## Setup
 
 ```bash
@@ -93,7 +98,7 @@ Deploy (`.github/workflows/deploy.yml`) and the seed workflow use these settings
 
 ### Running without Panopticon
 
-The site builds and runs with no `PANOPTICON_*` settings. GunDB, the feed, the forum and SIWE sign-in do not need it.
+Step-by-step setup is [docs/install-minimal.md](docs/install-minimal.md). The site builds and runs with no `PANOPTICON_*` settings. GunDB, the feed, the forum and SIWE sign-in do not need it.
 
 - `/api/payments/*` and `/api/oracles/attest` return 503 (`*-unconfigured`, or `*-unavailable` when a configured service does not answer).
 - `/api/turn/allocate` uses the relay in `S3RCH_TURN_URLS` when set; otherwise it returns 503 and browsers stay STUN-only. For `turn:` URLs each request gets a short-lived credential in the TURN REST format that coturn's `use-auth-secret` checks: username `<expiry unix ts>:<random id>`, credential base64(HMAC-SHA1(`S3RCH_TURN_SECRET`, username)), valid for `S3RCH_TURN_TTL_SEC` (default 3600). The secret never leaves the server. A fixed `S3RCH_TURN_USERNAME` / `S3RCH_TURN_CREDENTIAL` is only used with `S3RCH_TURN_INSECURE_STATIC_CREDENTIAL=1` (off by default), because it is handed to every signed-in browser.
@@ -102,7 +107,7 @@ The site builds and runs with no `PANOPTICON_*` settings. GunDB, the feed, the f
 
 ### Login providers
 
-SIWE (wallet) sign-in is always on. OIDC providers are backup sign-ins that bind to a wallet. With `S3RCH_LOGIN_PROVIDERS` unset, the list is SIWE plus one provider with id `panopticon` built from `S3RCH_OAUTH_ISSUER` (and optional `S3RCH_OAUTH_CLIENT_ID`, default `s3rch-web`, and `S3RCH_OAUTH_WALLET_URL`). Leave `S3RCH_OAUTH_ISSUER` unset to run with SIWE only. `S3RCH_LOGIN_PROVIDERS` takes a JSON array to configure several providers; see `lib/identity/providers.ts`. `GET /api/identity/providers` lists ids and labels for the UI, and `/api/identity/oauth/start?provider=<id>` picks one.
+SIWE (wallet) sign-in is always on. OIDC providers are backup sign-ins that bind to a wallet. With `S3RCH_LOGIN_PROVIDERS` unset, the list is SIWE plus one provider with id `panopticon` built from `S3RCH_OAUTH_ISSUER` (and optional `S3RCH_OAUTH_CLIENT_ID`, default `s3rch-web`, and `S3RCH_OAUTH_WALLET_URL`). Leave `S3RCH_OAUTH_ISSUER` unset to run with SIWE only. `S3RCH_LOGIN_PROVIDERS` takes a JSON array to configure several providers; see `lib/identity/providers.ts`. `GET /api/identity/providers` lists ids and labels for the UI, and `/api/identity/oauth/start?provider=<id>` picks one. Panopticon as that provider, issuer pins, and the deploy tenant variable are [docs/install-panopticon.md](docs/install-panopticon.md).
 
 ## Development
 
