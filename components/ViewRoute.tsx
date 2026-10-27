@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { btnPrimary, btnSecondary } from "@/lib/brand-ui";
 import type { AccessState } from "@/lib/views-access";
 import type { ObservedRow } from "@/lib/views-decorators";
-import { addedSources, editView, markSeen, mergeSeen, openView, parseSeen, seenStorageKey, settleView, type SeenTimes } from "@/lib/views-layout";
+import { addedSources, createLayoutSaveQueue, drainLayoutSaves, editView, markSeen, mergeSeen, openView, parseSeen, seenBaseline, seenNow, seenStorageKey, settleView, type SeenTimes } from "@/lib/views-layout";
 import { labelFor, type PickerSource } from "@/lib/views-picker";
 import type { SourceRef } from "@/lib/views-source-ref";
 import { createIndexedDbViewsStore, resolveConflict, touchRecent, type ViewsState, type ViewsStore, type ViewVersion } from "@/lib/views-store";
@@ -61,8 +61,6 @@ function writeLocal(key: string, value: string): void {
     // Kept in memory only.
   }
 }
-
-const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 export function ViewRoute({ id, data = NO_DATA }: { id: string; data?: ViewData }) {
   const session = useIdentitySession();
@@ -144,11 +142,12 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
     const ids: string[] = JSON.parse(windowIds);
     const current = seen ?? parseSeen(readLocal(key), ids);
     const missing = ids.filter((w) => !Object.hasOwn(current, w));
-    if (missing.length || seen === null) onSeen(markSeen(current, missing, nowSeconds()));
+    if (missing.length || seen === null) onSeen(markSeen(current, missing, seenBaseline()));
   }, [windowIds, seen, key, onSeen]);
 
   const commit = useCallback(
-    async (fn: (state: ViewsState) => ViewsState) => {
+    async (fn: (state: ViewsState) => ViewsState, options?: { publish?: boolean }): Promise<ViewsState | null> => {
+      const publish = options?.publish !== false;
       try {
         // Every write (edit or conflict choice) updates the known copy inside the serialized update.
         const { state } = await store.update(owner, deviceId(), (s) => {
@@ -156,8 +155,9 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
           known.current = openView(next, id)?.view ?? null;
           return next;
         });
-        show(state, []);
+        if (publish) show(state, []);
         setError(null);
+        return state;
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
         // Show the stored View again, so a refused edit made from an older copy is undone on screen.
@@ -168,6 +168,7 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
             show(state, []);
           })
           .catch(() => undefined);
+        return null;
       }
     },
     [owner, store, show, id],
@@ -184,6 +185,39 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
         return then ? then(r.state, r.before, r.after) : r.state;
       }),
     [commit, id],
+  );
+
+  /**
+   * Resize saves that pile up while IndexedDB is still writing. Only the newest layout is
+   * written next, and a finished write is shown only when it is still that layout — an
+   * earlier save must not replace a resize the user has already entered.
+   */
+  const layoutSaves = useRef(createLayoutSaveQueue<LayoutTree>());
+  const persistLayout = useCallback(
+    (layout: LayoutTree): Promise<void> => {
+      const queued = layoutSaves.current.push(layout);
+      if (queued.start) {
+        let savedState: ViewsState | null = null;
+        void drainLayoutSaves(
+          layoutSaves.current,
+          layout,
+          async (next) => {
+            const state = await commit(
+              (s) => editView(s, id, known.current, (v) => ({ ...v, layout: next }), true).state,
+              { publish: false },
+            );
+            if (!state) return null;
+            savedState = state;
+            return openView(state, id)?.view.layout ?? next;
+          },
+          () => {
+            if (savedState) show(savedState, []);
+          },
+        );
+      }
+      return queued.done;
+    },
+    [commit, id, show],
   );
 
   // Sources that became readable drop their pending marks (docs/views.md §3.7).
@@ -227,8 +261,8 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
           label={label}
           seen={seen ?? {}}
           onSeen={onSeen}
-          now={nowSeconds}
-          onLayout={(layout: LayoutTree) => void save((v) => ({ ...v, layout }), true)}
+          now={seenNow}
+          onLayout={persistLayout}
           onAdd={() => setPicking(true)}
         />
       )}

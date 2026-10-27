@@ -72,8 +72,20 @@ export function resizeSplit(tree: LayoutTree, path: number[], index: number, del
 }
 
 /**
+ * Whether `observedAt` is still unread at `seenAt`. Both are Unix seconds on one clock
+ * and may be fractional. A whole-second observation only names the second it arrived in,
+ * so it stays unread when the cursor is that same second — equal, or fractional and still
+ * inside it. An earlier second was already on screen.
+ */
+export function observedAfterSeen(observedAt: number, seenAt: number): boolean {
+  if (observedAt > seenAt || observedAt === seenAt) return true;
+  return Number.isInteger(observedAt) && seenAt > observedAt && seenAt < observedAt + 1;
+}
+
+/**
  * New rows in a window since it was last seen: rows from its current, readable sources
  * first observed after `seenAt`, each key counted once. A window never seen has none.
+ * Rows that share the cursor's second are kept (see `observedAfterSeen`).
  */
 export function unreadCount(window: ViewWindow, rows: ObservedRow[], access: (ref: SourceRef) => AccessState, seenAt: number | undefined): number {
   if (seenAt === undefined) return 0;
@@ -85,11 +97,24 @@ export function unreadCount(window: ViewWindow, rows: ObservedRow[], access: (re
   }
   let n = 0;
   for (const r of first.values()) {
-    if (r.observedAt <= seenAt) continue;
+    if (!observedAfterSeen(r.observedAt, seenAt)) continue;
     if (!window.sources.some((s) => sameSource(s, r.row.source)) || !canShowRows(access(r.row.source))) continue;
     n++;
   }
   return n;
+}
+
+/** Unix seconds on the `observedAt` clock, keeping sub-second precision. */
+export function seenNow(ms: number = Date.now()): number {
+  return ms / 1000;
+}
+
+/**
+ * Cursor for a window that has never been seen. Rows already stamped with the current
+ * whole second stay seen; counting starts at the next second.
+ */
+export function seenBaseline(ms: number = Date.now()): number {
+  return Math.floor(ms / 1000) + 1;
 }
 
 /**
@@ -188,4 +213,125 @@ export function editView(state: ViewsState, id: string, known: View | null, edit
   if (checked && JSON.stringify(found.view) !== JSON.stringify(known)) throw new Error("This View changed in another tab. Reload and try again.");
   const after = edit(found.view);
   return { state: saveView(state, after).state, before: found.view, after };
+}
+
+/** Sizes that survive a save are normalized and can differ by a rounding error, not by a resize step. */
+const LAYOUT_SIZE_EPS = 1e-9;
+
+function sameLayoutNode(a: LayoutTree, b: LayoutTree): boolean {
+  if (a.type === "leaf" || b.type === "leaf") return a.type === "leaf" && b.type === "leaf" && a.windowId === b.windowId;
+  if (a.dir !== b.dir || a.sizes.length !== b.sizes.length || a.children.length !== b.children.length) return false;
+  for (let i = 0; i < a.children.length; i++) {
+    if (Math.abs(a.sizes[i]! - b.sizes[i]!) > LAYOUT_SIZE_EPS) return false;
+    if (!sameLayoutNode(a.children[i]!, b.children[i]!)) return false;
+  }
+  return true;
+}
+
+export function sameLayout(a: LayoutTree | null, b: LayoutTree | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return sameLayoutNode(a, b);
+}
+
+/**
+ * Whether a layout coming back from a save may replace the one on screen.
+ * While a newer resize is still queued, only the layout that was submitted may land.
+ * With nothing queued, the incoming layout wins, including a reload after a failed save.
+ */
+export function shouldAdoptSavedLayout(pendingSaves: number, incoming: LayoutTree | null, submitted: LayoutTree | null): boolean {
+  if (pendingSaves <= 0) return true;
+  return submitted !== null && sameLayout(incoming, submitted);
+}
+
+type LayoutSaveWaiter = { resolve: () => void; reject: (error: unknown) => void };
+
+/**
+ * Layouts pushed while a write is in flight. Only the newest is written next, and every
+ * push's promise settles together: resolved when that newest layout is published, rejected
+ * when a write fails.
+ */
+export type LayoutSaveQueue<T> = {
+  /** Queue `layout`. `start` means the caller must drain, beginning with this layout. */
+  push(layout: T): { start: boolean; done: Promise<void> };
+  /** The in-flight write finished. Publish only when nothing newer is waiting. */
+  wrote(): { publish: boolean; next: T | null };
+  /** Drop the queue and reject every waiter. */
+  fail(error: unknown): void;
+};
+
+export function createLayoutSaveQueue<T>(): LayoutSaveQueue<T> {
+  let writing = false;
+  let pending: T | null = null;
+  let waiters: LayoutSaveWaiter[] = [];
+
+  const settle = (error: unknown | null) => {
+    const current = waiters;
+    waiters = [];
+    writing = false;
+    pending = null;
+    for (const waiter of current) {
+      if (error === null) waiter.resolve();
+      else waiter.reject(error);
+    }
+  };
+
+  return {
+    push(layout) {
+      let resolve!: () => void;
+      let reject!: (error: unknown) => void;
+      const done = new Promise<void>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      waiters.push({ resolve, reject });
+      if (writing) {
+        pending = layout;
+        return { start: false, done };
+      }
+      writing = true;
+      return { start: true, done };
+    },
+    wrote() {
+      if (!writing) return { publish: false, next: null };
+      if (pending !== null) {
+        const next = pending;
+        pending = null;
+        return { publish: false, next };
+      }
+      settle(null);
+      return { publish: true, next: null };
+    },
+    fail(error) {
+      settle(error);
+    },
+  };
+}
+
+/**
+ * Persist queued layouts one at a time. A layout pushed while the write is in flight
+ * replaces the one waiting, so keyboard auto-repeat does not save every step. `publish`
+ * runs only for the write that is still the newest layout.
+ */
+export async function drainLayoutSaves<T>(
+  queue: LayoutSaveQueue<T>,
+  first: T,
+  write: (layout: T) => Promise<T | null>,
+  publish: (saved: T) => void,
+): Promise<void> {
+  let layout: T | null = first;
+  try {
+    while (layout) {
+      const saved = await write(layout);
+      if (saved === null) {
+        queue.fail(new Error("layout save failed"));
+        return;
+      }
+      const step = queue.wrote();
+      if (step.publish) publish(saved);
+      layout = step.next;
+    }
+  } catch (error) {
+    queue.fail(error);
+  }
 }

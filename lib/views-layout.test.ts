@@ -2,7 +2,28 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { AccessState } from "./views-access";
 import type { ObservedRow } from "./views-decorators";
-import { addedSources, boundary, editView, keyAction, leafOrder, markSeen, mergeSeen, MIN_SPLIT_SIZE, minShare, openView, parseSeen, resizeSplit, settleView, unreadCount, type KeyInput } from "./views-layout";
+import {
+  addedSources,
+  boundary,
+  createLayoutSaveQueue,
+  drainLayoutSaves,
+  editView,
+  keyAction,
+  leafOrder,
+  markSeen,
+  mergeSeen,
+  MIN_SPLIT_SIZE,
+  minShare,
+  openView,
+  parseSeen,
+  resizeSplit,
+  seenBaseline,
+  seenNow,
+  settleView,
+  shouldAdoptSavedLayout,
+  unreadCount,
+  type KeyInput,
+} from "./views-layout";
 import { formatCanonical, type SourceRef } from "./views-source-ref";
 import { emptyState, mergeVersion, resolveConflict, saveView } from "./views-store";
 import type { LayoutTree, View, ViewWindow } from "./views-window";
@@ -74,6 +95,22 @@ describe("unread", () => {
   it("counts a row seen again by its first observation", () => {
     const rows = [obs(ref("a"), "1", 100), obs(ref("a"), "1", 200)];
     assert.equal(unreadCount(w, rows, () => read, 150), 0);
+  });
+
+  it("keeps a row that arrives later in the cursor's second", () => {
+    const late = obs(ref("a"), "late", 100);
+    // Left near the start of second 100; the row is stamped with that whole second.
+    assert.equal(seenNow(100_050), 100.05);
+    assert.equal(unreadCount(w, [late], () => read, 100), 1);
+    assert.equal(unreadCount(w, [late], () => read, seenNow(100_050)), 1);
+    assert.equal(unreadCount(w, [obs(ref("a"), "old", 99)], () => read, seenNow(100_050)), 0);
+    // Sub-second observations stay ordered against the same cursor.
+    assert.equal(unreadCount(w, [obs(ref("a"), "before", 100.02)], () => read, seenNow(100_050)), 0);
+    assert.equal(unreadCount(w, [obs(ref("a"), "after", 100.9)], () => read, seenNow(100_050)), 1);
+    // A window never seen still treats rows already stamped with this second as seen.
+    assert.equal(seenBaseline(100_050), 101);
+    assert.equal(unreadCount(w, [late], () => read, seenBaseline(100_050)), 0);
+    assert.equal(unreadCount(w, [obs(ref("a"), "next", 101)], () => read, seenBaseline(100_050)), 1);
   });
 
   it("stores last-seen times for the View's windows only", () => {
@@ -166,6 +203,97 @@ describe("checked edits", () => {
     const resolved = resolveConflict(conflicted, "v1", theirs);
     const known = openView(resolved, "v1")!.view;
     assert.equal(openView(editView(resolved, "v1", known, rename("next"), true).state, "v1")!.view.title, "next");
+  });
+});
+
+describe("layout saves", () => {
+  const step = (tree: LayoutTree) => resizeSplit(tree, [], 0, 0.05);
+
+  it("does not publish an intermediate layout or resize the next step from it", async () => {
+    const queue = createLayoutSaveQueue<LayoutTree>();
+    let layout: LayoutTree = TREE;
+    let layoutRef: LayoutTree = layout;
+    let pending = 0;
+    let submitted: LayoutTree | null = null;
+    const writes: LayoutTree[] = [];
+    const published: LayoutTree[] = [];
+    let releaseFirst: () => void = () => {};
+
+    const adopt = (incoming: LayoutTree) => {
+      if (!shouldAdoptSavedLayout(pending, incoming, submitted)) return;
+      layout = incoming;
+      layoutRef = incoming;
+    };
+    const write = (next: LayoutTree) => {
+      writes.push(next);
+      if (writes.length === 1) return new Promise<LayoutTree>((resolve) => { releaseFirst = () => resolve(next); });
+      return Promise.resolve(next);
+    };
+    const press = () => {
+      const next = step(layoutRef);
+      layout = next;
+      layoutRef = next;
+      submitted = next;
+      pending += 1;
+      const queued = queue.push(next);
+      const tracked = queued.done.then(
+        () => { pending = Math.max(0, pending - 1); },
+        () => { pending = 0; submitted = null; },
+      );
+      if (queued.start) void drainLayoutSaves(queue, next, write, (saved) => { published.push(saved); adopt(saved); });
+      return tracked;
+    };
+
+    const first = press();
+    const second = press();
+    const third = press();
+    const newest = layoutRef;
+    assert.equal(writes.length, 1);
+    releaseFirst();
+    await Promise.all([first, second, third]);
+
+    assert.equal(writes.length, 2);
+    assert.deepEqual(published, [newest]);
+    assert.deepEqual(layoutRef, newest);
+    assert.equal(shouldAdoptSavedLayout(1, writes[0]!, newest), false);
+    const after = step(layoutRef);
+    assert.deepEqual(after, step(newest));
+    assert.notDeepEqual(after, step(writes[0]!));
+  });
+
+  it("adopts a reloaded layout once a failed save has cleared the queue", async () => {
+    const queue = createLayoutSaveQueue<LayoutTree>();
+    const first = queue.push(TREE);
+    const newer = step(TREE);
+    const second = queue.push(newer);
+    const ignored = second.done.then(() => undefined, () => undefined);
+    const rejected = assert.rejects(first.done);
+    let published: LayoutTree | null = null;
+    await drainLayoutSaves(queue, TREE, async () => null, (saved) => { published = saved; });
+    await rejected;
+    await ignored;
+    assert.equal(published, null);
+    assert.equal(shouldAdoptSavedLayout(0, TREE, null), true);
+
+    const again = queue.push(newer);
+    assert.equal(again.start, true);
+    await drainLayoutSaves(queue, newer, async (layout) => layout, (saved) => { published = saved; });
+    await again.done;
+    assert.equal(published, newer);
+  });
+
+  it("adopts the stored layout of the resize that was submitted", () => {
+    const ME = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+    const NET = `s3rch:https://s3r.ch:443;key=${"a".repeat(64)}`;
+    const ref = (source: string): SourceRef => ({ network: NET, owner: ME, source, kind: "chat", v: 1 });
+    const win = (id: string): ViewWindow => ({ id, kind: "chat", mode: "single", sources: [ref(id)] });
+    const base: LayoutTree = { type: "split", dir: "row", sizes: [0.5, 0.5], children: [{ type: "leaf", windowId: "a" }, { type: "leaf", windowId: "b" }] };
+    const submitted = step(base);
+    const newer = step(submitted);
+    const view: View = { id: "v1", title: "V", windows: [win("a"), win("b")], layout: submitted, v: 1 };
+    const stored = saveView(emptyState(ME, "d1"), view).state.views["v1"]!.current.view!.layout;
+    assert.equal(shouldAdoptSavedLayout(2, stored, submitted), true);
+    assert.equal(shouldAdoptSavedLayout(2, stored, newer), false);
   });
 });
 

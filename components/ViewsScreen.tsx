@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import { btnSecondary } from "@/lib/brand-ui";
 import type { AccessState } from "@/lib/views-access";
 import type { ObservedRow } from "@/lib/views-decorators";
-import { keyAction, leafOrder, markSeen, resizeSplit, unreadCount, type SeenTimes } from "@/lib/views-layout";
+import { keyAction, leafOrder, markSeen, resizeSplit, shouldAdoptSavedLayout, unreadCount, type SeenTimes } from "@/lib/views-layout";
 import type { SourceRef } from "@/lib/views-source-ref";
 import type { LayoutTree, View } from "@/lib/views-window";
 import { ViewsLayout } from "./ViewsLayout";
@@ -24,10 +24,10 @@ export type ViewsScreenProps = {
   /** Last-seen times by window id, and where to keep them. */
   seen: SeenTimes;
   onSeen: (seen: SeenTimes) => void;
-  /** Current time in Unix seconds (the same clock as `observedAt`). */
+  /** Current time on the `observedAt` clock (Unix seconds; fractions count). */
   now: () => number;
-  /** Save a resized layout. Without it the layout cannot be resized. */
-  onLayout?: (layout: LayoutTree) => void;
+  /** Save a resized layout. Without it the layout cannot be resized. Resolves when this layout, or a newer one queued behind it, has been published. */
+  onLayout?: (layout: LayoutTree) => void | Promise<void>;
   /** Open the picker for a new window. */
   onAdd?: () => void;
   onSend?: (windowId: string, target: SourceRef, text: string) => void;
@@ -43,6 +43,8 @@ export function ViewsScreen(props: ViewsScreenProps) {
   const [layout, setLayout] = useState<LayoutTree | null>(view.layout);
   const [focused, setFocused] = useState<string | null>(null);
   const [maximized, setMaximized] = useState<string | null>(null);
+  // Bumped when a save fails, so a reload that arrived while the save was still outstanding is applied.
+  const [layoutTick, setLayoutTick] = useState(0);
   const leaves = useRef(new Map<string, HTMLElement>());
   /**
    * One element per window, kept for the life of the screen. Windows render into these
@@ -54,12 +56,22 @@ export function ViewsScreen(props: ViewsScreenProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const layoutRef = useRef(layout);
-  layoutRef.current = layout;
+  // A resize handler may already have moved the ref ahead of this render. While a save is
+  // outstanding, don't pull it back to the snapshot this render is still showing.
+  const pendingSaves = useRef(0);
+  /** The newest layout sent to be saved, if a save is still outstanding. */
+  const submitted = useRef<LayoutTree | null>(null);
+  if (pendingSaves.current === 0 || layout === layoutRef.current) layoutRef.current = layout;
   /** Whether the current resize gesture has changed the layout. */
   const changed = useRef(false);
 
-  // A saved or reloaded View replaces the local layout.
-  useEffect(() => setLayout(view.layout), [view.layout]);
+  // A saved or reloaded View replaces the local layout. An earlier save must not replace
+  // a newer resize that is still waiting to be written.
+  useEffect(() => {
+    if (!shouldAdoptSavedLayout(pendingSaves.current, view.layout, submitted.current)) return;
+    setLayout(view.layout);
+    layoutRef.current = view.layout;
+  }, [view.layout, layoutTick]);
 
   const order = useMemo(() => leafOrder(layout), [layout]);
   const byId = useMemo(() => new Map(view.windows.map((w) => [w.id, w])), [view.windows]);
@@ -156,7 +168,22 @@ export function ViewsScreen(props: ViewsScreenProps) {
         // A click, or a key press at a bound, changes nothing and saves nothing.
         if (done && changed.current) {
           changed.current = false;
-          props.onLayout!(next);
+          submitted.current = next;
+          pendingSaves.current += 1;
+          const saved = Promise.resolve(props.onLayout!(next));
+          saved.then(
+            () => {
+              pendingSaves.current = Math.max(0, pendingSaves.current - 1);
+            },
+            () => {
+              // The save failed and the route reloads the stored View. Accept that layout
+              // even if the reload was rendered while this save was still outstanding.
+              if (pendingSaves.current === 0 && submitted.current === null) return;
+              pendingSaves.current = 0;
+              submitted.current = null;
+              setLayoutTick((n) => n + 1);
+            },
+          );
         }
       }
     : undefined;
