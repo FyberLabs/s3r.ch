@@ -4,7 +4,7 @@ Run s3r.ch with the core stack and no Panopticon settings. Gun, the public feed,
 
 Account-link storage is [identity-storage.md](identity-storage.md). Login behavior is [identity.md](identity.md). TURN background is [durable-graph-and-turn.md](durable-graph-and-turn.md).
 
-A packaged registry image is not published from this repo yet. The supported paths below are a Node checkout and an image built from the repo `Dockerfile`.
+Published images and the digest pin are [release.md](release.md). The steps below are a Node checkout and `docker build` of the same `Dockerfile`.
 
 ## Clone, build, and run
 
@@ -273,7 +273,7 @@ A working relay returns HTTP 200 and `iceServers` whose `turn:` or `turns:` URL 
 
 ## Settings
 
-Secrets are server-side only. Never `NEXT_PUBLIC_*` for a secret. `NEXT_PUBLIC_WC_PROJECT_ID` is public and is inlined at `next build` (Docker build-arg of the same name). Empty leaves WalletConnect out of the bundle.
+Secrets are server-side only. Never `NEXT_PUBLIC_*` for a secret. `NEXT_PUBLIC_WC_PROJECT_ID` is public and is inlined at `next build` (Docker build-arg of the same name). Empty leaves WalletConnect out of the bundle. The checked list of `S3RCH_*`, `PANOPTICON_*`, and Gun settings is [configuration.md](configuration.md).
 
 | Name | Required | Default | Secret |
 | --- | --- | --- | --- |

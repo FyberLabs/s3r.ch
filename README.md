@@ -22,6 +22,8 @@ Public intake is [GitHub Issues](https://github.com/FyberLabs/s3r.ch/issues/new/
 
 - [Minimal install](docs/install-minimal.md) — core stack with no Panopticon settings: clone, build, run, and the repo Dockerfile.
 - [Panopticon install](docs/install-panopticon.md) — optional OIDC login handler and integrations on top of the minimal guide, including `S3RCH_PANOPTICON_TENANT_ID` on the deploy workflow.
+- [Packaged release](docs/release.md) — GHCR image from a `vX.Y.Z` tag, persistent paths, and deploying that image by digest.
+- [Configuration reference](docs/configuration.md) — every `S3RCH_*`, `PANOPTICON_*`, and Gun setting the server reads.
 
 ## Setup
 

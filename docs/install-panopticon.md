@@ -127,11 +127,11 @@ Contract notes live in FyberLabs/panopticon (`products/turn/docs/turn-allocate-v
 
 For the repository deploy workflow (`.github/workflows/deploy.yml`), the tenant id is the GitHub variable `S3RCH_PANOPTICON_TENANT_ID` on the repository or on the `prod` environment. Deploy writes it to the App Service setting `PANOPTICON_TENANT_ID`. The workflow checks the variable with `scripts/require-panopticon-tenant-id.sh` before the image push.
 
-- Set it when that deploy should publish the tenant id. The value is a UUID. A value that is not a UUID fails the job and does not write the setting.
-- Unset, the script exits 0, the job continues, and the live App Service value is left as it is. The workflow does not clear it.
+- The variable is required for this deploy. An unset value fails the job before checkout and does not clear the live App Service setting.
+- A value that is not a UUID fails the job and does not write the setting.
 - The value is not a secret and must not be committed. The script masks it in Actions logs.
 
-Issue [#103](https://github.com/FyberLabs/s3r.ch/issues/103) asks for a preflight that fails the job when the variable is missing, and for that requirement in the deploy docs. That change is not in this tree. The behavior above is what `deploy.yml` does today. `PANOPTICON_API_KEY` and the `PANOPTICON_*_BASE` hostnames are applied outside this repo's workflow; this repository only consumes them at runtime.
+The running app still treats a missing `PANOPTICON_TENANT_ID` as unconfigured. Other deployments can leave Panopticon unset; this requirement is only the prod Deploy workflow. `PANOPTICON_API_KEY` and the `PANOPTICON_*_BASE` hostnames are applied outside this repo's workflow; this repository only consumes them at runtime. Deploying a published image by digest is [release.md](release.md).
 
 ## Local and production
 
@@ -139,7 +139,7 @@ Issue [#103](https://github.com/FyberLabs/s3r.ch/issues/103) asks for a prefligh
 | --- | --- | --- |
 | Identity document | `data/identity-links.json` (or `S3RCH_IDENTITY_LINKS`) | Azure Blob `identity-links.json` via `S3RCH_IDENTITY_BLOB_ACCOUNT` and `S3RCH_IDENTITY_BLOB_CONTAINER` |
 | `IDENTITY_SESSION_SECRET` | optional; unset uses the development fallback | required, 32 characters or more |
-| `PANOPTICON_TENANT_ID` | set in `.env.local` when you want the hops | App Service setting written from `S3RCH_PANOPTICON_TENANT_ID` when that variable is set |
+| `PANOPTICON_TENANT_ID` | set in `.env.local` when you want the hops | App Service setting. Prod Deploy requires `S3RCH_PANOPTICON_TENANT_ID` and writes this name. The process still starts when it is unset. |
 | `PANOPTICON_API_KEY` and base URLs | `.env.local`, server-side | runtime settings on the app, not Docker build-args |
 | OIDC redirect | `http://localhost:3000` and `http://127.0.0.1:3000` | `https://s3r.ch` and `https://www.s3r.ch` |
 | SIWE host | `localhost`, `127.0.0.1`, or `s3r.ch` | same allowlist |
