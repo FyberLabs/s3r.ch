@@ -490,22 +490,23 @@ export function withoutChatIds(items: readonly FeedItem[], ids: readonly string[
 
 export type ForumAgentRemoval = {
   removed: 1;
+  action: "remove";
   forumId: string;
   seaPubkey: string;
   id: string;
 };
 
-/** Signed removal. Unsigned `null` is not a removal. */
+/** Signed removal. Unsigned `null` is not a removal. `action` binds the tombstone. */
 export function parseForumAgentRemoval(value: unknown): ForumAgentRemoval | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
-  if (row.removed !== 1) return null;
+  if (row.removed !== 1 || row.action !== "remove") return null;
   if (typeof row.forumId !== "string" || typeof row.seaPubkey !== "string" || typeof row.id !== "string") {
     return null;
   }
   if (!isForumObjectId(row.forumId, "forum") || !isForumObjectId(row.id, "status")) return null;
   if (!isSeaPubkey(row.seaPubkey) || !sameEmbeddedPrincipal(row.seaPubkey, row.id)) return null;
-  return { removed: 1, forumId: row.forumId, seaPubkey: row.seaPubkey, id: row.id };
+  return { removed: 1, action: "remove", forumId: row.forumId, seaPubkey: row.seaPubkey, id: row.id };
 }
 
 function ownerMayWrite(signer: string, owner: string | undefined): boolean {
@@ -513,10 +514,10 @@ function ownerMayWrite(signer: string, owner: string | undefined): boolean {
 }
 
 /**
- * `owner` admits a new pubkey (forum owner, or the admitted owner of that
- * status when they are not the agent signing for themselves). `enrolled`
- * is a self-update of a pubkey already on the roster. `pending` is a
- * self-signature that must wait for admission. `denied` is ignored.
+ * The forum owner admits a pubkey. Owning `status.id` does not: an unsigned
+ * ACL edge can name that owner. `enrolled` is a self-update of a pubkey
+ * already on the roster. `pending` waits for forum-owner admission.
+ * `denied` is ignored. The map key is the agent pubkey on the signed row.
  */
 export function forumStatusAdmission(input: {
   status: ForumAgentStatus;
@@ -531,7 +532,7 @@ export function forumStatusAdmission(input: {
   if (input.status.forumId !== input.forumId) return "denied";
   if (!isSeaPubkey(input.signer)) return "denied";
   if (ownerMayWrite(input.signer, input.forumOwner)) return "owner";
-  if (ownerMayWrite(input.signer, input.owner) && input.signer !== input.status.seaPubkey) return "owner";
+  void input.owner;
   if (input.signer === input.status.seaPubkey) return input.enrolled ? "enrolled" : "pending";
   return "denied";
 }
@@ -554,7 +555,10 @@ export function authorizeForumStatus(input: {
   return admission === "owner" || admission === "enrolled";
 }
 
-/** Agent or owner. The map key is the agent pubkey. Unsigned null is not this. */
+/**
+ * Agent or forum owner. The map key is the agent pubkey.
+ * Owning the status id does not sign this removal. Unsigned null is not this.
+ */
 export function authorizeForumAgentRemoval(input: {
   removal: ForumAgentRemoval;
   mapKey: string;
@@ -564,12 +568,12 @@ export function authorizeForumAgentRemoval(input: {
   forumId: string;
 }): boolean {
   const removal = input.removal;
-  if (removal.removed !== 1 || removal.forumId !== input.forumId) return false;
+  if (removal.removed !== 1 || removal.action !== "remove" || removal.forumId !== input.forumId) return false;
   if (input.mapKey !== removal.seaPubkey) return false;
   if (!isSeaPubkey(input.signer) || !sameEmbeddedPrincipal(removal.seaPubkey, removal.id)) return false;
+  void input.owner;
   if (input.signer === removal.seaPubkey) return true;
-  if (ownerMayWrite(input.signer, input.forumOwner)) return true;
-  return ownerMayWrite(input.signer, input.owner);
+  return ownerMayWrite(input.signer, input.forumOwner);
 }
 
 export function parseForumRoleMembership(value: unknown): ForumRoleMembership | null {
@@ -685,6 +689,36 @@ export function authorizeForumOffer(
   }
   if (offer.stated !== 0) return false;
   return signer === party?.owner || signer === party?.subject;
+}
+
+/**
+ * A signed cancel stays. Decline and withdraw set `stated` 0, and no verb
+ * sets that same offer id back to `stated` 1. A later live row is a replay.
+ */
+export function mergeForumOffer(current: ForumOffer | undefined, incoming: ForumOffer): ForumOffer | null {
+  if (!current || current.id !== incoming.id) return incoming;
+  if (current.stated === 0 && incoming.stated === 1) return null;
+  return incoming;
+}
+
+export const FORUM_OFFER_CANCEL_KEY = "s3rch-forum-offer-cancels";
+
+/** Offer ids this browser has already accepted as a signed cancel. */
+export function cancelledOfferIds(stored: string | null): Set<string> {
+  if (!stored) return new Set();
+  try {
+    const parsed = JSON.parse(stored) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((id): id is string => typeof id === "string" && id.length > 0));
+  } catch {
+    return new Set();
+  }
+}
+
+export function rememberCancelledOfferId(stored: string | null, id: string): string {
+  const ids = cancelledOfferIds(stored);
+  ids.add(id);
+  return JSON.stringify([...ids]);
 }
 
 export type ForumMeshRemoval = {

@@ -43,10 +43,14 @@ import {
   authorizeForumOffer,
   authorizeForumRoleAdmission,
   chatRetractionIds,
+  cancelledOfferIds,
   createMeshEventVersions,
+  FORUM_OFFER_CANCEL_KEY,
   forumStatementFromNode,
   forumStatusAdmission,
   mergeAgents,
+  mergeForumOffer,
+  rememberCancelledOfferId,
   needIds,
   openNeedFor,
   overlaySeeGraph,
@@ -67,6 +71,22 @@ import {
   type VitalsMode,
 } from "@/lib/forum-squad";
 import { readForumSignature, signForumRecord, signatureOf } from "@/lib/forum-sign";
+
+function readOfferCancels(): string | null {
+  try {
+    return localStorage.getItem(FORUM_OFFER_CANCEL_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function rememberOfferCancel(id: string): void {
+  try {
+    localStorage.setItem(FORUM_OFFER_CANCEL_KEY, rememberCancelledOfferId(readOfferCancels(), id));
+  } catch {
+    // Private mode keeps the in-memory cancel only.
+  }
+}
 import { soulKeyMatches } from "@/lib/unshare";
 import { browserGunOptions, listenThenConnectSeedPeer, type SeedPeerEmitter } from "@/lib/gun-peer";
 import {
@@ -444,7 +464,11 @@ export function SquadForum() {
         ) {
           return;
         }
+        if (offer.stated === 0) rememberOfferCancel(offer.id);
+        if (offer.stated === 1 && cancelledOfferIds(readOfferCancels()).has(offer.id)) return;
         setMeshOffers((prev) => {
+          const existing = prev.get(offer.id);
+          if (!mergeForumOffer(existing, offer)) return prev;
           const next = new Map(prev);
           next.set(offer.id, offer);
           return next;
@@ -1014,6 +1038,7 @@ export function SquadForum() {
       return;
     }
     const next = decision.offer;
+    rememberOfferCancel(next.id);
     setLocalOffers((prev) => {
       const map = new Map(prev);
       map.set(next.id, next);

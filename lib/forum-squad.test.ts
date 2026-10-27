@@ -29,8 +29,11 @@ import {
   createMeshEventVersions,
   filterAgents,
   forumStatusAdmission,
+  cancelledOfferIds,
   mergeAgents,
+  mergeForumOffer,
   overlaySeeGraph,
+  rememberCancelledOfferId,
   parseForumAgentRemoval,
   parseForumMeshRemoval,
   parseForumRoleMembership,
@@ -311,6 +314,7 @@ describe("squad view", () => {
         mapKey: status.seaPubkey,
         signer: PILOT_OWNER,
         owner: PILOT_OWNER,
+        forumOwner: PILOT_OWNER,
         forumId: PILOT_FORUM_ID,
         enrolled: false,
       }),
@@ -333,6 +337,7 @@ describe("squad view", () => {
         mapKey: status.seaPubkey,
         signer: vector.secondPubkey === status.seaPubkey ? PILOT_OWNER : vector.secondPubkey,
         owner: PILOT_OWNER,
+        forumOwner: PILOT_OWNER,
         forumId: PILOT_FORUM_ID,
         enrolled: true,
       }),
@@ -366,12 +371,37 @@ describe("squad view", () => {
     );
     const removal = {
       removed: 1 as const,
+      action: "remove" as const,
       forumId: PILOT_FORUM_ID,
       seaPubkey: status.seaPubkey,
       id: status.id,
     };
     assert.equal(parseForumAgentRemoval(null), null);
     assert.equal(parseForumAgentRemoval({ ...removal, removed: 0 }), null);
+    assert.equal(parseForumAgentRemoval({ ...removal, action: "drop" }), null);
+    assert.equal(
+      forumStatusAdmission({
+        status,
+        mapKey: status.seaPubkey,
+        signer: stranger.status.seaPubkey,
+        owner: stranger.status.seaPubkey,
+        forumOwner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+        enrolled: false,
+      }),
+      "denied",
+    );
+    assert.equal(
+      authorizeForumAgentRemoval({
+        removal,
+        mapKey: status.seaPubkey,
+        signer: stranger.status.seaPubkey,
+        owner: stranger.status.seaPubkey,
+        forumOwner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+      }),
+      false,
+    );
     assert.equal(
       authorizeForumAgentRemoval({
         removal,
@@ -494,6 +524,18 @@ describe("squad view", () => {
     assert.equal(authorizeForumOffer(offer, PILOT_OWNER, PILOT_FORUM_ID, undefined, seen), false);
     const withdrawn = { ...offer, stated: 0 as const };
     assert.equal(authorizeForumOffer(withdrawn, helper, PILOT_FORUM_ID), true);
+    const live = {
+      ...offer,
+      id: `offer_${seaToPrincipalKey(helper)}_${"ef".repeat(16)}`,
+      helper,
+      body: "holding west",
+    };
+    assert.equal(mergeForumOffer(undefined, live)?.stated, 1);
+    assert.equal(mergeForumOffer(live, { ...live, stated: 0 })?.stated, 0);
+    assert.equal(mergeForumOffer({ ...live, stated: 0 }, live), null);
+    const stored = rememberCancelledOfferId(null, live.id);
+    assert.equal(cancelledOfferIds(stored).has(live.id), true);
+    assert.equal(cancelledOfferIds("not-json").size, 0);
   });
 
   it("keeps the admitted sample owner when a mesh edge names another pubkey", () => {
