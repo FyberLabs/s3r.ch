@@ -13,6 +13,7 @@ import {
   forumChatTag,
   forumChatTagPresent,
   forumChatTags,
+  forumOfferSoul,
   forumStatementSoul,
   isForumChatExtraTag,
   checkSee,
@@ -603,14 +604,20 @@ export function authorizeForumRoleAdmission(input: {
   return ownerMayWrite(input.signer, input.forumOwner);
 }
 
-/** Chat mesh rows are signed by the statement author. The tag does not grant. */
+/**
+ * Chat mesh rows are signed by the statement author. The tag does not grant.
+ * A later put of an existing id must be that same author. The forum owner
+ * may hide a line with a tombstone, and may not replace its body.
+ */
 export function authorizeForumChat(
   item: FeedItem,
   signer: string,
   mapKey: string | undefined,
   forumId: string,
+  priorAuthor?: string,
 ): boolean {
   if (signer !== item.author || !isSeaPubkey(signer)) return false;
+  if (priorAuthor && priorAuthor !== item.author) return false;
   if (!item.tags.includes(forumChatTag(forumId))) return false;
   if (mapKey !== undefined && !soulKeyMatches(item.id, mapKey)) return false;
   return true;
@@ -643,19 +650,31 @@ export function authorizeForumNeed(
     if (need.body !== known.body || need.severity !== known.severity) return false;
     if ((need.spec ?? "") !== (known.spec ?? "")) return false;
     if (!need.acceptedOffer || !closure) return false;
-    return livePostedOfferCloses(need, closure);
+    return needClosureStatus(need, closure) === "ok";
+  }
+  if (!known && need.stated === 0 && need.acceptedOffer && signer === need.subject) {
+    if (!closure) return false;
+    return needClosureStatus(need, closure) === "ok";
   }
   return !!owner && signer === owner;
 }
 
-function livePostedOfferCloses(need: ForumNeed, closure: ForumNeedClosure): boolean {
+/** Live posted offer and helper Check see. `wait` means the offer or grant is not loaded yet. */
+export function needClosureStatus(
+  need: ForumNeed,
+  closure: ForumNeedClosure,
+): "ok" | "wait" | "denied" {
   const offerId = need.acceptedOffer;
-  if (!offerId) return false;
+  if (!offerId) return "denied";
   const posted = closure.postedOffers.get(offerId);
-  if (!posted || !validateForumOffer(posted) || posted.stated !== 1) return false;
-  if (posted.need !== need.id || posted.forumId !== need.forumId) return false;
-  if (!closure.graph.hasObject(need.id)) return false;
-  return checkSee(closure.graph, need.id, posted.helper, closure.now).allowed;
+  if (!posted) return "wait";
+  if (!validateForumOffer(posted) || posted.stated !== 1) return "denied";
+  if (posted.need !== need.id || posted.forumId !== need.forumId) return "denied";
+  if (!closure.graph.hasObject(need.id)) return "wait";
+  const see = checkSee(closure.graph, need.id, posted.helper, closure.now);
+  if (see.allowed) return "ok";
+  if (see.reason === "missing-grant" || see.reason === "missing-object") return "wait";
+  return "denied";
 }
 
 /** The alarm pin is signed by the admitted owner of the forum id. */
@@ -682,13 +701,42 @@ export function authorizeForumOffer(
 ): boolean {
   if (offer.forumId !== forumId || !isSeaPubkey(signer)) return false;
   if (signer === offer.helper) {
-    if (offer.stated === 0) return true;
+    if (offer.stated === 0) {
+      if (seen?.need.stated === 0 && seen.need.acceptedOffer === offer.id) return false;
+      return true;
+    }
     if (!seen || seen.need.id !== offer.need || seen.need.forumId !== offer.forumId) return false;
     if (!seen.graph.hasObject(seen.need.id)) return false;
     return checkSee(seen.graph, seen.need.id, signer, seen.now).allowed;
   }
   if (offer.stated !== 0) return false;
   return signer === party?.owner || signer === party?.subject;
+}
+
+/**
+ * A live offer waits when the parent need is not in the graph yet, or Check
+ * has no grant row yet. A hard deny is not a wait.
+ */
+export function offerSeeWait(input: {
+  offer: ForumOffer;
+  graph: SeeGraph | null;
+  need?: ForumNeed;
+  now: number;
+}): boolean {
+  if (input.offer.stated !== 1) return false;
+  if (!input.graph || !input.need) return true;
+  if (input.need.id !== input.offer.need || input.need.forumId !== input.offer.forumId) return false;
+  if (!input.graph.hasObject(input.need.id)) return true;
+  const see = checkSee(input.graph, input.need.id, input.offer.helper, input.now);
+  return !see.allowed && (see.reason === "missing-grant" || see.reason === "missing-object");
+}
+
+/**
+ * Signed cancel soul for an offer. Same offer record, `stated` 0.
+ * A replay at the offer soul does not remove this node.
+ */
+export function forumOfferCancelSoul(forumId: string, needId: string, offerId: string): string {
+  return `${forumOfferSoul(forumId, needId, offerId)}/cancel`;
 }
 
 /**
@@ -701,24 +749,9 @@ export function mergeForumOffer(current: ForumOffer | undefined, incoming: Forum
   return incoming;
 }
 
-export const FORUM_OFFER_CANCEL_KEY = "s3rch-forum-offer-cancels";
-
-/** Offer ids this browser has already accepted as a signed cancel. */
-export function cancelledOfferIds(stored: string | null): Set<string> {
-  if (!stored) return new Set();
-  try {
-    const parsed = JSON.parse(stored) as unknown;
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((id): id is string => typeof id === "string" && id.length > 0));
-  } catch {
-    return new Set();
-  }
-}
-
-export function rememberCancelledOfferId(stored: string | null, id: string): string {
-  const ids = cancelledOfferIds(stored);
-  ids.add(id);
-  return JSON.stringify([...ids]);
+/** A verified cancel soul names this offer. The live replay does not win. */
+export function offerBlockedByCancel(cancels: ReadonlySet<string>, offer: ForumOffer): boolean {
+  return offer.stated === 1 && cancels.has(offer.id);
 }
 
 export type ForumMeshRemoval = {
@@ -767,6 +800,8 @@ export function authorizeForumMeshRemoval(input: {
   subject: string | undefined;
   forumId: string;
   parentNeedId?: string;
+  /** Need `stated` 0 names this offer. The helper may not remove it. */
+  resolved?: boolean;
 }): boolean {
   const removal = input.removal;
   if (removal.forumId !== input.forumId || input.mapKey !== removal.id) return false;
@@ -776,7 +811,9 @@ export function authorizeForumMeshRemoval(input: {
     return !!input.subject && input.signer === input.subject;
   }
   if (!removal.need || removal.need !== input.parentNeedId) return false;
-  if (sameEmbeddedPrincipal(input.signer, removal.id)) return true;
+  const helper = sameEmbeddedPrincipal(input.signer, removal.id);
+  if (input.resolved && helper) return false;
+  if (helper) return true;
   if (input.owner && input.signer === input.owner) return true;
   return !!input.subject && input.signer === input.subject;
 }

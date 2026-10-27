@@ -29,11 +29,13 @@ import {
   createMeshEventVersions,
   filterAgents,
   forumStatusAdmission,
-  cancelledOfferIds,
+  forumOfferCancelSoul,
   mergeAgents,
   mergeForumOffer,
+  needClosureStatus,
+  offerBlockedByCancel,
+  offerSeeWait,
   overlaySeeGraph,
-  rememberCancelledOfferId,
   parseForumAgentRemoval,
   parseForumMeshRemoval,
   parseForumRoleMembership,
@@ -492,7 +494,18 @@ describe("squad view", () => {
     assert.ok(line);
     assert.ok(need);
     assert.equal(authorizeForumChat(line, line.author, line.id, PILOT_FORUM_ID), true);
+    assert.equal(authorizeForumChat(line, line.author, line.id, PILOT_FORUM_ID, line.author), true);
     assert.equal(authorizeForumChat(line, PILOT_OWNER, line.id, PILOT_FORUM_ID), line.author === PILOT_OWNER);
+    assert.equal(
+      authorizeForumChat(
+        { ...line, author: PILOT_OWNER },
+        PILOT_OWNER,
+        line.id,
+        PILOT_FORUM_ID,
+        line.author,
+      ),
+      line.author === PILOT_OWNER,
+    );
     assert.equal(authorizeForumChat(line, line.author, "stmt-other", PILOT_FORUM_ID), false);
     assert.equal(authorizeForumNeed(need, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID), true);
     assert.equal(authorizeForumNeed(need, vector.secondPubkey, PILOT_OWNER, PILOT_FORUM_ID), false);
@@ -533,9 +546,31 @@ describe("squad view", () => {
     assert.equal(mergeForumOffer(undefined, live)?.stated, 1);
     assert.equal(mergeForumOffer(live, { ...live, stated: 0 })?.stated, 0);
     assert.equal(mergeForumOffer({ ...live, stated: 0 }, live), null);
-    const stored = rememberCancelledOfferId(null, live.id);
-    assert.equal(cancelledOfferIds(stored).has(live.id), true);
-    assert.equal(cancelledOfferIds("not-json").size, 0);
+    assert.equal(offerBlockedByCancel(new Set([live.id]), live), true);
+    assert.equal(offerBlockedByCancel(new Set(), live), false);
+    assert.equal(forumOfferCancelSoul(PILOT_FORUM_ID, need.id, live.id).endsWith("/cancel"), true);
+    const openGraphWait = createMemorySeeAcl();
+    assert.equal(
+      offerSeeWait({ offer: live, graph: openGraphWait, need, now: 1_000 }),
+      true,
+    );
+    openGraphWait.putObject(need.id, PILOT_OWNER);
+    applySeeGrant(openGraphWait, PILOT_OWNER, {
+      claimId: need.id,
+      accessor: helper,
+      from: 0,
+      until: 10_000_000_000,
+    });
+    assert.equal(offerSeeWait({ offer: live, graph: openGraphWait, need, now: 1_000 }), false);
+    const withdrawnAfter = { ...live, stated: 0 as const };
+    assert.equal(
+      authorizeForumOffer(withdrawnAfter, helper, PILOT_FORUM_ID, undefined, {
+        graph: openGraph,
+        need: { ...need, stated: 0, acceptedOffer: live.id },
+        now: 1_000,
+      }),
+      false,
+    );
   });
 
   it("keeps the admitted sample owner when a mesh edge names another pubkey", () => {
@@ -619,6 +654,19 @@ describe("squad view", () => {
       authorizeForumNeed(closed, stranger.status.seaPubkey, PILOT_OWNER, PILOT_FORUM_ID, need, bare),
       false,
     );
+    assert.equal(authorizeForumNeed(closed, need.subject, PILOT_OWNER, PILOT_FORUM_ID, undefined, bare), true);
+    assert.equal(
+      authorizeForumNeed(closed, need.subject, PILOT_OWNER, PILOT_FORUM_ID, undefined, {
+        graph,
+        postedOffers: new Map(),
+        now,
+      }),
+      false,
+    );
+    assert.equal(
+      needClosureStatus(closed, { graph, postedOffers: new Map(), now }),
+      "wait",
+    );
     const removal = {
       removed: 1 as const,
       action: "remove" as const,
@@ -658,6 +706,32 @@ describe("squad view", () => {
       kind: "offer" as const,
       need: need.id,
     };
+    assert.equal(
+      authorizeForumMeshRemoval({
+        removal: offerRemoval,
+        mapKey: offerId,
+        signer: need.subject,
+        owner: PILOT_OWNER,
+        subject: need.subject,
+        forumId: PILOT_FORUM_ID,
+        parentNeedId: need.id,
+        resolved: true,
+      }),
+      false,
+    );
+    assert.equal(
+      authorizeForumMeshRemoval({
+        removal: offerRemoval,
+        mapKey: offerId,
+        signer: PILOT_OWNER,
+        owner: PILOT_OWNER,
+        subject: need.subject,
+        forumId: PILOT_FORUM_ID,
+        parentNeedId: need.id,
+        resolved: true,
+      }),
+      true,
+    );
     assert.equal(
       authorizeForumMeshRemoval({
         removal: offerRemoval,
