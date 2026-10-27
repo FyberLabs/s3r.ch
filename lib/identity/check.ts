@@ -22,8 +22,11 @@ import {
 import {
   transitionForumNeed,
   validateForumNeed,
+  validateForumOffer,
   type ForumNeed,
   type ForumNeedDecision,
+  type ForumOffer,
+  type ForumOfferDecision,
 } from "./forum-check";
 
 export { fromGunNode, toGunNode };
@@ -911,6 +914,8 @@ export type {
   ForumNeed,
   ForumNeedDecision,
   ForumNeedSeverity,
+  ForumOffer,
+  ForumOfferDecision,
   ForumRoleMembership,
   ForumRoleMode,
   ForumTemplate,
@@ -940,8 +945,10 @@ export {
   isSeparateChatSoul,
   sameEmbeddedPrincipal,
   seaToPrincipalKey,
+  forumOfferSoul,
   transitionForumNeed,
   validateForumNeed,
+  validateForumOffer,
   validateForumStatus,
 } from "./forum-check";
 
@@ -973,8 +980,9 @@ export function acceptForumNeedTransition(input: {
 }
 
 /**
- * Resolve is `stated` 0 and `hamState` + 1, through
- * {@link acceptForumNeedTransition}. Check see is the only gate.
+ * Check see does not close a need. A see-holder may offer help.
+ * Closing is an accept by the owner or the subject, and that verb is not shipped.
+ * This does not elect. A hint and a hop are ignored.
  */
 export function resolveForumNeed(input: {
   graph: SeeGraph;
@@ -984,21 +992,146 @@ export function resolveForumNeed(input: {
   hint?: HandoffHint;
   hop?: HopFactor;
 }): ForumNeedDecision & { owner: AccessorId | undefined } {
-  if (!validateForumNeed(input.need) || !Number.isSafeInteger(input.need.hamState + 1)) {
+  void input.hint;
+  void input.hop;
+  const owner = input.graph.ownerOf(input.need.id);
+  if (!validateForumNeed(input.need)) {
+    return { ok: false, reason: "bad-need", elect: false, owner };
+  }
+  const see = checkSee(input.graph, input.need.id, input.writer, input.now);
+  if (!see.allowed) return { ok: false, reason: see.reason, elect: false, owner };
+  return { ok: false, reason: "offer", elect: false, owner };
+}
+
+function partyOrUnshipped(input: {
+  graph: SeeGraph;
+  writer: AccessorId;
+  need: ForumNeed;
+  now: number;
+  hint?: HandoffHint;
+  hop?: HopFactor;
+  reopen: boolean;
+}): ForumOfferDecision & { owner: AccessorId | undefined } {
+  void input.hint;
+  void input.hop;
+  void input.now;
+  const owner = input.graph.ownerOf(input.need.id);
+  if (!validateForumNeed(input.need)) return { ok: false, reason: "bad-need", elect: false, owner };
+  if (!input.graph.hasObject(input.need.id)) {
+    return { ok: false, reason: "missing-object", elect: false, owner };
+  }
+  if (input.reopen) {
+    if (input.writer !== owner) return { ok: false, reason: "owner", elect: false, owner };
+    if (input.need.stated !== 0) return { ok: false, reason: "open", elect: false, owner };
+  } else if (input.writer !== owner && input.writer !== input.need.subject) {
+    return { ok: false, reason: "party", elect: false, owner };
+  }
+  return { ok: false, reason: "unshipped", elect: false, owner };
+}
+
+/**
+ * Check see on the need may post an offer. It does not set `stated` to 0.
+ * The offer soul is not written here: the offer contract is not shipped.
+ */
+export function offerForumHelp(input: {
+  graph: SeeGraph;
+  writer: AccessorId;
+  need: ForumNeed;
+  body: string;
+  now: number;
+  hint?: HandoffHint;
+  hop?: HopFactor;
+}): ForumOfferDecision & { owner: AccessorId | undefined } {
+  void input.hint;
+  void input.hop;
+  const owner = input.graph.ownerOf(input.need.id);
+  const body = input.body.trim();
+  if (!validateForumNeed(input.need)) {
+    return { ok: false, reason: "bad-need", elect: false, owner };
+  }
+  if (body.length === 0 || body.length > 280) {
+    return { ok: false, reason: "body", elect: false, owner };
+  }
+  const see = checkSee(input.graph, input.need.id, input.writer, input.now);
+  if (!see.allowed) return { ok: false, reason: see.reason, elect: false, owner };
+  return { ok: false, reason: "unshipped", elect: false, owner };
+}
+
+/**
+ * The owner or the subject would accept an offer: `stated` 0 and `acceptedOffer`.
+ * That write is not shipped. The need stays as it is. This does not elect.
+ */
+export function acceptForumOffer(input: {
+  graph: SeeGraph;
+  writer: AccessorId;
+  need: ForumNeed;
+  offer: ForumOffer;
+  now: number;
+  hint?: HandoffHint;
+  hop?: HopFactor;
+}): ForumOfferDecision & { owner: AccessorId | undefined } {
+  if (!validateForumOffer(input.offer) || input.offer.need !== input.need.id || input.offer.forumId !== input.need.forumId) {
     return {
       ok: false,
-      reason: "bad-need",
+      reason: "bad-offer",
       elect: false,
       owner: input.graph.ownerOf(input.need.id),
     };
   }
-  return acceptForumNeedTransition({
-    graph: input.graph,
-    current: input.need,
-    next: { ...input.need, stated: 0, hamState: input.need.hamState + 1 },
-    writer: input.writer,
-    now: input.now,
-    hint: input.hint,
-    hop: input.hop,
-  });
+  if (input.offer.stated !== 1 || input.need.stated !== 1) {
+    return {
+      ok: false,
+      reason: "stated",
+      elect: false,
+      owner: input.graph.ownerOf(input.need.id),
+    };
+  }
+  return partyOrUnshipped({ ...input, reopen: false });
+}
+
+/**
+ * Decline rejects that offer. The need stays open for other offers.
+ * The write is not shipped.
+ */
+export function declineForumOffer(input: {
+  graph: SeeGraph;
+  writer: AccessorId;
+  need: ForumNeed;
+  offer: ForumOffer;
+  now: number;
+  hint?: HandoffHint;
+  hop?: HopFactor;
+}): ForumOfferDecision & { owner: AccessorId | undefined } {
+  if (!validateForumOffer(input.offer) || input.offer.need !== input.need.id || input.offer.forumId !== input.need.forumId) {
+    return {
+      ok: false,
+      reason: "bad-offer",
+      elect: false,
+      owner: input.graph.ownerOf(input.need.id),
+    };
+  }
+  if (input.need.stated !== 1) {
+    return {
+      ok: false,
+      reason: "stated",
+      elect: false,
+      owner: input.graph.ownerOf(input.need.id),
+    };
+  }
+  return partyOrUnshipped({ ...input, reopen: false });
+}
+
+/**
+ * The owner reopens. That clears `acceptedOffer` and keeps earlier offers.
+ * The write is not shipped. The subject cannot reopen.
+ */
+export function reopenForumNeed(input: {
+  graph: SeeGraph;
+  writer: AccessorId;
+  need: ForumNeed;
+  now: number;
+  hint?: HandoffHint;
+  hop?: HopFactor;
+}): ForumOfferDecision & { owner: AccessorId | undefined } {
+  return partyOrUnshipped({ ...input, reopen: true });
 }

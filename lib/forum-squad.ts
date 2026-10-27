@@ -17,10 +17,12 @@ import {
   isForumObjectId,
   isSeaPubkey,
   validateForumNeed,
+  validateForumOffer,
   validateForumStatus,
   type ForumAgentState,
   type ForumAgentStatus,
   type ForumNeed,
+  type ForumOffer,
   type SeeGraph,
 } from "@/lib/identity/check";
 
@@ -338,7 +340,7 @@ export function parseForumNeed(value: unknown): ForumNeed | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
   const id = text(row.id);
-  const forumId = text(row.forumId);
+  const forumId = text(row.forumId) ?? text(row.forum_id);
   const subject = text(row.subject);
   const severity = text(row.severity);
   const body = text(row.body);
@@ -360,7 +362,27 @@ export function parseForumNeed(value: unknown): ForumNeed | null {
     hamState,
     ts,
   };
+  const spec = text(row.spec);
+  if (spec) need.spec = spec;
+  const accepted = text(row.acceptedOffer) ?? text(row.accepted_offer);
+  if (accepted !== null) need.acceptedOffer = accepted;
   return validateForumNeed(need) ? need : null;
+}
+
+export function parseForumOffer(value: unknown): ForumOffer | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const id = text(row.id);
+  const need = text(row.need);
+  const forumId = text(row.forumId) ?? text(row.forum_id);
+  const helper = text(row.helper);
+  const body = text(row.body);
+  const stated = num(row.stated);
+  if (!id || !need || !forumId || !helper || body === null || stated === null) return null;
+  if (stated !== 0 && stated !== 1) return null;
+  const artifacts = text(row.artifacts) ?? "";
+  const offer: ForumOffer = { id, need, forumId, helper, body, artifacts, stated };
+  return validateForumOffer(offer) ? offer : null;
 }
 
 /** User graph wins ownership. Sample fills objects the user graph lacks. */

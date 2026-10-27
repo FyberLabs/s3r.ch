@@ -41,6 +41,7 @@ import {
   overlaySeeGraph,
   parseForumAgentStatus,
   parseForumNeed,
+  parseForumOffer,
   pausedStatus,
   reassignedStatus,
   shortSea,
@@ -51,22 +52,25 @@ import {
 } from "@/lib/forum-squad";
 import { browserGunOptions, listenThenConnectSeedPeer, type SeedPeerEmitter } from "@/lib/gun-peer";
 import {
+  acceptForumOffer,
   admitFeedNode,
+  declineForumOffer,
   forumAgentSoul,
   forumAlarmSoul,
   forumChatTag,
   forumEmergencyAlarm,
-  forumNeedSoul,
   forumStatementSoul,
   isForumObjectId,
   isSeaPubkey,
   isSeparateChatSoul,
-  resolveForumNeed,
+  offerForumHelp,
+  reopenForumNeed,
   validateForumStatus,
   type ForumAgentState,
   type ForumAgentStatus,
   type ForumAlarm,
   type ForumNeed,
+  type ForumOffer,
   type SeeGraph,
 } from "@/lib/identity/check";
 import { getMeshKey } from "@/lib/identity/idb";
@@ -158,6 +162,8 @@ export function SquadForum() {
   const [reassignTo, setReassignTo] = useState("");
   const [meshStatus, setMeshStatus] = useState<Map<string, ForumAgentStatus>>(() => new Map());
   const [meshNeeds, setMeshNeeds] = useState<Map<string, ForumNeed>>(() => new Map());
+  const [meshOffers, setMeshOffers] = useState<Map<string, ForumOffer>>(() => new Map());
+  const [offerBody, setOfferBody] = useState("");
   const [meshAlarm, setMeshAlarm] = useState<ForumAlarm | null>(null);
   const [alarmHeard, setAlarmHeard] = useState(false);
   const [meshChat, setMeshChat] = useState<FeedItem[]>([]);
@@ -216,6 +222,8 @@ export function SquadForum() {
     let cancelled = false;
     let offAgents: { off?: () => void } | undefined;
     let offNeeds: { off?: () => void } | undefined;
+    const offerOffs: Array<{ off?: () => void }> = [];
+    const watchedOffers = new Set<string>();
     let offAlarm: { off?: () => void } | undefined;
     let offItems: { off?: () => void } | undefined;
 
@@ -228,6 +236,22 @@ export function SquadForum() {
       register(gun);
       listenThenConnectSeedPeer(gun as unknown as SeedPeerEmitter, window.location.origin, () => {});
       const forum = gun.get("s3rch").get("forums").get(PILOT_FORUM_ID);
+      const watchOffers = (needId: string) => {
+        if (!isForumObjectId(needId, "need") || watchedOffers.has(needId)) return;
+        watchedOffers.add(needId);
+        offerOffs.push(
+          forum.get("needs").get(needId).get("offers").map().on((data) => {
+            const offer = parseForumOffer(data);
+            if (!offer || offer.forumId !== PILOT_FORUM_ID || offer.need !== needId) return;
+            setMeshOffers((prev) => {
+              const next = new Map(prev);
+              next.set(offer.id, offer);
+              return next;
+            });
+          }),
+        );
+      };
+      for (const need of PILOT_NEEDS) watchOffers(need.id);
       offAgents = forum.get("agents").map().on((data) => {
         const status = parseForumAgentStatus(data);
         if (!status || status.forumId !== PILOT_FORUM_ID) return;
@@ -245,6 +269,7 @@ export function SquadForum() {
           next.set(need.id, need);
           return next;
         });
+        watchOffers(need.id);
       });
       offAlarm = forum.get("alarm").on((data) => {
         setAlarmHeard(true);
@@ -266,6 +291,7 @@ export function SquadForum() {
       cancelled = true;
       offAgents?.off?.();
       offNeeds?.off?.();
+      for (const off of offerOffs) off.off?.();
       offAlarm?.off?.();
       offItems?.off?.();
       gunRef.current = null;
@@ -345,7 +371,25 @@ export function SquadForum() {
     });
   }
 
-  function onResolve(agent: SquadAgent) {
+  function needNotice(reason: string, verb: "offer" | "accept" | "decline" | "reopen"): string {
+    if (reason === "unshipped" && verb === "offer") {
+      return "Offer help waits on the offer contract. Check see does not close this need.";
+    }
+    if (reason === "unshipped" && verb === "accept") {
+      return "Accepting an offer waits on the offer contract. The need stays open.";
+    }
+    if (reason === "unshipped" && verb === "decline") {
+      return "Declining an offer waits on the offer contract. The need stays open.";
+    }
+    if (reason === "unshipped") return "Reopen waits on the offer contract.";
+    if (reason === "party") return "Only the need owner or subject can accept or decline an offer.";
+    if (reason === "owner") return "Only the need owner can reopen.";
+    if (reason === "open") return "This need is still open.";
+    if (reason === "body") return "Write the offer first. That does not close the need.";
+    return `Check denied ${verb} (${reason}).`;
+  }
+
+  function onOffer(agent: SquadAgent) {
     const current = requireGraph();
     if (!current || !seaPub) return;
     const open = openNeedFor(agent.status, needs);
@@ -354,24 +398,86 @@ export function SquadForum() {
       return;
     }
     const now = Math.floor(Date.now() / 1000);
-    const decision = resolveForumNeed({
+    const decision = offerForumHelp({
       graph: current,
       writer: seaPub,
       need: open,
+      body: offerBody,
       now,
     });
-    if (!decision.ok) {
-      setNotice(`Check denied resolve (${decision.reason}).`);
+    setNotice(needNotice(decision.reason, "offer"));
+  }
+
+  function liveOffer(need: ForumNeed): ForumOffer | null {
+    for (const offer of meshOffers.values()) {
+      if (offer.need === need.id && offer.stated === 1) return offer;
+    }
+    return null;
+  }
+
+  function onAccept(agent: SquadAgent) {
+    const current = requireGraph();
+    if (!current || !seaPub) return;
+    const open = openNeedFor(agent.status, needs);
+    if (!open) {
+      setNotice("No open need on this tile.");
       return;
     }
-    setLocalNeeds((prev) => {
-      const next = new Map(prev);
-      next.set(decision.need.id, decision.need);
-      return next;
+    const offer = liveOffer(open);
+    if (!offer) {
+      setNotice("No offer to accept.");
+      return;
+    }
+    const decision = acceptForumOffer({
+      graph: current,
+      writer: seaPub,
+      need: open,
+      offer,
+      now: Math.floor(Date.now() / 1000),
     });
-    const soul = forumNeedSoul(decision.need.forumId, decision.need.id);
-    const wrote = putSoul(gunRef.current, soul, decision.need);
-    setNotice(wrote ? "Need resolved." : "Need resolved on this browser. The mesh peer was not ready.");
+    setNotice(needNotice(decision.reason, "accept"));
+  }
+
+  function onDecline(agent: SquadAgent) {
+    const current = requireGraph();
+    if (!current || !seaPub) return;
+    const open = openNeedFor(agent.status, needs);
+    if (!open) {
+      setNotice("No open need on this tile.");
+      return;
+    }
+    const offer = liveOffer(open);
+    if (!offer) {
+      setNotice("No offer to decline.");
+      return;
+    }
+    const decision = declineForumOffer({
+      graph: current,
+      writer: seaPub,
+      need: open,
+      offer,
+      now: Math.floor(Date.now() / 1000),
+    });
+    setNotice(needNotice(decision.reason, "decline"));
+  }
+
+  function onReopen(agent: SquadAgent) {
+    const current = requireGraph();
+    if (!current || !seaPub) return;
+    const listed = needIds(agent.status.needs)
+      .map((id) => needs.get(id))
+      .find((need) => need && need.stated === 0);
+    if (!listed) {
+      setNotice("This need is still open.");
+      return;
+    }
+    const decision = reopenForumNeed({
+      graph: current,
+      writer: seaPub,
+      need: listed,
+      now: Math.floor(Date.now() / 1000),
+    });
+    setNotice(needNotice(decision.reason, "reopen"));
   }
 
   function onReply(agent: SquadAgent) {
@@ -710,21 +816,64 @@ export function SquadForum() {
               return (
                 <li key={id}>
                   {need.severity} · stated {need.stated} · {need.body}
+                  {need.acceptedOffer ? ` · offer ${need.acceptedOffer.slice(0, 12)}` : ""}
                 </li>
               );
             })}
           </ul>
+          <ul className="mt-2 space-y-1 text-sm text-ink">
+            {[...meshOffers.values()]
+              .filter((offer) => needIds(active.status.needs).includes(offer.need))
+              .map((offer) => (
+                <li key={offer.id}>
+                  offer · stated {offer.stated} · {offer.body}
+                </li>
+              ))}
+          </ul>
+          {active.status.state === "needs" || active.status.state === "emergency" ? (
+            <label className="mt-4 block text-xs text-ink-muted" htmlFor="squad-offer-body">
+              Offer help
+              <textarea
+                id="squad-offer-body"
+                className={`${field} mt-1 min-h-16 w-full`}
+                value={offerBody}
+                maxLength={280}
+                onChange={(event) => setOfferBody(event.target.value)}
+              />
+            </label>
+          ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
             {active.status.state === "needs" || active.status.state === "emergency" ? (
-              <button
-                type="button"
-                data-testid="squad-resolve"
-                className={btnPrimary}
-                onClick={() => onResolve(active)}
-              >
-                Resolve need
-              </button>
+              <>
+                <button
+                  type="button"
+                  data-testid="squad-offer"
+                  className={btnPrimary}
+                  onClick={() => onOffer(active)}
+                >
+                  Offer help
+                </button>
+                <button
+                  type="button"
+                  data-testid="squad-accept"
+                  className={btnSecondary}
+                  onClick={() => onAccept(active)}
+                >
+                  Accept offer
+                </button>
+                <button
+                  type="button"
+                  data-testid="squad-decline"
+                  className={btnSecondary}
+                  onClick={() => onDecline(active)}
+                >
+                  Decline offer
+                </button>
+              </>
             ) : null}
+            <button type="button" data-testid="squad-reopen" className={btnSecondary} onClick={() => onReopen(active)}>
+              Reopen
+            </button>
             <button type="button" data-testid="squad-reply" className={btnSecondary} onClick={() => onReply(active)}>
               Reply in chat
             </button>

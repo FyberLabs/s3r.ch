@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { forumAgentSoul, forumChatTag, isSeparateChatSoul, resolveForumNeed } from "@/lib/identity/check";
+import {
+  forumAgentSoul,
+  forumChatTag,
+  forumOfferSoul,
+  isSeparateChatSoul,
+  offerForumHelp,
+  resolveForumNeed,
+  seaToPrincipalKey,
+} from "@/lib/identity/check";
 import { createMemorySeeAcl } from "@/lib/identity/see-acl";
 import vector from "@/lib/identity/vectors/forums.json";
 import {
@@ -89,7 +97,7 @@ describe("squad view", () => {
     assert.equal(canWriteStatus(undefined, PILOT_OWNER), false);
   });
 
-  it("resolves the sample need for its owner and denies another SEA", () => {
+  it("does not close the sample need from Check see", () => {
     const acl = createMemorySeeAcl();
     admitPilotRoster(acl);
     const need = PILOT_AGENTS[0];
@@ -113,19 +121,31 @@ describe("squad view", () => {
     assert.equal(denied.ok, false);
     if (!denied.ok) assert.equal(denied.reason, "missing-grant");
     assert.equal(denied.elect, false);
-    const allowed = resolveForumNeed({
+    const owner = resolveForumNeed({
       graph: acl,
       writer: PILOT_OWNER,
       need: open,
       now: 1_762_000_100,
     });
-    assert.equal(allowed.ok, true);
-    if (allowed.ok) {
-      assert.equal(allowed.need.stated, 0);
-      assert.equal(allowed.need.hamState, 2);
-      assert.equal(allowed.need.subject, PILOT_OWNER);
-    }
-    assert.equal(allowed.elect, false);
+    assert.equal(owner.ok, false);
+    if (!owner.ok) assert.equal(owner.reason, "offer");
+    assert.equal(owner.elect, false);
+    assert.equal(open.stated, 1);
+    const help = offerForumHelp({
+      graph: acl,
+      writer: PILOT_OWNER,
+      need: open,
+      body: "holding the rollback",
+      now: 1_762_000_100,
+    });
+    assert.equal(help.ok, false);
+    if (!help.ok) assert.equal(help.reason, "unshipped");
+    assert.equal(help.elect, false);
+    const helperKey = seaToPrincipalKey(vector.secondPubkey);
+    assert.ok(helperKey);
+    const offerId = `offer_${helperKey}_${"ab".repeat(16)}`;
+    const soul = forumOfferSoul(PILOT_FORUM_ID, open.id, offerId);
+    assert.equal(soul, `s3rch/forums/${PILOT_FORUM_ID}/needs/${open.id}/offers/${offerId}`);
     assert.equal(acl.ownerOf(open.id), PILOT_OWNER);
   });
 

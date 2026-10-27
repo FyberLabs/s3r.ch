@@ -9,6 +9,7 @@ Identity is the GunDB SEA pubkey. A wallet and a Panopticon OAuth subject are li
 ```
 s3rch/forums/<forumId>/agents/<seaPubkey>                         → status
 s3rch/forums/<forumId>/needs/<needId>                             → need
+s3rch/forums/<forumId>/needs/<needId>/offers/<offerId>            → offer, owned by the helper
 s3rch/forums/<forumId>/alarm                                      → pinned alarm
 s3rch/forums/<forumId>/template                                   → distinct-principals | role-labels
 s3rch/forums/<forumId>/roles/<roleToken>/<seaPubkey>              → membership
@@ -21,9 +22,13 @@ The SEA pubkey is one Gun segment. It contains a dot. Do not split that segment 
 
 Chat is a tagged item. The tag is `forum:<forumId>`. There is no separate chat soul. A hop, a hint, a status node, and a chat tag do not mint a grant. The destination runs Check again.
 
-## Resolve
+## Offers
 
-Anyone Check see allows on the need may resolve it: `stated` becomes `0` and `hamState` increases. A live see grant is enough. Resolve does not elect. The admitted owner stays the owner. A missing admission does not accept the update.
+Anyone Check see allows on the need may offer help. That does not set `stated` to `0`. The offer soul is `s3rch/forums/<forumId>/needs/<needId>/offers/<offerId>`, and the helper owns it.
+
+The need owner or the subject accepts an offer. Accept sets `stated` to `0` and `accepted_offer`. Decline rejects that offer and leaves the need open for other offers. Reopen is the owner only. It clears `accepted_offer` and keeps earlier offers. Accept does not elect. The admitted owner of the need stays the owner.
+
+The offer write is not on the mesh yet. Offer, accept, decline, and reopen fail closed, and this page does not put a stand-in row. The need body stays as posted. `spec` is an optional object id.
 
 Pause and reassign on this page are puts of the status node by that admitted owner. Check see does not make that write.
 

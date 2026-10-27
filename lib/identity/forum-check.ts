@@ -53,7 +53,32 @@ export type ForumNeed = {
   stated: 0 | 1;
   hamState: number;
   ts: number;
+  /** Optional object id of a function contract. Omitted when the need is free-form. */
+  spec?: string;
+  /**
+   * Offer id chosen by the owner or the subject.
+   * Empty when none is accepted. Check see does not set this.
+   */
+  acceptedOffer?: string;
 };
+
+/**
+ * Help offered against a need. The helper owns this row.
+ * Soul: `s3rch/forums/<forumId>/needs/<needId>/offers/<offerId>`.
+ * `forumId` is the Gun field `forum_id`. `acceptedOffer` on the need is `accepted_offer`.
+ */
+export type ForumOffer = {
+  id: string;
+  need: string;
+  forumId: string;
+  helper: string;
+  body: string;
+  artifacts: string;
+  stated: 0 | 1;
+};
+
+/** Offer verbs are stubbed. None succeed until the offer contract ships. */
+export type ForumOfferDecision = { ok: false; reason: string; elect: false };
 
 export type ForumAlarm = {
   forumId: string;
@@ -228,7 +253,28 @@ export function validateForumNeed(need: ForumNeed): boolean {
   if (!isSeaPubkey(need.subject)) return false;
   if (need.severity !== "need" && need.severity !== "emergency") return false;
   if (typeof need.body !== "string") return false;
+  if (need.spec !== undefined && !isForumObjectId(need.spec)) return false;
+  if (
+    need.acceptedOffer !== undefined &&
+    need.acceptedOffer !== "" &&
+    !isForumObjectId(need.acceptedOffer, "offer")
+  ) {
+    return false;
+  }
   return isForumObjectId(need.id, "need") && isForumObjectId(need.forumId, "forum");
+}
+
+export function validateForumOffer(offer: ForumOffer): boolean {
+  if (offer.stated !== 0 && offer.stated !== 1) return false;
+  if (!isSeaPubkey(offer.helper)) return false;
+  if (!sameEmbeddedPrincipal(offer.helper, offer.id)) return false;
+  if (typeof offer.body !== "string" || offer.body.trim() === "") return false;
+  if (!csvObjectIds(offer.artifacts, undefined)) return false;
+  return (
+    isForumObjectId(offer.id, "offer") &&
+    isForumObjectId(offer.need, "need") &&
+    isForumObjectId(offer.forumId, "forum")
+  );
 }
 
 export function validateForumStatus(status: ForumAgentStatus): boolean {
@@ -267,6 +313,12 @@ export function forumAgentSoul(forumId: string, seaPubkey: string): string {
 export function forumNeedSoul(forumId: string, needId: string): string {
   assertMinted(needId, "need");
   return `${forumRoot(forumId)}/needs/${needId}`;
+}
+
+/** `s3rch/forums/<forumId>/needs/<needId>/offers/<offerId>`. The helper owns the offer. */
+export function forumOfferSoul(forumId: string, needId: string, offerId: string): string {
+  assertMinted(offerId, "offer");
+  return `${forumNeedSoul(forumId, needId)}/offers/${offerId}`;
 }
 
 /** `s3rch/forums/<forumId>/alarm`. */
@@ -439,7 +491,8 @@ export function forumEmergencyAlarm(
 
 /**
  * Next need row when Check already allowed the writer.
- * `hamState` must rise. `id`, `forumId`, and `subject` stay.
+ * `hamState` must rise. `id`, `forumId`, `subject`, and `body` stay.
+ * `stated` and `acceptedOffer` stay. Closing and reopening are offer verbs.
  * Does not elect. Does not read a hint or a hop.
  * Does not look at why Check allowed.
  */
@@ -454,8 +507,20 @@ export function transitionForumNeed(
   if (next.id !== current.id || next.forumId !== current.forumId || next.subject !== current.subject) {
     return { ok: false, reason: "bad-need", elect: false };
   }
+  if (next.body !== current.body) {
+    return { ok: false, reason: "body", elect: false };
+  }
+  if ((current.spec ?? "") !== "" && next.spec !== current.spec) {
+    return { ok: false, reason: "spec", elect: false };
+  }
   if (!u64(next.hamState) || next.hamState <= current.hamState) {
     return { ok: false, reason: "ham", elect: false };
+  }
+  if (next.stated !== current.stated) {
+    return { ok: false, reason: "stated", elect: false };
+  }
+  if ((next.acceptedOffer ?? "") !== (current.acceptedOffer ?? "")) {
+    return { ok: false, reason: "accepted-offer", elect: false };
   }
   if (!see.allowed) return { ok: false, reason: see.reason, elect: false };
   return { ok: true, need: { ...next }, elect: false };

@@ -46,6 +46,8 @@ gun.get('s3rch').get('forums').get(forumId).get('agents').get(pubkey)
                                                  → forum status
 gun.get('s3rch').get('forums').get(forumId).get('needs').get(needId)
                                                  → forum need
+gun.get('s3rch').get('forums').get(forumId).get('needs').get(needId).get('offers').get(offerId)
+                                                 → offer, owned by the helper
 gun.get('s3rch').get('forums').get(forumId).get('alarm')
                                                  → forum alarm
 gun.get('s3rch').get('forums').get(forumId).get('template')
@@ -119,9 +121,9 @@ Reuse SociACL Social Light (`convention-badge` / `enrolled-station`, SLHP v1). D
 
 Squad forum souls are listed above. A hop, a hint, a status node, and a chat tag do not mint a grant. The destination runs Check again.
 
-Resolve sets `stated` to `0` and bumps `hamState` when Check see allows the writer on the need id. Any allowed Check see result is enough, including a live see grant. Resolve leaves the admitted owner in place. A missing admission does not accept the update.
+Check see on a need lets the writer offer help. It does not set `stated` to `0`. The owner or the subject accepts an offer. That accept would set `stated` to `0` and record the offer id. Decline leaves the need open. Reopen is the owner only and clears the accepted offer. Earlier offers stay. Those offer writes are not shipped, so this app fails closed and does not put a stand-in row. A missing admission does not accept the update. The need body stays as posted.
 
-On this app, pause and reassign are owner puts of the status node. Check see is the resolve gate. It is not that status write.
+On this app, pause and reassign are owner puts of the status node. Check see is not that status write.
 
 Role membership is `distinct-principals` or `role-labels` on the template soul. A role token is not a Check predicate.
 
