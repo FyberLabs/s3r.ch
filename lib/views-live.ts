@@ -19,7 +19,7 @@ import type { ObservedRow } from "./views-decorators";
 import { settleView } from "./views-layout";
 import { shortOwner, type PickerSource } from "./views-picker";
 import { formatCanonical, formatS3rchNetwork, sameSource, type Result, type SourceRef } from "./views-source-ref";
-import type { View } from "./views-window";
+import { MAX_SOURCES_PER_WINDOW, MAX_WINDOWS, type View } from "./views-window";
 
 /** SHA-256("s3r.ch deployment"). Stand-in fingerprint until plan item 13. */
 export const DEPLOYMENT_KEY_FINGERPRINT = "f82e13c75fe6f5d64bd2e2b381ee170efe3bddb5a18bbf60425647d2469862f3";
@@ -113,7 +113,9 @@ export function syncViewSubscriptions(set: SubscriptionSet, view: View | null): 
 
 /**
  * Merge one source's latest batch. Rows still present keep the time they were first seen;
- * new rows are stamped `now` (Unix seconds). The result is the newest `limit` rows.
+ * new rows are stamped `now` (Unix seconds). The result is the newest `limit` rows by
+ * timestamp clamped to the observation time, the same order as `mergeFeedRows`, so a
+ * future timestamp cannot fill the cap and drop a later valid post.
  * `incoming` is the full set the subscription currently has, not a delta.
  */
 export function observeSource(
@@ -129,9 +131,67 @@ export function observeSource(
     byKey.set(row.key, { row, observedAt: seen.get(row.key) ?? now });
   }
   const cap = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
+  const at = (row: ObservedRow) => Math.min(row.row.ts, row.observedAt);
   return [...byKey.values()]
-    .sort((a, b) => b.row.ts - a.row.ts || b.observedAt - a.observedAt || (a.row.key < b.row.key ? -1 : a.row.key > b.row.key ? 1 : 0))
+    .sort((a, b) => at(b) - at(a) || b.observedAt - a.observedAt || (a.row.key < b.row.key ? -1 : a.row.key > b.row.key ? 1 : 0))
     .slice(0, cap);
+}
+
+/** First-seen times by row key, stored locally per View. Records have no prototype. */
+export type ObservedTimes = Record<string, number>;
+
+const MAX_OBSERVED = ROWS_PER_SOURCE * MAX_WINDOWS * MAX_SOURCES_PER_WINDOW;
+
+export function observedStorageKey(owner: string, viewId: string): string {
+  return `s3rch-views-observed:${owner.toLowerCase()}:${viewId}`;
+}
+
+/** Parse stored first-seen times. Only finite times on row keys are kept. */
+export function parseObserved(raw: string | null): ObservedTimes {
+  const out: ObservedTimes = Object.create(null);
+  let value: unknown;
+  try {
+    value = raw ? JSON.parse(raw) : null;
+  } catch {
+    return out;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return out;
+  const record = value as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (Object.keys(out).length >= MAX_OBSERVED) break;
+    if (!key.includes("#")) continue;
+    const at = record[key];
+    if (Object.hasOwn(record, key) && typeof at === "number" && Number.isFinite(at) && at >= 0) out[key] = at;
+  }
+  return out;
+}
+
+/** Prior rows for keys this batch already has a first-seen time for. */
+export function rememberedObserved(stored: ObservedTimes, incoming: readonly ViewRow[]): ObservedRow[] {
+  const prev: ObservedRow[] = [];
+  for (const row of incoming) {
+    const at = stored[row.key];
+    if (typeof at === "number" && Number.isFinite(at) && at >= 0) prev.push({ row, observedAt: at });
+  }
+  return prev;
+}
+
+/**
+ * First-seen times after one source published `kept`. Other sources stay. Keys from this
+ * source that fell out of the cap are dropped, so a later return is a new observation.
+ */
+export function retainObserved(stored: ObservedTimes, kept: readonly ObservedRow[], prefix: string): ObservedTimes {
+  const next: ObservedTimes = Object.create(null);
+  for (const key of Object.keys(stored)) {
+    if (key.startsWith(prefix)) continue;
+    const at = stored[key];
+    if (typeof at === "number") next[key] = at;
+  }
+  for (const row of kept) {
+    if (!row.row.key.startsWith(prefix)) continue;
+    next[row.row.key] = row.observedAt;
+  }
+  return next;
 }
 
 export function rowsForChat(ref: SourceRef, messages: readonly ChatMessage[]): ViewRow[] {
@@ -325,7 +385,7 @@ function xrpcMethod(pathname: string, method: string): boolean {
   return pathname.endsWith(`/${method}`) || pathname.endsWith(`.${method}`);
 }
 
-function atprotoFeed(raw: string, itemId: string): { ref: SourceRef; label: string } | null {
+function atprotoFeed(raw: string): { ref: SourceRef; label: string } | null {
   let url: URL;
   try {
     url = new URL(raw);
@@ -339,8 +399,11 @@ function atprotoFeed(raw: string, itemId: string): { ref: SourceRef; label: stri
     return labeled(feedSourceRef("atproto", did, feed), feed.split("/").pop() || "Feed");
   }
   if (xrpcMethod(url.pathname, "getAuthorFeed")) {
+    // The feed actor is the request, not the post. A repost URI names the original author.
+    // The fetcher retains the actor DID on `actorDid` when the request named a handle.
+    const retained = url.searchParams.get("actorDid") ?? "";
     const actor = url.searchParams.get("actor") ?? "";
-    const did = actor.startsWith("did:") ? actor : atUriAuthority(itemId);
+    const did = retained.startsWith("did:") ? retained : actor.startsWith("did:") ? actor : "";
     if (!did) return null;
     return labeled(feedSourceRef("atproto", did, "posts"), "Posts");
   }
@@ -372,7 +435,7 @@ export function feedSourceOf(item: FeedItem, selfNetwork: string): { ref: Source
   const activity = prefixed(provenance, "activitypub:");
   if (activity) return activityFeed(activity);
   const atproto = prefixed(provenance, "atproto:");
-  if (atproto) return atprotoFeed(atproto, item.id);
+  if (atproto) return atprotoFeed(atproto);
   return null;
 }
 

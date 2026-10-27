@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { atprotoPermalink, normalizeAtprotoPost } from "./atproto";
+import { atprotoPermalink, atprotoProvenance, normalizeAtprotoPost } from "./atproto";
 import { fromGunNode, toGunNode } from "./feed-types";
 
 describe("normalizeAtprotoPost", () => {
@@ -50,6 +50,57 @@ describe("normalizeAtprotoPost", () => {
     );
     assert.ok(item);
     assert.deepEqual(fromGunNode(toGunNode(item)), { ...item, v: 1 });
+  });
+});
+
+describe("atprotoProvenance", () => {
+  const actorDid = "did:plc:ewvi7nxzyoun6zhxrhs64oiz";
+  const otherDid = "did:plc:abcdefghijklmnopqrstuvwx";
+  const authorUrl = "https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=ethereum.bsky.social&limit=20";
+
+  it("retains the requested actor DID for the actor's posts and reposts", () => {
+    const provenance = atprotoProvenance(authorUrl, [
+      {
+        post: {
+          uri: `at://${actorDid}/app.bsky.feed.post/own`,
+          author: { did: actorDid, handle: "ethereum.bsky.social" },
+        },
+      },
+      {
+        post: {
+          uri: `at://${otherDid}/app.bsky.feed.post/repost`,
+          author: { did: otherDid, handle: "someone.bsky.social" },
+        },
+        reason: { by: { did: actorDid, handle: "ethereum.bsky.social" } },
+      },
+    ]);
+    const url = new URL(provenance.slice("atproto:".length));
+    assert.equal(url.searchParams.get("actor"), "ethereum.bsky.social");
+    assert.equal(url.searchParams.get("actorDid"), actorDid);
+  });
+
+  it("does not take a repost URI as the feed actor", () => {
+    const provenance = atprotoProvenance(authorUrl, [
+      {
+        post: {
+          uri: `at://${otherDid}/app.bsky.feed.post/repost`,
+          author: { did: otherDid, handle: "someone.bsky.social" },
+        },
+      },
+    ]);
+    assert.equal(new URL(provenance.slice("atproto:".length)).searchParams.get("actorDid"), null);
+  });
+
+  it("keeps a DID actor and drops a conflicting pair", () => {
+    const didActor = `https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(actorDid)}`;
+    assert.equal(new URL(atprotoProvenance(didActor, []).slice("atproto:".length)).searchParams.get("actorDid"), actorDid);
+    const conflict = atprotoProvenance(authorUrl, [
+      { post: { author: { did: actorDid, handle: "ethereum.bsky.social" } } },
+      { post: { author: { did: otherDid, handle: "ethereum.bsky.social" } } },
+    ]);
+    assert.equal(new URL(conflict.slice("atproto:".length)).searchParams.get("actorDid"), null);
+    const generator = "https://public.api.bsky.app/xrpc/app.bsky.feed.getFeed?feed=at%3A%2F%2Fdid%3Aplc%3Az72i7hdynmk6r22z27h6tvur%2Fapp.bsky.feed.generator%2Fwhats-hot";
+    assert.equal(atprotoProvenance(generator, []).includes("actorDid"), false);
   });
 });
 

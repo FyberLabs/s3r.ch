@@ -6,6 +6,7 @@ import type { FeedItem } from "./feed-types";
 import { applySeeGrant, cancelSee, checkSee, roomSoul } from "./identity/check";
 import { createMemorySeeAcl } from "./identity/see-acl";
 import { canShowRows, sourceAccess, sourceStatus, statusLabel } from "./views-access";
+import { unreadCount } from "./views-layout";
 import { windowRows } from "./views-decorators";
 import { formatCanonical, formatS3rchNetwork, type SourceRef } from "./views-source-ref";
 import {
@@ -16,7 +17,11 @@ import {
   dropPublicRoom,
   feedSourceOf,
   observeSource,
+  observedStorageKey,
+  parseObserved,
   readFeedItems,
+  rememberedObserved,
+  retainObserved,
   aclWritesFromPublicRooms,
   readForumCatalog,
   recheckView,
@@ -150,6 +155,50 @@ describe("first-seen rows", () => {
     assert.equal(feedRows.find((row) => row.row.id === "post-2")?.observedAt, 8);
     assert.equal(rowsForFeed(feed.ref, [item({ id: "fc", source: "farcaster", author: "dwr", provenance: "farcaster:hub:https://hub.pinata.cloud/v1/castsByFid?fid=3" })], DEPLOYMENT_SELF_NETWORK).length, 0);
   });
+
+  it("keeps a later valid post when future timestamps would fill the cap", () => {
+    const ref = chat("r1");
+    const message = (id: string, ts: number): ChatMessage => ({ id, room: "r1", author: ME, body: id, ts, v: 1 });
+    const future = [1, 2].map((n) => message(`f${n}`, 1_000_000 + n));
+    let rows = observeSource([], rowsForChat(ref, future), 100, 2);
+    assert.deepEqual(rows.map((row) => row.row.id).sort(), ["f1", "f2"]);
+    assert.ok(rows.every((row) => row.observedAt === 100));
+    rows = observeSource(rows, rowsForChat(ref, [...future, message("valid", 150)]), 200, 2);
+    assert.deepEqual(
+      rows.map((row) => row.row.id),
+      ["valid", "f1"],
+    );
+    assert.equal(rows[0]?.observedAt, 200);
+    assert.equal(rows[1]?.observedAt, 100);
+  });
+
+  it("restores first observation across a remount so already-read rows stay read", () => {
+    const ref = chat("r1");
+    const message = (id: string, ts: number): ChatMessage => ({ id, room: "r1", author: ME, body: id, ts, v: 1 });
+    const first = observeSource([], rowsForChat(ref, [message("m1", 10)]), 900);
+    const prefix = `${formatCanonical(ref)}#`;
+    const stored = parseObserved(JSON.stringify(retainObserved(Object.create(null), first, prefix)));
+    assert.equal(stored[`${prefix}m1`], 900);
+    assert.equal(observedStorageKey(ME, "v"), `s3rch-views-observed:${ME.toLowerCase()}:v`);
+    assert.deepEqual({ ...parseObserved('{"__proto__":1,"nope":2}') }, {});
+
+    const againIncoming = rowsForChat(ref, [message("m1", 10), message("m2", 40)]);
+    const again = observeSource(rememberedObserved(stored, againIncoming), againIncoming, 2000);
+    assert.equal(again.find((row) => row.row.id === "m1")?.observedAt, 900);
+    assert.equal(again.find((row) => row.row.id === "m2")?.observedAt, 2000);
+
+    const window = viewWith([ref]).windows[0]!;
+    const read = { kind: "read" as const, post: false };
+    assert.equal(unreadCount(window, again, () => read, 1000), 1);
+    assert.equal(unreadCount(window, again.filter((row) => row.row.id === "m1"), () => read, 1000), 0);
+
+    const withBoth = retainObserved(stored, again, prefix);
+    assert.equal(withBoth[`${prefix}m1`], 900);
+    assert.equal(withBoth[`${prefix}m2`], 2000);
+    const kept = retainObserved(withBoth, again.filter((row) => row.row.id === "m1"), prefix);
+    assert.equal(kept[`${prefix}m1`], 900);
+    assert.equal(kept[`${prefix}m2`], undefined);
+  });
 });
 
 describe("access re-check", () => {
@@ -214,9 +263,13 @@ describe("browse catalog", () => {
 
     const feedUrl = new URL("https://public.api.bsky.app/xrpc/app.bsky.feed.getFeed");
     feedUrl.searchParams.set("feed", "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot");
+    const actorDid = "did:plc:ewvi7nxzyoun6zhxrhs64oiz";
+    const repostDid = "did:plc:abcdefghijklmnopqrstuvwx";
     const authorUrl = new URL("https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed");
     authorUrl.searchParams.set("actor", "ethereum.bsky.social");
-    const authorPost = "at://did:plc:ewvi7nxzyoun6zhxrhs64oiz/app.bsky.feed.post/abc";
+    authorUrl.searchParams.set("actorDid", actorDid);
+    const authorPost = `at://${actorDid}/app.bsky.feed.post/abc`;
+    const repostPost = `at://${repostDid}/app.bsky.feed.post/repost`;
 
     const items = readFeedItems({
       items: [
@@ -232,18 +285,38 @@ describe("browse catalog", () => {
         item({ id: "ap", source: "activitypub", author: "w3c", provenance: "activitypub:https://w3c.social/users/w3c/outbox" }),
         item({ id: authorPost, source: "atproto", author: "ethereum.bsky.social", provenance: `atproto:${feedUrl}` }),
         item({ id: authorPost, source: "atproto", author: "ethereum.bsky.social", provenance: `atproto:${authorUrl}` }),
+        item({ id: repostPost, source: "atproto", author: "someone.bsky.social", provenance: `atproto:${authorUrl}` }),
         item({ id: "native", source: "s3rch", author: ME, provenance: `s3rch:native:${ME}` }),
         item({ id: "gi", source: "rss3", author: "gi", provenance: "rss3:gi:public" }),
       ],
     });
 
-    const hot = feedSourceOf(items.find((row) => row.provenance.startsWith("atproto:") && row.provenance.includes("getFeed"))!, DEPLOYMENT_SELF_NETWORK);
+    const hot = feedSourceOf(
+      items.find((row) => row.provenance.includes("getFeed") && !row.provenance.includes("getAuthorFeed"))!,
+      DEPLOYMENT_SELF_NETWORK,
+    );
     assert.equal(hot?.ref.owner, "did:plc:z72i7hdynmk6r22z27h6tvur");
     assert.equal(hot?.label, "whats-hot");
-    const posts = feedSourceOf(items.find((row) => row.provenance.includes("getAuthorFeed"))!, DEPLOYMENT_SELF_NETWORK);
-    assert.equal(posts?.ref.owner, "did:plc:ewvi7nxzyoun6zhxrhs64oiz");
-    assert.equal(posts?.ref.source, "posts");
-    assert.equal(feedSourceOf(item({ id: "nope", source: "atproto", author: "ethereum.bsky.social", provenance: `atproto:${authorUrl}` }), DEPLOYMENT_SELF_NETWORK), null);
+    const authorItems = items.filter((row) => row.provenance.includes("getAuthorFeed"));
+    const posts = feedSourceOf(authorItems[0]!, DEPLOYMENT_SELF_NETWORK);
+    const repost = feedSourceOf(authorItems[1]!, DEPLOYMENT_SELF_NETWORK);
+    assert.ok(posts && repost);
+    assert.equal(posts.ref.owner, actorDid);
+    assert.equal(posts.ref.source, "posts");
+    assert.equal(repost.ref.owner, actorDid);
+    assert.equal(formatCanonical(posts.ref), formatCanonical(repost.ref));
+    const handleOnly = new URL(authorUrl);
+    handleOnly.searchParams.delete("actorDid");
+    assert.equal(
+      feedSourceOf(item({ id: authorPost, source: "atproto", author: "ethereum.bsky.social", provenance: `atproto:${handleOnly}` }), DEPLOYMENT_SELF_NETWORK),
+      null,
+    );
+    const byDid = new URL("https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed");
+    byDid.searchParams.set("actor", actorDid);
+    assert.equal(
+      feedSourceOf(item({ id: repostPost, source: "atproto", author: "someone.bsky.social", provenance: `atproto:${byDid}` }), DEPLOYMENT_SELF_NETWORK)?.ref.owner,
+      actorDid,
+    );
 
     const sources = browseSources({
       selfNetwork: DEPLOYMENT_SELF_NETWORK,
@@ -261,6 +334,7 @@ describe("browse catalog", () => {
     assert.ok(sources.some((source) => source.ref.network === "farcaster" && source.ref.owner === "3" && source.label === "dwr"));
     assert.ok(sources.some((source) => source.ref.network === "activitypub" && source.ref.owner === "https://w3c.social/users/w3c"));
     assert.ok(sources.some((source) => source.ref.kind === "feed" && source.ref.owner === ME && source.ref.network === DEPLOYMENT_SELF_NETWORK));
+    assert.equal(sources.filter((source) => source.ref.network === "atproto" && source.ref.source === "posts").length, 1);
     assert.equal(sources.some((source) => source.ref.network === "rss3"), false);
     assert.equal(sources.filter((source) => source.ref.kind === "forum").length, 2);
 

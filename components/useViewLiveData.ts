@@ -7,7 +7,8 @@
  * clock changes. A forum channel the server returned, and a native feed named by the server
  * snapshot, become readable. Public mesh items are not feed membership or access proof.
  * A public room node is not written into the dest ACL. Public chat stops when its room is
- * unpublished. Other networks stay on "Needs connection" until plan item 13.
+ * unpublished. The first time a row is seen is stored for this View, so reopening it does
+ * not stamp historical rows as new. Other networks stay on "Needs connection" until plan item 13.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fromGunChatNode, type ChatMessage } from "@/lib/chat";
@@ -28,15 +29,20 @@ import {
   createSubscriptionSet,
   dropPublicRoom,
   observeSource,
+  observedStorageKey,
+  parseObserved,
   readFeedItems,
   readForumCatalog,
+  rememberedObserved,
   resolveLoadedAccess,
+  retainObserved,
   rowsForChat,
   rowsForFollowedFeed,
   rowsForForum,
   sourceStaysLive,
   sourcesOfView,
   unsharedChatKeys,
+  type ObservedTimes,
   type CatalogChannel,
   type Stop,
   type SubscriptionSet,
@@ -68,6 +74,22 @@ function sameObserved(prev: readonly ObservedRow[], next: readonly ObservedRow[]
     }
   }
   return true;
+}
+
+function readObserved(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeObserved(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Kept in memory for this visit.
+  }
 }
 
 function flattenBooks(books: ReadonlyMap<string, readonly ObservedRow[]>): ObservedRow[] {
@@ -140,6 +162,12 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
 
   const gunRef = useRef<FeedGun | null>(null);
   const books = useRef(new Map<string, ObservedRow[]>());
+  const observedRef = useRef<ObservedTimes>(Object.create(null));
+  const observedKeyRef = useRef<string | null>(null);
+  const viewIdRef = useRef<string | null>(null);
+  const ownerRef = useRef(owner);
+  viewIdRef.current = enabled && view ? view.id : null;
+  ownerRef.current = owner;
   const fans = useRef(new Map<string, () => void>());
   const forumCache = useRef<ForumMessage[]>([]);
   const seedItems = useRef<FeedItem[]>([]);
@@ -153,10 +181,22 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
   sourcesRef.current = sources;
 
   const publishRows = useCallback((ref: SourceRef, incoming: readonly ViewRow[]) => {
+    const viewId = viewIdRef.current;
+    const who = ownerRef.current;
+    if (viewId && who) {
+      const storageKey = observedStorageKey(who, viewId);
+      if (observedKeyRef.current !== storageKey) {
+        observedKeyRef.current = storageKey;
+        observedRef.current = parseObserved(readObserved(storageKey));
+      }
+    }
     const key = formatCanonical(ref);
-    const next = observeSource(books.current.get(key) ?? [], incoming, Date.now() / 1000);
-    const prev = books.current.get(key) ?? [];
-    if (sameObserved(prev, next)) return;
+    const cached = books.current.get(key);
+    const prev = cached !== undefined ? cached : rememberedObserved(observedRef.current, incoming);
+    const next = observeSource(prev, incoming, Date.now() / 1000);
+    if (cached !== undefined && sameObserved(cached, next)) return;
+    observedRef.current = retainObserved(observedRef.current, next, `${key}#`);
+    if (observedKeyRef.current) writeObserved(observedKeyRef.current, JSON.stringify(observedRef.current));
     books.current.set(key, next);
     setRows(flattenBooks(books.current));
   }, []);
@@ -345,6 +385,17 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
   }, [enabled, rememberItems]);
 
   useEffect(() => {
+    if (!enabled || !view) {
+      observedKeyRef.current = null;
+      return;
+    }
+    const storageKey = observedStorageKey(owner, view.id);
+    if (observedKeyRef.current === storageKey) return;
+    observedKeyRef.current = storageKey;
+    observedRef.current = parseObserved(readObserved(storageKey));
+  }, [enabled, owner, view]);
+
+  useEffect(() => {
     if (!enabled) return;
     const set = createSubscriptionSet((ref) => openRef.current(ref));
     subs.current = set;
@@ -371,9 +422,13 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
     for (const key of [...books.current.keys()]) {
       if (keep.has(key)) continue;
       books.current.delete(key);
+      observedRef.current = retainObserved(observedRef.current, [], `${key}#`);
       changed = true;
     }
-    if (changed) setRows(flattenBooks(books.current));
+    if (changed) {
+      if (observedKeyRef.current) writeObserved(observedKeyRef.current, JSON.stringify(observedRef.current));
+      setRows(flattenBooks(books.current));
+    }
   }, [enabled, sourceKey, gunReady, publicEpoch]);
 
   const unavailable = useCallback((): AccessState => ({ kind: "on-open" }), []);
