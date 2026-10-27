@@ -4,7 +4,10 @@
  * Subscribes the open View to room chat, forum channels and pulled feeds, and builds the
  * picker's Browse list from the same rooms, channels and feeds. Access is `sourceAccess`
  * against the signed-in owner and the See ACL graph, refreshed when that graph or the
- * clock changes. Other networks stay on "Needs connection" until plan item 13.
+ * clock changes. A forum channel the server returned, and a native feed named by a loaded
+ * item, become readable. The signed-in owner's mesh rooms are registered on the dest ACL
+ * after it has loaded. Public chat stops when its room is unpublished. Other networks stay
+ * on "Needs connection" until plan item 13.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fromGunChatNode, type ChatMessage } from "@/lib/chat";
@@ -17,20 +20,25 @@ import { mergeItems } from "@/lib/merge";
 import { dropRooms, fromGunRoomNode, mergeRooms, type Room } from "@/lib/rooms";
 import { dropFeedItems, readUnshareId } from "@/lib/unshare";
 import type { ViewRow } from "@/lib/views-adapters";
-import { sourceAccess, type AccessState } from "@/lib/views-access";
+import { type AccessState } from "@/lib/views-access";
 import type { ObservedRow } from "@/lib/views-decorators";
 import {
   DEPLOYMENT_SELF_NETWORK,
   ROWS_PER_SOURCE,
   browseSources,
   createSubscriptionSet,
+  dropPublicRoom,
   observeSource,
   readFeedItems,
   readForumCatalog,
+  resolveLoadedAccess,
+  roomOwnershipToRegister,
   rowsForChat,
   rowsForFeed,
   rowsForForum,
+  sourceStaysLive,
   sourcesOfView,
+  unsharedChatKeys,
   type CatalogChannel,
   type Stop,
   type SubscriptionSet,
@@ -129,6 +137,7 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
   const [rows, setRows] = useState<ObservedRow[]>([]);
   const [gunReady, setGunReady] = useState(false);
   const [graphEpoch, setGraphEpoch] = useState(0);
+  const [publicEpoch, setPublicEpoch] = useState(0);
   const [checkedAt, setCheckedAt] = useState(() => Math.floor(Date.now() / 1000));
 
   const gunRef = useRef<FeedGun | null>(null);
@@ -140,6 +149,7 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
   const itemCache = useRef<FeedItem[]>([]);
   const subs = useRef<SubscriptionSet | null>(null);
   const sourcesRef = useRef<SourceRef[]>([]);
+  const publicRoomIds = useRef(new Set<string>());
 
   const sources = useMemo(() => (enabled ? sourcesOfView(view) : []), [enabled, view]);
   const sourceKey = sources.map((ref) => formatCanonical(ref)).join("\n");
@@ -169,7 +179,7 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
   openRef.current = (ref) => {
     if (ref.kind === "chat") {
       const gun = gunRef.current;
-      if (!gun) return null;
+      if (!gun || !sourceStaysLive(ref, publicRoomIds.current)) return null;
       return subscribeRoomChat(gun, ref, (chatRows) => publishRows(ref, chatRows));
     }
     if (ref.kind !== "forum" && ref.kind !== "feed") return () => {};
@@ -219,11 +229,26 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
           if (cancelled) return;
           const unshared = readUnshareId(data, key);
           if (unshared) {
+            publicRoomIds.current = dropPublicRoom(publicRoomIds.current, unshared);
+            const keys = unsharedChatKeys(sourcesRef.current, unshared);
+            if (keys.length) {
+              subs.current?.halt(keys);
+              let cleared = false;
+              for (const chatKey of keys) {
+                if (books.current.delete(chatKey)) cleared = true;
+              }
+              if (cleared) setRows(flattenBooks(books.current));
+            }
+            setPublicEpoch((n) => n + 1);
             setRooms((prev) => dropRooms(prev, unshared));
             return;
           }
           const room = fromGunRoomNode(data as Parameters<typeof fromGunRoomNode>[0]);
           if (!room) return;
+          if (!publicRoomIds.current.has(room.id)) {
+            publicRoomIds.current.add(room.id);
+            setPublicEpoch((n) => n + 1);
+          }
           setRooms((prev) => mergeRooms(prev, [room]));
         });
         offRooms = typeof roomsListener.off === "function" ? () => roomsListener.off?.() : undefined;
@@ -253,11 +278,22 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
       cancelled = true;
       offRooms?.();
       offItems?.();
+      publicRoomIds.current = new Set();
       gunRef.current = null;
       registerRef.current?.(null);
       setGunReady(false);
+      setPublicEpoch((n) => n + 1);
     };
   }, [enabled, rememberItems]);
+
+  useEffect(() => {
+    if (!enabled || !see?.ready || !see.acl || !owner) return;
+    const graph = see.acl;
+    const rowsToOwn = roomOwnershipToRegister(rooms, owner, graph);
+    if (rowsToOwn.length === 0) return;
+    for (const row of rowsToOwn) graph.putObject(row.object, row.owner);
+    void persistRef.current?.();
+  }, [enabled, see?.ready, see?.acl, owner, rooms]);
 
   useEffect(() => {
     if (!enabled || !gunReady || !owner || !see?.ready) return;
@@ -355,8 +391,12 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
       setRows([]);
       return;
     }
-    subs.current?.sync(sourcesRef.current);
+    const published = publicRoomIds.current;
+    subs.current?.sync(sourcesRef.current, (ref) => sourceStaysLive(ref, published));
     const keep = new Set(sourcesRef.current.map((ref) => formatCanonical(ref)));
+    for (const ref of sourcesRef.current) {
+      if (!sourceStaysLive(ref, published)) keep.delete(formatCanonical(ref));
+    }
     let changed = false;
     for (const key of [...books.current.keys()]) {
       if (keep.has(key)) continue;
@@ -364,15 +404,16 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
       changed = true;
     }
     if (changed) setRows(flattenBooks(books.current));
-  }, [enabled, sourceKey, gunReady]);
+  }, [enabled, sourceKey, gunReady, publicEpoch]);
 
   const unavailable = useCallback((): AccessState => ({ kind: "on-open" }), []);
   const access = useMemo(() => {
     if (!enabled || !see?.ready || !see.acl) return unavailable;
     const now = Math.floor(Date.now() / 1000);
     const graph = see.acl;
-    return (ref: SourceRef) => sourceAccess(ref, { me: owner, selfNetwork: DEPLOYMENT_SELF_NETWORK, graph, now });
-  }, [enabled, see?.ready, see?.acl, owner, checkedAt, graphEpoch, unavailable]);
+    return (ref: SourceRef) =>
+      resolveLoadedAccess(ref, { me: owner, selfNetwork: DEPLOYMENT_SELF_NETWORK, graph, now }, { channels, items });
+  }, [enabled, see?.ready, see?.acl, owner, checkedAt, graphEpoch, unavailable, channels, items]);
 
   const catalog = useMemo(
     () => browseSources({ selfNetwork: DEPLOYMENT_SELF_NETWORK, rooms, channels, items }),

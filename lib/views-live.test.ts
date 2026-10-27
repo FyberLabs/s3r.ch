@@ -3,24 +3,30 @@ import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 import type { ChatMessage } from "./chat";
 import type { FeedItem } from "./feed-types";
-import { applySeeGrant, cancelSee, roomSoul } from "./identity/check";
-import { createMemorySeeAcl } from "./identity/see-acl";
-import { sourceStatus, statusLabel } from "./views-access";
+import { applySeeGrant, cancelSee, checkSee, roomSoul } from "./identity/check";
+import { createMemorySeeAcl, emptySeeAclSnapshot } from "./identity/see-acl";
+import { canShowRows, sourceAccess, sourceStatus, statusLabel } from "./views-access";
+import { windowRows } from "./views-decorators";
 import { formatCanonical, formatS3rchNetwork, type SourceRef } from "./views-source-ref";
 import {
   DEPLOYMENT_KEY_FINGERPRINT,
   DEPLOYMENT_SELF_NETWORK,
   browseSources,
   createSubscriptionSet,
+  dropPublicRoom,
   feedSourceOf,
   observeSource,
   readFeedItems,
   readForumCatalog,
   recheckView,
+  resolveLoadedAccess,
+  roomOwnershipToRegister,
   rowsForChat,
   rowsForFeed,
   rowsForForum,
+  sourceStaysLive,
   syncViewSubscriptions,
+  unsharedChatKeys,
 } from "./views-live";
 import { labelFor } from "./views-picker";
 import { buildBrowseTree } from "./views-picker";
@@ -261,5 +267,111 @@ describe("browse catalog", () => {
     assert.equal(tree[0]?.id, "self");
     assert.equal(tree[0]?.label, "This network (s3r.ch)");
     assert.ok(tree.some((node) => node.id === "protocols"));
+  });
+});
+
+describe("loaded native access", () => {
+  it("shows rows for a server-authorized forum and a loaded native feed", () => {
+    const acl = createMemorySeeAcl();
+    const ctx = { me: ME, selfNetwork: DEPLOYMENT_SELF_NETWORK, graph: acl, now: NOW };
+    const shared: SourceRef = { network: DEPLOYMENT_SELF_NETWORK, owner: ORG, source: "c2", kind: "forum", v: 1 };
+    assert.equal(sourceAccess(shared, ctx).kind, "on-open");
+    const withheld = resolveLoadedAccess(shared, ctx, { channels: [], items: [] });
+    assert.equal(withheld.kind, "on-open");
+    assert.equal(canShowRows(withheld), false);
+
+    const opened = resolveLoadedAccess(shared, ctx, { channels: [{ id: "c2", owner: ORG }], items: [] });
+    assert.deepEqual(opened, { kind: "read", post: false });
+    assert.equal(canShowRows(opened), true);
+    const forumMessage = { id: "m", channel: "c2", owner: ORG, bot: "bot", body: "hi", ts: 4, v: 1 };
+    const forumRows = observeSource([], rowsForForum(shared, [forumMessage]), 1);
+    const forumWindow = viewWith([shared]).windows[0]!;
+    assert.equal(windowRows(forumWindow, forumRows, () => opened).length, 1);
+    assert.equal(windowRows(forumWindow, forumRows, () => withheld).length, 0);
+
+    const own: SourceRef = { ...shared, owner: ME, source: "c1" };
+    assert.deepEqual(resolveLoadedAccess(own, ctx, { channels: [], items: [] }), { kind: "read", post: true });
+
+    const nativeItem = item({ id: "n", source: "s3rch", author: ME, provenance: `s3rch:native:${ME}` });
+    const native = feedSourceOf(nativeItem, DEPLOYMENT_SELF_NETWORK);
+    assert.ok(native);
+    assert.equal(sourceAccess(native.ref, ctx).kind, "on-open");
+    assert.equal(resolveLoadedAccess(native.ref, ctx, { channels: [], items: [] }).kind, "on-open");
+    const feedRead = resolveLoadedAccess(native.ref, ctx, { channels: [], items: [nativeItem] });
+    assert.deepEqual(feedRead, { kind: "read", post: false });
+    const feedRows = observeSource([], rowsForFeed(native.ref, [nativeItem], DEPLOYMENT_SELF_NETWORK), 2);
+    assert.equal(windowRows(viewWith([native.ref]).windows[0]!, feedRows, () => feedRead).length, 1);
+    assert.equal(resolveLoadedAccess({ ...native.ref, network: LAB }, ctx, { channels: [], items: [nativeItem] }).kind, "needs-connection");
+  });
+});
+
+describe("owned room registration", () => {
+  it("registers a missing owned room after the graph loads and does not replace one already named", () => {
+    const acl = createMemorySeeAcl();
+    const rooms = [
+      { id: "build", owner: ME, title: "ops" },
+      { id: "ops", owner: ORG, title: "org" },
+    ];
+    const mine = chat("build", ME);
+    const ctx = { me: ME, selfNetwork: DEPLOYMENT_SELF_NETWORK, graph: acl, now: NOW };
+    assert.deepEqual(sourceAccess(mine, ctx), { kind: "locked", reason: "missing-object" });
+
+    const early = roomOwnershipToRegister(rooms, ME, acl);
+    assert.deepEqual(early, [{ object: roomSoul("build"), owner: ME }]);
+    for (const row of early) acl.putObject(row.object, row.owner);
+    acl.replace(emptySeeAclSnapshot());
+    assert.equal(acl.hasObject(roomSoul("build")), false);
+    assert.equal(checkSee(acl, roomSoul("build"), ME, NOW).reason, "missing-object");
+
+    for (const row of roomOwnershipToRegister(rooms, ME, acl)) acl.putObject(row.object, row.owner);
+    assert.deepEqual(sourceAccess(mine, ctx), { kind: "read", post: true });
+    assert.equal(acl.hasObject(roomSoul("ops")), false);
+    assert.deepEqual(roomOwnershipToRegister(rooms, ME, acl), []);
+
+    const held = createMemorySeeAcl();
+    held.putObject(roomSoul("build"), ORG);
+    assert.deepEqual(roomOwnershipToRegister(rooms, ME, held), []);
+    assert.equal(held.ownerOf(roomSoul("build")), ORG);
+  });
+});
+
+describe("unpublished room chat", () => {
+  it("stops public chat and clears its rows when the room is unpublished", () => {
+    const log: string[] = [];
+    const set = createSubscriptionSet((ref) => {
+      log.push(`start ${ref.source}`);
+      return () => log.push(`stop ${ref.source}`);
+    });
+    const room = chat("build", ME);
+    const other = chat("ops", ORG);
+    const publicIds = new Set(["build", "ops"]);
+    const live = (ref: SourceRef) => sourceStaysLive(ref, publicIds);
+    set.sync([room, other], live);
+    assert.deepEqual(log, ["start build", "start ops"]);
+
+    const message = (id: string, roomId: string): ChatMessage => ({ id, room: roomId, author: ME, body: id, ts: 1, v: 1 });
+    const books = new Map<string, ReturnType<typeof observeSource>>([
+      [formatCanonical(room), observeSource([], rowsForChat(room, [message("m", "build")]), 1)],
+      [formatCanonical(other), observeSource([], rowsForChat(other, [message("n", "ops")]), 1)],
+    ]);
+    const nextIds = dropPublicRoom(publicIds, "build");
+    for (const id of [...publicIds]) if (!nextIds.has(id)) publicIds.delete(id);
+    const keys = unsharedChatKeys([room, other], "build");
+    assert.deepEqual(keys, [formatCanonical(room)]);
+    set.halt(keys);
+    for (const key of keys) books.delete(key);
+    set.sync([room, other], (ref) => sourceStaysLive(ref, publicIds));
+
+    assert.deepEqual(log, ["start build", "start ops", "stop build"]);
+    assert.deepEqual(set.active(), [formatCanonical(other)]);
+    assert.equal(books.has(formatCanonical(room)), false);
+    assert.equal(books.get(formatCanonical(other))?.length, 1);
+    assert.equal(sourceStaysLive(room, publicIds), false);
+    assert.equal(sourceStaysLive(other, publicIds), true);
+
+    publicIds.add("build");
+    set.sync([room, other], (ref) => sourceStaysLive(ref, publicIds));
+    assert.deepEqual(log.at(-1), "start build");
+    assert.deepEqual(unsharedChatKeys([chat("a.b")], "a_b"), [formatCanonical(chat("a.b"))]);
   });
 });

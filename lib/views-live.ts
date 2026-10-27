@@ -11,6 +11,8 @@ import { getAddress } from "viem";
 import type { ChatMessage } from "./chat";
 import { isFeedSource, type FeedItem } from "./feed-types";
 import type { ForumMessage } from "./forum";
+import { roomSoul, sameAccessor, type SeeGraph } from "./identity/check";
+import { soulKeyMatches } from "./unshare";
 import { sourceAccess, type AccessContext, type AccessState } from "./views-access";
 import { chatRow, feedRow, feedSourceRef, forumRow, forumSourceRef, roomSourceRef, type ViewRow } from "./views-adapters";
 import type { ObservedRow } from "./views-decorators";
@@ -37,8 +39,13 @@ export const ROWS_PER_SOURCE = 200;
 export type Stop = () => void;
 
 export type SubscriptionSet = {
-  /** Start sources that are new and stop sources that left. A start that returns null is retried next time. */
-  sync(sources: readonly SourceRef[]): void;
+  /**
+   * Start sources that are new and stop sources that left. A start that returns null is retried next time.
+   * `live` false stops a running source and leaves it unstarted, so it can begin again when it becomes live.
+   */
+  sync(sources: readonly SourceRef[], live?: (ref: SourceRef) => boolean): void;
+  /** Stop these sources now. A later sync can start them again. */
+  halt(keys: readonly string[]): void;
   stopAll(): void;
   active(): string[];
 };
@@ -66,18 +73,27 @@ export function sourcesOfView(view: View | null): SourceRef[] {
 export function createSubscriptionSet(start: (ref: SourceRef) => Stop | null): SubscriptionSet {
   const current = new Map<string, Stop>();
   return {
-    sync(sources) {
+    sync(sources, live = () => true) {
       const want = new Map<string, SourceRef>();
       for (const ref of sources) want.set(formatCanonical(ref), ref);
       for (const [key, stop] of current) {
-        if (want.has(key)) continue;
+        const ref = want.get(key);
+        if (ref && live(ref)) continue;
         stop();
         current.delete(key);
       }
       for (const [key, ref] of want) {
-        if (current.has(key)) continue;
+        if (current.has(key) || !live(ref)) continue;
         const stop = start(ref);
         if (stop) current.set(key, stop);
+      }
+    },
+    halt(keys) {
+      for (const key of keys) {
+        const stop = current.get(key);
+        if (!stop) continue;
+        stop();
+        current.delete(key);
       }
     },
     stopAll() {
@@ -156,6 +172,83 @@ export function rowsForFeed(ref: SourceRef, items: readonly FeedItem[], selfNetw
 export function recheckView(view: View, ctx: AccessContext): { view: View; access: (ref: SourceRef) => AccessState } {
   const access = (ref: SourceRef) => sourceAccess(ref, ctx);
   return { view: settleView(view, access) ?? view, access };
+}
+
+/**
+ * Access for sources this session has actually been given.
+ * A forum channel stays checked-when-opened until it is in the server catalog.
+ * A native feed on this deployment stays checked-when-opened until a loaded item names it.
+ * Either one is then readable, so its rows can show. Anything `sourceAccess` already decided
+ * (a room, another network, a signed-out session) is unchanged.
+ */
+export function resolveLoadedAccess(
+  ref: SourceRef,
+  ctx: AccessContext,
+  loaded: { channels: readonly CatalogChannel[]; items: readonly FeedItem[] },
+): AccessState {
+  const base = sourceAccess(ref, ctx);
+  if (base.kind !== "on-open" || !ctx.me || ref.network !== ctx.selfNetwork) return base;
+  if (ref.kind === "forum") {
+    const authorized = loaded.channels.some((channel) => channel.id === ref.source && sameAccessor(channel.owner, ref.owner));
+    return authorized ? { kind: "read", post: false } : base;
+  }
+  if (ref.kind === "feed") {
+    const authorized = loaded.items.some((item) => {
+      const found = feedSourceOf(item, ctx.selfNetwork);
+      return found ? sameSource(found.ref, ref) : false;
+    });
+    return authorized ? { kind: "read", post: false } : base;
+  }
+  return base;
+}
+
+/**
+ * Room objects the signed-in owner should add to the dest ACL.
+ * Only a room whose validated owner is that signer, and only when the ACL does not already
+ * name the room. Call after the ACL has finished loading: a load replaces the graph and
+ * drops an earlier put. An object that is already present is left alone.
+ */
+export function roomOwnershipToRegister(
+  rooms: readonly CatalogRoom[],
+  me: string | undefined,
+  graph: SeeGraph,
+): { object: string; owner: string }[] {
+  if (!me) return [];
+  const out: { object: string; owner: string }[] = [];
+  const seen = new Set<string>();
+  for (const room of rooms) {
+    if (!room.id || !room.owner) continue;
+    let owner: string;
+    try {
+      owner = getAddress(room.owner);
+    } catch {
+      continue;
+    }
+    if (!sameAccessor(owner, me)) continue;
+    const object = roomSoul(room.id);
+    if (seen.has(object) || graph.hasObject(object)) continue;
+    seen.add(object);
+    out.push({ object, owner });
+  }
+  return out;
+}
+
+/** Public room chat runs only while that room is still published. Other kinds are unaffected. */
+export function sourceStaysLive(ref: SourceRef, publicRoomIds: ReadonlySet<string>): boolean {
+  if (ref.kind !== "chat") return true;
+  return publicRoomIds.has(ref.source);
+}
+
+/** Drop a published room id, matching either the id or its mesh key. */
+export function dropPublicRoom(ids: ReadonlySet<string>, roomId: string): Set<string> {
+  const next = new Set<string>();
+  for (const id of ids) if (!soulKeyMatches(id, roomId)) next.add(id);
+  return next;
+}
+
+/** Chat sources in the View whose room was unpublished. */
+export function unsharedChatKeys(sources: readonly SourceRef[], roomId: string): string[] {
+  return sources.filter((ref) => ref.kind === "chat" && soulKeyMatches(ref.source, roomId)).map((ref) => formatCanonical(ref));
 }
 
 export type CatalogRoom = { id: string; owner: string; title: string };
