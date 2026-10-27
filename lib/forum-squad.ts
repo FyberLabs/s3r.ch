@@ -8,6 +8,7 @@ import {
   fromGunNode,
   type FeedItem,
 } from "@/lib/feed-types";
+import { readUnshareId, soulKeyMatches } from "@/lib/unshare";
 import {
   forumChatTag,
   forumChatTagPresent,
@@ -21,6 +22,7 @@ import {
   validateForumStatus,
   type ForumAgentState,
   type ForumAgentStatus,
+  type ForumAlarm,
   type ForumNeed,
   type ForumOffer,
   type SeeGraph,
@@ -398,6 +400,105 @@ export function overlaySeeGraph(primary: SeeGraph, sample: SeeGraph): SeeGraph {
       return [...primary.seeGrants(object), ...sample.seeGrants(object)];
     },
   };
+}
+
+/**
+ * A local pause or reassign wins only while it is strictly newer than the
+ * mesh row. An equal or later mesh `lastUpdate` retires the override.
+ */
+export function pickDisplayedStatus(
+  base: ForumAgentStatus,
+  local: ForumAgentStatus | undefined,
+): ForumAgentStatus {
+  if (!local) return base;
+  if (local.lastUpdate > base.lastUpdate) return local;
+  return base;
+}
+
+/**
+ * Ids to drop when a chat put is a tombstone, Gun `null`, or no longer a
+ * forum statement. `undefined` is not a retract. A sibling id under a
+ * different Gun key does not match a known line.
+ */
+export function chatRetractionIds(
+  data: unknown,
+  key: string | undefined,
+  knownIds: readonly string[],
+): string[] {
+  if (data === undefined) return [];
+  if (data === null) {
+    return typeof key === "string" && key.trim() ? [key.trim()] : [];
+  }
+  const unshared = readUnshareId(data, key);
+  if (unshared && data && typeof data === "object" && "unshared" in data) {
+    const marker = (data as { unshared?: unknown }).unshared;
+    if (marker !== undefined && marker !== null && marker !== "") return [unshared];
+  }
+  if (typeof key !== "string" || !key.trim()) return [];
+  const trimmed = key.trim();
+  if (!knownIds.some((known) => soulKeyMatches(known, trimmed))) return [];
+  return [trimmed];
+}
+
+export function withoutChatIds(items: readonly FeedItem[], ids: readonly string[]): FeedItem[] {
+  if (ids.length === 0) return [...items];
+  return items.filter((item) => !ids.some((id) => soulKeyMatches(item.id, id)));
+}
+
+/**
+ * Mesh status may replace a roster tile only when the signature signer is
+ * the agent pubkey or the admitted owner, and the Gun map key is that agent.
+ */
+export function authorizeForumStatus(input: {
+  status: ForumAgentStatus;
+  mapKey: string;
+  signer: string;
+  owner: string | undefined;
+  forumId: string;
+}): boolean {
+  if (input.mapKey !== input.status.seaPubkey) return false;
+  if (input.status.forumId !== input.forumId) return false;
+  if (!isSeaPubkey(input.signer)) return false;
+  if (input.signer === input.status.seaPubkey) return true;
+  return input.signer === input.owner && canWriteStatus(input.owner, input.signer);
+}
+
+/** Chat mesh rows are signed by the statement author. The tag does not grant. */
+export function authorizeForumChat(
+  item: FeedItem,
+  signer: string,
+  mapKey: string | undefined,
+  forumId: string,
+): boolean {
+  if (signer !== item.author || !isSeaPubkey(signer)) return false;
+  if (!item.tags.includes(forumChatTag(forumId))) return false;
+  if (mapKey !== undefined && !soulKeyMatches(item.id, mapKey)) return false;
+  return true;
+}
+
+/** A need row on the mesh is signed by the admitted owner. It does not elect. */
+export function authorizeForumNeed(
+  need: ForumNeed,
+  signer: string,
+  owner: string | undefined,
+  forumId: string,
+): boolean {
+  return need.forumId === forumId && !!owner && signer === owner && isSeaPubkey(signer);
+}
+
+/** The alarm pin is signed by the admitted owner of the forum id. */
+export function authorizeForumAlarm(
+  alarm: ForumAlarm,
+  signer: string,
+  forumOwner: string | undefined,
+  forumId: string,
+): boolean {
+  return alarm.forumId === forumId && !!forumOwner && signer === forumOwner && isSeaPubkey(signer);
+}
+
+/** An offer row is signed by its helper. Posting one is still a separate verb. */
+export function authorizeForumOffer(offer: ForumOffer, signer: string, forumId: string): boolean {
+  return offer.forumId === forumId && signer === offer.helper && isSeaPubkey(signer);
 }
 
 export function mergeAgents(sample: readonly SquadAgent[], mesh: readonly ForumAgentStatus[]): SquadAgent[] {

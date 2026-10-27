@@ -12,16 +12,27 @@ import {
 import { createMemorySeeAcl } from "@/lib/identity/see-acl";
 import vector from "@/lib/identity/vectors/forums.json";
 import {
+  authorizeForumAlarm,
+  authorizeForumChat,
+  authorizeForumNeed,
+  authorizeForumOffer,
+  authorizeForumStatus,
   buildForumStatement,
   canWriteStatus,
+  chatRetractionIds,
   filterAgents,
+  pickDisplayedStatus,
   showFullVitals,
   sortAgents,
+  withoutChatIds,
   type SquadAgent,
 } from "@/lib/forum-squad";
 import {
   PILOT_AGENTS,
+  PILOT_ALARM,
+  PILOT_CHAT,
   PILOT_FORUM_ID,
+  PILOT_NEEDS,
   PILOT_OWNER,
   admitPilotRoster,
 } from "@/lib/forum-squad-fixture";
@@ -147,6 +158,132 @@ describe("squad view", () => {
     const soul = forumOfferSoul(PILOT_FORUM_ID, open.id, offerId);
     assert.equal(soul, `s3rch/forums/${PILOT_FORUM_ID}/needs/${open.id}/offers/${offerId}`);
     assert.equal(acl.ownerOf(open.id), PILOT_OWNER);
+  });
+
+  it("retires a local pause when the mesh lastUpdate is equal or newer", () => {
+    const base = PILOT_AGENTS[1]?.status;
+    assert.ok(base);
+    const paused = { ...base, state: "idle" as const, lastUpdate: base.lastUpdate + 10 };
+    const emergency = { ...base, state: "emergency" as const, lastUpdate: base.lastUpdate + 20 };
+    assert.equal(pickDisplayedStatus(base, undefined).state, base.state);
+    assert.equal(pickDisplayedStatus(base, paused).state, "idle");
+    assert.equal(pickDisplayedStatus(emergency, paused).state, "emergency");
+    assert.equal(pickDisplayedStatus(paused, paused).lastUpdate, paused.lastUpdate);
+    assert.equal(pickDisplayedStatus(paused, paused), paused);
+    const echoed = { ...paused };
+    assert.equal(pickDisplayedStatus(echoed, paused), echoed);
+  });
+
+  it("drops retracted chat and leaves unrelated feed rows alone", () => {
+    const line = PILOT_CHAT[0];
+    assert.ok(line);
+    assert.deepEqual(chatRetractionIds(null, line.id, [line.id]), [line.id]);
+    assert.deepEqual(chatRetractionIds(undefined, line.id, [line.id]), []);
+    assert.deepEqual(chatRetractionIds({ id: line.id, unshared: 1 }, line.id, [line.id]), [line.id]);
+    assert.deepEqual(chatRetractionIds({ id: line.id, tags: "" }, line.id, [line.id]), [line.id]);
+    assert.deepEqual(chatRetractionIds({ id: line.id, tags: "" }, "stmt-forged", [line.id]), []);
+    assert.deepEqual(
+      chatRetractionIds({ id: "stmt-other", body: "public" }, "stmt-other", [line.id]),
+      [],
+    );
+    const kept = withoutChatIds(PILOT_CHAT, [line.id]);
+    assert.equal(kept.some((item) => item.id === line.id), false);
+    assert.equal(kept.length, PILOT_CHAT.length - 1);
+  });
+
+  it("accepts a status row only from the agent pubkey or the admitted owner", () => {
+    const agent = PILOT_AGENTS.find((row) => row.status.seaPubkey !== PILOT_OWNER);
+    assert.ok(agent);
+    const status = agent.status;
+    assert.equal(
+      authorizeForumStatus({
+        status,
+        mapKey: status.seaPubkey,
+        signer: status.seaPubkey,
+        owner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+      }),
+      true,
+    );
+    assert.equal(
+      authorizeForumStatus({
+        status,
+        mapKey: status.seaPubkey,
+        signer: PILOT_OWNER,
+        owner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+      }),
+      true,
+    );
+    assert.equal(
+      authorizeForumStatus({
+        status,
+        mapKey: PILOT_OWNER,
+        signer: status.seaPubkey,
+        owner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+      }),
+      false,
+    );
+    assert.equal(
+      authorizeForumStatus({
+        status,
+        mapKey: status.seaPubkey,
+        signer: vector.secondPubkey === status.seaPubkey ? PILOT_OWNER : vector.secondPubkey,
+        owner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+      }),
+      vector.secondPubkey === status.seaPubkey,
+    );
+    const stranger = PILOT_AGENTS.find(
+      (row) => row.status.seaPubkey !== status.seaPubkey && row.status.seaPubkey !== PILOT_OWNER,
+    );
+    assert.ok(stranger);
+    assert.equal(
+      authorizeForumStatus({
+        status,
+        mapKey: status.seaPubkey,
+        signer: stranger.status.seaPubkey,
+        owner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+      }),
+      false,
+    );
+    assert.equal(
+      authorizeForumStatus({
+        status,
+        mapKey: status.seaPubkey,
+        signer: PILOT_OWNER,
+        owner: PILOT_OWNER,
+        forumId: vector.wrongForumId,
+      }),
+      false,
+    );
+  });
+
+  it("requires the allowed signer on chat, need, alarm, and offer rows", () => {
+    const line = PILOT_CHAT[0];
+    const need = PILOT_NEEDS[0];
+    assert.ok(line);
+    assert.ok(need);
+    assert.equal(authorizeForumChat(line, line.author, line.id, PILOT_FORUM_ID), true);
+    assert.equal(authorizeForumChat(line, PILOT_OWNER, line.id, PILOT_FORUM_ID), line.author === PILOT_OWNER);
+    assert.equal(authorizeForumChat(line, line.author, "stmt-other", PILOT_FORUM_ID), false);
+    assert.equal(authorizeForumNeed(need, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID), true);
+    assert.equal(authorizeForumNeed(need, vector.secondPubkey, PILOT_OWNER, PILOT_FORUM_ID), false);
+    assert.equal(authorizeForumAlarm(PILOT_ALARM, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID), true);
+    assert.equal(authorizeForumAlarm(PILOT_ALARM, vector.secondPubkey, PILOT_OWNER, PILOT_FORUM_ID), false);
+    const offer = {
+      id: "offer-local",
+      need: need.id,
+      forumId: PILOT_FORUM_ID,
+      helper: vector.secondPubkey,
+      body: "holding",
+      artifacts: "",
+      stated: 1 as const,
+    };
+    assert.equal(authorizeForumOffer(offer, vector.secondPubkey, PILOT_FORUM_ID), true);
+    assert.equal(authorizeForumOffer(offer, PILOT_OWNER, PILOT_FORUM_ID), false);
   });
 
   it("keeps the sample status soul on the contract path", () => {

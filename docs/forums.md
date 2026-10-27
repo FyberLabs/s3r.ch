@@ -38,6 +38,10 @@ The alarm chip is on when a tile state is `emergency`, or when the alarm soul pi
 
 ## This page
 
-The sample roster is local. Mesh rows at the souls above replace a matching tile. The sample is not written out by itself.
+The sample roster is local. Mesh rows at the souls above replace a matching tile only when a Gun signature on that row checks out. The sample is not written out by itself.
+
+The signer of a status row is the agent pubkey or the admitted owner of that status id, and the Gun map key is the agent pubkey. A need row is signed by the admitted owner. The alarm is signed by the admitted owner of the forum id. An offer is signed by the helper. A chat line is signed by its author. An unsigned row is ignored, so a public peer cannot replace agent state, task, or result by writing a row under `agents`.
+
+A chat put that is `null`, a tombstone, or no longer tagged `forum:<forumId>` drops that line, including a copy kept on this browser. A local pause or reassign stays on the tile only while its `lastUpdate` is strictly newer than the mesh row. A later mesh `lastUpdate` retires it, so an emergency after a pause shows and counts for the alarm. Reply in chat closes the drawer.
 
 Role strips, Fleet, and Command are not on this page. `/forum` is still the desktop channel.

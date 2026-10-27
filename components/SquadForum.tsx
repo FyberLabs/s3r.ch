@@ -34,6 +34,12 @@ import {
   formatClock,
   formatRuntime,
   formatTokens,
+  authorizeForumAlarm,
+  authorizeForumChat,
+  authorizeForumNeed,
+  authorizeForumOffer,
+  authorizeForumStatus,
+  chatRetractionIds,
   forumStatementFromNode,
   mergeAgents,
   needIds,
@@ -43,13 +49,17 @@ import {
   parseForumNeed,
   parseForumOffer,
   pausedStatus,
+  pickDisplayedStatus,
   reassignedStatus,
   shortSea,
   showFullVitals,
   buildForumStatement,
+  withoutChatIds,
   type SquadAgent,
   type VitalsMode,
 } from "@/lib/forum-squad";
+import { readForumSignature, signForumRecord, signatureOf } from "@/lib/forum-sign";
+import { soulKeyMatches } from "@/lib/unshare";
 import { browserGunOptions, listenThenConnectSeedPeer, type SeedPeerEmitter } from "@/lib/gun-peer";
 import {
   acceptForumOffer,
@@ -73,7 +83,8 @@ import {
   type ForumOffer,
   type SeeGraph,
 } from "@/lib/identity/check";
-import { getMeshKey } from "@/lib/identity/idb";
+import { getMeshKey, isPlaintextMeshKeyRecord } from "@/lib/identity/idb";
+import type { SeaPair } from "@/lib/identity/sea";
 import { createMemorySeeAcl } from "@/lib/identity/see-acl";
 
 const STATES: ForumAgentState[] = ["emergency", "needs", "working", "idle"];
@@ -170,8 +181,12 @@ export function SquadForum() {
   const [localStatus, setLocalStatus] = useState<Map<string, ForumAgentStatus>>(() => new Map());
   const [localNeeds, setLocalNeeds] = useState<Map<string, ForumNeed>>(() => new Map());
   const [localChat, setLocalChat] = useState<FeedItem[]>([]);
+  const [hiddenChat, setHiddenChat] = useState<readonly string[]>([]);
   const gunRef = useRef<FeedGun | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const pairRef = useRef<SeaPair | null>(null);
+  const graphRef = useRef<SeeGraph | null>(null);
+  const chatIdsRef = useRef<string[]>([]);
   const sampleAcl = useMemo(() => {
     const acl = createMemorySeeAcl();
     admitPilotRoster(acl);
@@ -181,6 +196,7 @@ export function SquadForum() {
   useEffect(() => {
     let cancelled = false;
     if (!session?.address) {
+      pairRef.current = null;
       setSeaPub(null);
       return;
     }
@@ -188,10 +204,17 @@ export function SquadForum() {
       .then((record) => {
         if (cancelled) return;
         const pub = record?.seaPub;
-        setSeaPub(pub && isSeaPubkey(pub) ? pub : null);
+        const readable = pub && isSeaPubkey(pub) ? pub : null;
+        pairRef.current =
+          record && isPlaintextMeshKeyRecord(record) && record.seaPair.pub === readable
+            ? record.seaPair
+            : null;
+        setSeaPub(readable);
       })
       .catch(() => {
-        if (!cancelled) setSeaPub(null);
+        if (cancelled) return;
+        pairRef.current = null;
+        setSeaPub(null);
       });
     return () => {
       cancelled = true;
@@ -236,54 +259,181 @@ export function SquadForum() {
       register(gun);
       listenThenConnectSeedPeer(gun as unknown as SeedPeerEmitter, window.location.origin, () => {});
       const forum = gun.get("s3rch").get("forums").get(PILOT_FORUM_ID);
-      const watchOffers = (needId: string) => {
-        if (!isForumObjectId(needId, "need") || watchedOffers.has(needId)) return;
-        watchedOffers.add(needId);
-        offerOffs.push(
-          forum.get("needs").get(needId).get("offers").map().on((data) => {
-            const offer = parseForumOffer(data);
-            if (!offer || offer.forumId !== PILOT_FORUM_ID || offer.need !== needId) return;
-            setMeshOffers((prev) => {
-              const next = new Map(prev);
-              next.set(offer.id, offer);
-              return next;
-            });
-          }),
-        );
-      };
-      for (const need of PILOT_NEEDS) watchOffers(need.id);
-      offAgents = forum.get("agents").map().on((data) => {
-        const status = parseForumAgentStatus(data);
-        if (!status || status.forumId !== PILOT_FORUM_ID) return;
+      function knownChatIds(): string[] {
+        return chatIdsRef.current;
+      }
+      function hideChat(ids: string[]) {
+        setHiddenChat((prev) => [...new Set([...prev, ...ids])]);
+        setMeshChat((prev) => withoutChatIds(prev, ids));
+        setLocalChat((prev) => withoutChatIds(prev, ids));
+      }
+      async function acceptOffer(data: unknown, key: string | undefined) {
+        const sig = signatureOf(data);
+        const helper = data && typeof data === "object" ? (data as { helper?: unknown }).helper : undefined;
+        if (!sig || typeof helper !== "string") return;
+        const payload = await readForumSignature(sig, helper);
+        if (cancelled || !payload) return;
+        const offer = parseForumOffer(payload);
+        if (!offer || !authorizeForumOffer(offer, helper, PILOT_FORUM_ID)) return;
+        if (key !== undefined && key !== offer.id) return;
+        setMeshOffers((prev) => {
+          const next = new Map(prev);
+          next.set(offer.id, offer);
+          return next;
+        });
+      }
+      async function acceptStatus(data: unknown, key: string | undefined) {
+        if (typeof key !== "string") return;
+        const sig = signatureOf(data);
+        if (!sig || !data || typeof data !== "object") return;
+        const claimed = (data as { seaPubkey?: unknown }).seaPubkey;
+        const hintedId = (data as { id?: unknown }).id;
+        let signer = typeof claimed === "string" ? claimed : "";
+        let payload = signer ? await readForumSignature(sig, signer) : null;
+        if (!payload && typeof hintedId === "string") {
+          const owner = graphRef.current?.ownerOf(hintedId);
+          if (owner && owner !== signer) {
+            payload = await readForumSignature(sig, owner);
+            signer = owner;
+          }
+        }
+        if (cancelled || !payload) return;
+        const status = parseForumAgentStatus(payload);
+        if (!status) return;
+        const owner = graphRef.current?.ownerOf(status.id);
+        if (!authorizeForumStatus({ status, mapKey: key, signer, owner, forumId: PILOT_FORUM_ID })) {
+          return;
+        }
         setMeshStatus((prev) => {
+          const existing = prev.get(status.seaPubkey);
+          if (existing && existing.lastUpdate > status.lastUpdate) return prev;
           const next = new Map(prev);
           next.set(status.seaPubkey, status);
           return next;
         });
-      });
-      offNeeds = forum.get("needs").map().on((data) => {
-        const need = parseForumNeed(data);
-        if (!need || need.forumId !== PILOT_FORUM_ID) return;
+        setLocalStatus((prev) => {
+          const local = prev.get(status.seaPubkey);
+          if (!local || status.lastUpdate < local.lastUpdate) return prev;
+          const next = new Map(prev);
+          next.delete(status.seaPubkey);
+          return next;
+        });
+      }
+      async function acceptNeed(data: unknown, key: string | undefined) {
+        const sig = signatureOf(data);
+        const hintedId = data && typeof data === "object" ? (data as { id?: unknown }).id : undefined;
+        if (!sig || typeof hintedId !== "string") return;
+        if (key !== undefined && key !== hintedId) return;
+        const owner = graphRef.current?.ownerOf(hintedId);
+        if (!owner) return;
+        const payload = await readForumSignature(sig, owner);
+        if (cancelled || !payload) return;
+        const need = parseForumNeed(payload);
+        if (!need || !authorizeForumNeed(need, owner, owner, PILOT_FORUM_ID)) return;
+        if (key !== undefined && key !== need.id) return;
+        watchOffers(need.id);
         setMeshNeeds((prev) => {
           const next = new Map(prev);
           next.set(need.id, need);
           return next;
         });
-        watchOffers(need.id);
-      });
-      offAlarm = forum.get("alarm").on((data) => {
-        setAlarmHeard(true);
-        setMeshAlarm(parseAlarm(data));
-      });
-      offItems = gun.get("s3rch").get("items").map().on((data) => {
-        const item = forumStatementFromNode(data, PILOT_FORUM_ID);
-        if (!item) return;
+      }
+      async function acceptAlarm(data: unknown) {
+        const sig = signatureOf(data);
+        const owner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
+        if (!sig || !owner) return;
+        const payload = await readForumSignature(sig, owner);
+        if (cancelled || !payload || typeof payload !== "object") return;
+        const alarm = parseAlarm(payload);
+        if (alarm && authorizeForumAlarm(alarm, owner, owner, PILOT_FORUM_ID)) {
+          setAlarmHeard(true);
+          setMeshAlarm(alarm);
+          return;
+        }
+        const pinned = (payload as { pinned?: unknown }).pinned;
+        const forumId = (payload as { forumId?: unknown }).forumId;
+        if (pinned === 0 && forumId === PILOT_FORUM_ID) {
+          setAlarmHeard(true);
+          setMeshAlarm(null);
+        }
+      }
+      async function acceptChat(data: unknown, key: string | undefined) {
+        if (data === undefined) return;
+        const live = forumStatementFromNode(data, PILOT_FORUM_ID);
+        if (!live) {
+          const ids = chatRetractionIds(data, key, knownChatIds());
+          if (ids.length > 0) hideChat(ids);
+          return;
+        }
+        const sig = signatureOf(data);
+        const author = live.author;
+        if (!sig) return;
+        const payload = await readForumSignature(sig, author);
+        if (cancelled || !payload) return;
+        const item = forumStatementFromNode(payload, PILOT_FORUM_ID);
+        if (!item || !authorizeForumChat(item, author, key, PILOT_FORUM_ID)) return;
+        setHiddenChat((prev) => prev.filter((id) => !soulKeyMatches(item.id, id)));
         setMeshChat((prev) => {
           if (prev.some((row) => row.id === item.id)) {
             return prev.map((row) => (row.id === item.id ? item : row));
           }
           return [...prev, item];
         });
+      }
+      const watchOffers = (needId: string) => {
+        if (!isForumObjectId(needId, "need") || watchedOffers.has(needId)) return;
+        watchedOffers.add(needId);
+        offerOffs.push(
+          forum.get("needs").get(needId).get("offers").map().on((data, key) => {
+            if (cancelled) return;
+            if (data === null && typeof key === "string") {
+              setMeshOffers((prev) => {
+                if (!prev.has(key)) return prev;
+                const next = new Map(prev);
+                next.delete(key);
+                return next;
+              });
+              return;
+            }
+            void acceptOffer(data, typeof key === "string" ? key : undefined);
+          }),
+        );
+      };
+      for (const need of PILOT_NEEDS) watchOffers(need.id);
+      offAgents = forum.get("agents").map().on((data, key) => {
+        if (cancelled) return;
+        if (data === null && typeof key === "string") {
+          setMeshStatus((prev) => {
+            if (!prev.has(key)) return prev;
+            const next = new Map(prev);
+            next.delete(key);
+            return next;
+          });
+          return;
+        }
+        void acceptStatus(data, typeof key === "string" ? key : undefined);
+      });
+      offNeeds = forum.get("needs").map().on((data, key) => {
+        if (cancelled) return;
+        if (data === null && typeof key === "string") {
+          setMeshNeeds((prev) => {
+            if (!prev.has(key)) return prev;
+            const next = new Map(prev);
+            next.delete(key);
+            return next;
+          });
+          return;
+        }
+        void acceptNeed(data, typeof key === "string" ? key : undefined);
+      });
+      offAlarm = forum.get("alarm").on((data) => {
+        if (cancelled) return;
+        void acceptAlarm(data);
+      });
+      offItems = gun.get("s3rch").get("items").map().on((data, key) => {
+        if (cancelled) return;
+        const mapKey = typeof key === "string" ? key : undefined;
+        void acceptChat(data, mapKey);
       });
     })();
 
@@ -309,6 +459,8 @@ export function SquadForum() {
   }, [selected]);
 
   const graph: SeeGraph | null = see ? overlaySeeGraph(see.acl, sampleAcl) : null;
+  graphRef.current = graph;
+  chatIdsRef.current = [...PILOT_CHAT, ...meshChat, ...localChat].map((item) => item.id);
 
   const needs = useMemo(() => {
     const map = new Map<string, ForumNeed>();
@@ -322,7 +474,8 @@ export function SquadForum() {
     const merged = mergeAgents(PILOT_AGENTS, [...meshStatus.values()]);
     return merged.map((agent) => {
       const over = localStatus.get(agent.status.seaPubkey);
-      return over ? { ...agent, status: over } : agent;
+      const status = pickDisplayedStatus(agent.status, over);
+      return status === agent.status ? agent : { ...agent, status };
     });
   }, [localStatus, meshStatus]);
 
@@ -344,11 +497,11 @@ export function SquadForum() {
 
   const chat = useMemo(() => {
     const map = new Map<string, FeedItem>();
-    for (const item of PILOT_CHAT) map.set(item.id, item);
-    for (const item of meshChat) map.set(item.id, item);
-    for (const item of localChat) map.set(item.id, item);
+    for (const item of withoutChatIds(PILOT_CHAT, hiddenChat)) map.set(item.id, item);
+    for (const item of withoutChatIds(meshChat, hiddenChat)) map.set(item.id, item);
+    for (const item of withoutChatIds(localChat, hiddenChat)) map.set(item.id, item);
     return [...map.values()].sort((a, b) => a.ts - b.ts || a.id.localeCompare(b.id));
-  }, [localChat, meshChat]);
+  }, [hiddenChat, localChat, meshChat]);
 
   const requireGraph = useCallback((): SeeGraph | null => {
     if (!see?.ready || !graph) {
@@ -483,8 +636,9 @@ export function SquadForum() {
   function onReply(agent: SquadAgent) {
     setDraft(`@${agent.label} `);
     setTab("chat");
+    setSelected(null);
     setNotice("");
-    queueMicrotask(() => composerRef.current?.focus());
+    window.setTimeout(() => composerRef.current?.focus(), 0);
   }
 
   function onPause(agent: SquadAgent) {
@@ -505,8 +659,11 @@ export function SquadForum() {
       map.set(next.seaPubkey, next);
       return map;
     });
-    const wrote = putSoul(gunRef.current, forumAgentSoul(next.forumId, next.seaPubkey), next);
-    setNotice(wrote ? "Paused." : "Paused on this browser. The mesh peer was not ready.");
+    void putAuthedStatus(next, seaPub).then((wrote) => {
+      if (wrote === "signed") setNotice("Paused.");
+      else if (wrote === "offline") setNotice("Paused on this browser. The mesh peer was not ready.");
+      else setNotice("Paused on this browser. The mesh put needs a signature from this SEA key.");
+    });
   }
 
   function onReassign(agent: SquadAgent) {
@@ -532,11 +689,29 @@ export function SquadForum() {
       map.set(next.seaPubkey, next);
       return map;
     });
-    const wrote = putSoul(gunRef.current, forumAgentSoul(next.forumId, next.seaPubkey), next);
-    setNotice(wrote ? "Reassigned." : "Reassigned on this browser. The mesh peer was not ready.");
+    void putAuthedStatus(next, seaPub).then((wrote) => {
+      if (wrote === "signed") setNotice("Reassigned.");
+      else if (wrote === "offline") setNotice("Reassigned on this browser. The mesh peer was not ready.");
+      else setNotice("Reassigned on this browser. The mesh put needs a signature from this SEA key.");
+    });
   }
 
-  function onSend() {
+  async function putAuthedStatus(
+    status: ForumAgentStatus,
+    writer: string,
+  ): Promise<"signed" | "offline" | "local"> {
+    const pair = pairRef.current;
+    if (!pair || pair.pub !== writer) return "local";
+    const sig = await signForumRecord(status, pair);
+    if (!sig) return "local";
+    const wrote = putSoul(gunRef.current, forumAgentSoul(status.forumId, status.seaPubkey), {
+      ...status,
+      sig,
+    });
+    return wrote ? "signed" : "offline";
+  }
+
+  async function onSend() {
     if (!see?.ready || !seaPub) {
       setNotice(seaPub ? "Check is still loading." : "A SEA key on this browser is required.");
       return;
@@ -566,11 +741,15 @@ export function SquadForum() {
       setNotice("Statement was not accepted.");
       return;
     }
-    const wrote = putSoul(gunRef.current, soul, node);
+    const pair = pairRef.current;
+    const sig = pair && pair.pub === seaPub ? await signForumRecord(node, pair) : null;
+    const wrote = sig ? putSoul(gunRef.current, soul, { ...node, sig }) : false;
     void see.persist();
     setLocalChat((prev) => [...prev, item]);
     setDraft("");
-    setNotice(wrote ? "Statement sent." : "Statement kept on this browser. The mesh peer was not ready.");
+    if (!sig) setNotice("Statement kept on this browser. The mesh put needs a signature from this SEA key.");
+    else if (!wrote) setNotice("Statement kept on this browser. The mesh peer was not ready.");
+    else setNotice("Statement sent.");
   }
 
   const wallet = session?.address
@@ -917,7 +1096,7 @@ function ChatColumn({
   chat: FeedItem[];
   draft: string;
   setDraft: (value: string) => void;
-  onSend: () => void;
+  onSend: () => void | Promise<void>;
   composerRef?: { current: HTMLTextAreaElement | null };
   seaLabel: string;
 }) {
