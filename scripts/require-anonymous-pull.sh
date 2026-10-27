@@ -6,7 +6,8 @@ set -euo pipefail
 : "${IMAGE:?}"
 : "${VERSION:?}"
 
-if ! printf '%s' "$IMAGE" | grep -Eq '^ghcr\.io/[a-z0-9._/-]+$'; then
+expected="ghcr.io/$(printf '%s' "${GITHUB_REPOSITORY:-}" | tr '[:upper:]' '[:lower:]')"
+if [ "$IMAGE" != "$expected" ]; then
   echo "unexpected image name" >&2
   exit 1
 fi

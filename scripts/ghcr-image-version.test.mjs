@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { platformManifestDigest, versionFromImageConfig } from "./ghcr-image-version.mjs";
+import { imageForRepository, platformManifestDigest, versionFromImageConfig } from "./ghcr-image-version.mjs";
 
 describe("GHCR image version", () => {
   it("reads the version label and ignores other text", () => {
@@ -16,6 +16,11 @@ describe("GHCR image version", () => {
       }),
       null,
     );
+  });
+
+  it("names the image from the repository", () => {
+    assert.equal(imageForRepository("FyberLabs/s3r.ch"), "ghcr.io/fyberlabs/s3r.ch");
+    assert.equal(imageForRepository("not a repo"), null);
   });
 
   it("picks the linux/amd64 digest from an index", () => {

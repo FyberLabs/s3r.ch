@@ -25,7 +25,11 @@ case "$LATEST_MOVED" in
 esac
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-template="${root}/.github/RELEASE_TEMPLATE.md"
+template="${TEMPLATE:-${root}/.github/RELEASE_TEMPLATE.md}"
+if [ ! -f "$template" ]; then
+  echo "Release notes template is missing." >&2
+  exit 1
+fi
 grep -Fq '## Config changes' "$template"
 grep -Fq '## Migration' "$template"
 

@@ -31,6 +31,8 @@ export function platformManifestDigest(manifest) {
   return hit.digest;
 }
 
+const DIGEST = /^sha256:[0-9a-f]{64}$/;
+
 export function registryRepo(image) {
   const name = String(image ?? "").trim();
   if (!/^ghcr\.io\/[a-z0-9._/-]+$/.test(name)) {
@@ -39,11 +41,22 @@ export function registryRepo(image) {
   return name.slice("ghcr.io/".length);
 }
 
-async function anonymousToken(repo) {
+export function imageForRepository(repository) {
+  const name = String(repository ?? "").trim().toLowerCase();
+  if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(name)) return null;
+  return `ghcr.io/${name}`;
+}
+
+export async function registryToken(repo, githubToken, actor) {
   const url = new URL("https://ghcr.io/token");
   url.searchParams.set("service", "ghcr.io");
   url.searchParams.set("scope", `repository:${repo}:pull`);
-  const response = await fetch(url);
+  const headers = {};
+  if (githubToken) {
+    const user = actor || "github";
+    headers.Authorization = `Basic ${Buffer.from(`${user}:${githubToken}`).toString("base64")}`;
+  }
+  const response = await fetch(url, { headers });
   if (!response.ok) {
     throw new Error(`GHCR token request failed (${response.status})`);
   }
@@ -52,15 +65,14 @@ async function anonymousToken(repo) {
   return body.token;
 }
 
-async function readManifest(repo, reference, token) {
+async function fetchManifest(repo, reference, token) {
   const response = await fetch(`https://ghcr.io/v2/${repo}/manifests/${reference}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: ACCEPT },
   });
-  if (response.status === 404) return null;
-  if (!response.ok) {
-    throw new Error(`GHCR manifest ${reference} returned ${response.status}`);
-  }
-  return response.json();
+  const digest = String(response.headers.get("docker-content-digest") ?? "").trim();
+  if (response.status === 404) return { status: 404, digest: "", body: null };
+  if (!response.ok) return { status: response.status, digest, body: null };
+  return { status: response.status, digest, body: await response.json() };
 }
 
 async function readConfig(repo, digest, token) {
@@ -74,22 +86,42 @@ async function readConfig(repo, digest, token) {
   return response.json();
 }
 
-/** @returns {Promise<string | null>} */
-export async function fetchTagVersion(image, tag) {
+/**
+ * Read the tag's manifest digest and version label.
+ * A missing tag returns null. A private package, a missing digest, or a tag
+ * without an X.Y.Z version label throws so the caller does not overwrite it.
+ * Pass githubToken so a private tag is visible to this job.
+ * @returns {Promise<{ digest: string, versionLabel: string } | null>}
+ */
+export async function fetchTagRelease(image, tag, options = {}) {
   const repo = registryRepo(image);
-  const token = await anonymousToken(repo);
-  let manifest = await readManifest(repo, tag, token);
-  if (!manifest) return null;
+  const token = await registryToken(repo, options.githubToken, options.actor);
+  const first = await fetchManifest(repo, tag, token);
+  if (first.status === 404) return null;
+  if (first.status !== 200) {
+    throw new Error(`GHCR manifest ${tag} returned ${first.status}`);
+  }
+  if (!DIGEST.test(first.digest)) {
+    throw new Error(`GHCR tag ${tag} did not return a sha256 digest`);
+  }
+  let manifest = first.body;
   const nested = platformManifestDigest(manifest);
   if (nested) {
-    manifest = await readManifest(repo, nested, token);
-    if (!manifest) throw new Error(`GHCR manifest ${nested} is missing`);
+    const child = await fetchManifest(repo, nested, token);
+    if (child.status !== 200) throw new Error(`GHCR manifest ${nested} returned ${child.status}`);
+    manifest = child.body;
   }
-  const digest = manifest.config?.digest;
-  if (!digest) throw new Error(`GHCR tag ${tag} has no config digest`);
-  const version = versionFromImageConfig(await readConfig(repo, digest, token));
-  if (!version) {
+  const configDigest = manifest?.config?.digest;
+  if (!configDigest) throw new Error(`GHCR tag ${tag} has no config digest`);
+  const versionLabel = versionFromImageConfig(await readConfig(repo, configDigest, token));
+  if (!versionLabel) {
     throw new Error(`${image}:${tag} has no X.Y.Z org.opencontainers.image.version label`);
   }
-  return version;
+  return { digest: first.digest, versionLabel };
+}
+
+/** @returns {Promise<string | null>} */
+export async function fetchTagVersion(image, tag) {
+  const found = await fetchTagRelease(image, tag);
+  return found?.versionLabel ?? null;
 }

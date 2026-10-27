@@ -1,6 +1,6 @@
 # Packaged release
 
-A `vX.Y.Z` tag (no pre-release suffix) builds the repo `Dockerfile` and publishes one linux/amd64 image to GHCR. The workflow pushes the immutable `X.Y.Z` tag and records that digest on the GitHub Release. It moves `X.Y` and `latest` only when this version is greater than or equal to the version those tags already have.
+A `vX.Y.Z` tag (no pre-release suffix) builds the repo `Dockerfile` and publishes one linux/amd64 image to GHCR. The first publish of `X.Y.Z` records that digest. A rerun reuses the published digest and does not upload a replacement image. The workflow moves `X.Y` and `latest` only when this version is greater than or equal to the version those tags already have.
 
 The image name is `ghcr.io/` plus the repository name in lowercase. For this repository that is `ghcr.io/fyberlabs/s3r.ch`.
 
@@ -11,17 +11,17 @@ ghcr.io/fyberlabs/s3r.ch:latest
 ghcr.io/fyberlabs/s3r.ch@sha256:<digest>
 ```
 
-Pin the digest from the Release. An equal version refreshes `X.Y` and `latest`. An older tag does not replace a newer alias. The comparison uses the image label `org.opencontainers.image.version`. One publish runs at a time, so two tags cannot update those aliases together. The Release body is [`.github/RELEASE_TEMPLATE.md`](../.github/RELEASE_TEMPLATE.md) with the digest filled in. It always has **Config changes** and **Migration** sections. Edit those in the template on the commit you tag, or edit the Release after it is published. The notes list `X.Y` and `latest` only when this run moved them.
+Pin the digest from the Release. `X.Y.Z` stays on the first published digest. If that tag already exists with a different version label, the job fails instead of replacing it. An equal version refreshes `X.Y` and `latest` from the published image. An older tag does not replace a newer alias. The comparison uses the image label `org.opencontainers.image.version`. One publish runs at a time. Later tag runs stay queued, including while a run is waiting for approval, so a new tag does not cancel one that is already waiting. The Release body is [`.github/RELEASE_TEMPLATE.md`](../.github/RELEASE_TEMPLATE.md) with the digest filled in. It always has **Config changes** and **Migration** sections. Edit those in the template on the commit you tag, or edit the Release after it is published. The notes list `X.Y` and `latest` only when this run moved them.
 
 `NEXT_PUBLIC_WC_PROJECT_ID` is empty in this image, so WalletConnect is left out of the bundle. Pass that build-arg only when you build the Dockerfile yourself.
 
 ## Before the first tag
 
-The Release workflow does not change package visibility. Alias updates and the GitHub Release wait until the checks below succeed.
+The Release workflow does not change package visibility. Alias updates and the GitHub Release wait until the checks below succeed. Authorization runs from the default branch, not from the tagged commit.
 
-1. Create a GitHub environment named `release` and require at least one reviewer. The publish job uses that environment, so it waits for approval. The job also reads the environment and stops if that reviewer rule is missing. GitHub may create an empty `release` environment the first time the workflow is queued; add the reviewer and rerun.
-2. Protect the default branch. The tag must point at a commit that is already on that branch. Any other commit is refused before the image is pushed.
-3. Set the GHCR package to Public in package settings. Do this once, after the package exists. The job pushes `X.Y.Z`, then pulls that tag with an empty Docker credential file. If the anonymous pull fails, the job stops. `X.Y` and `latest` stay put, and the GitHub Release is not created. Set the package to Public and rerun the workflow.
+1. Create a GitHub environment named `release` and require at least one reviewer before pushing a version tag. The publish job uses that environment, so it waits for approval. The default-branch script also reads the environment and stops if that reviewer rule is missing. A tag pushed before the environment has a required reviewer does not publish. Create the environment, then rerun.
+2. Protect the default branch. The tag must point at a commit that is already on that branch. The release scripts that decide whether to publish are the copies on that branch. A checkout that does not match them is refused before the image is pushed.
+3. Set the GHCR package to Public in package settings. Do this once, after the package exists. The job pushes `X.Y.Z` only when that tag is absent, then pulls it with an empty Docker credential file. A rerun keeps the digest already stored for that tag. If the anonymous pull fails, the job stops. `X.Y` and `latest` stay put, and the GitHub Release is not created. Set the package to Public and rerun the workflow.
 
 Install steps for a core deployment and for optional Panopticon are [install-minimal.md](install-minimal.md) and [install-panopticon.md](install-panopticon.md). Every `S3RCH_*`, `PANOPTICON_*`, and Gun setting is [configuration.md](configuration.md).
 

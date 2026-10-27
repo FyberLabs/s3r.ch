@@ -1,10 +1,31 @@
 /**
- * Stop a tag publish unless a reviewer must approve the release environment
- * and the tag commit is on the protected default branch.
+ * Stop a tag publish unless a reviewer must approve the release environment,
+ * the tag commit is on the protected default branch, and this checkout matches
+ * the release scripts on that branch.
  */
 import { execFileSync } from "node:child_process";
 
 const ENVIRONMENT = "release";
+
+export const TRUSTED_RELEASE_FILES = [
+  "scripts/require-release-gates.mjs",
+  "scripts/publish-version-tag.mjs",
+  "scripts/advance-release-aliases.mjs",
+  "scripts/ghcr-image-version.mjs",
+  "scripts/release-aliases.mjs",
+  "scripts/version-tag-plan.mjs",
+  "scripts/require-anonymous-pull.sh",
+  "scripts/publish-github-release.sh",
+];
+
+export function trustedTreeErrors(checks) {
+  const errors = [];
+  for (const check of checks) {
+    if (!check.present) errors.push(`${check.path} is not on the default branch.`);
+    else if (!check.same) errors.push(`${check.path} does not match the default branch.`);
+  }
+  return errors;
+}
 
 export function reviewerCount(environment) {
   const rules = Array.isArray(environment?.protection_rules) ? environment.protection_rules : [];
@@ -40,15 +61,39 @@ function gh(path) {
   return JSON.parse(out);
 }
 
-function onDefaultBranch(sha, branch) {
+function fetchBranch(branch) {
   execFileSync(
     "git",
     ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`],
     { stdio: "inherit" },
   );
+}
+
+function trustedChecks(branch) {
+  return TRUSTED_RELEASE_FILES.map((file) => {
+    let present = true;
+    try {
+      execFileSync("git", ["cat-file", "-e", `origin/${branch}:${file}`], { stdio: "ignore" });
+    } catch {
+      present = false;
+    }
+    let same = false;
+    if (present) {
+      try {
+        execFileSync("git", ["diff", "--quiet", `origin/${branch}`, "--", file], { stdio: "ignore" });
+        same = true;
+      } catch (error) {
+        if (error.status !== 1) throw error;
+      }
+    }
+    return { path: file, present, same };
+  });
+}
+
+function onDefaultBranch(sha, branch) {
   try {
     execFileSync("git", ["merge-base", "--is-ancestor", sha, `origin/${branch}`], {
-      stdio: "inherit",
+      stdio: "ignore",
     });
     return true;
   } catch {
@@ -59,7 +104,7 @@ function onDefaultBranch(sha, branch) {
 function main() {
   const repo = process.env.GITHUB_REPOSITORY;
   const sha = process.env.GITHUB_SHA;
-  if (!repo || !sha) {
+  if (!repo || !/^[0-9a-f]{40}$/.test(sha || "")) {
     console.error("GITHUB_REPOSITORY and GITHUB_SHA are required.");
     process.exit(1);
   }
@@ -69,18 +114,21 @@ function main() {
     console.error("Unexpected default branch name.");
     process.exit(1);
   }
+  fetchBranch(branchName);
+  const errors = trustedTreeErrors(trustedChecks(branchName));
   let environment;
   try {
     environment = gh(`repos/${repo}/environments/${ENVIRONMENT}`);
   } catch (error) {
     console.error(error.message);
-    console.error(
-      `The "${ENVIRONMENT}" environment must exist and require at least one reviewer.`,
+    errors.push(
+      `The "${ENVIRONMENT}" environment must exist and require at least one reviewer before a tag is pushed.`,
     );
-    process.exit(1);
   }
-  const branch = gh(`repos/${repo}/branches/${branchName}`);
-  const errors = gateErrors(environment, branch);
+  if (environment) {
+    const branch = gh(`repos/${repo}/branches/${branchName}`);
+    errors.push(...gateErrors(environment, branch));
+  }
   if (!onDefaultBranch(sha, branchName)) {
     errors.push(`Tag commit ${sha} is not on ${branchName}.`);
   }
