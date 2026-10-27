@@ -115,6 +115,16 @@ describe("views state", () => {
     assert.deepEqual(e, { current: { id: "v1", vv: { d1: 2, d2: 1 }, deleted: true }, conflicts: [] });
   });
 
+  it("joins concurrent versions with the same content into one", () => {
+    const a: ViewVersion = { id: "v1", vv: { d0: 1, d1: 1 }, view: view("v1", "same") };
+    const b: ViewVersion = { id: "v1", vv: { d0: 1, d2: 1 }, view: view("v1", "same") };
+    const c: ViewVersion = { id: "v1", vv: { d0: 1, d3: 1 }, view: view("v1", "other") };
+    assert.deepEqual(mergeVersion(mergeVersion(undefined, a), b), { current: { id: "v1", vv: { d0: 1, d1: 1, d2: 1 }, view: view("v1", "same") }, conflicts: [] });
+    const three = mergeVersion(mergeVersion(mergeVersion(undefined, c), a), b);
+    assert.equal(three.conflicts.length, 1);
+    assert.deepEqual([three.current, ...three.conflicts].map((v) => v.view!.title).sort(), ["other", "same"]);
+  });
+
   it("caps recents, dedupes and keeps most recent first", () => {
     let s = emptyState(ALICE, "d1");
     for (let i = 0; i < RECENTS_MAX + 5; i++) s = touchRecent(s, ref(`r${i}`), i);

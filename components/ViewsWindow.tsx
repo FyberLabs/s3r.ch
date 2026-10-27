@@ -6,7 +6,7 @@
  * composer. Merged feed windows interleave sources with a chip on every row; tabbed windows
  * show one source at a time.
  */
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { btnPrimary, field } from "@/lib/brand-ui";
 import type { AccessState } from "@/lib/views-access";
 import type { ViewRow } from "@/lib/views-adapters";
@@ -54,6 +54,10 @@ export type ViewsWindowProps = {
   lastTarget?: SourceRef;
   onRemoveSource?: (ref: SourceRef) => void;
   onSend?: (target: SourceRef, text: string) => void;
+  /** New rows since the window was last seen; a badge is shown when above zero. */
+  unread?: number;
+  /** Extra header controls (the View route's maximize button). */
+  actions?: ReactNode;
 };
 
 export function ViewsWindow(props: ViewsWindowProps) {
@@ -72,6 +76,11 @@ export function ViewsWindow(props: ViewsWindowProps) {
         <h3 id={titleId} className="text-sm font-semibold">
           {windowTitle(w, label)}
         </h3>
+        {props.unread ? (
+          <span className="bg-signal px-1.5 text-xs font-semibold text-on-signal" aria-label={`${props.unread} unread`}>
+            {props.unread > 99 ? "99+" : props.unread}
+          </span>
+        ) : null}
         {w.mode === "tabs" ? (
           <div role="tablist" aria-label="Sources" className="flex flex-wrap gap-1">
             {w.sources.map((s, i) => (
@@ -87,11 +96,13 @@ export function ViewsWindow(props: ViewsWindowProps) {
             ))}
           </div>
         )}
+        {props.actions ? <div className="ml-auto flex items-center gap-1">{props.actions}</div> : null}
       </header>
       <div className="px-3 pt-2">
         <ViewsWindowStatus window={w} access={access} declined={props.declined} label={label} />
       </div>
       <ol className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2 text-sm">
+        {shown.length === 0 ? <li className="text-ink-muted">Nothing to show yet.</li> : null}
         {shown.map((r) => (
           <Row key={r.key} row={r} window={w} label={label} chip={w.mode !== "single"} onReply={canReply(r.source) ? () => setReplyTo(r.source) : undefined} />
         ))}
