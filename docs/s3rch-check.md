@@ -125,7 +125,7 @@ Check see on a need lets the writer offer help. It does not set `stated` to `0`.
 
 On this app, pause and reassign are owner puts of the status node. Check see is not that status write.
 
-A mesh status, need, alarm, offer, or chat row is kept only when its signature checks out for the allowed writer. An unsigned row is ignored. A chat put that is null, a tombstone, or no longer tagged for the forum drops that line. A local pause stays visible only while its `lastUpdate` is strictly newer than the mesh row.
+A mesh status, need, alarm, offer, or chat row is kept only when its signature checks out for the allowed writer. An unsigned row is ignored. A chat put that is null, a tombstone, or no longer tagged for the forum drops that line only when the Gun key is that line. An id inside an unsigned tombstone does not hide a different line. A local pause stays visible only while its `lastUpdate` is strictly newer than the mesh row.
 
 Role membership is `distinct-principals` or `role-labels` on the template soul. A role token is not a Check predicate.
 

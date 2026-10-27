@@ -8,7 +8,7 @@ import {
   fromGunNode,
   type FeedItem,
 } from "@/lib/feed-types";
-import { readUnshareId, soulKeyMatches } from "@/lib/unshare";
+import { soulKeyMatches } from "@/lib/unshare";
 import {
   forumChatTag,
   forumChatTagPresent,
@@ -417,8 +417,9 @@ export function pickDisplayedStatus(
 
 /**
  * Ids to drop when a chat put is a tombstone, Gun `null`, or no longer a
- * forum statement. `undefined` is not a retract. A sibling id under a
- * different Gun key does not match a known line.
+ * forum statement. `undefined` is not a retract. Only the Gun map key can
+ * name the line, and only when it soul-matches a line already shown. An
+ * unsigned payload `id` on a tombstone is not a hide target.
  */
 export function chatRetractionIds(
   data: unknown,
@@ -426,18 +427,10 @@ export function chatRetractionIds(
   knownIds: readonly string[],
 ): string[] {
   if (data === undefined) return [];
-  if (data === null) {
-    return typeof key === "string" && key.trim() ? [key.trim()] : [];
-  }
-  const unshared = readUnshareId(data, key);
-  if (unshared && data && typeof data === "object" && "unshared" in data) {
-    const marker = (data as { unshared?: unknown }).unshared;
-    if (marker !== undefined && marker !== null && marker !== "") return [unshared];
-  }
-  if (typeof key !== "string" || !key.trim()) return [];
-  const trimmed = key.trim();
-  if (!knownIds.some((known) => soulKeyMatches(known, trimmed))) return [];
-  return [trimmed];
+  const mapKey = typeof key === "string" ? key.trim() : "";
+  if (!mapKey) return [];
+  if (!knownIds.some((known) => soulKeyMatches(known, mapKey))) return [];
+  return [mapKey];
 }
 
 export function withoutChatIds(items: readonly FeedItem[], ids: readonly string[]): FeedItem[] {

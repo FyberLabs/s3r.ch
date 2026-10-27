@@ -180,6 +180,22 @@ describe("squad view", () => {
     assert.deepEqual(chatRetractionIds(null, line.id, [line.id]), [line.id]);
     assert.deepEqual(chatRetractionIds(undefined, line.id, [line.id]), []);
     assert.deepEqual(chatRetractionIds({ id: line.id, unshared: 1 }, line.id, [line.id]), [line.id]);
+    const other = PILOT_CHAT[1];
+    assert.ok(other);
+    assert.deepEqual(
+      chatRetractionIds({ id: line.id, unshared: 1 }, "stmt-forged", [line.id, other.id]),
+      [],
+    );
+    assert.deepEqual(
+      chatRetractionIds({ id: other.id, unshared: 1 }, line.id, [line.id, other.id]),
+      [line.id],
+    );
+    assert.deepEqual(
+      withoutChatIds([line, other], chatRetractionIds({ id: line.id, unshared: 1 }, "stmt-forged", [line.id, other.id])).map(
+        (item) => item.id,
+      ),
+      [line.id, other.id],
+    );
     assert.deepEqual(chatRetractionIds({ id: line.id, tags: "" }, line.id, [line.id]), [line.id]);
     assert.deepEqual(chatRetractionIds({ id: line.id, tags: "" }, "stmt-forged", [line.id]), []);
     assert.deepEqual(
