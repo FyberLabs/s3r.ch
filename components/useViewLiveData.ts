@@ -5,8 +5,8 @@
  * picker's Browse list from the same rooms, channels and feeds. Access is `sourceAccess`
  * against the signed-in owner and the See ACL graph, refreshed when that graph or the
  * clock changes. A forum channel the server returned, and a native feed named by a loaded
- * item, become readable. The signed-in owner's mesh rooms are registered on the dest ACL
- * after it has loaded. Public chat stops when its room is unpublished. Other networks stay
+ * item, become readable. A public room node is not written into the dest ACL. Public chat
+ * stops when its room is unpublished. Other networks stay
  * on "Needs connection" until plan item 13.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -32,7 +32,6 @@ import {
   readFeedItems,
   readForumCatalog,
   resolveLoadedAccess,
-  roomOwnershipToRegister,
   rowsForChat,
   rowsForFeed,
   rowsForForum,
@@ -285,15 +284,6 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
       setPublicEpoch((n) => n + 1);
     };
   }, [enabled, rememberItems]);
-
-  useEffect(() => {
-    if (!enabled || !see?.ready || !see.acl || !owner) return;
-    const graph = see.acl;
-    const rowsToOwn = roomOwnershipToRegister(rooms, owner, graph);
-    if (rowsToOwn.length === 0) return;
-    for (const row of rowsToOwn) graph.putObject(row.object, row.owner);
-    void persistRef.current?.();
-  }, [enabled, see?.ready, see?.acl, owner, rooms]);
 
   useEffect(() => {
     if (!enabled || !gunReady || !owner || !see?.ready) return;

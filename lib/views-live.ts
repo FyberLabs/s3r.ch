@@ -11,7 +11,7 @@ import { getAddress } from "viem";
 import type { ChatMessage } from "./chat";
 import { isFeedSource, type FeedItem } from "./feed-types";
 import type { ForumMessage } from "./forum";
-import { roomSoul, sameAccessor, type SeeGraph } from "./identity/check";
+import { sameAccessor, type SeeGraph } from "./identity/check";
 import { soulKeyMatches } from "./unshare";
 import { sourceAccess, type AccessContext, type AccessState } from "./views-access";
 import { chatRow, feedRow, feedSourceRef, forumRow, forumSourceRef, roomSourceRef, type ViewRow } from "./views-adapters";
@@ -203,34 +203,20 @@ export function resolveLoadedAccess(
 }
 
 /**
- * Room objects the signed-in owner should add to the dest ACL.
- * Only a room whose validated owner is that signer, and only when the ACL does not already
- * name the room. Call after the ACL has finished loading: a load replaces the graph and
- * drops an earlier put. An object that is already present is left alone.
+ * Public `s3rch/rooms` nodes are not dest-ACL admits.
+ * `owner` on that node is an unsigned field, so a mesh writer can set it to any address
+ * and any room id. This returns no writes. Dest ownership comes from a local admit, a grant
+ * delivery, or a mesh ACL edge — not from opening a View.
  */
-export function roomOwnershipToRegister(
+export function aclWritesFromPublicRooms(
   rooms: readonly CatalogRoom[],
   me: string | undefined,
   graph: SeeGraph,
-): { object: string; owner: string }[] {
-  if (!me) return [];
-  const out: { object: string; owner: string }[] = [];
-  const seen = new Set<string>();
-  for (const room of rooms) {
-    if (!room.id || !room.owner) continue;
-    let owner: string;
-    try {
-      owner = getAddress(room.owner);
-    } catch {
-      continue;
-    }
-    if (!sameAccessor(owner, me)) continue;
-    const object = roomSoul(room.id);
-    if (seen.has(object) || graph.hasObject(object)) continue;
-    seen.add(object);
-    out.push({ object, owner });
-  }
-  return out;
+): readonly { object: string; owner: string }[] {
+  void rooms;
+  void me;
+  void graph;
+  return [];
 }
 
 /** Public room chat runs only while that room is still published. Other kinds are unaffected. */

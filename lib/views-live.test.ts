@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import type { ChatMessage } from "./chat";
 import type { FeedItem } from "./feed-types";
 import { applySeeGrant, cancelSee, checkSee, roomSoul } from "./identity/check";
-import { createMemorySeeAcl, emptySeeAclSnapshot } from "./identity/see-acl";
+import { createMemorySeeAcl } from "./identity/see-acl";
 import { canShowRows, sourceAccess, sourceStatus, statusLabel } from "./views-access";
 import { windowRows } from "./views-decorators";
 import { formatCanonical, formatS3rchNetwork, type SourceRef } from "./views-source-ref";
@@ -17,10 +17,10 @@ import {
   feedSourceOf,
   observeSource,
   readFeedItems,
+  aclWritesFromPublicRooms,
   readForumCatalog,
   recheckView,
   resolveLoadedAccess,
-  roomOwnershipToRegister,
   rowsForChat,
   rowsForFeed,
   rowsForForum,
@@ -305,33 +305,22 @@ describe("loaded native access", () => {
   });
 });
 
-describe("owned room registration", () => {
-  it("registers a missing owned room after the graph loads and does not replace one already named", () => {
+describe("public room ownership", () => {
+  it("does not admit a dest owner from an unsigned public room", () => {
     const acl = createMemorySeeAcl();
+    const before = acl.snapshot();
     const rooms = [
       { id: "build", owner: ME, title: "ops" },
       { id: "ops", owner: ORG, title: "org" },
     ];
-    const mine = chat("build", ME);
-    const ctx = { me: ME, selfNetwork: DEPLOYMENT_SELF_NETWORK, graph: acl, now: NOW };
-    assert.deepEqual(sourceAccess(mine, ctx), { kind: "locked", reason: "missing-object" });
-
-    const early = roomOwnershipToRegister(rooms, ME, acl);
-    assert.deepEqual(early, [{ object: roomSoul("build"), owner: ME }]);
-    for (const row of early) acl.putObject(row.object, row.owner);
-    acl.replace(emptySeeAclSnapshot());
+    assert.deepEqual(aclWritesFromPublicRooms(rooms, ME, acl), []);
+    assert.deepEqual(acl.snapshot(), before);
     assert.equal(acl.hasObject(roomSoul("build")), false);
     assert.equal(checkSee(acl, roomSoul("build"), ME, NOW).reason, "missing-object");
-
-    for (const row of roomOwnershipToRegister(rooms, ME, acl)) acl.putObject(row.object, row.owner);
-    assert.deepEqual(sourceAccess(mine, ctx), { kind: "read", post: true });
-    assert.equal(acl.hasObject(roomSoul("ops")), false);
-    assert.deepEqual(roomOwnershipToRegister(rooms, ME, acl), []);
-
-    const held = createMemorySeeAcl();
-    held.putObject(roomSoul("build"), ORG);
-    assert.deepEqual(roomOwnershipToRegister(rooms, ME, held), []);
-    assert.equal(held.ownerOf(roomSoul("build")), ORG);
+    assert.deepEqual(sourceAccess(chat("build", ME), { me: ME, selfNetwork: DEPLOYMENT_SELF_NETWORK, graph: acl, now: NOW }), {
+      kind: "locked",
+      reason: "missing-object",
+    });
   });
 });
 
