@@ -8,11 +8,21 @@ set -euo pipefail
 : "${DIGEST:?}"
 : "${VERSION:?}"
 : "${MINOR:?}"
+: "${MINOR_MOVED:?}"
+: "${LATEST_MOVED:?}"
 
 if ! printf '%s' "$DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
   echo "DIGEST must look like sha256:<64 hex characters>" >&2
   exit 1
 fi
+case "$MINOR_MOVED" in
+  yes|no) ;;
+  *) echo "MINOR_MOVED must be yes or no" >&2; exit 1 ;;
+esac
+case "$LATEST_MOVED" in
+  yes|no) ;;
+  *) echo "LATEST_MOVED must be yes or no" >&2; exit 1 ;;
+esac
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 template="${root}/.github/RELEASE_TEMPLATE.md"
@@ -26,7 +36,22 @@ trap 'rm -f "$notes"' EXIT
   echo
   echo "Image: \`${IMAGE}@${DIGEST}\`"
   echo
-  echo "Tags: \`${VERSION}\`, \`${MINOR}\`, \`latest\` (linux/amd64)."
+  tags="\`${VERSION}\`"
+  if [ "$MINOR_MOVED" = "yes" ]; then
+    tags="${tags}, \`${MINOR}\`"
+  fi
+  if [ "$LATEST_MOVED" = "yes" ]; then
+    tags="${tags}, \`latest\`"
+  fi
+  echo "Tags: ${tags} (linux/amd64)."
+  if [ "$MINOR_MOVED" != "yes" ]; then
+    echo
+    echo "\`${MINOR}\` was left unchanged because this version is older than that alias."
+  fi
+  if [ "$LATEST_MOVED" != "yes" ]; then
+    echo
+    echo "\`latest\` was left unchanged because this version is older than that alias."
+  fi
   echo
   cat "$template"
 } >"$notes"
