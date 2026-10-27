@@ -149,9 +149,9 @@ async function decryptBytes(key: CryptoKey, additionalData: Uint8Array<ArrayBuff
   }
 }
 
-export async function encryptVersion(key: CryptoKey, owner: string, version: ViewVersion, hidden?: Causal): Promise<EncryptedRecord> {
+export async function encryptVersion(key: CryptoKey, owner: string, version: ViewVersion, hidden?: Causal[]): Promise<EncryptedRecord> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const payload = hidden ? { ...version, hidden } : version;
+  const payload = hidden?.length ? { ...version, hidden } : version;
   const ct = new Uint8Array(
     await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad(owner, version.id) }, key, enc.encode(canonicalJson(payload))),
   );
@@ -164,7 +164,7 @@ export async function decryptVersion(
   id: string,
   record: EncryptedRecord,
   notices: Notice[],
-): Promise<{ version: ViewVersion; hidden?: Causal } | null> {
+): Promise<{ version: ViewVersion; hidden?: Causal[] } | null> {
   try {
     const iv = fromB64u(record.iv);
     if (iv.length !== 12) return null;
@@ -249,7 +249,7 @@ export async function buildBackup(
   const used = new Set<string>();
   for (const entry of Object.values(state.views)) {
     for (const version of [entry.current, ...entry.conflicts]) {
-      const payload = entry.hidden ? { ...version, hidden: entry.hidden } : version;
+      const payload = entry.hidden?.length ? { ...version, hidden: entry.hidden } : version;
       const digest = await sha256Hex(`${keyId}\n${state.owner}\n${canonicalJson(payload)}`);
       let hit = cache.get(digest);
       if (!hit) {
@@ -330,7 +330,7 @@ function entryStamp(entry: ViewEntry): Causal {
   return maxCausal(
     { vv: entry.current.vv, folded: entry.current.folded },
     ...entry.conflicts.map((v) => ({ vv: v.vv, folded: v.folded })),
-    entry.hidden,
+    ...(entry.hidden ?? []),
   );
 }
 
@@ -365,7 +365,7 @@ export async function restoreBackup(
     if (!prior || m.seq > prior.seq) latest.set(m.writerId, m);
   }
   const prefsInputs: unknown[] = [];
-  const incoming = new Map<string, { version: ViewVersion; hidden?: Causal }[]>();
+  const incoming = new Map<string, { version: ViewVersion; hidden?: Causal[] }[]>();
   const retirementMaps: VersionVector[] = [];
   for (const m of latest.values()) {
     if (m.retirements && Object.keys(m.retirements).length) retirementMaps.push(m.retirements);
@@ -408,7 +408,7 @@ export async function restoreBackup(
         continue;
       }
       const version = expandVersion(parsed.version, map);
-      const hidden = parsed.hidden ? expandFolded(parsed.hidden, map) : undefined;
+      const hidden = parsed.hidden?.map((h) => expandFolded(h, map));
       const list = incoming.get(version.id) ?? [];
       list.push({ version, hidden });
       incoming.set(version.id, list);
@@ -429,8 +429,11 @@ export async function restoreBackup(
       if (merged.overflow) notices.push({ message: `View ${id} has more than ${CONFLICTS_MAX} conflicting copies; extra copies were dropped` });
     }
   }
-  enforceLimits(base.views, views, notices, dropped);
-  const merged = applyDropped({ ...prefsState, views, dropped });
+  // Deletion summaries free slots before the live and tombstone caps are applied. Summaries
+  // created while enforcing those caps are applied afterwards.
+  const prepared = applyDropped({ ...prefsState, views, dropped });
+  enforceLimits(base.views, prepared.views, notices, prepared.dropped);
+  const merged = applyDropped(prepared);
   // Retirements are adopted only after versions have been merged on their own stamps.
   return { state: adoptRetirements(merged, unionRetirements(retirementMaps)), notices };
 }
@@ -558,7 +561,7 @@ export function parseWriterSlot(key: string): { writerId: string; seq: number } 
   return { writerId: rest.slice(0, len), seq };
 }
 
-type Publication = { seq: number; manifest: Manifest };
+type Publication = { seq: number; manifest: Manifest; legacy: boolean };
 
 function readNode(chain: GraphChain): Promise<unknown> {
   return new Promise((resolve) => chain.once(resolve));
@@ -572,11 +575,11 @@ async function publicationsOf(user: GraphChain, writerId: string, pub: string): 
     const manifest = typeof value === "string" ? safeParse(value) : value;
     if (!isManifestShape(manifest) || manifest.owner === undefined) return;
     if (manifest.writerId !== writerId || manifest.seq !== seq || !(await verifyManifest(pub, manifest))) return;
-    out.push({ seq, manifest });
+    out.push({ seq, manifest, legacy: false });
   };
   if (typeof node === "string") {
     const manifest = safeParse(node);
-    if (isManifestShape(manifest) && manifest.writerId === writerId && (await verifyManifest(pub, manifest))) out.push({ seq: manifest.seq, manifest });
+    if (isManifestShape(manifest) && manifest.writerId === writerId && (await verifyManifest(pub, manifest))) out.push({ seq: manifest.seq, manifest, legacy: true });
     return out;
   }
   if (typeof node === "object" && node !== null) {
@@ -616,20 +619,30 @@ export async function writeBackupToGraph(
     const record = Object.hasOwn(backup.records, address) ? backup.records[address] : undefined;
     if (!isRecordShape(record) || (await recordAddress(record)) !== address) throw new Error("backup is missing or has altered records");
   }
-  // Serialized per writer across tabs; a lower or equal seq never replaces a published manifest.
-  return lock(`s3rch-views-backup:${manifest.owner}:${manifest.writerId}`, async () => {
+  // One publication of this writer at a time. A lower sequence never replaces a higher one,
+  // even when the older slot still holds the same body.
+  return lock(writerQueue(manifest.owner, manifest.writerId), async () => {
     const retired = await loadTombstones(user, opts.pub);
     if (retired.some((t) => t.owner === manifest.owner && t.writerId === manifest.writerId && t.seq === manifest.seq)) return "stale";
     const pubs = await publicationsOf(user, manifest.writerId, opts.pub);
     const sameSeq = pubs.find((p) => p.seq === manifest.seq) ?? null;
     const head = highestPub(pubs);
     const recordsOf = user.get("s3rch-views-records").get(manifest.writerId);
-    // An identical manifest is republished in full (records verified and repaired, index
-    // refreshed). A different body never replaces an existing sequence slot, and a lower
-    // sequence never replaces a higher one.
     const sameAsPublished = sameSeq !== null && manifestBody(sameSeq.manifest) === manifestBody(manifest);
-    if ((sameSeq && !sameAsPublished) || (head && head.seq > manifest.seq && !sameAsPublished)) {
-      await sweepRecords(recordsOf, addressesOf((sameSeq && !sameAsPublished ? sameSeq : head)!.manifest));
+    if (head && head.seq > manifest.seq) {
+      await sweepRecords(recordsOf, addressesOf(head.manifest));
+      if (sameSeq && sameAsPublished) {
+        try {
+          await deletePublication(user, manifest.writerId, sameSeq);
+        } catch {
+          /* a later publication of the newer head removes the slot */
+        }
+      }
+      return "stale";
+    }
+    // A different body never replaces an existing sequence slot.
+    if (sameSeq && !sameAsPublished) {
+      await sweepRecords(recordsOf, addressesOf(sameSeq.manifest));
       return "stale";
     }
     const prior = sameAsPublished ? sameSeq.manifest : null;
@@ -663,8 +676,7 @@ export async function writeBackupToGraph(
     for (const p of pubs) {
       if (p.seq >= manifest.seq) continue;
       try {
-        await putString(parent.get(String(p.seq)), null);
-        await putString(user.get("s3rch-views-writers").get(writerSlotKey(manifest.writerId, p.seq)), null);
+        await deletePublication(user, manifest.writerId, p);
       } catch {
         /* the next publish of this writer removes the slot again */
       }
@@ -673,23 +685,44 @@ export async function writeBackupToGraph(
   });
 }
 
+function writerQueue(owner: string, writerId: string): string {
+  return `s3rch-views-backup:${owner}:${writerId}`;
+}
+
+/** Remove one stored publication at the graph path it actually occupies. */
+async function deletePublication(user: GraphChain, writerId: string, pub: Publication): Promise<void> {
+  const parent = user.get("s3rch-views").get(writerId);
+  if (pub.legacy) await putString(parent, null);
+  else await putString(parent.get(String(pub.seq)), null);
+  const indexKey = pub.legacy ? writerId : writerSlotKey(writerId, pub.seq);
+  await putString(user.get("s3rch-views-writers").get(indexKey), null);
+}
+
 function addressesOf(m: Manifest): string[] {
   return [...m.entries.map((e) => e.address), ...(m.prefs ? [m.prefs] : [])];
 }
 
-/** Remove every stored record in a writer's namespace that `keep` does not name. Best effort. */
-async function sweepRecords(recordsOf: GraphChain, keep: string[]): Promise<void> {
+/** Remove records `keep` does not name. False when any unreferenced record is still stored. */
+async function sweepRecords(recordsOf: GraphChain, keep: string[]): Promise<boolean> {
   const keepSet = new Set(keep);
   const node = await new Promise<unknown>((resolve) => recordsOf.once(resolve));
-  if (typeof node !== "object" || node === null) return;
+  if (typeof node !== "object" || node === null) return true;
+  let ok = true;
   for (const [address, value] of Object.entries(node as Record<string, unknown>)) {
     if (address === "_" || value === null || value === undefined || keepSet.has(address)) continue;
     try {
       await putString(recordsOf.get(address), null);
     } catch {
-      /* found again by the next sweep */
+      ok = false;
     }
   }
+  return ok && !(await strayRecords(recordsOf, keepSet));
+}
+
+async function strayRecords(recordsOf: GraphChain, keep: Set<string>): Promise<boolean> {
+  const node = await new Promise<unknown>((resolve) => recordsOf.once(resolve));
+  if (typeof node !== "object" || node === null) return false;
+  return Object.entries(node as Record<string, unknown>).some(([address, value]) => address !== "_" && value !== null && value !== undefined && !keep.has(address));
 }
 
 function isIndexValue(v: unknown): boolean {
@@ -735,9 +768,11 @@ async function loadTombstones(user: GraphChain, pub: string): Promise<WriterTomb
   return out;
 }
 
-/** Delete a tombstoned slot, then records nothing live still names, then the tombstone itself. */
-async function finishTombstone(user: GraphChain, t: WriterTombstone, pub: string): Promise<boolean> {
-  const parent = user.get("s3rch-views").get(t.writerId);
+/**
+ * Delete a tombstoned slot, then records nothing live still names, then the tombstone.
+ * The caller runs this in the writer's publication queue. A leftover record keeps the tombstone.
+ */
+async function finishTombstoneBody(user: GraphChain, t: WriterTombstone, pub: string): Promise<boolean> {
   const recordsOf = user.get("s3rch-views-records").get(t.writerId);
   const tomb = user.get("s3rch-views-retired").get(writerSlotKey(t.writerId, t.seq));
   try {
@@ -748,11 +783,15 @@ async function finishTombstone(user: GraphChain, t: WriterTombstone, pub: string
       await putString(tomb, null);
       return true;
     }
-    if (current) await putString(parent.get(String(t.seq)), null);
-    await putString(user.get("s3rch-views-writers").get(writerSlotKey(t.writerId, t.seq)), null);
-    const remaining = (await publicationsOf(user, t.writerId, pub)).filter((p) => p.seq !== t.seq);
-    await sweepRecords(recordsOf, remaining.flatMap((p) => addressesOf(p.manifest)));
+    if (current) await deletePublication(user, t.writerId, current);
+    else {
+      await putString(user.get("s3rch-views-writers").get(t.writerId), null);
+      await putString(user.get("s3rch-views-writers").get(writerSlotKey(t.writerId, t.seq)), null);
+    }
     if ((await publicationsOf(user, t.writerId, pub)).some((p) => p.seq === t.seq)) return false;
+    const remaining = (await publicationsOf(user, t.writerId, pub)).filter((p) => p.seq !== t.seq);
+    const keep = remaining.flatMap((p) => addressesOf(p.manifest));
+    if (!(await sweepRecords(recordsOf, keep))) return false;
     await putString(tomb, null);
     return true;
   } catch {
@@ -760,11 +799,19 @@ async function finishTombstone(user: GraphChain, t: WriterTombstone, pub: string
   }
 }
 
+type PublishLock = <T>(name: string, run: () => Promise<T>) => Promise<T>;
+
 /** Finish removals that already have a tombstone, including ones whose first attempt failed. */
-export async function retryWriterTombstones(user: GraphChain, pair: Pick<SeaPair, "pub" | "priv">, pub = pair.pub): Promise<{ pending: string[] }> {
+export async function retryWriterTombstones(
+  user: GraphChain,
+  pair: Pick<SeaPair, "pub" | "priv">,
+  pub = pair.pub,
+  lock: PublishLock = defaultLock(),
+): Promise<{ pending: string[] }> {
   const pending: string[] = [];
   for (const t of await loadTombstones(user, pub)) {
-    if (!(await finishTombstone(user, t, pub))) pending.push(writerSlotKey(t.writerId, t.seq));
+    const done = await lock(writerQueue(t.owner, t.writerId), () => finishTombstoneBody(user, t, pub));
+    if (!done) pending.push(writerSlotKey(t.writerId, t.seq));
   }
   return { pending };
 }
@@ -778,7 +825,7 @@ function coveredBy(have: ViewsState, id: string, need: Causal): boolean {
   if (dropped && coversCausal(dropped, need)) return true;
   const entry = Object.hasOwn(have.views, id) ? have.views[id] : undefined;
   if (!entry) return false;
-  if (entry.hidden && coversCausal(entry.hidden, need)) return true;
+  if ((entry.hidden ?? []).some((h) => coversCausal(h, need))) return true;
   return [entry.current, ...entry.conflicts].some((v) => coversCausal({ vv: v.vv, folded: v.folded }, need));
 }
 
@@ -791,7 +838,7 @@ function containsState(have: ViewsState, need: ViewsState): boolean {
     for (const version of [entry.current, ...entry.conflicts]) {
       if (!coveredBy(a, id, { vv: version.vv, folded: version.folded })) return false;
     }
-    if (entry.hidden && !coveredBy(a, id, entry.hidden)) return false;
+    if ((entry.hidden ?? []).some((h) => !coveredBy(a, id, h))) return false;
   }
   for (const [id, causal] of Object.entries(b.dropped)) {
     if (!coveredBy(a, id, causal)) return false;
@@ -809,7 +856,7 @@ function highWater(state: ViewsState, deviceId: string): number {
   for (const entry of Object.values(s.views)) {
     consider({ vv: entry.current.vv, folded: entry.current.folded });
     for (const v of entry.conflicts) consider({ vv: v.vv, folded: v.folded });
-    consider(entry.hidden);
+    for (const h of entry.hidden ?? []) consider(h);
   }
   for (const c of Object.values(s.dropped)) consider(c);
   return n;
@@ -843,13 +890,20 @@ async function planRetirements(user: GraphChain, pair: SeaPair, state: ViewsStat
  * sequence slot is deleted only when it still holds the body named by its tombstone, so a
  * manifest published at a new sequence while this runs is left in place.
  */
+/** Lesser writer id wins when two publications contain each other, so both can be pruned without emptying the graph. */
+function survivorWins(survivor: Manifest, other: Publication): boolean {
+  if (survivor.writerId !== other.manifest.writerId) return survivor.writerId < other.manifest.writerId;
+  return survivor.seq >= other.seq;
+}
+
 export async function pruneSupersededWriters(
   user: GraphChain,
   pair: SeaPair,
   survivor: Manifest,
   pub = pair.pub,
+  lock: PublishLock = defaultLock(),
 ): Promise<{ removed: string[]; pending: string[] }> {
-  const pending = (await retryWriterTombstones(user, pair, pub)).pending;
+  const pending = (await retryWriterTombstones(user, pair, pub, lock)).pending;
   const removed: string[] = [];
   if (!isManifestShape(survivor) || !(await verifyManifest(pub, survivor))) return { removed, pending };
   const survivorLoaded = await loadWriter(pair, user, survivor);
@@ -857,36 +911,40 @@ export async function pruneSupersededWriters(
   const writers = await listGraphWriters(user);
   for (const writerId of writers.slice(0, GRAPH_SCAN_MAX)) {
     if (writerId === survivor.writerId) continue;
-    const pubs = await publicationsOf(user, writerId, pub);
-    const head = highestPub(pubs);
-    if (!head) continue;
-    const loaded = await loadWriter(pair, user, head.manifest);
-    if (loaded.notices.length || !containsState(survivorLoaded.state, loaded.state)) continue;
-    const deviceId = head.manifest.deviceId;
-    const water = deviceId ? Math.max(highWater(loaded.state, deviceId), highWater(survivorLoaded.state, deviceId)) : 0;
-    const published = deviceId && survivor.retirements && Object.hasOwn(survivor.retirements, deviceId) ? survivor.retirements[deviceId]! : 0;
-    if (deviceId && water > 0 && published < water) continue;
-    for (const p of pubs.filter((item) => item.seq <= head.seq)) {
-      const hash = await sha256Hex(manifestBody(p.manifest));
-      let tomb: WriterTombstone;
-      try {
-        tomb = await signWriterTombstone(pair, {
-          v: 1,
-          owner: p.manifest.owner,
-          writerId,
-          seq: p.seq,
-          manifestHash: hash,
-          deviceId,
-          counter: water,
-        });
-        await putString(user.get("s3rch-views-retired").get(writerSlotKey(writerId, p.seq)), JSON.stringify(tomb));
-      } catch {
-        pending.push(writerSlotKey(writerId, p.seq));
-        continue;
+    // Same queue as publication, so a sweep cannot run while this writer's records are stored and its manifest is not.
+    await lock(writerQueue(survivor.owner, writerId), async () => {
+      const pubs = await publicationsOf(user, writerId, pub);
+      const head = highestPub(pubs);
+      if (!head) return;
+      const loaded = await loadWriter(pair, user, head.manifest);
+      if (loaded.notices.length || !containsState(survivorLoaded.state, loaded.state)) return;
+      if (containsState(loaded.state, survivorLoaded.state) && !survivorWins(survivor, head)) return;
+      const deviceId = head.manifest.deviceId;
+      const water = deviceId ? Math.max(highWater(loaded.state, deviceId), highWater(survivorLoaded.state, deviceId)) : 0;
+      const published = deviceId && survivor.retirements && Object.hasOwn(survivor.retirements, deviceId) ? survivor.retirements[deviceId]! : 0;
+      if (deviceId && water > 0 && published < water) return;
+      for (const p of pubs.filter((item) => item.seq <= head.seq)) {
+        const hash = await sha256Hex(manifestBody(p.manifest));
+        let tomb: WriterTombstone;
+        try {
+          tomb = await signWriterTombstone(pair, {
+            v: 1,
+            owner: p.manifest.owner,
+            writerId,
+            seq: p.seq,
+            manifestHash: hash,
+            deviceId,
+            counter: water,
+          });
+          await putString(user.get("s3rch-views-retired").get(writerSlotKey(writerId, p.seq)), JSON.stringify(tomb));
+        } catch {
+          pending.push(writerSlotKey(writerId, p.seq));
+          continue;
+        }
+        if (await finishTombstoneBody(user, tomb, pub)) removed.push(writerSlotKey(writerId, p.seq));
+        else pending.push(writerSlotKey(writerId, p.seq));
       }
-      if (await finishTombstone(user, tomb, pub)) removed.push(writerSlotKey(writerId, p.seq));
-      else pending.push(writerSlotKey(writerId, p.seq));
-    }
+    });
   }
   return { removed, pending };
 }
@@ -905,12 +963,13 @@ export async function publishViewsBackup(
   opts?: { pub?: string; lock?: <T>(name: string, run: () => Promise<T>) => Promise<T>; now?: () => number },
 ): Promise<{ state: ViewsState; status: "written" | "stale"; removed: string[]; pending: string[] }> {
   const pub = opts?.pub ?? pair.pub;
-  await retryWriterTombstones(user, pair, pub);
+  const lock = opts?.lock ?? defaultLock();
+  await retryWriterTombstones(user, pair, pub, lock);
   const adopted = adoptRetirements(state, await planRetirements(user, pair, state, writerId));
   const backup = await buildBackup(adopted, pair, writerId, seq, cache);
-  const status = await writeBackupToGraph(user, backup, { pub, lock: opts?.lock, now: opts?.now });
+  const status = await writeBackupToGraph(user, backup, { pub, lock, now: opts?.now });
   if (status === "stale") return { state, status, removed: [], pending: [] };
-  const pruned = await pruneSupersededWriters(user, pair, backup.manifest, pub);
+  const pruned = await pruneSupersededWriters(user, pair, backup.manifest, pub, lock);
   return { state: adopted, status, removed: pruned.removed, pending: pruned.pending };
 }
 

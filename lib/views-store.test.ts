@@ -112,7 +112,7 @@ describe("views state", () => {
     assert.equal(folded?.conflicts.length, CONFLICTS_MAX);
     assert.ok(folded?.hidden);
     const kept = new Set([folded!.current, ...folded!.conflicts].map((v) => v.view?.title));
-    for (const v of vs) if (!kept.has(v.view?.title)) assert.equal(coversCausal(folded!.hidden!, v), true);
+    for (const v of vs) if (!kept.has(v.view?.title)) assert.ok((folded?.hidden ?? []).some((h) => coversCausal(h, v)));
     let s: ViewsState = { ...emptyState(ALICE, "d9"), views: { v1: folded! } };
     s = resolveConflict(s, "v1", folded!.current);
     for (const v of vs) {
@@ -142,6 +142,22 @@ describe("views state", () => {
     const right = { c: 9, d: 2 };
     assert.deepEqual(unionRetirements([left, right], 2), unionRetirements([right, left], 2));
     assert.deepEqual(unionRetirements([left, right], 2), { b: 9, c: 9 });
+  });
+
+  it("keeps a retained copy when hidden stamps would dominate it only together", () => {
+    const kept = (title: string, vv: Record<string, number>): ViewVersion => ({ id: "v1", vv, view: view("v1", title) });
+    const entry: ViewEntry = {
+      current: kept("kept", { a: 1, b: 1 }),
+      conflicts: [kept("k0", { c0: 1 }), kept("k1", { c1: 1 }), kept("k2", { c2: 1 })],
+      hidden: [{ vv: { a: 2 } }, { vv: { b: 2 } }],
+    };
+    const duplicate: ViewVersion = { id: "v1", vv: { a: 2 }, view: view("v1", "hidden-a") };
+    const merged = mergeVersion(entry, duplicate);
+    assert.equal([merged.current, ...merged.conflicts].length, 4);
+    assert.ok([merged.current, ...merged.conflicts].some((v) => v.view?.title === "kept"));
+    const older: ViewVersion = { id: "v1", vv: { a: 1 }, view: view("v1", "old-a") };
+    const suppressed = mergeVersion(entry, older);
+    assert.equal([suppressed.current, ...suppressed.conflicts].some((v) => v.view?.title === "old-a"), false);
   });
 
   it("removes a live copy covered by a dropped deletion", () => {

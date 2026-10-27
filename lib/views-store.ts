@@ -41,10 +41,11 @@ export type ViewVersion = Causal &
   );
 
 /**
- * Current version plus concurrent copies. `hidden` is the joined causal stamp of copies
- * removed by CONFLICTS_MAX, so a resolution still dominates those branches.
+ * Current version plus concurrent copies. `hidden` lists each copy removed by CONFLICTS_MAX.
+ * A version is suppressed only when one of those stamps covers it. A later resolution still
+ * takes the component-wise maximum, so it dominates every hidden branch.
  */
-export type ViewEntry = { current: ViewVersion; conflicts: ViewVersion[]; hidden?: Causal };
+export type ViewEntry = { current: ViewVersion; conflicts: ViewVersion[]; hidden?: Causal[] };
 
 export type RecentEntry = { ref: SourceRef; at: number };
 
@@ -114,8 +115,39 @@ function presentCausal(c: Causal | undefined): Causal | undefined {
   return c;
 }
 
+function byCausalJson(a: Causal, b: Causal): number {
+  const x = canonicalJson(a);
+  const y = canonicalJson(b);
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
+/** Keep one stamp per incomparable hidden copy. A joined maximum is not a member of this set. */
+function tidyFrontier(stamps: (Causal | undefined)[]): Causal[] | undefined {
+  const kept: Causal[] = [];
+  for (const s of stamps.filter((s): s is Causal => presentCausal(s) !== undefined).sort(byCausalJson)) {
+    if (kept.some((k) => coversCausal(k, s))) continue;
+    for (let i = kept.length - 1; i >= 0; i--) if (coversCausal(s, kept[i]!) && !coversCausal(kept[i]!, s)) kept.splice(i, 1);
+    kept.push(s);
+  }
+  return kept.length ? kept : undefined;
+}
+
+function parseFrontier(input: unknown, notices: Notice[], id: string): Causal[] | undefined {
+  if (input === undefined) return undefined;
+  const raw = Array.isArray(input) ? input : [input];
+  const out: Causal[] = [];
+  let invalid = false;
+  for (const item of raw.slice(0, 128)) {
+    const causal = parseCausal(item);
+    if (!causal) invalid = true;
+    else out.push(causal);
+  }
+  if (invalid) notices.push({ message: `A causal summary for view ${id} could not be read and was discarded` });
+  return tidyFrontier(out);
+}
+
 function tidyEntry(entry: ViewEntry): ViewEntry {
-  const hidden = presentCausal(entry.hidden);
+  const hidden = tidyFrontier(entry.hidden ?? []);
   return hidden ? { current: entry.current, conflicts: entry.conflicts, hidden } : { current: entry.current, conflicts: entry.conflicts };
 }
 
@@ -139,16 +171,12 @@ export function parseVersion(input: unknown, notices: Notice[]): ViewVersion | n
   return { id: input.id, ...causal, view: loaded.view };
 }
 
-/** Hidden stamp carried beside a version in a backup record. Invalid stamps are dropped. */
-export function parseVersionPayload(input: unknown, notices: Notice[]): { version: ViewVersion; hidden?: Causal } | null {
+/** Hidden stamps carried beside a version in a backup record. A single stamp is the older shape. */
+export function parseVersionPayload(input: unknown, notices: Notice[]): { version: ViewVersion; hidden?: Causal[] } | null {
   const version = parseVersion(input, notices);
   if (!version || !isRecord(input) || input.hidden === undefined) return version ? { version } : null;
-  const hidden = parseCausal(input.hidden);
-  if (!hidden) {
-    notices.push({ message: `A causal summary for view ${version.id} could not be read and was discarded` });
-    return { version };
-  }
-  return { version, hidden: presentCausal(hidden) };
+  const hidden = parseFrontier(input.hidden, notices, version.id);
+  return hidden ? { version, hidden } : { version };
 }
 
 /** Validate a stored state. Invalid entries are dropped with a notice. */
@@ -173,15 +201,12 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
       if (conflicts.length < rawConflicts.length) {
         notices.push({ message: `A conflicting copy of saved view ${id} could not be read and was discarded` });
       }
-      const hidden = raw.hidden === undefined ? undefined : parseCausal(raw.hidden) ?? undefined;
-      if (raw.hidden !== undefined && !hidden) {
-        notices.push({ message: `A causal summary for saved view ${id} could not be read and was discarded` });
-      }
-      const entry = tidyEntry({ current, conflicts, hidden: hidden ? presentCausal(hidden) : undefined });
+      const hidden = parseFrontier(raw.hidden, notices, id);
+      const entry = tidyEntry({ current, conflicts, hidden });
       const counts = countEntries(state);
       if (isLiveEntry(entry) ? counts.live >= VIEWS_MAX : counts.tombstones >= TOMBSTONES_MAX) {
         if (!isLiveEntry(entry) && Object.keys(state.dropped).length < DROPPED_MAX) {
-          const parts = [entry.current, ...entry.conflicts, entry.hidden].map((c) => (c ? expandFolded(causalOf(c), state.retirements) : undefined));
+          const parts = [entry.current, ...entry.conflicts, ...(entry.hidden ?? [])].map((c) => expandFolded(causalOf(c), state.retirements));
           state.dropped[id] = maxCausal(state.dropped[id], ...parts);
         }
         notices.push({ message: `Saved view ${id} is over the limit and was skipped` });
@@ -234,7 +259,7 @@ export function expandState(state: ViewsState): ViewsState {
     views[id] = tidyEntry({
       current: expandVersion(entry.current),
       conflicts: entry.conflicts.map(expandVersion),
-      hidden: entry.hidden ? expandFolded(entry.hidden, map) : undefined,
+      hidden: tidyFrontier((entry.hidden ?? []).map((h) => expandFolded(h, map))),
     });
   }
   const dropped: ViewsState["dropped"] = {};
@@ -254,7 +279,7 @@ function compactState(state: ViewsState, retirements: VersionVector): ViewsState
     views[id] = tidyEntry({
       current: compactVersion(entry.current),
       conflicts: entry.conflicts.map(compactVersion),
-      hidden: entry.hidden ? compactOne(entry.hidden, retirements) : undefined,
+      hidden: tidyFrontier((entry.hidden ?? []).map((h) => compactOne(h, retirements))),
     });
   }
   const dropped: ViewsState["dropped"] = {};
@@ -273,7 +298,7 @@ function collapseState(state: ViewsState, retirements: VersionVector): ViewsStat
     views[id] = tidyEntry({
       current: collapseVersion(entry.current),
       conflicts: entry.conflicts.map(collapseVersion),
-      hidden: entry.hidden ? collapseFolded(entry.hidden, retirements) : undefined,
+      hidden: tidyFrontier((entry.hidden ?? []).map((h) => collapseFolded(h, retirements))),
     });
   }
   const dropped: ViewsState["dropped"] = {};
@@ -329,7 +354,7 @@ function entryCausal(state: ViewsState, entry: ViewEntry): Causal {
   return maxCausal(
     expandFolded(causalOf(entry.current), map),
     ...entry.conflicts.map((v) => expandFolded(causalOf(v), map)),
-    entry.hidden ? expandFolded(entry.hidden, map) : undefined,
+    ...(entry.hidden ?? []).map((h) => expandFolded(h, map)),
   );
 }
 
@@ -410,7 +435,7 @@ export function mergeVersion(entry: ViewEntry | undefined, incoming: ViewVersion
  * exist; the first ones in canonical order are kept (independent of arrival order) and the
  * caller tells the user.
  */
-export function mergeVersionChecked(entry: ViewEntry | undefined, incoming: ViewVersion, cover?: Causal): { entry: ViewEntry; overflow: boolean } {
+export function mergeVersionChecked(entry: ViewEntry | undefined, incoming: ViewVersion, cover?: Causal[]): { entry: ViewEntry; overflow: boolean } {
   return mergeInner(entry, incoming, cover);
 }
 
@@ -424,30 +449,41 @@ function byCanonical(a: ViewVersion, b: ViewVersion): number {
   return x < y ? -1 : x > y ? 1 : 0;
 }
 
-/** True when merging `incoming` did not change the copies or the hidden summary. */
-function unchangedEntry(entry: ViewEntry, known: ViewVersion[], hidden: Causal | undefined): boolean {
-  if (known.length !== 1 + entry.conflicts.length || known[0] !== entry.current) return false;
-  for (let i = 0; i < entry.conflicts.length; i++) if (known[i + 1] !== entry.conflicts[i]) return false;
-  return presentCausal(entry.hidden) === presentCausal(hidden);
+function frontierEqual(a: Causal[] | undefined, b: Causal[] | undefined): boolean {
+  if (a === b) return true;
+  const left = a ?? [];
+  const right = b ?? [];
+  return left.length === right.length && left.every((s, i) => canonicalJson(s) === canonicalJson(right[i]!));
 }
 
-function mergeInner(entry: ViewEntry | undefined, incoming: ViewVersion, cover?: Causal): { entry: ViewEntry; overflow: boolean } {
+/** True when merging `incoming` did not change the copies or the hidden frontier. */
+function unchangedEntry(entry: ViewEntry, known: ViewVersion[], hidden: Causal[] | undefined): boolean {
+  if (known.length !== 1 + entry.conflicts.length || known[0] !== entry.current) return false;
+  for (let i = 0; i < entry.conflicts.length; i++) if (known[i + 1] !== entry.conflicts[i]) return false;
+  return frontierEqual(entry.hidden, hidden);
+}
+
+function mergeInner(entry: ViewEntry | undefined, incoming: ViewVersion, cover?: Causal[]): { entry: ViewEntry; overflow: boolean } {
   const incomingCausal = causalOf(incoming);
-  const hidden = presentCausal(maxCausal(entry?.hidden, cover));
-  const known = (entry ? [entry.current, ...entry.conflicts] : []).filter((v) => !(hidden && coversCausal(hidden, causalOf(v))));
-  if (hidden && coversCausal(hidden, incomingCausal)) {
+  // Each capped-away copy suppresses on its own. Their component-wise maximum can cover a
+  // retained copy that none of them covers, so it is not used as a stamp here.
+  const priorFrontier = cover?.length ? tidyFrontier([...(entry?.hidden ?? []), ...cover]) : entry?.hidden;
+  const coveredByHidden = (c: Causal) => (priorFrontier ?? []).some((h) => coversCausal(h, c));
+  const known = (entry ? [entry.current, ...entry.conflicts] : []).filter((v) => !coveredByHidden(causalOf(v)));
+  if (coveredByHidden(incomingCausal)) {
     if (known.length === 0) {
-      return { entry: { current: withCausal({ id: incoming.id, vv: {}, deleted: true }, hidden), conflicts: [] }, overflow: false };
+      return { entry: tidyEntry({ current: { id: incoming.id, vv: {}, deleted: true }, conflicts: [], hidden: priorFrontier }), overflow: false };
     }
-    if (entry && unchangedEntry(entry, known, hidden)) return { entry, overflow: false };
+    if (entry && unchangedEntry(entry, known, priorFrontier)) return { entry, overflow: false };
     const [current, ...conflicts] = known;
-    return { entry: tidyEntry({ current: current!, conflicts, hidden }), overflow: false };
+    return { entry: tidyEntry({ current: current!, conflicts, hidden: priorFrontier }), overflow: false };
   }
-  if (known.length === 0) return { entry: tidyEntry({ current: incoming, conflicts: [], hidden }), overflow: false };
+  const frontier = tidyFrontier((priorFrontier ?? []).filter((h) => !coversCausal(incomingCausal, h)));
+  if (known.length === 0) return { entry: tidyEntry({ current: incoming, conflicts: [], hidden: frontier }), overflow: false };
   if (known.some((k) => coversCausal(causalOf(k), incomingCausal))) {
-    if (entry && unchangedEntry(entry, known, hidden)) return { entry, overflow: false };
+    if (entry && unchangedEntry(entry, known, frontier)) return { entry, overflow: false };
     const [current, ...conflicts] = known;
-    return { entry: tidyEntry({ current: current!, conflicts, hidden }), overflow: false };
+    return { entry: tidyEntry({ current: current!, conflicts, hidden: frontier }), overflow: false };
   }
   const survivors = known.filter((k) => !coversCausal(incomingCausal, causalOf(k)));
   // Concurrent versions with the same content agree (two devices making the same edit, or
@@ -463,7 +499,7 @@ function mergeInner(entry: ViewEntry | undefined, incoming: ViewVersion, cover?:
   const kept = all.slice(0, 1 + CONFLICTS_MAX);
   const dropped = all.slice(1 + CONFLICTS_MAX);
   const [current, ...conflicts] = kept;
-  const nextHidden = presentCausal(dropped.reduce<Causal | undefined>((h, v) => maxCausal(h, causalOf(v)), hidden));
+  const nextHidden = tidyFrontier([...(frontier ?? []), ...dropped.map((v) => causalOf(v))]);
   return { entry: tidyEntry({ current: current!, conflicts, hidden: nextHidden }), overflow: dropped.length > 0 };
 }
 
@@ -480,7 +516,7 @@ export function applyDropped(state: ViewsState): ViewsState {
       continue;
     }
     const [current, ...conflicts] = keep;
-    views[id] = tidyEntry({ current: current!, conflicts, hidden: presentCausal(maxCausal(entry.hidden, cover)) });
+    views[id] = tidyEntry({ current: current!, conflicts, hidden: tidyFrontier([...(entry.hidden ?? []), cover]) });
   }
   return { ...state, views };
 }
