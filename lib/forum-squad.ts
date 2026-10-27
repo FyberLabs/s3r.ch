@@ -469,14 +469,25 @@ export function authorizeForumChat(
   return true;
 }
 
-/** A need row on the mesh is signed by the admitted owner. It does not elect. */
+/**
+ * A need row is signed by the admitted owner, or by the subject when the
+ * row accepts an offer and leaves body, severity, and spec as posted.
+ * Accept does not elect.
+ */
 export function authorizeForumNeed(
   need: ForumNeed,
   signer: string,
   owner: string | undefined,
   forumId: string,
+  known?: ForumNeed,
 ): boolean {
-  return need.forumId === forumId && !!owner && signer === owner && isSeaPubkey(signer);
+  if (need.forumId !== forumId || !isSeaPubkey(signer)) return false;
+  if (owner && signer === owner) return true;
+  if (!known || signer !== known.subject || signer !== need.subject) return false;
+  if (need.stated !== 0 || !need.acceptedOffer) return false;
+  if (need.id !== known.id || need.hamState <= known.hamState) return false;
+  if (need.body !== known.body || need.severity !== known.severity) return false;
+  return (need.spec ?? "") === (known.spec ?? "");
 }
 
 /** The alarm pin is signed by the admitted owner of the forum id. */
@@ -489,9 +500,20 @@ export function authorizeForumAlarm(
   return alarm.forumId === forumId && !!forumOwner && signer === forumOwner && isSeaPubkey(signer);
 }
 
-/** An offer row is signed by its helper. Posting one is still a separate verb. */
-export function authorizeForumOffer(offer: ForumOffer, signer: string, forumId: string): boolean {
-  return offer.forumId === forumId && signer === offer.helper && isSeaPubkey(signer);
+/**
+ * The helper signs a post or a withdrawal. The need owner or subject may
+ * sign a cancel (`stated` 0). A live row is not signed by a third party.
+ */
+export function authorizeForumOffer(
+  offer: ForumOffer,
+  signer: string,
+  forumId: string,
+  party?: { owner?: string; subject?: string },
+): boolean {
+  if (offer.forumId !== forumId || !isSeaPubkey(signer)) return false;
+  if (signer === offer.helper) return true;
+  if (offer.stated !== 0) return false;
+  return signer === party?.owner || signer === party?.subject;
 }
 
 export function mergeAgents(sample: readonly SquadAgent[], mesh: readonly ForumAgentStatus[]): SquadAgent[] {

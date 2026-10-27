@@ -148,10 +148,15 @@ describe("squad view", () => {
       need: open,
       body: "holding the rollback",
       now: 1_762_000_100,
+      entropy: "ab".repeat(16),
     });
-    assert.equal(help.ok, false);
-    if (!help.ok) assert.equal(help.reason, "unshipped");
+    assert.equal(help.ok, true);
     assert.equal(help.elect, false);
+    if (help.ok && help.offer) {
+      assert.equal(help.offer.stated, 1);
+      assert.equal(help.offer.helper, PILOT_OWNER);
+      assert.equal(open.stated, 1);
+    }
     const helperKey = seaToPrincipalKey(vector.secondPubkey);
     assert.ok(helperKey);
     const offerId = `offer_${helperKey}_${"ab".repeat(16)}`;

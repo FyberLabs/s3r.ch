@@ -26,8 +26,10 @@ import {
   acceptForumOffer,
   declineForumOffer,
   forumOfferSoul,
+  mintForumOfferId,
   offerForumHelp,
   reopenForumNeed,
+  withdrawForumOffer,
   resolveForumNeed,
   sameEmbeddedPrincipal,
   seaToPrincipalKey,
@@ -43,6 +45,7 @@ const doc = JSON.parse(
   forumId: string;
   needId: string;
   statusId: string;
+  specId: string;
   seaPubkey: string;
   secondPubkey: string;
   linkedWallet: string;
@@ -110,6 +113,7 @@ describe("forum souls", () => {
   it("matches the filled vector strings", () => {
     assert.equal(forumAgentSoul(doc.forumId, doc.seaPubkey), doc.souls.agent);
     assert.equal(forumNeedSoul(doc.forumId, doc.needId), doc.souls.need);
+    assert.equal(forumOfferSoul(doc.forumId, doc.needId, doc.souls.offer.split("/").at(-1) ?? ""), doc.souls.offer);
     assert.equal(forumAlarmSoul(doc.forumId), doc.souls.alarm);
     assert.equal(forumTemplateSoul(doc.forumId), doc.souls.template);
     assert.equal(forumRoleSoul(doc.forumId, "treasurer", doc.seaPubkey), doc.souls.role);
@@ -279,12 +283,13 @@ describe("resolve need", () => {
       need: open,
       body: "I can roll back step 3",
       now: NOW,
+      entropy: "ab".repeat(16),
       hint: { principal: doc.secondPubkey, target: open.id, verb: "see" },
       hop: { channel: "convention-badge" },
     });
-    assert.equal(offered.ok, false);
-    if (!offered.ok) assert.equal(offered.reason, "unshipped");
+    assert.equal(offered.ok, true);
     assert.equal(offered.elect, false);
+    if (offered.ok && offered.offer) assert.equal(offered.offer.stated, 1);
     assert.equal(open.stated, 1);
     assert.equal(acl.ownerOf(open.id), doc.seaPubkey);
     const alarm = { forumId: doc.forumId, need: doc.needId, pinned: 1 };
@@ -367,6 +372,24 @@ describe("resolve need", () => {
     });
     assert.equal(closed.ok, false);
     if (!closed.ok) assert.equal(closed.reason, "stated");
+    const severity = acceptForumNeedTransition({
+      graph: acl,
+      current: open,
+      next: { ...open, severity: "need", hamState: 2 },
+      writer: doc.seaPubkey,
+      now: NOW,
+    });
+    assert.equal(severity.ok, false);
+    if (!severity.ok) assert.equal(severity.reason, "severity");
+    const spec = acceptForumNeedTransition({
+      graph: acl,
+      current: open,
+      next: { ...open, spec: doc.specId, hamState: 2 },
+      writer: doc.seaPubkey,
+      now: NOW,
+    });
+    assert.equal(spec.ok, false);
+    if (!spec.ok) assert.equal(spec.reason, "spec");
     assert.equal(closed.elect, false);
     assert.equal(open.stated, 1);
     assert.equal(open.body, need(1, 1).body);
@@ -374,60 +397,166 @@ describe("resolve need", () => {
 });
 
 describe("forum offers", () => {
-  it("builds the offer soul under the need and fails closed", () => {
-    const helperKey = seaToPrincipalKey(doc.secondPubkey);
-    assert.ok(helperKey);
-    const offerId = `offer_${helperKey}_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`;
-    const soul = forumOfferSoul(doc.forumId, doc.needId, offerId);
-    assert.equal(soul, `s3rch/forums/${doc.forumId}/needs/${doc.needId}/offers/${offerId}`);
-    assert.equal(soul.includes("/chat"), false);
+  const entropy = "ab".repeat(16);
+
+  function grant(acl: ReturnType<typeof createMemorySeeAcl>, object: string, accessor: string) {
+    acl.stateSeeGrant(doc.seaPubkey, {
+      claimId: object,
+      accessor,
+      from: 0,
+      until: NOW + 1000,
+    });
+  }
+
+  it("posts a live offer under the need and refuses an unposted accept", () => {
     const acl = createMemorySeeAcl();
     const open = need(1, 1);
     acl.putObject(open.id, doc.seaPubkey);
-    const offer = {
-      id: offerId,
-      need: open.id,
-      forumId: open.forumId,
-      helper: doc.secondPubkey,
+    grant(acl, open.id, doc.secondPubkey);
+    const wallet = offerForumHelp({
+      graph: acl,
+      writer: doc.linkedWallet,
+      need: open,
+      body: "no",
+      now: NOW,
+      entropy,
+    });
+    assert.equal(wallet.ok, false);
+    if (!wallet.ok) assert.equal(wallet.reason, "writer");
+    const offered = offerForumHelp({
+      graph: acl,
+      writer: doc.secondPubkey,
+      need: open,
       body: "rollback step 3",
-      artifacts: "",
-      stated: 1 as const,
-    };
+      now: NOW,
+      entropy,
+      hint: { principal: doc.secondPubkey, target: open.id, verb: "see" },
+      hop: { channel: "convention-badge" },
+    });
+    assert.equal(offered.ok, true);
+    assert.equal(offered.elect, false);
+    if (!offered.ok || !offered.offer) return;
+    assert.equal(offered.offer.stated, 1);
+    assert.equal(offered.offer.helper, doc.secondPubkey);
+    assert.equal(mintForumOfferId(doc.secondPubkey, entropy), offered.offer.id);
+    assert.equal(sameEmbeddedPrincipal(doc.secondPubkey, offered.offer.id), true);
+    const soul = forumOfferSoul(doc.forumId, doc.needId, offered.offer.id);
+    assert.equal(soul, `s3rch/forums/${doc.forumId}/needs/${doc.needId}/offers/${offered.offer.id}`);
+    assert.equal(soul.includes("/chat"), false);
+    assert.equal(acl.ownerOf(offered.offer.id), doc.secondPubkey);
+    assert.equal(acl.ownerOf(open.id), doc.seaPubkey);
+    assert.equal(open.stated, 1);
+    const posted = new Map([[offered.offer.id, offered.offer]]);
+    const forged = acceptForumOffer({
+      graph: acl,
+      writer: doc.seaPubkey,
+      need: open,
+      offer: { ...offered.offer, body: "not the posted row" },
+      postedOffers: posted,
+      now: NOW,
+    });
+    assert.equal(forged.ok, false);
+    if (!forged.ok) assert.equal(forged.reason, "unposted");
     const stranger = acceptForumOffer({
       graph: acl,
       writer: "not-a-party",
       need: open,
-      offer,
+      offer: offered.offer,
+      postedOffers: posted,
       now: NOW,
     });
     assert.equal(stranger.ok, false);
-    if (!stranger.ok) assert.notEqual(stranger.reason, "unshipped");
-    const bySubject = acceptForumOffer({
+    if (!stranger.ok) assert.equal(stranger.reason, "party");
+    const accepted = acceptForumOffer({
       graph: acl,
-      writer: open.subject,
+      writer: doc.seaPubkey,
       need: open,
-      offer,
+      offer: offered.offer,
+      postedOffers: posted,
       now: NOW,
     });
-    assert.equal(bySubject.ok, false);
-    if (!bySubject.ok) assert.equal(bySubject.reason, "unshipped");
-    assert.equal(bySubject.elect, false);
-    assert.equal(open.stated, 1);
-    assert.equal(open.acceptedOffer, undefined);
+    assert.equal(accepted.ok, true);
+    assert.equal(accepted.elect, false);
+    if (!accepted.ok || !accepted.need) return;
+    assert.equal(accepted.need.stated, 0);
+    assert.equal(accepted.need.acceptedOffer, offered.offer.id);
+    assert.equal(accepted.need.body, open.body);
+    assert.equal(accepted.need.severity, open.severity);
+    assert.equal(accepted.need.spec, undefined);
+    assert.equal(accepted.need.hamState, open.hamState + 1);
+    assert.equal(accepted.owner, doc.seaPubkey);
+    const stuck = withdrawForumOffer({
+      graph: acl,
+      writer: doc.secondPubkey,
+      need: accepted.need,
+      offer: offered.offer,
+      postedOffers: posted,
+      now: NOW,
+    });
+    assert.equal(stuck.ok, false);
+    if (!stuck.ok) assert.equal(stuck.reason, "resolved");
+  });
+
+  it("lets the subject accept their own offer, decline, and reopen", () => {
+    const acl = createMemorySeeAcl();
+    const open = need(1, 1, doc.secondPubkey);
+    acl.putObject(open.id, doc.seaPubkey);
+    grant(acl, open.id, doc.secondPubkey);
+    const offered = offerForumHelp({
+      graph: acl,
+      writer: doc.secondPubkey,
+      need: open,
+      body: "I can take this",
+      now: NOW,
+      entropy,
+    });
+    assert.equal(offered.ok, true);
+    if (!offered.ok || !offered.offer) return;
+    const posted = new Map([[offered.offer.id, offered.offer]]);
+    acl.unstateSeeGrant(doc.seaPubkey, doc.secondPubkey, open.id);
+    const blind = acceptForumOffer({
+      graph: acl,
+      writer: doc.secondPubkey,
+      need: open,
+      offer: offered.offer,
+      postedOffers: posted,
+      now: NOW,
+    });
+    assert.equal(blind.ok, false);
+    if (!blind.ok) assert.equal(blind.reason, "missing-grant");
+    grant(acl, open.id, doc.secondPubkey);
     const declined = declineForumOffer({
       graph: acl,
       writer: doc.seaPubkey,
       need: open,
-      offer,
+      offer: offered.offer,
+      postedOffers: posted,
       now: NOW,
     });
-    assert.equal(declined.ok, false);
-    if (!declined.ok) assert.equal(declined.reason, "unshipped");
+    assert.equal(declined.ok, true);
+    if (!declined.ok || !declined.offer) return;
+    assert.equal(declined.offer.stated, 0);
+    assert.equal(declined.need?.stated, 1);
     assert.equal(open.stated, 1);
+    posted.set(offered.offer.id, offered.offer);
+    const accepted = acceptForumOffer({
+      graph: acl,
+      writer: doc.secondPubkey,
+      need: open,
+      offer: offered.offer,
+      postedOffers: posted,
+      now: NOW,
+    });
+    assert.equal(accepted.ok, true);
+    if (!accepted.ok || !accepted.need) return;
+    assert.equal(accepted.need.stated, 0);
+    assert.equal(accepted.need.acceptedOffer, offered.offer.id);
+    assert.equal(accepted.elect, false);
+    assert.equal(acl.ownerOf(open.id), doc.seaPubkey);
     const subjectReopen = reopenForumNeed({
       graph: acl,
       writer: open.subject,
-      need: { ...open, stated: 0, acceptedOffer: offerId },
+      need: accepted.need,
       now: NOW,
     });
     assert.equal(subjectReopen.ok, false);
@@ -435,12 +564,38 @@ describe("forum offers", () => {
     const ownerReopen = reopenForumNeed({
       graph: acl,
       writer: doc.seaPubkey,
-      need: { ...open, stated: 0, acceptedOffer: offerId },
+      need: accepted.need,
       now: NOW,
     });
-    assert.equal(ownerReopen.ok, false);
-    if (!ownerReopen.ok) assert.equal(ownerReopen.reason, "unshipped");
+    assert.equal(ownerReopen.ok, true);
     assert.equal(ownerReopen.elect, false);
-    assert.equal(acl.ownerOf(open.id), doc.seaPubkey);
+    if (!ownerReopen.ok || !ownerReopen.need) return;
+    assert.equal(ownerReopen.need.stated, 1);
+    assert.equal(ownerReopen.need.acceptedOffer, undefined);
+    assert.equal(ownerReopen.need.body, open.body);
+    assert.equal(posted.get(offered.offer.id)?.id, offered.offer.id);
+    const other = offerForumHelp({
+      graph: acl,
+      writer: doc.secondPubkey,
+      need: ownerReopen.need,
+      body: "another pass",
+      now: NOW,
+      entropy: "cd".repeat(16),
+    });
+    assert.equal(other.ok, true);
+    if (!other.ok || !other.offer) return;
+    posted.set(other.offer.id, other.offer);
+    const pulled = withdrawForumOffer({
+      graph: acl,
+      writer: doc.secondPubkey,
+      need: ownerReopen.need,
+      offer: other.offer,
+      postedOffers: posted,
+      now: NOW,
+    });
+    assert.equal(pulled.ok, true);
+    if (!pulled.ok || !pulled.offer) return;
+    assert.equal(pulled.offer.stated, 0);
+    assert.equal(ownerReopen.need.stated, 1);
   });
 });

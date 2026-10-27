@@ -121,7 +121,7 @@ Reuse SociACL Social Light (`convention-badge` / `enrolled-station`, SLHP v1). D
 
 Squad forum souls are listed above. A hop, a hint, a status node, and a chat tag do not mint a grant. The destination runs Check again.
 
-Check see on a need lets the writer offer help. It does not set `stated` to `0`. The owner or the subject accepts an offer. That accept would set `stated` to `0` and record the offer id. Decline leaves the need open. Reopen is the owner only and clears the accepted offer. Earlier offers stay. Those offer writes are not shipped, so this app fails closed and does not put a stand-in row. A missing admission does not accept the update. The need body stays as posted.
+Check see on a need lets the writer post a live offer. That does not set `stated` to `0`. The helper owns that row and may withdraw it until the need is resolved on that offer. The owner or the subject accepts only a live offer the graph already holds, and only while that helper still passes Check see. The subject may accept an offer they posted. That accept sets `stated` to `0` and records the offer id. A caller-supplied offer that was never posted is refused. Decline sets that offer to `stated` `0` and leaves the need open. Reopen is the owner only. It sets `stated` to `1` and clears the accepted offer. Earlier offers stay. Body and severity stay as posted. An optional spec id stays as posted. A missing admission does not accept the update. This page puts the signed offer and the signed need. It does not put an unsigned stand-in.
 
 On this app, pause and reassign are owner puts of the status node. Check see is not that status write.
 

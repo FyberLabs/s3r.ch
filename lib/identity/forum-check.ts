@@ -1,8 +1,8 @@
 /**
  * Forum slice of the light Check consume contract.
  *
- * Souls match SociACL `crates/sociacl-gun/src/forum.rs` at 5e43aec
- * and `lib/identity/vectors/forums.json`. These paths are data.
+ * Souls match SociACL forums at 8471edc and `lib/identity/vectors/forums.json`.
+ * These paths are data.
  * They are not grant souls. Chat is a GunFeedNode under `s3rch/items`.
  *
  * The account key is the GunDB SEA pubkey. A wallet is not that key.
@@ -77,8 +77,10 @@ export type ForumOffer = {
   stated: 0 | 1;
 };
 
-/** Offer verbs are stubbed. None succeed until the offer contract ships. */
-export type ForumOfferDecision = { ok: false; reason: string; elect: false };
+/** An offer verb. `elect` stays false. Accept does not choose a new owner. */
+export type ForumOfferDecision =
+  | { ok: true; elect: false; offer?: ForumOffer; need?: ForumNeed }
+  | { ok: false; reason: string; elect: false };
 
 export type ForumAlarm = {
   forumId: string;
@@ -315,6 +317,15 @@ export function forumNeedSoul(forumId: string, needId: string): string {
   return `${forumRoot(forumId)}/needs/${needId}`;
 }
 
+/** Minted offer id. The embedded principal is the helper. */
+export function mintForumOfferId(helper: string, entropy: string): string | null {
+  const key = seaToPrincipalKey(helper);
+  const tail = entropy.trim().toLowerCase();
+  if (!key || !/^[0-9a-f]{32}$/.test(tail)) return null;
+  const id = `offer_${key}_${tail}`;
+  return isForumObjectId(id, "offer") && sameEmbeddedPrincipal(helper, id) ? id : null;
+}
+
 /** `s3rch/forums/<forumId>/needs/<needId>/offers/<offerId>`. The helper owns the offer. */
 export function forumOfferSoul(forumId: string, needId: string, offerId: string): string {
   assertMinted(offerId, "offer");
@@ -492,7 +503,8 @@ export function forumEmergencyAlarm(
 /**
  * Next need row when Check already allowed the writer.
  * `hamState` must rise. `id`, `forumId`, `subject`, and `body` stay.
- * `stated` and `acceptedOffer` stay. Closing and reopening are offer verbs.
+ * `severity`, `spec`, `stated`, and `acceptedOffer` stay.
+ * Closing and reopening are offer verbs.
  * Does not elect. Does not read a hint or a hop.
  * Does not look at why Check allowed.
  */
@@ -510,7 +522,10 @@ export function transitionForumNeed(
   if (next.body !== current.body) {
     return { ok: false, reason: "body", elect: false };
   }
-  if ((current.spec ?? "") !== "" && next.spec !== current.spec) {
+  if (next.severity !== current.severity) {
+    return { ok: false, reason: "severity", elect: false };
+  }
+  if ((next.spec ?? "") !== (current.spec ?? "")) {
     return { ok: false, reason: "spec", elect: false };
   }
   if (!u64(next.hamState) || next.hamState <= current.hamState) {

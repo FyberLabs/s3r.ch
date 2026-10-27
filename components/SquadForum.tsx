@@ -69,6 +69,8 @@ import {
   forumAlarmSoul,
   forumChatTag,
   forumEmergencyAlarm,
+  forumNeedSoul,
+  forumOfferSoul,
   forumStatementSoul,
   isForumObjectId,
   isSeaPubkey,
@@ -180,12 +182,14 @@ export function SquadForum() {
   const [meshChat, setMeshChat] = useState<FeedItem[]>([]);
   const [localStatus, setLocalStatus] = useState<Map<string, ForumAgentStatus>>(() => new Map());
   const [localNeeds, setLocalNeeds] = useState<Map<string, ForumNeed>>(() => new Map());
+  const [localOffers, setLocalOffers] = useState<Map<string, ForumOffer>>(() => new Map());
   const [localChat, setLocalChat] = useState<FeedItem[]>([]);
   const [hiddenChat, setHiddenChat] = useState<readonly string[]>([]);
   const gunRef = useRef<FeedGun | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const pairRef = useRef<SeaPair | null>(null);
   const graphRef = useRef<SeeGraph | null>(null);
+  const needsRef = useRef<Map<string, ForumNeed>>(new Map());
   const chatIdsRef = useRef<string[]>([]);
   const sampleAcl = useMemo(() => {
     const acl = createMemorySeeAcl();
@@ -269,16 +273,54 @@ export function SquadForum() {
       }
       async function acceptOffer(data: unknown, key: string | undefined) {
         const sig = signatureOf(data);
-        const helper = data && typeof data === "object" ? (data as { helper?: unknown }).helper : undefined;
-        if (!sig || typeof helper !== "string") return;
-        const payload = await readForumSignature(sig, helper);
+        if (!sig || !data || typeof data !== "object") return;
+        const row = data as { helper?: unknown; need?: unknown };
+        const hintedNeed = typeof row.need === "string" ? row.need : "";
+        const knownNeed = hintedNeed ? needsRef.current.get(hintedNeed) : undefined;
+        const candidates = [
+          typeof row.helper === "string" ? row.helper : "",
+          graphRef.current?.ownerOf(hintedNeed) ?? "",
+          knownNeed?.subject ?? "",
+        ].filter((pub, index, all) => pub && all.indexOf(pub) === index);
+        let payload: unknown = null;
+        let signer = "";
+        for (const pub of candidates) {
+          const verified = await readForumSignature(sig, pub);
+          if (verified) {
+            payload = verified;
+            signer = pub;
+            break;
+          }
+        }
         if (cancelled || !payload) return;
         const offer = parseForumOffer(payload);
-        if (!offer || !authorizeForumOffer(offer, helper, PILOT_FORUM_ID)) return;
+        if (!offer) return;
+        const party = {
+          owner: graphRef.current?.ownerOf(offer.need),
+          subject: needsRef.current.get(offer.need)?.subject,
+        };
+        if (!authorizeForumOffer(offer, signer, PILOT_FORUM_ID, party)) return;
         if (key !== undefined && key !== offer.id) return;
+        const named = needsRef.current.get(offer.need);
+        if (
+          offer.stated === 0 &&
+          signer === offer.helper &&
+          named?.stated === 0 &&
+          named.acceptedOffer === offer.id
+        ) {
+          return;
+        }
         setMeshOffers((prev) => {
           const next = new Map(prev);
           next.set(offer.id, offer);
+          return next;
+        });
+        setLocalOffers((prev) => {
+          const local = prev.get(offer.id);
+          if (!local) return prev;
+          if (local.stated === 0 && offer.stated === 1) return prev;
+          const next = new Map(prev);
+          next.delete(offer.id);
           return next;
         });
       }
@@ -321,20 +363,41 @@ export function SquadForum() {
       }
       async function acceptNeed(data: unknown, key: string | undefined) {
         const sig = signatureOf(data);
-        const hintedId = data && typeof data === "object" ? (data as { id?: unknown }).id : undefined;
-        if (!sig || typeof hintedId !== "string") return;
+        if (!sig || !data || typeof data !== "object") return;
+        const hintedId = (data as { id?: unknown }).id;
+        const hintedSubject = (data as { subject?: unknown }).subject;
+        if (typeof hintedId !== "string") return;
         if (key !== undefined && key !== hintedId) return;
         const owner = graphRef.current?.ownerOf(hintedId);
-        if (!owner) return;
-        const payload = await readForumSignature(sig, owner);
+        let signer = "";
+        let payload: unknown = null;
+        if (owner) {
+          payload = await readForumSignature(sig, owner);
+          if (payload) signer = owner;
+        }
+        if (!payload && typeof hintedSubject === "string" && hintedSubject !== owner) {
+          payload = await readForumSignature(sig, hintedSubject);
+          if (payload) signer = hintedSubject;
+        }
         if (cancelled || !payload) return;
         const need = parseForumNeed(payload);
-        if (!need || !authorizeForumNeed(need, owner, owner, PILOT_FORUM_ID)) return;
+        if (!need) return;
+        const known = needsRef.current.get(need.id);
+        if (!authorizeForumNeed(need, signer, owner, PILOT_FORUM_ID, known)) return;
         if (key !== undefined && key !== need.id) return;
         watchOffers(need.id);
         setMeshNeeds((prev) => {
+          const existing = prev.get(need.id);
+          if (existing && existing.hamState > need.hamState) return prev;
           const next = new Map(prev);
           next.set(need.id, need);
+          return next;
+        });
+        setLocalNeeds((prev) => {
+          const local = prev.get(need.id);
+          if (!local || need.hamState < local.hamState) return prev;
+          const next = new Map(prev);
+          next.delete(need.id);
           return next;
         });
       }
@@ -465,10 +528,26 @@ export function SquadForum() {
   const needs = useMemo(() => {
     const map = new Map<string, ForumNeed>();
     for (const need of PILOT_NEEDS) map.set(need.id, need);
-    for (const need of meshNeeds.values()) map.set(need.id, need);
-    for (const need of localNeeds.values()) map.set(need.id, need);
+    for (const need of meshNeeds.values()) {
+      const base = map.get(need.id);
+      if (!base || need.hamState >= base.hamState) map.set(need.id, need);
+    }
+    for (const need of localNeeds.values()) {
+      const base = map.get(need.id);
+      if (!base || need.hamState > base.hamState) map.set(need.id, need);
+    }
     return map;
   }, [localNeeds, meshNeeds]);
+  needsRef.current = needs;
+
+  const offers = useMemo(() => {
+    const map = new Map(meshOffers);
+    for (const offer of localOffers.values()) {
+      const seen = map.get(offer.id);
+      if (!seen || (offer.stated === 0 && seen.stated === 1)) map.set(offer.id, offer);
+    }
+    return map;
+  }, [localOffers, meshOffers]);
 
   const roster = useMemo(() => {
     const merged = mergeAgents(PILOT_AGENTS, [...meshStatus.values()]);
@@ -525,24 +604,29 @@ export function SquadForum() {
   }
 
   function needNotice(reason: string, verb: "offer" | "accept" | "decline" | "reopen"): string {
-    if (reason === "unshipped" && verb === "offer") {
-      return "Offer help waits on the offer contract. Check see does not close this need.";
-    }
-    if (reason === "unshipped" && verb === "accept") {
-      return "Accepting an offer waits on the offer contract. The need stays open.";
-    }
-    if (reason === "unshipped" && verb === "decline") {
-      return "Declining an offer waits on the offer contract. The need stays open.";
-    }
-    if (reason === "unshipped") return "Reopen waits on the offer contract.";
     if (reason === "party") return "Only the need owner or subject can accept or decline an offer.";
     if (reason === "owner") return "Only the need owner can reopen.";
     if (reason === "open") return "This need is still open.";
     if (reason === "body") return "Write the offer first. That does not close the need.";
+    if (reason === "unposted") return "That offer is not a live posted row.";
+    if (reason === "resolved") return "This need is resolved on that offer.";
+    if (reason === "helper") return "Only the helper can withdraw that offer.";
     return `Check denied ${verb} (${reason}).`;
   }
 
-  function onOffer(agent: SquadAgent) {
+  function meshNote(kind: string, wrote: "signed" | "offline" | "local", okLine: string): string {
+    if (wrote === "signed") return okLine;
+    if (wrote === "offline") return `${kind} on this browser. The mesh peer was not ready.`;
+    return `${kind} on this browser. The mesh put needs a signature from this SEA key.`;
+  }
+
+  function offerEntropy(): string {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function onOffer(agent: SquadAgent) {
     const current = requireGraph();
     if (!current || !seaPub) return;
     const open = openNeedFor(agent.status, needs);
@@ -557,18 +641,37 @@ export function SquadForum() {
       need: open,
       body: offerBody,
       now,
+      entropy: offerEntropy(),
     });
-    setNotice(needNotice(decision.reason, "offer"));
+    if (!decision.ok || !decision.offer) {
+      setNotice(needNotice(decision.ok ? "bad-offer" : decision.reason, "offer"));
+      return;
+    }
+    see?.acl.putObject(decision.offer.id, decision.offer.helper);
+    void see?.persist();
+    const offer = decision.offer;
+    setLocalOffers((prev) => {
+      const next = new Map(prev);
+      next.set(offer.id, offer);
+      return next;
+    });
+    setOfferBody("");
+    const wrote = await putAuthedRecord(
+      forumOfferSoul(offer.forumId, offer.need, offer.id),
+      offer,
+      seaPub,
+    );
+    setNotice(meshNote("Offer kept", wrote, "Offer posted. The need stays open."));
   }
 
   function liveOffer(need: ForumNeed): ForumOffer | null {
-    for (const offer of meshOffers.values()) {
+    for (const offer of offers.values()) {
       if (offer.need === need.id && offer.stated === 1) return offer;
     }
     return null;
   }
 
-  function onAccept(agent: SquadAgent) {
+  async function onAccept(agent: SquadAgent) {
     const current = requireGraph();
     if (!current || !seaPub) return;
     const open = openNeedFor(agent.status, needs);
@@ -586,12 +689,24 @@ export function SquadForum() {
       writer: seaPub,
       need: open,
       offer,
+      postedOffers: offers,
       now: Math.floor(Date.now() / 1000),
     });
-    setNotice(needNotice(decision.reason, "accept"));
+    if (!decision.ok || !decision.need) {
+      setNotice(needNotice(decision.ok ? "bad-need" : decision.reason, "accept"));
+      return;
+    }
+    const next = decision.need;
+    setLocalNeeds((prev) => {
+      const map = new Map(prev);
+      map.set(next.id, next);
+      return map;
+    });
+    const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), next, seaPub);
+    setNotice(meshNote("Accept kept", wrote, "Offer accepted. The need is closed."));
   }
 
-  function onDecline(agent: SquadAgent) {
+  async function onDecline(agent: SquadAgent) {
     const current = requireGraph();
     if (!current || !seaPub) return;
     const open = openNeedFor(agent.status, needs);
@@ -609,12 +724,24 @@ export function SquadForum() {
       writer: seaPub,
       need: open,
       offer,
+      postedOffers: offers,
       now: Math.floor(Date.now() / 1000),
     });
-    setNotice(needNotice(decision.reason, "decline"));
+    if (!decision.ok || !decision.offer) {
+      setNotice(needNotice(decision.ok ? "bad-offer" : decision.reason, "decline"));
+      return;
+    }
+    const next = decision.offer;
+    setLocalOffers((prev) => {
+      const map = new Map(prev);
+      map.set(next.id, next);
+      return map;
+    });
+    const wrote = await putAuthedRecord(forumOfferSoul(next.forumId, next.need, next.id), next, seaPub);
+    setNotice(meshNote("Decline kept", wrote, "Offer declined. The need stays open."));
   }
 
-  function onReopen(agent: SquadAgent) {
+  async function onReopen(agent: SquadAgent) {
     const current = requireGraph();
     if (!current || !seaPub) return;
     const listed = needIds(agent.status.needs)
@@ -630,7 +757,18 @@ export function SquadForum() {
       need: listed,
       now: Math.floor(Date.now() / 1000),
     });
-    setNotice(needNotice(decision.reason, "reopen"));
+    if (!decision.ok || !decision.need) {
+      setNotice(needNotice(decision.ok ? "bad-need" : decision.reason, "reopen"));
+      return;
+    }
+    const next = decision.need;
+    setLocalNeeds((prev) => {
+      const map = new Map(prev);
+      map.set(next.id, next);
+      return map;
+    });
+    const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), next, seaPub);
+    setNotice(meshNote("Reopen kept", wrote, "Need reopened. Earlier offers stay."));
   }
 
   function onReply(agent: SquadAgent) {
@@ -696,19 +834,23 @@ export function SquadForum() {
     });
   }
 
-  async function putAuthedStatus(
-    status: ForumAgentStatus,
+  async function putAuthedRecord(
+    soul: string,
+    record: object,
     writer: string,
   ): Promise<"signed" | "offline" | "local"> {
     const pair = pairRef.current;
     if (!pair || pair.pub !== writer) return "local";
-    const sig = await signForumRecord(status, pair);
+    const sig = await signForumRecord(record, pair);
     if (!sig) return "local";
-    const wrote = putSoul(gunRef.current, forumAgentSoul(status.forumId, status.seaPubkey), {
-      ...status,
-      sig,
-    });
-    return wrote ? "signed" : "offline";
+    return putSoul(gunRef.current, soul, { ...record, sig }) ? "signed" : "offline";
+  }
+
+  async function putAuthedStatus(
+    status: ForumAgentStatus,
+    writer: string,
+  ): Promise<"signed" | "offline" | "local"> {
+    return putAuthedRecord(forumAgentSoul(status.forumId, status.seaPubkey), status, writer);
   }
 
   async function onSend() {
@@ -1001,7 +1143,7 @@ export function SquadForum() {
             })}
           </ul>
           <ul className="mt-2 space-y-1 text-sm text-ink">
-            {[...meshOffers.values()]
+            {[...offers.values()]
               .filter((offer) => needIds(active.status.needs).includes(offer.need))
               .map((offer) => (
                 <li key={offer.id}>
