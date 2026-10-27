@@ -26,24 +26,28 @@ function runRequire(
 }
 
 describe("require-panopticon-tenant-id", () => {
-  it("skips when the GitHub variable is unset and writes no id file", () => {
+  it("fails when the GitHub variable is unset and writes no id file", () => {
     const dir = mkdtempSync(join(tmpdir(), "panopticon-tenant-"));
     const outPath = join(dir, "id");
     try {
       const result = runRequire(undefined, { outPath });
-      assert.equal(result.status, 0);
-      assert.match(result.stdout, /S3RCH_PANOPTICON_TENANT_ID is unset; skipping/);
-      assert.match(result.stdout, /left unchanged, not cleared/);
+      assert.notEqual(result.status, 0);
+      const text = `${result.stdout}${result.stderr}`;
+      assert.match(text, /S3RCH_PANOPTICON_TENANT_ID is unset/);
+      assert.match(text, /repository variable or a prod environment variable/);
+      assert.match(text, /PANOPTICON_TENANT_ID is not cleared/);
+      assert.equal(result.stdout, "");
       assert.equal(existsSync(outPath), false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("treats a blank variable as unset", () => {
+  it("fails when the variable is blank", () => {
     const result = runRequire("  \n");
-    assert.equal(result.status, 0);
-    assert.match(result.stdout, /is unset; skipping/);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /is unset/);
+    assert.equal(result.stdout, "");
   });
 
   it("fails on a non-UUID without echoing it", () => {
@@ -92,15 +96,18 @@ describe("deploy workflow owns PANOPTICON_TENANT_ID", () => {
     );
   });
 
-  it("checks a set tenant id before image push and skips the write when unset", () => {
+  it("preflights a missing tenant id before checkout and image push", () => {
     const deploy = workflow.slice(workflow.indexOf("\n  deploy:\n"));
+    const preflight = deploy.indexOf("name: Require Panopticon tenant id");
     const checkout = deploy.indexOf("actions/checkout@");
     const push = deploy.indexOf("docker/build-push-action@");
     const scriptStep = deploy.indexOf("bash scripts/require-panopticon-tenant-id.sh\n");
-    assert.ok(checkout >= 0 && checkout < scriptStep && scriptStep < push);
-    assert.equal(deploy.slice(0, checkout).includes("Require Panopticon tenant id"), false);
+    assert.ok(preflight >= 0 && preflight < checkout && checkout < scriptStep && scriptStep < push);
+    assert.match(deploy.slice(0, checkout), /repository variable or a prod environment variable/);
+    assert.match(deploy.slice(0, checkout), /PANOPTICON_TENANT_ID is not cleared/);
     const write = deploy.slice(deploy.indexOf("name: Set Panopticon tenant id"));
-    assert.ok(write.indexOf('if [ ! -s "$id_file" ]') < write.indexOf("az webapp config appsettings set"));
+    assert.equal(write.includes("Skipping PANOPTICON_TENANT_ID"), false);
+    assert.ok(write.indexOf("bash scripts/require-panopticon-tenant-id.sh") < write.indexOf("az webapp config appsettings set"));
     const script = readFileSync(SCRIPT, "utf8");
     const uuidPattern =
       "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
@@ -130,6 +137,9 @@ describe("deploy workflow owns PANOPTICON_TENANT_ID", () => {
       readme,
       /Panopticon marketplace tenant id the app uses, set as `PANOPTICON_TENANT_ID` on the App Service; it is an identifier, not a secret/,
     );
+    assert.match(readme, /\| `S3RCH_PANOPTICON_TENANT_ID` \| yes \|/);
+    assert.match(readme, /required for the prod Deploy/);
+    assert.match(readme, /before checkout and image push/);
   });
 
   it("stays on the self-hosted deploy runner and does not run for pull requests", () => {
