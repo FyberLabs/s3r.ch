@@ -37,6 +37,65 @@ export function atprotoPermalink(handle: string, uri: string): string {
   return "";
 }
 
+const DID_PLC = /^did:plc:[a-z2-7]{24}$/;
+
+function isRetainedDid(value: string): boolean {
+  return DID_PLC.test(value) || value.startsWith("did:web:");
+}
+
+function isGetAuthorFeed(url: URL): boolean {
+  return url.pathname.endsWith("/app.bsky.feed.getAuthorFeed") || url.pathname.endsWith(".getAuthorFeed");
+}
+
+function didForHandle(actor: unknown, handle: string): string | null {
+  if (!isRecord(actor)) return null;
+  const theirHandle = asString(actor.handle);
+  const did = asString(actor.did);
+  if (!theirHandle || !did || theirHandle.toLowerCase() !== handle) return null;
+  return isRetainedDid(did) ? did : null;
+}
+
+/**
+ * DID of the actor this author-feed response was fetched for.
+ * A DID on the request is kept as-is. A handle is taken from the actor's own posts
+ * or from `reason.by` on a repost, and only when every match names the same DID.
+ * The post URI is not an actor: a repost's URI is the original author.
+ */
+export function authorDidForFeed(actor: string, feed: readonly unknown[]): string | null {
+  const requested = actor.trim();
+  if (isRetainedDid(requested)) return requested;
+  if (!requested || requested.startsWith("did:")) return null;
+  const handle = requested.toLowerCase();
+  let found: string | null = null;
+  for (const row of feed) {
+    if (!isRecord(row)) continue;
+    const reason = isRecord(row.reason) ? row.reason : null;
+    const post = isRecord(row.post) ? row.post : null;
+    const candidates = [didForHandle(reason?.by, handle), didForHandle(post?.author, handle)];
+    for (const did of candidates) {
+      if (!did) continue;
+      if (!found) found = did;
+      else if (found !== did) return null;
+    }
+  }
+  return found;
+}
+
+/** Provenance for one AppView response. Author feeds record the actor DID for every row. */
+export function atprotoProvenance(requestUrl: string, feed: readonly unknown[]): string {
+  let url: URL;
+  try {
+    url = new URL(requestUrl);
+  } catch {
+    return `atproto:${requestUrl}`;
+  }
+  if (!isGetAuthorFeed(url)) return `atproto:${url.toString()}`;
+  const did = authorDidForFeed(url.searchParams.get("actor") ?? "", feed);
+  if (did) url.searchParams.set("actorDid", did);
+  else url.searchParams.delete("actorDid");
+  return `atproto:${url.toString()}`;
+}
+
 export function normalizeAtprotoPost(raw: unknown, provenance: string): FeedItem | null {
   if (!isRecord(raw) || !isRecord(raw.post)) return null;
   const post = raw.post;
@@ -110,7 +169,6 @@ export async function fetchPublicAtproto(): Promise<SourcePull> {
 
 async function pullSource(source: AtprotoSource): Promise<FeedItem[]> {
   const url = sourceUrl(source);
-  const provenance = `atproto:${url}`;
   const response = await fetchPublic(url);
   if (!response.ok) {
     throw new Error(`${url} HTTP ${response.status}`);
@@ -120,6 +178,7 @@ async function pullSource(source: AtprotoSource): Promise<FeedItem[]> {
     throw new Error(`${url} unexpected payload`);
   }
 
+  const provenance = atprotoProvenance(url, body.feed);
   const items: FeedItem[] = [];
   for (const row of body.feed) {
     const item = normalizeAtprotoPost(row, provenance);

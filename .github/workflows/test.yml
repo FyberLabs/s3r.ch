@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: "24"
           cache: npm
@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: "24"
           cache: npm
@@ -56,3 +56,34 @@ jobs:
 
       - name: Start without optional integrations
         run: bash scripts/smoke-standalone.sh
+
+  image:
+    # Builds the release Dockerfile and boots it with no Panopticon settings.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.4.1
+        with:
+          driver: docker
+
+      - name: Build image
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          tags: s3rch:ci
+          build-args: |
+            VERSION=ci
+
+      - name: Boot image without Panopticon
+        run: bash scripts/smoke-image.sh s3rch:ci

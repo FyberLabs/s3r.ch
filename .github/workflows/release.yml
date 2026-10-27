@@ -1,0 +1,144 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+# One publish runs at a time. queue: max keeps later tag runs waiting,
+# including runs that still need approval, instead of replacing them.
+concurrency:
+  group: release-publish
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: release
+    permissions:
+      contents: write
+      packages: write
+      deployments: read
+    steps:
+      - name: Checkout the default branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: trusted
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Checkout the tagged commit
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: source
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24"
+
+      - name: Check release tag
+        id: ver
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if ! printf '%s' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+            echo "Tag ${tag} is not vX.Y.Z" >&2
+            exit 1
+          fi
+          version="${tag#v}"
+          minor="${version%.*}"
+          repo="$(printf '%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "minor=${minor}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${repo}" >> "$GITHUB_OUTPUT"
+
+      - name: Require release approval and a protected-branch commit
+        working-directory: trusted
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/require-release-gates.mjs
+
+      - name: Check configuration reference
+        working-directory: source
+        run: node scripts/check-config-reference.mjs
+
+      - name: Check release notes template
+        working-directory: source
+        run: node scripts/check-release-template.mjs
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.4.1
+        with:
+          driver: docker
+
+      - name: Build image
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: source
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          tags: s3rch:release
+          build-args: |
+            VERSION=${{ steps.ver.outputs.version }}
+
+      - name: Boot image without Panopticon
+        run: bash source/scripts/smoke-image.sh s3rch:release
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish or reuse the version tag
+        id: push
+        working-directory: trusted
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ${{ steps.ver.outputs.image }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          LOCAL_TAG: s3rch:release
+        run: node scripts/publish-version-tag.mjs
+
+      - name: Require an anonymous pull
+        working-directory: trusted
+        env:
+          IMAGE: ${{ steps.ver.outputs.image }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: bash scripts/require-anonymous-pull.sh
+
+      - name: Move minor and latest only when this version is not older
+        id: aliases
+        working-directory: trusted
+        env:
+          IMAGE: ${{ steps.ver.outputs.image }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          MINOR: ${{ steps.ver.outputs.minor }}
+          LOCAL_TAG: ${{ steps.push.outputs.local_tag }}
+          REUSED: ${{ steps.push.outputs.reused }}
+        run: node scripts/advance-release-aliases.mjs
+
+      - name: Publish GitHub Release
+        working-directory: trusted
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          IMAGE: ${{ steps.ver.outputs.image }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          MINOR: ${{ steps.ver.outputs.minor }}
+          MINOR_MOVED: ${{ steps.aliases.outputs.minor_moved }}
+          LATEST_MOVED: ${{ steps.aliases.outputs.latest_moved }}
+          TEMPLATE: ${{ github.workspace }}/source/.github/RELEASE_TEMPLATE.md
+        run: bash scripts/publish-github-release.sh

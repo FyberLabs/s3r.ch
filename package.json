@@ -6,26 +6,26 @@
     "dev": "next dev",
     "build": "next build && node scripts/copy-standalone-assets.cjs",
     "start": "node -r ./gun-preload.cjs .next/standalone/server.js",
-    "test": "tsx --test lib/*.test.ts lib/identity/*.test.ts",
+    "test": "node scripts/check-config-reference.mjs && node scripts/check-release-template.mjs && node scripts/startup-packages.mjs && node --test scripts/release-aliases.test.mjs scripts/ghcr-image-version.test.mjs scripts/require-release-gates.test.mjs scripts/version-tag-plan.test.mjs && tsx --test lib/*.test.ts lib/identity/*.test.ts",
     "pull-relay": "tsx scripts/s3rch-pull-relay.ts",
     "lint": "next lint"
   },
   "dependencies": {
-    "@azure/identity": "^4.13.3",
+    "@azure/identity": "^4.14.0",
     "@azure/storage-blob": "^12.34.0",
     "@coinbase/wallet-sdk": "^4.4.0",
     "@faker-js/faker": "^10.6.0",
     "@farcaster/core": "^0.20.0",
-    "@tanstack/react-query": "^5.104.1",
+    "@tanstack/react-query": "^5.104.5",
     "@walletconnect/ethereum-provider": "^2.26.0",
     "gun": "^0.2020.1241",
-    "jose": "^6.2.12",
-    "next": "^16.4.0",
+    "jose": "^6.2.13",
+    "next": "^16.4.3",
     "react": "^19",
     "react-dom": "^19",
     "siwe": "^3.0.0",
-    "viem": "^2.57.4",
-    "wagmi": "^3.7.7"
+    "viem": "^2.57.11",
+    "wagmi": "^3.7.9"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
@@ -33,7 +33,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.6.1",
-    "postcss": "^8.5.29",
+    "postcss": "^8.5.30",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"

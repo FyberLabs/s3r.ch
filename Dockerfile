@@ -19,6 +19,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 FROM base AS runner
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="s3r.ch" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.source="https://github.com/FyberLabs/s3r.ch"
 WORKDIR /app
 RUN apk add --no-cache libc6-compat
 ENV NODE_ENV=production
@@ -44,6 +48,11 @@ RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 ENV GUN_FILE=/app/data/radata
 ENV GUN_SNAPSHOT=/app/data/snapshot.json
 
+# Gun radisk, the seeder snapshot, and the forum file. Production identity
+# is an Azure Blob, not this directory. The process runs as nextjs (uid 1001).
+VOLUME /app/data
 USER nextjs
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||8080)+'/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 CMD ["node", "-r", "./gun-preload.cjs", "server.js"]

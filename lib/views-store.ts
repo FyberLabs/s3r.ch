@@ -187,7 +187,8 @@ export function resolveConflict(state: ViewsState, id: string, chosen: ViewVersi
 /**
  * Merge an incoming version (from a backup or another device) into an entry. A version
  * dominated by a known one is ignored; one that dominates replaces those it dominates;
- * concurrent versions are kept as conflicting copies.
+ * concurrent versions are kept as conflicting copies, except that versions with the same
+ * content are joined into one.
  */
 export function mergeVersion(entry: ViewEntry | undefined, incoming: ViewVersion): ViewEntry {
   return mergeVersionChecked(entry, incoming).entry;
@@ -214,14 +215,20 @@ function mergeInner(entry: ViewEntry | undefined, incoming: ViewVersion): ViewEn
     return entry;
   }
   const survivors = known.filter((k) => compareVV(incoming.vv, k.vv) !== "after");
+  // Concurrent versions with the same content agree (two devices making the same edit, or
+  // concurrent deletions): join their vectors into one version instead of a conflict.
+  const byContent = new Map<string, ViewVersion>();
+  for (const v of [incoming, ...survivors]) {
+    const key = v.deleted ? "deleted" : canonicalJson(v.view);
+    const prev = byContent.get(key);
+    byContent.set(key, prev ? { ...prev, vv: maxVV(prev.vv, v.vv) } : v);
+  }
   // Deterministic order, so replicas that know the same versions show the same current one.
-  const all = [incoming, ...survivors].sort((a, b) => {
+  const all = [...byContent.values()].sort((a, b) => {
     const x = canonicalJson(a);
     const y = canonicalJson(b);
     return x < y ? -1 : x > y ? 1 : 0;
   });
-  // Concurrent deletions agree: join them into one tombstone instead of a hidden conflict.
-  if (all.every((v) => v.deleted)) return { current: { id: incoming.id, vv: maxVV(...all.map((v) => v.vv)), deleted: true }, conflicts: [] };
   const [current, ...conflicts] = all;
   return { current: current!, conflicts };
 }

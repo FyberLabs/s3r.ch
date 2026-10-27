@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { ViewsPicker } from "@/components/ViewsPicker";
+import { ViewsScreen } from "@/components/ViewsScreen";
 import { ViewsWindow } from "@/components/ViewsWindow";
 import { ViewsWindowStatus } from "@/components/ViewsWindowStatus";
 import type { ObservedRow } from "@/lib/views-decorators";
-import type { ViewWindow } from "@/lib/views-window";
+import type { SeenTimes } from "@/lib/views-layout";
+import type { LayoutTree, ViewWindow } from "@/lib/views-window";
 import type { AccessState } from "@/lib/views-access";
 import { formatCanonical, type SourceRef } from "@/lib/views-source-ref";
 import type { PickerSource, PickerTab } from "@/lib/views-picker";
@@ -113,6 +115,32 @@ function WindowsPreview() {
 }
 
 let n = 0;
+
+const LAYOUT: LayoutTree = {
+  type: "split",
+  dir: "row",
+  sizes: [0.3, 0.4, 0.3],
+  children: [
+    { type: "split", dir: "col", sizes: [0.55, 0.45], children: [{ type: "leaf", windowId: "s1" }, { type: "leaf", windowId: "s2" }] },
+    { type: "leaf", windowId: "m" },
+    { type: "leaf", windowId: "t" },
+  ],
+};
+
+/** The route's screen with sample windows: seen times make some windows show unread rows. */
+export function ScreenPage() {
+  const [seen, setSeen] = useState<SeenTimes>({ s1: T - 90, s2: T - 400, m: T - 100, t: T - 15 });
+  const view = { id: "dev", title: "Dev + streams", windows: WINDOWS.map((w) => w.window), layout: LAYOUT, v: 1 as const };
+  // One list for the whole View, as live data would give: keys made unique per sample window,
+  // and past rows observed when they were sent.
+  const rows = WINDOWS.flatMap((w) => w.rows.map((r) => ({ row: { ...r.row, key: `${w.window.id}:${r.row.key}` }, observedAt: Math.min(r.observedAt, r.row.ts) })));
+  return (
+    <main className="flex min-h-screen flex-col gap-3 p-6">
+      <h1 className="text-xl font-semibold">{view.title}</h1>
+      <ViewsScreen view={view} rows={rows} access={access} label={labelOf} seen={seen} onSeen={setSeen} now={() => T} onLayout={() => {}} onSend={() => {}} />
+    </main>
+  );
+}
 
 export function WindowsPage() {
   return (
