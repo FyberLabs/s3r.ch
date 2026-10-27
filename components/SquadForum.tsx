@@ -522,14 +522,12 @@ export function SquadForum() {
         if (cancelled || !versions.current("status", key, gen) || !payload) return;
         const removal = parseForumAgentRemoval(payload);
         if (removal) {
-          const owner = graphRef.current?.ownerOf(removal.id);
           const forumOwner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
           if (
             !authorizeForumAgentRemoval({
               removal,
               mapKey: key,
               signer,
-              owner,
               forumOwner,
               forumId: PILOT_FORUM_ID,
             })
@@ -542,14 +540,12 @@ export function SquadForum() {
         }
         const status = parseForumAgentStatus(payload);
         if (!status) return;
-        const owner = graphRef.current?.ownerOf(status.id);
         const forumOwner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
         const enrolled = admittedRef.current.has(status.seaPubkey);
         const admission = forumStatusAdmission({
           status,
           mapKey: key,
           signer,
-          owner,
           forumOwner,
           forumId: PILOT_FORUM_ID,
           enrolled,

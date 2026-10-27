@@ -524,7 +524,6 @@ export function forumStatusAdmission(input: {
   status: ForumAgentStatus;
   mapKey: string;
   signer: string;
-  owner: string | undefined;
   forumOwner?: string;
   forumId: string;
   enrolled: boolean;
@@ -533,7 +532,6 @@ export function forumStatusAdmission(input: {
   if (input.status.forumId !== input.forumId) return "denied";
   if (!isSeaPubkey(input.signer)) return "denied";
   if (ownerMayWrite(input.signer, input.forumOwner)) return "owner";
-  void input.owner;
   if (input.signer === input.status.seaPubkey) return input.enrolled ? "enrolled" : "pending";
   return "denied";
 }
@@ -547,7 +545,6 @@ export function authorizeForumStatus(input: {
   status: ForumAgentStatus;
   mapKey: string;
   signer: string;
-  owner: string | undefined;
   forumOwner?: string;
   forumId: string;
   enrolled: boolean;
@@ -564,7 +561,6 @@ export function authorizeForumAgentRemoval(input: {
   removal: ForumAgentRemoval;
   mapKey: string;
   signer: string;
-  owner: string | undefined;
   forumOwner: string | undefined;
   forumId: string;
 }): boolean {
@@ -572,7 +568,6 @@ export function authorizeForumAgentRemoval(input: {
   if (removal.removed !== 1 || removal.action !== "remove" || removal.forumId !== input.forumId) return false;
   if (input.mapKey !== removal.seaPubkey) return false;
   if (!isSeaPubkey(input.signer) || !sameEmbeddedPrincipal(removal.seaPubkey, removal.id)) return false;
-  void input.owner;
   if (input.signer === removal.seaPubkey) return true;
   return ownerMayWrite(input.signer, input.forumOwner);
 }
