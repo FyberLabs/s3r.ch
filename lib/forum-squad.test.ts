@@ -12,15 +12,23 @@ import {
 import { createMemorySeeAcl } from "@/lib/identity/see-acl";
 import vector from "@/lib/identity/vectors/forums.json";
 import {
+  authorizeForumAgentRemoval,
   authorizeForumAlarm,
   authorizeForumChat,
+  authorizeForumChatTombstone,
   authorizeForumNeed,
   authorizeForumOffer,
+  authorizeForumRoleAdmission,
   authorizeForumStatus,
   buildForumStatement,
   canWriteStatus,
   chatRetractionIds,
+  createMeshEventVersions,
   filterAgents,
+  forumStatusAdmission,
+  mergeAgents,
+  parseForumAgentRemoval,
+  parseForumRoleMembership,
   pickDisplayedStatus,
   showFullVitals,
   sortAgents,
@@ -179,37 +187,78 @@ describe("squad view", () => {
     assert.equal(pickDisplayedStatus(echoed, paused), echoed);
   });
 
-  it("drops retracted chat and leaves unrelated feed rows alone", () => {
+  it("hides chat only for a forum-bound tombstone on that line's key", () => {
     const line = PILOT_CHAT[0];
     assert.ok(line);
-    assert.deepEqual(chatRetractionIds(null, line.id, [line.id]), [line.id]);
-    assert.deepEqual(chatRetractionIds(undefined, line.id, [line.id]), []);
-    assert.deepEqual(chatRetractionIds({ id: line.id, unshared: 1 }, line.id, [line.id]), [line.id]);
+    const known = [line.id];
+    assert.deepEqual(chatRetractionIds(null, line.id, known, PILOT_FORUM_ID), []);
+    assert.deepEqual(chatRetractionIds(undefined, line.id, known, PILOT_FORUM_ID), []);
+    assert.deepEqual(chatRetractionIds({ id: line.id, unshared: 1 }, line.id, known, PILOT_FORUM_ID), []);
+    assert.deepEqual(chatRetractionIds({ id: line.id, tags: "" }, line.id, known, PILOT_FORUM_ID), []);
+    const tombstone = { id: line.id, forumId: PILOT_FORUM_ID, unshared: 1 };
+    assert.deepEqual(chatRetractionIds(tombstone, line.id, known, PILOT_FORUM_ID), [line.id]);
     const other = PILOT_CHAT[1];
     assert.ok(other);
     assert.deepEqual(
-      chatRetractionIds({ id: line.id, unshared: 1 }, "stmt-forged", [line.id, other.id]),
+      chatRetractionIds(tombstone, "stmt-forged", [line.id, other.id], PILOT_FORUM_ID),
       [],
     );
     assert.deepEqual(
-      chatRetractionIds({ id: other.id, unshared: 1 }, line.id, [line.id, other.id]),
-      [line.id],
+      chatRetractionIds(
+        { id: other.id, forumId: PILOT_FORUM_ID, unshared: 1 },
+        line.id,
+        [line.id, other.id],
+        PILOT_FORUM_ID,
+      ),
+      [],
     );
     assert.deepEqual(
-      withoutChatIds([line, other], chatRetractionIds({ id: line.id, unshared: 1 }, "stmt-forged", [line.id, other.id])).map(
+      chatRetractionIds(
+        { ...tombstone, forumId: vector.wrongForumId },
+        line.id,
+        known,
+        PILOT_FORUM_ID,
+      ),
+      [],
+    );
+    assert.deepEqual(
+      withoutChatIds([line, other], chatRetractionIds(tombstone, "stmt-forged", [line.id, other.id], PILOT_FORUM_ID)).map(
         (item) => item.id,
       ),
       [line.id, other.id],
     );
-    assert.deepEqual(chatRetractionIds({ id: line.id, tags: "" }, line.id, [line.id]), [line.id]);
-    assert.deepEqual(chatRetractionIds({ id: line.id, tags: "" }, "stmt-forged", [line.id]), []);
-    assert.deepEqual(
-      chatRetractionIds({ id: "stmt-other", body: "public" }, "stmt-other", [line.id]),
-      [],
-    );
     const kept = withoutChatIds(PILOT_CHAT, [line.id]);
     assert.equal(kept.some((item) => item.id === line.id), false);
     assert.equal(kept.length, PILOT_CHAT.length - 1);
+    assert.equal(
+      authorizeForumChatTombstone({ signer: line.author, author: line.author, owner: PILOT_OWNER }),
+      true,
+    );
+    assert.equal(
+      authorizeForumChatTombstone({ signer: PILOT_OWNER, author: line.author, owner: PILOT_OWNER }),
+      true,
+    );
+    const stranger = PILOT_AGENTS.find((row) => row.status.seaPubkey !== line.author);
+    assert.ok(stranger);
+    assert.equal(
+      authorizeForumChatTombstone({
+        signer: stranger.status.seaPubkey,
+        author: line.author,
+        owner: PILOT_OWNER,
+      }),
+      stranger.status.seaPubkey === PILOT_OWNER,
+    );
+  });
+
+  it("drops a stale mesh read after a later event on the same key", () => {
+    const versions = createMeshEventVersions();
+    const first = versions.bump("chat", "stmt-1");
+    const second = versions.bump("chat", "stmt-1");
+    assert.equal(versions.current("chat", "stmt-1", first), false);
+    assert.equal(versions.current("chat", "stmt-1", second), true);
+    assert.equal(versions.current("status", "stmt-1", second), false);
+    const statusGen = versions.bump("status", "stmt-1");
+    assert.equal(versions.current("status", "stmt-1", statusGen), true);
   });
 
   it("accepts a status row only from the agent pubkey or the admitted owner", () => {
@@ -223,8 +272,33 @@ describe("squad view", () => {
         signer: status.seaPubkey,
         owner: PILOT_OWNER,
         forumId: PILOT_FORUM_ID,
+        enrolled: true,
       }),
       true,
+    );
+    assert.equal(
+      forumStatusAdmission({
+        status,
+        mapKey: status.seaPubkey,
+        signer: status.seaPubkey,
+        owner: PILOT_OWNER,
+        forumOwner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+        enrolled: false,
+      }),
+      "pending",
+    );
+    assert.equal(
+      authorizeForumStatus({
+        status,
+        mapKey: status.seaPubkey,
+        signer: status.seaPubkey,
+        owner: status.seaPubkey,
+        forumOwner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+        enrolled: false,
+      }),
+      false,
     );
     assert.equal(
       authorizeForumStatus({
@@ -233,6 +307,7 @@ describe("squad view", () => {
         signer: PILOT_OWNER,
         owner: PILOT_OWNER,
         forumId: PILOT_FORUM_ID,
+        enrolled: false,
       }),
       true,
     );
@@ -243,6 +318,7 @@ describe("squad view", () => {
         signer: status.seaPubkey,
         owner: PILOT_OWNER,
         forumId: PILOT_FORUM_ID,
+        enrolled: true,
       }),
       false,
     );
@@ -253,6 +329,7 @@ describe("squad view", () => {
         signer: vector.secondPubkey === status.seaPubkey ? PILOT_OWNER : vector.secondPubkey,
         owner: PILOT_OWNER,
         forumId: PILOT_FORUM_ID,
+        enrolled: true,
       }),
       vector.secondPubkey === status.seaPubkey,
     );
@@ -267,6 +344,7 @@ describe("squad view", () => {
         signer: stranger.status.seaPubkey,
         owner: PILOT_OWNER,
         forumId: PILOT_FORUM_ID,
+        enrolled: true,
       }),
       false,
     );
@@ -277,8 +355,99 @@ describe("squad view", () => {
         signer: PILOT_OWNER,
         owner: PILOT_OWNER,
         forumId: vector.wrongForumId,
+        enrolled: true,
       }),
       false,
+    );
+    const removal = {
+      removed: 1 as const,
+      forumId: PILOT_FORUM_ID,
+      seaPubkey: status.seaPubkey,
+      id: status.id,
+    };
+    assert.equal(parseForumAgentRemoval(null), null);
+    assert.equal(parseForumAgentRemoval({ ...removal, removed: 0 }), null);
+    assert.equal(
+      authorizeForumAgentRemoval({
+        removal,
+        mapKey: status.seaPubkey,
+        signer: status.seaPubkey,
+        owner: PILOT_OWNER,
+        forumOwner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+      }),
+      true,
+    );
+    assert.equal(
+      authorizeForumAgentRemoval({
+        removal,
+        mapKey: status.seaPubkey,
+        signer: PILOT_OWNER,
+        owner: PILOT_OWNER,
+        forumOwner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+      }),
+      true,
+    );
+    assert.equal(
+      authorizeForumAgentRemoval({
+        removal,
+        mapKey: status.seaPubkey,
+        signer: stranger.status.seaPubkey,
+        owner: PILOT_OWNER,
+        forumOwner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+      }),
+      false,
+    );
+    const membership = {
+      forumId: PILOT_FORUM_ID,
+      role: "treasurer",
+      principal: status.seaPubkey,
+    };
+    assert.deepEqual(parseForumRoleMembership(membership), membership);
+    assert.equal(parseForumRoleMembership({ ...membership, role: "chat" }), null);
+    assert.equal(
+      authorizeForumRoleAdmission({
+        membership,
+        roleToken: "treasurer",
+        mapKey: status.seaPubkey,
+        signer: PILOT_OWNER,
+        forumOwner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+      }),
+      true,
+    );
+    assert.equal(
+      authorizeForumRoleAdmission({
+        membership,
+        roleToken: "treasurer",
+        mapKey: status.seaPubkey,
+        signer: status.seaPubkey,
+        forumOwner: PILOT_OWNER,
+        forumId: PILOT_FORUM_ID,
+      }),
+      false,
+    );
+    const outsider = {
+      ...status,
+      seaPubkey: "strangerpub.strangerpub",
+      state: "emergency" as const,
+    };
+    assert.equal(
+      mergeAgents(PILOT_AGENTS, [outsider]).some((row) => row.status.seaPubkey === outsider.seaPubkey),
+      false,
+    );
+    assert.equal(
+      mergeAgents(PILOT_AGENTS, [outsider], new Set([outsider.seaPubkey])).some(
+        (row) => row.status.state === "emergency" && row.status.seaPubkey === outsider.seaPubkey,
+      ),
+      true,
+    );
+    const meshUpdate = { ...status, task: "from-mesh" };
+    assert.equal(
+      mergeAgents(PILOT_AGENTS, [meshUpdate]).find((row) => row.status.seaPubkey === status.seaPubkey)?.status.task,
+      "from-mesh",
     );
   });
 

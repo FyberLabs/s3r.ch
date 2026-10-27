@@ -125,7 +125,7 @@ Check see on a need lets the writer post a live offer. That does not set `stated
 
 On this app, pause and reassign are owner puts of the status node. Check see is not that status write.
 
-A mesh status, need, alarm, offer, or chat row is kept only when its signature checks out for the allowed writer. An unsigned row is ignored. A chat put that is null, a tombstone, or no longer tagged for the forum drops that line only when the Gun key is that line. An id inside an unsigned tombstone does not hide a different line. A local pause stays visible only while its `lastUpdate` is strictly newer than the mesh row.
+A mesh status, need, alarm, offer, or chat row is kept only when its signature checks out for the allowed writer. An unsigned row is ignored. A self-signed status updates a pubkey already on the roster. A new pubkey is added only when the forum owner signed that status, or signed a role membership for that pubkey. An unsigned null does not remove a verified status. A signed removal from that agent or the forum owner does. A chat line stays up when a later put is an unsigned null, a malformed value, or a tag change without a signature. It drops when the author or the forum owner signed a tombstone for that forum and that Gun key. A signature read that finishes after a later put on the same key is ignored. An id inside an unsigned tombstone does not hide a different line. A local pause stays visible only while its `lastUpdate` is strictly newer than the mesh row. Signing uses the unlocked key on this browser. A wrapped key signs after unlock. The private half is not written to the mesh.
 
 Role membership is `distinct-principals` or `role-labels` on the template soul. A role token is not a Check predicate.
 

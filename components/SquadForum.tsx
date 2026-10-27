@@ -35,19 +35,25 @@ import {
   formatRuntime,
   formatTokens,
   authorizeForumAlarm,
+  authorizeForumAgentRemoval,
   authorizeForumChat,
+  authorizeForumChatTombstone,
   authorizeForumNeed,
   authorizeForumOffer,
-  authorizeForumStatus,
+  authorizeForumRoleAdmission,
   chatRetractionIds,
+  createMeshEventVersions,
   forumStatementFromNode,
+  forumStatusAdmission,
   mergeAgents,
   needIds,
   openNeedFor,
   overlaySeeGraph,
+  parseForumAgentRemoval,
   parseForumAgentStatus,
   parseForumNeed,
   parseForumOffer,
+  parseForumRoleMembership,
   pausedStatus,
   pickDisplayedStatus,
   reassignedStatus,
@@ -73,6 +79,7 @@ import {
   forumOfferSoul,
   forumStatementSoul,
   isForumObjectId,
+  isRoleToken,
   isSeaPubkey,
   isSeparateChatSoul,
   offerForumHelp,
@@ -87,6 +94,11 @@ import {
 } from "@/lib/identity/check";
 import { getMeshKey, isPlaintextMeshKeyRecord } from "@/lib/identity/idb";
 import type { SeaPair } from "@/lib/identity/sea";
+import {
+  readUnlockedMeshPair,
+  rememberUnlockedMeshPair,
+  subscribeUnlockedMeshPair,
+} from "@/lib/identity/unlocked-mesh";
 import { createMemorySeeAcl } from "@/lib/identity/see-acl";
 
 const STATES: ForumAgentState[] = ["emergency", "needs", "working", "idle"];
@@ -185,12 +197,18 @@ export function SquadForum() {
   const [localOffers, setLocalOffers] = useState<Map<string, ForumOffer>>(() => new Map());
   const [localChat, setLocalChat] = useState<FeedItem[]>([]);
   const [hiddenChat, setHiddenChat] = useState<readonly string[]>([]);
+  const [admitted, setAdmitted] = useState<ReadonlySet<string>>(
+    () => new Set(PILOT_AGENTS.map((agent) => agent.status.seaPubkey)),
+  );
   const gunRef = useRef<FeedGun | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const pairRef = useRef<SeaPair | null>(null);
   const graphRef = useRef<SeeGraph | null>(null);
   const needsRef = useRef<Map<string, ForumNeed>>(new Map());
   const chatIdsRef = useRef<string[]>([]);
+  const chatRowsRef = useRef<FeedItem[]>([]);
+  const admittedRef = useRef(admitted);
+  const pendingStatusRef = useRef<Map<string, ForumAgentStatus>>(new Map());
   const sampleAcl = useMemo(() => {
     const acl = createMemorySeeAcl();
     admitPilotRoster(acl);
@@ -204,16 +222,40 @@ export function SquadForum() {
       setSeaPub(null);
       return;
     }
-    void getMeshKey(session.address)
+    const address = session.address;
+    const hold = (pair: SeaPair | null, pubHint: string | null) => {
+      if (cancelled) return;
+      if (pair && isSeaPubkey(pair.pub) && (!pubHint || pair.pub === pubHint)) {
+        pairRef.current = pair;
+        setSeaPub(pair.pub);
+        return;
+      }
+      const held = readUnlockedMeshPair(address);
+      if (pubHint && isSeaPubkey(pubHint)) {
+        pairRef.current = held && held.pub === pubHint ? held : null;
+        setSeaPub(pubHint);
+        return;
+      }
+      pairRef.current = null;
+      setSeaPub(null);
+    };
+    const stop = subscribeUnlockedMeshPair((heard, pair) => {
+      if (heard !== address.trim().toLowerCase()) return;
+      hold(pair, pair?.pub ?? null);
+    });
+    const remembered = readUnlockedMeshPair(address);
+    if (remembered) hold(remembered, remembered.pub);
+    void getMeshKey(address)
       .then((record) => {
         if (cancelled) return;
         const pub = record?.seaPub;
         const readable = pub && isSeaPubkey(pub) ? pub : null;
-        pairRef.current =
-          record && isPlaintextMeshKeyRecord(record) && record.seaPair.pub === readable
-            ? record.seaPair
-            : null;
-        setSeaPub(readable);
+        if (record && isPlaintextMeshKeyRecord(record) && record.seaPair.pub === readable) {
+          rememberUnlockedMeshPair(address, record.seaPair);
+          hold(record.seaPair, readable);
+          return;
+        }
+        hold(readUnlockedMeshPair(address), readable);
       })
       .catch(() => {
         if (cancelled) return;
@@ -222,6 +264,7 @@ export function SquadForum() {
       });
     return () => {
       cancelled = true;
+      stop();
     };
   }, [session?.address]);
 
@@ -253,6 +296,9 @@ export function SquadForum() {
     const watchedOffers = new Set<string>();
     let offAlarm: { off?: () => void } | undefined;
     let offItems: { off?: () => void } | undefined;
+    let offRoles: { off?: () => void } | undefined;
+    const roleOffs: Array<{ off?: () => void }> = [];
+    const watchedRoles = new Set<string>();
 
     void (async () => {
       const GunMod = await import("gun/browser");
@@ -263,8 +309,52 @@ export function SquadForum() {
       register(gun);
       listenThenConnectSeedPeer(gun as unknown as SeedPeerEmitter, window.location.origin, () => {});
       const forum = gun.get("s3rch").get("forums").get(PILOT_FORUM_ID);
+      const versions = createMeshEventVersions();
       function knownChatIds(): string[] {
         return chatIdsRef.current;
+      }
+      function enrollPub(pub: string) {
+        if (!admittedRef.current.has(pub)) {
+          const next = new Set(admittedRef.current);
+          next.add(pub);
+          admittedRef.current = next;
+          setAdmitted(next);
+        }
+        const waiting = pendingStatusRef.current.get(pub);
+        if (!waiting) return;
+        pendingStatusRef.current.delete(pub);
+        commitMeshStatus(waiting);
+      }
+      function commitMeshStatus(status: ForumAgentStatus) {
+        setMeshStatus((prev) => {
+          const existing = prev.get(status.seaPubkey);
+          if (existing && existing.lastUpdate > status.lastUpdate) return prev;
+          const next = new Map(prev);
+          next.set(status.seaPubkey, status);
+          return next;
+        });
+        setLocalStatus((prev) => {
+          const local = prev.get(status.seaPubkey);
+          if (!local || status.lastUpdate < local.lastUpdate) return prev;
+          const next = new Map(prev);
+          next.delete(status.seaPubkey);
+          return next;
+        });
+      }
+      function dropMeshStatus(pub: string) {
+        pendingStatusRef.current.delete(pub);
+        setMeshStatus((prev) => {
+          if (!prev.has(pub)) return prev;
+          const next = new Map(prev);
+          next.delete(pub);
+          return next;
+        });
+        setLocalStatus((prev) => {
+          if (!prev.has(pub)) return prev;
+          const next = new Map(prev);
+          next.delete(pub);
+          return next;
+        });
       }
       function hideChat(ids: string[]) {
         setHiddenChat((prev) => [...new Set([...prev, ...ids])]);
@@ -324,42 +414,72 @@ export function SquadForum() {
           return next;
         });
       }
-      async function acceptStatus(data: unknown, key: string | undefined) {
-        if (typeof key !== "string") return;
+      async function acceptStatus(data: unknown, key: string, gen: number) {
         const sig = signatureOf(data);
         if (!sig || !data || typeof data !== "object") return;
-        const claimed = (data as { seaPubkey?: unknown }).seaPubkey;
-        const hintedId = (data as { id?: unknown }).id;
-        let signer = typeof claimed === "string" ? claimed : "";
-        let payload = signer ? await readForumSignature(sig, signer) : null;
-        if (!payload && typeof hintedId === "string") {
-          const owner = graphRef.current?.ownerOf(hintedId);
-          if (owner && owner !== signer) {
-            payload = await readForumSignature(sig, owner);
-            signer = owner;
+        const row = data as { seaPubkey?: unknown; id?: unknown };
+        const hintedId = typeof row.id === "string" ? row.id : "";
+        const claimed = typeof row.seaPubkey === "string" ? row.seaPubkey : "";
+        const candidates = [
+          claimed,
+          hintedId ? (graphRef.current?.ownerOf(hintedId) ?? "") : "",
+          graphRef.current?.ownerOf(PILOT_FORUM_ID) ?? "",
+        ].filter((pub, index, all) => pub && all.indexOf(pub) === index);
+        let payload: unknown = null;
+        let signer = "";
+        for (const pub of candidates) {
+          if (cancelled || !versions.current("status", key, gen)) return;
+          const verified = await readForumSignature(sig, pub);
+          if (verified) {
+            payload = verified;
+            signer = pub;
+            break;
           }
         }
-        if (cancelled || !payload) return;
+        if (cancelled || !versions.current("status", key, gen) || !payload) return;
+        const removal = parseForumAgentRemoval(payload);
+        if (removal) {
+          const owner = graphRef.current?.ownerOf(removal.id);
+          const forumOwner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
+          if (
+            !authorizeForumAgentRemoval({
+              removal,
+              mapKey: key,
+              signer,
+              owner,
+              forumOwner,
+              forumId: PILOT_FORUM_ID,
+            })
+          ) {
+            return;
+          }
+          if (!versions.current("status", key, gen)) return;
+          dropMeshStatus(removal.seaPubkey);
+          return;
+        }
         const status = parseForumAgentStatus(payload);
         if (!status) return;
         const owner = graphRef.current?.ownerOf(status.id);
-        if (!authorizeForumStatus({ status, mapKey: key, signer, owner, forumId: PILOT_FORUM_ID })) {
+        const forumOwner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
+        const enrolled = admittedRef.current.has(status.seaPubkey);
+        const admission = forumStatusAdmission({
+          status,
+          mapKey: key,
+          signer,
+          owner,
+          forumOwner,
+          forumId: PILOT_FORUM_ID,
+          enrolled,
+        });
+        if (!versions.current("status", key, gen)) return;
+        if (admission === "pending") {
+          pendingStatusRef.current.set(status.seaPubkey, status);
           return;
         }
-        setMeshStatus((prev) => {
-          const existing = prev.get(status.seaPubkey);
-          if (existing && existing.lastUpdate > status.lastUpdate) return prev;
-          const next = new Map(prev);
-          next.set(status.seaPubkey, status);
-          return next;
-        });
-        setLocalStatus((prev) => {
-          const local = prev.get(status.seaPubkey);
-          if (!local || status.lastUpdate < local.lastUpdate) return prev;
-          const next = new Map(prev);
-          next.delete(status.seaPubkey);
-          return next;
-        });
+        if (admission !== "owner" && admission !== "enrolled") return;
+        if (admission === "owner") enrollPub(status.seaPubkey);
+        pendingStatusRef.current.delete(status.seaPubkey);
+        commitMeshStatus(status);
       }
       async function acceptNeed(data: unknown, key: string | undefined) {
         const sig = signatureOf(data);
@@ -420,28 +540,74 @@ export function SquadForum() {
           setMeshAlarm(null);
         }
       }
+      async function acceptRole(data: unknown, roleToken: string, mapKey: string, gen: number) {
+        const sig = signatureOf(data);
+        const forumOwner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
+        if (!sig || !forumOwner || !data || typeof data !== "object") return;
+        const payload = await readForumSignature(sig, forumOwner);
+        if (cancelled || !versions.current("role", `${roleToken}:${mapKey}`, gen) || !payload) return;
+        const membership = parseForumRoleMembership(payload);
+        if (!membership) return;
+        if (
+          !authorizeForumRoleAdmission({
+            membership,
+            roleToken,
+            mapKey,
+            signer: forumOwner,
+            forumOwner,
+            forumId: PILOT_FORUM_ID,
+          })
+        ) {
+          return;
+        }
+        if (!versions.current("role", `${roleToken}:${mapKey}`, gen)) return;
+        enrollPub(membership.principal);
+      }
       async function acceptChat(data: unknown, key: string | undefined) {
-        if (data === undefined) return;
+        if (data === undefined || typeof key !== "string") return;
+        const gen = versions.bump("chat", key);
         const live = forumStatementFromNode(data, PILOT_FORUM_ID);
-        if (!live) {
-          const ids = chatRetractionIds(data, key, knownChatIds());
-          if (ids.length > 0) hideChat(ids);
+        if (live) {
+          const sig = signatureOf(data);
+          const author = live.author;
+          if (!sig) return;
+          const payload = await readForumSignature(sig, author);
+          if (cancelled || !versions.current("chat", key, gen) || !payload) return;
+          const item = forumStatementFromNode(payload, PILOT_FORUM_ID);
+          if (!item || !authorizeForumChat(item, author, key, PILOT_FORUM_ID)) return;
+          if (!versions.current("chat", key, gen)) return;
+          setHiddenChat((prev) => prev.filter((id) => !soulKeyMatches(item.id, id)));
+          setMeshChat((prev) => {
+            if (prev.some((row) => row.id === item.id)) {
+              return prev.map((row) => (row.id === item.id ? item : row));
+            }
+            return [...prev, item];
+          });
           return;
         }
         const sig = signatureOf(data);
-        const author = live.author;
         if (!sig) return;
-        const payload = await readForumSignature(sig, author);
-        if (cancelled || !payload) return;
-        const item = forumStatementFromNode(payload, PILOT_FORUM_ID);
-        if (!item || !authorizeForumChat(item, author, key, PILOT_FORUM_ID)) return;
-        setHiddenChat((prev) => prev.filter((id) => !soulKeyMatches(item.id, id)));
-        setMeshChat((prev) => {
-          if (prev.some((row) => row.id === item.id)) {
-            return prev.map((row) => (row.id === item.id ? item : row));
+        const author = chatRowsRef.current.find((row) => soulKeyMatches(row.id, key))?.author;
+        const owner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
+        const candidates = [author ?? "", owner ?? ""].filter(
+          (pub, index, all) => pub && all.indexOf(pub) === index,
+        );
+        let payload: unknown = null;
+        let signer = "";
+        for (const pub of candidates) {
+          if (cancelled || !versions.current("chat", key, gen)) return;
+          const verified = await readForumSignature(sig, pub);
+          if (verified) {
+            payload = verified;
+            signer = pub;
+            break;
           }
-          return [...prev, item];
-        });
+        }
+        if (cancelled || !versions.current("chat", key, gen) || !payload) return;
+        if (!authorizeForumChatTombstone({ signer, author, owner })) return;
+        const ids = chatRetractionIds(payload, key, knownChatIds(), PILOT_FORUM_ID);
+        if (!versions.current("chat", key, gen) || ids.length === 0) return;
+        hideChat(ids);
       }
       const watchOffers = (needId: string) => {
         if (!isForumObjectId(needId, "need") || watchedOffers.has(needId)) return;
@@ -464,17 +630,22 @@ export function SquadForum() {
       };
       for (const need of PILOT_NEEDS) watchOffers(need.id);
       offAgents = forum.get("agents").map().on((data, key) => {
-        if (cancelled) return;
-        if (data === null && typeof key === "string") {
-          setMeshStatus((prev) => {
-            if (!prev.has(key)) return prev;
-            const next = new Map(prev);
-            next.delete(key);
-            return next;
-          });
-          return;
-        }
-        void acceptStatus(data, typeof key === "string" ? key : undefined);
+        if (cancelled || typeof key !== "string" || data === undefined) return;
+        const gen = versions.bump("status", key);
+        if (data === null) return;
+        void acceptStatus(data, key, gen);
+      });
+      offRoles = forum.get("roles").map().on((data, token) => {
+        if (cancelled || typeof token !== "string" || !isRoleToken(token) || watchedRoles.has(token)) return;
+        watchedRoles.add(token);
+        roleOffs.push(
+          forum.get("roles").get(token).map().on((row, pub) => {
+            if (cancelled || typeof pub !== "string") return;
+            const gen = versions.bump("role", `${token}:${pub}`);
+            if (row == null) return;
+            void acceptRole(row, token, pub, gen);
+          }),
+        );
       });
       offNeeds = forum.get("needs").map().on((data, key) => {
         if (cancelled) return;
@@ -504,6 +675,8 @@ export function SquadForum() {
       cancelled = true;
       offAgents?.off?.();
       offNeeds?.off?.();
+      offRoles?.off?.();
+      for (const off of roleOffs) off.off?.();
       for (const off of offerOffs) off.off?.();
       offAlarm?.off?.();
       offItems?.off?.();
@@ -523,7 +696,8 @@ export function SquadForum() {
 
   const graph: SeeGraph | null = see ? overlaySeeGraph(see.acl, sampleAcl) : null;
   graphRef.current = graph;
-  chatIdsRef.current = [...PILOT_CHAT, ...meshChat, ...localChat].map((item) => item.id);
+  chatRowsRef.current = [...PILOT_CHAT, ...meshChat, ...localChat];
+  chatIdsRef.current = chatRowsRef.current.map((item) => item.id);
 
   const needs = useMemo(() => {
     const map = new Map<string, ForumNeed>();
@@ -550,13 +724,13 @@ export function SquadForum() {
   }, [localOffers, meshOffers]);
 
   const roster = useMemo(() => {
-    const merged = mergeAgents(PILOT_AGENTS, [...meshStatus.values()]);
+    const merged = mergeAgents(PILOT_AGENTS, [...meshStatus.values()], admitted);
     return merged.map((agent) => {
       const over = localStatus.get(agent.status.seaPubkey);
       const status = pickDisplayedStatus(agent.status, over);
       return status === agent.status ? agent : { ...agent, status };
     });
-  }, [localStatus, meshStatus]);
+  }, [admitted, localStatus, meshStatus]);
 
   const visible = useMemo(
     () => filterAgents(roster, filters, query),

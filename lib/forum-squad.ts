@@ -16,7 +16,9 @@ import {
   forumStatementSoul,
   isForumChatExtraTag,
   isForumObjectId,
+  isRoleToken,
   isSeaPubkey,
+  sameEmbeddedPrincipal,
   validateForumNeed,
   validateForumOffer,
   validateForumStatus,
@@ -25,6 +27,7 @@ import {
   type ForumAlarm,
   type ForumNeed,
   type ForumOffer,
+  type ForumRoleMembership,
   type SeeGraph,
 } from "@/lib/identity/check";
 
@@ -416,21 +419,59 @@ export function pickDisplayedStatus(
 }
 
 /**
- * Ids to drop when a chat put is a tombstone, Gun `null`, or no longer a
- * forum statement. `undefined` is not a retract. Only the Gun map key can
- * name the line, and only when it soul-matches a line already shown. An
- * unsigned payload `id` on a tombstone is not a hide target.
+ * Per map-key generation for mesh callbacks. A later event on the same key
+ * makes an in-flight signature read stale.
+ */
+export function createMeshEventVersions(): {
+  bump: (scope: string, key: string) => number;
+  current: (scope: string, key: string, generation: number) => boolean;
+} {
+  const versions = new Map<string, number>();
+  function id(scope: string, key: string): string {
+    return `${scope}\n${key}`;
+  }
+  return {
+    bump(scope, key) {
+      const next = (versions.get(id(scope, key)) ?? 0) + 1;
+      versions.set(id(scope, key), next);
+      return next;
+    },
+    current(scope, key, generation) {
+      return versions.get(id(scope, key)) === generation;
+    },
+  };
+}
+
+/**
+ * Hide target for a verified chat tombstone. Unsigned `null`, a missing
+ * signature, a tag strip, and a payload id on a different Gun key are not
+ * hide targets. The tombstone must name this forum and soul-match the map key.
  */
 export function chatRetractionIds(
   data: unknown,
   key: string | undefined,
   knownIds: readonly string[],
+  forumId: string,
 ): string[] {
-  if (data === undefined) return [];
+  if (!data || typeof data !== "object") return [];
+  const row = data as Record<string, unknown>;
+  if (row.unshared !== 1 || row.forumId !== forumId) return [];
+  if (typeof row.id !== "string") return [];
   const mapKey = typeof key === "string" ? key.trim() : "";
-  if (!mapKey) return [];
+  if (!mapKey || !soulKeyMatches(row.id, mapKey)) return [];
   if (!knownIds.some((known) => soulKeyMatches(known, mapKey))) return [];
   return [mapKey];
+}
+
+/** Author or forum owner. A stranger's signature does not hide the line. */
+export function authorizeForumChatTombstone(input: {
+  signer: string;
+  author: string | undefined;
+  owner: string | undefined;
+}): boolean {
+  if (!isSeaPubkey(input.signer)) return false;
+  if (input.author && input.signer === input.author && isSeaPubkey(input.author)) return true;
+  return !!input.owner && input.signer === input.owner && isSeaPubkey(input.owner);
 }
 
 export function withoutChatIds(items: readonly FeedItem[], ids: readonly string[]): FeedItem[] {
@@ -438,22 +479,115 @@ export function withoutChatIds(items: readonly FeedItem[], ids: readonly string[
   return items.filter((item) => !ids.some((id) => soulKeyMatches(item.id, id)));
 }
 
+export type ForumAgentRemoval = {
+  removed: 1;
+  forumId: string;
+  seaPubkey: string;
+  id: string;
+};
+
+/** Signed removal. Unsigned `null` is not a removal. */
+export function parseForumAgentRemoval(value: unknown): ForumAgentRemoval | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  if (row.removed !== 1) return null;
+  if (typeof row.forumId !== "string" || typeof row.seaPubkey !== "string" || typeof row.id !== "string") {
+    return null;
+  }
+  if (!isForumObjectId(row.forumId, "forum") || !isForumObjectId(row.id, "status")) return null;
+  if (!isSeaPubkey(row.seaPubkey) || !sameEmbeddedPrincipal(row.seaPubkey, row.id)) return null;
+  return { removed: 1, forumId: row.forumId, seaPubkey: row.seaPubkey, id: row.id };
+}
+
+function ownerMayWrite(signer: string, owner: string | undefined): boolean {
+  return !!owner && signer === owner && canWriteStatus(owner, signer);
+}
+
+/**
+ * `owner` admits a new pubkey (forum owner, or the admitted owner of that
+ * status when they are not the agent signing for themselves). `enrolled`
+ * is a self-update of a pubkey already on the roster. `pending` is a
+ * self-signature that must wait for admission. `denied` is ignored.
+ */
+export function forumStatusAdmission(input: {
+  status: ForumAgentStatus;
+  mapKey: string;
+  signer: string;
+  owner: string | undefined;
+  forumOwner?: string;
+  forumId: string;
+  enrolled: boolean;
+}): "owner" | "enrolled" | "pending" | "denied" {
+  if (input.mapKey !== input.status.seaPubkey) return "denied";
+  if (input.status.forumId !== input.forumId) return "denied";
+  if (!isSeaPubkey(input.signer)) return "denied";
+  if (ownerMayWrite(input.signer, input.forumOwner)) return "owner";
+  if (ownerMayWrite(input.signer, input.owner) && input.signer !== input.status.seaPubkey) return "owner";
+  if (input.signer === input.status.seaPubkey) return input.enrolled ? "enrolled" : "pending";
+  return "denied";
+}
+
 /**
  * Mesh status may replace a roster tile only when the signature signer is
- * the agent pubkey or the admitted owner, and the Gun map key is that agent.
+ * the agent pubkey already on the roster, or the admitted owner, and the
+ * Gun map key is that agent. A self-signature does not enroll a new key.
  */
 export function authorizeForumStatus(input: {
   status: ForumAgentStatus;
   mapKey: string;
   signer: string;
   owner: string | undefined;
+  forumOwner?: string;
+  forumId: string;
+  enrolled: boolean;
+}): boolean {
+  const admission = forumStatusAdmission(input);
+  return admission === "owner" || admission === "enrolled";
+}
+
+/** Agent or owner. The map key is the agent pubkey. Unsigned null is not this. */
+export function authorizeForumAgentRemoval(input: {
+  removal: ForumAgentRemoval;
+  mapKey: string;
+  signer: string;
+  owner: string | undefined;
+  forumOwner: string | undefined;
   forumId: string;
 }): boolean {
-  if (input.mapKey !== input.status.seaPubkey) return false;
-  if (input.status.forumId !== input.forumId) return false;
-  if (!isSeaPubkey(input.signer)) return false;
-  if (input.signer === input.status.seaPubkey) return true;
-  return input.signer === input.owner && canWriteStatus(input.owner, input.signer);
+  const removal = input.removal;
+  if (removal.removed !== 1 || removal.forumId !== input.forumId) return false;
+  if (input.mapKey !== removal.seaPubkey) return false;
+  if (!isSeaPubkey(input.signer) || !sameEmbeddedPrincipal(removal.seaPubkey, removal.id)) return false;
+  if (input.signer === removal.seaPubkey) return true;
+  if (ownerMayWrite(input.signer, input.forumOwner)) return true;
+  return ownerMayWrite(input.signer, input.owner);
+}
+
+export function parseForumRoleMembership(value: unknown): ForumRoleMembership | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.forumId !== "string" || typeof row.role !== "string" || typeof row.principal !== "string") {
+    return null;
+  }
+  if (!isForumObjectId(row.forumId, "forum") || !isRoleToken(row.role) || !isSeaPubkey(row.principal)) {
+    return null;
+  }
+  return { forumId: row.forumId, role: row.role, principal: row.principal };
+}
+
+/** Forum owner signs the membership. The map key is the principal. Self-sign does not admit. */
+export function authorizeForumRoleAdmission(input: {
+  membership: ForumRoleMembership;
+  roleToken: string;
+  mapKey: string;
+  signer: string;
+  forumOwner: string | undefined;
+  forumId: string;
+}): boolean {
+  const membership = input.membership;
+  if (membership.forumId !== input.forumId || membership.role !== input.roleToken) return false;
+  if (input.mapKey !== membership.principal || !isRoleToken(input.roleToken)) return false;
+  return ownerMayWrite(input.signer, input.forumOwner);
 }
 
 /** Chat mesh rows are signed by the statement author. The tag does not grant. */
@@ -516,10 +650,16 @@ export function authorizeForumOffer(
   return signer === party?.owner || signer === party?.subject;
 }
 
-export function mergeAgents(sample: readonly SquadAgent[], mesh: readonly ForumAgentStatus[]): SquadAgent[] {
+export function mergeAgents(
+  sample: readonly SquadAgent[],
+  mesh: readonly ForumAgentStatus[],
+  admitted?: ReadonlySet<string>,
+): SquadAgent[] {
+  const roster = admitted ?? new Set(sample.map((agent) => agent.status.seaPubkey));
   const byPub = new Map(sample.map((agent) => [agent.status.seaPubkey, agent]));
   for (const status of mesh) {
     const existing = byPub.get(status.seaPubkey);
+    if (!existing && !roster.has(status.seaPubkey)) continue;
     if (existing) {
       byPub.set(status.seaPubkey, { ...existing, status });
       continue;
