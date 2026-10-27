@@ -38,6 +38,7 @@ import {
   authorizeForumAgentRemoval,
   authorizeForumChat,
   authorizeForumChatTombstone,
+  authorizeForumMeshRemoval,
   authorizeForumNeed,
   authorizeForumOffer,
   authorizeForumRoleAdmission,
@@ -51,6 +52,7 @@ import {
   overlaySeeGraph,
   parseForumAgentRemoval,
   parseForumAgentStatus,
+  parseForumMeshRemoval,
   parseForumNeed,
   parseForumOffer,
   parseForumRoleMembership,
@@ -205,6 +207,12 @@ export function SquadForum() {
   const pairRef = useRef<SeaPair | null>(null);
   const graphRef = useRef<SeeGraph | null>(null);
   const needsRef = useRef<Map<string, ForumNeed>>(new Map());
+  const offersRef = useRef<Map<string, ForumOffer>>(new Map());
+  const pendingNeedsRef = useRef<Map<string, { data: unknown; gen: number }>>(new Map());
+  const acceptNeedRef = useRef<(data: unknown, key: string, gen: number) => Promise<void>>(
+    async () => {},
+  );
+  const [aclRev, setAclRev] = useState(0);
   const chatIdsRef = useRef<string[]>([]);
   const chatRowsRef = useRef<FeedItem[]>([]);
   const admittedRef = useRef(admitted);
@@ -361,12 +369,17 @@ export function SquadForum() {
         setMeshChat((prev) => withoutChatIds(prev, ids));
         setLocalChat((prev) => withoutChatIds(prev, ids));
       }
-      async function acceptOffer(data: unknown, key: string | undefined) {
+      async function acceptOffer(
+        data: unknown,
+        key: string | undefined,
+        parentNeedId: string,
+        gen: number,
+      ) {
         const sig = signatureOf(data);
         if (!sig || !data || typeof data !== "object") return;
         const row = data as { helper?: unknown; need?: unknown };
-        const hintedNeed = typeof row.need === "string" ? row.need : "";
-        const knownNeed = hintedNeed ? needsRef.current.get(hintedNeed) : undefined;
+        const hintedNeed = typeof row.need === "string" ? row.need : parentNeedId;
+        const knownNeed = needsRef.current.get(hintedNeed);
         const candidates = [
           typeof row.helper === "string" ? row.helper : "",
           graphRef.current?.ownerOf(hintedNeed) ?? "",
@@ -375,6 +388,7 @@ export function SquadForum() {
         let payload: unknown = null;
         let signer = "";
         for (const pub of candidates) {
+          if (cancelled || !versions.current("offer", `${parentNeedId}:${key ?? ""}`, gen)) return;
           const verified = await readForumSignature(sig, pub);
           if (verified) {
             payload = verified;
@@ -382,16 +396,46 @@ export function SquadForum() {
             break;
           }
         }
-        if (cancelled || !payload) return;
+        if (cancelled || !versions.current("offer", `${parentNeedId}:${key ?? ""}`, gen) || !payload) return;
+        const removal = parseForumMeshRemoval(payload);
+        if (removal) {
+          if (key === undefined || removal.kind !== "offer") return;
+          if (
+            !authorizeForumMeshRemoval({
+              removal,
+              mapKey: key,
+              signer,
+              owner: graphRef.current?.ownerOf(parentNeedId),
+              subject: knownNeed?.subject,
+              forumId: PILOT_FORUM_ID,
+              parentNeedId,
+            })
+          ) {
+            return;
+          }
+          if (!versions.current("offer", `${parentNeedId}:${key}`, gen)) return;
+          setMeshOffers((prev) => {
+            if (!prev.has(removal.id)) return prev;
+            const next = new Map(prev);
+            next.delete(removal.id);
+            return next;
+          });
+          return;
+        }
         const offer = parseForumOffer(payload);
-        if (!offer) return;
+        if (!offer || offer.need !== parentNeedId) return;
+        const named = needsRef.current.get(offer.need);
         const party = {
           owner: graphRef.current?.ownerOf(offer.need),
-          subject: needsRef.current.get(offer.need)?.subject,
+          subject: named?.subject,
         };
-        if (!authorizeForumOffer(offer, signer, PILOT_FORUM_ID, party)) return;
+        const seen =
+          named && graphRef.current
+            ? { graph: graphRef.current, need: named, now: Math.floor(Date.now() / 1000) }
+            : undefined;
+        if (!authorizeForumOffer(offer, signer, PILOT_FORUM_ID, party, seen)) return;
         if (key !== undefined && key !== offer.id) return;
-        const named = needsRef.current.get(offer.need);
+        if (!versions.current("offer", `${parentNeedId}:${key ?? ""}`, gen)) return;
         if (
           offer.stated === 0 &&
           signer === offer.helper &&
@@ -481,13 +525,18 @@ export function SquadForum() {
         pendingStatusRef.current.delete(status.seaPubkey);
         commitMeshStatus(status);
       }
-      async function acceptNeed(data: unknown, key: string | undefined) {
+      async function acceptNeed(data: unknown, key: string, gen: number) {
         const sig = signatureOf(data);
-        if (!sig || !data || typeof data !== "object") return;
+        if (!sig || !data || typeof data !== "object") {
+          pendingNeedsRef.current.delete(key);
+          return;
+        }
         const hintedId = (data as { id?: unknown }).id;
         const hintedSubject = (data as { subject?: unknown }).subject;
-        if (typeof hintedId !== "string") return;
-        if (key !== undefined && key !== hintedId) return;
+        if (typeof hintedId !== "string" || key !== hintedId) {
+          pendingNeedsRef.current.delete(key);
+          return;
+        }
         const owner = graphRef.current?.ownerOf(hintedId);
         let signer = "";
         let payload: unknown = null;
@@ -495,16 +544,75 @@ export function SquadForum() {
           payload = await readForumSignature(sig, owner);
           if (payload) signer = owner;
         }
+        if (!versions.current("need", key, gen)) {
+          pendingNeedsRef.current.delete(key);
+          return;
+        }
         if (!payload && typeof hintedSubject === "string" && hintedSubject !== owner) {
           payload = await readForumSignature(sig, hintedSubject);
           if (payload) signer = hintedSubject;
         }
-        if (cancelled || !payload) return;
+        if (cancelled || !versions.current("need", key, gen)) return;
+        if (!payload) {
+          if (!owner) pendingNeedsRef.current.set(key, { data, gen });
+          else pendingNeedsRef.current.delete(key);
+          return;
+        }
+        const removal = parseForumMeshRemoval(payload);
+        if (removal && removal.kind === "need") {
+          const known = needsRef.current.get(removal.id);
+          if (
+            !authorizeForumMeshRemoval({
+              removal,
+              mapKey: key,
+              signer,
+              owner: graphRef.current?.ownerOf(removal.id),
+              subject: known?.subject,
+              forumId: PILOT_FORUM_ID,
+            })
+          ) {
+            return;
+          }
+          if (!versions.current("need", key, gen)) return;
+          pendingNeedsRef.current.delete(key);
+          setMeshNeeds((prev) => {
+            if (!prev.has(removal.id)) return prev;
+            const next = new Map(prev);
+            next.delete(removal.id);
+            return next;
+          });
+          return;
+        }
         const need = parseForumNeed(payload);
-        if (!need) return;
+        if (!need || key !== need.id) {
+          pendingNeedsRef.current.delete(key);
+          return;
+        }
         const known = needsRef.current.get(need.id);
-        if (!authorizeForumNeed(need, signer, owner, PILOT_FORUM_ID, known)) return;
-        if (key !== undefined && key !== need.id) return;
+        const closure =
+          graphRef.current
+            ? {
+                graph: graphRef.current,
+                postedOffers: offersRef.current,
+                now: Math.floor(Date.now() / 1000),
+              }
+            : undefined;
+        const allowed = authorizeForumNeed(need, signer, owner, PILOT_FORUM_ID, known, closure);
+        if (!versions.current("need", key, gen)) {
+          pendingNeedsRef.current.delete(key);
+          return;
+        }
+        if (!allowed) {
+          const closing = !!known && known.stated === 1 && need.stated === 0 && !!need.acceptedOffer;
+          const posted = closing && need.acceptedOffer ? offersRef.current.get(need.acceptedOffer) : undefined;
+          if ((closing && !posted) || !owner) pendingNeedsRef.current.set(key, { data, gen });
+          else pendingNeedsRef.current.delete(key);
+          return;
+        }
+        pendingNeedsRef.current.delete(key);
+        const withNeed = new Map(needsRef.current);
+        withNeed.set(need.id, need);
+        needsRef.current = withNeed;
         watchOffers(need.id);
         setMeshNeeds((prev) => {
           const existing = prev.get(need.id);
@@ -521,6 +629,7 @@ export function SquadForum() {
           return next;
         });
       }
+      acceptNeedRef.current = acceptNeed;
       async function acceptAlarm(data: unknown) {
         const sig = signatureOf(data);
         const owner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
@@ -614,17 +723,10 @@ export function SquadForum() {
         watchedOffers.add(needId);
         offerOffs.push(
           forum.get("needs").get(needId).get("offers").map().on((data, key) => {
-            if (cancelled) return;
-            if (data === null && typeof key === "string") {
-              setMeshOffers((prev) => {
-                if (!prev.has(key)) return prev;
-                const next = new Map(prev);
-                next.delete(key);
-                return next;
-              });
-              return;
-            }
-            void acceptOffer(data, typeof key === "string" ? key : undefined);
+            if (cancelled || typeof key !== "string" || data === undefined) return;
+            const gen = versions.bump("offer", `${needId}:${key}`);
+            if (data === null) return;
+            void acceptOffer(data, key, needId, gen);
           }),
         );
       };
@@ -648,17 +750,10 @@ export function SquadForum() {
         );
       });
       offNeeds = forum.get("needs").map().on((data, key) => {
-        if (cancelled) return;
-        if (data === null && typeof key === "string") {
-          setMeshNeeds((prev) => {
-            if (!prev.has(key)) return prev;
-            const next = new Map(prev);
-            next.delete(key);
-            return next;
-          });
-          return;
-        }
-        void acceptNeed(data, typeof key === "string" ? key : undefined);
+        if (cancelled || typeof key !== "string" || data === undefined) return;
+        const gen = versions.bump("need", key);
+        if (data === null) return;
+        void acceptNeed(data, key, gen);
       });
       offAlarm = forum.get("alarm").on((data) => {
         if (cancelled) return;
@@ -684,6 +779,18 @@ export function SquadForum() {
       register(null);
     };
   }, [register]);
+
+  useEffect(() => {
+    const acl = see?.acl;
+    if (!acl) return;
+    return acl.subscribe(() => setAclRev((n) => n + 1));
+  }, [see?.acl]);
+
+  useEffect(() => {
+    for (const [key, row] of pendingNeedsRef.current) {
+      void acceptNeedRef.current(row.data, key, row.gen);
+    }
+  }, [aclRev, localOffers, meshOffers, see?.ready]);
 
   useEffect(() => {
     if (!selected) return;
@@ -722,6 +829,7 @@ export function SquadForum() {
     }
     return map;
   }, [localOffers, meshOffers]);
+  offersRef.current = offers;
 
   const roster = useMemo(() => {
     const merged = mergeAgents(PILOT_AGENTS, [...meshStatus.values()], admitted);

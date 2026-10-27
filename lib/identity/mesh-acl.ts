@@ -245,13 +245,18 @@ export function fromGunAclNode(
   };
 }
 
-/** Register the named object on dest ACL, then apply or cancel. */
+/**
+ * Register a new object, then apply or cancel.
+ * A grant does not replace an owner the dest ACL already admitted.
+ */
 export function applyGunAclEdge(acl: SeeAcl, edge: GunAclEdge): void {
   const { owner, grant } = edge;
   if (isUrlLeafId(grant.object) || isMetaId(grant.object) || isAclId(grant.object)) {
     return;
   }
-  acl.putObject(grant.object, owner);
+  const existing = acl.ownerOf(grant.object);
+  if (existing && !sameAccessor(existing, owner)) return;
+  if (!existing) acl.putObject(grant.object, owner);
   if (grant.stated === 1) {
     applySeeGrant(acl, owner, meshSeeGrantToIdentity(grant));
     return;

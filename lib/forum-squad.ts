@@ -15,9 +15,11 @@ import {
   forumChatTags,
   forumStatementSoul,
   isForumChatExtraTag,
+  checkSee,
   isForumObjectId,
   isRoleToken,
   isSeaPubkey,
+  sameAccessor,
   sameEmbeddedPrincipal,
   validateForumNeed,
   validateForumOffer,
@@ -390,17 +392,24 @@ export function parseForumOffer(value: unknown): ForumOffer | null {
   return validateForumOffer(offer) ? offer : null;
 }
 
-/** User graph wins ownership. Sample fills objects the user graph lacks. */
+/**
+ * An admitted sample owner stays the owner. A mesh edge does not replace
+ * that owner, and a grant is kept only when the mesh owner is that same
+ * admitted owner. Objects the sample does not admit still read the user graph.
+ */
 export function overlaySeeGraph(primary: SeeGraph, sample: SeeGraph): SeeGraph {
   return {
     hasObject(object) {
-      return primary.hasObject(object) || sample.hasObject(object);
+      return sample.hasObject(object) || primary.hasObject(object);
     },
     ownerOf(object) {
-      return primary.ownerOf(object) ?? sample.ownerOf(object);
+      return sample.ownerOf(object) ?? primary.ownerOf(object);
     },
     seeGrants(object) {
-      return [...primary.seeGrants(object), ...sample.seeGrants(object)];
+      const admitted = sample.ownerOf(object);
+      if (!admitted) return primary.seeGrants(object);
+      if (!sameAccessor(primary.ownerOf(object), admitted)) return sample.seeGrants(object);
+      return [...sample.seeGrants(object), ...primary.seeGrants(object)];
     },
   };
 }
@@ -603,10 +612,16 @@ export function authorizeForumChat(
   return true;
 }
 
+export type ForumNeedClosure = {
+  graph: SeeGraph;
+  postedOffers: ReadonlyMap<string, ForumOffer>;
+  now: number;
+};
+
 /**
- * A need row is signed by the admitted owner, or by the subject when the
- * row accepts an offer and leaves body, severity, and spec as posted.
- * Accept does not elect.
+ * A close (`stated` 0 with an accepted offer) uses the same live-offer and
+ * helper Check see gates as accept. The admitted owner may sign any other
+ * need row. Accept does not elect.
  */
 export function authorizeForumNeed(
   need: ForumNeed,
@@ -614,14 +629,29 @@ export function authorizeForumNeed(
   owner: string | undefined,
   forumId: string,
   known?: ForumNeed,
+  closure?: ForumNeedClosure,
 ): boolean {
   if (need.forumId !== forumId || !isSeaPubkey(signer)) return false;
-  if (owner && signer === owner) return true;
-  if (!known || signer !== known.subject || signer !== need.subject) return false;
-  if (need.stated !== 0 || !need.acceptedOffer) return false;
-  if (need.id !== known.id || need.hamState <= known.hamState) return false;
-  if (need.body !== known.body || need.severity !== known.severity) return false;
-  return (need.spec ?? "") === (known.spec ?? "");
+  if (known && known.stated === 1 && need.stated === 0 && need.id === known.id) {
+    const party = signer === owner || (signer === known.subject && signer === need.subject);
+    if (!party) return false;
+    if (need.hamState <= known.hamState) return false;
+    if (need.body !== known.body || need.severity !== known.severity) return false;
+    if ((need.spec ?? "") !== (known.spec ?? "")) return false;
+    if (!need.acceptedOffer || !closure) return false;
+    return livePostedOfferCloses(need, closure);
+  }
+  return !!owner && signer === owner;
+}
+
+function livePostedOfferCloses(need: ForumNeed, closure: ForumNeedClosure): boolean {
+  const offerId = need.acceptedOffer;
+  if (!offerId) return false;
+  const posted = closure.postedOffers.get(offerId);
+  if (!posted || !validateForumOffer(posted) || posted.stated !== 1) return false;
+  if (posted.need !== need.id || posted.forumId !== need.forumId) return false;
+  if (!closure.graph.hasObject(need.id)) return false;
+  return checkSee(closure.graph, need.id, posted.helper, closure.now).allowed;
 }
 
 /** The alarm pin is signed by the admitted owner of the forum id. */
@@ -635,7 +665,8 @@ export function authorizeForumAlarm(
 }
 
 /**
- * The helper signs a post or a withdrawal. The need owner or subject may
+ * The helper signs a withdrawal. A live post also requires Check see on the
+ * parent need, the same gate as offering help. The need owner or subject may
  * sign a cancel (`stated` 0). A live row is not signed by a third party.
  */
 export function authorizeForumOffer(
@@ -643,11 +674,77 @@ export function authorizeForumOffer(
   signer: string,
   forumId: string,
   party?: { owner?: string; subject?: string },
+  seen?: { graph: SeeGraph; need: ForumNeed; now: number },
 ): boolean {
   if (offer.forumId !== forumId || !isSeaPubkey(signer)) return false;
-  if (signer === offer.helper) return true;
+  if (signer === offer.helper) {
+    if (offer.stated === 0) return true;
+    if (!seen || seen.need.id !== offer.need || seen.need.forumId !== offer.forumId) return false;
+    if (!seen.graph.hasObject(seen.need.id)) return false;
+    return checkSee(seen.graph, seen.need.id, signer, seen.now).allowed;
+  }
   if (offer.stated !== 0) return false;
   return signer === party?.owner || signer === party?.subject;
+}
+
+export type ForumMeshRemoval = {
+  removed: 1;
+  action: "remove";
+  forumId: string;
+  id: string;
+  kind: "need" | "offer";
+  need?: string;
+};
+
+/** Signed removal of a need or offer. Unsigned `null` is not a removal. */
+export function parseForumMeshRemoval(value: unknown): ForumMeshRemoval | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  if (row.removed !== 1 || row.action !== "remove") return null;
+  if (row.kind !== "need" && row.kind !== "offer") return null;
+  if (typeof row.forumId !== "string" || typeof row.id !== "string") return null;
+  if (!isForumObjectId(row.forumId, "forum")) return null;
+  if (row.kind === "need") {
+    if (!isForumObjectId(row.id, "need")) return null;
+    return { removed: 1, action: "remove", forumId: row.forumId, id: row.id, kind: "need" };
+  }
+  if (!isForumObjectId(row.id, "offer") || typeof row.need !== "string" || !isForumObjectId(row.need, "need")) {
+    return null;
+  }
+  return {
+    removed: 1,
+    action: "remove",
+    forumId: row.forumId,
+    id: row.id,
+    kind: "offer",
+    need: row.need,
+  };
+}
+
+/**
+ * Need: admitted owner or subject. Offer: helper, need owner, or subject.
+ * The map key is the object id. A grant is not this signature.
+ */
+export function authorizeForumMeshRemoval(input: {
+  removal: ForumMeshRemoval;
+  mapKey: string;
+  signer: string;
+  owner: string | undefined;
+  subject: string | undefined;
+  forumId: string;
+  parentNeedId?: string;
+}): boolean {
+  const removal = input.removal;
+  if (removal.forumId !== input.forumId || input.mapKey !== removal.id) return false;
+  if (!isSeaPubkey(input.signer)) return false;
+  if (removal.kind === "need") {
+    if (input.owner && input.signer === input.owner) return true;
+    return !!input.subject && input.signer === input.subject;
+  }
+  if (!removal.need || removal.need !== input.parentNeedId) return false;
+  if (sameEmbeddedPrincipal(input.signer, removal.id)) return true;
+  if (input.owner && input.signer === input.owner) return true;
+  return !!input.subject && input.signer === input.subject;
 }
 
 export function mergeAgents(

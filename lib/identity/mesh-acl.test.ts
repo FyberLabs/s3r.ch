@@ -214,4 +214,19 @@ describe("mesh Check objects", () => {
     applyGunAclEdge(acl, cancel);
     assert.equal(checkSee(acl, CLAIM, BOB, 10).allowed, false);
   });
+
+  it("does not let a grant replace an admitted owner", () => {
+    const acl = createMemorySeeAcl();
+    acl.putObject(CLAIM, ALICE);
+    const steal = prepareMeshSeeGrant(
+      CAROL,
+      { claimId: CLAIM, accessor: CAROL, from: 0, until: 80 },
+      0,
+      5,
+    );
+    assert.ok(steal);
+    applyGunAclEdge(acl, steal);
+    assert.equal(acl.ownerOf(CLAIM), ALICE);
+    assert.equal(checkSee(acl, CLAIM, CAROL, 10).allowed, false);
+  });
 });

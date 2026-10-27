@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  applySeeGrant,
+  checkSee,
   forumAgentSoul,
   forumChatTag,
   forumOfferSoul,
@@ -16,6 +18,7 @@ import {
   authorizeForumAlarm,
   authorizeForumChat,
   authorizeForumChatTombstone,
+  authorizeForumMeshRemoval,
   authorizeForumNeed,
   authorizeForumOffer,
   authorizeForumRoleAdmission,
@@ -27,7 +30,9 @@ import {
   filterAgents,
   forumStatusAdmission,
   mergeAgents,
+  overlaySeeGraph,
   parseForumAgentRemoval,
+  parseForumMeshRemoval,
   parseForumRoleMembership,
   pickDisplayedStatus,
   showFullVitals,
@@ -463,17 +468,178 @@ describe("squad view", () => {
     assert.equal(authorizeForumNeed(need, vector.secondPubkey, PILOT_OWNER, PILOT_FORUM_ID), false);
     assert.equal(authorizeForumAlarm(PILOT_ALARM, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID), true);
     assert.equal(authorizeForumAlarm(PILOT_ALARM, vector.secondPubkey, PILOT_OWNER, PILOT_FORUM_ID), false);
+    const helperAgent = PILOT_AGENTS.find((row) => row.status.seaPubkey !== PILOT_OWNER);
+    assert.ok(helperAgent);
+    const helper = helperAgent.status.seaPubkey;
     const offer = {
       id: "offer-local",
       need: need.id,
       forumId: PILOT_FORUM_ID,
-      helper: vector.secondPubkey,
+      helper,
       body: "holding",
       artifacts: "",
       stated: 1 as const,
     };
-    assert.equal(authorizeForumOffer(offer, vector.secondPubkey, PILOT_FORUM_ID), true);
-    assert.equal(authorizeForumOffer(offer, PILOT_OWNER, PILOT_FORUM_ID), false);
+    const openGraph = createMemorySeeAcl();
+    openGraph.putObject(need.id, PILOT_OWNER);
+    applySeeGrant(openGraph, PILOT_OWNER, {
+      claimId: need.id,
+      accessor: helper,
+      from: 0,
+      until: 10_000_000_000,
+    });
+    const seen = { graph: openGraph, need, now: 1_000 };
+    assert.equal(authorizeForumOffer(offer, helper, PILOT_FORUM_ID), false);
+    assert.equal(authorizeForumOffer(offer, helper, PILOT_FORUM_ID, undefined, seen), true);
+    assert.equal(authorizeForumOffer(offer, PILOT_OWNER, PILOT_FORUM_ID, undefined, seen), false);
+    const withdrawn = { ...offer, stated: 0 as const };
+    assert.equal(authorizeForumOffer(withdrawn, helper, PILOT_FORUM_ID), true);
+  });
+
+  it("keeps the admitted sample owner when a mesh edge names another pubkey", () => {
+    const need = PILOT_NEEDS.find((row) => row.stated === 1 && row.subject !== PILOT_OWNER);
+    assert.ok(need);
+    const sample = createMemorySeeAcl();
+    admitPilotRoster(sample);
+    const primary = createMemorySeeAcl();
+    primary.putObject(need.id, need.subject);
+    applySeeGrant(primary, need.subject, {
+      claimId: need.id,
+      accessor: need.subject,
+      from: 0,
+      until: 10_000_000_000,
+    });
+    const graph = overlaySeeGraph(primary, sample);
+    assert.equal(graph.ownerOf(need.id), PILOT_OWNER);
+    assert.equal(checkSee(graph, need.id, need.subject, 1_000).allowed, false);
+    assert.equal(checkSee(graph, need.id, PILOT_OWNER, 1_000).reason, "owner");
+    assert.equal(graph.ownerOf("not-a-sample-object"), undefined);
+    primary.putObject("not-a-sample-object", need.subject);
+    assert.equal(overlaySeeGraph(primary, sample).ownerOf("not-a-sample-object"), need.subject);
+  });
+
+  it("closes a mesh need only when the accepted offer is live and the helper can see", () => {
+    const need = PILOT_NEEDS.find((row) => row.stated === 1 && row.subject !== PILOT_OWNER);
+    assert.ok(need);
+    const helperKey = seaToPrincipalKey(need.subject);
+    assert.ok(helperKey);
+    const offerId = `offer_${helperKey}_${"cd".repeat(16)}`;
+    const offer = {
+      id: offerId,
+      need: need.id,
+      forumId: PILOT_FORUM_ID,
+      helper: need.subject,
+      body: "holding",
+      artifacts: "",
+      stated: 1 as const,
+    };
+    const closed = {
+      ...need,
+      stated: 0 as const,
+      acceptedOffer: offerId,
+      hamState: need.hamState + 1,
+    };
+    const graph = createMemorySeeAcl();
+    graph.putObject(need.id, PILOT_OWNER);
+    const now = 1_000;
+    const bare = { graph, postedOffers: new Map([[offer.id, offer]]), now };
+    assert.equal(
+      authorizeForumNeed(closed, need.subject, PILOT_OWNER, PILOT_FORUM_ID, need, bare),
+      false,
+    );
+    applySeeGrant(graph, PILOT_OWNER, {
+      claimId: need.id,
+      accessor: need.subject,
+      from: 0,
+      until: 10_000_000_000,
+    });
+    assert.equal(
+      authorizeForumNeed(closed, need.subject, PILOT_OWNER, PILOT_FORUM_ID, need, {
+        graph,
+        postedOffers: new Map(),
+        now,
+      }),
+      false,
+    );
+    assert.equal(
+      authorizeForumNeed(closed, need.subject, PILOT_OWNER, PILOT_FORUM_ID, need, bare),
+      true,
+    );
+    assert.equal(
+      authorizeForumNeed(closed, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID, need, bare),
+      true,
+    );
+    const stranger = PILOT_AGENTS.find(
+      (row) => row.status.seaPubkey !== PILOT_OWNER && row.status.seaPubkey !== need.subject,
+    );
+    assert.ok(stranger);
+    assert.equal(
+      authorizeForumNeed(closed, stranger.status.seaPubkey, PILOT_OWNER, PILOT_FORUM_ID, need, bare),
+      false,
+    );
+    const removal = {
+      removed: 1 as const,
+      action: "remove" as const,
+      forumId: PILOT_FORUM_ID,
+      id: need.id,
+      kind: "need" as const,
+    };
+    assert.equal(parseForumMeshRemoval(null), null);
+    assert.equal(parseForumMeshRemoval({ id: need.id, unshared: 1 }), null);
+    assert.equal(
+      authorizeForumMeshRemoval({
+        removal,
+        mapKey: need.id,
+        signer: PILOT_OWNER,
+        owner: PILOT_OWNER,
+        subject: need.subject,
+        forumId: PILOT_FORUM_ID,
+      }),
+      true,
+    );
+    assert.equal(
+      authorizeForumMeshRemoval({
+        removal,
+        mapKey: need.id,
+        signer: "not-the-owner.not-the-owner",
+        owner: PILOT_OWNER,
+        subject: need.subject,
+        forumId: PILOT_FORUM_ID,
+      }),
+      false,
+    );
+    const offerRemoval = {
+      removed: 1 as const,
+      action: "remove" as const,
+      forumId: PILOT_FORUM_ID,
+      id: offerId,
+      kind: "offer" as const,
+      need: need.id,
+    };
+    assert.equal(
+      authorizeForumMeshRemoval({
+        removal: offerRemoval,
+        mapKey: offerId,
+        signer: need.subject,
+        owner: PILOT_OWNER,
+        subject: need.subject,
+        forumId: PILOT_FORUM_ID,
+        parentNeedId: need.id,
+      }),
+      true,
+    );
+    assert.equal(
+      authorizeForumMeshRemoval({
+        removal: offerRemoval,
+        mapKey: "offer-other",
+        signer: need.subject,
+        owner: PILOT_OWNER,
+        subject: need.subject,
+        forumId: PILOT_FORUM_ID,
+        parentNeedId: need.id,
+      }),
+      false,
+    );
   });
 
   it("keeps the sample status soul on the contract path", () => {
