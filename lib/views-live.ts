@@ -165,6 +165,20 @@ export function rowsForFeed(ref: SourceRef, items: readonly FeedItem[], selfNetw
 }
 
 /**
+ * Rows for a followed feed window.
+ * Only the server snapshot counts as membership. Public mesh items are unsigned, so a forged
+ * `source`, `author`, or `provenance` is left out.
+ */
+export function rowsForFollowedFeed(
+  ref: SourceRef,
+  evidence: { authorized: readonly FeedItem[]; mesh: readonly FeedItem[] },
+  selfNetwork: string,
+): ViewRow[] {
+  void evidence.mesh;
+  return rowsForFeed(ref, evidence.authorized, selfNetwork);
+}
+
+/**
  * Run Check for the current signed-in owner, graph and time, and drop pending marks that
  * can now be read. The route saves that View. A later graph where the source can no longer
  * be read leaves the mark off, so the window shows "Access removed".
@@ -177,23 +191,24 @@ export function recheckView(view: View, ctx: AccessContext): { view: View; acces
 /**
  * Access for sources this session has actually been given.
  * A forum channel stays checked-when-opened until it is in the server catalog.
- * A native feed on this deployment stays checked-when-opened until a loaded item names it.
- * Either one is then readable, so its rows can show. Anything `sourceAccess` already decided
+ * A native feed on this deployment stays checked-when-opened until the server snapshot names it.
+ * Public mesh items are not that proof. Anything `sourceAccess` already decided
  * (a room, another network, a signed-out session) is unchanged.
  */
 export function resolveLoadedAccess(
   ref: SourceRef,
   ctx: AccessContext,
-  loaded: { channels: readonly CatalogChannel[]; items: readonly FeedItem[] },
+  loaded: { channels: readonly CatalogChannel[]; authorized: readonly FeedItem[]; mesh?: readonly FeedItem[] },
 ): AccessState {
   const base = sourceAccess(ref, ctx);
+  void loaded.mesh;
   if (base.kind !== "on-open" || !ctx.me || ref.network !== ctx.selfNetwork) return base;
   if (ref.kind === "forum") {
     const authorized = loaded.channels.some((channel) => channel.id === ref.source && sameAccessor(channel.owner, ref.owner));
     return authorized ? { kind: "read", post: false } : base;
   }
   if (ref.kind === "feed") {
-    const authorized = loaded.items.some((item) => {
+    const authorized = loaded.authorized.some((item) => {
       const found = feedSourceOf(item, ctx.selfNetwork);
       return found ? sameSource(found.ref, ref) : false;
     });
@@ -461,8 +476,8 @@ export function readForumCatalog(body: unknown): { channels: CatalogChannel[]; m
 }
 
 /**
- * Browse rows: rooms and forum channels on this deployment, plus feeds named by pulled items.
- * `labelFor` uses this same list.
+ * Browse rows: rooms and forum channels on this deployment, plus feeds named by the server snapshot.
+ * Pass that snapshot, not unsigned public mesh items. `labelFor` uses this same list.
  */
 export function browseSources(input: {
   selfNetwork: string;

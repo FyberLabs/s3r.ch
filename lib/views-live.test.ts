@@ -23,6 +23,7 @@ import {
   resolveLoadedAccess,
   rowsForChat,
   rowsForFeed,
+  rowsForFollowedFeed,
   rowsForForum,
   sourceStaysLive,
   syncViewSubscriptions,
@@ -276,11 +277,11 @@ describe("loaded native access", () => {
     const ctx = { me: ME, selfNetwork: DEPLOYMENT_SELF_NETWORK, graph: acl, now: NOW };
     const shared: SourceRef = { network: DEPLOYMENT_SELF_NETWORK, owner: ORG, source: "c2", kind: "forum", v: 1 };
     assert.equal(sourceAccess(shared, ctx).kind, "on-open");
-    const withheld = resolveLoadedAccess(shared, ctx, { channels: [], items: [] });
+    const withheld = resolveLoadedAccess(shared, ctx, { channels: [], authorized: [] });
     assert.equal(withheld.kind, "on-open");
     assert.equal(canShowRows(withheld), false);
 
-    const opened = resolveLoadedAccess(shared, ctx, { channels: [{ id: "c2", owner: ORG }], items: [] });
+    const opened = resolveLoadedAccess(shared, ctx, { channels: [{ id: "c2", owner: ORG }], authorized: [] });
     assert.deepEqual(opened, { kind: "read", post: false });
     assert.equal(canShowRows(opened), true);
     const forumMessage = { id: "m", channel: "c2", owner: ORG, bot: "bot", body: "hi", ts: 4, v: 1 };
@@ -290,18 +291,40 @@ describe("loaded native access", () => {
     assert.equal(windowRows(forumWindow, forumRows, () => withheld).length, 0);
 
     const own: SourceRef = { ...shared, owner: ME, source: "c1" };
-    assert.deepEqual(resolveLoadedAccess(own, ctx, { channels: [], items: [] }), { kind: "read", post: true });
+    assert.deepEqual(resolveLoadedAccess(own, ctx, { channels: [], authorized: [] }), { kind: "read", post: true });
 
     const nativeItem = item({ id: "n", source: "s3rch", author: ME, provenance: `s3rch:native:${ME}` });
     const native = feedSourceOf(nativeItem, DEPLOYMENT_SELF_NETWORK);
     assert.ok(native);
     assert.equal(sourceAccess(native.ref, ctx).kind, "on-open");
-    assert.equal(resolveLoadedAccess(native.ref, ctx, { channels: [], items: [] }).kind, "on-open");
-    const feedRead = resolveLoadedAccess(native.ref, ctx, { channels: [], items: [nativeItem] });
+    assert.equal(resolveLoadedAccess(native.ref, ctx, { channels: [], authorized: [] }).kind, "on-open");
+    const feedRead = resolveLoadedAccess(native.ref, ctx, { channels: [], authorized: [nativeItem] });
     assert.deepEqual(feedRead, { kind: "read", post: false });
     const feedRows = observeSource([], rowsForFeed(native.ref, [nativeItem], DEPLOYMENT_SELF_NETWORK), 2);
     assert.equal(windowRows(viewWith([native.ref]).windows[0]!, feedRows, () => feedRead).length, 1);
-    assert.equal(resolveLoadedAccess({ ...native.ref, network: LAB }, ctx, { channels: [], items: [nativeItem] }).kind, "needs-connection");
+    assert.equal(resolveLoadedAccess({ ...native.ref, network: LAB }, ctx, { channels: [], authorized: [nativeItem] }).kind, "needs-connection");
+  });
+
+  it("does not treat an unsigned mesh item as native-feed access or feed membership", () => {
+    const acl = createMemorySeeAcl();
+    const ctx = { me: ME, selfNetwork: DEPLOYMENT_SELF_NETWORK, graph: acl, now: NOW };
+    const forgedNative = item({ id: "spoof", source: "s3rch", author: ORG, provenance: `s3rch:native:${ORG}` });
+    const native = feedSourceOf(forgedNative, DEPLOYMENT_SELF_NETWORK);
+    assert.ok(native);
+    const fromMesh = resolveLoadedAccess(native.ref, ctx, { channels: [], authorized: [], mesh: [forgedNative] });
+    assert.equal(fromMesh.kind, "on-open");
+    assert.equal(canShowRows(fromMesh), false);
+    const fromServer = resolveLoadedAccess(native.ref, ctx, { channels: [], authorized: [forgedNative], mesh: [] });
+    assert.deepEqual(fromServer, { kind: "read", post: false });
+
+    const followed = item({ id: "post-1", source: "rss", author: "week", provenance: "rss:https://blog.ethereum.org/en/feed.xml" });
+    const injected = item({ id: "evil", source: "rss", author: "week", provenance: "rss:https://blog.ethereum.org/en/feed.xml" });
+    const feed = feedSourceOf(followed, DEPLOYMENT_SELF_NETWORK);
+    assert.ok(feed);
+    const rows = rowsForFollowedFeed(feed.ref, { authorized: [followed], mesh: [injected, forgedNative] }, DEPLOYMENT_SELF_NETWORK);
+    assert.deepEqual(rows.map((row) => row.id), ["post-1"]);
+    const nativeRows = rowsForFollowedFeed(native.ref, { authorized: [], mesh: [forgedNative] }, DEPLOYMENT_SELF_NETWORK);
+    assert.deepEqual(nativeRows, []);
   });
 });
 

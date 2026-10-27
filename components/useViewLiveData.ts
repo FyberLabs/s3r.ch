@@ -4,21 +4,20 @@
  * Subscribes the open View to room chat, forum channels and pulled feeds, and builds the
  * picker's Browse list from the same rooms, channels and feeds. Access is `sourceAccess`
  * against the signed-in owner and the See ACL graph, refreshed when that graph or the
- * clock changes. A forum channel the server returned, and a native feed named by a loaded
- * item, become readable. A public room node is not written into the dest ACL. Public chat
- * stops when its room is unpublished. Other networks stay
- * on "Needs connection" until plan item 13.
+ * clock changes. A forum channel the server returned, and a native feed named by the server
+ * snapshot, become readable. Public mesh items are not feed membership or access proof.
+ * A public room node is not written into the dest ACL. Public chat stops when its room is
+ * unpublished. Other networks stay on "Needs connection" until plan item 13.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fromGunChatNode, type ChatMessage } from "@/lib/chat";
-import { isUnsharePut, fromGunNode, type FeedItem } from "@/lib/feed-types";
+import { isUnsharePut, type FeedItem } from "@/lib/feed-types";
 import type { ForumMessage } from "@/lib/forum";
 import { acceptGrantDelivery, grantInboxRef } from "@/lib/grant-delivery";
 import { browserGunOptions, listenThenConnectSeedPeer, type SeedPeerEmitter } from "@/lib/gun-peer";
 import { encodeKey } from "@/lib/identity/check";
-import { mergeItems } from "@/lib/merge";
 import { dropRooms, fromGunRoomNode, mergeRooms, type Room } from "@/lib/rooms";
-import { dropFeedItems, readUnshareId } from "@/lib/unshare";
+import { readUnshareId } from "@/lib/unshare";
 import type { ViewRow } from "@/lib/views-adapters";
 import { type AccessState } from "@/lib/views-access";
 import type { ObservedRow } from "@/lib/views-decorators";
@@ -33,7 +32,7 @@ import {
   readForumCatalog,
   resolveLoadedAccess,
   rowsForChat,
-  rowsForFeed,
+  rowsForFollowedFeed,
   rowsForForum,
   sourceStaysLive,
   sourcesOfView,
@@ -144,7 +143,6 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
   const fans = useRef(new Map<string, () => void>());
   const forumCache = useRef<ForumMessage[]>([]);
   const seedItems = useRef<FeedItem[]>([]);
-  const gunItems = useRef<FeedItem[]>([]);
   const itemCache = useRef<FeedItem[]>([]);
   const subs = useRef<SubscriptionSet | null>(null);
   const sourcesRef = useRef<SourceRef[]>([]);
@@ -168,9 +166,8 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
   }, []);
 
   const rememberItems = useCallback(() => {
-    const merged = mergeItems(seedItems.current, gunItems.current);
-    itemCache.current = merged;
-    setItems(merged);
+    itemCache.current = seedItems.current;
+    setItems(seedItems.current);
     notify();
   }, [notify]);
 
@@ -187,7 +184,7 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
       const incoming =
         ref.kind === "forum"
           ? rowsForForum(ref, forumCache.current)
-          : rowsForFeed(ref, itemCache.current, DEPLOYMENT_SELF_NETWORK);
+          : rowsForFollowedFeed(ref, { authorized: itemCache.current, mesh: [] }, DEPLOYMENT_SELF_NETWORK);
       publishRows(ref, incoming);
     };
     fans.current.set(key, run);
@@ -212,7 +209,6 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
     if (!enabled) return;
     let cancelled = false;
     let offRooms: (() => void) | undefined;
-    let offItems: (() => void) | undefined;
 
     (async () => {
       try {
@@ -251,22 +247,7 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
           setRooms((prev) => mergeRooms(prev, [room]));
         });
         offRooms = typeof roomsListener.off === "function" ? () => roomsListener.off?.() : undefined;
-
-        const itemsListener = gun.get("s3rch").get("items").map().on((data, key) => {
-          if (cancelled) return;
-          const unshared = readUnshareId(data, key);
-          if (unshared) {
-            gunItems.current = dropFeedItems(gunItems.current, unshared);
-            seedItems.current = dropFeedItems(seedItems.current, unshared);
-            rememberItems();
-            return;
-          }
-          const row = fromGunNode(data as Parameters<typeof fromGunNode>[0]);
-          if (!row) return;
-          gunItems.current = mergeItems(gunItems.current, [row]);
-          rememberItems();
-        });
-        offItems = typeof itemsListener.off === "function" ? () => itemsListener.off?.() : undefined;
+        // Public s3rch/items is unsigned. Feed membership and native-feed access use GET /api/feed only.
         if (!cancelled) setGunReady(true);
       } catch {
         if (!cancelled) setGunReady(false);
@@ -276,14 +257,13 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
     return () => {
       cancelled = true;
       offRooms?.();
-      offItems?.();
       publicRoomIds.current = new Set();
       gunRef.current = null;
       registerRef.current?.(null);
       setGunReady(false);
       setPublicEpoch((n) => n + 1);
     };
-  }, [enabled, rememberItems]);
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled || !gunReady || !owner || !see?.ready) return;
@@ -402,7 +382,7 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
     const now = Math.floor(Date.now() / 1000);
     const graph = see.acl;
     return (ref: SourceRef) =>
-      resolveLoadedAccess(ref, { me: owner, selfNetwork: DEPLOYMENT_SELF_NETWORK, graph, now }, { channels, items });
+      resolveLoadedAccess(ref, { me: owner, selfNetwork: DEPLOYMENT_SELF_NETWORK, graph, now }, { channels, authorized: items, mesh: [] });
   }, [enabled, see?.ready, see?.acl, owner, checkedAt, graphEpoch, unavailable, channels, items]);
 
   const catalog = useMemo(
