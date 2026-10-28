@@ -727,6 +727,23 @@ export function offerSeeWait(input: {
 }
 
 /**
+ * An owner or subject cancel cannot be verified until that need and its
+ * owner are loaded. A failed check before then waits. Gun does not deliver
+ * the row again.
+ */
+export function offerCancelAwaitingKeys(input: {
+  graph: SeeGraph | null;
+  need?: ForumNeed;
+  needId: string;
+}): boolean {
+  if (!input.graph || !input.need || input.need.id !== input.needId) return true;
+  const owner = input.graph.ownerOf(input.needId);
+  if (!owner || !isSeaPubkey(owner)) return true;
+  if (!input.need.subject || !isSeaPubkey(input.need.subject)) return true;
+  return false;
+}
+
+/**
  * Signed cancel soul for an offer. Same offer record, `stated` 0.
  * A replay at the offer soul does not remove this node.
  */

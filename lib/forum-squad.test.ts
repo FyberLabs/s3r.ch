@@ -34,6 +34,7 @@ import {
   mergeForumOffer,
   needClosureStatus,
   offerBlockedByCancel,
+  offerCancelAwaitingKeys,
   offerSeeWait,
   overlaySeeGraph,
   parseForumAgentRemoval,
@@ -558,6 +559,55 @@ describe("squad view", () => {
       }),
       false,
     );
+  });
+
+  it("keeps a cancel that arrives before the need graph", () => {
+    const need = PILOT_NEEDS[0];
+    assert.ok(need);
+    const helperAgent = PILOT_AGENTS.find((row) => row.status.seaPubkey !== PILOT_OWNER);
+    assert.ok(helperAgent);
+    const helper = helperAgent.status.seaPubkey;
+    const helperKey = seaToPrincipalKey(helper);
+    assert.ok(helperKey);
+    const live = {
+      id: `offer_${helperKey}_${"ab".repeat(16)}`,
+      need: need.id,
+      forumId: PILOT_FORUM_ID,
+      helper,
+      body: "holding west",
+      artifacts: "",
+      stated: 1 as const,
+    };
+    const queueKey = `cancel:${need.id}:${live.id}`;
+    const pending = new Map<string, number>();
+    assert.equal(offerCancelAwaitingKeys({ graph: null, need, needId: need.id }), true);
+    pending.set(queueKey, 1);
+    const graph = createMemorySeeAcl();
+    assert.equal(offerCancelAwaitingKeys({ graph, need, needId: need.id }), true);
+    assert.equal(offerCancelAwaitingKeys({ graph, needId: need.id }), true);
+    assert.equal(pending.get(queueKey), 1);
+    graph.putObject(need.id, PILOT_OWNER);
+    assert.equal(offerCancelAwaitingKeys({ graph, need, needId: need.id }), false);
+    const declined = { ...live, stated: 0 as const };
+    assert.equal(
+      authorizeForumOffer(declined, PILOT_OWNER, PILOT_FORUM_ID, {
+        owner: graph.ownerOf(need.id),
+        subject: need.subject,
+      }),
+      true,
+    );
+    assert.equal(
+      authorizeForumOffer(declined, need.subject, PILOT_FORUM_ID, {
+        owner: graph.ownerOf(need.id),
+        subject: need.subject,
+      }),
+      true,
+    );
+    pending.delete(queueKey);
+    assert.equal(pending.has(queueKey), false);
+    assert.equal(mergeForumOffer(live, declined)?.stated, 0);
+    assert.equal(mergeForumOffer(declined, live), null);
+    assert.equal(offerBlockedByCancel(new Set([live.id]), live), true);
   });
 
   it("keeps the admitted sample owner when a mesh edge names another pubkey", () => {

@@ -51,6 +51,7 @@ import {
   mergeForumOffer,
   needClosureStatus,
   offerBlockedByCancel,
+  offerCancelAwaitingKeys,
   offerSeeWait,
   needIds,
   openNeedFor,
@@ -216,7 +217,7 @@ export function SquadForum() {
   const offersRef = useRef<Map<string, ForumOffer>>(new Map());
   const pendingNeedsRef = useRef<Map<string, { data: unknown; gen: number }>>(new Map());
   const pendingOffersRef = useRef<
-    Map<string, { data: unknown; key: string; parentNeedId: string; gen: number }>
+    Map<string, { data: unknown; key: string; parentNeedId: string; gen: number; fromCancel?: boolean }>
   >(new Map());
   const acceptNeedRef = useRef<(data: unknown, key: string, gen: number) => Promise<void>>(
     async () => {},
@@ -397,16 +398,19 @@ export function SquadForum() {
         gen: number,
         fromCancel = false,
       ) {
-        const queueKey = `${parentNeedId}:${key ?? ""}`;
+        const queueKey = `${fromCancel ? "cancel" : "offer"}:${parentNeedId}:${key ?? ""}`;
         const versionScope = fromCancel ? "offer-cancel" : "offer";
         const sig = signatureOf(data);
         if (!sig || !data || typeof data !== "object") return;
         const row = data as { helper?: unknown; need?: unknown };
         const hintedNeed = typeof row.need === "string" ? row.need : parentNeedId;
-        const knownNeed = needsRef.current.get(hintedNeed);
+        const parentNeed = needsRef.current.get(parentNeedId);
+        const knownNeed = needsRef.current.get(hintedNeed) ?? parentNeed;
         const candidates = [
           typeof row.helper === "string" ? row.helper : "",
+          graphRef.current?.ownerOf(parentNeedId) ?? "",
           graphRef.current?.ownerOf(hintedNeed) ?? "",
+          parentNeed?.subject ?? "",
           knownNeed?.subject ?? "",
         ].filter((pub, index, all) => pub && all.indexOf(pub) === index);
         let payload: unknown = null;
@@ -420,25 +424,46 @@ export function SquadForum() {
             break;
           }
         }
-        if (cancelled || !versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen) || !payload) return;
+        if (cancelled || !versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return;
+        if (!payload) {
+          if (!fromCancel) return;
+          const awaiting = offerCancelAwaitingKeys({
+            graph: graphRef.current,
+            need: needsRef.current.get(parentNeedId),
+            needId: parentNeedId,
+          });
+          const queued = pendingOffersRef.current.get(queueKey);
+          if (awaiting && (!queued || queued.gen <= gen)) {
+            pendingOffersRef.current.set(queueKey, {
+              data,
+              key: key ?? "",
+              parentNeedId,
+              gen,
+              fromCancel: true,
+            });
+          } else if (queued?.gen === gen) {
+            pendingOffersRef.current.delete(queueKey);
+          }
+          return;
+        }
         const removal = parseForumMeshRemoval(payload);
         if (removal) {
           if (key === undefined || removal.kind !== "offer") return;
-        const resolved = knownNeed?.stated === 0 && knownNeed.acceptedOffer === removal.id;
-        if (
-          !authorizeForumMeshRemoval({
-            removal,
-            mapKey: key,
-            signer,
-            owner: graphRef.current?.ownerOf(parentNeedId),
-            subject: knownNeed?.subject,
-            forumId: PILOT_FORUM_ID,
-            parentNeedId,
-            resolved,
-          })
-        ) {
-          return;
-        }
+          const resolved = knownNeed?.stated === 0 && knownNeed.acceptedOffer === removal.id;
+          if (
+            !authorizeForumMeshRemoval({
+              removal,
+              mapKey: key,
+              signer,
+              owner: graphRef.current?.ownerOf(parentNeedId),
+              subject: knownNeed?.subject,
+              forumId: PILOT_FORUM_ID,
+              parentNeedId,
+              resolved,
+            })
+          ) {
+            return;
+          }
           if (!versions.current(versionScope, `${parentNeedId}:${key}`, gen)) return;
           setMeshOffers((prev) => {
             if (!prev.has(removal.id)) return prev;
@@ -449,7 +474,13 @@ export function SquadForum() {
           return;
         }
         const offer = parseForumOffer(payload);
-        if (!offer || offer.need !== parentNeedId) return;
+        if (!offer || offer.need !== parentNeedId) {
+          if (fromCancel) {
+            const queued = pendingOffersRef.current.get(queueKey);
+            if (queued?.gen === gen) pendingOffersRef.current.delete(queueKey);
+          }
+          return;
+        }
         const named = needsRef.current.get(offer.need);
         const party = {
           owner: graphRef.current?.ownerOf(offer.need),
@@ -459,7 +490,11 @@ export function SquadForum() {
           named && graphRef.current
             ? { graph: graphRef.current, need: named, now: Math.floor(Date.now() / 1000) }
             : undefined;
-        if (fromCancel && offer.stated !== 0) return;
+        if (fromCancel && offer.stated !== 0) {
+          const queued = pendingOffersRef.current.get(queueKey);
+          if (queued?.gen === gen) pendingOffersRef.current.delete(queueKey);
+          return;
+        }
         if (!authorizeForumOffer(offer, signer, PILOT_FORUM_ID, party, seen)) {
           if (
             offer.stated === 1 &&
@@ -845,7 +880,7 @@ export function SquadForum() {
       void acceptNeedRef.current(row.data, key, row.gen);
     }
     for (const [, row] of pendingOffersRef.current) {
-      void acceptOfferRef.current(row.data, row.key, row.parentNeedId, row.gen);
+      void acceptOfferRef.current(row.data, row.key, row.parentNeedId, row.gen, row.fromCancel);
     }
   }, [aclRev, localNeeds, localOffers, meshNeeds, meshOffers, see?.ready]);
 
