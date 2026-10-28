@@ -6,7 +6,21 @@
 import { getAddress } from "viem";
 import { formatShareable, sameSource, validateSourceRef, type SourceRef } from "./views-source-ref";
 import { canonicalJson } from "./views-canonical";
-import { bumpVV, compareVV, isSafeKey, isVersionVector, maxVV, type VersionVector } from "./views-vv";
+import {
+  bumpVV,
+  collapseFolded,
+  compactCausal,
+  compareCausal,
+  coversCausal,
+  expandFolded,
+  isSafeKey,
+  isVersionVector,
+  materializeCausal,
+  maxCausal,
+  unionRetirements,
+  type Causal,
+  type VersionVector,
+} from "./views-vv";
 import { loadView, type Notice, type View } from "./views-window";
 
 export const RECENTS_MAX = 20;
@@ -20,12 +34,18 @@ export const ENTRIES_MAX = VIEWS_MAX + TOMBSTONES_MAX;
 export const CONFLICTS_MAX = 3;
 
 /** One version of a View. A tombstone has `deleted: true` and no `view`. */
-export type ViewVersion =
-  | { id: string; vv: VersionVector; deleted?: undefined; view: View }
-  | { id: string; vv: VersionVector; deleted: true; view?: undefined };
+export type ViewVersion = Causal &
+  (
+    | { id: string; deleted?: undefined; view: View }
+    | { id: string; deleted: true; view?: undefined }
+  );
 
-/** Current version plus any concurrent versions the user has not resolved. */
-export type ViewEntry = { current: ViewVersion; conflicts: ViewVersion[] };
+/**
+ * Current version plus concurrent copies. `hidden` lists each copy removed by CONFLICTS_MAX.
+ * A version is suppressed only when one of those stamps covers it. A later resolution still
+ * takes the component-wise maximum, so it dominates every hidden branch.
+ */
+export type ViewEntry = { current: ViewVersion; conflicts: ViewVersion[]; hidden?: Causal[] };
 
 export type RecentEntry = { ref: SourceRef; at: number };
 
@@ -37,12 +57,22 @@ export type ViewsState = {
   favorites: SourceRef[];
   /** Version vector of the favorites list as a whole, so removals win over stale copies. */
   favoritesVV: VersionVector;
+  /** Devices this favorites stamp compacted. See `Causal`. */
+  favoritesFolded?: VersionVector;
+  favoritesFoldedAll?: true;
+  /** Signed per-account map of retired devices: deviceId → final counter. */
+  retirements: VersionVector;
+  /**
+   * Joined deletion stamps for views whose tombstones were dropped by TOMBSTONES_MAX.
+   * A version covered by one of these stays deleted.
+   */
+  dropped: Record<string, Causal>;
   v: 1;
 };
 
 export function emptyState(owner: string, deviceId: string): ViewsState {
   if (!isSafeKey(deviceId)) throw new Error("deviceId is empty or reserved");
-  return { owner: getAddress(owner), deviceId, views: {}, recents: [], favorites: [], favoritesVV: {}, v: 1 };
+  return { owner: getAddress(owner), deviceId, views: {}, recents: [], favorites: [], favoritesVV: {}, retirements: {}, dropped: {}, v: 1 };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -53,10 +83,82 @@ const noId = () => {
   throw new Error("stored views must already have unique window ids");
 };
 
+const DROPPED_MAX = 10_000;
+
+function parseCausal(input: unknown): Causal | null {
+  if (!isRecord(input) || !isVersionVector(input.vv)) return null;
+  if (input.folded !== undefined && !isVersionVector(input.folded)) return null;
+  if (input.foldedAll !== undefined && input.foldedAll !== true) return null;
+  const out: Causal = { vv: { ...input.vv } };
+  if (isVersionVector(input.folded) && Object.keys(input.folded).length) out.folded = { ...input.folded };
+  if (input.foldedAll === true) out.foldedAll = true;
+  return out;
+}
+
+function causalOf(v: Pick<ViewVersion, "vv" | "folded" | "foldedAll">): Causal {
+  const out: Causal = { vv: v.vv };
+  if (v.folded && Object.keys(v.folded).length) out.folded = v.folded;
+  if (v.foldedAll) out.foldedAll = true;
+  return out;
+}
+
+function withCausal(v: ViewVersion, c: Causal): ViewVersion {
+  const out: ViewVersion = v.deleted ? { id: v.id, vv: c.vv, deleted: true } : { id: v.id, vv: c.vv, view: v.view };
+  if (c.folded && Object.keys(c.folded).length) out.folded = c.folded;
+  if (c.foldedAll) out.foldedAll = true;
+  return out;
+}
+
+function presentCausal(c: Causal | undefined): Causal | undefined {
+  if (!c) return undefined;
+  if (Object.keys(c.vv).length === 0 && !(c.folded && Object.keys(c.folded).length) && !c.foldedAll) return undefined;
+  return c;
+}
+
+function byCausalJson(a: Causal, b: Causal): number {
+  const x = canonicalJson(a);
+  const y = canonicalJson(b);
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
+/** Keep one stamp per incomparable hidden copy. A joined maximum is not a member of this set. */
+function tidyFrontier(stamps: (Causal | undefined)[]): Causal[] | undefined {
+  const kept: Causal[] = [];
+  for (const s of stamps.filter((s): s is Causal => presentCausal(s) !== undefined).sort(byCausalJson)) {
+    if (kept.some((k) => coversCausal(k, s))) continue;
+    for (let i = kept.length - 1; i >= 0; i--) if (coversCausal(s, kept[i]!) && !coversCausal(kept[i]!, s)) kept.splice(i, 1);
+    kept.push(s);
+  }
+  return kept.length ? kept : undefined;
+}
+
+function parseFrontier(input: unknown, notices: Notice[], id: string): Causal[] | undefined {
+  if (input === undefined) return undefined;
+  const raw = Array.isArray(input) ? input : [input];
+  const out: Causal[] = [];
+  let invalid = false;
+  for (const item of raw.slice(0, 128)) {
+    const causal = parseCausal(item);
+    if (!causal) invalid = true;
+    else out.push(causal);
+  }
+  if (invalid) notices.push({ message: `A causal summary for view ${id} could not be read and was discarded` });
+  return tidyFrontier(out);
+}
+
+function tidyEntry(entry: ViewEntry): ViewEntry {
+  const hidden = tidyFrontier(entry.hidden ?? []);
+  return hidden ? { current: entry.current, conflicts: entry.conflicts, hidden } : { current: entry.current, conflicts: entry.conflicts };
+}
+
 /** Validate one stored version. Window-level problems are reported as notices. */
 export function parseVersion(input: unknown, notices: Notice[]): ViewVersion | null {
   if (!isRecord(input) || typeof input.id !== "string" || !isSafeKey(input.id) || !isVersionVector(input.vv)) return null;
-  if (input.deleted === true) return input.view === undefined ? { id: input.id, vv: { ...input.vv }, deleted: true } : null;
+  if (input.folded !== undefined && !isVersionVector(input.folded)) return null;
+  if (input.foldedAll !== undefined && input.foldedAll !== true) return null;
+  const causal = parseCausal({ vv: input.vv, folded: input.folded, foldedAll: input.foldedAll });
+  if (!causal) return null;
+  if (input.deleted === true) return input.view === undefined ? { id: input.id, ...causal, deleted: true } : null;
   if (input.deleted !== undefined) return null;
   let loaded;
   try {
@@ -66,7 +168,15 @@ export function parseVersion(input: unknown, notices: Notice[]): ViewVersion | n
   }
   if (!loaded.ok || loaded.view.id !== input.id) return null;
   notices.push(...loaded.notices);
-  return { id: input.id, vv: { ...input.vv }, view: loaded.view };
+  return { id: input.id, ...causal, view: loaded.view };
+}
+
+/** Hidden stamps carried beside a version in a backup record. A single stamp is the older shape. */
+export function parseVersionPayload(input: unknown, notices: Notice[]): { version: ViewVersion; hidden?: Causal[] } | null {
+  const version = parseVersion(input, notices);
+  if (!version || !isRecord(input) || input.hidden === undefined) return version ? { version } : null;
+  const hidden = parseFrontier(input.hidden, notices, version.id);
+  return hidden ? { version, hidden } : { version };
 }
 
 /** Validate a stored state. Invalid entries are dropped with a notice. */
@@ -74,6 +184,7 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
   const notices: Notice[] = [];
   const state = emptyState(owner, deviceId);
   if (!isRecord(input) || input.v !== 1 || input.owner !== state.owner) return { state, notices };
+  if (isVersionVector(input.retirements)) state.retirements = { ...input.retirements };
   if (isRecord(input.views)) {
     for (const [id, raw] of Object.entries(input.views).slice(0, ENTRIES_MAX)) {
       if (!isRecord(raw) || !isSafeKey(id)) continue;
@@ -90,9 +201,14 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
       if (conflicts.length < rawConflicts.length) {
         notices.push({ message: `A conflicting copy of saved view ${id} could not be read and was discarded` });
       }
-      const entry = { current, conflicts };
+      const hidden = parseFrontier(raw.hidden, notices, id);
+      const entry = tidyEntry({ current, conflicts, hidden });
       const counts = countEntries(state);
       if (isLiveEntry(entry) ? counts.live >= VIEWS_MAX : counts.tombstones >= TOMBSTONES_MAX) {
+        if (!isLiveEntry(entry) && Object.keys(state.dropped).length < DROPPED_MAX) {
+          const parts = [entry.current, ...entry.conflicts, ...(entry.hidden ?? [])].map((c) => expandFolded(causalOf(c), state.retirements));
+          state.dropped[id] = maxCausal(state.dropped[id], ...parts);
+        }
         notices.push({ message: `Saved view ${id} is over the limit and was skipped` });
         continue;
       }
@@ -115,7 +231,100 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
     state.favorites = state.favorites.slice(0, FAVORITES_MAX);
   }
   if (isVersionVector(input.favoritesVV)) state.favoritesVV = { ...input.favoritesVV };
-  return { state, notices };
+  if (isVersionVector(input.favoritesFolded) && Object.keys(input.favoritesFolded).length) state.favoritesFolded = { ...input.favoritesFolded };
+  if (input.favoritesFoldedAll === true) state.favoritesFoldedAll = true;
+  if (isRecord(input.dropped)) {
+    for (const [id, raw] of Object.entries(input.dropped)) {
+      if (!isSafeKey(id) || (Object.keys(state.dropped).length >= DROPPED_MAX && !Object.hasOwn(state.dropped, id))) continue;
+      const causal = parseCausal(raw);
+      if (!causal) continue;
+      const expanded = expandFolded(causal, state.retirements);
+      const prior = Object.hasOwn(state.dropped, id) ? expandFolded(state.dropped[id]!, state.retirements) : undefined;
+      state.dropped[id] = maxCausal(prior, expanded);
+    }
+  }
+  return { state: collapseState(compactState(state, state.retirements), state.retirements), notices };
+}
+
+function favCausal(state: ViewsState): Causal {
+  return expandFolded({ vv: state.favoritesVV, folded: state.favoritesFolded, foldedAll: state.favoritesFoldedAll }, state.retirements);
+}
+
+/** Expand every stamp against the retirement map it was saved with. */
+export function expandState(state: ViewsState): ViewsState {
+  const map = state.retirements;
+  const expandVersion = (v: ViewVersion): ViewVersion => withCausal(v, expandFolded(causalOf(v), map));
+  const views: ViewsState["views"] = {};
+  for (const [id, entry] of Object.entries(state.views)) {
+    views[id] = tidyEntry({
+      current: expandVersion(entry.current),
+      conflicts: entry.conflicts.map(expandVersion),
+      hidden: tidyFrontier((entry.hidden ?? []).map((h) => expandFolded(h, map))),
+    });
+  }
+  const dropped: ViewsState["dropped"] = {};
+  for (const [id, causal] of Object.entries(state.dropped)) dropped[id] = expandFolded(causal, map);
+  return withFavorites({ ...state, views, dropped }, favCausal(state));
+}
+
+function compactOne(c: Causal, retirements: VersionVector): Causal {
+  // `foldedAll` refers to this map. Expanding first keeps those counters, then folds live ones.
+  return compactCausal(expandFolded(c, retirements), retirements);
+}
+
+function compactState(state: ViewsState, retirements: VersionVector): ViewsState {
+  const compactVersion = (v: ViewVersion): ViewVersion => withCausal(v, compactOne(causalOf(v), retirements));
+  const views: ViewsState["views"] = {};
+  for (const [id, entry] of Object.entries(state.views)) {
+    views[id] = tidyEntry({
+      current: compactVersion(entry.current),
+      conflicts: entry.conflicts.map(compactVersion),
+      hidden: tidyFrontier((entry.hidden ?? []).map((h) => compactOne(h, retirements))),
+    });
+  }
+  const dropped: ViewsState["dropped"] = {};
+  for (const [id, causal] of Object.entries(state.dropped)) {
+    const next = compactOne(causal, retirements);
+    if (presentCausal(next)) dropped[id] = next;
+  }
+  const favorites = compactOne(favCausal({ ...state, retirements }), retirements);
+  return withFavorites({ ...state, views, dropped, retirements }, favorites);
+}
+
+function collapseState(state: ViewsState, retirements: VersionVector): ViewsState {
+  const collapseVersion = (v: ViewVersion): ViewVersion => withCausal(v, collapseFolded(causalOf(v), retirements));
+  const views: ViewsState["views"] = {};
+  for (const [id, entry] of Object.entries(state.views)) {
+    views[id] = tidyEntry({
+      current: collapseVersion(entry.current),
+      conflicts: entry.conflicts.map(collapseVersion),
+      hidden: tidyFrontier((entry.hidden ?? []).map((h) => collapseFolded(h, retirements))),
+    });
+  }
+  const dropped: ViewsState["dropped"] = {};
+  for (const [id, causal] of Object.entries(state.dropped)) dropped[id] = collapseFolded(causal, retirements);
+  const favorites = collapseFolded({ vv: state.favoritesVV, folded: state.favoritesFolded }, retirements);
+  return withFavorites({ ...state, views, dropped, retirements }, favorites);
+}
+
+function withFavorites(state: ViewsState, favorites: Causal): ViewsState {
+  const next: ViewsState = { ...state, favoritesVV: favorites.vv };
+  if (favorites.folded && Object.keys(favorites.folded).length) next.favoritesFolded = favorites.folded;
+  else delete next.favoritesFolded;
+  if (favorites.foldedAll) next.favoritesFoldedAll = true;
+  else delete next.favoritesFoldedAll;
+  return next;
+}
+
+/**
+ * Union `incoming` into the account retirement map, then fold devices a stamp has
+ * actually observed. Stamps are expanded against the previous map first, so a stamp
+ * that compacted an older map does not adopt retirements it never saw.
+ */
+export function adoptRetirements(state: ViewsState, incoming: VersionVector): ViewsState {
+  const expanded = expandState(state);
+  const retirements = unionRetirements([state.retirements, incoming]);
+  return collapseState(compactState({ ...expanded, retirements }, retirements), retirements);
 }
 
 /** Save a local edit: validates the View and bumps this device's vector component. */
@@ -126,15 +335,40 @@ export function saveView(state: ViewsState, view: View): { state: ViewsState; no
   const prior = entryOf(state, view.id);
   // Editing while copies conflict would claim ancestry from copies the user has not chosen.
   if (prior && prior.conflicts.length) throw new Error("resolve conflicting copies first");
-  const base = prior ? prior.current.vv : {};
+  const base = prior ? entryCausal(state, prior) : { vv: {} };
   // A new id, or a tombstoned one being brought back, takes a live slot.
   if (!prior || !isLiveEntry(prior)) {
     const { live } = countEntries(state);
     if (live >= VIEWS_MAX) throw new Error(`at most ${VIEWS_MAX} views`);
     if (!prior && Object.keys(state.views).length >= ENTRIES_MAX) throw new Error("too many deleted views are retained");
   }
-  const current: ViewVersion = { id: view.id, vv: bumpVV(base, state.deviceId), view: loaded.view };
-  return { state: { ...state, views: { ...state.views, [view.id]: { current, conflicts: [] } } }, notices: loaded.notices };
+  const current = withCausal({ id: view.id, vv: {}, view: loaded.view }, finishCausal(state, base));
+  const views = { ...state.views, [view.id]: { current, conflicts: [] } };
+  const dropped = clearDropped(state, view.id, current);
+  return { state: collapseState(compactState({ ...state, views, dropped }, state.retirements), state.retirements), notices: loaded.notices };
+}
+
+/** Joined stamp of an entry, expanded against the account map the entry was saved with. */
+function entryCausal(state: ViewsState, entry: ViewEntry): Causal {
+  const map = state.retirements;
+  return maxCausal(
+    expandFolded(causalOf(entry.current), map),
+    ...entry.conflicts.map((v) => expandFolded(causalOf(v), map)),
+    ...(entry.hidden ?? []).map((h) => expandFolded(h, map)),
+  );
+}
+
+function finishCausal(state: ViewsState, base: Causal): Causal {
+  return { vv: bumpVV(materializeCausal(base), state.deviceId) };
+}
+
+/** A new version that dominates a dropped deletion retires that summary. */
+function clearDropped(state: ViewsState, id: string, version: ViewVersion): ViewsState["dropped"] {
+  const prior = state.dropped[id];
+  if (!prior || !coversCausal(causalOf(version), expandFolded(prior, state.retirements))) return state.dropped;
+  const dropped = { ...state.dropped };
+  delete dropped[id];
+  return dropped;
 }
 
 /** Delete locally: writes a tombstone that dominates every known version. */
@@ -163,8 +397,9 @@ export function deleteView(state: ViewsState, id: string): ViewsState {
   if (isLiveEntry(prior) && countEntries(state).tombstones >= TOMBSTONES_MAX) {
     throw new Error("too many deleted views are retained");
   }
-  const vv = bumpVV(maxVV(prior.current.vv, ...prior.conflicts.map((c) => c.vv)), state.deviceId);
-  return { ...state, views: { ...state.views, [id]: { current: { id, vv, deleted: true }, conflicts: [] } } };
+  const current = withCausal({ id, vv: {}, deleted: true }, finishCausal(state, entryCausal(state, prior)));
+  const views = { ...state.views, [id]: { current, conflicts: [] } };
+  return collapseState(compactState({ ...state, views, dropped: clearDropped(state, id, current) }, state.retirements), state.retirements);
 }
 
 /** Resolve conflicting copies by picking one; the result dominates every branch it replaces. */
@@ -179,9 +414,10 @@ export function resolveConflict(state: ViewsState, id: string, chosen: ViewVersi
   if (chosen.deleted && isLiveEntry(entry) && countEntries(state).tombstones >= TOMBSTONES_MAX) {
     throw new Error("too many deleted views are retained");
   }
-  const vv = bumpVV(maxVV(...all.map((v) => v.vv)), state.deviceId);
-  const current: ViewVersion = chosen.deleted ? { id, vv, deleted: true } : { id, vv, view: chosen.view };
-  return { ...state, views: { ...state.views, [id]: { current, conflicts: [] } } };
+  const finished = finishCausal(state, entryCausal(state, entry));
+  const current = withCausal(chosen.deleted ? { id, vv: {}, deleted: true } : { id, vv: {}, view: chosen.view }, finished);
+  const views = { ...state.views, [id]: { current, conflicts: [] } };
+  return collapseState(compactState({ ...state, views, dropped: clearDropped(state, id, current) }, state.retirements), state.retirements);
 }
 
 /**
@@ -199,38 +435,90 @@ export function mergeVersion(entry: ViewEntry | undefined, incoming: ViewVersion
  * exist; the first ones in canonical order are kept (independent of arrival order) and the
  * caller tells the user.
  */
-export function mergeVersionChecked(entry: ViewEntry | undefined, incoming: ViewVersion): { entry: ViewEntry; overflow: boolean } {
-  const merged = mergeInner(entry, incoming);
-  if (merged.conflicts.length <= CONFLICTS_MAX) return { entry: merged, overflow: false };
-  return { entry: { current: merged.current, conflicts: merged.conflicts.slice(0, CONFLICTS_MAX) }, overflow: true };
+export function mergeVersionChecked(entry: ViewEntry | undefined, incoming: ViewVersion, cover?: Causal[]): { entry: ViewEntry; overflow: boolean } {
+  return mergeInner(entry, incoming, cover);
 }
 
-function mergeInner(entry: ViewEntry | undefined, incoming: ViewVersion): ViewEntry {
-  if (!entry) return { current: incoming, conflicts: [] };
-  const known = [entry.current, ...entry.conflicts];
-  if (known.some((k) => {
-    const o = compareVV(incoming.vv, k.vv);
-    return o === "before" || o === "equal";
-  })) {
-    return entry;
+function versionKey(v: ViewVersion): string {
+  return v.deleted ? "deleted" : canonicalJson(v.view);
+}
+
+function byCanonical(a: ViewVersion, b: ViewVersion): number {
+  const x = canonicalJson(a);
+  const y = canonicalJson(b);
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
+function frontierEqual(a: Causal[] | undefined, b: Causal[] | undefined): boolean {
+  if (a === b) return true;
+  const left = a ?? [];
+  const right = b ?? [];
+  return left.length === right.length && left.every((s, i) => canonicalJson(s) === canonicalJson(right[i]!));
+}
+
+/** True when merging `incoming` did not change the copies or the hidden frontier. */
+function unchangedEntry(entry: ViewEntry, known: ViewVersion[], hidden: Causal[] | undefined): boolean {
+  if (known.length !== 1 + entry.conflicts.length || known[0] !== entry.current) return false;
+  for (let i = 0; i < entry.conflicts.length; i++) if (known[i + 1] !== entry.conflicts[i]) return false;
+  return frontierEqual(entry.hidden, hidden);
+}
+
+function mergeInner(entry: ViewEntry | undefined, incoming: ViewVersion, cover?: Causal[]): { entry: ViewEntry; overflow: boolean } {
+  const incomingCausal = causalOf(incoming);
+  // Each capped-away copy suppresses on its own. Their component-wise maximum can cover a
+  // retained copy that none of them covers, so it is not used as a stamp here.
+  const priorFrontier = cover?.length ? tidyFrontier([...(entry?.hidden ?? []), ...cover]) : entry?.hidden;
+  const coveredByHidden = (c: Causal) => (priorFrontier ?? []).some((h) => coversCausal(h, c));
+  const known = (entry ? [entry.current, ...entry.conflicts] : []).filter((v) => !coveredByHidden(causalOf(v)));
+  if (coveredByHidden(incomingCausal)) {
+    if (known.length === 0) {
+      return { entry: tidyEntry({ current: { id: incoming.id, vv: {}, deleted: true }, conflicts: [], hidden: priorFrontier }), overflow: false };
+    }
+    if (entry && unchangedEntry(entry, known, priorFrontier)) return { entry, overflow: false };
+    const [current, ...conflicts] = known;
+    return { entry: tidyEntry({ current: current!, conflicts, hidden: priorFrontier }), overflow: false };
   }
-  const survivors = known.filter((k) => compareVV(incoming.vv, k.vv) !== "after");
+  const frontier = tidyFrontier((priorFrontier ?? []).filter((h) => !coversCausal(incomingCausal, h)));
+  if (known.length === 0) return { entry: tidyEntry({ current: incoming, conflicts: [], hidden: frontier }), overflow: false };
+  if (known.some((k) => coversCausal(causalOf(k), incomingCausal))) {
+    if (entry && unchangedEntry(entry, known, frontier)) return { entry, overflow: false };
+    const [current, ...conflicts] = known;
+    return { entry: tidyEntry({ current: current!, conflicts, hidden: frontier }), overflow: false };
+  }
+  const survivors = known.filter((k) => !coversCausal(incomingCausal, causalOf(k)));
   // Concurrent versions with the same content agree (two devices making the same edit, or
   // concurrent deletions): join their vectors into one version instead of a conflict.
   const byContent = new Map<string, ViewVersion>();
   for (const v of [incoming, ...survivors]) {
-    const key = v.deleted ? "deleted" : canonicalJson(v.view);
+    const key = versionKey(v);
     const prev = byContent.get(key);
-    byContent.set(key, prev ? { ...prev, vv: maxVV(prev.vv, v.vv) } : v);
+    byContent.set(key, prev ? withCausal(prev, maxCausal(causalOf(prev), causalOf(v))) : v);
   }
   // Deterministic order, so replicas that know the same versions show the same current one.
-  const all = [...byContent.values()].sort((a, b) => {
-    const x = canonicalJson(a);
-    const y = canonicalJson(b);
-    return x < y ? -1 : x > y ? 1 : 0;
-  });
-  const [current, ...conflicts] = all;
-  return { current: current!, conflicts };
+  const all = [...byContent.values()].sort(byCanonical);
+  const kept = all.slice(0, 1 + CONFLICTS_MAX);
+  const dropped = all.slice(1 + CONFLICTS_MAX);
+  const [current, ...conflicts] = kept;
+  const nextHidden = tidyFrontier([...(frontier ?? []), ...dropped.map((v) => causalOf(v))]);
+  return { entry: tidyEntry({ current: current!, conflicts, hidden: nextHidden }), overflow: dropped.length > 0 };
+}
+
+/** Drop view versions a removed tombstone already dominates, leaving the summary in `dropped`. */
+export function applyDropped(state: ViewsState): ViewsState {
+  const views = { ...state.views };
+  for (const [id, causal] of Object.entries(state.dropped)) {
+    const cover = expandFolded(causal, state.retirements);
+    const entry = Object.hasOwn(views, id) ? views[id] : undefined;
+    if (!entry) continue;
+    const keep = [entry.current, ...entry.conflicts].filter((v) => !coversCausal(cover, expandFolded(causalOf(v), state.retirements)));
+    if (keep.length === 0) {
+      delete views[id];
+      continue;
+    }
+    const [current, ...conflicts] = keep;
+    views[id] = tidyEntry({ current: current!, conflicts, hidden: tidyFrontier([...(entry.hidden ?? []), cover]) });
+  }
+  return { ...state, views };
 }
 
 /** Views the user can open: current non-deleted versions, plus a flag when copies conflict. */
@@ -271,8 +559,9 @@ export function mergePrefs(state: ViewsState, incoming: unknown[]): ViewsState {
   const recents: RecentEntry[] = [];
   const allRecents = [...state.recents, ...parsed.flatMap((p) => p.recents)].sort(compareRecent);
   for (const r of allRecents) if (!recents.some((x) => sameSource(x.ref, r.ref))) recents.push(r);
-  const copies = [{ favorites: state.favorites, vv: state.favoritesVV, local: true }, ...parsed.map((p) => ({ favorites: p.favorites, vv: p.favoritesVV, local: false }))];
-  const survivors = copies.filter((c) => !copies.some((o) => o !== c && (compareVV(c.vv, o.vv) === "before" || (compareVV(c.vv, o.vv) === "equal" && !c.local && o.local))));
+  const stamp = (s: ViewsState): Causal => expandFolded({ vv: s.favoritesVV, folded: s.favoritesFolded, foldedAll: s.favoritesFoldedAll }, s.retirements);
+  const copies = [{ favorites: state.favorites, causal: stamp(state), local: true }, ...parsed.map((p) => ({ favorites: p.favorites, causal: stamp(p), local: false }))];
+  const survivors = copies.filter((c) => !copies.some((o) => o !== c && (compareCausal(c.causal, o.causal) === "before" || (compareCausal(c.causal, o.causal) === "equal" && !c.local && o.local))));
   // A single surviving copy is kept as is. Concurrent copies are combined in one deterministic
   // order before capping, so every replica that sees the same copies keeps the same list.
   let favorites: SourceRef[] = [];
@@ -281,12 +570,22 @@ export function mergePrefs(state: ViewsState, incoming: unknown[]): ViewsState {
     const all = survivors.flatMap((c) => c.favorites).sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
     for (const f of all) if (!favorites.some((x) => sameSource(x, f))) favorites.push(f);
   }
-  return {
-    ...state,
-    recents: recents.slice(0, RECENTS_MAX),
-    favorites: favorites.slice(0, FAVORITES_MAX),
-    favoritesVV: maxVV(...copies.map((c) => c.vv)),
-  };
+  const dropped: ViewsState["dropped"] = {};
+  for (const s of [state, ...parsed]) {
+    for (const [id, causal] of Object.entries(s.dropped)) {
+      dropped[id] = maxCausal(dropped[id], expandFolded(causal, s.retirements));
+    }
+  }
+  const favoritesCausal = maxCausal(...copies.map((c) => c.causal));
+  return withFavorites(
+    {
+      ...state,
+      recents: recents.slice(0, RECENTS_MAX),
+      favorites: favorites.slice(0, FAVORITES_MAX),
+      dropped,
+    },
+    favoritesCausal,
+  );
 }
 
 /** Record that a source was opened or added. Most recent first, unique, capped. */
@@ -309,10 +608,13 @@ export function isFavorite(state: ViewsState, ref: SourceRef): boolean {
 export function toggleFavorite(state: ViewsState, ref: SourceRef): ViewsState {
   const checked = validateSourceRef(ref);
   if (!checked.ok) throw new Error(checked.error);
-  const favoritesVV = bumpVV(state.favoritesVV, state.deviceId);
-  if (isFavorite(state, ref)) return { ...state, favorites: state.favorites.filter((f) => !sameSource(f, ref)), favoritesVV };
+  const favoritesVV = bumpVV(materializeCausal(favCausal(state)), state.deviceId);
+  const base = withFavorites(state, { vv: favoritesVV });
+  if (isFavorite(state, ref)) {
+    return collapseState(compactState({ ...base, favorites: state.favorites.filter((f) => !sameSource(f, ref)) }, state.retirements), state.retirements);
+  }
   if (state.favorites.length >= FAVORITES_MAX) throw new Error(`at most ${FAVORITES_MAX} favorites`);
-  return { ...state, favorites: [...state.favorites, checked.value], favoritesVV };
+  return collapseState(compactState({ ...base, favorites: [...state.favorites, checked.value] }, state.retirements), state.retirements);
 }
 
 /* ---------- persistence ---------- */

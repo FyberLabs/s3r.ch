@@ -6,6 +6,8 @@ import {
   deleteView,
   emptyState,
   listViews,
+  applyDropped,
+  CONFLICTS_MAX,
   mergeVersion,
   mergeVersionChecked,
   parseState,
@@ -18,7 +20,7 @@ import {
   type ViewsState,
   type ViewEntry, type ViewVersion,
 } from "./views-store";
-import { bumpVV, compareVV, isVersionVector } from "./views-vv";
+import { bumpVV, compactCausal, compareVV, coversCausal, isVersionVector, readCausal, unionRetirements } from "./views-vv";
 import type { View } from "./views-window";
 
 const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -105,7 +107,63 @@ describe("views state", () => {
   it("keeps the same capped conflicts regardless of arrival order", () => {
     const vs: ViewVersion[] = [1, 2, 3, 4, 5, 6, 7].map((i) => ({ id: "v1", vv: { [`d${i}`]: 1 }, view: view("v1", `t${i}`) }));
     const fold = (list: ViewVersion[]) => list.reduce<ViewEntry | undefined>((e, v) => mergeVersionChecked(e, v).entry, undefined);
-    assert.deepEqual(fold(vs), fold([...vs].reverse()));
+    const folded = fold(vs);
+    assert.deepEqual(folded, fold([...vs].reverse()));
+    assert.equal(folded?.conflicts.length, CONFLICTS_MAX);
+    assert.ok(folded?.hidden);
+    const kept = new Set([folded!.current, ...folded!.conflicts].map((v) => v.view?.title));
+    for (const v of vs) if (!kept.has(v.view?.title)) assert.ok((folded?.hidden ?? []).some((h) => coversCausal(h, v)));
+    let s: ViewsState = { ...emptyState(ALICE, "d9"), views: { v1: folded! } };
+    s = resolveConflict(s, "v1", folded!.current);
+    for (const v of vs) {
+      const after = mergeVersion(s.views.v1, v);
+      assert.equal(after, s.views.v1);
+    }
+  });
+
+  it("folds only a component this stamp has observed", () => {
+    const map = { d1: 5 };
+    const never = { vv: { d2: 1 } };
+    assert.equal(readCausal(never, "d1", map), 0);
+    const untouched = compactCausal(never, map);
+    assert.equal(untouched.folded, undefined);
+    assert.equal(readCausal(untouched, "d1"), 0);
+    const seen = compactCausal({ vv: { d1: 5, d2: 1 } }, map);
+    assert.equal(seen.vv.d1, undefined);
+    assert.equal(seen.folded?.d1, 5);
+    assert.equal(readCausal(seen, "d1", map), 5);
+    const ahead = compactCausal({ vv: { d1: 6 } }, map);
+    assert.equal(ahead.vv.d1, 6);
+    assert.equal(ahead.folded, undefined);
+  });
+
+  it("caps a retirement union from the full set", () => {
+    const left = { a: 1, b: 9 };
+    const right = { c: 9, d: 2 };
+    assert.deepEqual(unionRetirements([left, right], 2), unionRetirements([right, left], 2));
+    assert.deepEqual(unionRetirements([left, right], 2), { b: 9, c: 9 });
+  });
+
+  it("keeps a retained copy when hidden stamps would dominate it only together", () => {
+    const kept = (title: string, vv: Record<string, number>): ViewVersion => ({ id: "v1", vv, view: view("v1", title) });
+    const entry: ViewEntry = {
+      current: kept("kept", { a: 1, b: 1 }),
+      conflicts: [kept("k0", { c0: 1 }), kept("k1", { c1: 1 }), kept("k2", { c2: 1 })],
+      hidden: [{ vv: { a: 2 } }, { vv: { b: 2 } }],
+    };
+    const duplicate: ViewVersion = { id: "v1", vv: { a: 2 }, view: view("v1", "hidden-a") };
+    const merged = mergeVersion(entry, duplicate);
+    assert.equal([merged.current, ...merged.conflicts].length, 4);
+    assert.ok([merged.current, ...merged.conflicts].some((v) => v.view?.title === "kept"));
+    const older: ViewVersion = { id: "v1", vv: { a: 1 }, view: view("v1", "old-a") };
+    const suppressed = mergeVersion(entry, older);
+    assert.equal([suppressed.current, ...suppressed.conflicts].some((v) => v.view?.title === "old-a"), false);
+  });
+
+  it("removes a live copy covered by a dropped deletion", () => {
+    const live = saveView(emptyState(ALICE, "d1"), view("v1", "x")).state;
+    const next = applyDropped({ ...live, dropped: { v1: { vv: { d1: 2 } } } });
+    assert.equal(next.views.v1, undefined);
   });
 
   it("joins concurrent tombstones into one", () => {

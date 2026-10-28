@@ -10,11 +10,17 @@ import {
   restoreBackupFile,
   restoreFromGraph,
   listGraphWriters,
+  publishViewsBackup,
+  pruneSupersededWriters,
+  retryWriterTombstones,
+  signWriterTombstone,
   writeBackupToGraph,
+  writerSlotKey,
   BACKUP_FILE_MAX_BYTES,
   type GraphChain,
 } from "./views-backup";
-import { emptyState, saveView, toggleFavorite, touchRecent } from "./views-store";
+import { adoptRetirements, emptyState, saveView, toggleFavorite, touchRecent, type ViewsState } from "./views-store";
+import { coversCausal } from "./views-vv";
 import type { View } from "./views-window";
 
 const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -36,12 +42,14 @@ function view(id: string, title: string): View {
   };
 }
 
-function fakeGraph(): GraphChain & { data: Map<string, string>; failDeletes: number } {
+function fakeGraph(): GraphChain & { data: Map<string, string>; failDeletes: number; beforePut(fn: ((path: string, value: string | null) => void | Promise<void>) | undefined): void } {
   const data = new Map<string, string>();
-  const state = { failDeletes: 0 };
+  const state = { failDeletes: 0, beforePut: undefined as ((path: string, value: string | null) => void | Promise<void>) | undefined };
   const at = (path: string): GraphChain => ({
     get: (k) => at(`${path}/${k}`),
     put: (v, cb) => {
+      void (async () => {
+      await state.beforePut?.(path, v);
       if (v === null && state.failDeletes > 0) {
         state.failDeletes -= 1;
         return cb?.({ err: "unavailable" });
@@ -49,6 +57,7 @@ function fakeGraph(): GraphChain & { data: Map<string, string>; failDeletes: num
       if (v === null) data.delete(path);
       else data.set(path, v);
       cb?.({});
+      })();
     },
     once: (cb) => {
       if (data.has(path)) return cb(data.get(path));
@@ -57,9 +66,12 @@ function fakeGraph(): GraphChain & { data: Map<string, string>; failDeletes: num
       cb(Object.keys(children).length ? { _: {}, ...children } : undefined);
     },
   });
-  const root = at("~") as GraphChain & { data: Map<string, string>; failDeletes: number };
+  const root = at("~") as GraphChain & { data: Map<string, string>; failDeletes: number; beforePut(fn: ((path: string, value: string | null) => void | Promise<void>) | undefined): void };
   root.data = data;
   Object.defineProperty(root, "failDeletes", { get: () => state.failDeletes, set: (n: number) => (state.failDeletes = n) });
+  root.beforePut = (fn) => {
+    state.beforePut = fn;
+  };
   return root;
 }
 
@@ -131,7 +143,7 @@ describe("backup", () => {
     const s = saveView(emptyState(ALICE, "d1"), view("v1", "graph")).state;
     const g = fakeGraph();
     await writeBackupToGraph(g, await buildBackup(s, pair, "w1", 1), { pub: pair.pub });
-    assert.ok([...g.data.keys()].some((k) => k === "~/s3rch-views/w1"));
+    assert.ok([...g.data.keys()].some((k) => k === "~/s3rch-views/w1/1"));
     const r = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g);
     assert.equal(r.state.views.v1?.current.view?.title, "graph");
   });
@@ -242,8 +254,11 @@ describe("backup", () => {
     const b = await buildBackup(remote, pair, "w", 1);
     const r = await restoreBackup(local, pair, [b.manifest], async (a) => b.records[a]);
     assert.ok(countEntries(r.state).tombstones <= TOMBSTONES_MAX);
-    assert.equal(r.state.views.keep?.current.deleted, undefined);
+    assert.equal(r.state.views.keep, undefined);
     assert.equal(r.notices.length, 1);
+    const older = await buildBackup(saveView(emptyState(ALICE, "d1"), view("keep", "x")).state, pair, "old", 1);
+    const again = await restoreBackup(r.state, pair, [older.manifest], async (a) => older.records[a]);
+    assert.equal(again.state.views.keep, undefined);
   });
 
   it("does not reuse cached ciphertext after the key pair changes", async () => {
@@ -300,11 +315,13 @@ describe("backup", () => {
     const first = await buildBackup(s, pair, "w", 1);
     await writeBackupToGraph(g, first, { pub: pair.pub });
     const s2 = saveView(s, view("v1", "b")).state;
+    const slot: GraphChain = { get: () => slot, once: (cb) => cb(undefined), put: (_v, cb) => cb?.({ err: "down" }) };
+    const writerNode: GraphChain = { get: () => slot, once: (cb) => cb(g.data.get("~/s3rch-views/w")), put: () => undefined };
     const failing: GraphChain = {
-      get: (k) => (k === "s3rch-views" ? { get: () => ({ get: () => failing, once: (cb) => cb(g.data.get("~/s3rch-views/w")), put: (_v, cb) => cb?.({ err: "down" }) }), once: () => undefined, put: () => undefined } : g.get(k)),
+      get: (k) => (k === "s3rch-views" ? { get: () => writerNode, once: () => undefined, put: () => undefined } : g.get(k)),
       once: g.once,
       put: g.put,
-    } as GraphChain;
+    };
     await assert.rejects(writeBackupToGraph(failing, await buildBackup(s2, pair, "w", 2), { pub: pair.pub }));
     const s3 = saveView(s2, view("v1", "c")).state;
     await writeBackupToGraph(g, await buildBackup(s3, pair, "w", 3), { pub: pair.pub });
@@ -361,9 +378,9 @@ describe("backup", () => {
     const cache = new Map();
     const s = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
     await writeBackupToGraph(g, await buildBackup(s, pair, "w", 1, cache), { pub: pair.pub });
-    g.data.delete("~/s3rch-views-writers/w");
+    g.data.delete(`~/s3rch-views-writers/${writerSlotKey("w", 1)}`);
     assert.equal(await writeBackupToGraph(g, await buildBackup(s, pair, "w", 1, cache), { pub: pair.pub }), "written");
-    assert.ok(g.data.has("~/s3rch-views-writers/w"));
+    assert.ok(g.data.has(`~/s3rch-views-writers/${writerSlotKey("w", 1)}`));
   });
 
   it("counts distinct writers toward the restore limit", async () => {
@@ -411,13 +428,295 @@ describe("backup", () => {
     await writeBackupToGraph(g, b, { pub: pair.pub, now: () => 1000 });
     await writeBackupToGraph(g, await buildBackup(s, pair, "new", 1), { pub: pair.pub, now: () => 2000 });
     assert.deepEqual(await listGraphWriters(g), ["new", "old"]);
-    g.data.delete("~/s3rch-views-writers/old");
+    g.data.delete(`~/s3rch-views-writers/${writerSlotKey("old", 1)}`);
     assert.equal(await writeBackupToGraph(g, b, { pub: pair.pub }), "written");
-    assert.ok(g.data.has("~/s3rch-views-writers/old"));
+    assert.ok(g.data.has(`~/s3rch-views-writers/${writerSlotKey("old", 1)}`));
     const recKey = [...g.data.keys()].find((k) => k.startsWith("~/s3rch-views-records/old/"))!;
     g.data.delete(recKey);
     await writeBackupToGraph(g, b, { pub: pair.pub });
     assert.ok(g.data.has(recKey));
+  });
+
+  it("publishes a retirement map before removing a superseded writer and retries a failed removal", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const first = saveView(emptyState(ALICE, "d1"), view("v1", "old")).state;
+    await writeBackupToGraph(g, await buildBackup(first, pair, "w1", 1), { pub: pair.pub });
+    const restored = (await restoreFromGraph(emptyState(ALICE, "d2"), pair, g)).state;
+    const survivor = saveView(restored, view("v1", "new")).state;
+    const plain = await buildBackup(survivor, pair, "w2", 1);
+    await writeBackupToGraph(g, plain, { pub: pair.pub });
+    assert.deepEqual((await pruneSupersededWriters(g, pair, plain.manifest)).removed, []);
+    assert.equal(g.data.has("~/s3rch-views/w1/1"), true);
+
+    const published = await publishViewsBackup(g, pair, survivor, "w2", 2);
+    assert.equal(published.status, "written");
+    const manifest = JSON.parse(g.data.get("~/s3rch-views/w2/2")!) as { retirements?: { d1?: number } };
+    assert.ok((manifest.retirements?.d1 ?? 0) >= 1);
+    assert.equal(g.data.has("~/s3rch-views/w1/1"), false);
+    assert.equal([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-records/w1/")), false);
+    assert.equal(g.data.has(`~/s3rch-views-writers/${writerSlotKey("w1", 1)}`), false);
+    assert.equal([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-retired/")), false);
+
+    const g2 = fakeGraph();
+    await writeBackupToGraph(g2, await buildBackup(first, pair, "w1", 1), { pub: pair.pub });
+    const adopted = adoptRetirements(survivor, { d1: 1 });
+    const backup = await buildBackup(adopted, pair, "w2", 1);
+    await writeBackupToGraph(g2, backup, { pub: pair.pub });
+    g2.failDeletes = 1;
+    const failed = await pruneSupersededWriters(g2, pair, backup.manifest);
+    assert.deepEqual(failed.removed, []);
+    assert.equal(g2.data.has("~/s3rch-views/w1/1"), true);
+    assert.equal([...g2.data.keys()].some((k) => k.startsWith("~/s3rch-views-retired/")), true);
+    const replacement = await buildBackup(saveView(first, view("v1", "nope")).state, pair, "w1", 1);
+    assert.equal(await writeBackupToGraph(g2, replacement, { pub: pair.pub }), "stale");
+    assert.equal(JSON.parse(g2.data.get("~/s3rch-views/w1/1")!).seq, 1);
+    g2.failDeletes = 0;
+    assert.deepEqual((await retryWriterTombstones(g2, pair)).pending, []);
+    assert.equal(g2.data.has("~/s3rch-views/w1/1"), false);
+    assert.equal([...g2.data.keys()].some((k) => k.startsWith("~/s3rch-views-records/w1/")), false);
+    assert.equal([...g2.data.keys()].some((k) => k.startsWith("~/s3rch-views-retired/")), false);
+    const back = await restoreFromGraph(emptyState(ALICE, "d3"), pair, g);
+    assert.equal(back.state.views.v1?.current.view?.title, "new");
+  });
+
+  it("leaves a slot whose body is not the one named by the tombstone", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const s = saveView(emptyState(ALICE, "d1"), view("v1", "stay")).state;
+    await writeBackupToGraph(g, await buildBackup(s, pair, "w1", 1), { pub: pair.pub });
+    const tomb = await signWriterTombstone(pair, { v: 1, owner: s.owner, writerId: "w1", seq: 1, manifestHash: "ab".repeat(32), deviceId: "d1", counter: 1 });
+    g.data.set(`~/s3rch-views-retired/${writerSlotKey("w1", 1)}`, JSON.stringify(tomb));
+    assert.deepEqual((await retryWriterTombstones(g, pair)).pending, []);
+    assert.equal(g.data.has("~/s3rch-views/w1/1"), true);
+    assert.equal(g.data.has(`~/s3rch-views-retired/${writerSlotKey("w1", 1)}`), false);
+  });
+
+  it("keeps a publication that arrives while a superseded slot is removed", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const first = saveView(emptyState(ALICE, "d1"), view("v1", "old")).state;
+    await writeBackupToGraph(g, await buildBackup(first, pair, "w1", 1), { pub: pair.pub });
+    const survivor = saveView((await restoreFromGraph(emptyState(ALICE, "d2"), pair, g)).state, view("v1", "kept")).state;
+    const raced = await buildBackup(saveView(first, view("v1", "raced")).state, pair, "w1", 2);
+    g.beforePut((path, value) => {
+      if (path === "~/s3rch-views/w1/1" && value === null && !g.data.has("~/s3rch-views/w1/2")) {
+        g.data.set("~/s3rch-views/w1/2", JSON.stringify(raced.manifest));
+        for (const [address, record] of Object.entries(raced.records)) g.data.set(`~/s3rch-views-records/w1/${address}`, JSON.stringify(record));
+        g.data.set(`~/s3rch-views-writers/${writerSlotKey("w1", 2)}`, "9");
+      }
+    });
+    const published = await publishViewsBackup(g, pair, survivor, "w2", 1);
+    assert.equal(published.status, "written");
+    assert.equal(g.data.has("~/s3rch-views/w1/1"), false);
+    assert.equal(g.data.has("~/s3rch-views/w1/2"), true);
+    const onlyRaced = await restoreFromGraph(emptyState(ALICE, "d3"), pair, g, ["w1"]);
+    assert.equal(onlyRaced.state.views.v1?.current.view?.title, "raced");
+  });
+
+  it("does not remove a writer whose newest publication is still concurrent", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const first = saveView(emptyState(ALICE, "d1"), view("v1", "old")).state;
+    await writeBackupToGraph(g, await buildBackup(first, pair, "w1", 1), { pub: pair.pub });
+    const survivor = saveView((await restoreFromGraph(emptyState(ALICE, "d2"), pair, g)).state, view("v1", "kept")).state;
+    await writeBackupToGraph(g, await buildBackup(saveView(first, view("v1", "raced")).state, pair, "w1", 2), { pub: pair.pub });
+    const backup = await buildBackup(adoptRetirements(survivor, { d1: 1 }), pair, "w2", 1);
+    await writeBackupToGraph(g, backup, { pub: pair.pub });
+    assert.deepEqual((await pruneSupersededWriters(g, pair, backup.manifest)).removed, []);
+    assert.equal(g.data.has("~/s3rch-views/w1/2"), true);
+    const onlyRaced = await restoreFromGraph(emptyState(ALICE, "d3"), pair, g, ["w1"]);
+    assert.equal(onlyRaced.state.views.v1?.current.view?.title, "raced");
+  });
+
+  it("merges folded markers against the map each manifest was saved with", async () => {
+    const pair = await testPair();
+    const marked = (deviceId: string, title: string, retirements: Record<string, number>): ViewsState => ({
+      ...emptyState(ALICE, deviceId),
+      retirements,
+      views: { v1: { current: { id: "v1", vv: {}, foldedAll: true, view: view("v1", title) }, conflicts: [] } },
+    });
+    const ba = await buildBackup(marked("dA", "A", { d1: 5 }), pair, "wa", 1);
+    const bb = await buildBackup(marked("dB", "B", { d2: 5 }), pair, "wb", 1);
+    const records = { ...ba.records, ...bb.records };
+    const load = (order: [typeof ba.manifest, typeof bb.manifest]) =>
+      restoreBackup(emptyState(ALICE, "dx"), pair, order, async (k) => records[k]);
+    const x = await load([ba.manifest, bb.manifest]);
+    const y = await load([bb.manifest, ba.manifest]);
+    const titles = (s: ViewsState) => [s.views.v1?.current.view?.title, ...(s.views.v1?.conflicts ?? []).map((c) => c.view?.title)].sort();
+    assert.deepEqual(titles(x.state), ["A", "B"]);
+    assert.deepEqual(x.state.views.v1, y.state.views.v1);
+  });
+
+  it("hides the same capped copies regardless of manifest order", async () => {
+    const pair = await testPair();
+    const parts: Awaited<ReturnType<typeof buildBackup>>[] = [];
+    for (let i = 0; i < 6; i++) parts.push(await buildBackup(saveView(emptyState(ALICE, `d${i}`), view("v1", `c${i}`)).state, pair, `w${i}`, 1));
+    const records = Object.assign({}, ...parts.map((p) => p.records));
+    const load = (order: typeof parts) => restoreBackup(emptyState(ALICE, "dx"), pair, order.map((p) => p.manifest), async (a) => records[a]);
+    const x = await load(parts);
+    const y = await load([...parts].reverse());
+    assert.deepEqual(x.state.views.v1, y.state.views.v1);
+    const entry = x.state.views.v1!;
+    assert.ok(entry.hidden);
+    const kept = new Set([entry.current, ...entry.conflicts].map((v) => v.view?.title));
+    for (let i = 0; i < 6; i++) if (!kept.has(`c${i}`)) assert.ok((entry.hidden ?? []).some((h) => coversCausal(h, { vv: { [`d${i}`]: 1 } })));
+  });
+
+  it("keeps graph keys and live vectors bounded across repeated restores", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const count = (prefix: string) => [...g.data.keys()].filter((k) => k.startsWith(prefix)).length;
+    let state = saveView(emptyState(ALICE, "d0"), view("v1", "t0")).state;
+    let published = await publishViewsBackup(g, pair, state, "w0", 1);
+    for (let i = 1; i <= 8; i++) {
+      const restored = await restoreFromGraph(emptyState(ALICE, `d${i}`), pair, g);
+      assert.equal(restored.notices.length, 0);
+      state = saveView(restored.state, view("v1", `t${i}`)).state;
+      published = await publishViewsBackup(g, pair, state, `w${i}`, 1);
+      assert.equal(published.status, "written");
+      assert.equal(count("~/s3rch-views/"), 1);
+      assert.ok(count("~/s3rch-views-records/") <= 2);
+      assert.equal(count("~/s3rch-views-writers/"), 1);
+      assert.equal(count("~/s3rch-views-retired/"), 0);
+    }
+    assert.deepEqual(await listGraphWriters(g), ["w8"]);
+    const current = published.state.views.v1!.current;
+    assert.equal(current.view?.title, "t8");
+    assert.equal(Object.keys(current.vv).length, 1);
+    assert.equal(current.foldedAll, true);
+    assert.equal(Object.keys(published.state.retirements).length, 8);
+  });
+
+  it("does not sweep a newer head when an older identical slot is retried", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const first = saveView(emptyState(ALICE, "d1"), view("v1", "a")).state;
+    const second = saveView(first, view("v1", "b")).state;
+    await writeBackupToGraph(g, await buildBackup(first, pair, "w", 1), { pub: pair.pub });
+    g.beforePut((path, value) => {
+      if (value === null && path === "~/s3rch-views/w/1") g.failDeletes = 1;
+    });
+    assert.equal(await writeBackupToGraph(g, await buildBackup(second, pair, "w", 2), { pub: pair.pub }), "written");
+    assert.equal(g.data.has("~/s3rch-views/w/1"), true);
+    g.beforePut(undefined);
+    assert.equal(await writeBackupToGraph(g, await buildBackup(first, pair, "w", 1), { pub: pair.pub }), "stale");
+    const restored = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g, ["w"]);
+    assert.equal(restored.notices.length, 0);
+    assert.equal(restored.state.views.v1?.current.view?.title, "b");
+  });
+
+  it("keeps the tombstone when record cleanup fails", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const first = saveView(emptyState(ALICE, "d1"), view("v1", "old")).state;
+    await writeBackupToGraph(g, await buildBackup(first, pair, "w1", 1), { pub: pair.pub });
+    const survivor = adoptRetirements(saveView((await restoreFromGraph(emptyState(ALICE, "d2"), pair, g)).state, view("v1", "new")).state, { d1: 1 });
+    const backup = await buildBackup(survivor, pair, "w2", 1);
+    await writeBackupToGraph(g, backup, { pub: pair.pub });
+    g.beforePut((path, value) => {
+      if (value === null && path.startsWith("~/s3rch-views-records/w1/")) g.failDeletes = 1;
+    });
+    const pruned = await pruneSupersededWriters(g, pair, backup.manifest);
+    assert.equal(pruned.removed.length, 0);
+    assert.ok(pruned.pending.length > 0);
+    assert.ok([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-retired/")));
+    assert.ok([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-records/w1/")));
+    g.beforePut(undefined);
+    assert.deepEqual((await retryWriterTombstones(g, pair)).pending, []);
+    assert.equal([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-records/w1/")), false);
+    assert.equal([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-retired/")), false);
+  });
+
+  it("does not remove records of a publication that is still being written", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const first = saveView(emptyState(ALICE, "d1"), view("v1", "old")).state;
+    await writeBackupToGraph(g, await buildBackup(first, pair, "w1", 1), { pub: pair.pub });
+    const survivor = adoptRetirements(saveView((await restoreFromGraph(emptyState(ALICE, "d2"), pair, g)).state, view("v1", "kept")).state, { d1: 1 });
+    const survivorBackup = await buildBackup(survivor, pair, "w2", 1);
+    await writeBackupToGraph(g, survivorBackup, { pub: pair.pub });
+    const raced = await buildBackup(saveView(first, view("v1", "raced")).state, pair, "w1", 2);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let paused = false;
+    g.beforePut(async (path, value) => {
+      if (path === "~/s3rch-views/w1/2" && typeof value === "string") {
+        paused = true;
+        await gate;
+      }
+    });
+    const writing = writeBackupToGraph(g, raced, { pub: pair.pub });
+    for (let i = 0; i < 50 && !paused; i++) await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(paused, true);
+    const pruning = pruneSupersededWriters(g, pair, survivorBackup.manifest);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    for (const address of Object.keys(raced.records)) assert.equal(g.data.has(`~/s3rch-views-records/w1/${address}`), true);
+    release();
+    assert.equal(await writing, "written");
+    await pruning;
+    const restored = await restoreFromGraph(emptyState(ALICE, "d3"), pair, g, ["w1"]);
+    assert.equal(restored.notices.length, 0);
+    assert.equal(restored.state.views.v1?.current.view?.title, "raced");
+  });
+
+  it("removes a legacy publication at its original paths", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const first = saveView(emptyState(ALICE, "d1"), view("v1", "old")).state;
+    const legacy = await buildBackup(first, pair, "w1", 1);
+    g.data.set("~/s3rch-views/w1", JSON.stringify(legacy.manifest));
+    for (const [address, record] of Object.entries(legacy.records)) g.data.set(`~/s3rch-views-records/w1/${address}`, JSON.stringify(record));
+    g.data.set("~/s3rch-views-writers/w1", "5");
+    const survivor = adoptRetirements(saveView((await restoreFromGraph(emptyState(ALICE, "d2"), pair, g)).state, view("v1", "new")).state, { d1: 1 });
+    const backup = await buildBackup(survivor, pair, "w2", 1);
+    await writeBackupToGraph(g, backup, { pub: pair.pub });
+    const pruned = await pruneSupersededWriters(g, pair, backup.manifest);
+    assert.deepEqual(pruned.pending, []);
+    assert.equal(g.data.has("~/s3rch-views/w1"), false);
+    assert.equal(g.data.has("~/s3rch-views-writers/w1"), false);
+    assert.equal([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-records/w1/")), false);
+    const restored = await restoreFromGraph(emptyState(ALICE, "d3"), pair, g);
+    assert.equal(restored.state.views.v1?.current.view?.title, "new");
+    assert.equal(restored.notices.length, 0);
+  });
+
+  it("keeps one writer when equivalent publications would remove each other", async () => {
+    const pair = await testPair();
+    const g = fakeGraph();
+    const version = { id: "v1", vv: { d1: 1, d2: 1 }, view: view("v1", "same") };
+    const a: ViewsState = { ...emptyState(ALICE, "d1"), retirements: { d2: 1 }, views: { v1: { current: version, conflicts: [] } } };
+    const b: ViewsState = { ...emptyState(ALICE, "d2"), retirements: { d1: 1 }, views: { v1: { current: version, conflicts: [] } } };
+    const ba = await buildBackup(a, pair, "wa", 1);
+    const bb = await buildBackup(b, pair, "wb", 1);
+    await writeBackupToGraph(g, ba, { pub: pair.pub });
+    await writeBackupToGraph(g, bb, { pub: pair.pub });
+    await Promise.all([pruneSupersededWriters(g, pair, ba.manifest), pruneSupersededWriters(g, pair, bb.manifest)]);
+    assert.equal(g.data.has("~/s3rch-views/wa/1"), true);
+    assert.equal(g.data.has("~/s3rch-views/wb/1"), false);
+    const restored = await restoreFromGraph(emptyState(ALICE, "d3"), pair, g);
+    assert.equal(restored.notices.length, 0);
+    assert.equal(restored.state.views.v1?.current.view?.title, "same");
+  });
+
+  it("accepts a new view when a deletion summary frees a live slot", async () => {
+    const pair = await testPair();
+    const { VIEWS_MAX, countEntries } = await import("./views-store");
+    let local = emptyState(ALICE, "d1");
+    for (let i = 0; i < VIEWS_MAX; i++) local = saveView(local, view(`v${i}`, "x")).state;
+    const remote: ViewsState = {
+      ...emptyState(ALICE, "d2"),
+      dropped: { v0: { vv: { d1: 2 } } },
+      views: saveView(emptyState(ALICE, "d2"), view("z-new", "fresh")).state.views,
+    };
+    const backup = await buildBackup(remote, pair, "w", 1);
+    const restored = await restoreBackup(local, pair, [backup.manifest], async (a) => backup.records[a]);
+    assert.equal(restored.state.views["z-new"]?.current.view?.title, "fresh");
+    assert.equal(restored.state.views.v0, undefined);
+    assert.equal(countEntries(restored.state).live, VIEWS_MAX);
+    assert.equal(restored.notices.some((n) => n.message.includes("z-new")), false);
   });
 
   it("rejects oversized and malformed files before use", () => {
