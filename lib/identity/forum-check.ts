@@ -190,6 +190,30 @@ export function seaToPrincipalKey(pub: string): string | null {
   return `p_${hexBytes(xb)}${hexBytes(yb)}`;
 }
 
+function bytesFromHex(hex: string): Uint8Array | null {
+  if (!/^[0-9a-f]{64}$/.test(hex)) return null;
+  const out = new Uint8Array(32);
+  for (let i = 0; i < 32; i += 1) out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+function bytesToB64url(bytes: Uint8Array): string {
+  let bin = "";
+  for (const byte of bytes) bin += String.fromCharCode(byte);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+/** Inverse of `seaToPrincipalKey`. A bad key is null. */
+export function seaFromPrincipalKey(key: string): string | null {
+  if (!/^p_[0-9a-f]{128}$/.test(key)) return null;
+  const hex = key.slice(2);
+  const x = bytesFromHex(hex.slice(0, 64));
+  const y = bytesFromHex(hex.slice(64));
+  if (!x || !y) return null;
+  const pub = `${bytesToB64url(x)}.${bytesToB64url(y)}`;
+  return seaToPrincipalKey(pub) === key ? pub : null;
+}
+
 export function isSeaPubkey(value: string): boolean {
   return seaToPrincipalKey(value) !== null;
 }

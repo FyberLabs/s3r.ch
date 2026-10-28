@@ -946,6 +946,7 @@ export {
   isSeaPubkey,
   isSeparateChatSoul,
   sameEmbeddedPrincipal,
+  seaFromPrincipalKey,
   seaToPrincipalKey,
   forumOfferSoul,
   mintForumOfferId,

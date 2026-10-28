@@ -19,10 +19,12 @@ import {
   forumStatementSoul,
   isForumChatExtraTag,
   checkSee,
+  embeddedPrincipalKey,
   isForumObjectId,
   isRoleToken,
   isSeaPubkey,
   sameEmbeddedPrincipal,
+  seaFromPrincipalKey,
   seaToPrincipalKey,
   validateForumNeed,
   validateForumOffer,
@@ -477,8 +479,19 @@ export function chatRetractionIds(
   if (typeof row.id !== "string") return [];
   const mapKey = typeof key === "string" ? key.trim() : "";
   if (!mapKey || !soulKeyMatches(row.id, mapKey)) return [];
-  if (!knownIds.some((known) => soulKeyMatches(known, mapKey))) return [];
+  const named = isForumObjectId(row.id, "stmt") && embeddedPrincipalKey(row.id) !== null;
+  if (!named && !knownIds.some((known) => soulKeyMatches(known, mapKey))) return [];
   return [mapKey];
+}
+
+/** Author pubkey embedded in a `stmt_` id. A legacy id has none. */
+export function chatAuthorFromStatementId(id: string): string | null {
+  if (!isForumObjectId(id, "stmt")) return null;
+  const embedded = embeddedPrincipalKey(id);
+  if (!embedded) return null;
+  const pub = seaFromPrincipalKey(embedded);
+  if (!pub || !sameEmbeddedPrincipal(pub, id)) return null;
+  return pub;
 }
 
 /** Author or forum owner. A stranger's signature does not hide the line. */

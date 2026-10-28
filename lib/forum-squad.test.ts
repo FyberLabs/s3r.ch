@@ -25,6 +25,7 @@ import {
   authorizeForumStatus,
   buildForumStatement,
   canWriteStatus,
+  chatAuthorFromStatementId,
   chatRetractionIds,
   createMeshEventVersions,
   filterAgents,
@@ -205,6 +206,37 @@ describe("squad view", () => {
     assert.equal(pickDisplayedStatus(paused, paused), paused);
     const echoed = { ...paused };
     assert.equal(pickDisplayedStatus(echoed, paused), echoed);
+  });
+
+  it("keeps a chat removal that arrives before the live line", () => {
+    const line = buildForumStatement({
+      forumId: PILOT_FORUM_ID,
+      author: PILOT_OWNER,
+      body: "holding the line",
+      now: 1_762_000_100,
+      entropy: "ab".repeat(16),
+    });
+    assert.ok(line);
+    assert.equal(chatAuthorFromStatementId(line.id), line.author);
+    assert.equal(chatAuthorFromStatementId("stmt-1-ab"), null);
+    const tombstone = { id: line.id, forumId: PILOT_FORUM_ID, unshared: 1 };
+    assert.deepEqual(chatRetractionIds(tombstone, line.id, [], PILOT_FORUM_ID), [line.id]);
+    assert.equal(
+      authorizeForumChatTombstone({
+        signer: line.author,
+        author: chatAuthorFromStatementId(line.id) ?? undefined,
+        owner: undefined,
+      }),
+      true,
+    );
+    const versions = createMeshEventVersions();
+    const liveGen = versions.bump("chat", line.id);
+    const removalGen = versions.bump("chat-remove", line.id);
+    assert.equal(versions.current("chat", line.id, liveGen), true);
+    assert.equal(versions.current("chat-remove", line.id, removalGen), true);
+    versions.bump("chat", line.id);
+    assert.equal(versions.current("chat-remove", line.id, removalGen), true);
+    assert.equal(liveReplayBlocked(line.ts, Number.POSITIVE_INFINITY), true);
   });
 
   it("hides chat only for a forum-bound tombstone on that line's key", () => {

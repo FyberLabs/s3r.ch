@@ -44,6 +44,7 @@ import {
   authorizeForumNeed,
   authorizeForumOffer,
   authorizeForumRoleAdmission,
+  chatAuthorFromStatementId,
   chatRetractionIds,
   createMeshEventVersions,
   forumChatRemovalSoul,
@@ -831,21 +832,30 @@ export function SquadForum() {
         if (!versions.current("role", `${roleToken}:${mapKey}`, gen)) return;
         enrollPub(membership.principal);
       }
-      async function acceptChat(data: unknown, key: string | undefined) {
+      function chatTombStamp(id: string): number | undefined {
+        const direct = chatTombsRef.current.get(id);
+        if (direct !== undefined) return direct;
+        for (const [known, stamp] of chatTombsRef.current) {
+          if (soulKeyMatches(id, known)) return stamp;
+        }
+        return undefined;
+      }
+      async function acceptChat(data: unknown, key: string | undefined, fromRemoval = false) {
         if (data === undefined || typeof key !== "string") return;
-        const gen = versions.bump("chat", key);
-        const live = forumStatementFromNode(data, PILOT_FORUM_ID);
+        const versionScope = fromRemoval ? "chat-remove" : "chat";
+        const gen = versions.bump(versionScope, key);
+        const live = fromRemoval ? null : forumStatementFromNode(data, PILOT_FORUM_ID);
         if (live) {
           const sig = signatureOf(data);
           const author = live.author;
           if (!sig) return;
           const payload = await readForumSignature(sig, author);
-          if (cancelled || !versions.current("chat", key, gen) || !payload) return;
+          if (cancelled || !versions.current(versionScope, key, gen) || !payload) return;
           const item = forumStatementFromNode(payload, PILOT_FORUM_ID);
           const priorAuthor = chatRowsRef.current.find((row) => row.id === item?.id)?.author;
           if (!item || !authorizeForumChat(item, author, key, PILOT_FORUM_ID, priorAuthor)) return;
-          if (!versions.current("chat", key, gen)) return;
-          if (liveReplayBlocked(item.ts, chatTombsRef.current.get(item.id))) return;
+          if (!versions.current(versionScope, key, gen)) return;
+          if (liveReplayBlocked(item.ts, chatTombStamp(item.id))) return;
           setMeshChat((prev) => {
             if (prev.some((row) => row.id === item.id)) {
               return prev.map((row) => (row.id === item.id ? item : row));
@@ -856,15 +866,17 @@ export function SquadForum() {
         }
         const sig = signatureOf(data);
         if (!sig) return;
-        const author = chatRowsRef.current.find((row) => soulKeyMatches(row.id, key))?.author;
+        const hintedId = typeof (data as { id?: unknown }).id === "string" ? (data as { id: string }).id : key;
+        const embedded = chatAuthorFromStatementId(hintedId) ?? chatAuthorFromStatementId(key);
+        const remembered = chatRowsRef.current.find((row) => soulKeyMatches(row.id, key))?.author;
         const owner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
-        const candidates = [author ?? "", owner ?? ""].filter(
+        const candidates = [embedded ?? "", remembered ?? "", owner ?? ""].filter(
           (pub, index, all) => pub && all.indexOf(pub) === index,
         );
         let payload: unknown = null;
         let signer = "";
         for (const pub of candidates) {
-          if (cancelled || !versions.current("chat", key, gen)) return;
+          if (cancelled || !versions.current(versionScope, key, gen)) return;
           const verified = await readForumSignature(sig, pub);
           if (verified) {
             payload = verified;
@@ -872,10 +884,12 @@ export function SquadForum() {
             break;
           }
         }
-        if (cancelled || !versions.current("chat", key, gen) || !payload) return;
+        if (cancelled || !versions.current(versionScope, key, gen) || !payload) return;
+        const payloadId = typeof (payload as { id?: unknown }).id === "string" ? (payload as { id: string }).id : hintedId;
+        const author = chatAuthorFromStatementId(payloadId) ?? embedded ?? remembered;
         if (!authorizeForumChatTombstone({ signer, author, owner })) return;
         const ids = chatRetractionIds(payload, key, knownChatIds(), PILOT_FORUM_ID);
-        if (!versions.current("chat", key, gen) || ids.length === 0) return;
+        if (!versions.current(versionScope, key, gen) || ids.length === 0) return;
         hideChat(ids);
         const statementId = typeof (payload as { id?: unknown }).id === "string" ? (payload as { id: string }).id : key;
         stickSigned(forumChatRemovalSoul(statementId), data);
@@ -975,7 +989,7 @@ export function SquadForum() {
           offerOffs.push(
             gun.get("s3rch").get("items").get(mapKey).get("remove").on((row) => {
               if (cancelled || row == null) return;
-              void acceptChat(row, mapKey);
+              void acceptChat(row, mapKey, true);
             }),
           );
         }
