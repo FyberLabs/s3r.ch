@@ -10,9 +10,11 @@ import {
 } from "@/lib/feed-types";
 import { soulKeyMatches } from "@/lib/unshare";
 import {
+  forumAgentSoul,
   forumChatTag,
   forumChatTagPresent,
   forumChatTags,
+  forumNeedSoul,
   forumOfferSoul,
   forumStatementSoul,
   isForumChatExtraTag,
@@ -20,8 +22,8 @@ import {
   isForumObjectId,
   isRoleToken,
   isSeaPubkey,
-  sameAccessor,
   sameEmbeddedPrincipal,
+  seaToPrincipalKey,
   validateForumNeed,
   validateForumOffer,
   validateForumStatus,
@@ -190,6 +192,11 @@ export function canWriteStatus(owner: string | undefined, writer: string | null)
   return !!owner && !!writer && owner === writer && isSeaPubkey(writer);
 }
 
+/** Pause and reassign follow the forum owner, not whoever the status id names. */
+export function forumOwnerMayWriteStatus(forumOwner: string | undefined, writer: string | null): boolean {
+  return canWriteStatus(forumOwner, writer);
+}
+
 export function pausedStatus(status: ForumAgentStatus, now: number): ForumAgentStatus {
   return { ...status, state: "idle", lastUpdate: now };
 }
@@ -214,12 +221,14 @@ export function buildForumStatement(input: {
   const body = input.body.trim();
   if (!body || body.length > 280) return null;
   if (!isSeaPubkey(input.author)) return null;
-  const entropy = input.entropy.trim();
-  if (!/^[a-z0-9]+$/i.test(entropy)) return null;
+  const entropy = input.entropy.trim().toLowerCase();
+  const authorKey = seaToPrincipalKey(input.author);
+  if (!authorKey || !/^[0-9a-f]{32}$/.test(entropy)) return null;
   const tags = forumChatTags(input.forumId, input.extras ?? []);
   if (!tags) return null;
+  const id = `stmt_${authorKey}_${entropy}`;
+  if (!sameEmbeddedPrincipal(input.author, id)) return null;
   const ts = Math.floor(input.now);
-  const id = `stmt-${ts}-${entropy.toLowerCase()}`;
   try {
     forumStatementSoul(id);
   } catch {
@@ -395,8 +404,9 @@ export function parseForumOffer(value: unknown): ForumOffer | null {
 
 /**
  * An admitted sample owner stays the owner. A mesh edge does not replace
- * that owner, and a grant is kept only when the mesh owner is that same
- * admitted owner. Objects the sample does not admit still read the user graph.
+ * that owner. An unsigned mesh grant is not Check see on a sample object:
+ * the owner string is not a signature. Objects the sample does not admit
+ * still read the user graph.
  */
 export function overlaySeeGraph(primary: SeeGraph, sample: SeeGraph): SeeGraph {
   return {
@@ -407,10 +417,8 @@ export function overlaySeeGraph(primary: SeeGraph, sample: SeeGraph): SeeGraph {
       return sample.ownerOf(object) ?? primary.ownerOf(object);
     },
     seeGrants(object) {
-      const admitted = sample.ownerOf(object);
-      if (!admitted) return primary.seeGrants(object);
-      if (!sameAccessor(primary.ownerOf(object), admitted)) return sample.seeGrants(object);
-      return [...sample.seeGrants(object), ...primary.seeGrants(object)];
+      if (sample.ownerOf(object)) return sample.seeGrants(object);
+      return primary.seeGrants(object);
     },
   };
 }
@@ -612,6 +620,7 @@ export function authorizeForumChat(
   priorAuthor?: string,
 ): boolean {
   if (signer !== item.author || !isSeaPubkey(signer)) return false;
+  if (!sameEmbeddedPrincipal(signer, item.id)) return false;
   if (priorAuthor && priorAuthor !== item.author) return false;
   if (!item.tags.includes(forumChatTag(forumId))) return false;
   if (mapKey !== undefined && !soulKeyMatches(item.id, mapKey)) return false;
@@ -749,6 +758,56 @@ export function offerCancelAwaitingKeys(input: {
  */
 export function forumOfferCancelSoul(forumId: string, needId: string, offerId: string): string {
   return `${forumOfferSoul(forumId, needId, offerId)}/cancel`;
+}
+
+/** Signed removal child. A replay at the live key does not erase this node. */
+export function forumStatusRemovalSoul(forumId: string, seaPubkey: string): string {
+  return `${forumAgentSoul(forumId, seaPubkey)}/remove`;
+}
+
+export function forumNeedRemovalSoul(forumId: string, needId: string): string {
+  return `${forumNeedSoul(forumId, needId)}/remove`;
+}
+
+export function forumOfferRemovalSoul(forumId: string, needId: string, offerId: string): string {
+  return `${forumOfferSoul(forumId, needId, offerId)}/remove`;
+}
+
+export function forumChatRemovalSoul(itemId: string): string {
+  return `${forumStatementSoul(itemId)}/remove`;
+}
+
+/**
+ * A verified removal sticks against an older live copy. A missing stamp
+ * blocks every finite replay. A newer stamp may pass.
+ */
+export function liveReplayBlocked(liveStamp: number, tombstoneStamp: number | undefined): boolean {
+  return tombstoneStamp !== undefined && !(liveStamp > tombstoneStamp);
+}
+
+/** Sample, mesh, and local rows. A verified removal drops every copy of that id. */
+export function composeForumNeeds(input: {
+  pilot: readonly ForumNeed[];
+  mesh: readonly ForumNeed[];
+  local: readonly ForumNeed[];
+  removed: ReadonlySet<string>;
+}): Map<string, ForumNeed> {
+  const map = new Map<string, ForumNeed>();
+  for (const need of input.pilot) {
+    if (input.removed.has(need.id)) continue;
+    map.set(need.id, need);
+  }
+  for (const need of input.mesh) {
+    if (input.removed.has(need.id)) continue;
+    const base = map.get(need.id);
+    if (!base || need.hamState >= base.hamState) map.set(need.id, need);
+  }
+  for (const need of input.local) {
+    if (input.removed.has(need.id)) continue;
+    const base = map.get(need.id);
+    if (!base || need.hamState > base.hamState) map.set(need.id, need);
+  }
+  return map;
 }
 
 /**

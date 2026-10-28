@@ -29,7 +29,14 @@ import {
   createMeshEventVersions,
   filterAgents,
   forumStatusAdmission,
+  composeForumNeeds,
+  forumChatRemovalSoul,
+  forumNeedRemovalSoul,
   forumOfferCancelSoul,
+  forumOfferRemovalSoul,
+  forumOwnerMayWriteStatus,
+  forumStatusRemovalSoul,
+  liveReplayBlocked,
   mergeAgents,
   mergeForumOffer,
   needClosureStatus,
@@ -102,7 +109,7 @@ describe("squad view", () => {
       author: PILOT_OWNER,
       body: "holding",
       now: 1_762_000_100,
-      entropy: "ab12",
+      entropy: "ab".repeat(16),
     });
     assert.ok(item);
     assert.equal(item?.author, PILOT_OWNER);
@@ -477,13 +484,23 @@ describe("squad view", () => {
   });
 
   it("requires the allowed signer on chat, need, alarm, and offer rows", () => {
-    const line = PILOT_CHAT[0];
+    const sampleLine = PILOT_CHAT[0];
     const need = PILOT_NEEDS[0];
-    assert.ok(line);
+    assert.ok(sampleLine);
     assert.ok(need);
+    const line = buildForumStatement({
+      forumId: PILOT_FORUM_ID,
+      author: sampleLine.author,
+      body: "holding the line",
+      now: 1_762_000_100,
+      entropy: "cd".repeat(16),
+    });
+    assert.ok(line);
+    const stranger = PILOT_AGENTS.find((row) => row.status.seaPubkey !== line.author)?.status.seaPubkey;
+    assert.ok(stranger);
     assert.equal(authorizeForumChat(line, line.author, line.id, PILOT_FORUM_ID), true);
     assert.equal(authorizeForumChat(line, line.author, line.id, PILOT_FORUM_ID, line.author), true);
-    assert.equal(authorizeForumChat(line, PILOT_OWNER, line.id, PILOT_FORUM_ID), line.author === PILOT_OWNER);
+    assert.equal(authorizeForumChat({ ...line, author: stranger, body: "forged" }, stranger, line.id, PILOT_FORUM_ID), false);
     assert.equal(
       authorizeForumChat(
         { ...line, author: PILOT_OWNER },
@@ -492,7 +509,7 @@ describe("squad view", () => {
         PILOT_FORUM_ID,
         line.author,
       ),
-      line.author === PILOT_OWNER,
+      false,
     );
     assert.equal(authorizeForumChat(line, line.author, "stmt-other", PILOT_FORUM_ID), false);
     assert.equal(authorizeForumNeed(need, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID), true);
@@ -610,6 +627,43 @@ describe("squad view", () => {
     assert.equal(offerBlockedByCancel(new Set([live.id]), live), true);
   });
 
+  it("keeps a signed removal ahead of an older live row", () => {
+    const need = PILOT_NEEDS[0];
+    assert.ok(need);
+    assert.equal(liveReplayBlocked(need.hamState, undefined), false);
+    assert.equal(liveReplayBlocked(need.hamState, need.hamState), true);
+    assert.equal(liveReplayBlocked(need.hamState + 1, need.hamState), false);
+    assert.equal(liveReplayBlocked(need.hamState, Number.POSITIVE_INFINITY), true);
+    const removed = new Set([need.id]);
+    const board = composeForumNeeds({
+      pilot: PILOT_NEEDS,
+      mesh: [{ ...need, hamState: need.hamState + 1 }],
+      local: [need],
+      removed,
+    });
+    assert.equal(board.has(need.id), false);
+    assert.equal(forumStatusRemovalSoul(PILOT_FORUM_ID, PILOT_OWNER).endsWith("/remove"), true);
+    assert.equal(forumNeedRemovalSoul(PILOT_FORUM_ID, need.id).endsWith("/remove"), true);
+    assert.equal(forumOwnerMayWriteStatus(PILOT_OWNER, PILOT_OWNER), true);
+    const stranger = PILOT_AGENTS.find((row) => row.status.seaPubkey !== PILOT_OWNER);
+    assert.ok(stranger);
+    assert.equal(forumOwnerMayWriteStatus(PILOT_OWNER, stranger.status.seaPubkey), false);
+    assert.equal(canWriteStatus(stranger.status.seaPubkey, stranger.status.seaPubkey), true);
+    const line = buildForumStatement({
+      forumId: PILOT_FORUM_ID,
+      author: PILOT_OWNER,
+      body: "holding",
+      now: 1_762_000_100,
+      entropy: "ef".repeat(16),
+    });
+    assert.ok(line);
+    assert.equal(forumChatRemovalSoul(line.id).endsWith("/remove"), true);
+    const helperKey = seaToPrincipalKey(stranger.status.seaPubkey);
+    assert.ok(helperKey);
+    const offerId = `offer_${helperKey}_${"cd".repeat(16)}`;
+    assert.equal(forumOfferRemovalSoul(PILOT_FORUM_ID, need.id, offerId).endsWith("/remove"), true);
+  });
+
   it("keeps the admitted sample owner when a mesh edge names another pubkey", () => {
     const need = PILOT_NEEDS.find((row) => row.stated === 1 && row.subject !== PILOT_OWNER);
     assert.ok(need);
@@ -627,6 +681,29 @@ describe("squad view", () => {
     assert.equal(graph.ownerOf(need.id), PILOT_OWNER);
     assert.equal(checkSee(graph, need.id, need.subject, 1_000).allowed, false);
     assert.equal(checkSee(graph, need.id, PILOT_OWNER, 1_000).reason, "owner");
+    const helper = PILOT_AGENTS.find((row) => row.status.seaPubkey !== PILOT_OWNER);
+    assert.ok(helper);
+    const matched = createMemorySeeAcl();
+    matched.putObject(need.id, PILOT_OWNER);
+    applySeeGrant(matched, PILOT_OWNER, {
+      claimId: need.id,
+      accessor: helper.status.seaPubkey,
+      from: 0,
+      until: 10_000_000_000,
+    });
+    const unsigned = overlaySeeGraph(matched, sample);
+    assert.equal(checkSee(unsigned, need.id, helper.status.seaPubkey, 1_000).allowed, false);
+    assert.equal(checkSee(unsigned, need.id, PILOT_OWNER, 1_000).reason, "owner");
+    applySeeGrant(sample, PILOT_OWNER, {
+      claimId: need.id,
+      accessor: helper.status.seaPubkey,
+      from: 0,
+      until: 10_000_000_000,
+    });
+    assert.equal(
+      checkSee(overlaySeeGraph(matched, sample), need.id, helper.status.seaPubkey, 1_000).allowed,
+      true,
+    );
     assert.equal(graph.ownerOf("not-a-sample-object"), undefined);
     primary.putObject("not-a-sample-object", need.subject);
     assert.equal(overlaySeeGraph(primary, sample).ownerOf("not-a-sample-object"), need.subject);
