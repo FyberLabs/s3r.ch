@@ -8,6 +8,7 @@ import {
   fromGunNode,
   type FeedItem,
 } from "@/lib/feed-types";
+import { signatureOf } from "@/lib/forum-sign";
 import { soulKeyMatches } from "@/lib/unshare";
 import {
   forumAgentSoul,
@@ -648,8 +649,9 @@ export type ForumNeedClosure = {
 
 /**
  * A close (`stated` 0 with an accepted offer) uses the same live-offer and
- * helper Check see gates as accept. The admitted owner may sign any other
- * need row. Accept does not elect.
+ * helper Check see gates as accept. That includes an owner-signed snapshot
+ * on a fresh load, where this browser never held the open row. The admitted
+ * owner may sign any other need row. Accept does not elect.
  */
 export function authorizeForumNeed(
   need: ForumNeed,
@@ -669,7 +671,12 @@ export function authorizeForumNeed(
     if (!need.acceptedOffer || !closure) return false;
     return needClosureStatus(need, closure) === "ok";
   }
-  if (!known && need.stated === 0 && need.acceptedOffer && signer === need.subject) {
+  if (
+    !known &&
+    need.stated === 0 &&
+    need.acceptedOffer &&
+    (signer === need.subject || signer === owner)
+  ) {
     if (!closure) return false;
     return needClosureStatus(need, closure) === "ok";
   }
@@ -815,6 +822,248 @@ export function offerRemovalAuthority(input: {
   if (input.parent && input.parent.id !== input.parentNeedId) return null;
   const resolved = !!input.parent && input.parent.stated === 0 && input.parent.acceptedOffer === input.offerId;
   return { subject: input.parent?.subject, resolved };
+}
+
+/**
+ * The auth cache is the composed need. An older signed row must not replace
+ * it: the board setters then keep the fresher row and never render, so the
+ * cache would stay open after a close.
+ */
+export function cacheForumNeed(
+  cache: ReadonlyMap<string, ForumNeed>,
+  incoming: ForumNeed,
+): Map<string, ForumNeed> | null {
+  const current = cache.get(incoming.id);
+  if (current && current.hamState > incoming.hamState) return null;
+  const next = new Map(cache);
+  next.set(incoming.id, incoming);
+  return next;
+}
+
+/**
+ * Verified mesh chat replaces the copy this browser kept at send time.
+ * A local row shows only until that mesh row arrives.
+ */
+export function mergeForumChat(input: {
+  pilot: readonly FeedItem[];
+  mesh: readonly FeedItem[];
+  local: readonly FeedItem[];
+  hidden: readonly string[];
+}): FeedItem[] {
+  const map = new Map<string, FeedItem>();
+  const put = (item: FeedItem) => {
+    for (const id of [...map.keys()]) {
+      if (soulKeyMatches(id, item.id)) map.delete(id);
+    }
+    map.set(item.id, item);
+  };
+  for (const item of withoutChatIds(input.pilot, input.hidden)) put(item);
+  for (const item of withoutChatIds(input.local, input.hidden)) put(item);
+  for (const item of withoutChatIds(input.mesh, input.hidden)) put(item);
+  return [...map.values()].sort((a, b) => a.ts - b.ts || a.id.localeCompare(b.id));
+}
+
+/** Drop the local copy once its verified mesh row is in hand. */
+export function retireLocalChat(local: readonly FeedItem[], meshId: string): FeedItem[] {
+  let changed = false;
+  const next = local.filter((row) => {
+    const drop = soulKeyMatches(row.id, meshId);
+    if (drop) changed = true;
+    return !drop;
+  });
+  return changed ? next : (local as FeedItem[]);
+}
+
+/** Unverified needs waiting on an owner. Closure waits are counted apart. */
+export const PENDING_NEED_CAP = 32;
+export const PENDING_NEED_PER_PARENT = 16;
+export const PENDING_NEED_TTL_MS = 5 * 60 * 1000;
+export const PENDING_NEED_MAX_BYTES = 8192;
+
+export type PendingNeedEntry = {
+  data: unknown;
+  gen: number;
+  at: number;
+  parentId: string;
+  objectId: string;
+  /** Retry this owner-wait only when `ownerOf(objectId)` is this pubkey. */
+  expectOwner?: string;
+  reason: "owner" | "closure";
+};
+
+export function prunePendingNeeds(queue: Map<string, PendingNeedEntry>, now: number): void {
+  for (const [key, row] of queue) {
+    if (row.reason === "owner" && now - row.at > PENDING_NEED_TTL_MS) queue.delete(key);
+  }
+}
+
+/** Byte size of a pending gun row. Metadata and cycles are not retained. */
+export function pendingNeedPayloadBytes(data: unknown): number | null {
+  const seen = new Set<object>();
+  function walk(value: unknown, depth: number): number | null {
+    if (value == null) return 0;
+    if (typeof value === "string") return value.length;
+    if (typeof value === "number" || typeof value === "boolean") return 8;
+    if (typeof value !== "object") return null;
+    if (depth > 3 || seen.has(value)) return null;
+    seen.add(value);
+    let bytes = 0;
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (key === "_" || key === "#") continue;
+      bytes += key.length;
+      const nested = walk(child, depth + 1);
+      if (nested === null) return null;
+      bytes += nested;
+      if (bytes > PENDING_NEED_MAX_BYTES) return bytes;
+    }
+    return bytes;
+  }
+  return walk(data, 0);
+}
+
+/**
+ * Keep a pending need only inside the cap, the per-parent cap, the byte cap,
+ * and the TTL. An unknown owner is not a reason to grow the queue without
+ * bound. The same key replaces its previous row.
+ */
+export function retainPendingNeed(
+  queue: Map<string, PendingNeedEntry>,
+  key: string,
+  entry: PendingNeedEntry,
+  now: number,
+): boolean {
+  if (key !== entry.objectId || !isForumObjectId(entry.objectId, "need") || !entry.parentId) {
+    queue.delete(key);
+    return false;
+  }
+  const bytes = pendingNeedPayloadBytes(entry.data);
+  if (bytes === null || bytes > PENDING_NEED_MAX_BYTES) {
+    queue.delete(key);
+    return false;
+  }
+  prunePendingNeeds(queue, now);
+  if (queue.has(key)) {
+    queue.set(key, entry);
+    return true;
+  }
+  if (entry.reason === "owner") {
+    let parentCount = 0;
+    let ownerRows = 0;
+    for (const row of queue.values()) {
+      if (row.reason !== "owner") continue;
+      ownerRows += 1;
+      if (row.parentId === entry.parentId) parentCount += 1;
+    }
+    if (parentCount >= PENDING_NEED_PER_PARENT || ownerRows >= PENDING_NEED_CAP) return false;
+  } else {
+    let closures = 0;
+    for (const row of queue.values()) if (row.reason === "closure") closures += 1;
+    if (closures >= PENDING_NEED_CAP) return false;
+  }
+  queue.set(key, entry);
+  return true;
+}
+
+/**
+ * Owner-wait rows retry only once that object's owner is loaded, and only
+ * for the pubkey they named. Closure rows are already verified. Expired
+ * rows drop.
+ */
+export function pendingNeedRetry(
+  entry: PendingNeedEntry,
+  now: number,
+  owner: string | undefined,
+): "retry" | "keep" | "drop" {
+  if (entry.reason === "closure") return "retry";
+  if (now - entry.at > PENDING_NEED_TTL_MS) return "drop";
+  if (!owner || !isSeaPubkey(owner)) return "keep";
+  if (entry.expectOwner && entry.expectOwner !== owner) return "drop";
+  return "retry";
+}
+
+/** Verified forum-chat removal subscriptions. A quiet key expires. */
+export const CHAT_REMOVAL_WATCH_CAP = 128;
+export const CHAT_REMOVAL_WATCH_TTL_MS = 12 * 60 * 60 * 1000;
+
+function chatRemovalKeyBounded(key: string): boolean {
+  if (key.length < 1 || key.length > 200) return false;
+  if (key.includes("/") || key.includes("\0")) return false;
+  return true;
+}
+
+/**
+ * An items-map child may be considered for a removal subscription only when
+ * the key is bounded and the node already carries this forum's tag or a
+ * forum tombstone plus a SEA signature. That is not verification.
+ */
+export function chatRemovalCandidate(key: string, data: unknown, forumId: string): boolean {
+  if (!chatRemovalKeyBounded(key) || !signatureOf(data)) return false;
+  const live = forumStatementFromNode(data, forumId);
+  if (live) return soulKeyMatches(live.id, key);
+  if (!data || typeof data !== "object") return false;
+  const row = data as Record<string, unknown>;
+  if (row.unshared !== 1 || row.forumId !== forumId) return false;
+  return typeof row.id === "string" && soulKeyMatches(row.id, key);
+}
+
+/** Keys whose watch TTL has elapsed. The caller unsubscribes them. */
+export function takeExpiredChatRemovalWatches(watches: Map<string, number>, now: number): string[] {
+  const expired: string[] = [];
+  for (const [key, at] of watches) {
+    if (now - at > CHAT_REMOVAL_WATCH_TTL_MS) {
+      expired.push(key);
+      watches.delete(key);
+    }
+  }
+  return expired;
+}
+
+/**
+ * Open a removal subscription only after the row verified, and only inside
+ * the cap. An existing key refreshes its TTL and does not subscribe again.
+ */
+export function grantChatRemovalWatch(input: {
+  watches: Map<string, number>;
+  key: string;
+  verified: boolean;
+  now: number;
+}): boolean {
+  if (!input.verified || !chatRemovalKeyBounded(input.key)) return false;
+  if (input.watches.has(input.key)) {
+    input.watches.set(input.key, input.now);
+    return false;
+  }
+  if (input.watches.size >= CHAT_REMOVAL_WATCH_CAP) return false;
+  input.watches.set(input.key, input.now);
+  return true;
+}
+
+export type ForumAlarmUpdate =
+  | { kind: "pin"; alarm: ForumAlarm; rev: number }
+  | { kind: "unpin"; forumId: string; rev: number };
+
+/**
+ * Owner-signed alarm state. `rev` is the monotonic HAM value inside the
+ * signature. A pin or unpin without it is not a state change.
+ */
+export function parseForumAlarmUpdate(value: unknown, forumId: string): ForumAlarmUpdate | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  if (row.forumId !== forumId) return null;
+  if (typeof row.rev !== "number" || !Number.isSafeInteger(row.rev) || row.rev < 1) return null;
+  if (row.pinned === 0) return { kind: "unpin", forumId, rev: row.rev };
+  if (row.pinned !== 1 || typeof row.need !== "string" || !isForumObjectId(row.need, "need")) return null;
+  return { kind: "pin", alarm: { forumId, need: row.need, pinned: 1 }, rev: row.rev };
+}
+
+/** A replay at or below the last accepted rev does not replace the pin. */
+export function commitForumAlarm(
+  state: { rev?: number },
+  update: ForumAlarmUpdate,
+): { rev: number; alarm: ForumAlarm | null } | null {
+  if (state.rev !== undefined && update.rev <= state.rev) return null;
+  if (update.kind === "unpin") return { rev: update.rev, alarm: null };
+  return { rev: update.rev, alarm: update.alarm };
 }
 
 /** Sample, mesh, and local rows. A verified removal drops every copy of that id. */

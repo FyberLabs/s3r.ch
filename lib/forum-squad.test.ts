@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { toGunNode } from "@/lib/feed-types";
 import {
   applySeeGrant,
   checkSee,
@@ -14,9 +15,25 @@ import {
 import { createMemorySeeAcl } from "@/lib/identity/see-acl";
 import vector from "@/lib/identity/vectors/forums.json";
 import {
+  CHAT_REMOVAL_WATCH_CAP,
+  CHAT_REMOVAL_WATCH_TTL_MS,
+  PENDING_NEED_CAP,
+  PENDING_NEED_MAX_BYTES,
+  PENDING_NEED_PER_PARENT,
+  PENDING_NEED_TTL_MS,
   authorizeForumAgentRemoval,
   authorizeForumAlarm,
   authorizeForumChat,
+  cacheForumNeed,
+  chatRemovalCandidate,
+  commitForumAlarm,
+  grantChatRemovalWatch,
+  mergeForumChat,
+  parseForumAlarmUpdate,
+  pendingNeedRetry,
+  retainPendingNeed,
+  retireLocalChat,
+  takeExpiredChatRemovalWatches,
   authorizeForumChatTombstone,
   authorizeForumMeshRemoval,
   authorizeForumNeed,
@@ -892,6 +909,15 @@ describe("squad view", () => {
       false,
     );
     assert.equal(authorizeForumNeed(closed, need.subject, PILOT_OWNER, PILOT_FORUM_ID, undefined, bare), true);
+    assert.equal(authorizeForumNeed(closed, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID, undefined, bare), true);
+    assert.equal(
+      authorizeForumNeed(closed, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID, undefined, {
+        graph,
+        postedOffers: new Map(),
+        now,
+      }),
+      false,
+    );
     assert.equal(
       authorizeForumNeed(closed, need.subject, PILOT_OWNER, PILOT_FORUM_ID, undefined, {
         graph,
@@ -993,6 +1019,216 @@ describe("squad view", () => {
       }),
       false,
     );
+  });
+
+  it("keeps a closed need in the auth cache when an older open row arrives", () => {
+    const need = PILOT_NEEDS.find((row) => row.stated === 1);
+    assert.ok(need);
+    const helper = PILOT_AGENTS.find((row) => row.status.seaPubkey !== PILOT_OWNER);
+    assert.ok(helper);
+    const helperKey = seaToPrincipalKey(helper.status.seaPubkey);
+    assert.ok(helperKey);
+    const offerId = `offer_${helperKey}_${"ab".repeat(16)}`;
+    const offer = {
+      id: offerId,
+      need: need.id,
+      forumId: PILOT_FORUM_ID,
+      helper: helper.status.seaPubkey,
+      body: "holding",
+      artifacts: "",
+      stated: 1 as const,
+    };
+    const closed = {
+      ...need,
+      stated: 0 as const,
+      acceptedOffer: offerId,
+      hamState: need.hamState + 2,
+    };
+    const staleOpen = { ...need, hamState: need.hamState + 1 };
+    const cache = new Map([[closed.id, closed]]);
+    assert.equal(cacheForumNeed(cache, staleOpen), null);
+    assert.equal(cache.get(closed.id)?.stated, 0);
+    assert.equal(cache.get(closed.id)?.hamState, closed.hamState);
+    const graph = createMemorySeeAcl();
+    graph.putObject(need.id, PILOT_OWNER);
+    const seen = { graph, need: cache.get(closed.id) ?? closed, now: 1_000 };
+    assert.equal(
+      authorizeForumOffer(
+        { ...offer, stated: 0 },
+        helper.status.seaPubkey,
+        PILOT_FORUM_ID,
+        { owner: PILOT_OWNER, subject: need.subject },
+        seen,
+      ),
+      false,
+    );
+    const applied = cacheForumNeed(cache, closed);
+    assert.ok(applied);
+    assert.equal(applied.get(closed.id)?.stated, 0);
+    const reopened = cacheForumNeed(applied, { ...closed, stated: 1, acceptedOffer: undefined, hamState: closed.hamState + 1 });
+    assert.equal(reopened?.get(closed.id)?.stated, 1);
+  });
+
+  it("shows the verified mesh chat row instead of the local copy", () => {
+    const item = buildForumStatement({
+      forumId: PILOT_FORUM_ID,
+      author: PILOT_OWNER,
+      body: "first draft",
+      now: 1_762_000_100,
+      entropy: "ef".repeat(16),
+    });
+    assert.ok(item);
+    const corrected = { ...item, body: "corrected", ts: item.ts + 5 };
+    const merged = mergeForumChat({ pilot: [], mesh: [corrected], local: [item], hidden: [] });
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0]?.body, "corrected");
+    const pending = mergeForumChat({ pilot: [], mesh: [], local: [item], hidden: [] });
+    assert.equal(pending[0]?.body, "first draft");
+    assert.equal(retireLocalChat([item], corrected.id).length, 0);
+    assert.equal(retireLocalChat([item], "stmt-other").length, 1);
+  });
+
+  it("bounds unauthenticated pending needs and retries only a known owner", () => {
+    const queue = new Map();
+    const now = 1_700_000_000_000;
+    const parentA = PILOT_FORUM_ID;
+    const parentB = `${PILOT_FORUM_ID}-b`;
+    let stored = 0;
+    for (let i = 0; i < PENDING_NEED_PER_PARENT + 20; i += 1) {
+      const objectId = `need_p_${"ab".repeat(64)}_${i.toString(16).padStart(32, "0")}`;
+      if (
+        retainPendingNeed(
+          queue,
+          objectId,
+          { data: { sig: "SEAforged" }, gen: i + 1, at: now, parentId: parentA, objectId, reason: "owner" },
+          now,
+        )
+      ) {
+        stored += 1;
+      }
+    }
+    assert.equal(stored, PENDING_NEED_PER_PARENT);
+    assert.equal(queue.size, PENDING_NEED_PER_PARENT);
+    let storedB = 0;
+    for (let i = 0; i < PENDING_NEED_PER_PARENT; i += 1) {
+      const objectId = `need_p_${"cd".repeat(64)}_${i.toString(16).padStart(32, "0")}`;
+      if (
+        retainPendingNeed(
+          queue,
+          objectId,
+          { data: { sig: "SEAforged" }, gen: i + 1, at: now, parentId: parentB, objectId, reason: "owner" },
+          now,
+        )
+      ) {
+        storedB += 1;
+      }
+    }
+    assert.equal(storedB, PENDING_NEED_CAP - PENDING_NEED_PER_PARENT);
+    const overflow = `need_p_${"ef".repeat(64)}_${"1".padStart(32, "0")}`;
+    assert.equal(
+      retainPendingNeed(
+        queue,
+        overflow,
+        { data: { sig: "SEAforged" }, gen: 1, at: now, parentId: "forum-c", objectId: overflow, reason: "owner" },
+        now,
+      ),
+      false,
+    );
+    const huge = `need_p_${"11".repeat(64)}_${"2".padStart(32, "0")}`;
+    assert.equal(
+      retainPendingNeed(
+        queue,
+        huge,
+        {
+          data: { sig: "SEA", blob: "x".repeat(PENDING_NEED_MAX_BYTES) },
+          gen: 1,
+          at: now,
+          parentId: parentA,
+          objectId: huge,
+          reason: "owner",
+        },
+        now,
+      ),
+      false,
+    );
+    const sample = [...queue.values()][0];
+    assert.ok(sample);
+    assert.equal(pendingNeedRetry(sample, now + 1, undefined), "keep");
+    assert.equal(pendingNeedRetry(sample, now + 1, PILOT_OWNER), "retry");
+    assert.equal(
+      pendingNeedRetry({ ...sample, expectOwner: PILOT_OWNER }, now + 1, vector.secondPubkey),
+      "drop",
+    );
+    assert.equal(pendingNeedRetry(sample, now + PENDING_NEED_TTL_MS + 1, undefined), "drop");
+    const closing = `need_p_${"22".repeat(64)}_${"3".padStart(32, "0")}`;
+    assert.equal(
+      retainPendingNeed(
+        queue,
+        closing,
+        { data: { sig: "SEAok" }, gen: 1, at: now, parentId: parentA, objectId: closing, reason: "closure" },
+        now,
+      ),
+      true,
+    );
+    const closed = queue.get(closing);
+    assert.ok(closed);
+    assert.equal(pendingNeedRetry(closed, now + 1, undefined), "retry");
+  });
+
+  it("watches a chat removal only after the row verifies, inside a cap", () => {
+    const item = buildForumStatement({
+      forumId: PILOT_FORUM_ID,
+      author: PILOT_OWNER,
+      body: "line",
+      now: 1_762_000_200,
+      entropy: "a1".repeat(16),
+    });
+    assert.ok(item);
+    const node = { ...toGunNode(item), sig: "SEAforged" };
+    assert.equal(chatRemovalCandidate("random-key", node, PILOT_FORUM_ID), false);
+    assert.equal(chatRemovalCandidate(item.id, { ...node, tags: "not-this-forum" }, PILOT_FORUM_ID), false);
+    assert.equal(chatRemovalCandidate(item.id, { ...node, sig: "nope" }, PILOT_FORUM_ID), false);
+    assert.equal(chatRemovalCandidate(item.id, node, PILOT_FORUM_ID), true);
+    const watches = new Map<string, number>();
+    assert.equal(grantChatRemovalWatch({ watches, key: item.id, verified: false, now: 1_000 }), false);
+    assert.equal(watches.size, 0);
+    assert.equal(grantChatRemovalWatch({ watches, key: item.id, verified: true, now: 1_000 }), true);
+    assert.equal(grantChatRemovalWatch({ watches, key: item.id, verified: true, now: 1_500 }), false);
+    for (let i = 0; i < CHAT_REMOVAL_WATCH_CAP + 5; i += 1) {
+      grantChatRemovalWatch({ watches, key: `stmt-watch-${i}`, verified: true, now: 1_000 });
+    }
+    assert.equal(watches.size, CHAT_REMOVAL_WATCH_CAP);
+    const aged = new Map<string, number>([["stmt-old", 1_000]]);
+    assert.deepEqual(takeExpiredChatRemovalWatches(aged, 1_000 + CHAT_REMOVAL_WATCH_TTL_MS + 1), ["stmt-old"]);
+    assert.equal(aged.size, 0);
+  });
+
+  it("rejects a replayed alarm unpin at or below the accepted rev", () => {
+    const pin = parseForumAlarmUpdate(
+      { pinned: 1, forumId: PILOT_FORUM_ID, need: PILOT_ALARM.need, rev: 6 },
+      PILOT_FORUM_ID,
+    );
+    const replay = parseForumAlarmUpdate(
+      { pinned: 0, forumId: PILOT_FORUM_ID, rev: 4 },
+      PILOT_FORUM_ID,
+    );
+    const fresh = parseForumAlarmUpdate(
+      { pinned: 0, forumId: PILOT_FORUM_ID, rev: 7 },
+      PILOT_FORUM_ID,
+    );
+    assert.ok(pin && pin.kind === "pin");
+    assert.ok(replay && replay.kind === "unpin");
+    assert.ok(fresh && fresh.kind === "unpin");
+    assert.equal(parseForumAlarmUpdate({ pinned: 0, forumId: PILOT_FORUM_ID }, PILOT_FORUM_ID), null);
+    assert.equal(authorizeForumAlarm(pin.alarm, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID), true);
+    const accepted = commitForumAlarm({}, pin);
+    assert.ok(accepted);
+    assert.equal(accepted.alarm?.need, PILOT_ALARM.need);
+    assert.equal(commitForumAlarm({ rev: accepted.rev }, replay), null);
+    const cleared = commitForumAlarm({ rev: accepted.rev }, fresh);
+    assert.equal(cleared?.alarm, null);
+    assert.equal(cleared?.rev, 7);
+    assert.equal(commitForumAlarm({ rev: 7 }, pin), null);
   });
 
   it("keeps the sample status soul on the contract path", () => {
