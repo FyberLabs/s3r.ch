@@ -15,6 +15,7 @@ import {
 import { createMemorySeeAcl } from "@/lib/identity/see-acl";
 import vector from "@/lib/identity/vectors/forums.json";
 import {
+  forumOfferCacheKey,
   CHAT_REMOVAL_WATCH_CAP,
   CHAT_REMOVAL_WATCH_TTL_MS,
   PENDING_NEED_CAP,
@@ -620,7 +621,7 @@ describe("squad view", () => {
     assert.equal(mergeForumOffer(undefined, live)?.stated, 1);
     assert.equal(mergeForumOffer(live, { ...live, stated: 0 })?.stated, 0);
     assert.equal(mergeForumOffer({ ...live, stated: 0 }, live), null);
-    assert.equal(offerBlockedByCancel(new Set([live.id]), live), true);
+    assert.equal(offerBlockedByCancel(new Set([forumOfferCacheKey(live.need, live.id)]), live), true);
     assert.equal(offerBlockedByCancel(new Set(), live), false);
     assert.equal(forumOfferCancelSoul(PILOT_FORUM_ID, need.id, live.id).endsWith("/cancel"), true);
     const openGraphWait = createMemorySeeAcl();
@@ -693,7 +694,7 @@ describe("squad view", () => {
     assert.equal(pending.has(queueKey), false);
     assert.equal(mergeForumOffer(live, declined)?.stated, 0);
     assert.equal(mergeForumOffer(declined, live), null);
-    assert.equal(offerBlockedByCancel(new Set([live.id]), live), true);
+    assert.equal(offerBlockedByCancel(new Set([forumOfferCacheKey(live.need, live.id)]), live), true);
   });
 
   it("keeps a signed removal ahead of an older live row", () => {

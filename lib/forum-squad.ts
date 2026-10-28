@@ -448,12 +448,15 @@ export function createMeshEventVersions(): {
   current: (scope: string, key: string, generation: number) => boolean;
 } {
   const versions = new Map<string, number>();
+  let serial = 0;
   function id(scope: string, key: string): string {
     return `${scope}\n${key}`;
   }
   return {
     bump(scope, key) {
-      const next = (versions.get(id(scope, key)) ?? 0) + 1;
+      const next = ++serial;
+      versions.delete(id(scope, key));
+      if (versions.size >= 1024) versions.delete(versions.keys().next().value!);
       versions.set(id(scope, key), next);
       return next;
     },
@@ -996,6 +999,7 @@ export type PendingNeedEntry = {
   /** Retry this owner-wait only when `ownerOf(objectId)` is this pubkey. */
   expectOwner?: string;
   reason: "owner" | "closure";
+  context?: ForumNeed;
 };
 
 export function prunePendingNeeds(queue: Map<string, PendingNeedEntry>, now: number): void {
@@ -1050,7 +1054,7 @@ export function retainPendingNeed(
   }
   prunePendingNeeds(queue, now);
   if (queue.has(key)) {
-    queue.set(key, entry);
+    queue.set(key, { ...entry, at: Math.min(queue.get(key)!.at, entry.at) });
     return true;
   }
   if (entry.reason === "owner") {
@@ -1081,8 +1085,8 @@ export function pendingNeedRetry(
   now: number,
   owner: string | undefined,
 ): "retry" | "keep" | "drop" {
-  if (entry.reason === "closure") return "retry";
   if (now - entry.at > PENDING_NEED_TTL_MS) return "drop";
+  if (entry.reason === "closure") return "retry";
   if (!owner || !isSeaPubkey(owner)) return "keep";
   if (entry.expectOwner && entry.expectOwner !== owner) return "drop";
   return "retry";
@@ -1318,7 +1322,7 @@ export function mergeForumOffer(current: ForumOffer | undefined, incoming: Forum
 
 /** A verified cancel soul names this offer. The live replay does not win. */
 export function offerBlockedByCancel(cancels: ReadonlySet<string>, offer: ForumOffer): boolean {
-  return offer.stated === 1 && cancels.has(offer.id);
+  return offer.stated === 1 && cancels.has(forumOfferCacheKey(offer.need, offer.id));
 }
 
 export type ForumMeshRemoval = {
@@ -1421,4 +1425,82 @@ export function mergeAgents(
     });
   }
   return sortAgents([...byPub.values()]);
+}
+
+
+/** Cache identity includes the authenticated parent, not only the helper's id. */
+export function forumOfferCacheKey(need: string, offer: string): string {
+  return JSON.stringify([need, offer]);
+}
+
+/** Adapt the board's parent-scoped cache to the single-need Check contract. */
+export function offersForNeed(offers: ReadonlyMap<string, ForumOffer>, need: string): Map<string, ForumOffer> {
+  return new Map([...offers.values()].filter((offer) => offer.need === need).map((offer) => [offer.id, offer]));
+}
+
+/** Verified context for offer hydration; never installs a closure on the board. */
+export function pendingClosureContext(need: ForumNeed, signer: string, owner: string | undefined,
+  known?: ForumNeed, admitted?: ForumNeed): ForumNeed | undefined {
+  if (need.stated !== 0 || !need.acceptedOffer) return undefined;
+  if (known && (known.subject !== need.subject || known.hamState > need.hamState)) return undefined;
+  if (signer === owner || (admitted && signer === admitted.subject && forumNeedAdmission(admitted, need))) return need;
+  if (known && signer === known.subject && forumNeedAdmission(known, need)) return need;
+  return undefined;
+}
+
+export function needSignerCandidates(owner?: string, subject?: string, hint?: unknown): string[] {
+  return [...new Set([owner, subject, typeof hint === "string" ? hint : undefined])]
+    .filter((pub): pub is string => !!pub && isSeaPubkey(pub));
+}
+
+export const STATUS_CACHE_CAP = 128;
+export const PENDING_STATUS_TTL_MS = 5 * 60 * 1000;
+export const STATUS_WATCH_TTL_MS = 12 * 60 * 60 * 1000;
+export type PendingStatus = { status: ForumAgentStatus; at: number };
+export function prunePendingStatuses(queue: Map<string, PendingStatus>, now: number): void {
+  for (const [pub, entry] of queue) if (now - entry.at >= PENDING_STATUS_TTL_MS) queue.delete(pub);
+}
+export function retainPendingStatus(queue: Map<string, PendingStatus>, status: ForumAgentStatus, now: number): boolean {
+  prunePendingStatuses(queue, now);
+  const old = queue.get(status.seaPubkey);
+  if (old && old.status.lastUpdate >= status.lastUpdate) return false;
+  if (!old && queue.size >= STATUS_CACHE_CAP) return false;
+  queue.set(status.seaPubkey, { status, at: old?.at ?? now });
+  return true;
+}
+/** Call only for an authenticated and admitted status. Equal revisions are idempotent only. */
+export function cacheForumStatus(cache: Map<string, ForumAgentStatus>, status: ForumAgentStatus): boolean {
+  const old = cache.get(status.seaPubkey);
+  if (old && old.lastUpdate >= status.lastUpdate) return JSON.stringify(old) === JSON.stringify(status);
+  if (!old && cache.size >= STATUS_CACHE_CAP) return false;
+  cache.set(status.seaPubkey, status);
+  return true;
+}
+export function parseStatusHighWater(raw: string | null, forumId: string): Map<string, ForumAgentStatus> {
+  const cache = new Map<string, ForumAgentStatus>();
+  if (!raw || raw.length > 2_000_000) return cache;
+  try {
+    const rows: unknown = JSON.parse(raw);
+    if (!Array.isArray(rows) || rows.length > STATUS_CACHE_CAP) return cache;
+    for (const row of rows) {
+      const status = parseForumAgentStatus(row);
+      if (status?.forumId === forumId) cacheForumStatus(cache, status);
+    }
+  } catch { /* Corrupt local storage is not a mesh row. */ }
+  return cache;
+}
+export function statusWatchCandidate(key: string, data: unknown): boolean {
+  return isSeaPubkey(key) && key.length <= 200 && !!signatureOf(data);
+}
+export function grantStatusWatch(watches: Map<string, number>, pub: string, verified: boolean, now: number): boolean {
+  if (!verified || !isSeaPubkey(pub)) return false;
+  if (watches.has(pub)) { watches.set(pub, now); return false; }
+  if (watches.size >= STATUS_CACHE_CAP) return false;
+  watches.set(pub, now);
+  return true;
+}
+export function expireStatusWatches(watches: Map<string, number>, now: number): string[] {
+  const expired: string[] = [];
+  for (const [pub, at] of watches) if (now - at >= STATUS_WATCH_TTL_MS) { watches.delete(pub); expired.push(pub); }
+  return expired;
 }

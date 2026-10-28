@@ -51,3 +51,31 @@ An unsigned `null`, a malformed put, or a tag strip does not hide a signed chat 
 Forum writes are signed with the SEA pair unlocked on this browser. A wrapped key signs after unlock. The private half stays in page memory. It is not written back to disk or onto the mesh.
 
 Role strips, Fleet, and Command are not on this page. `/forum` is still the desktop channel.
+
+### Squad receive ordering and local replay state
+
+The squad board keys offers, cancellations, and removals by the subscribed parent
+need and offer ID together. A cancellation authorized on one need cannot hide or
+replace another need's offer with the same ID. The single-need Check calls receive
+only offers for that parent.
+
+A fresh closed need can retain a bounded, owner-authenticated parent context while
+its accepted offer loads. That context permits offer verification but does not
+install the closure or clear an alarm. The live-offer and Check gates still run
+before the closed need becomes visible. Subject-signed need removals try the
+already admitted subject key without requiring an unsigned subject hint.
+
+Signed statuses waiting for roster admission keep the newest `lastUpdate`, with a
+128-entry cap and five-minute expiry that replays do not extend. Agent removal
+listeners open only after admission, are capped at 128 per board, and expire after
+12 quiet hours. A timer releases expired listeners even without new mesh events.
+The callback generation cache is also bounded; evicted verifications cannot become
+current again when a key returns.
+
+The board saves its highest admitted status per agent in browser-local storage.
+After reload it restores that state and rejects older or conflicting equal-time
+statuses. Exact repeats are idempotent. This is continuity for this browser, not
+proof that a first-time visitor has the latest mesh state. Clearing storage, using
+a different browser, or denied storage writes removes persistence across visits;
+mesh signatures alone do not establish global freshness. No SEA private keys are
+stored in this replay cache.
