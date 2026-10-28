@@ -24,14 +24,29 @@ import {
   authorizeForumAgentRemoval,
   authorizeForumAlarm,
   authorizeForumChat,
+  OFFER_TAIL_WATCH_CAP,
+  OFFER_TAIL_WATCH_PER_NEED,
+  PENDING_OFFER_CAP,
+  PENDING_OFFER_PER_PARENT,
+  PENDING_OFFER_TTL_MS,
   cacheForumNeed,
   chatRemovalCandidate,
   commitForumAlarm,
   grantChatRemovalWatch,
+  grantOfferTailWatch,
   mergeForumChat,
+  offerHelperFromId,
+  offerRowShouldQueue,
+  offerSignerCandidates,
+  offerTailCandidate,
   parseForumAlarmUpdate,
+  parseNeedHighWater,
   pendingNeedRetry,
+  pendingOfferRetry,
+  raiseNeedHighWater,
   retainPendingNeed,
+  retainPendingOffer,
+  serializeNeedHighWater,
   retireLocalChat,
   takeExpiredChatRemovalWatches,
   authorizeForumChatTombstone,
@@ -908,7 +923,7 @@ describe("squad view", () => {
       authorizeForumNeed(closed, stranger.status.seaPubkey, PILOT_OWNER, PILOT_FORUM_ID, need, bare),
       false,
     );
-    assert.equal(authorizeForumNeed(closed, need.subject, PILOT_OWNER, PILOT_FORUM_ID, undefined, bare), true);
+    assert.equal(authorizeForumNeed(closed, need.subject, PILOT_OWNER, PILOT_FORUM_ID, undefined, bare), false);
     assert.equal(authorizeForumNeed(closed, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID, undefined, bare), true);
     assert.equal(
       authorizeForumNeed(closed, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID, undefined, {
@@ -1229,6 +1244,219 @@ describe("squad view", () => {
     assert.equal(cleared?.alarm, null);
     assert.equal(cleared?.rev, 7);
     assert.equal(commitForumAlarm({ rev: 7 }, pin), null);
+  });
+
+  it("refuses a fresh close whose subject is only the signer's own claim", () => {
+    const need = PILOT_NEEDS.find((row) => row.stated === 1 && row.subject !== PILOT_OWNER);
+    assert.ok(need);
+    const stranger = PILOT_AGENTS.find(
+      (row) => row.status.seaPubkey !== PILOT_OWNER && row.status.seaPubkey !== need.subject,
+    );
+    assert.ok(stranger);
+    const impostor = stranger.status.seaPubkey;
+    const impostorKey = seaToPrincipalKey(impostor);
+    assert.ok(impostorKey);
+    const offerId = `offer_${impostorKey}_${"ab".repeat(16)}`;
+    const offer = {
+      id: offerId,
+      need: need.id,
+      forumId: PILOT_FORUM_ID,
+      helper: impostor,
+      body: "holding",
+      artifacts: "",
+      stated: 1 as const,
+    };
+    const forged = {
+      ...need,
+      subject: impostor,
+      stated: 0 as const,
+      acceptedOffer: offerId,
+      hamState: need.hamState + 1,
+    };
+    const graph = createMemorySeeAcl();
+    graph.putObject(need.id, PILOT_OWNER);
+    applySeeGrant(graph, PILOT_OWNER, {
+      claimId: need.id,
+      accessor: impostor,
+      from: 0,
+      until: 10_000_000_000,
+    });
+    const closure = { graph, postedOffers: new Map([[offer.id, offer]]), now: 1_000 };
+    assert.equal(needClosureStatus(forged, closure), "ok");
+    assert.equal(authorizeForumNeed(forged, impostor, PILOT_OWNER, PILOT_FORUM_ID, undefined, closure), false);
+    assert.equal(authorizeForumNeed(forged, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID, undefined, closure), true);
+    const swapped = { ...forged, subject: impostor };
+    assert.equal(authorizeForumNeed(swapped, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID, need, closure), false);
+  });
+
+  it("derives the offer helper and queues a removal until the parent loads", () => {
+    const need = PILOT_NEEDS.find((row) => row.stated === 1 && row.subject !== PILOT_OWNER);
+    assert.ok(need);
+    const helperKey = seaToPrincipalKey(need.subject);
+    assert.ok(helperKey);
+    const offerId = `offer_${helperKey}_${"cd".repeat(16)}`;
+    assert.equal(offerHelperFromId(offerId), need.subject);
+    const candidates = offerSignerCandidates({
+      offerId,
+      owner: PILOT_OWNER,
+      subject: need.subject,
+    });
+    assert.equal(candidates[0], need.subject);
+    assert.equal(offerSignerCandidates({ offerId: "not-an-offer", owner: PILOT_OWNER }).includes(need.subject), false);
+    assert.equal(
+      offerRowShouldQueue({
+        verified: false,
+        fromCancel: false,
+        fromRemoval: true,
+        awaitingAuthority: true,
+        waitingForGrant: false,
+      }),
+      "authority",
+    );
+    assert.equal(
+      offerRowShouldQueue({
+        verified: false,
+        fromCancel: true,
+        fromRemoval: false,
+        awaitingAuthority: true,
+        waitingForGrant: false,
+      }),
+      "authority",
+    );
+    assert.equal(
+      offerRowShouldQueue({
+        verified: false,
+        fromCancel: false,
+        fromRemoval: true,
+        awaitingAuthority: false,
+        waitingForGrant: false,
+      }),
+      null,
+    );
+    assert.equal(
+      authorizeForumMeshRemoval({
+        removal: {
+          removed: 1,
+          action: "remove",
+          forumId: PILOT_FORUM_ID,
+          id: offerId,
+          kind: "offer",
+          need: need.id,
+        },
+        mapKey: offerId,
+        signer: need.subject,
+        owner: PILOT_OWNER,
+        subject: need.subject,
+        forumId: PILOT_FORUM_ID,
+        parentNeedId: need.id,
+        resolved: false,
+      }),
+      true,
+    );
+  });
+
+  it("keeps a need high-water above a replayed reopen", () => {
+    const need = PILOT_NEEDS.find((row) => row.stated === 1);
+    assert.ok(need);
+    const closed = { ...need, stated: 0 as const, hamState: need.hamState + 4, acceptedOffer: undefined };
+    const replay = { ...need, stated: 1 as const, hamState: need.hamState + 2 };
+    const fixture = new Map([[need.id, need]]);
+    assert.equal(cacheForumNeed(fixture, replay, closed), null);
+    assert.equal(fixture.get(need.id)?.stated, 1);
+    const water = new Map<string, typeof need>();
+    assert.equal(raiseNeedHighWater(water, closed), true);
+    assert.equal(raiseNeedHighWater(water, replay), false);
+    assert.equal(water.get(need.id)?.hamState, closed.hamState);
+    const loaded = parseNeedHighWater(serializeNeedHighWater(water));
+    assert.equal(loaded.get(need.id)?.stated, 0);
+    assert.equal(cacheForumNeed(new Map([[need.id, need]]), replay, loaded.get(need.id)), null);
+    const newer = cacheForumNeed(new Map([[need.id, need]]), { ...closed, hamState: closed.hamState + 1 });
+    assert.equal(newer?.get(need.id)?.hamState, closed.hamState + 1);
+  });
+
+  it("bounds pending offers and opens removal tails only after verification", () => {
+    const need = PILOT_NEEDS[0];
+    assert.ok(need);
+    const queue = new Map();
+    const now = 1_700_000_000_000;
+    let stored = 0;
+    for (let i = 0; i < PENDING_OFFER_PER_PARENT + 8; i += 1) {
+      const offerId = `offer_p_${"ab".repeat(64)}_${i.toString(16).padStart(32, "0")}`;
+      if (
+        retainPendingOffer(
+          queue,
+          `offer:${need.id}:${offerId}`,
+          {
+            data: { sig: "SEAforged" },
+            key: offerId,
+            parentNeedId: need.id,
+            gen: i + 1,
+            at: now,
+            reason: "grant",
+          },
+          now,
+        )
+      ) {
+        stored += 1;
+      }
+    }
+    assert.equal(stored, PENDING_OFFER_PER_PARENT);
+    assert.equal(queue.size, PENDING_OFFER_PER_PARENT);
+    const otherNeed = PILOT_NEEDS[1];
+    assert.ok(otherNeed);
+    let storedOther = 0;
+    for (let i = 0; i < PENDING_OFFER_PER_PARENT; i += 1) {
+      const offerId = `offer_p_${"cd".repeat(64)}_${i.toString(16).padStart(32, "0")}`;
+      if (
+        retainPendingOffer(
+          queue,
+          `offer:${otherNeed.id}:${offerId}`,
+          {
+            data: { sig: "SEAforged" },
+            key: offerId,
+            parentNeedId: otherNeed.id,
+            gen: i + 1,
+            at: now,
+            reason: "authority",
+            fromRemoval: true,
+          },
+          now,
+        )
+      ) {
+        storedOther += 1;
+      }
+    }
+    assert.equal(storedOther, PENDING_OFFER_CAP - PENDING_OFFER_PER_PARENT);
+    const sample = [...queue.values()][0];
+    assert.ok(sample);
+    assert.equal(pendingOfferRetry(sample, now + 1), "retry");
+    assert.equal(pendingOfferRetry(sample, now + PENDING_OFFER_TTL_MS + 1), "drop");
+    assert.equal(offerTailCandidate(need.id, "random", { sig: "SEAforged" }), false);
+    const offerId = `offer_p_${"ef".repeat(64)}_${"4".padStart(32, "0")}`;
+    assert.equal(offerTailCandidate(need.id, offerId, { sig: "SEAforged" }), true);
+    assert.equal(offerTailCandidate(need.id, offerId, { sig: "nope" }), false);
+    const watches = new Map<string, number>();
+    assert.equal(
+      grantOfferTailWatch({ watches, needId: need.id, offerId, verified: false, now: 1_000 }),
+      false,
+    );
+    assert.equal(watches.size, 0);
+    assert.equal(
+      grantOfferTailWatch({ watches, needId: need.id, offerId, verified: true, now: 1_000 }),
+      true,
+    );
+    for (let i = 0; i < OFFER_TAIL_WATCH_CAP + 5; i += 1) {
+      const id = `offer_p_${"11".repeat(64)}_${i.toString(16).padStart(32, "0")}`;
+      grantOfferTailWatch({
+        watches,
+        needId: i < OFFER_TAIL_WATCH_PER_NEED ? need.id : otherNeed.id,
+        offerId: id,
+        verified: true,
+        now: 1_000,
+      });
+    }
+    assert.ok(watches.size <= OFFER_TAIL_WATCH_CAP);
+    assert.ok(watches.size >= OFFER_TAIL_WATCH_PER_NEED);
   });
 
   it("keeps the sample status soul on the contract path", () => {

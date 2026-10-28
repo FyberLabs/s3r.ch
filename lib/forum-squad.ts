@@ -649,9 +649,9 @@ export type ForumNeedClosure = {
 
 /**
  * A close (`stated` 0 with an accepted offer) uses the same live-offer and
- * helper Check see gates as accept. That includes an owner-signed snapshot
- * on a fresh load, where this browser never held the open row. The admitted
- * owner may sign any other need row. Accept does not elect.
+ * helper Check see gates as accept. The subject is admitted by a prior row
+ * or by the owner's signature. A payload `subject` is not that admission.
+ * The admitted owner may sign any other need row. Accept does not elect.
  */
 export function authorizeForumNeed(
   need: ForumNeed,
@@ -662,8 +662,9 @@ export function authorizeForumNeed(
   closure?: ForumNeedClosure,
 ): boolean {
   if (need.forumId !== forumId || !isSeaPubkey(signer)) return false;
+  if (known && need.subject !== known.subject) return false;
   if (known && known.stated === 1 && need.stated === 0 && need.id === known.id) {
-    const party = signer === owner || (signer === known.subject && signer === need.subject);
+    const party = signer === owner || signer === known.subject;
     if (!party) return false;
     if (need.hamState <= known.hamState) return false;
     if (need.body !== known.body || need.severity !== known.severity) return false;
@@ -671,12 +672,8 @@ export function authorizeForumNeed(
     if (!need.acceptedOffer || !closure) return false;
     return needClosureStatus(need, closure) === "ok";
   }
-  if (
-    !known &&
-    need.stated === 0 &&
-    need.acceptedOffer &&
-    (signer === need.subject || signer === owner)
-  ) {
+  if (!known && need.stated === 0 && need.acceptedOffer) {
+    if (signer !== owner) return false;
     if (!closure) return false;
     return needClosureStatus(need, closure) === "ok";
   }
@@ -827,17 +824,92 @@ export function offerRemovalAuthority(input: {
 /**
  * The auth cache is the composed need. An older signed row must not replace
  * it: the board setters then keep the fresher row and never render, so the
- * cache would stay open after a close.
+ * cache would stay open after a close. `floor` is the persisted high-water
+ * from an earlier page load.
  */
 export function cacheForumNeed(
   cache: ReadonlyMap<string, ForumNeed>,
   incoming: ForumNeed,
+  floor?: ForumNeed,
 ): Map<string, ForumNeed> | null {
-  const current = cache.get(incoming.id);
+  const cached = cache.get(incoming.id);
+  const current = floor && floor.id === incoming.id && (!cached || floor.hamState > cached.hamState) ? floor : cached;
   if (current && current.hamState > incoming.hamState) return null;
   const next = new Map(cache);
   next.set(incoming.id, incoming);
   return next;
+}
+
+/** Highest accepted need per id. A lower signed ham does not replace it. */
+export function raiseNeedHighWater(map: Map<string, ForumNeed>, need: ForumNeed): boolean {
+  const current = map.get(need.id);
+  if (current && current.hamState >= need.hamState) return false;
+  map.set(need.id, need);
+  return true;
+}
+
+export function serializeNeedHighWater(map: ReadonlyMap<string, ForumNeed>): string {
+  return JSON.stringify([...map.values()]);
+}
+
+/** Drop a corrupt record. Keep the freshest valid need for each id. */
+export function parseNeedHighWater(raw: string | null): Map<string, ForumNeed> {
+  const map = new Map<string, ForumNeed>();
+  if (!raw) return map;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return map;
+  }
+  if (!Array.isArray(parsed)) return map;
+  for (const row of parsed) {
+    const need = parseForumNeed(row);
+    if (!need) continue;
+    const existing = map.get(need.id);
+    if (!existing || need.hamState > existing.hamState) map.set(need.id, need);
+  }
+  return map;
+}
+
+/** Helper pubkey embedded in an offer id. An unsigned hint is not required. */
+export function offerHelperFromId(id: string): string | null {
+  if (!isForumObjectId(id, "offer")) return null;
+  const embedded = embeddedPrincipalKey(id);
+  if (!embedded) return null;
+  const pub = seaFromPrincipalKey(embedded);
+  if (!pub || !sameEmbeddedPrincipal(pub, id)) return null;
+  return pub;
+}
+
+/** Signers to try for an offer or its removal. The offer id names the helper. */
+export function offerSignerCandidates(input: {
+  offerId?: string;
+  hintedHelper?: string;
+  owner?: string;
+  subject?: string;
+}): string[] {
+  const derived = input.offerId ? (offerHelperFromId(input.offerId) ?? "") : "";
+  return [derived, input.hintedHelper ?? "", input.owner ?? "", input.subject ?? ""].filter(
+    (pub, index, all) => pub && all.indexOf(pub) === index,
+  );
+}
+
+/**
+ * A removal or cancel with no verifier yet waits for the parent authority.
+ * A live offer waits for its grant. Anything else is not queued.
+ */
+export function offerRowShouldQueue(input: {
+  verified: boolean;
+  fromCancel: boolean;
+  fromRemoval: boolean;
+  awaitingAuthority: boolean;
+  waitingForGrant: boolean;
+}): "authority" | "grant" | null {
+  if (input.verified) return null;
+  if ((input.fromCancel || input.fromRemoval) && input.awaitingAuthority) return "authority";
+  if (input.waitingForGrant) return "grant";
+  return null;
 }
 
 /**
@@ -979,6 +1051,114 @@ export function pendingNeedRetry(
   if (!owner || !isSeaPubkey(owner)) return "keep";
   if (entry.expectOwner && entry.expectOwner !== owner) return "drop";
   return "retry";
+}
+
+export const PENDING_OFFER_CAP = 32;
+export const PENDING_OFFER_PER_PARENT = 16;
+export const PENDING_OFFER_TTL_MS = 5 * 60 * 1000;
+
+export type PendingOfferEntry = {
+  data: unknown;
+  key: string;
+  parentNeedId: string;
+  gen: number;
+  at: number;
+  fromCancel?: boolean;
+  fromRemoval?: boolean;
+  reason: "grant" | "authority";
+};
+
+export function prunePendingOffers(queue: Map<string, PendingOfferEntry>, now: number): void {
+  for (const [key, row] of queue) {
+    if (now - row.at > PENDING_OFFER_TTL_MS) queue.delete(key);
+  }
+}
+
+/**
+ * Pending offers share the need bounds: a cap, a per-need cap, a byte cap,
+ * and a TTL. The same key keeps its original timestamp.
+ */
+export function retainPendingOffer(
+  queue: Map<string, PendingOfferEntry>,
+  queueKey: string,
+  entry: PendingOfferEntry,
+  now: number,
+): boolean {
+  if (!entry.parentNeedId || !isForumObjectId(entry.parentNeedId, "need")) {
+    queue.delete(queueKey);
+    return false;
+  }
+  if (!entry.key || !isForumObjectId(entry.key, "offer")) {
+    queue.delete(queueKey);
+    return false;
+  }
+  const bytes = pendingNeedPayloadBytes(entry.data);
+  if (bytes === null || bytes > PENDING_NEED_MAX_BYTES) {
+    queue.delete(queueKey);
+    return false;
+  }
+  prunePendingOffers(queue, now);
+  const previous = queue.get(queueKey);
+  if (previous) {
+    queue.set(queueKey, { ...entry, at: Math.min(previous.at, entry.at) });
+    return true;
+  }
+  let parentCount = 0;
+  for (const row of queue.values()) if (row.parentNeedId === entry.parentNeedId) parentCount += 1;
+  if (parentCount >= PENDING_OFFER_PER_PARENT || queue.size >= PENDING_OFFER_CAP) return false;
+  queue.set(queueKey, entry);
+  return true;
+}
+
+/** Retry while the row is inside its TTL. Expired rows drop. */
+export function pendingOfferRetry(entry: PendingOfferEntry, now: number): "retry" | "drop" {
+  if (now - entry.at > PENDING_OFFER_TTL_MS) return "drop";
+  return "retry";
+}
+
+/** Offer cancel and removal subscriptions. Open only after the offer verifies. */
+export const OFFER_TAIL_WATCH_CAP = 128;
+export const OFFER_TAIL_WATCH_PER_NEED = 16;
+export const OFFER_TAIL_WATCH_TTL_MS = 12 * 60 * 60 * 1000;
+
+/** A child of `offers` may be read only when the key is an offer id with a SEA signature. */
+export function offerTailCandidate(needId: string, key: string, data: unknown): boolean {
+  if (!isForumObjectId(needId, "need") || !isForumObjectId(key, "offer")) return false;
+  if (key.length > 200 || key.includes("/") || key.includes("\0")) return false;
+  return !!signatureOf(data);
+}
+
+export function takeExpiredOfferTailWatches(watches: Map<string, number>, now: number): string[] {
+  const expired: string[] = [];
+  for (const [key, at] of watches) {
+    if (now - at > OFFER_TAIL_WATCH_TTL_MS) {
+      expired.push(key);
+      watches.delete(key);
+    }
+  }
+  return expired;
+}
+
+export function grantOfferTailWatch(input: {
+  watches: Map<string, number>;
+  needId: string;
+  offerId: string;
+  verified: boolean;
+  now: number;
+}): boolean {
+  if (!input.verified || !offerTailCandidate(input.needId, input.offerId, { sig: "SEA" })) return false;
+  const id = `${input.needId}:${input.offerId}`;
+  if (input.watches.has(id)) {
+    input.watches.set(id, input.now);
+    return false;
+  }
+  let onNeed = 0;
+  for (const key of input.watches.keys()) {
+    if (key.startsWith(`${input.needId}:`)) onNeed += 1;
+  }
+  if (onNeed >= OFFER_TAIL_WATCH_PER_NEED || input.watches.size >= OFFER_TAIL_WATCH_CAP) return false;
+  input.watches.set(id, input.now);
+  return true;
 }
 
 /** Verified forum-chat removal subscriptions. A quiet key expires. */

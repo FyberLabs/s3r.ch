@@ -35,16 +35,29 @@ import {
   composeForumNeeds,
   composeForumRoster,
   grantChatRemovalWatch,
+  grantOfferTailWatch,
   mergeForumChat,
   offerRemovalAuthority,
+  offerRowShouldQueue,
+  offerSignerCandidates,
+  offerTailCandidate,
   parseForumAlarmUpdate,
+  parseNeedHighWater,
   pendingNeedRetry,
+  pendingOfferRetry,
   prunePendingNeeds,
+  prunePendingOffers,
   PENDING_NEED_TTL_MS,
+  PENDING_OFFER_TTL_MS,
+  raiseNeedHighWater,
   retainPendingNeed,
+  retainPendingOffer,
   retireLocalChat,
+  serializeNeedHighWater,
   takeExpiredChatRemovalWatches,
+  takeExpiredOfferTailWatches,
   type PendingNeedEntry,
+  type PendingOfferEntry,
   filterAgents,
   formatClock,
   formatRuntime,
@@ -163,6 +176,17 @@ function putSoul(gun: FeedGun | null, soul: string, data: unknown): boolean {
   return true;
 }
 
+const NEED_HIGH_WATER_KEY = "s3rch.forum.need-high-water.v1";
+
+function forumStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 function entropy(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
@@ -233,9 +257,9 @@ export function SquadForum() {
   const offersRef = useRef<Map<string, ForumOffer>>(new Map());
   const pendingNeedsRef = useRef<Map<string, PendingNeedEntry>>(new Map());
   const alarmRevRef = useRef<number | undefined>(undefined);
-  const pendingOffersRef = useRef<
-    Map<string, { data: unknown; key: string; parentNeedId: string; gen: number; fromCancel?: boolean }>
-  >(new Map());
+  const pendingOffersRef = useRef<Map<string, PendingOfferEntry>>(new Map());
+  const highWaterRef = useRef<Map<string, ForumNeed>>(new Map());
+  const [persistedNeeds, setPersistedNeeds] = useState<Map<string, ForumNeed>>(() => new Map());
   const acceptNeedRef = useRef<(data: unknown, key: string, gen: number) => Promise<void>>(
     async () => {},
   );
@@ -247,8 +271,8 @@ export function SquadForum() {
       gen: number,
       fromCancel?: boolean,
       fromRemoval?: boolean,
-    ) => Promise<void>
-  >(async () => {});
+    ) => Promise<boolean>
+  >(async () => false);
   const offerCancelsRef = useRef<ReadonlySet<string>>(offerCancels);
   offerCancelsRef.current = offerCancels;
   const removedNeedsRef = useRef<ReadonlySet<string>>(removedNeeds);
@@ -342,6 +366,23 @@ export function SquadForum() {
     };
   }, []);
 
+  function noteNeedHighWater(need: ForumNeed) {
+    if (!raiseNeedHighWater(highWaterRef.current, need)) return;
+    const next = new Map(highWaterRef.current);
+    setPersistedNeeds(next);
+    try {
+      forumStorage()?.setItem(NEED_HIGH_WATER_KEY, serializeNeedHighWater(next));
+    } catch {
+      // Private mode can refuse the write. The in-memory mark still holds.
+    }
+  }
+
+  useEffect(() => {
+    const loaded = parseNeedHighWater(forumStorage()?.getItem(NEED_HIGH_WATER_KEY) ?? null);
+    highWaterRef.current = loaded;
+    if (loaded.size > 0) setPersistedNeeds(loaded);
+  }, []);
+
   useEffect(() => {
     if (!register) return;
     let cancelled = false;
@@ -349,6 +390,7 @@ export function SquadForum() {
     let offNeeds: { off?: () => void } | undefined;
     const offerOffs: Array<{ off?: () => void }> = [];
     const chatRemovalOffs = new Map<string, { off?: () => void }>();
+    const offerTailOffs = new Map<string, { off?: () => void }>();
     const watchedOffers = new Set<string>();
     let offAlarm: { off?: () => void } | undefined;
     let offItems: { off?: () => void } | undefined;
@@ -467,24 +509,25 @@ export function SquadForum() {
         gen: number,
         fromCancel = false,
         fromRemoval = false,
-      ) {
+      ): Promise<boolean> {
         const queueKey = `${fromRemoval ? "remove" : fromCancel ? "cancel" : "offer"}:${parentNeedId}:${key ?? ""}`;
         const versionScope = fromRemoval ? "offer-remove" : fromCancel ? "offer-cancel" : "offer";
         const sig = signatureOf(data);
-        if (!sig || !data || typeof data !== "object") return;
+        if (!sig || !data || typeof data !== "object") return false;
         const row = data as { helper?: unknown; need?: unknown };
         const hintedNeed = typeof row.need === "string" ? row.need : undefined;
-        if (hintedNeed !== undefined && hintedNeed !== parentNeedId) return;
+        if (hintedNeed !== undefined && hintedNeed !== parentNeedId) return false;
         const parentNeed = needsRef.current.get(parentNeedId);
-        const candidates = [
-          typeof row.helper === "string" ? row.helper : "",
-          graphRef.current?.ownerOf(parentNeedId) ?? "",
-          parentNeed?.subject ?? "",
-        ].filter((pub, index, all) => pub && all.indexOf(pub) === index);
+        const candidates = offerSignerCandidates({
+          offerId: key,
+          hintedHelper: typeof row.helper === "string" ? row.helper : undefined,
+          owner: graphRef.current?.ownerOf(parentNeedId),
+          subject: parentNeed?.subject,
+        });
         let payload: unknown = null;
         let signer = "";
         for (const pub of candidates) {
-          if (cancelled || !versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return;
+          if (cancelled || !versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return false;
           const verified = await readForumSignature(sig, pub);
           if (verified) {
             payload = verified;
@@ -492,31 +535,55 @@ export function SquadForum() {
             break;
           }
         }
-        if (cancelled || !versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return;
+        if (cancelled || !versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return false;
+        const queueOffer = (reason: "authority" | "grant", offerKey: string) => {
+          const now = Date.now();
+          const kept = retainPendingOffer(
+            pendingOffersRef.current,
+            queueKey,
+            {
+              data,
+              key: offerKey,
+              parentNeedId,
+              gen,
+              at: now,
+              fromCancel,
+              fromRemoval,
+              reason,
+            },
+            now,
+          );
+          if (!kept) pendingOffersRef.current.delete(queueKey);
+        };
         if (!payload) {
-          if (!fromCancel) return;
           const awaiting = offerCancelAwaitingKeys({
             graph: graphRef.current,
             need: needsRef.current.get(parentNeedId),
             needId: parentNeedId,
           });
-          const queued = pendingOffersRef.current.get(queueKey);
-          if (awaiting && (!queued || queued.gen <= gen)) {
-            pendingOffersRef.current.set(queueKey, {
-              data,
-              key: key ?? "",
-              parentNeedId,
-              gen,
-              fromCancel: true,
-            });
-          } else if (queued?.gen === gen) {
-            pendingOffersRef.current.delete(queueKey);
-          }
-          return;
+          const reason = offerRowShouldQueue({
+            verified: false,
+            fromCancel,
+            fromRemoval,
+            awaitingAuthority: awaiting,
+            waitingForGrant: false,
+          });
+          if (reason && key) queueOffer(reason, key);
+          else if (pendingOffersRef.current.get(queueKey)?.gen === gen) pendingOffersRef.current.delete(queueKey);
+          return false;
         }
         const removal = parseForumMeshRemoval(payload);
         if (removal) {
-          if (key === undefined || removal.kind !== "offer" || removal.need === undefined) return;
+          if (key === undefined || removal.kind !== "offer" || removal.need === undefined) return false;
+          const awaitingRemoval = offerCancelAwaitingKeys({
+            graph: graphRef.current,
+            need: needsRef.current.get(parentNeedId),
+            needId: parentNeedId,
+          });
+          if (awaitingRemoval) {
+            queueOffer("authority", key);
+            return false;
+          }
           const authority = offerRemovalAuthority({
             parentNeedId,
             hintedNeed,
@@ -524,7 +591,7 @@ export function SquadForum() {
             parent: parentNeed,
             offerId: removal.id,
           });
-          if (!authority) return;
+          if (!authority) return false;
           if (
             !authorizeForumMeshRemoval({
               removal,
@@ -537,9 +604,10 @@ export function SquadForum() {
               resolved: authority.resolved,
             })
           ) {
-            return;
+            return false;
           }
-          if (!versions.current(versionScope, `${parentNeedId}:${key}`, gen)) return;
+          if (!versions.current(versionScope, `${parentNeedId}:${key}`, gen)) return false;
+          pendingOffersRef.current.delete(queueKey);
           noteOfferRemoval(removal.id);
           stickSigned(forumOfferRemovalSoul(PILOT_FORUM_ID, parentNeedId, removal.id), data);
           setMeshOffers((prev) => {
@@ -548,15 +616,16 @@ export function SquadForum() {
             next.delete(removal.id);
             return next;
           });
-          return;
+          watchOfferTails(parentNeedId, removal.id);
+          return true;
         }
         const offer = parseForumOffer(payload);
         if (!offer || offer.need !== parentNeedId) {
-          if (fromCancel) {
+          if (fromCancel || fromRemoval) {
             const queued = pendingOffersRef.current.get(queueKey);
             if (queued?.gen === gen) pendingOffersRef.current.delete(queueKey);
           }
-          return;
+          return false;
         }
         const named = needsRef.current.get(offer.need);
         const party = {
@@ -570,28 +639,30 @@ export function SquadForum() {
         if (fromCancel && offer.stated !== 0) {
           const queued = pendingOffersRef.current.get(queueKey);
           if (queued?.gen === gen) pendingOffersRef.current.delete(queueKey);
-          return;
+          return false;
         }
         if (!authorizeForumOffer(offer, signer, PILOT_FORUM_ID, party, seen)) {
-          if (
-            offer.stated === 1 &&
-            offerSeeWait({
-              offer,
-              graph: graphRef.current,
-              need: named,
-              now: Math.floor(Date.now() / 1000),
-            })
-          ) {
-            pendingOffersRef.current.set(queueKey, { data, key: key ?? offer.id, parentNeedId, gen });
-          } else {
-            pendingOffersRef.current.delete(queueKey);
-          }
-          return;
+          const waiting = offerSeeWait({
+            offer,
+            graph: graphRef.current,
+            need: named,
+            now: Math.floor(Date.now() / 1000),
+          });
+          const reason = offerRowShouldQueue({
+            verified: false,
+            fromCancel,
+            fromRemoval,
+            awaitingAuthority: false,
+            waitingForGrant: offer.stated === 1 && waiting,
+          });
+          if (reason) queueOffer(reason, offer.id);
+          else pendingOffersRef.current.delete(queueKey);
+          return false;
         }
-        if (key !== undefined && key !== offer.id) return;
-        if (!versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return;
-        if (removedOffersRef.current.has(offer.id)) return;
-        if (offer.stated === 1 && offerBlockedByCancel(offerCancelsRef.current, offer)) return;
+        if (key !== undefined && key !== offer.id) return false;
+        if (!versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return false;
+        if (removedOffersRef.current.has(offer.id)) return false;
+        if (offer.stated === 1 && offerBlockedByCancel(offerCancelsRef.current, offer)) return false;
         if (offer.stated === 0) noteOfferCancel(offer.id);
         pendingOffersRef.current.delete(queueKey);
         setMeshOffers((prev) => {
@@ -609,6 +680,8 @@ export function SquadForum() {
           next.delete(offer.id);
           return next;
         });
+        watchOfferTails(parentNeedId, offer.id);
+        return true;
       }
       async function acceptStatus(data: unknown, key: string, gen: number, fromRemoval = false) {
         const versionScope = fromRemoval ? "status-remove" : "status";
@@ -805,9 +878,10 @@ export function SquadForum() {
           return;
         }
         pendingNeedsRef.current.delete(key);
-        const cached = cacheForumNeed(needsRef.current, need);
+        const cached = cacheForumNeed(needsRef.current, need, highWaterRef.current.get(need.id));
         if (!cached) return;
         needsRef.current = cached;
+        noteNeedHighWater(need);
         watchOffers(need.id);
         setMeshNeeds((prev) => {
           const existing = prev.get(need.id);
@@ -929,7 +1003,6 @@ export function SquadForum() {
         stickSigned(forumChatRemovalSoul(statementId), data);
         return true;
       }
-      const watchedCancels = new Set<string>();
       const watchedRemovals = new Set<string>();
       const chatRemovalWatches = new Map<string, number>();
       const expireChatRemovalWatches = (now: number) => {
@@ -949,29 +1022,39 @@ export function SquadForum() {
           }),
         );
       };
+      const offerTailWatches = new Map<string, number>();
+      function watchOfferTails(needId: string, offerId: string) {
+        const now = Date.now();
+        for (const expired of takeExpiredOfferTailWatches(offerTailWatches, now)) {
+          offerTailOffs.get(expired)?.off?.();
+          offerTailOffs.delete(expired);
+        }
+        if (!grantOfferTailWatch({ watches: offerTailWatches, needId, offerId, verified: true, now })) return;
+        const id = `${needId}:${offerId}`;
+        const cancelOff = forum.get("needs").get(needId).get("offers").get(offerId).get("cancel").on((cancel) => {
+          if (cancelled || cancel == null) return;
+          const cancelGen = versions.bump("offer-cancel", `${needId}:${offerId}`);
+          void acceptOffer(cancel, offerId, needId, cancelGen, true);
+        });
+        const removeOff = forum.get("needs").get(needId).get("offers").get(offerId).get("remove").on((row) => {
+          if (cancelled || row == null) return;
+          const removalGen = versions.bump("offer-remove", `${needId}:${offerId}`);
+          void acceptOffer(row, offerId, needId, removalGen, false, true);
+        });
+        offerTailOffs.set(id, {
+          off() {
+            cancelOff?.off?.();
+            removeOff?.off?.();
+          },
+        });
+      }
       const watchOffers = (needId: string) => {
         if (!isForumObjectId(needId, "need") || watchedOffers.has(needId)) return;
         watchedOffers.add(needId);
         offerOffs.push(
           forum.get("needs").get(needId).get("offers").map().on((data, key) => {
             if (cancelled || typeof key !== "string" || data === undefined) return;
-            if (!watchedCancels.has(`${needId}:${key}`)) {
-              watchedCancels.add(`${needId}:${key}`);
-              offerOffs.push(
-                forum.get("needs").get(needId).get("offers").get(key).get("cancel").on((cancel) => {
-                  if (cancelled || cancel == null) return;
-                  const cancelGen = versions.bump("offer-cancel", `${needId}:${key}`);
-                  void acceptOffer(cancel, key, needId, cancelGen, true);
-                }),
-              );
-              offerOffs.push(
-                forum.get("needs").get(needId).get("offers").get(key).get("remove").on((row) => {
-                  if (cancelled || row == null) return;
-                  const removalGen = versions.bump("offer-remove", `${needId}:${key}`);
-                  void acceptOffer(row, key, needId, removalGen, false, true);
-                }),
-              );
-            }
+            if (!offerTailCandidate(needId, key, data)) return;
             const gen = versions.bump("offer", `${needId}:${key}`);
             if (data === null) return;
             void acceptOffer(data, key, needId, gen);
@@ -1048,6 +1131,7 @@ export function SquadForum() {
       for (const off of roleOffs) off.off?.();
       for (const off of offerOffs) off.off?.();
       for (const off of chatRemovalOffs.values()) off.off?.();
+      for (const off of offerTailOffs.values()) off.off?.();
       offAlarm?.off?.();
       offItems?.off?.();
       gunRef.current = null;
@@ -1077,12 +1161,27 @@ export function SquadForum() {
       }
       void acceptNeedRef.current(row.data, key, row.gen);
     }
-    for (const [, row] of pendingOffersRef.current) {
-      void acceptOfferRef.current(row.data, row.key, row.parentNeedId, row.gen, row.fromCancel);
+    for (const [key, row] of [...pendingOffersRef.current]) {
+      const decision = pendingOfferRetry(row, now);
+      if (decision === "drop") {
+        pendingOffersRef.current.delete(key);
+        continue;
+      }
+      earliest = Math.min(earliest, row.at + PENDING_OFFER_TTL_MS);
+      void acceptOfferRef.current(
+        row.data,
+        row.key,
+        row.parentNeedId,
+        row.gen,
+        row.fromCancel,
+        row.fromRemoval,
+      );
     }
     if (!Number.isFinite(earliest)) return;
     const timer = setTimeout(() => {
-      prunePendingNeeds(pendingNeedsRef.current, Date.now());
+      const at = Date.now();
+      prunePendingNeeds(pendingNeedsRef.current, at);
+      prunePendingOffers(pendingOffersRef.current, at);
     }, Math.max(0, earliest - Date.now()) + 5);
     return () => clearTimeout(timer);
   }, [aclRev, localNeeds, localOffers, meshNeeds, meshOffers, see?.ready]);
@@ -1105,11 +1204,11 @@ export function SquadForum() {
     () =>
       composeForumNeeds({
         pilot: PILOT_NEEDS,
-        mesh: [...meshNeeds.values()],
+        mesh: [...persistedNeeds.values(), ...meshNeeds.values()],
         local: [...localNeeds.values()],
         removed: removedNeeds,
       }),
-    [localNeeds, meshNeeds, removedNeeds],
+    [localNeeds, meshNeeds, persistedNeeds, removedNeeds],
   );
   needsRef.current = needs;
 
