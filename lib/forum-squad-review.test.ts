@@ -307,3 +307,67 @@ test('separate owner-signed admission survives a self-signed status replacement 
   assert.equal(squad.forumStatusAdmission({ status: verified, mapKey: agent.pub, signer: agent.pub,
     forumOwner: owner.pub, forumId: PILOT_FORUM_ID, enrolled: true }), 'enrolled');
 });
+
+test('offer withdrawal uses newer authenticated pending closure rather than installed open parent', () => {
+  const pending = { data: closed, context: closed, reason: "closure" as const, gen: 1, at: 100, parentId: PILOT_FORUM_ID, objectId: need.id };
+  const parent = squad.freshestOfferParent(need, pending, 101)!;
+  assert.equal(parent, closed);
+  assert.equal(authorizeForumOffer({ ...offer, stated: 0 }, helper, PILOT_FORUM_ID,
+    { owner: PILOT_OWNER, subject: parent.subject }, { graph: graph(), need: parent, now: 1000 }), false);
+  assert.equal(authorizeForumMeshRemoval({ removal: { removed: 1, action: 'remove', kind: 'offer',
+    id: offer.id, need: need.id, forumId: PILOT_FORUM_ID }, mapKey: offer.id, signer: helper,
+    owner: PILOT_OWNER, subject: parent.subject, forumId: PILOT_FORUM_ID, parentNeedId: need.id,
+    resolved: parent.stated === 0 && parent.acceptedOffer === offer.id }), false);
+  assert.equal(squad.freshestOfferParent(need, pending, 100 + squad.PENDING_NEED_TTL_MS), need);
+  const reopened = { ...need, hamState: closed.hamState + 1 };
+  assert.equal(squad.freshestOfferParent(reopened, pending, 101), reopened);
+});
+
+test('combined chat keeps recent local deliveries without trusting remote timestamps', () => {
+  const item = squad.buildForumStatement({ forumId: PILOT_FORUM_ID, author: helper, body: 'mesh', now: 1000, entropy: 'cd'.repeat(16) })!;
+  let mesh: typeof item[] = [];
+  for (let i = 0; i < squad.FORUM_CHAT_CAP; i++) mesh = squad.retainForumChat(mesh, { ...item, id: `mesh-${i}`, ts: 99999999999 });
+  const localItem = { ...item, id: 'local-new', body: 'local only' };
+  const local = squad.retainForumChat([], localItem);
+  let view = squad.mergeForumChat({ pilot: [], mesh, local, hidden: [] });
+  assert.equal(view.length, squad.FORUM_CHAT_CAP);
+  assert.ok(view.some(row => row.id === localItem.id));
+  const echo = { ...localItem, body: 'verified mesh' };
+  mesh = squad.retainForumChat(mesh, echo);
+  view = squad.mergeForumChat({ pilot: [], mesh, local, hidden: [] });
+  assert.deepEqual(view.filter(row => row.id === localItem.id), [echo]);
+});
+
+test('unsigned graph cannot supply ownership or Check grants for non-fixture needs', () => {
+  const primary = graph(); const trusted = createMemorySeeAcl();
+  const overlay = squad.overlaySeeGraph(primary, trusted);
+  assert.equal(overlay.ownerOf(need.id), undefined);
+  assert.equal(overlay.hasObject(need.id), false);
+  assert.equal(authorizeForumOffer(offer, helper, PILOT_FORUM_ID, undefined,
+    { graph: overlay, need, now: 1000 }), false);
+});
+
+test('accepted offer history is bounded per need and globally, including oversized rows', () => {
+  let rows = new Map<string, ForumOffer>();
+  for (let parent = 0; parent < 12; parent++) for (let i = 0; i < 100; i++) {
+    const next = { ...offer, id: `${offer.id}-${i}`, need: `${need.id}-${parent}` };
+    rows = squad.retainForumOffer(rows, next);
+    assert.ok(rows.size <= squad.FORUM_OFFER_CAP);
+    assert.ok([...rows.values()].filter(row => row.need === next.need).length <= squad.FORUM_OFFER_PER_NEED_CAP);
+  }
+  const huge = { ...offer, body: 'x'.repeat(squad.FORUM_OFFER_MAX_CHARS) };
+  assert.equal(squad.forumOfferFits(huge), false);
+  assert.deepEqual(squad.retainForumOffer(rows, huge), rows);
+  assert.equal(squad.forumOfferFits({ ...offer, sig: 'x'.repeat(squad.FORUM_OFFER_MAX_CHARS) }), false);
+});
+
+test('public-vector squad fixture cannot connect, publish, or restore former mesh authority', async () => {
+  const { PILOT_MESH_ENABLED } = await import('./forum-squad-fixture');
+  assert.equal(PILOT_MESH_ENABLED, false);
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync('components/SquadForum.tsx', 'utf8');
+  assert.match(source, /if \(!PILOT_MESH_ENABLED \|\| !register\) return;/);
+  assert.match(source, /if \(!PILOT_MESH_ENABLED \|\| !gun\) return false;/);
+  assert.match(source, /if \(!PILOT_MESH_ENABLED\) return;\s+const loaded = parseNeedHighWater/);
+  assert.match(source, /if \(!PILOT_MESH_ENABLED\) return "local";/);
+});

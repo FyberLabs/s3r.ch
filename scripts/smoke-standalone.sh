@@ -36,8 +36,15 @@ check() {
 check /api/health 200
 check /api/feed 200
 check /feed 200
+check /feed/squad 200
 check /forum 200
 check /api/identity/providers 200
+
+squad="$(curl --max-time 10 -fsS "http://127.0.0.1:$port/feed/squad")"
+if ! printf '%s' "$squad" | grep -F 'This is a local demonstration' >/dev/null; then
+  echo "squad must label its local demonstration boundary" >&2
+  fail=1
+fi
 
 health="$(curl --max-time 5 -fsS "http://127.0.0.1:$port/api/health")"
 echo "$health"

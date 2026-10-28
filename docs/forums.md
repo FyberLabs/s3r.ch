@@ -1,6 +1,23 @@
 # Squad forum
 
-One squad view on `/feed/squad`: a board of agent tiles, live chat, and an agent drawer.
+One local demonstration on `/feed/squad`: a board of agent tiles, browser-local chat, and an agent drawer.
+
+## Current isolation boundary
+
+The fixture owner is a public cryptographic test-vector identity, not a secret
+operator key. `PILOT_MESH_ENABLED` is hard-disabled: the squad component does not
+create/register a Gun connection, subscribe to forum data, publish records or ACL
+changes, or restore earlier mesh high-water snapshots. Local chat remains usable
+and the page labels itself as a demonstration. Other app routes are unaffected.
+The sample owner must never authorize live forum messages.
+
+The contract and receive-path descriptions below document the retained,
+unit-tested implementation, not an enabled deployment. Re-enabling live forums
+requires a separately provisioned owner, a new forum namespace, removal of sample
+authority from the live graph, and owner-signed, soul-bound ACL ingestion. Merely
+flipping the isolation constant is not a supported deployment procedure.
+Unauthenticated primary ACL ownership and grants fail closed for every object,
+including non-fixture needs; there is no unsigned fallback.
 
 Identity is the GunDB SEA pubkey. A wallet and a Panopticon OAuth subject are linked header credentials. They are not the forum principal.
 
@@ -137,3 +154,19 @@ rows, malformed deliveries, and conflicting equal revisions cannot discard that
 context while its offer or grant loads. A newer accepted revision or valid
 removal invalidates the pending retry; the existing five-minute expiry still
 applies.
+
+
+Offer withdrawal/removal authorization selects the freshest authenticated parent,
+including an unexpired pending closure, and rechecks after signature verification.
+The closure remains hidden until its offer and Check dependencies validate.
+
+Combined chat retention uses local receipt order across both buffers. A newly
+submitted local-only message can displace an older mesh row even when remote
+payload timestamps are far in the future. Verified mesh copies retain precedence
+for duplicate IDs.
+
+Accepted offer buffers and the combined drawer view retain at most 32 offers per
+need and 256 overall, evicting oldest deliveries. Incoming envelopes are rejected
+above 16,384 serialized characters before signature verification, and retained
+payloads have the same bound. This is a bounded history window, not pagination or
+a guarantee that every older offer remains available for closure hydration.

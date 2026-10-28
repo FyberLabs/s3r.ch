@@ -21,11 +21,13 @@ import {
   PILOT_CHAT,
   PILOT_FORUM_ID,
   PILOT_FORUM_LABEL,
+  PILOT_MESH_ENABLED,
   PILOT_LABELS,
   PILOT_NEEDS,
   admitPilotRoster,
 } from "@/lib/forum-squad-fixture";
 import {
+  freshestOfferParent, retainForumOffer, forumOfferFits,
   pendingClosureDominates, retainChatTombstone, pruneChatTombstones, CHAT_TOMBSTONE_TTL_MS, authorizeStatusAdmission,
   retainForumChat, forumChatFits,
   pendingNeedKey, statusRevisionAllowed, grantForumWatch, expireForumWatches, type ForumWatch,
@@ -177,7 +179,7 @@ function chainGet(gun: FeedGun, soul: string): FeedGun | null {
 }
 
 function putSoul(gun: FeedGun | null, soul: string, data: unknown): boolean {
-  if (!gun) return false;
+  if (!PILOT_MESH_ENABLED || !gun) return false;
   const node = chainGet(gun, soul);
   if (!node) return false;
   node.put(data);
@@ -388,6 +390,7 @@ export function SquadForum() {
   }
 
   useEffect(() => {
+    if (!PILOT_MESH_ENABLED) return;
     const loaded = parseNeedHighWater(forumStorage()?.getItem(NEED_HIGH_WATER_KEY) ?? null);
     const statuses = parseStatusHighWater(forumStorage()?.getItem("s3rch:squad:status-high-water:v1") ?? null, PILOT_FORUM_ID);
     statusHighWaterRef.current = statuses;
@@ -397,7 +400,7 @@ export function SquadForum() {
   }, []);
 
   useEffect(() => {
-    if (!register) return;
+    if (!PILOT_MESH_ENABLED || !register) return;
     let cancelled = false;
     let offAgents: { off?: () => void } | undefined;
     let offNeeds: { off?: () => void } | undefined;
@@ -539,12 +542,12 @@ export function SquadForum() {
         const versionScope = fromRemoval ? "offer-remove" : fromCancel ? "offer-cancel" : "offer";
         const sig = signatureOf(data);
         if (!sig || !data || typeof data !== "object") return false;
+        if (!forumOfferFits(data)) return false;
         const row = data as { helper?: unknown; need?: unknown };
         const hintedNeed = typeof row.need === "string" ? row.need : undefined;
         if (hintedNeed !== undefined && hintedNeed !== parentNeedId) return false;
         const pending = pendingNeedsRef.current.get(parentNeedId);
-        const parentNeed = needsRef.current.get(parentNeedId) ??
-          (pending && Date.now() - pending.at < PENDING_NEED_TTL_MS ? pending.context : undefined);
+        let parentNeed = freshestOfferParent(needsRef.current.get(parentNeedId), pending, Date.now());
         const candidates = offerSignerCandidates({
           offerId: key,
           hintedHelper: typeof row.helper === "string" ? row.helper : undefined,
@@ -599,6 +602,7 @@ export function SquadForum() {
           else if (pendingOffersRef.current.get(queueKey)?.gen === gen) pendingOffersRef.current.delete(queueKey);
           return false;
         }
+        parentNeed = freshestOfferParent(needsRef.current.get(parentNeedId), pendingNeedsRef.current.get(parentNeedId), Date.now());
         const removal = parseForumMeshRemoval(payload);
         if (removal) {
           if (key === undefined || removal.kind !== "offer" || removal.need === undefined) return false;
@@ -695,9 +699,7 @@ export function SquadForum() {
         setMeshOffers((prev) => {
           const existing = prev.get(forumOfferCacheKey(offer.need, offer.id));
           if (!mergeForumOffer(existing, offer)) return prev;
-          const next = new Map(prev);
-          next.set(forumOfferCacheKey(offer.need, offer.id), offer);
-          return next;
+          return retainForumOffer(prev, offer);
         });
         setLocalOffers((prev) => {
           const local = prev.get(forumOfferCacheKey(offer.need, offer.id));
@@ -1311,7 +1313,9 @@ export function SquadForum() {
       }
       if (offerBlockedByCancel(offerCancels, offer)) map.set(id, { ...offer, stated: 0 });
     }
-    return map;
+    let bounded = new Map<string, ForumOffer>();
+    for (const offer of map.values()) bounded = retainForumOffer(bounded, offer);
+    return bounded;
   }, [localOffers, meshOffers, offerCancels, removedOffers]);
   offersRef.current = offers;
 
@@ -1383,6 +1387,7 @@ export function SquadForum() {
   }
 
   function meshNote(kind: string, wrote: "signed" | "offline" | "local", okLine: string): string {
+    if (!PILOT_MESH_ENABLED) return `${kind} on this browser. This sample board does not connect to the mesh.`;
     if (wrote === "signed") return okLine;
     if (wrote === "offline") return `${kind} on this browser. The mesh peer was not ready.`;
     return `${kind} on this browser. The mesh put needs a signature from this SEA key.`;
@@ -1415,13 +1420,13 @@ export function SquadForum() {
       setNotice(needNotice(decision.ok ? "bad-offer" : decision.reason, "offer"));
       return;
     }
-    see?.acl.putObject(decision.offer.id, decision.offer.helper);
-    void see?.persist();
+    if (PILOT_MESH_ENABLED) {
+      see?.acl.putObject(decision.offer.id, decision.offer.helper);
+      void see?.persist();
+    }
     const offer = decision.offer;
     setLocalOffers((prev) => {
-      const next = new Map(prev);
-      next.set(forumOfferCacheKey(offer.need, offer.id), offer);
-      return next;
+      return retainForumOffer(prev, offer);
     });
     setOfferBody("");
     const wrote = await putAuthedRecord(
@@ -1510,9 +1515,7 @@ export function SquadForum() {
       setOfferCancels(ids);
     }
     setLocalOffers((prev) => {
-      const map = new Map(prev);
-      map.set(forumOfferCacheKey(next.need, next.id), next);
-      return map;
+      return retainForumOffer(prev, next);
     });
     const wrote = await putAuthedRecord(forumOfferSoul(next.forumId, next.need, next.id), next, seaPub);
     if (wrote === "signed") {
@@ -1619,6 +1622,7 @@ export function SquadForum() {
     record: object,
     writer: string,
   ): Promise<"signed" | "offline" | "local"> {
+    if (!PILOT_MESH_ENABLED) return "local";
     const pair = pairRef.current;
     if (!pair || pair.pub !== writer) return "local";
     const sig = await signForumRecord(record, pair);
@@ -1653,6 +1657,12 @@ export function SquadForum() {
     });
     if (!item) {
       setNotice("Statement was not accepted.");
+      return;
+    }
+    if (!PILOT_MESH_ENABLED) {
+      setLocalChat(prev => retainForumChat(prev, item));
+      setDraft("");
+      setNotice("Statement kept on this browser. This sample board does not connect to the mesh.");
       return;
     }
     const node = toGunNode(item);
@@ -1690,7 +1700,7 @@ export function SquadForum() {
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Squad forum</h1>
           <p className="mt-1 text-sm text-ink-muted">
             {PILOT_FORUM_LABEL}. Identity is the SEA pubkey. Wallet and Panopticon are linked
-            credentials.
+            credentials. This is a local demonstration; messages and actions are not published.
           </p>
         </div>
         {alarmOn ? (

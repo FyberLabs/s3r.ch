@@ -408,20 +408,19 @@ export function parseForumOffer(value: unknown): ForumOffer | null {
 /**
  * An admitted sample owner stays the owner. A mesh edge does not replace
  * that owner. An unsigned mesh grant is not Check see on a sample object:
- * the owner string is not a signature. Objects the sample does not admit
- * still read the user graph.
+ * the owner string is not a signature. Unknown objects fail closed too;
+ * the primary graph contains unauthenticated mesh ACL edges.
  */
-export function overlaySeeGraph(primary: SeeGraph, sample: SeeGraph): SeeGraph {
+export function overlaySeeGraph(_primary: SeeGraph, sample: SeeGraph): SeeGraph {
   return {
     hasObject(object) {
-      return sample.hasObject(object) || primary.hasObject(object);
+      return sample.hasObject(object);
     },
     ownerOf(object) {
-      return sample.ownerOf(object) ?? primary.ownerOf(object);
+      return sample.ownerOf(object);
     },
     seeGrants(object) {
-      if (sample.ownerOf(object)) return sample.seeGrants(object);
-      return primary.seeGrants(object);
+      return sample.seeGrants(object);
     },
   };
 }
@@ -972,7 +971,9 @@ export function mergeForumChat(input: {
   for (const item of withoutChatIds(input.pilot, input.hidden)) put(item);
   for (const item of withoutChatIds(input.local, input.hidden)) put(item);
   for (const item of withoutChatIds(input.mesh, input.hidden)) put(item);
-  return [...map.values()].filter(forumChatFits).slice(-FORUM_CHAT_CAP)
+  return [...map.values()].filter(forumChatFits)
+    .sort((a, b) => (chatDeliveryOrder.get(a) ?? 0) - (chatDeliveryOrder.get(b) ?? 0))
+    .slice(-FORUM_CHAT_CAP)
     .sort((a, b) => a.ts - b.ts || a.id.localeCompare(b.id));
 }
 
@@ -1584,8 +1585,12 @@ export function forumChatFits(item: FeedItem): boolean {
   return JSON.stringify(item).length <= FORUM_CHAT_ROW_CHARS;
 }
 /** Bounded recent deliveries, including edits. Remote timestamps do not control eviction. */
+const chatDeliveryOrder = new WeakMap<FeedItem, number>();
+let chatDeliverySerial = 0;
+
 export function retainForumChat(rows: readonly FeedItem[], incoming: FeedItem): FeedItem[] {
   if (!forumChatFits(incoming)) return [...rows].slice(-FORUM_CHAT_CAP);
+  if (!chatDeliveryOrder.has(incoming)) chatDeliveryOrder.set(incoming, ++chatDeliverySerial);
   return [...rows.filter(row => !soulKeyMatches(row.id, incoming.id)), incoming].slice(-FORUM_CHAT_CAP);
 }
 
@@ -1615,4 +1620,29 @@ export function retainChatTombstone(tombs: Map<string, number>, id: string, now:
 export function authorizeStatusAdmission(status: ForumAgentStatus, key: string, signer: string,
   owner: string | undefined, forumId: string): boolean {
   return forumStatusAdmission({ status, mapKey: key, signer, forumOwner: owner, forumId, enrolled: false }) === "owner";
+}
+
+/** Select only authenticated context, including a closure still hydrating. */
+export function freshestOfferParent(installed: ForumNeed | undefined, pending: PendingNeedEntry | undefined, now: number): ForumNeed | undefined {
+  const context = pending && now - pending.at < PENDING_NEED_TTL_MS ? pending.context : undefined;
+  return context && (!installed || context.hamState > installed.hamState) ? context : installed;
+}
+export const FORUM_OFFER_CAP = 256;
+export const FORUM_OFFER_PER_NEED_CAP = 32;
+export const FORUM_OFFER_MAX_CHARS = 16384;
+export function forumOfferFits(value: unknown): boolean {
+  try { return JSON.stringify(value)?.length <= FORUM_OFFER_MAX_CHARS; } catch { return false; }
+}
+/** Bounded delivery window, with per-parent fairness. */
+export function retainForumOffer(rows: ReadonlyMap<string, ForumOffer>, offer: ForumOffer): Map<string, ForumOffer> {
+  const next = new Map(rows);
+  if (!forumOfferFits(offer)) return next;
+  const key = forumOfferCacheKey(offer.need, offer.id);
+  if (!mergeForumOffer(next.get(key), offer)) return next;
+  next.delete(key);
+  next.set(key, offer);
+  const siblings = [...next].filter(([, row]) => row.need === offer.need);
+  for (const [id] of siblings.slice(0, Math.max(0, siblings.length - FORUM_OFFER_PER_NEED_CAP))) next.delete(id);
+  while (next.size > FORUM_OFFER_CAP) next.delete(next.keys().next().value!);
+  return next;
 }

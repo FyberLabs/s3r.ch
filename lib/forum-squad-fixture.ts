@@ -18,6 +18,8 @@ import {
 import vector from "@/lib/identity/vectors/forums.json";
 import type { SquadAgent, SquadSubtask, SquadUpdate } from "@/lib/forum-squad";
 
+// Public vectors are demonstration identities, never live authority.
+export const PILOT_MESH_ENABLED: boolean = false;
 export const PILOT_FORUM_ID = vector.forumId;
 export const PILOT_OWNER = vector.seaPubkey;
 export const PILOT_FORUM_LABEL = "Squad 3";

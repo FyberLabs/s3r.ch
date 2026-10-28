@@ -865,7 +865,7 @@ describe("squad view", () => {
     );
     assert.equal(graph.ownerOf("not-a-sample-object"), undefined);
     primary.putObject("not-a-sample-object", need.subject);
-    assert.equal(overlaySeeGraph(primary, sample).ownerOf("not-a-sample-object"), need.subject);
+    assert.equal(overlaySeeGraph(primary, sample).ownerOf("not-a-sample-object"), undefined);
   });
 
   it("closes a mesh need only when the accepted offer is live and the helper can see", () => {
