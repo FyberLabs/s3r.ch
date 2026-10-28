@@ -100,3 +100,19 @@ in the future for agents and 300 for the owner. Owner Pause/Reassign advances pa
 the displayed revision as well as the current clock, preserving an immediate
 override at the agent's accepted boundary. These are squad admission limits;
 shape-valid signatures alone do not authorize an extreme revision.
+
+Admitted pilot agents subscribe to their signed removal children immediately,
+using the same bounded listener registry as mesh-admitted agents. A sample tile
+does not need a published live status before its signed removal can be heard.
+
+A subject closure may carry a newer owner-signed open admission than this browser
+remembers. Verification selects that newer matching admission, then checks the
+immediate successor and live accepted offer. It still rejects a closure older
+than cached state or one that changes the admitted subject.
+
+Squad chat retains at most 256 recent deliveries in each mesh/local buffer and
+renders at most 256 combined lines. Edits replace the existing ID and count as a
+recent delivery. Eviction follows delivery order, so a forged future timestamp
+cannot permanently occupy the window. Rows larger than 16,384 serialized string
+characters are rejected. This is a bounded view of public chat, not full-history
+pagination or deletion from Gun; earlier rows may remain on peers.

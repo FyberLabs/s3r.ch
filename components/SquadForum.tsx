@@ -26,6 +26,7 @@ import {
   admitPilotRoster,
 } from "@/lib/forum-squad-fixture";
 import {
+  retainForumChat, forumChatFits,
   pendingNeedKey, statusRevisionAllowed, grantForumWatch, expireForumWatches, type ForumWatch,
   forumOfferCacheKey, offersForNeed, pendingClosureContext, needSignerCandidates,
   cacheForumStatus, parseStatusHighWater, retainPendingStatus, prunePendingStatuses,
@@ -999,15 +1000,10 @@ export function SquadForum() {
           if (cancelled || !versions.current(versionScope, key, gen) || !payload) return false;
           const item = forumStatementFromNode(payload, PILOT_FORUM_ID);
           const priorAuthor = chatRowsRef.current.find((row) => row.id === item?.id)?.author;
-          if (!item || !authorizeForumChat(item, author, key, PILOT_FORUM_ID, priorAuthor)) return false;
+          if (!item || !forumChatFits(item) || !authorizeForumChat(item, author, key, PILOT_FORUM_ID, priorAuthor)) return false;
           if (!versions.current(versionScope, key, gen)) return false;
           if (liveReplayBlocked(item.ts, chatTombStamp(item.id))) return false;
-          setMeshChat((prev) => {
-            if (prev.some((row) => row.id === item.id)) {
-              return prev.map((row) => (row.id === item.id ? item : row));
-            }
-            return [...prev, item];
-          });
+          setMeshChat((prev) => retainForumChat(prev, item));
           setLocalChat((prev) => retireLocalChat(prev, item.id));
           return true;
         }
@@ -1128,6 +1124,7 @@ export function SquadForum() {
           void acceptStatus(row, pub, gen, true);
         }));
       }
+      for (const agent of PILOT_AGENTS) watchStatusRemoval(agent.status.seaPubkey);
       statusTimer = setInterval(expireStatuses, 30_000);
       offAgents = forum.get("agents").map().on((data, key) => {
         if (cancelled || typeof key !== "string" || !statusWatchCandidate(key, data)) return;
@@ -1635,7 +1632,7 @@ export function SquadForum() {
     const sig = pair && pair.pub === seaPub ? await signForumRecord(node, pair) : null;
     const wrote = sig ? putSoul(gunRef.current, soul, { ...node, sig }) : false;
     void see.persist();
-    setLocalChat((prev) => [...prev, item]);
+    setLocalChat((prev) => retainForumChat(prev, item));
     setDraft("");
     if (!sig) setNotice("Statement kept on this browser. The mesh put needs a signature from this SEA key.");
     else if (!wrote) setNotice("Statement kept on this browser. The mesh peer was not ready.");

@@ -696,8 +696,9 @@ export function authorizeForumNeed(
   admitted?: ForumNeed,
 ): boolean {
   if (need.forumId !== forumId || !isSeaPubkey(signer)) return false;
-  if (signer !== owner && !subjectClosureRevision(need, known ?? admitted)) return false;
-  if (known && need.subject !== known.subject) return false;
+  if (known && (need.subject !== known.subject || need.hamState < known.hamState)) return false;
+  known = freshestNeedAdmission(need, known, admitted);
+  if (signer !== owner && !subjectClosureRevision(need, known)) return false;
   if (known && known.stated === 1 && need.stated === 0 && need.id === known.id) {
     const party = signer === owner || signer === known.subject;
     if (!party) return false;
@@ -971,7 +972,8 @@ export function mergeForumChat(input: {
   for (const item of withoutChatIds(input.pilot, input.hidden)) put(item);
   for (const item of withoutChatIds(input.local, input.hidden)) put(item);
   for (const item of withoutChatIds(input.mesh, input.hidden)) put(item);
-  return [...map.values()].sort((a, b) => a.ts - b.ts || a.id.localeCompare(b.id));
+  return [...map.values()].filter(forumChatFits).slice(-FORUM_CHAT_CAP)
+    .sort((a, b) => a.ts - b.ts || a.id.localeCompare(b.id));
 }
 
 /** Drop the local copy once its verified mesh row is in hand. */
@@ -1445,7 +1447,8 @@ export function pendingClosureContext(need: ForumNeed, signer: string, owner: st
   known?: ForumNeed, admitted?: ForumNeed): ForumNeed | undefined {
   if (need.stated !== 0 || !need.acceptedOffer) return undefined;
   if (known && (known.subject !== need.subject || known.hamState > need.hamState)) return undefined;
-  if (signer !== owner && !subjectClosureRevision(need, known ?? admitted)) return undefined;
+  known = freshestNeedAdmission(need, known, admitted);
+  if (signer !== owner && !subjectClosureRevision(need, known)) return undefined;
   if (signer === owner || (admitted && signer === admitted.subject && forumNeedAdmission(admitted, need))) return need;
   if (known && signer === known.subject && forumNeedAdmission(known, need)) return need;
   return undefined;
@@ -1558,4 +1561,23 @@ export function grantForumWatch(watches: Map<string, ForumWatch>, kind: ForumWat
   if (watches.size >= FORUM_WATCH_CAP || same >= FORUM_WATCH_PER_KIND || (!verified && probes >= ROLE_PROBE_CAP)) return false;
   watches.set(id, { kind, at: now, verified });
   return true;
+}
+
+
+/** Only a verified, matching owner admission may supersede remembered state. */
+export function freshestNeedAdmission(need: ForumNeed, known?: ForumNeed, admitted?: ForumNeed): ForumNeed | undefined {
+  if (!admitted || !forumNeedAdmission(admitted, need)) return known;
+  if (known && (known.id !== admitted.id || known.forumId !== admitted.forumId || known.subject !== admitted.subject)) return known;
+  return !known || admitted.hamState > known.hamState ? admitted : known;
+}
+
+export const FORUM_CHAT_CAP = 256;
+export const FORUM_CHAT_ROW_CHARS = 16_384;
+export function forumChatFits(item: FeedItem): boolean {
+  return JSON.stringify(item).length <= FORUM_CHAT_ROW_CHARS;
+}
+/** Bounded recent deliveries, including edits. Remote timestamps do not control eviction. */
+export function retainForumChat(rows: readonly FeedItem[], incoming: FeedItem): FeedItem[] {
+  if (!forumChatFits(incoming)) return [...rows].slice(-FORUM_CHAT_CAP);
+  return [...rows.filter(row => !soulKeyMatches(row.id, incoming.id)), incoming].slice(-FORUM_CHAT_CAP);
 }

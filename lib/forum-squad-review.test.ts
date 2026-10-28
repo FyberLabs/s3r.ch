@@ -187,3 +187,54 @@ test('subject closes exactly the admitted successor and preserves an owner reope
   assert.equal(reopened.ok, true);
   assert.equal(reopened.need?.hamState, closed.hamState + 1);
 });
+
+test('pilot removal listeners do not require a published mesh status', () => {
+  const watches = new Map<string, number>();
+  for (const agent of PILOT_AGENTS) assert.equal(grantStatusWatch(watches, agent.status.seaPubkey, true, 0), true);
+  const status = PILOT_AGENTS.find(agent => agent.status.state === 'emergency')!.status;
+  assert.ok(watches.has(status.seaPubkey));
+  const removal = { removed: 1 as const, action: 'remove' as const, forumId: PILOT_FORUM_ID, id: status.id, seaPubkey: status.seaPubkey };
+  assert.equal(squad.authorizeForumAgentRemoval({ removal, mapKey: status.seaPubkey, signer: PILOT_OWNER,
+    forumOwner: PILOT_OWNER, forumId: PILOT_FORUM_ID }), true);
+  const roster = squad.composeForumRoster({ sample: PILOT_AGENTS, mesh: [],
+    admitted: new Set(PILOT_AGENTS.map(a => a.status.seaPubkey)), removed: new Set([status.seaPubkey]) });
+  assert.equal(roster.some(a => a.status.seaPubkey === status.seaPubkey), false);
+});
+
+test('new owner admission advances stale open or closed cache without accepting rollback', () => {
+  const admitted = { ...need, hamState: need.hamState + 2 };
+  const latest = { ...closed, hamState: admitted.hamState + 1 };
+  const closure = { graph: graph(), postedOffers: new Map([[offer.id, offer]]), now: 1000 };
+  for (const known of [need, closed]) {
+    assert.equal(authorizeForumNeed(latest, need.subject, PILOT_OWNER, PILOT_FORUM_ID, known, closure, admitted), true);
+    assert.ok(pendingClosureContext(latest, need.subject, PILOT_OWNER, known, admitted));
+  }
+  const newer = { ...need, hamState: latest.hamState + 1 };
+  assert.equal(authorizeForumNeed(latest, need.subject, PILOT_OWNER, PILOT_FORUM_ID, newer, closure, admitted), false);
+  assert.equal(pendingClosureContext(latest, need.subject, PILOT_OWNER, newer, admitted), undefined);
+  assert.equal(authorizeForumNeed(latest, need.subject, PILOT_OWNER, PILOT_FORUM_ID, need, closure,
+    { ...admitted, subject: helper }), false);
+  assert.equal(authorizeForumNeed(latest, need.subject, PILOT_OWNER, PILOT_FORUM_ID, need, closure,
+    { ...admitted, body: 'forged context' }), false);
+});
+
+test('verified chat flood, edits and composed render stay within row and size budgets', () => {
+  const item = squad.buildForumStatement({ forumId: PILOT_FORUM_ID, author: helper, body: 'message',
+    now: 1000, entropy: 'ab'.repeat(16) })!;
+  let rows: typeof item[] = [];
+  for (let i = 0; i < squad.FORUM_CHAT_CAP * 4; i++) {
+    rows = squad.retainForumChat(rows, { ...item, id: `stmt-${i}`, ts: i });
+    assert.ok(rows.length <= squad.FORUM_CHAT_CAP);
+  }
+  assert.equal(rows[0].id, `stmt-${squad.FORUM_CHAT_CAP * 3}`);
+  const corrected = { ...rows[0], body: 'corrected' };
+  rows = squad.retainForumChat(rows, corrected);
+  assert.equal(rows.at(-1)!.body, 'corrected');
+  assert.equal(rows.filter(row => row.id === corrected.id).length, 1);
+  const oversized = { ...item, body: 'x'.repeat(squad.FORUM_CHAT_ROW_CHARS + 1) };
+  assert.equal(squad.forumChatFits(oversized), false);
+  assert.deepEqual(squad.retainForumChat(rows, oversized), rows);
+  const rendered = squad.mergeForumChat({ pilot: [item], mesh: rows,
+    local: rows.map(row => ({ ...row, id: `local-${row.id}` })), hidden: [] });
+  assert.equal(rendered.length, squad.FORUM_CHAT_CAP);
+});
