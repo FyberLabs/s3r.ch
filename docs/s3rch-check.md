@@ -42,7 +42,23 @@ gun.get('s3rch').get('granted').get(accessor).get('items'|'rooms'|'users').get(e
                                                  → grant-delivery envelope (not a public row)
 gun.get('s3rch').get('acl').get(aclPrincipalKey(owner))
      .get(aclKey(object)).get(aclPrincipalKey(accessor))  → MeshSeeGrant
+gun.get('s3rch').get('forums').get(forumId).get('agents').get(pubkey)
+                                                 → forum status
+gun.get('s3rch').get('forums').get(forumId).get('needs').get(needId)
+                                                 → forum need
+gun.get('s3rch').get('forums').get(forumId).get('needs').get(needId).get('offers').get(offerId)
+                                                 → offer, owned by the helper
+gun.get('s3rch').get('forums').get(forumId).get('alarm')
+                                                 → forum alarm
+gun.get('s3rch').get('forums').get(forumId).get('template')
+                                                 → distinct-principals | role-labels
+gun.get('s3rch').get('forums').get(forumId).get('roles').get(roleToken).get(pubkey)
+                                                 → role membership
+gun.get('s3rch').get('forums').get(forumId).get('agents').get(pubkey).get('subtasks').get(objectId)
+gun.get('s3rch').get('forums').get(forumId).get('agents').get(pubkey).get('updates').get(objectId)
 ```
+
+The pubkey is one `.get()` segment, including a dot inside it. Forum chat is a `GunFeedNode` on `s3rch/items` whose tags include `forum:<forumId>`. There is no `s3rch/chat` soul and no `s3rch/forums/<id>/chat` soul for that stream. Names for these rows are in [forums.md](forums.md).
 
 `encodeKey`: `id.replace(/[.#$\[\]]/g, '_')`.
 
@@ -100,3 +116,19 @@ Grant ≠ share ≠ delivery ≠ unshare.
 - URL handoffs stay untrusted `HandoffHint`. A hint plus a hop still fail closed without dest ACL.
 
 Reuse SociACL Social Light (`convention-badge` / `enrolled-station`, SLHP v1). Do not reimplement the hop frame beyond the consume types. No hop UI on public `/` or `/feed`.
+
+## Forums
+
+Squad forum souls are listed above. A hop, a hint, a status node, and a chat tag do not mint a grant. The destination runs Check again.
+
+Check see on a need lets the writer post a live offer. That does not set `stated` to `0`. The helper owns that row and may withdraw it until the need is resolved on that offer. The owner or the subject accepts only a live offer the graph already holds, and only while that helper still passes Check see. The subject may accept an offer they posted. That accept sets `stated` to `0` and records the offer id. A caller-supplied offer that was never posted is refused. Decline sets that offer to `stated` `0` and leaves the need open. Reopen is the owner only. It sets `stated` to `1` and clears the accepted offer. Earlier offers stay. Body and severity stay as posted. An optional spec id stays as posted. A missing admission does not accept the update. This page puts the signed offer and the signed need. It does not put an unsigned stand-in.
+
+On this app, pause and reassign are owner puts of the status node. Check see is not that status write.
+
+A mesh status, need, alarm, offer, or chat row is kept only when its signature checks out for the allowed writer. An unsigned row is ignored. A self-signed status updates a pubkey already on the roster. A new pubkey is added only when the forum owner signed that status, or signed a role membership for that pubkey. Owning the status id does not add that pubkey. An unsigned null does not remove a verified status, need, or offer. A signed removal from the admitted writer does, and that record binds the action. A declined or withdrawn offer stays stated 0. A later live copy of that same offer id does not replace it. An admitted sample owner stays the owner when a mesh edge names another pubkey. A grant does not replace that owner. An unsigned mesh grant is not Check see on a sample need. A chat id names its author. A chat removal is checked on its own, and the author is read from that id, so it still hides the line when it arrives first. A signed removal stays, and an older live copy does not return. Pause and reassign use the forum owner. A signed need removal drops that id from the board, including the sample row. An offer removal uses the subscribed parent need. An unsigned need field that names another need is refused. A signed agent removal drops that pubkey from the board, including the sample tile. A mesh need that sets stated to 0 is installed only when the named offer is a live posted offer and that helper still passes Check see. A subject-signed close is kept when those gates pass and this browser already holds the admitted subject, or when the close carries the owner's signature of the open row naming that subject. A fresh close is kept when the owner signed it. A payload subject alone is not an admission. An older signed hamState does not replace a need this browser has already accepted. An offer removal verifies the helper from the offer id. Offer cancel and removal subscriptions open only after that offer is authorized. A live offer from the mesh is kept only when its signer passes Check see on the parent need. A live offer that arrives before that grant is loaded is checked again when the grant appears. A signed cancel of an offer is also stored on the offer cancel soul. A later live copy at the offer key does not replace that cancel. A cancel that arrives before the need owner is loaded is kept and checked again when that owner appears. After a need names that offer, the helper cannot remove it. An owner-signed need that arrives before ownership is loaded is kept inside a cap and a TTL, and checked again only when that need's owner appears. A chat line put on an existing statement id has to be the original author. The sending browser drops its local copy when the verified mesh row arrives. A removal watch is opened only after that row verifies. An alarm pin or unpin carries an owner-signed `rev`, and a replay at or below the last accepted `rev` does not clear the pin. A chat line stays up when a later put is an unsigned null, a malformed value, or a tag change without a signature. It drops when the author or the forum owner signed a tombstone for that forum and that Gun key. A signature read that finishes after a later put on the same key is ignored. An id inside an unsigned tombstone does not hide a different line. A local pause stays visible only while its `lastUpdate` is strictly newer than the mesh row. Signing uses the unlocked key on this browser. A wrapped key signs after unlock. The private half is not written to the mesh.
+
+Role membership is `distinct-principals` or `role-labels` on the template soul. A role token is not a Check predicate.
+
+An emergency alarm is on when a status tile has state `emergency`, or when the alarm soul pins a stated emergency need in the same forum (`pinned` is `1` and `alarm.need` is that need). Either input is enough. The alarm record is data, not a grant.
+
+The squad page is the board, the chat, and the agent drawer. Role strips, Fleet, and Command are not on that page. `/forum` is still the desktop channel. See [forums.md](forums.md).

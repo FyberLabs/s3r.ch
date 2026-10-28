@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useConnect,
   useConnection,
@@ -29,6 +29,7 @@ import {
   persistWrappedMeshKey,
   readLocalMeshPair,
 } from "@/lib/identity/mesh";
+import { forgetUnlockedMeshPair, rememberUnlockedMeshPair } from "@/lib/identity/unlocked-mesh";
 import {
   lookupEnsHeldClaimForSession,
   type EnsHeldClaim,
@@ -104,6 +105,7 @@ function IdentityBarInner() {
   const { mutateAsync: signMessageAsync } = useSignMessage();
 
   const [session, setSession] = useState<SessionPayload | null>(null);
+  const hadSession = useRef(false);
   const [backup, setBackup] = useState<BackupState | undefined>(undefined);
   const [hypermeshDeclined, setHypermeshDeclined] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -285,7 +287,11 @@ function IdentityBarInner() {
   }, [session, indicatorsCachedFor]);
 
   useEffect(() => {
-    if (session) return;
+    if (session) {
+      hadSession.current = true;
+      return;
+    }
+    if (hadSession.current) forgetUnlockedMeshPair();
     setWrapWithPaper(false);
     setPaperPaste("");
     setPaperReveal(null);
@@ -293,8 +299,14 @@ function IdentityBarInner() {
 
   useEffect(() => {
     if (!session) return;
-    void getMeshKey(session.address)
+    let cancelled = false;
+    const address = session.address;
+    void getMeshKey(address)
       .then((record) => {
+        if (cancelled) return;
+        if (record && isPlaintextMeshKeyRecord(record)) {
+          rememberUnlockedMeshPair(address, record.seaPair);
+        }
         setMeshKind((current) => {
           if (current) return current;
           if (isWrappedMeshKeyRecord(record)) return "wrapped";
@@ -311,6 +323,9 @@ function IdentityBarInner() {
       .catch(() => {
         // Private mode / missing IndexedDB — stay quiet.
       });
+    return () => {
+      cancelled = true;
+    };
   }, [session]);
 
   const heldLookups = useMemo(
@@ -477,6 +492,9 @@ function IdentityBarInner() {
           setMeshLine,
           mesh.created ? "Ready" : undefined,
         );
+        if (isPlaintextMeshKeyRecord(mesh.record)) {
+          rememberUnlockedMeshPair(verifyBody.address, mesh.record.seaPair);
+        }
         setUnlocked(false);
       } catch {
         setMeshLine("Failed");
@@ -606,6 +624,7 @@ function IdentityBarInner() {
         address: session.address,
         envelope,
       });
+      rememberUnlockedMeshPair(session.address, existing.seaPair);
       setMeshKind("wrapped");
       setMeshLine("Saved");
       setUnlocked(true);
@@ -636,13 +655,14 @@ function IdentityBarInner() {
       if (!existing || !isWrappedMeshKeyRecord(existing)) {
         throw new Error("Nothing to unlock.");
       }
+      let pair;
       try {
         const prfOutput = await evaluatePrf({
           rpId: existing.wrap.rpId,
           credentialId: base64UrlToBytes(existing.wrap.credentialId),
           prfSalt: base64UrlToBytes(existing.wrap.prfSalt),
         });
-        await readLocalMeshPair({ record: existing, prfOutput });
+        pair = await readLocalMeshPair({ record: existing, prfOutput });
       } catch (prfError) {
         if (!isConnected || !existing.wrap.secondarySalt) {
           throw prfError;
@@ -654,11 +674,12 @@ function IdentityBarInner() {
           secondarySalt: base64UrlToBytes(existing.wrap.secondarySalt),
         });
         const secondarySignature = await signMessageAsync({ message: statement });
-        await readLocalMeshPair({
+        pair = await readLocalMeshPair({
           record: existing,
           secondaryKey: secondaryIkmFromWalletSignature(secondarySignature),
         });
       }
+      rememberUnlockedMeshPair(session.address, pair);
       setUnlocked(true);
       setMeshLine("Unlocked");
     } catch (error) {
@@ -690,7 +711,8 @@ function IdentityBarInner() {
         setMessage(quietPaperBackupError(error));
         return;
       }
-      await readLocalMeshPair({ record: existing, secondaryKey });
+      const pair = await readLocalMeshPair({ record: existing, secondaryKey });
+      rememberUnlockedMeshPair(session.address, pair);
       setPaperPaste("");
       setUnlocked(true);
       setMeshLine("Unlocked");
@@ -724,6 +746,7 @@ function IdentityBarInner() {
         prfSalt: base64UrlToBytes(existing.wrap.prfSalt),
       });
       const pair = await readLocalMeshPair({ record: existing, prfOutput });
+      rememberUnlockedMeshPair(session.address, pair);
       const paper = encodePaperBackup(paperKey);
       const envelope = await wrapSeaPair({
         pair,
@@ -779,6 +802,7 @@ function IdentityBarInner() {
     setMessage(null);
     try {
       await fetch("/api/identity/logout", { method: "POST" });
+      if (session?.address) forgetUnlockedMeshPair(session.address);
       setSession(null);
       await refreshBackup();
       setMeshLine(null);

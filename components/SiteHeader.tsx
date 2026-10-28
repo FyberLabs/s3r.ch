@@ -18,6 +18,9 @@ export function SiteHeader() {
           <Link href="/forum" className="hover:text-ink">
             Forum
           </Link>
+          <Link href="/feed/squad" className="hover:text-ink">
+            Squad
+          </Link>
           <a
             href="https://fyberlabs.com"
             target="_blank"
