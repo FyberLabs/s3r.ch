@@ -61,7 +61,10 @@ import {
   chatRetractionIds,
   createMeshEventVersions,
   filterAgents,
+  forumNeedAdmission,
   forumStatusAdmission,
+  ownerAdmitSig,
+  withOwnerAdmission,
   composeForumNeeds,
   composeForumRoster,
   offerRemovalAuthority,
@@ -1287,6 +1290,62 @@ describe("squad view", () => {
     assert.equal(authorizeForumNeed(forged, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID, undefined, closure), true);
     const swapped = { ...forged, subject: impostor };
     assert.equal(authorizeForumNeed(swapped, PILOT_OWNER, PILOT_OWNER, PILOT_FORUM_ID, need, closure), false);
+    assert.equal(
+      authorizeForumNeed(forged, impostor, PILOT_OWNER, PILOT_FORUM_ID, undefined, closure, need),
+      false,
+    );
+  });
+
+  it("accepts a fresh subject close when the owner's open row is bound inside it", () => {
+    const need = PILOT_NEEDS.find((row) => row.stated === 1 && row.subject !== PILOT_OWNER);
+    assert.ok(need);
+    const helperAgent = PILOT_AGENTS.find(
+      (row) => row.status.seaPubkey !== PILOT_OWNER && row.status.seaPubkey !== need.subject,
+    );
+    assert.ok(helperAgent);
+    const helper = helperAgent.status.seaPubkey;
+    const helperKey = seaToPrincipalKey(helper);
+    assert.ok(helperKey);
+    const offerId = `offer_${helperKey}_${"ef".repeat(16)}`;
+    const offer = {
+      id: offerId,
+      need: need.id,
+      forumId: PILOT_FORUM_ID,
+      helper,
+      body: "holding",
+      artifacts: "",
+      stated: 1 as const,
+    };
+    const closed = {
+      ...need,
+      stated: 0 as const,
+      acceptedOffer: offerId,
+      hamState: need.hamState + 1,
+    };
+    const graph = createMemorySeeAcl();
+    graph.putObject(need.id, PILOT_OWNER);
+    applySeeGrant(graph, PILOT_OWNER, {
+      claimId: need.id,
+      accessor: helper,
+      from: 0,
+      until: 10_000_000_000,
+    });
+    const closure = { graph, postedOffers: new Map([[offer.id, offer]]), now: 1_000 };
+    assert.equal(needClosureStatus(closed, closure), "ok");
+    assert.equal(forumNeedAdmission(need, closed), true);
+    assert.equal(forumNeedAdmission({ ...need, body: "other" }, closed), false);
+    assert.equal(
+      authorizeForumNeed(closed, need.subject, PILOT_OWNER, PILOT_FORUM_ID, undefined, closure),
+      false,
+    );
+    assert.equal(
+      authorizeForumNeed(closed, need.subject, PILOT_OWNER, PILOT_FORUM_ID, undefined, closure, need),
+      true,
+    );
+    const carried = withOwnerAdmission(closed, "SEAopen-row");
+    assert.equal(ownerAdmitSig(carried), "SEAopen-row");
+    assert.equal(ownerAdmitSig(closed), null);
+    assert.equal(carried.subject, need.subject);
   });
 
   it("derives the offer helper and queues a removal until the parent loads", () => {

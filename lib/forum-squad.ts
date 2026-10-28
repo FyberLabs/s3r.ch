@@ -648,10 +648,40 @@ export type ForumNeedClosure = {
 };
 
 /**
+ * The owner's signature over the open need, carried inside the subject's close.
+ * A cold start reads this instead of trusting the close's `subject` field.
+ */
+export function ownerAdmitSig(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const admit = (payload as { admit?: unknown }).admit;
+  return typeof admit === "string" && admit.startsWith("SEA") ? admit : null;
+}
+
+/** Close record with the owner's open-need signature inside the signed payload. */
+export function withOwnerAdmission<T extends ForumNeed>(need: T, admit: string): T & { admit: string } {
+  return { ...need, admit };
+}
+
+/**
+ * `open` is the need recovered from the owner's signature. It admits the
+ * subject. The close may not rename that subject or rewrite the posted body.
+ */
+export function forumNeedAdmission(open: ForumNeed, close: ForumNeed): boolean {
+  if (open.stated !== 1 || close.stated !== 0 || !close.acceptedOffer) return false;
+  if (open.id !== close.id || open.forumId !== close.forumId) return false;
+  if (!isSeaPubkey(open.subject) || open.subject !== close.subject) return false;
+  if (open.body !== close.body || open.severity !== close.severity) return false;
+  if ((open.spec ?? "") !== (close.spec ?? "")) return false;
+  return close.hamState > open.hamState;
+}
+
+/**
  * A close (`stated` 0 with an accepted offer) uses the same live-offer and
- * helper Check see gates as accept. The subject is admitted by a prior row
- * or by the owner's signature. A payload `subject` is not that admission.
- * The admitted owner may sign any other need row. Accept does not elect.
+ * helper Check see gates as accept. The subject is admitted by a prior row,
+ * by the owner's signature on the close, or by the owner's open-need signature
+ * carried inside the close. A payload `subject` alone is not that admission.
+ * `admitted` is that verified open row, not an unsigned copy. The admitted
+ * owner may sign any other need row. Accept does not elect.
  */
 export function authorizeForumNeed(
   need: ForumNeed,
@@ -660,6 +690,7 @@ export function authorizeForumNeed(
   forumId: string,
   known?: ForumNeed,
   closure?: ForumNeedClosure,
+  admitted?: ForumNeed,
 ): boolean {
   if (need.forumId !== forumId || !isSeaPubkey(signer)) return false;
   if (known && need.subject !== known.subject) return false;
@@ -673,7 +704,11 @@ export function authorizeForumNeed(
     return needClosureStatus(need, closure) === "ok";
   }
   if (!known && need.stated === 0 && need.acceptedOffer) {
-    if (signer !== owner) return false;
+    if (signer === owner) {
+      if (!closure) return false;
+      return needClosureStatus(need, closure) === "ok";
+    }
+    if (!admitted || signer !== admitted.subject || !forumNeedAdmission(admitted, need)) return false;
     if (!closure) return false;
     return needClosureStatus(need, closure) === "ok";
   }

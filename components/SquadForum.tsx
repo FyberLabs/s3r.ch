@@ -80,8 +80,10 @@ import {
   forumOwnerMayWriteStatus,
   forumStatementFromNode,
   forumStatusRemovalSoul,
+  forumNeedAdmission,
   forumStatusAdmission,
   liveReplayBlocked,
+  ownerAdmitSig,
   mergeForumOffer,
   needClosureStatus,
   offerBlockedByCancel,
@@ -259,6 +261,7 @@ export function SquadForum() {
   const alarmRevRef = useRef<number | undefined>(undefined);
   const pendingOffersRef = useRef<Map<string, PendingOfferEntry>>(new Map());
   const highWaterRef = useRef<Map<string, ForumNeed>>(new Map());
+  const needAdmitRef = useRef<Map<string, string>>(new Map());
   const [persistedNeeds, setPersistedNeeds] = useState<Map<string, ForumNeed>>(() => new Map());
   const acceptNeedRef = useRef<(data: unknown, key: string, gen: number) => Promise<void>>(
     async () => {},
@@ -846,7 +849,15 @@ export function SquadForum() {
                 now: Math.floor(Date.now() / 1000),
               }
             : undefined;
-        const allowed = authorizeForumNeed(need, signer, owner, PILOT_FORUM_ID, known, closure);
+        const admitSig = ownerAdmitSig(payload);
+        let admitted: ForumNeed | undefined;
+        if (admitSig && owner) {
+          const opened = await readForumSignature(admitSig, owner);
+          if (cancelled || !versions.current(versionScope, key, gen)) return;
+          const parsed = opened ? parseForumNeed(opened) : null;
+          if (parsed && forumNeedAdmission(parsed, need)) admitted = parsed;
+        }
+        const allowed = authorizeForumNeed(need, signer, owner, PILOT_FORUM_ID, known, closure, admitted);
         if (!versions.current(versionScope, key, gen)) {
           pendingNeedsRef.current.delete(key);
           return;
@@ -856,8 +867,9 @@ export function SquadForum() {
           const gate = closing && closure ? needClosureStatus(need, closure) : "denied";
           const now = Date.now();
           const waitingOnOwner = !owner && signer !== need.subject && isSeaPubkey(signer);
+          const waitingOnAdmission = closing && !known && !owner && signer === need.subject && !!admitSig;
           const kept =
-            (closing && gate === "wait") || waitingOnOwner
+            (closing && gate === "wait") || waitingOnOwner || waitingOnAdmission
               ? retainPendingNeed(
                   pendingNeedsRef.current,
                   key,
@@ -882,6 +894,7 @@ export function SquadForum() {
         if (!cached) return;
         needsRef.current = cached;
         noteNeedHighWater(need);
+        if (signer === owner && need.stated === 1) needAdmitRef.current.set(need.id, sig);
         watchOffers(need.id);
         setMeshNeeds((prev) => {
           const existing = prev.get(need.id);
@@ -1384,7 +1397,10 @@ export function SquadForum() {
       map.set(next.id, next);
       return map;
     });
-    const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), next, seaPub);
+    const needOwner = current.ownerOf(open.id);
+    const admit = needOwner && seaPub !== needOwner ? needAdmitRef.current.get(open.id) : undefined;
+    const record = admit ? { ...next, admit } : next;
+    const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), record, seaPub);
     setNotice(meshNote("Accept kept", wrote, "Offer accepted. The need is closed."));
   }
 
