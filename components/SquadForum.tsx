@@ -26,6 +26,7 @@ import {
   admitPilotRoster,
 } from "@/lib/forum-squad-fixture";
 import {
+  pendingClosureDominates, retainChatTombstone, pruneChatTombstones, CHAT_TOMBSTONE_TTL_MS, authorizeStatusAdmission,
   retainForumChat, forumChatFits,
   pendingNeedKey, statusRevisionAllowed, grantForumWatch, expireForumWatches, type ForumWatch,
   forumOfferCacheKey, offersForNeed, pendingClosureContext, needSignerCandidates,
@@ -268,7 +269,7 @@ export function SquadForum() {
   const highWaterRef = useRef<Map<string, ForumNeed>>(new Map());
   const needAdmitRef = useRef<Map<string, string>>(new Map());
   const [persistedNeeds, setPersistedNeeds] = useState<Map<string, ForumNeed>>(() => new Map());
-  const acceptNeedRef = useRef<(data: unknown, key: string, gen: number, fromRemoval?: boolean) => Promise<void>>(
+  const acceptNeedRef = useRef<(data: unknown, key: string, gen: number, fromRemoval?: boolean, fromPending?: boolean) => Promise<void>>(
     async () => {},
   );
   const acceptOfferRef = useRef<
@@ -474,7 +475,12 @@ export function SquadForum() {
       }
       function hideChat(ids: string[]) {
         for (const id of ids) noteChatTomb(id);
-        setHiddenChat((prev) => [...new Set([...prev, ...ids])]);
+        setHiddenChat([...chatTombsRef.current.keys()]);
+        for (const key of [...chatRemovalWatches.keys()]) {
+          if (ids.some(id => soulKeyMatches(id, key))) {
+            chatRemovalWatches.delete(key); chatRemovalOffs.get(key)?.off?.(); chatRemovalOffs.delete(key);
+          }
+        }
         setMeshChat((prev) => withoutChatIds(prev, ids));
         setLocalChat((prev) => withoutChatIds(prev, ids));
       }
@@ -509,9 +515,8 @@ export function SquadForum() {
         setRemovedAgents(next);
       }
       function noteChatTomb(id: string) {
-        if (chatTombsRef.current.has(id)) return;
         const next = new Map(chatTombsRef.current);
-        next.set(id, Number.POSITIVE_INFINITY);
+        retainChatTombstone(next, id, Date.now());
         chatTombsRef.current = next;
         setChatTombs(next);
       }
@@ -705,8 +710,8 @@ export function SquadForum() {
         watchOfferTails(parentNeedId, offer.id);
         return true;
       }
-      async function acceptStatus(data: unknown, key: string, gen: number, fromRemoval = false) {
-        const versionScope = fromRemoval ? "status-remove" : "status";
+      async function acceptStatus(data: unknown, key: string, gen: number, fromRemoval = false, fromAdmission = false) {
+        const versionScope = fromAdmission ? "status-admission" : fromRemoval ? "status-remove" : "status";
         const sig = signatureOf(data);
         if (!sig || !data || typeof data !== "object") return;
         const row = data as { seaPubkey?: unknown; id?: unknown };
@@ -731,6 +736,7 @@ export function SquadForum() {
         if (cancelled || !versions.current(versionScope, key, gen) || !payload) return;
         const removal = parseForumAgentRemoval(payload);
         if (removal) {
+          if (fromAdmission) return;
           const forumOwner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
           if (
             !authorizeForumAgentRemoval({
@@ -753,6 +759,7 @@ export function SquadForum() {
         if (!status || fromRemoval) return;
         if (liveReplayBlocked(status.lastUpdate, removedAgentsRef.current.get(status.seaPubkey))) return;
         const forumOwner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
+        if (fromAdmission && !authorizeStatusAdmission(status, key, signer, forumOwner, PILOT_FORUM_ID)) return;
         const enrolled = admittedRef.current.has(status.seaPubkey);
         const admission = forumStatusAdmission({
           status,
@@ -766,26 +773,33 @@ export function SquadForum() {
         if (!statusRevisionAllowed(status, signer, forumOwner, Math.floor(Date.now() / 1000))) return;
         if (admission === "pending") {
           retainPendingStatus(pendingStatusRef.current, status, Date.now());
+          watchStatusRemoval(status.seaPubkey);
           return;
         }
         if (admission !== "owner" && admission !== "enrolled") return;
-        if (admission === "owner") enrollPub(status.seaPubkey);
+        if (admission === "owner") {
+          if (!fromAdmission) stickSigned(`${forumAgentSoul(PILOT_FORUM_ID, key)}/admission`, data);
+          enrollPub(status.seaPubkey);
+        }
         pendingStatusRef.current.delete(status.seaPubkey);
         watchStatusRemoval(status.seaPubkey);
         commitMeshStatus(status);
       }
-      async function acceptNeed(data: unknown, key: string, gen: number, fromRemoval = false) {
+      async function acceptNeed(data: unknown, key: string, gen: number, fromRemoval = false, fromPending = false) {
         const queueKey = pendingNeedKey(key, fromRemoval);
-        const versionScope = fromRemoval ? "need-remove" : "need";
+        const versionScope = fromPending ? "need-pending" : fromRemoval ? "need-remove" : "need";
+        const discardUnverified = () => {
+          if (!pendingNeedsRef.current.get(queueKey)?.context) pendingNeedsRef.current.delete(queueKey);
+        };
         const sig = signatureOf(data);
         if (!sig || !data || typeof data !== "object") {
-          pendingNeedsRef.current.delete(queueKey);
+          discardUnverified();
           return;
         }
         const hintedId = (data as { id?: unknown }).id;
         const hintedSubject = (data as { subject?: unknown }).subject;
         if (typeof hintedId !== "string" || key !== hintedId) {
-          pendingNeedsRef.current.delete(queueKey);
+          discardUnverified();
           return;
         }
         const owner = graphRef.current?.ownerOf(hintedId);
@@ -800,7 +814,7 @@ export function SquadForum() {
         if (!payload) {
           const now = Date.now();
           const kept =
-            !owner &&
+            !owner && !pendingNeedsRef.current.get(queueKey)?.context &&
             retainPendingNeed(
               pendingNeedsRef.current,
               queueKey,
@@ -815,7 +829,7 @@ export function SquadForum() {
               },
               now,
             );
-          if (!kept) pendingNeedsRef.current.delete(queueKey);
+          if (!kept) discardUnverified();
           return;
         }
         const removal = parseForumMeshRemoval(payload);
@@ -834,8 +848,10 @@ export function SquadForum() {
             return;
           }
           if (!versions.current(versionScope, key, gen)) return;
+          discardUnverified();
           pendingNeedsRef.current.delete(queueKey);
           pendingNeedsRef.current.delete(pendingNeedKey(key));
+          versions.bump("need-pending", key);
           noteNeedRemoval(removal.id);
           stickSigned(forumNeedRemovalSoul(PILOT_FORUM_ID, removal.id), data);
           setMeshNeeds((prev) => {
@@ -854,9 +870,10 @@ export function SquadForum() {
         }
         const need = parseForumNeed(payload);
         if (!need || key !== need.id || fromRemoval || removedNeedsRef.current.has(need.id)) {
-          pendingNeedsRef.current.delete(queueKey);
+          discardUnverified();
           return;
         }
+        if (pendingClosureDominates(pendingNeedsRef.current.get(key), need, Date.now())) return;
         const known = needsRef.current.get(need.id);
         const closure =
           graphRef.current
@@ -876,7 +893,7 @@ export function SquadForum() {
         }
         const allowed = authorizeForumNeed(need, signer, owner, PILOT_FORUM_ID, known, closure, admitted);
         if (!versions.current(versionScope, key, gen)) {
-          pendingNeedsRef.current.delete(queueKey);
+          discardUnverified();
           return;
         }
         if (!allowed) {
@@ -895,7 +912,7 @@ export function SquadForum() {
                   {
                     data,
                     fromRemoval,
-                    gen,
+                    gen: context ? versions.bump("need-pending", key) : gen,
                     at: now,
                     parentId: PILOT_FORUM_ID,
                     objectId: need.id,
@@ -911,10 +928,11 @@ export function SquadForum() {
             watchNeedRemoval(need.id);
             if (!previousContext || previousContext.hamState < context.hamState) setAclRev((rev) => rev + 1);
           }
-          if (!kept) pendingNeedsRef.current.delete(queueKey);
+          if (!kept) discardUnverified();
           return;
         }
         pendingNeedsRef.current.delete(queueKey);
+        versions.bump("need-pending", key);
         const cached = cacheForumNeed(needsRef.current, need, highWaterRef.current.get(need.id));
         if (!cached) return;
         needsRef.current = cached;
@@ -981,9 +999,9 @@ export function SquadForum() {
       }
       function chatTombStamp(id: string): number | undefined {
         const direct = chatTombsRef.current.get(id);
-        if (direct !== undefined) return direct;
+        if (direct !== undefined && Date.now() - direct < CHAT_TOMBSTONE_TTL_MS) return Number.POSITIVE_INFINITY;
         for (const [known, stamp] of chatTombsRef.current) {
-          if (soulKeyMatches(id, known)) return stamp;
+          if (soulKeyMatches(id, known) && Date.now() - stamp < CHAT_TOMBSTONE_TTL_MS) return Number.POSITIVE_INFINITY;
         }
         return undefined;
       }
@@ -1036,7 +1054,7 @@ export function SquadForum() {
         hideChat(ids);
         const statementId = typeof (payload as { id?: unknown }).id === "string" ? (payload as { id: string }).id : key;
         stickSigned(forumChatRemovalSoul(statementId), data);
-        return true;
+        return false; // Already removed; do not allocate a new removal listener.
       }
       function expireForumListeners() {
         for (const id of expireForumWatches(forumWatches, Date.now())) {
@@ -1045,6 +1063,9 @@ export function SquadForum() {
       }
       const chatRemovalWatches = new Map<string, number>();
       const expireChatRemovalWatches = (now: number) => {
+        for (const key of chatRemovalWatches.keys()) {
+          if (knownChatIds().some(id => soulKeyMatches(id, key))) chatRemovalWatches.set(key, now);
+        }
         for (const expired of takeExpiredChatRemovalWatches(chatRemovalWatches, now)) {
           chatRemovalOffs.get(expired)?.off?.();
           chatRemovalOffs.delete(expired);
@@ -1110,6 +1131,11 @@ export function SquadForum() {
         prunePendingStatuses(pendingStatusRef.current, now);
         prunePendingNeeds(pendingNeedsRef.current, now);
         expireForumListeners();
+        const tombs = new Map(chatTombsRef.current);
+        if (pruneChatTombstones(tombs, now)) {
+          chatTombsRef.current = tombs; setChatTombs(tombs); setHiddenChat([...tombs.keys()]);
+        }
+        expireChatRemovalWatches(now);
         for (const pub of expireStatusWatches(statusWatches, now)) {
           statusOffs.get(pub)?.off?.();
           statusOffs.delete(pub);
@@ -1118,11 +1144,18 @@ export function SquadForum() {
       function watchStatusRemoval(pub: string) {
         expireStatuses();
         if (!grantStatusWatch(statusWatches, pub, true, Date.now())) return;
-        statusOffs.set(pub, forum.get("agents").get(pub).get("remove").on((row) => {
+        const base = forum.get("agents").get(pub);
+        const removalOff = base.get("remove").on((row) => {
           if (cancelled || row == null) return;
           const gen = versions.bump("status-remove", pub);
           void acceptStatus(row, pub, gen, true);
-        }));
+        });
+        const admissionOff = base.get("admission").on((row) => {
+          if (cancelled || row == null) return;
+          const gen = versions.bump("status-admission", pub);
+          void acceptStatus(row, pub, gen, false, true);
+        });
+        statusOffs.set(pub, { off() { removalOff?.off?.(); admissionOff?.off?.(); } });
       }
       for (const agent of PILOT_AGENTS) watchStatusRemoval(agent.status.seaPubkey);
       statusTimer = setInterval(expireStatuses, 30_000);
@@ -1163,7 +1196,9 @@ export function SquadForum() {
           if (cancelled || !verified) return;
           const now = Date.now();
           expireChatRemovalWatches(now);
-          if (!grantChatRemovalWatch({ watches: chatRemovalWatches, key, verified, now })) return;
+          if (!grantChatRemovalWatch({ watches: chatRemovalWatches, key, verified, now, onEvict(old) {
+            chatRemovalOffs.get(old)?.off?.(); chatRemovalOffs.delete(old);
+          } })) return;
           const off = gun.get("s3rch").get("items").get(key).get("remove").on((row) => {
             if (cancelled || row == null) return;
             void acceptChat(row, key, true);
@@ -1210,7 +1245,7 @@ export function SquadForum() {
         earliest = Math.min(earliest, row.at + PENDING_NEED_TTL_MS);
         continue;
       }
-      void acceptNeedRef.current(row.data, row.objectId, row.gen, row.fromRemoval);
+      void acceptNeedRef.current(row.data, row.objectId, row.gen, row.fromRemoval, !!row.context);
     }
     for (const [key, row] of [...pendingOffersRef.current]) {
       const decision = pendingOfferRetry(row, now);
@@ -1595,7 +1630,12 @@ export function SquadForum() {
     status: ForumAgentStatus,
     writer: string,
   ): Promise<"signed" | "offline" | "local"> {
-    return putAuthedRecord(forumAgentSoul(status.forumId, status.seaPubkey), status, writer);
+    const soul = forumAgentSoul(status.forumId, status.seaPubkey);
+    if (writer === graphRef.current?.ownerOf(status.forumId)) {
+      const admission = await putAuthedRecord(`${soul}/admission`, status, writer);
+      if (admission !== "signed") return admission;
+    }
+    return putAuthedRecord(soul, status, writer);
   }
 
   async function onSend() {

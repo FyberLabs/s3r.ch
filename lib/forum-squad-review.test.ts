@@ -238,3 +238,72 @@ test('verified chat flood, edits and composed render stay within row and size bu
     local: rows.map(row => ({ ...row, id: `local-${row.id}` })), hidden: [] });
   assert.equal(rendered.length, squad.FORUM_CHAT_CAP);
 });
+
+test('chat removal watches rotate with retained deliveries and release evicted listeners', () => {
+  const watches = new Map<string, number>(); const released: string[] = [];
+  const item = squad.buildForumStatement({ forumId: PILOT_FORUM_ID, author: helper, body: 'line', now: 1, entropy: 'bc'.repeat(16) })!;
+  let rows: typeof item[] = [];
+  for (let i = 0; i < squad.FORUM_CHAT_CAP * 3; i++) {
+    const id = `stmt-window-${i}`;
+    rows = squad.retainForumChat(rows, { ...item, id });
+    assert.equal(squad.grantChatRemovalWatch({ watches, key: id, verified: true, now: i, onEvict: key => released.push(key) }), true);
+    assert.deepEqual([...watches.keys()], rows.map(row => row.id));
+  }
+  assert.equal(released.length, squad.FORUM_CHAT_CAP * 2);
+  const edited = rows[0];
+  rows = squad.retainForumChat(rows, { ...edited, body: 'edit' });
+  assert.equal(squad.grantChatRemovalWatch({ watches, key: edited.id, verified: true, now: 9999 }), false);
+  assert.deepEqual([...watches.keys()], rows.map(row => row.id));
+});
+
+test('authenticated pending closure survives older live replay and retains retry validity', () => {
+  const versions = createMeshEventVersions();
+  const gen = versions.bump('need-pending', closed.id);
+  const entry: squad.PendingNeedEntry = { data: closed, objectId: closed.id, parentId: PILOT_FORUM_ID,
+    reason: 'closure', context: closed, at: 0, gen };
+  versions.bump('need', need.id);
+  assert.equal(squad.pendingClosureDominates(entry, need, 1), true);
+  assert.equal(squad.pendingClosureDominates(entry, { ...closed, stated: 1 }, 1), true);
+  assert.equal(versions.current('need-pending', closed.id, entry.gen), true);
+  assert.equal(squad.pendingClosureDominates(entry, closed, 1), false);
+  assert.equal(authorizeForumNeed(closed, need.subject, PILOT_OWNER, PILOT_FORUM_ID, need,
+    { graph: graph(), postedOffers: new Map([[offer.id, offer]]), now: 1000 }), true);
+  assert.equal(squad.pendingClosureDominates(entry, { ...need, hamState: closed.hamState + 1 }, 1), false);
+  assert.equal(squad.pendingClosureDominates(entry, need, squad.PENDING_NEED_TTL_MS), false);
+});
+
+test('tombstone flood stays bounded and replay does not extend expiration', () => {
+  const tombs = new Map<string, number>();
+  for (let i = 0; i < squad.CHAT_TOMBSTONE_CAP * 4; i++) {
+    squad.retainChatTombstone(tombs, `stmt-removed-${i}`, 0);
+    assert.ok(tombs.size <= squad.CHAT_TOMBSTONE_CAP);
+  }
+  assert.equal(tombs.has('stmt-removed-0'), false);
+  const id = [...tombs.keys()][0];
+  assert.equal(squad.retainChatTombstone(tombs, id, squad.CHAT_TOMBSTONE_TTL_MS - 1), false);
+  assert.equal(tombs.get(id), 0);
+  assert.equal(squad.pruneChatTombstones(tombs, squad.CHAT_TOMBSTONE_TTL_MS), true);
+  assert.equal(tombs.size, 0);
+});
+
+test('separate owner-signed admission survives a self-signed status replacement on a fresh reader', async () => {
+  const { createRequire } = await import('node:module');
+  const { signForumRecord, readForumSignature } = await import('./forum-sign');
+  type Pair = import('./identity/sea').SeaPair;
+  const sea = createRequire(import.meta.url)('gun/sea') as { pair: () => Promise<Pair> };
+  const owner = await sea.pair(); const agent = await sea.pair();
+  const status = { ...PILOT_AGENTS[0].status, seaPubkey: agent.pub,
+    id: `status_${seaToPrincipalKey(agent.pub)}_${'ab'.repeat(16)}`, lastUpdate: 1 };
+  const admission = await signForumRecord(status, owner);
+  const latest = { ...status, state: 'emergency' as const, lastUpdate: 2 };
+  const signedLatest = await signForumRecord(latest, agent);
+  const verified = squad.parseForumAgentStatus(await readForumSignature(signedLatest, agent.pub))!;
+  assert.equal(squad.forumStatusAdmission({ status: verified, mapKey: agent.pub, signer: agent.pub,
+    forumOwner: owner.pub, forumId: PILOT_FORUM_ID, enrolled: false }), 'pending');
+  const admitted = squad.parseForumAgentStatus(await readForumSignature(admission, owner.pub))!;
+  assert.equal(squad.authorizeStatusAdmission(admitted, agent.pub, owner.pub, owner.pub, PILOT_FORUM_ID), true);
+  assert.equal(squad.authorizeStatusAdmission(verified, agent.pub, agent.pub, owner.pub, PILOT_FORUM_ID), false);
+  assert.equal(squad.authorizeStatusAdmission(admitted, helper, owner.pub, owner.pub, PILOT_FORUM_ID), false);
+  assert.equal(squad.forumStatusAdmission({ status: verified, mapKey: agent.pub, signer: agent.pub,
+    forumOwner: owner.pub, forumId: PILOT_FORUM_ID, enrolled: true }), 'enrolled');
+});

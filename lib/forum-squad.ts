@@ -1205,7 +1205,7 @@ export function grantOfferTailWatch(input: {
 }
 
 /** Verified forum-chat removal subscriptions. A quiet key expires. */
-export const CHAT_REMOVAL_WATCH_CAP = 128;
+export const CHAT_REMOVAL_WATCH_CAP = 256;
 export const CHAT_REMOVAL_WATCH_TTL_MS = 12 * 60 * 60 * 1000;
 
 function chatRemovalKeyBounded(key: string): boolean {
@@ -1243,20 +1243,27 @@ export function takeExpiredChatRemovalWatches(watches: Map<string, number>, now:
 
 /**
  * Open a removal subscription only after the row verified, and only inside
- * the cap. An existing key refreshes its TTL and does not subscribe again.
+ * the cap, evicting the oldest delivery and releasing its listener at capacity.
+ * An existing key refreshes its TTL/order and does not subscribe again.
  */
 export function grantChatRemovalWatch(input: {
   watches: Map<string, number>;
   key: string;
   verified: boolean;
   now: number;
+  onEvict?: (key: string) => void;
 }): boolean {
   if (!input.verified || !chatRemovalKeyBounded(input.key)) return false;
   if (input.watches.has(input.key)) {
+    input.watches.delete(input.key);
     input.watches.set(input.key, input.now);
     return false;
   }
-  if (input.watches.size >= CHAT_REMOVAL_WATCH_CAP) return false;
+  if (input.watches.size >= CHAT_REMOVAL_WATCH_CAP) {
+    const oldest = input.watches.keys().next().value!;
+    input.watches.delete(oldest);
+    input.onEvict?.(oldest);
+  }
   input.watches.set(input.key, input.now);
   return true;
 }
@@ -1580,4 +1587,32 @@ export function forumChatFits(item: FeedItem): boolean {
 export function retainForumChat(rows: readonly FeedItem[], incoming: FeedItem): FeedItem[] {
   if (!forumChatFits(incoming)) return [...rows].slice(-FORUM_CHAT_CAP);
   return [...rows.filter(row => !soulKeyMatches(row.id, incoming.id)), incoming].slice(-FORUM_CHAT_CAP);
+}
+
+
+/** Authenticated pending closure revisions survive unrelated/older deliveries. */
+export function pendingClosureDominates(entry: PendingNeedEntry | undefined, incoming: ForumNeed, now: number): boolean {
+  const context = entry?.context;
+  return !!context && !!entry && now - entry.at < PENDING_NEED_TTL_MS &&
+    (context.hamState > incoming.hamState ||
+      (context.hamState === incoming.hamState && JSON.stringify(context) !== JSON.stringify(incoming)));
+}
+export const CHAT_TOMBSTONE_CAP = 512;
+export const CHAT_TOMBSTONE_TTL_MS = 12 * 60 * 60 * 1000;
+export function pruneChatTombstones(tombs: Map<string, number>, now: number): boolean {
+  let changed = false;
+  for (const [id, at] of tombs) if (now - at >= CHAT_TOMBSTONE_TTL_MS) { tombs.delete(id); changed = true; }
+  return changed;
+}
+export function retainChatTombstone(tombs: Map<string, number>, id: string, now: number): boolean {
+  pruneChatTombstones(tombs, now);
+  if (!chatRemovalKeyBounded(id) || tombs.has(id)) return false;
+  if (tombs.size >= CHAT_TOMBSTONE_CAP) tombs.delete(tombs.keys().next().value!);
+  tombs.set(id, now);
+  return true;
+}
+/** Original owner-signed status remains a separately verifiable admission. */
+export function authorizeStatusAdmission(status: ForumAgentStatus, key: string, signer: string,
+  owner: string | undefined, forumId: string): boolean {
+  return forumStatusAdmission({ status, mapKey: key, signer, forumOwner: owner, forumId, enrolled: false }) === "owner";
 }
