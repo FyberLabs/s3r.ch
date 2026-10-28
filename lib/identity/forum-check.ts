@@ -275,7 +275,7 @@ function csvObjectIds(value: string, kind?: string): boolean {
 
 export function validateForumNeed(need: ForumNeed): boolean {
   if (need.stated !== 0 && need.stated !== 1) return false;
-  if (!u64(need.hamState) || !u64(need.ts)) return false;
+  if (!u64(need.hamState) || need.hamState >= Number.MAX_SAFE_INTEGER || !u64(need.ts)) return false;
   if (!isSeaPubkey(need.subject)) return false;
   if (need.severity !== "need" && need.severity !== "emergency") return false;
   if (typeof need.body !== "string") return false;
@@ -318,6 +318,7 @@ export function validateForumStatus(status: ForumAgentStatus): boolean {
   if (![status.progress, status.lastUpdate, status.started, status.tokens, status.runtime].every(u64)) {
     return false;
   }
+  if (status.lastUpdate >= Number.MAX_SAFE_INTEGER) return false;
   if (status.hb !== undefined && !u64(status.hb)) return false;
   if (status.batt !== undefined && !u64(status.batt)) return false;
   if (status.link !== undefined && !u64(status.link)) return false;

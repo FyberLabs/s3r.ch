@@ -79,3 +79,24 @@ proof that a first-time visitor has the latest mesh state. Clearing storage, usi
 a different browser, or denied storage writes removes persistence across visits;
 mesh signatures alone do not establish global freshness. No SEA private keys are
 stored in this replay cache.
+
+Pending need removals retain their `need-remove` generation and a separate queue
+slot from live need rows. A later live event cannot erase or change the scope of
+a removal awaiting ownership. Both slots expire within five minutes.
+
+Need-removal and parent-offer listeners now require authenticated need context
+(or the admitted pilot fixture). Together with role listeners, they share a
+128-listener limit and a 64-per-kind limit. Role discovery needs a child read to
+obtain the signed membership: at most 16 unverified role probes may remain open,
+for 30 seconds each. Untrusted token events cannot renew that window. Only an
+owner-verified membership promotes a probe to the 12-hour verified window. A timer
+expires listeners and calls `.off()` even when the graph is quiet.
+
+Forum revisions reject the maximum safe integer. A subject may close only the
+immediate successor of the admitted open need, with space left for an owner
+reopen; a subject cannot choose an arbitrary high HAM counter, including through
+a carried owner admission. Received status timestamps are bounded to 299 seconds
+in the future for agents and 300 for the owner. Owner Pause/Reassign advances past
+the displayed revision as well as the current clock, preserving an immediate
+override at the agent's accepted boundary. These are squad admission limits;
+shape-valid signatures alone do not authorize an extreme revision.

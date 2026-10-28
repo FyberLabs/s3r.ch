@@ -201,7 +201,7 @@ export function forumOwnerMayWriteStatus(forumOwner: string | undefined, writer:
 }
 
 export function pausedStatus(status: ForumAgentStatus, now: number): ForumAgentStatus {
-  return { ...status, state: "idle", lastUpdate: now };
+  return { ...status, state: "idle", lastUpdate: Math.max(now, status.lastUpdate + 1) };
 }
 
 export function reassignedStatus(
@@ -210,7 +210,7 @@ export function reassignedStatus(
   now: number,
 ): ForumAgentStatus | null {
   if (!isSeaPubkey(target)) return null;
-  return { ...status, lastUpdate: now, result: `reassign ${target}` };
+  return { ...status, lastUpdate: Math.max(now, status.lastUpdate + 1), result: `reassign ${target}` };
 }
 
 export function buildForumStatement(input: {
@@ -696,6 +696,7 @@ export function authorizeForumNeed(
   admitted?: ForumNeed,
 ): boolean {
   if (need.forumId !== forumId || !isSeaPubkey(signer)) return false;
+  if (signer !== owner && !subjectClosureRevision(need, known ?? admitted)) return false;
   if (known && need.subject !== known.subject) return false;
   if (known && known.stated === 1 && need.stated === 0 && need.id === known.id) {
     const party = signer === owner || signer === known.subject;
@@ -1000,11 +1001,12 @@ export type PendingNeedEntry = {
   expectOwner?: string;
   reason: "owner" | "closure";
   context?: ForumNeed;
+  fromRemoval?: boolean;
 };
 
 export function prunePendingNeeds(queue: Map<string, PendingNeedEntry>, now: number): void {
   for (const [key, row] of queue) {
-    if (row.reason === "owner" && now - row.at > PENDING_NEED_TTL_MS) queue.delete(key);
+    if (now - row.at > PENDING_NEED_TTL_MS) queue.delete(key);
   }
 }
 
@@ -1043,7 +1045,7 @@ export function retainPendingNeed(
   entry: PendingNeedEntry,
   now: number,
 ): boolean {
-  if (key !== entry.objectId || !isForumObjectId(entry.objectId, "need") || !entry.parentId) {
+  if (key !== pendingNeedKey(entry.objectId, entry.fromRemoval) || !isForumObjectId(entry.objectId, "need") || !entry.parentId) {
     queue.delete(key);
     return false;
   }
@@ -1443,6 +1445,7 @@ export function pendingClosureContext(need: ForumNeed, signer: string, owner: st
   known?: ForumNeed, admitted?: ForumNeed): ForumNeed | undefined {
   if (need.stated !== 0 || !need.acceptedOffer) return undefined;
   if (known && (known.subject !== need.subject || known.hamState > need.hamState)) return undefined;
+  if (signer !== owner && !subjectClosureRevision(need, known ?? admitted)) return undefined;
   if (signer === owner || (admitted && signer === admitted.subject && forumNeedAdmission(admitted, need))) return need;
   if (known && signer === known.subject && forumNeedAdmission(known, need)) return need;
   return undefined;
@@ -1503,4 +1506,56 @@ export function expireStatusWatches(watches: Map<string, number>, now: number): 
   const expired: string[] = [];
   for (const [pub, at] of watches) if (now - at >= STATUS_WATCH_TTL_MS) { watches.delete(pub); expired.push(pub); }
   return expired;
+}
+
+
+/** Live need and removal callbacks retain independent versions and queue slots. */
+export function pendingNeedKey(id: string, fromRemoval = false): string {
+  return fromRemoval ? `remove:${id}` : id;
+}
+
+/** Subjects may close the admitted open revision once, never choose an arbitrary HAM. */
+export function subjectClosureRevision(need: ForumNeed, admitted?: ForumNeed): boolean {
+  return !!admitted && admitted.stated === 1 && need.stated === 0 &&
+    need.hamState === admitted.hamState + 1 && need.hamState < Number.MAX_SAFE_INTEGER - 1;
+}
+
+/** Reserve one second of the accepted future window for an owner override. */
+export function statusRevisionAllowed(status: ForumAgentStatus, signer: string, owner: string | undefined, now: number): boolean {
+  return Number.isSafeInteger(status.lastUpdate) && status.lastUpdate >= 0 &&
+    status.lastUpdate < Number.MAX_SAFE_INTEGER && status.lastUpdate <= now + (signer === owner ? 300 : 299);
+}
+
+export type ForumWatchKind = "need" | "offers" | "role";
+export const FORUM_WATCH_CAP = 128;
+export const FORUM_WATCH_PER_KIND = 64;
+export const ROLE_PROBE_CAP = 16;
+export const ROLE_PROBE_TTL_MS = 30_000;
+export const FORUM_WATCH_TTL_MS = 12 * 60 * 60 * 1000;
+export type ForumWatch = { kind: ForumWatchKind; at: number; verified: boolean };
+export function expireForumWatches(watches: Map<string, ForumWatch>, now: number): string[] {
+  const expired: string[] = [];
+  for (const [id, watch] of watches) {
+    if (now - watch.at >= (watch.verified ? FORUM_WATCH_TTL_MS : ROLE_PROBE_TTL_MS)) {
+      watches.delete(id); expired.push(id);
+    }
+  }
+  return expired;
+}
+/** Role children need a short bounded discovery read before a membership can verify. */
+export function grantForumWatch(watches: Map<string, ForumWatch>, kind: ForumWatchKind,
+  key: string, verified: boolean, now: number): boolean {
+  if (kind === "role" ? !isRoleToken(key) : !isForumObjectId(key, "need")) return false;
+  if (!verified && kind !== "role") return false;
+  const id = `${kind}:${key}`;
+  const old = watches.get(id);
+  if (old) {
+    if (verified) watches.set(id, { kind, at: now, verified: true });
+    return false; // Untrusted events cannot extend a probe's deadline.
+  }
+  const same = [...watches.values()].filter(row => row.kind === kind).length;
+  const probes = [...watches.values()].filter(row => !row.verified).length;
+  if (watches.size >= FORUM_WATCH_CAP || same >= FORUM_WATCH_PER_KIND || (!verified && probes >= ROLE_PROBE_CAP)) return false;
+  watches.set(id, { kind, at: now, verified });
+  return true;
 }

@@ -106,3 +106,84 @@ test('bounded callback generations never revive an evicted verification', () => 
   versions.bump('status', helper);
   assert.equal(versions.current('status', helper, old), false);
 });
+
+import * as squad from './forum-squad';
+import { validateForumNeed, validateForumStatus, reopenForumNeed } from './identity/check';
+
+test('pending need removal keeps its own scope when live and removal delivery reorder', () => {
+  const versions = createMeshEventVersions();
+  const queue = new Map<string, squad.PendingNeedEntry>();
+  const removalGen = versions.bump('need-remove', need.id);
+  const removalKey = squad.pendingNeedKey(need.id, true);
+  const removal = { removed: 1 as const, action: 'remove' as const, kind: 'need' as const, id: need.id, forumId: PILOT_FORUM_ID };
+  const entry = { data: removal, objectId: need.id, parentId: PILOT_FORUM_ID, gen: removalGen, at: 0,
+    fromRemoval: true, reason: 'owner' as const };
+  assert.equal(squad.retainPendingNeed(queue, removalKey, entry, 0), true);
+  const liveGen = versions.bump('need', need.id);
+  assert.equal(squad.retainPendingNeed(queue, squad.pendingNeedKey(need.id), { ...entry, data: need, fromRemoval: false, gen: liveGen }, 1), true);
+  assert.equal(queue.size, 2);
+  queue.delete(squad.pendingNeedKey(need.id)); // Bad live update must not erase the removal.
+  const retry = queue.get(removalKey)!;
+  assert.equal(squad.pendingNeedRetry(retry, 2, PILOT_OWNER), 'retry');
+  assert.equal(versions.current(retry.fromRemoval ? 'need-remove' : 'need', retry.objectId, retry.gen), true);
+  assert.equal(authorizeForumMeshRemoval({ removal, mapKey: retry.objectId, signer: PILOT_OWNER,
+    owner: PILOT_OWNER, subject: undefined, forumId: PILOT_FORUM_ID }), true);
+  squad.prunePendingNeeds(queue, squad.PENDING_NEED_TTL_MS + 1);
+  assert.equal(queue.size, 0);
+});
+
+test('need watches require verified context and role discovery has nonrenewable bounds', () => {
+  const watches = new Map<string, squad.ForumWatch>();
+  assert.equal(squad.grantForumWatch(watches, 'need', need.id, false, 0), false);
+  assert.equal(squad.grantForumWatch(watches, 'offers', need.id, false, 0), false);
+  assert.equal(watches.size, 0);
+  for (let i = 0; i < 1000; i++) squad.grantForumWatch(watches, 'role', `role-${i}`, false, 0);
+  assert.equal(watches.size, squad.ROLE_PROBE_CAP);
+  assert.equal(squad.grantForumWatch(watches, 'role', 'role-0', false, squad.ROLE_PROBE_TTL_MS - 1), false);
+  // A verified membership promotes only its own probe; the flood cannot renew the rest.
+  squad.grantForumWatch(watches, 'role', 'role-1', true, 1);
+  const expired = squad.expireForumWatches(watches, squad.ROLE_PROBE_TTL_MS);
+  assert.ok(expired.includes('role:role-0'));
+  assert.equal(watches.size, 1);
+  assert.equal(squad.grantForumWatch(watches, 'need', need.id, true, 2), true);
+  assert.equal(squad.expireForumWatches(watches, squad.FORUM_WATCH_TTL_MS + 2).length, 2);
+});
+
+test('verified listener limits apply per kind and across all kinds', () => {
+  const watches = new Map<string, squad.ForumWatch>();
+  for (let i = 0; i < 1000; i++) squad.grantForumWatch(watches, 'role', `role-${i}`, true, 0);
+  assert.equal(watches.size, squad.FORUM_WATCH_PER_KIND);
+  for (let i = 0; i < 1000; i++) {
+    const id = `need_${seaToPrincipalKey(helper)}_${i.toString(16).padStart(32, '0')}`;
+    squad.grantForumWatch(watches, 'need', id, true, 0);
+  }
+  assert.equal(watches.size, squad.FORUM_WATCH_CAP);
+  assert.equal(squad.grantForumWatch(watches, 'offers', need.id, true, 0), false);
+});
+
+test('agent status cannot exhaust revisions and owner can override the accepted future edge', () => {
+  const status = PILOT_AGENTS[0].status; const now = 2_000_000_000;
+  assert.equal(validateForumStatus({ ...status, lastUpdate: Number.MAX_SAFE_INTEGER }), false);
+  assert.equal(squad.statusRevisionAllowed({ ...status, lastUpdate: Number.MAX_SAFE_INTEGER - 1 }, helper, PILOT_OWNER, now), false);
+  const edge = { ...status, lastUpdate: now + 299 };
+  assert.equal(squad.statusRevisionAllowed(edge, helper, PILOT_OWNER, now), true);
+  const paused = squad.pausedStatus(edge, now);
+  assert.equal(paused.lastUpdate, edge.lastUpdate + 1);
+  assert.equal(squad.statusRevisionAllowed(paused, PILOT_OWNER, PILOT_OWNER, now), true);
+  assert.equal(squad.statusRevisionAllowed(paused, helper, PILOT_OWNER, now), false);
+});
+
+test('subject closes exactly the admitted successor and preserves an owner reopen', () => {
+  const g = graph(); const closure = { graph: g, postedOffers: new Map([[offer.id, offer]]), now: 1000 };
+  assert.equal(validateForumNeed({ ...closed, hamState: Number.MAX_SAFE_INTEGER }), false);
+  for (const hamState of [need.hamState + 2, Number.MAX_SAFE_INTEGER - 1]) {
+    const forged = { ...closed, hamState };
+    assert.equal(authorizeForumNeed(forged, need.subject, PILOT_OWNER, PILOT_FORUM_ID, need, closure), false);
+    assert.equal(authorizeForumNeed(forged, need.subject, PILOT_OWNER, PILOT_FORUM_ID, undefined, closure, need), false);
+    assert.equal(pendingClosureContext(forged, need.subject, PILOT_OWNER, undefined, need), undefined);
+  }
+  assert.equal(authorizeForumNeed(closed, need.subject, PILOT_OWNER, PILOT_FORUM_ID, need, closure), true);
+  const reopened = reopenForumNeed({ graph: g, writer: PILOT_OWNER, need: closed, now: 1000 });
+  assert.equal(reopened.ok, true);
+  assert.equal(reopened.need?.hamState, closed.hamState + 1);
+});
