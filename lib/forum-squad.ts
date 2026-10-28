@@ -785,6 +785,25 @@ export function liveReplayBlocked(liveStamp: number, tombstoneStamp: number | un
   return tombstoneStamp !== undefined && !(liveStamp > tombstoneStamp);
 }
 
+/**
+ * Offer removal uses the subscribed parent need. An unsigned `need` hint
+ * that names another need is refused, and so is a payload whose need does
+ * not match that parent.
+ */
+export function offerRemovalAuthority(input: {
+  parentNeedId: string;
+  hintedNeed?: string;
+  removalNeed: string;
+  parent?: ForumNeed;
+  offerId: string;
+}): { subject: string | undefined; resolved: boolean } | null {
+  if (input.hintedNeed !== undefined && input.hintedNeed !== input.parentNeedId) return null;
+  if (input.removalNeed !== input.parentNeedId) return null;
+  if (input.parent && input.parent.id !== input.parentNeedId) return null;
+  const resolved = !!input.parent && input.parent.stated === 0 && input.parent.acceptedOffer === input.offerId;
+  return { subject: input.parent?.subject, resolved };
+}
+
 /** Sample, mesh, and local rows. A verified removal drops every copy of that id. */
 export function composeForumNeeds(input: {
   pilot: readonly ForumNeed[];
@@ -887,6 +906,18 @@ export function authorizeForumMeshRemoval(input: {
   if (helper) return true;
   if (input.owner && input.signer === input.owner) return true;
   return !!input.subject && input.signer === input.subject;
+}
+
+/** Sample roster plus mesh rows. A verified removal drops that pubkey, including a fixture. */
+export function composeForumRoster(input: {
+  sample: readonly SquadAgent[];
+  mesh: readonly ForumAgentStatus[];
+  admitted?: ReadonlySet<string>;
+  removed: ReadonlySet<string>;
+}): SquadAgent[] {
+  return mergeAgents(input.sample, input.mesh, input.admitted).filter(
+    (agent) => !input.removed.has(agent.status.seaPubkey),
+  );
 }
 
 export function mergeAgents(

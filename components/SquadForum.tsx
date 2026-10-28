@@ -30,6 +30,8 @@ import {
   chatTone,
   clampProgress,
   composeForumNeeds,
+  composeForumRoster,
+  offerRemovalAuthority,
   filterAgents,
   formatClock,
   formatRuntime,
@@ -52,7 +54,6 @@ import {
   forumStatementFromNode,
   forumStatusRemovalSoul,
   forumStatusAdmission,
-  mergeAgents,
   liveReplayBlocked,
   mergeForumOffer,
   needClosureStatus,
@@ -465,15 +466,13 @@ export function SquadForum() {
         const sig = signatureOf(data);
         if (!sig || !data || typeof data !== "object") return;
         const row = data as { helper?: unknown; need?: unknown };
-        const hintedNeed = typeof row.need === "string" ? row.need : parentNeedId;
+        const hintedNeed = typeof row.need === "string" ? row.need : undefined;
+        if (hintedNeed !== undefined && hintedNeed !== parentNeedId) return;
         const parentNeed = needsRef.current.get(parentNeedId);
-        const knownNeed = needsRef.current.get(hintedNeed) ?? parentNeed;
         const candidates = [
           typeof row.helper === "string" ? row.helper : "",
           graphRef.current?.ownerOf(parentNeedId) ?? "",
-          graphRef.current?.ownerOf(hintedNeed) ?? "",
           parentNeed?.subject ?? "",
-          knownNeed?.subject ?? "",
         ].filter((pub, index, all) => pub && all.indexOf(pub) === index);
         let payload: unknown = null;
         let signer = "";
@@ -510,18 +509,25 @@ export function SquadForum() {
         }
         const removal = parseForumMeshRemoval(payload);
         if (removal) {
-          if (key === undefined || removal.kind !== "offer") return;
-          const resolved = knownNeed?.stated === 0 && knownNeed.acceptedOffer === removal.id;
+          if (key === undefined || removal.kind !== "offer" || removal.need === undefined) return;
+          const authority = offerRemovalAuthority({
+            parentNeedId,
+            hintedNeed,
+            removalNeed: removal.need,
+            parent: parentNeed,
+            offerId: removal.id,
+          });
+          if (!authority) return;
           if (
             !authorizeForumMeshRemoval({
               removal,
               mapKey: key,
               signer,
               owner: graphRef.current?.ownerOf(parentNeedId),
-              subject: knownNeed?.subject,
+              subject: authority.subject,
               forumId: PILOT_FORUM_ID,
               parentNeedId,
-              resolved,
+              resolved: authority.resolved,
             })
           ) {
             return;
@@ -1050,9 +1056,12 @@ export function SquadForum() {
   offersRef.current = offers;
 
   const roster = useMemo(() => {
-    const merged = mergeAgents(PILOT_AGENTS, [...meshStatus.values()], admitted).filter(
-      (agent) => !liveReplayBlocked(agent.status.lastUpdate, removedAgents.get(agent.status.seaPubkey)),
-    );
+    const merged = composeForumRoster({
+      sample: PILOT_AGENTS,
+      mesh: [...meshStatus.values()],
+      admitted,
+      removed: new Set(removedAgents.keys()),
+    });
     return merged.map((agent) => {
       const over = localStatus.get(agent.status.seaPubkey);
       const status = pickDisplayedStatus(agent.status, over);
@@ -1585,7 +1594,7 @@ export function SquadForum() {
           aria-modal="true"
           aria-label={active.label}
           data-testid="squad-drawer"
-          className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col overflow-y-auto border-l border-rule bg-ground p-4 shadow-lg"
+          className="fixed inset-y-0 right-0 z-[60] flex w-full max-w-md flex-col overflow-y-auto border-l border-rule bg-ground p-4 shadow-lg"
         >
           <div className="flex items-start justify-between gap-3">
             <div>

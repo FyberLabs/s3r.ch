@@ -30,6 +30,8 @@ import {
   filterAgents,
   forumStatusAdmission,
   composeForumNeeds,
+  composeForumRoster,
+  offerRemovalAuthority,
   forumChatRemovalSoul,
   forumNeedRemovalSoul,
   forumOfferCancelSoul,
@@ -662,6 +664,95 @@ describe("squad view", () => {
     assert.ok(helperKey);
     const offerId = `offer_${helperKey}_${"cd".repeat(16)}`;
     assert.equal(forumOfferRemovalSoul(PILOT_FORUM_ID, need.id, offerId).endsWith("/remove"), true);
+    const hawk = PILOT_AGENTS.find((row) => row.label === "HAWK-2");
+    assert.ok(hawk);
+    const roster = composeForumRoster({
+      sample: PILOT_AGENTS,
+      mesh: [hawk.status],
+      removed: new Set([hawk.status.seaPubkey]),
+    });
+    assert.equal(
+      roster.some((row) => row.status.seaPubkey === hawk.status.seaPubkey),
+      false,
+    );
+    const other = PILOT_NEEDS.find((row) => row.id !== need.id);
+    assert.ok(other);
+    const closed = { ...need, stated: 0 as const, acceptedOffer: offerId };
+    assert.equal(
+      offerRemovalAuthority({
+        parentNeedId: need.id,
+        hintedNeed: other.id,
+        removalNeed: need.id,
+        parent: closed,
+        offerId,
+      }),
+      null,
+    );
+    assert.equal(
+      offerRemovalAuthority({
+        parentNeedId: need.id,
+        hintedNeed: need.id,
+        removalNeed: other.id,
+        parent: closed,
+        offerId,
+      }),
+      null,
+    );
+    assert.deepEqual(
+      offerRemovalAuthority({
+        parentNeedId: need.id,
+        removalNeed: need.id,
+        parent: closed,
+        offerId,
+      }),
+      { subject: need.subject, resolved: true },
+    );
+    assert.deepEqual(
+      offerRemovalAuthority({
+        parentNeedId: need.id,
+        hintedNeed: need.id,
+        removalNeed: need.id,
+        parent: { ...need, stated: 1 as const },
+        offerId,
+      }),
+      { subject: need.subject, resolved: false },
+    );
+    const removal = {
+      removed: 1 as const,
+      action: "remove" as const,
+      forumId: PILOT_FORUM_ID,
+      id: offerId,
+      kind: "offer" as const,
+      need: need.id,
+    };
+    assert.equal(
+      authorizeForumMeshRemoval({
+        removal,
+        mapKey: offerId,
+        signer: stranger.status.seaPubkey,
+        owner: PILOT_OWNER,
+        subject: need.subject,
+        forumId: PILOT_FORUM_ID,
+        parentNeedId: need.id,
+        resolved: true,
+      }),
+      false,
+    );
+    if (other.subject !== stranger.status.seaPubkey) {
+      assert.equal(
+        authorizeForumMeshRemoval({
+          removal,
+          mapKey: offerId,
+          signer: other.subject,
+          owner: PILOT_OWNER,
+          subject: other.subject,
+          forumId: PILOT_FORUM_ID,
+          parentNeedId: need.id,
+          resolved: false,
+        }),
+        false,
+      );
+    }
   });
 
   it("keeps the admitted sample owner when a mesh edge names another pubkey", () => {
