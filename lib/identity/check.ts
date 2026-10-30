@@ -927,6 +927,7 @@ export {
   acceptForumRoles,
   embeddedPrincipalKey,
   forumAgentSoul,
+  forumArtifactSoul,
   forumAlarmPins,
   forumAlarmSoul,
   forumChatTag,

@@ -183,3 +183,16 @@ need and 256 overall, evicting oldest deliveries. Incoming envelopes are rejecte
 above 16,384 serialized characters before signature verification, and retained
 payloads have the same bound. This is a bounded history window, not pagination or
 a guarantee that every older offer remains available for closure hydration.
+
+### Drawer path transport
+
+`forumArtifactSoul` now matches the SociACL #147 artifact path alongside
+`forumSubtaskSoul` and `forumUpdateSoul`. The Squad writer uses the tested
+`forumSoulNode` traversal: only `/` separates Gun `get` calls, so a SEA pubkey
+including its literal `.` remains one segment. Empty segments and separate chat
+trees are refused before traversing the graph.
+
+These builders and transport do not authenticate ownership or authorize writes.
+Mesh-backed drawer records still require admitted agent-owned object records and
+the direct see plus post checks described by SociACL #147. Artifact references
+do not confer access to their targets.

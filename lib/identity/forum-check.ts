@@ -386,6 +386,12 @@ export function forumUpdateSoul(forumId: string, seaPubkey: string, updateId: st
   return `${forumAgentSoul(forumId, seaPubkey)}/updates/${updateId}`;
 }
 
+/** Owned artifact record. The path does not grant access to the record or its target. */
+export function forumArtifactSoul(forumId: string, seaPubkey: string, artifactId: string): string {
+  assertMinted(artifactId);
+  return `${forumAgentSoul(forumId, seaPubkey)}/artifacts/${artifactId}`;
+}
+
 /** `forum:<forumId>`. Not a soul. */
 export function forumChatTag(forumId: string): string {
   assertMinted(forumId, "forum");
