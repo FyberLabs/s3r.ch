@@ -430,6 +430,26 @@ describe("forum offers", () => {
     }
   });
 
+  it("preparing an offer preserves existing ACL ownership and grants", () => {
+    const acl = createMemorySeeAcl();
+    const open = need(1, 1);
+    acl.putObject(open.id, doc.seaPubkey);
+    grant(acl, open.id, doc.secondPubkey);
+    const id = mintForumOfferId(doc.secondPubkey, entropy)!;
+    // An offer payload must not replace independently held authority, even
+    // when a caller supplies entropy that collides with an existing record.
+    acl.putObject(id, doc.seaPubkey);
+    const before = acl.snapshot();
+    const offered = offerForumHelp({
+      graph: acl, writer: doc.secondPubkey, need: open,
+      body: "help", now: NOW, entropy,
+    });
+    assert.equal(offered.ok, true);
+    assert.deepEqual(acl.snapshot(), before);
+    assert.equal(acl.ownerOf(id), doc.seaPubkey);
+    assert.equal(checkSee(acl, id, doc.secondPubkey, NOW).allowed, false);
+  });
+
   it("posts a live offer under the need and refuses an unposted accept", () => {
     const acl = createMemorySeeAcl();
     const open = need(1, 1);
@@ -465,7 +485,9 @@ describe("forum offers", () => {
     const soul = forumOfferSoul(doc.forumId, doc.needId, offered.offer.id);
     assert.equal(soul, `s3rch/forums/${doc.forumId}/needs/${doc.needId}/offers/${offered.offer.id}`);
     assert.equal(soul.includes("/chat"), false);
-    assert.equal(acl.ownerOf(offered.offer.id), doc.secondPubkey);
+    assert.equal(acl.ownerOf(offered.offer.id), undefined);
+    assert.equal(acl.hasObject(offered.offer.id), false);
+    assert.equal(checkSee(acl, offered.offer.id, doc.secondPubkey, NOW).allowed, false);
     assert.equal(acl.ownerOf(open.id), doc.seaPubkey);
     assert.equal(open.stated, 1);
     const posted = new Map([[offered.offer.id, offered.offer]]);

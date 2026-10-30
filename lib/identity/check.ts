@@ -1035,14 +1035,10 @@ function heldLiveOffer(
   return posted;
 }
 
-function admitOffer(graph: SeeGraph, offer: ForumOffer): void {
-  const writable = graph as SeeGraph & { putObject?: (object: string, owner: string) => void };
-  if (typeof writable.putObject === "function") writable.putObject(offer.id, offer.helper);
-}
-
 /**
  * Check see on the need posts a live offer. It does not set the need to `stated` 0.
- * The helper owns the row. A hint and a hop are ignored.
+ * The helper authors the row. This never admits ACL object ownership.
+ * A hint and a hop are ignored.
  */
 export function offerForumHelp(input: {
   graph: SeeGraph;
@@ -1076,7 +1072,6 @@ export function offerForumHelp(input: {
     stated: 1,
   };
   if (!validateForumOffer(offer)) return { ok: false, reason: "bad-offer", elect: false, owner };
-  admitOffer(input.graph, offer);
   return { ok: true, offer, elect: false, owner };
 }
 

@@ -1408,10 +1408,6 @@ export function SquadForum() {
       setNotice(needNotice(decision.ok ? "bad-offer" : decision.reason, "offer"));
       return;
     }
-    if (PILOT_MESH_ENABLED) {
-      see?.acl.putObject(decision.offer.id, decision.offer.helper);
-      void see?.persist();
-    }
     const offer = decision.offer;
     setLocalOffers((prev) => {
       return retainForumOffer(prev, offer);

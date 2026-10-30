@@ -200,3 +200,8 @@ do not confer access to their targets.
 Check evaluation requires a nonnegative safe-integer timestamp (negative zero is
 also refused), matching the consume contract. Invalid clocks deny before owner
 or grant lookup, including offer preparation and helper checks at acceptance.
+
+Offer authorship does not admit an ACL object owner. Preparing or publishing an
+offer never calls `putObject` or persists ownership for the offer ID. The helper
+remains the signer of the offer row, while acceptance rechecks access to the
+parent need. Any independently authenticated object admission stays unchanged.
