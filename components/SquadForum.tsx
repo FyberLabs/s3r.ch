@@ -2,6 +2,7 @@
 
 import { SquadDelegationControls } from "@/components/SquadDelegationControls";
 import Link from "next/link";
+import { forumSoulNode } from "@/lib/forum-transport";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGunPeer, type FeedGun } from "@/components/GunPeerProvider";
 import { useSeeAcl } from "@/components/SeeAclProvider";
@@ -131,7 +132,6 @@ import {
   isForumObjectId,
   isRoleToken,
   isSeaPubkey,
-  isSeparateChatSoul,
   offerForumHelp,
   reopenForumNeed,
   validateForumStatus,
@@ -167,18 +167,9 @@ function stateDot(state: ForumAgentState): string {
   return "bg-ink-muted";
 }
 
-function chainGet(gun: FeedGun, soul: string): FeedGun | null {
-  if (isSeparateChatSoul(soul)) return null;
-  const parts = soul.split("/");
-  if (parts.length === 0 || parts.some((part) => part.length === 0)) return null;
-  let node = gun;
-  for (const part of parts) node = node.get(part);
-  return node;
-}
-
 function putSoul(gun: FeedGun | null, soul: string, data: unknown): boolean {
   if (!PILOT_MESH_ENABLED || !gun) return false;
-  const node = chainGet(gun, soul);
+  const node = forumSoulNode(gun, soul);
   if (!node) return false;
   node.put(data);
   return true;
