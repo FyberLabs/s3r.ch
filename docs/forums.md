@@ -47,7 +47,20 @@ The need owner or the subject accepts one live offer only when the graph holds t
 
 This page puts those four rows with a Gun signature from the writer. It does not put an unsigned stand-in. `body` and `severity` stay as posted. `spec` is an optional object id and stays as posted. A resolved need refuses withdrawal of the offer it names.
 
-Pause and reassign on this page are puts of the status node by the forum owner. The owner named on a status id does not make that write. Check see does not make that write.
+Pause and reassignment are unavailable on the pilot. The earlier buttons only
+wrote status labels and could claim success without revoking access or stopping
+work. Their local/mesh write handlers and optimistic success notices have been
+removed. The disabled controls explain that revocation and worker confirmation
+are not yet available, including on the sample board.
+
+SociACL #148 specifies the replacement workflow: durable complete destination
+inventory, authority from every destination owner, signed post/see/group
+cancellations, reconciliation after lost responses, and worker fencing/drain
+before pause or replacement grants. None of those may be inferred from a status
+put, a missing row, a stale Check, or an offline local edit. There is no enable
+flag for these controls; implementing and testing the actual coordinator is
+required before they become actionable. Group/drawer adoption and that
+coordinator remain in s3r.ch #140 (with #146 as the duplicate context).
 
 ## Alarm
 
@@ -63,7 +76,7 @@ A need row is signed by the admitted owner, or by the subject when that row acce
 
 An unsigned `null` does not drop a verified need or offer. A removal is a signed record (`removed` is 1, `action` is `remove`) by the admitted owner or the subject, and for an offer also by the helper, bound to that forum, that object id, and that map key.
 
-An unsigned `null`, a malformed put, or a tag strip does not hide a signed chat line. A retraction hides that line, including a copy kept on this browser, only when the author or the forum owner signed a tombstone (`unshared` is 1) bound to that forum and that Gun key. A signature read that finishes after a later put on the same key is ignored, so a retraction is not undone by a late read of the previous line. An id inside an unsigned tombstone does not hide a different line. A local pause or reassign stays on the tile only while its `lastUpdate` is strictly newer than the mesh row. A later mesh `lastUpdate` retires it, so an emergency after a pause shows and counts for the alarm. Reply in chat closes the drawer.
+An unsigned `null`, a malformed put, or a tag strip does not hide a signed chat line. A retraction hides that line, including a copy kept on this browser, only when the author or the forum owner signed a tombstone (`unshared` is 1) bound to that forum and that Gun key. A signature read that finishes after a later put on the same key is ignored, so a retraction is not undone by a late read of the previous line. An id inside an unsigned tombstone does not hide a different line. A local descriptive status stays on the tile only while its `lastUpdate` is strictly newer than the mesh row. A later mesh `lastUpdate` retires it, so a newer emergency shows and counts for the alarm. These display rules do not confirm a task stopped. Reply in chat closes the drawer.
 
 Forum writes are signed with the SEA pair unlocked on this browser. A wrapped key signs after unlock. The private half stays in page memory. It is not written back to disk or onto the mesh.
 
@@ -113,9 +126,9 @@ Forum revisions reject the maximum safe integer. A subject may close only the
 immediate successor of the admitted open need, with space left for an owner
 reopen; a subject cannot choose an arbitrary high HAM counter, including through
 a carried owner admission. Received status timestamps are bounded to 299 seconds
-in the future for agents and 300 for the owner. Owner Pause/Reassign advances past
+in the future for agents and 300 for the owner. An owner-authenticated status update may advance past
 the displayed revision as well as the current clock, preserving an immediate
-override at the agent's accepted boundary. These are squad admission limits;
+override at the agent's accepted boundary. This only changes displayed status. These are squad admission limits;
 shape-valid signatures alone do not authorize an extreme revision.
 
 Admitted pilot agents subscribe to their signed removal children immediately,
