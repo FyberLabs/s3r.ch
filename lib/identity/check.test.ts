@@ -244,6 +244,29 @@ describe("CHECK(see, object, accessor) consume laws", () => {
     assert.equal(checkSee(acl, CLAIM, userSoul(ALICE), NOW).allowed, true);
   });
 
+  it("invalid clocks deny owners and delegates before graph access", () => {
+    const acl = createMemorySeeAcl();
+    acl.putObject(CLAIM, ALICE);
+    const grant = { claimId: CLAIM, accessor: BOB, from: 0, until: 2000 };
+    applySeeGrant(acl, ALICE, grant);
+    const unreadable: SeeGraph = {
+      hasObject() { throw new Error("invalid clock reached graph"); },
+      ownerOf() { throw new Error("invalid clock reached graph"); },
+      seeGrants() { throw new Error("invalid clock reached graph"); },
+    };
+    for (const now of [NaN, Infinity, -Infinity, -1, -0, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+      for (const who of [ALICE, BOB]) {
+        assert.deepEqual(checkSee(acl, CLAIM, who, now), { allowed: false, reason: "unknown" });
+        assert.equal(checkSee(unreadable, CLAIM, who, now).allowed, false);
+      }
+      assert.equal(checkSeeGrant(acl, grant, CLAIM, BOB, now).allowed, false);
+      assert.equal(grantLiveAt(grant, now), false);
+    }
+    assert.equal(checkSee(acl, CLAIM, ALICE, 0).allowed, true);
+    assert.equal(checkSee(acl, CLAIM, BOB, 0).allowed, true);
+    assert.equal(checkSee(acl, CLAIM, ALICE, Number.MAX_SAFE_INTEGER).allowed, true);
+  });
+
   it("missing grant is denied", () => {
     const acl = createMemorySeeAcl();
     acl.putObject(CLAIM, ALICE);

@@ -408,6 +408,28 @@ describe("forum offers", () => {
     });
   }
 
+  it("invalid clocks cannot prepare owner offers or accept an owner-helper offer", () => {
+    const acl = createMemorySeeAcl();
+    const open = need(1, 1);
+    acl.putObject(open.id, doc.seaPubkey);
+    const offer = {
+      id: mintForumOfferId(doc.seaPubkey, entropy)!, need: open.id,
+      forumId: open.forumId, helper: doc.seaPubkey, body: "help",
+      artifacts: "", stated: 1 as const,
+    };
+    const before = acl.snapshot();
+    for (const now of [NaN, Infinity, -Infinity, -1, -0, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+      const prepared = offerForumHelp({ graph: acl, writer: doc.seaPubkey,
+        need: open, body: "help", now, entropy });
+      assert.equal(prepared.ok, false);
+      const accepted = acceptForumOffer({ graph: acl, writer: doc.seaPubkey,
+        need: open, offer, postedOffers: new Map([[offer.id, offer]]), now });
+      assert.equal(accepted.ok, false);
+      assert.equal(open.stated, 1);
+      assert.deepEqual(acl.snapshot(), before);
+    }
+  });
+
   it("posts a live offer under the need and refuses an unposted accept", () => {
     const acl = createMemorySeeAcl();
     const open = need(1, 1);

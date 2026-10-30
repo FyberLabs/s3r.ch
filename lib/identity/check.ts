@@ -538,9 +538,14 @@ export function ownerOwnsObject(
   return false;
 }
 
+/** Match the consume contract's canonical nonnegative integer clock. */
+function validCheckTime(now: number): boolean {
+  return Number.isSafeInteger(now) && now >= 0 && !Object.is(now, -0);
+}
+
 /** `now ∈ [from, until)` — `from` inclusive, `until` exclusive. */
 export function grantLiveAt(grant: IdentitySeeGrant, now: number): boolean {
-  return now >= grant.from && now < grant.until;
+  return validCheckTime(now) && now >= grant.from && now < grant.until;
 }
 
 /**
@@ -562,6 +567,7 @@ export function checkSee(
 ): CheckResult {
   void hint;
   void hop;
+  if (!validCheckTime(now)) return { allowed: false, reason: "unknown" };
   if (isMetaId(object)) {
     return { allowed: false, reason: "meta" };
   }
