@@ -1,5 +1,6 @@
 "use client";
 
+import { SquadDelegationControls } from "@/components/SquadDelegationControls";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGunPeer, type FeedGun } from "@/components/GunPeerProvider";
@@ -85,7 +86,6 @@ import {
   forumNeedRemovalSoul,
   forumOfferCancelSoul,
   forumOfferRemovalSoul,
-  forumOwnerMayWriteStatus,
   forumStatementFromNode,
   forumStatusRemovalSoul,
   forumNeedAdmission,
@@ -106,9 +106,7 @@ import {
   parseForumNeed,
   parseForumOffer,
   parseForumRoleMembership,
-  pausedStatus,
   pickDisplayedStatus,
-  reassignedStatus,
   shortSea,
   showFullVitals,
   buildForumStatement,
@@ -238,7 +236,6 @@ export function SquadForum() {
   const [selected, setSelected] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [draft, setDraft] = useState("");
-  const [reassignTo, setReassignTo] = useState("");
   const [meshStatus, setMeshStatus] = useState<Map<string, ForumAgentStatus>>(() => new Map());
   const [meshNeeds, setMeshNeeds] = useState<Map<string, ForumNeed>>(() => new Map());
   const [meshOffers, setMeshOffers] = useState<Map<string, ForumOffer>>(() => new Map());
@@ -1562,61 +1559,6 @@ export function SquadForum() {
     window.setTimeout(() => composerRef.current?.focus(), 0);
   }
 
-  function onPause(agent: SquadAgent) {
-    const current = requireGraph();
-    if (!current || !seaPub) return;
-    if (!forumOwnerMayWriteStatus(current.ownerOf(PILOT_FORUM_ID), seaPub)) {
-      setNotice("Check see is not a status write. The forum owner can write status.");
-      return;
-    }
-    const now = Math.floor(Date.now() / 1000);
-    const next = pausedStatus(agent.status, now);
-    if (!validateForumStatus(next)) {
-      setNotice("Status was not accepted.");
-      return;
-    }
-    setLocalStatus((prev) => {
-      const map = new Map(prev);
-      map.set(next.seaPubkey, next);
-      return map;
-    });
-    void putAuthedStatus(next, seaPub).then((wrote) => {
-      if (wrote === "signed") setNotice("Paused.");
-      else if (wrote === "offline") setNotice("Paused on this browser. The mesh peer was not ready.");
-      else setNotice("Paused on this browser. The mesh put needs a signature from this SEA key.");
-    });
-  }
-
-  function onReassign(agent: SquadAgent) {
-    const target = reassignTo.trim();
-    if (!isSeaPubkey(target)) {
-      setNotice("Enter a SEA pubkey to reassign.");
-      return;
-    }
-    const current = requireGraph();
-    if (!current || !seaPub) return;
-    if (!forumOwnerMayWriteStatus(current.ownerOf(PILOT_FORUM_ID), seaPub)) {
-      setNotice("Check see is not a status write. The forum owner can write status.");
-      return;
-    }
-    const now = Math.floor(Date.now() / 1000);
-    const next = reassignedStatus(agent.status, target, now);
-    if (!next || !validateForumStatus(next)) {
-      setNotice("Status was not accepted.");
-      return;
-    }
-    setLocalStatus((prev) => {
-      const map = new Map(prev);
-      map.set(next.seaPubkey, next);
-      return map;
-    });
-    void putAuthedStatus(next, seaPub).then((wrote) => {
-      if (wrote === "signed") setNotice("Reassigned.");
-      else if (wrote === "offline") setNotice("Reassigned on this browser. The mesh peer was not ready.");
-      else setNotice("Reassigned on this browser. The mesh put needs a signature from this SEA key.");
-    });
-  }
-
   async function putAuthedRecord(
     soul: string,
     record: object,
@@ -1628,18 +1570,6 @@ export function SquadForum() {
     const sig = await signForumRecord(record, pair);
     if (!sig) return "local";
     return putSoul(gunRef.current, soul, { ...record, sig }) ? "signed" : "offline";
-  }
-
-  async function putAuthedStatus(
-    status: ForumAgentStatus,
-    writer: string,
-  ): Promise<"signed" | "offline" | "local"> {
-    const soul = forumAgentSoul(status.forumId, status.seaPubkey);
-    if (writer === graphRef.current?.ownerOf(status.forumId)) {
-      const admission = await putAuthedRecord(`${soul}/admission`, status, writer);
-      if (admission !== "signed") return admission;
-    }
-    return putAuthedRecord(soul, status, writer);
   }
 
   async function onSend() {
@@ -1993,28 +1923,8 @@ export function SquadForum() {
             <button type="button" data-testid="squad-reply" className={btnSecondary} onClick={() => onReply(active)}>
               Reply in chat
             </button>
-            <button type="button" data-testid="squad-pause" className={btnSecondary} onClick={() => onPause(active)}>
-              Pause
-            </button>
           </div>
-          <div className="mt-3 flex gap-2">
-            <input
-              className={`${field} min-w-0 flex-1`}
-              value={reassignTo}
-              onChange={(event) => setReassignTo(event.target.value)}
-              placeholder="SEA pubkey"
-              aria-label="Reassign target"
-              data-testid="squad-reassign-target"
-            />
-            <button
-              type="button"
-              data-testid="squad-reassign"
-              className={btnSecondary}
-              onClick={() => onReassign(active)}
-            >
-              Reassign
-            </button>
-          </div>
+          <SquadDelegationControls />
           <p className="mt-3 text-xs text-ink-muted">Tag {forumChatTag(PILOT_FORUM_ID)}</p>
         </div>
       ) : null}

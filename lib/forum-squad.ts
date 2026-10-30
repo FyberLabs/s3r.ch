@@ -195,22 +195,9 @@ export function canWriteStatus(owner: string | undefined, writer: string | null)
   return !!owner && !!writer && owner === writer && isSeaPubkey(writer);
 }
 
-/** Pause and reassign follow the forum owner, not whoever the status id names. */
+/** Status admission follows the forum owner; it never authorizes task control. */
 export function forumOwnerMayWriteStatus(forumOwner: string | undefined, writer: string | null): boolean {
   return canWriteStatus(forumOwner, writer);
-}
-
-export function pausedStatus(status: ForumAgentStatus, now: number): ForumAgentStatus {
-  return { ...status, state: "idle", lastUpdate: Math.max(now, status.lastUpdate + 1) };
-}
-
-export function reassignedStatus(
-  status: ForumAgentStatus,
-  target: string,
-  now: number,
-): ForumAgentStatus | null {
-  if (!isSeaPubkey(target)) return null;
-  return { ...status, lastUpdate: Math.max(now, status.lastUpdate + 1), result: `reassign ${target}` };
 }
 
 export function buildForumStatement(input: {
@@ -426,7 +413,7 @@ export function overlaySeeGraph(_primary: SeeGraph, sample: SeeGraph): SeeGraph 
 }
 
 /**
- * A local pause or reassign wins only while it is strictly newer than the
+ * A local descriptive status wins only while it is strictly newer than the
  * mesh row. An equal or later mesh `lastUpdate` retires the override.
  */
 export function pickDisplayedStatus(

@@ -167,10 +167,10 @@ test('agent status cannot exhaust revisions and owner can override the accepted 
   assert.equal(squad.statusRevisionAllowed({ ...status, lastUpdate: Number.MAX_SAFE_INTEGER - 1 }, helper, PILOT_OWNER, now), false);
   const edge = { ...status, lastUpdate: now + 299 };
   assert.equal(squad.statusRevisionAllowed(edge, helper, PILOT_OWNER, now), true);
-  const paused = squad.pausedStatus(edge, now);
-  assert.equal(paused.lastUpdate, edge.lastUpdate + 1);
-  assert.equal(squad.statusRevisionAllowed(paused, PILOT_OWNER, PILOT_OWNER, now), true);
-  assert.equal(squad.statusRevisionAllowed(paused, helper, PILOT_OWNER, now), false);
+  const updated = { ...edge, lastUpdate: edge.lastUpdate + 1 };
+  assert.equal(updated.lastUpdate, edge.lastUpdate + 1);
+  assert.equal(squad.statusRevisionAllowed(updated, PILOT_OWNER, PILOT_OWNER, now), true);
+  assert.equal(squad.statusRevisionAllowed(updated, helper, PILOT_OWNER, now), false);
 });
 
 test('subject closes exactly the admitted successor and preserves an owner reopen', () => {
