@@ -196,3 +196,7 @@ These builders and transport do not authenticate ownership or authorize writes.
 Mesh-backed drawer records still require admitted agent-owned object records and
 the direct see plus post checks described by SociACL #147. Artifact references
 do not confer access to their targets.
+
+Check evaluation requires a nonnegative safe-integer timestamp (negative zero is
+also refused), matching the consume contract. Invalid clocks deny before owner
+or grant lookup, including offer preparation and helper checks at acceptance.
