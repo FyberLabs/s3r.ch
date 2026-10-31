@@ -10,6 +10,7 @@
  * need id. There is no second owner-or-delegate test in this file.
  */
 
+import { p256 } from "@noble/curves/nist.js";
 import type { GunFeedNode } from "@/lib/feed-types";
 
 export type ForumAgentState = "idle" | "working" | "needs" | "emergency";
@@ -182,11 +183,18 @@ function hexBytes(bytes: Uint8Array): string {
 
 /** `p_` plus the 64-byte uncompressed point, lowercase hex. */
 export function seaToPrincipalKey(pub: string): string | null {
-  if (!SEA_SHAPE.test(pub) || badSegment(pub)) return null;
+  if (typeof pub !== "string" || !SEA_SHAPE.test(pub) || badSegment(pub)) return null;
   const [x, y] = pub.split(".");
   const xb = b64urlBytes(x);
   const yb = b64urlBytes(y);
   if (!xb || !yb || xb.length !== 32 || yb.length !== 32) return null;
+  // Base64 decoders accept unused trailing bits; an identity must have one spelling.
+  if (bytesToB64url(xb) !== x || bytesToB64url(yb) !== y) return null;
+  try {
+    p256.Point.fromBytes(new Uint8Array([4, ...xb, ...yb])).assertValidity();
+  } catch {
+    return null;
+  }
   return `p_${hexBytes(xb)}${hexBytes(yb)}`;
 }
 

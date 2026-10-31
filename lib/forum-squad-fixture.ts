@@ -3,6 +3,7 @@
  * until a Check-backed action puts one. Identity on each row is a SEA pubkey.
  */
 
+import { p256 } from "@noble/curves/nist.js";
 import { GUN_PROTOCOL_V, type FeedItem } from "@/lib/feed-types";
 import {
   forumChatTags,
@@ -33,13 +34,9 @@ function b64url(bytes: Uint8Array): string {
 }
 
 function seaFrom(n: number): string {
-  const x = new Uint8Array(32);
-  const y = new Uint8Array(32);
-  x[0] = n;
-  y[0] = 255 - n;
-  x[31] = 3;
-  y[31] = 7;
-  return `${b64url(x)}.${b64url(y)}`;
+  // Deterministic public demo points; the mesh remains disabled for this roster.
+  const point = p256.Point.BASE.multiply(BigInt(n)).toBytes(false);
+  return `${b64url(point.slice(1, 33))}.${b64url(point.slice(33))}`;
 }
 
 function mint(kind: string, sea: string, n: number): string {
