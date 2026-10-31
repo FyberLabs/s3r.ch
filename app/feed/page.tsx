@@ -7,8 +7,9 @@ import { MeshAclSync } from "@/components/MeshAclSync";
 import { SeeAclProvider } from "@/components/SeeAclProvider";
 
 export const metadata: Metadata = {
-  title: "Lab feed — s3r.ch",
-  description: "Tagged posts and rooms from Fyber Labs.",
+  title: "Feed — s3r.ch",
+  description:
+    "Tagged posts and rooms. Sign in with a wallet or Hypermesh, then share what you choose.",
 };
 
 export default function FeedPage() {
@@ -19,8 +20,12 @@ export default function FeedPage() {
       </h1>
       <p className="mt-4 text-lg text-ink-muted">
         Tagged posts and rooms.{" "}
+        <Link href="/features/groups" className="font-semibold text-ink hover:text-signal">
+          Groups and squads
+        </Link>
+        {" · "}
         <Link href="/feed/squad" className="font-semibold text-ink hover:text-signal">
-          Squad forum
+          Open squad
         </Link>
       </p>
 

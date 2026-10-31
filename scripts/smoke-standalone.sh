@@ -41,8 +41,8 @@ check /forum 200
 check /api/identity/providers 200
 
 squad="$(curl --max-time 10 -fsS "http://127.0.0.1:$port/feed/squad")"
-if ! printf '%s' "$squad" | grep -F 'This is a local demonstration' >/dev/null; then
-  echo "squad must label its local demonstration boundary" >&2
+if ! printf '%s' "$squad" | grep -F 'This board stays in this browser' >/dev/null; then
+  echo "squad must label its browser-only boundary" >&2
   fail=1
 fi
 

@@ -1,6 +1,6 @@
 /**
  * SociACL's pause/reassign contract needs durable cancellation evidence and
- * worker fencing. The pilot has neither. There is intentionally no enable flag,
+ * worker fencing. This app has neither yet. There is intentionally no enable flag,
  * status-write callback or optimistic success path on these controls.
  */
 export function SquadDelegationControls() {
@@ -15,7 +15,7 @@ export function SquadDelegationControls() {
           disabled
           aria-label="Reassign target"
           data-testid="squad-reassign-target"
-          placeholder="SEA pubkey"
+          placeholder="Mesh key"
           className="min-w-0 flex-1 rounded border bg-transparent px-3 py-2 opacity-50"
         />
         <button type="button" disabled data-testid="squad-reassign" className="rounded border px-3 py-2 opacity-50">

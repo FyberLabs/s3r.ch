@@ -1350,7 +1350,7 @@ export function SquadForum() {
       return null;
     }
     if (!seaPub) {
-      setNotice("A SEA key on this browser is required.");
+      setNotice("A mesh key on this browser is required.");
       return null;
     }
     return graph;
@@ -1377,10 +1377,10 @@ export function SquadForum() {
   }
 
   function meshNote(kind: string, wrote: "signed" | "offline" | "local", okLine: string): string {
-    if (!PILOT_MESH_ENABLED) return `${kind} on this browser. This sample board does not connect to the mesh.`;
+    if (!PILOT_MESH_ENABLED) return `${kind} on this browser until mesh publish.`;
     if (wrote === "signed") return okLine;
     if (wrote === "offline") return `${kind} on this browser. The mesh peer was not ready.`;
-    return `${kind} on this browser. The mesh put needs a signature from this SEA key.`;
+    return `${kind} on this browser. The mesh put needs a signature from this mesh key.`;
   }
 
   function offerEntropy(): string {
@@ -1563,7 +1563,7 @@ export function SquadForum() {
 
   async function onSend() {
     if (!see?.ready || !seaPub) {
-      setNotice(seaPub ? "Check is still loading." : "A SEA key on this browser is required.");
+      setNotice(seaPub ? "Check is still loading." : "A mesh key on this browser is required.");
       return;
     }
     const now = Math.floor(Date.now() / 1000);
@@ -1581,7 +1581,7 @@ export function SquadForum() {
     if (!PILOT_MESH_ENABLED) {
       setLocalChat(prev => retainForumChat(prev, item));
       setDraft("");
-      setNotice("Statement kept on this browser. This sample board does not connect to the mesh.");
+      setNotice("Statement kept on this browser until mesh publish.");
       return;
     }
     const node = toGunNode(item);
@@ -1603,7 +1603,7 @@ export function SquadForum() {
     void see.persist();
     setLocalChat((prev) => retainForumChat(prev, item));
     setDraft("");
-    if (!sig) setNotice("Statement kept on this browser. The mesh put needs a signature from this SEA key.");
+    if (!sig) setNotice("Statement kept on this browser. The mesh put needs a signature from this mesh key.");
     else if (!wrote) setNotice("Statement kept on this browser. The mesh peer was not ready.");
     else setNotice("Statement sent.");
   }
@@ -1618,8 +1618,8 @@ export function SquadForum() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Squad forum</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            {PILOT_FORUM_LABEL}. Identity is the SEA pubkey. Wallet and Panopticon are linked
-            credentials. This is a local demonstration; messages and actions are not published.
+            {PILOT_FORUM_LABEL}. Your mesh key stays on this browser. A linked account
+            stays attached to your wallet. This board stays in this browser until mesh publish.
           </p>
         </div>
         {alarmOn ? (
@@ -1635,7 +1635,7 @@ export function SquadForum() {
       <dl className="mt-4 grid gap-2 text-xs text-ink-muted sm:grid-cols-3">
         <div className="border border-rule bg-panel px-3 py-2">
           <dt>Identity</dt>
-          <dd className="mt-1 font-data text-ink">{seaPub ? shortSea(seaPub) : "no SEA key on this browser"}</dd>
+          <dd className="mt-1 font-data text-ink">{seaPub ? shortSea(seaPub) : "no mesh key on this browser"}</dd>
         </div>
         <div className="border border-rule bg-panel px-3 py-2">
           <dt>Wallet</dt>
@@ -1644,7 +1644,7 @@ export function SquadForum() {
           </dd>
         </div>
         <div className="border border-rule bg-panel px-3 py-2">
-          <dt>Panopticon</dt>
+          <dt>Linked account</dt>
           <dd className="mt-1 text-ink">{oauthLinked ? "linked" : "not linked"}</dd>
         </div>
       </dl>
@@ -1653,7 +1653,7 @@ export function SquadForum() {
           <Link href="/feed" className="font-semibold text-ink hover:text-signal">
             Sign in on the feed
           </Link>{" "}
-          to link a wallet. The SEA key stays on this browser.
+          to link a wallet. The mesh key stays on this browser.
         </p>
       ) : null}
       {notice ? (
@@ -1681,7 +1681,6 @@ export function SquadForum() {
               </button>
             ))}
           </div>
-          <p className="mt-4 text-xs text-ink-muted">Fleet and Command are not on this page.</p>
         </aside>
 
         <section>
@@ -1777,7 +1776,7 @@ export function SquadForum() {
             setDraft={setDraft}
             onSend={onSend}
             composerRef={composerRef}
-            seaLabel={seaPub ? shortSea(seaPub) : "no SEA key"}
+            seaLabel={seaPub ? shortSea(seaPub) : "no mesh key"}
           />
         </div>
       </div>

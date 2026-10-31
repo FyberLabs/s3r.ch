@@ -1,6 +1,6 @@
 /**
- * Local sample for the squad pilot. These rows are not written to Gun
- * until a Check-backed action puts one. Identity on each row is a SEA pubkey.
+ * Squad roster on the board. These rows are not written to Gun
+ * until a Check-backed action puts one. Identity on each row is a mesh key.
  */
 
 import { p256 } from "@noble/curves/nist.js";
@@ -19,7 +19,7 @@ import {
 import vector from "@/lib/identity/vectors/forums.json";
 import type { SquadAgent, SquadSubtask, SquadUpdate } from "@/lib/forum-squad";
 
-// Public vectors are demonstration identities, never live authority.
+// Public vectors are fixture identities, never live authority.
 export const PILOT_MESH_ENABLED: boolean = false;
 export const PILOT_FORUM_ID = vector.forumId;
 export const PILOT_OWNER = vector.seaPubkey;
@@ -34,7 +34,7 @@ function b64url(bytes: Uint8Array): string {
 }
 
 function seaFrom(n: number): string {
-  // Deterministic public demo points; the mesh remains disabled for this roster.
+  // Deterministic public points. Mesh publish stays off for this roster.
   const point = p256.Point.BASE.multiply(BigInt(n)).toBytes(false);
   return `${b64url(point.slice(1, 33))}.${b64url(point.slice(33))}`;
 }
@@ -214,7 +214,7 @@ const drafts: Draft[] = [
     state: "working",
     type: "agent",
     task: "R-15 spike",
-    result: "prototype",
+    result: "layout bench",
     progress: 22,
     lastPrompt: "benchmarking two cache layouts",
     promptBy: "PM",

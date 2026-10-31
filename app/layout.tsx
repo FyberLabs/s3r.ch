@@ -16,12 +16,14 @@ const recursive = Recursive({
 
 export const metadata: Metadata = {
   title: "s3r.ch",
-  description: "Tagged posts and rooms from Fyber Labs.",
+  description:
+    "Tagged posts and rooms. Sign in with a wallet or Hypermesh, then share what you choose.",
   metadataBase: new URL("https://s3r.ch"),
   icons: { icon: "/favicon.svg", apple: "/favicon.svg" },
   openGraph: {
     title: "s3r.ch",
-    description: "Tagged posts and rooms from Fyber Labs.",
+    description:
+      "Tagged posts and rooms. Sign in with a wallet or Hypermesh, then share what you choose.",
     url: "https://s3r.ch",
     siteName: "s3r.ch",
     type: "website",
@@ -30,7 +32,8 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "s3r.ch",
-    description: "Tagged posts and rooms from Fyber Labs.",
+    description:
+      "Tagged posts and rooms. Sign in with a wallet or Hypermesh, then share what you choose.",
     images: ["/og.svg"],
   },
 };

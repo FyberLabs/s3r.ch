@@ -30,15 +30,6 @@ export function SiteFooter() {
         >
           Hypermesh / Hyperme.sh
         </a>
-        <span aria-hidden="true">·</span>
-        <a
-          href="https://tennesseewindage.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-ink"
-        >
-          Tennessee Windage
-        </a>
       </p>
     </footer>
   );

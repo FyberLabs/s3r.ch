@@ -86,6 +86,18 @@ describe("browser allocate consume", () => {
     }
     assert.equal(home.includes("Tagged posts and rooms."), true);
     assert.equal(feed.includes("Tagged posts and rooms."), true);
+    assert.equal(home.includes("Lab feed"), false);
+    assert.equal(feed.includes("Lab feed"), false);
+    assert.equal(home.toLowerCase().includes("tennessee"), false);
+    const footer = readFileSync(
+      new URL("../components/SiteFooter.tsx", import.meta.url),
+      "utf8",
+    );
+    const layout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
+    for (const src of [home, feed, footer, layout]) {
+      assert.equal(src.toLowerCase().includes("tennesseewindage"), false);
+      assert.equal(src.includes("from Fyber Labs"), false);
+    }
   });
 });
 

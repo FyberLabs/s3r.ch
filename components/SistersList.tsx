@@ -9,12 +9,18 @@ export type SisterSite = {
   host: string;
 };
 
-export function SistersList({ sites }: { sites: readonly SisterSite[] }) {
+export function SistersList({
+  sites,
+  quiet = false,
+}: {
+  sites: readonly SisterSite[];
+  quiet?: boolean;
+}) {
   const { reader } = useBrand();
 
   if (reader === "ai") {
     return (
-      <div className="mt-8 overflow-x-auto">
+      <div className={quiet ? "mt-3 overflow-x-auto" : "mt-8 overflow-x-auto"}>
         <table className="brand-table">
           <thead>
             <tr>
@@ -46,8 +52,28 @@ export function SistersList({ sites }: { sites: readonly SisterSite[] }) {
     );
   }
 
+  if (quiet) {
+    return (
+      <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-ink-muted">
+        {sites.map((site) => (
+          <li key={site.href}>
+            <a
+              href={site.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ink hover:text-signal"
+            >
+              {site.name}
+            </a>
+            <span className="ml-2">{site.copy}</span>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
   return (
-    <div className="mt-8 grid gap-4 sm:grid-cols-3">
+    <div className="mt-8 grid gap-4 sm:grid-cols-2">
       {sites.map((site) => (
         <a
           key={site.href}
