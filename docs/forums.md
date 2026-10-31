@@ -262,3 +262,12 @@ floor; a newer current-key record can replace a retired record. The genesis
 owner remains unchanged. The store is capped at 1024 objects and is separate
 from the legacy mutable ACL. Production history resolution and UI/graph wiring
 remain required; there is no unsigned `putObject` escape hatch.
+
+`createForumKeyResolver` adapts an authenticated history provider to the object
+verifier. It checks account/time binding, bounded contiguous sequences, increasing
+rotation times, previous-key continuity, and key reuse. At an exact rotation time
+the issuance key is the previous key. It calls the provider again for every
+resolution and denies missing history rather than assuming genesis authority.
+The provider must verify all rotation and recovery evidence before returning
+its projection; this adapter does not authenticate raw rotation records. The
+production provider is still required before live graph integration.
