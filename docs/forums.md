@@ -240,3 +240,9 @@ is explicitly unverified: a well-shaped signature string is not proof. Nothing
 in this parser calls `putObject` or changes the graph. Current-key resolution,
 signature verification, and revalidation on key-history changes must be wired
 before these records can authorize forum or drawer access.
+
+`verifyForumKeySignature` checks canonical compact P-256 ECDSA signatures over
+SHA-256, accepting high-S and low-S as upstream does. It is a cryptographic
+primitive, not a current-key resolver: even a true result must not admit an
+object until key history, issuance time, and current authority are verified.
+It does not accept Gun SEA envelopes or mutate the graph.
