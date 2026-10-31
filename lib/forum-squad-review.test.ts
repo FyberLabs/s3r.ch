@@ -368,7 +368,7 @@ test('public-vector squad fixture cannot connect, publish, or restore former mes
   const source = readFileSync('components/SquadForum.tsx', 'utf8');
   assert.match(source, /if \(!PILOT_MESH_ENABLED \|\| !register\) return;/);
   assert.match(source, /if \(!PILOT_MESH_ENABLED \|\| !gun\) return false;/);
-  assert.match(source, /if \(!PILOT_MESH_ENABLED\) return;\s+const loaded = parseNeedHighWater/);
+  assert.match(source, /if \(!PILOT_MESH_ENABLED\) return;\s+const loaded = restoreForumNeedCache/);
   assert.match(source, /if \(!PILOT_MESH_ENABLED\) return "local";/);
 });
 
@@ -397,5 +397,34 @@ test('status restoration handles corrupt and foreign-forum caches without live r
     const restored = restoreForumStatusCache(raw, PILOT_FORUM_ID);
     assert.equal(restored.highWater.size, 0);
     assert.equal(restored.mesh.size, 0);
+  }
+});
+
+
+test('restored need floors never become admitted content, including after one row verifies', () => {
+  const first = { ...need, hamState: 20, body: 'cached first' };
+  const second = { ...need, id: need.id.slice(0, -32) + 'cd'.repeat(16),
+    hamState: 30, body: 'cached second', severity: 'emergency' as const };
+  const restored = squad.restoreForumNeedCache(JSON.stringify([first, second]));
+  assert.equal(restored.highWater.size, 2);
+  assert.equal(restored.authenticated.size, 0);
+  assert.equal(squad.cacheForumNeed(restored.authenticated, { ...first, hamState: 19 }, restored.highWater.get(first.id)), null);
+  // A freshly verified copy at the persisted revision must be displayable;
+  // raising the high-water mark is unnecessary for this case.
+  const admitted = squad.cacheForumNeed(restored.authenticated, first, restored.highWater.get(first.id))!;
+  assert.equal(squad.raiseNeedHighWater(restored.highWater, first), false);
+  const board = squad.composeForumNeeds({ pilot: [], mesh: [...admitted.values()], local: [], removed: new Set() });
+  assert.deepEqual([...board.keys()], [first.id]);
+  assert.equal(board.has(second.id), false);
+  assert.equal(restored.highWater.has(second.id), true);
+  const removed = squad.composeForumNeeds({ pilot: [], mesh: [...admitted.values()], local: [], removed: new Set([first.id]) });
+  assert.equal(removed.size, 0);
+});
+
+test('corrupt need caches restore no content or replay floors', () => {
+  for (const raw of [null, '{', '{}', '[{"id":"forged"}]']) {
+    const restored = squad.restoreForumNeedCache(raw);
+    assert.equal(restored.highWater.size, 0);
+    assert.equal(restored.authenticated.size, 0);
   }
 });

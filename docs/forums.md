@@ -217,3 +217,9 @@ does not populate the live roster or alarm state. Status rows become displayable
 only after the existing mesh signature and admission path accepts them again.
 An offline reload therefore shows the sample board rather than cached live rows.
 The cache remains a local replay floor, not authenticated ownership or child data.
+
+Need-cache reload follows the same boundary: saved rows restore replay limits
+only, not subjects, accepted offers, or alarm data. Each need must pass signature
+and admission again. Accepting one row does not promote unrelated saved rows,
+and a verified row at the saved revision can be displayed without advancing the
+replay floor. Offline cached needs are not shown as live records.

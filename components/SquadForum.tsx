@@ -52,7 +52,7 @@ import {
   offerSignerCandidates,
   offerTailCandidate,
   parseForumAlarmUpdate,
-  parseNeedHighWater,
+  restoreForumNeedCache,
   pendingNeedRetry,
   pendingOfferRetry,
   prunePendingNeeds,
@@ -258,7 +258,7 @@ export function SquadForum() {
   const pendingOffersRef = useRef<Map<string, PendingOfferEntry>>(new Map());
   const highWaterRef = useRef<Map<string, ForumNeed>>(new Map());
   const needAdmitRef = useRef<Map<string, string>>(new Map());
-  const [persistedNeeds, setPersistedNeeds] = useState<Map<string, ForumNeed>>(() => new Map());
+  const [authenticatedNeeds, setAuthenticatedNeeds] = useState<Map<string, ForumNeed>>(() => new Map());
   const acceptNeedRef = useRef<(data: unknown, key: string, gen: number, fromRemoval?: boolean, fromPending?: boolean) => Promise<void>>(
     async () => {},
   );
@@ -367,9 +367,11 @@ export function SquadForum() {
   }, []);
 
   function noteNeedHighWater(need: ForumNeed) {
+    // Called only after signature and admission checks. Never promote the
+    // remaining unsigned replay cache when one row authenticates.
+    setAuthenticatedNeeds((prev) => cacheForumNeed(prev, need, highWaterRef.current.get(need.id)) ?? prev);
     if (!raiseNeedHighWater(highWaterRef.current, need)) return;
     const next = new Map(highWaterRef.current);
-    setPersistedNeeds(next);
     try {
       forumStorage()?.setItem(NEED_HIGH_WATER_KEY, serializeNeedHighWater(next));
     } catch {
@@ -379,12 +381,12 @@ export function SquadForum() {
 
   useEffect(() => {
     if (!PILOT_MESH_ENABLED) return;
-    const loaded = parseNeedHighWater(forumStorage()?.getItem(NEED_HIGH_WATER_KEY) ?? null);
+    const loaded = restoreForumNeedCache(forumStorage()?.getItem(NEED_HIGH_WATER_KEY) ?? null);
     const statuses = restoreForumStatusCache(forumStorage()?.getItem("s3rch:squad:status-high-water:v1") ?? null, PILOT_FORUM_ID);
     statusHighWaterRef.current = statuses.highWater;
     setMeshStatus(statuses.mesh);
-    highWaterRef.current = loaded;
-    if (loaded.size > 0) setPersistedNeeds(loaded);
+    highWaterRef.current = loaded.highWater;
+    setAuthenticatedNeeds(loaded.authenticated);
   }, []);
 
   useEffect(() => {
@@ -1280,11 +1282,11 @@ export function SquadForum() {
     () =>
       composeForumNeeds({
         pilot: PILOT_NEEDS,
-        mesh: [...persistedNeeds.values(), ...meshNeeds.values()],
+        mesh: [...authenticatedNeeds.values(), ...meshNeeds.values()],
         local: [...localNeeds.values()],
         removed: removedNeeds,
       }),
-    [localNeeds, meshNeeds, persistedNeeds, removedNeeds],
+    [localNeeds, meshNeeds, authenticatedNeeds, removedNeeds],
   );
   needsRef.current = needs;
 
