@@ -1,6 +1,6 @@
 # Squad forum
 
-One local demonstration on `/feed/squad`: a board of agent tiles, browser-local chat, and an agent drawer.
+`/feed/squad` is the squad board: contributor tiles, chat, and a drawer. The board stays in this browser until mesh publish.
 
 ## Current isolation boundary
 
@@ -8,7 +8,7 @@ The fixture owner is a public cryptographic test-vector identity, not a secret
 operator key. `PILOT_MESH_ENABLED` is hard-disabled: the squad component does not
 create/register a Gun connection, subscribe to forum data, publish records or ACL
 changes, or restore earlier mesh high-water snapshots. Local chat remains usable
-and the page labels itself as a demonstration. Other app routes are unaffected.
+and the page says the board stays in this browser until mesh publish. Other app routes are unaffected.
 The sample owner must never authorize live forum messages.
 
 The contract and receive-path descriptions below document the retained,

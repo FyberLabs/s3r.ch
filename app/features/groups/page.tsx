@@ -51,8 +51,8 @@ export default function GroupsFeaturePage() {
           chat.
         </p>
         <p>
-          Open the squad board in the app. The board on this site stays in your
-          browser. Publishing that board onto the shared graph comes later.
+          Open the squad board in the app. The board stays in this browser until
+          mesh publish.
         </p>
       </FeatureSection>
     </FeatureArticle>

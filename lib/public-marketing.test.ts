@@ -19,10 +19,16 @@ function walk(dir: string): string[] {
 
 const marketing = [
   "../app/page.tsx",
+  "../app/feed/page.tsx",
+  "../app/feed/squad/page.tsx",
+  "../app/forum/page.tsx",
   "../components/SiteHeader.tsx",
+  "../components/SiteFooter.tsx",
   "../components/PublicFeedPreview.tsx",
   "../components/FeatureArticle.tsx",
   "../components/FeatureCards.tsx",
+  "../components/SquadForum.tsx",
+  "../components/SquadDelegationControls.tsx",
   "../lib/features.ts",
   ...walk("../app/features"),
 ];
@@ -34,6 +40,8 @@ describe("public marketing copy", () => {
       const src = read(path).toLowerCase();
       assert.equal(src.includes("tennessee"), false, path);
       assert.equal(src.includes("lab feed"), false, path);
+      assert.equal(src.includes("local demonstration"), false, path);
+      assert.equal(src.includes("sample board"), false, path);
       assert.equal(src.includes("panopticon"), false, path);
       assert.equal(src.includes("lightiff"), false, path);
       assert.equal(src.includes("path a"), false, path);
@@ -57,5 +65,14 @@ describe("public marketing copy", () => {
     assert.equal(home.includes("Public feeds"), true);
     assert.equal(home.includes("quiet"), true);
     assert.equal(preview.includes('"/api/feed"'), true);
+  });
+
+  it("keeps the squad browser-only boundary in the smoke check and the board", () => {
+    const smoke = read("../scripts/smoke-standalone.sh");
+    const board = read("../components/SquadForum.tsx");
+    assert.equal(smoke.includes("This board stays in this browser"), true);
+    assert.equal(smoke.includes("local demonstration"), false);
+    assert.equal(board.includes("This board stays in this browser until mesh publish."), true);
+    assert.equal(board.includes("sample board"), false);
   });
 });

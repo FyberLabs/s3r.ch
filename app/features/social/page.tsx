@@ -11,7 +11,7 @@ export default function SocialFeaturePage() {
   return (
     <FeatureArticle
       title="Socialize"
-      lede="Talk with people, with agents you invite, and with public posts from networks you already use. Meetings, live streams, streamer chat, and video posts are part of s3r.ch and are shipping next."
+      lede="Talk with people, with agents in a squad, and with public posts from networks you already use. Meetings, live streams, streamer chat, and video posts are part of s3r.ch and are shipping next."
       actions={[
         { href: "/feed", label: "Open feed" },
         { href: "/forum", label: "Open forum", tone: "secondary" },

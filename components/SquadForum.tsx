@@ -1377,7 +1377,7 @@ export function SquadForum() {
   }
 
   function meshNote(kind: string, wrote: "signed" | "offline" | "local", okLine: string): string {
-    if (!PILOT_MESH_ENABLED) return `${kind} on this browser. This sample board does not connect to the mesh.`;
+    if (!PILOT_MESH_ENABLED) return `${kind} on this browser until mesh publish.`;
     if (wrote === "signed") return okLine;
     if (wrote === "offline") return `${kind} on this browser. The mesh peer was not ready.`;
     return `${kind} on this browser. The mesh put needs a signature from this mesh key.`;
@@ -1581,7 +1581,7 @@ export function SquadForum() {
     if (!PILOT_MESH_ENABLED) {
       setLocalChat(prev => retainForumChat(prev, item));
       setDraft("");
-      setNotice("Statement kept on this browser. This sample board does not connect to the mesh.");
+      setNotice("Statement kept on this browser until mesh publish.");
       return;
     }
     const node = toGunNode(item);
@@ -1619,7 +1619,7 @@ export function SquadForum() {
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Squad forum</h1>
           <p className="mt-1 text-sm text-ink-muted">
             {PILOT_FORUM_LABEL}. Your mesh key stays on this browser. A linked account
-            stays attached to your wallet. This board stays in this browser.
+            stays attached to your wallet. This board stays in this browser until mesh publish.
           </p>
         </div>
         {alarmOn ? (
@@ -1681,7 +1681,6 @@ export function SquadForum() {
               </button>
             ))}
           </div>
-          <p className="mt-4 text-xs text-ink-muted">Fleet and Command are not on this page.</p>
         </aside>
 
         <section>
