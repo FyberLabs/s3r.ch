@@ -880,6 +880,14 @@ export function serializeNeedHighWater(map: ReadonlyMap<string, ForumNeed>): str
   return JSON.stringify([...map.values()]);
 }
 
+/** Unsigned saved needs constrain replay but cannot supply admitted content. */
+export function restoreForumNeedCache(raw: string | null): {
+  highWater: Map<string, ForumNeed>;
+  authenticated: Map<string, ForumNeed>;
+} {
+  return { highWater: parseNeedHighWater(raw), authenticated: new Map() };
+}
+
 /** Drop a corrupt record. Keep the freshest valid need for each id. */
 export function parseNeedHighWater(raw: string | null): Map<string, ForumNeed> {
   const map = new Map<string, ForumNeed>();
