@@ -54,6 +54,8 @@ export type SquadUpdate = {
 };
 
 export type SquadAgent = {
+  /** Sample details are never evidence for a received status row. */
+  drawerSource?: "sample" | "status-only";
   label: string;
   promptBy: string;
   artifactNote: string;
@@ -1406,16 +1408,15 @@ export function mergeAgents(
   admitted?: ReadonlySet<string>,
 ): SquadAgent[] {
   const roster = admitted ?? new Set(sample.map((agent) => agent.status.seaPubkey));
-  const byPub = new Map(sample.map((agent) => [agent.status.seaPubkey, agent]));
+  const byPub = new Map<string, SquadAgent>(sample.map((agent) => [agent.status.seaPubkey, { ...agent, drawerSource: "sample" }]));
   for (const status of mesh) {
     const existing = byPub.get(status.seaPubkey);
     if (!existing && !roster.has(status.seaPubkey)) continue;
-    if (existing) {
-      byPub.set(status.seaPubkey, { ...existing, status });
-      continue;
-    }
+    // A status signature covers only status fields. Do not attach fixture
+    // task history, attribution, or artifact claims to a received status.
     byPub.set(status.seaPubkey, {
-      label: shortSea(status.seaPubkey),
+      drawerSource: "status-only",
+      label: existing?.label ?? shortSea(status.seaPubkey),
       promptBy: "",
       artifactNote: "",
       status,

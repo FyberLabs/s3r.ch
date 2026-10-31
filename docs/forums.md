@@ -205,3 +205,9 @@ Offer authorship does not admit an ACL object owner. Preparing or publishing an
 offer never calls `putObject` or persists ownership for the offer ID. The helper
 remains the signer of the offer row, while acceptance rechecks access to the
 parent need. Any independently authenticated object admission stays unchanged.
+
+A received mesh status replaces the sample status without inheriting its drawer
+subtasks, update history, prompt attribution, or artifact note. The drawer labels
+this as status-only data until authenticated child records are integrated. Sample
+details remain on sample-only agents; a status signature does not authenticate
+those details. Local display labels are retained for recognition.
