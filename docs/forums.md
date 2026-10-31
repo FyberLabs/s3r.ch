@@ -246,3 +246,11 @@ SHA-256, accepting high-S and low-S as upstream does. It is a cryptographic
 primitive, not a current-key resolver: even a true result must not admit an
 object until key history, issuance time, and current authority are verified.
 It does not accept Gun SEA envelopes or mutate the graph.
+
+`verifyForumObjectRecord` composes parsing, issuance policy, trusted key resolution,
+and signature verification. Its resolver must authenticate complete key history
+and enforce rotation forks/conflicts; the module supplies no resolver and never
+falls back to genesis ownership. Resolution is bound to the owner and both
+evaluation times. Retired keys, missing history, and resolver failure deny.
+Success applies only at that instant and does not install ACL ownership. The
+production resolver and graph admission are still unwired.
