@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ForumDesk } from "@/components/ForumDesk";
 import { IdentityBar } from "@/components/IdentityBar";
 
@@ -17,7 +18,10 @@ export default function ForumPage() {
       </p>
       <p className="mt-3 max-w-2xl text-sm text-ink-muted">
         Posts and snapshots on this seed server are temporary and may disappear
-        when it restarts. Keep your own copy of anything you need.
+        when it restarts. Keep your own copy of anything you need.{" "}
+        <Link href="/features/social" className="font-semibold text-ink hover:text-signal">
+          How socializing works
+        </Link>
       </p>
       <IdentityBar />
       <ForumDesk />

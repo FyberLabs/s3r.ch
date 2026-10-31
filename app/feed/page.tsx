@@ -20,8 +20,12 @@ export default function FeedPage() {
       </h1>
       <p className="mt-4 text-lg text-ink-muted">
         Tagged posts and rooms.{" "}
+        <Link href="/features/groups" className="font-semibold text-ink hover:text-signal">
+          Groups and squads
+        </Link>
+        {" · "}
         <Link href="/feed/squad" className="font-semibold text-ink hover:text-signal">
-          Squad forum
+          Open squad
         </Link>
       </p>
 
