@@ -254,3 +254,11 @@ falls back to genesis ownership. Resolution is bound to the owner and both
 evaluation times. Retired keys, missing history, and resolver failure deny.
 Success applies only at that instant and does not install ACL ownership. The
 production resolver and graph admission are still unwired.
+
+`createForumObjectStore` holds only signed object records accepted through that
+verifier. Ownership reads reverify rather than reuse an admission boolean.
+History loss or key retirement hides ownership without deleting its issuance
+floor; a newer current-key record can replace a retired record. The genesis
+owner remains unchanged. The store is capped at 1024 objects and is separate
+from the legacy mutable ACL. Production history resolution and UI/graph wiring
+remain required; there is no unsigned `putObject` escape hatch.
