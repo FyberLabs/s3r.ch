@@ -1817,6 +1817,12 @@ export function SquadForum() {
           <div className="mt-2 h-1 bg-rule">
             <div className="h-1 bg-signal" style={{ width: `${clampProgress(active.status.progress)}%` }} />
           </div>
+          {active.drawerSource === "status-only" ? (
+            <p role="note" className="mt-3 text-xs text-ink-muted">
+              Only status data is available. Subtasks, update history, and artifact records
+              have not been loaded. Sample details are omitted.
+            </p>
+          ) : null}
           <h3 className="mt-4 text-xs font-semibold uppercase text-ink-muted">Subtasks</h3>
           <ul className="mt-2 space-y-1 text-sm text-ink">
             {active.subtasks.map((task) => (

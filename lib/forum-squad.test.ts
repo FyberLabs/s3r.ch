@@ -1527,3 +1527,40 @@ describe("squad view", () => {
     assert.equal(PILOT_AGENTS.length, 12);
   });
 });
+
+
+describe("live drawer provenance", () => {
+  it("does not attach sample details to a received status", () => {
+    const fixture: SquadAgent = {
+      ...PILOT_AGENTS[0], promptBy: "sample operator", artifactNote: "sample files",
+      subtasks: [{ id: "sample-task", label: "sample work", state: "done" }],
+      updates: [{ id: "sample-update", ts: 1, body: "sample history" }],
+    };
+    const before = structuredClone(fixture);
+    const status = { ...fixture.status, task: "live task", lastPrompt: "live prompt", result: "live result" };
+    const [agent] = mergeAgents([fixture], [status]);
+    assert.equal(agent.drawerSource, "status-only");
+    assert.equal(agent.status, status);
+    assert.equal(agent.label, fixture.label);
+    assert.deepEqual(agent.subtasks, []);
+    assert.deepEqual(agent.updates, []);
+    assert.equal(agent.promptBy, "");
+    assert.equal(agent.artifactNote, "");
+    assert.deepEqual(fixture, before);
+    // Repeated updates must not restore sample child records.
+    const [again] = mergeAgents([fixture], [{ ...status, lastUpdate: status.lastUpdate + 1 }]);
+    assert.deepEqual(again.subtasks, []);
+    assert.equal(again.drawerSource, "status-only");
+  });
+
+  it("keeps sample-only details and removes an agent after a verified removal", () => {
+    const fixture = PILOT_AGENTS[0];
+    const [sample] = mergeAgents([fixture], []);
+    assert.equal(sample.drawerSource, "sample");
+    assert.deepEqual(sample.subtasks, fixture.subtasks);
+    assert.deepEqual(sample.updates, fixture.updates);
+    assert.equal(sample.promptBy, fixture.promptBy);
+    assert.deepEqual(composeForumRoster({ sample: [fixture], mesh: [fixture.status],
+      removed: new Set([fixture.status.seaPubkey]) }), []);
+  });
+});
