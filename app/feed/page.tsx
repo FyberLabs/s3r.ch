@@ -7,8 +7,9 @@ import { MeshAclSync } from "@/components/MeshAclSync";
 import { SeeAclProvider } from "@/components/SeeAclProvider";
 
 export const metadata: Metadata = {
-  title: "Lab feed — s3r.ch",
-  description: "Tagged posts and rooms from Fyber Labs.",
+  title: "Feed — s3r.ch",
+  description:
+    "Tagged posts and rooms. Sign in with a wallet or Hypermesh, then share what you choose.",
 };
 
 export default function FeedPage() {

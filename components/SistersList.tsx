@@ -47,7 +47,7 @@ export function SistersList({ sites }: { sites: readonly SisterSite[] }) {
   }
 
   return (
-    <div className="mt-8 grid gap-4 sm:grid-cols-3">
+    <div className="mt-8 grid gap-4 sm:grid-cols-2">
       {sites.map((site) => (
         <a
           key={site.href}

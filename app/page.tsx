@@ -5,7 +5,7 @@ const sisters = [
   {
     href: "https://fyberlabs.com",
     name: "Fyber Labs",
-    copy: "Chris Hamilton's lab. Hardware, software, kits, and consulting.",
+    copy: "Hardware, software, kits, and consulting.",
     host: "fyberlabs.com",
   },
   {
@@ -14,12 +14,6 @@ const sisters = [
     copy: "Model and inference hardware rental.",
     host: "hyperme.sh",
   },
-  {
-    href: "https://tennesseewindage.com",
-    name: "Tennessee Windage",
-    copy: "Targeting computer for rifles. Hardware in development.",
-    host: "tennesseewindage.com",
-  },
 ];
 
 export default function Home() {
@@ -27,18 +21,19 @@ export default function Home() {
     <>
       <section className="landing-hero px-4 py-28">
         <div className="mx-auto max-w-4xl">
-          <p className="text-xs font-medium uppercase tracking-wide text-signal">
-            Fyber Labs
-          </p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-ink sm:text-6xl">
+          <h1 className="text-4xl font-semibold tracking-tight text-ink sm:text-6xl">
             s3r.ch
           </h1>
           <p className="mt-6 text-lg text-ink-muted sm:text-xl">
             Tagged posts and rooms.
           </p>
+          <p className="mt-3 max-w-2xl text-base text-ink-muted sm:text-lg">
+            Sign in with a wallet or Hypermesh. Post to Mine, create a room, and
+            share what you choose.
+          </p>
           <p className="mt-8">
             <a href="/feed" className={`inline-flex ${btnPrimary}`}>
-              Lab feed
+              Open feed
             </a>
           </p>
         </div>
@@ -47,7 +42,7 @@ export default function Home() {
       <section className="landing-sisters border-t border-rule py-16">
         <div className="mx-auto max-w-4xl px-4">
           <h2 className="text-2xl font-semibold tracking-tight text-ink">
-            Also from Fyber Labs
+            Related
           </h2>
           <SistersList sites={sisters} />
         </div>
