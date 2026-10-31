@@ -34,7 +34,7 @@ import {
   retainForumChat, forumChatFits,
   pendingNeedKey, statusRevisionAllowed, grantForumWatch, expireForumWatches, type ForumWatch,
   forumOfferCacheKey, offersForNeed, pendingClosureContext, needSignerCandidates,
-  cacheForumStatus, parseStatusHighWater, retainPendingStatus, prunePendingStatuses,
+  cacheForumStatus, restoreForumStatusCache, retainPendingStatus, prunePendingStatuses,
   statusWatchCandidate, grantStatusWatch, expireStatusWatches, type PendingStatus,
   chatAddresses,
   chatTone,
@@ -380,9 +380,9 @@ export function SquadForum() {
   useEffect(() => {
     if (!PILOT_MESH_ENABLED) return;
     const loaded = parseNeedHighWater(forumStorage()?.getItem(NEED_HIGH_WATER_KEY) ?? null);
-    const statuses = parseStatusHighWater(forumStorage()?.getItem("s3rch:squad:status-high-water:v1") ?? null, PILOT_FORUM_ID);
-    statusHighWaterRef.current = statuses;
-    setMeshStatus(new Map(statuses));
+    const statuses = restoreForumStatusCache(forumStorage()?.getItem("s3rch:squad:status-high-water:v1") ?? null, PILOT_FORUM_ID);
+    statusHighWaterRef.current = statuses.highWater;
+    setMeshStatus(statuses.mesh);
     highWaterRef.current = loaded;
     if (loaded.size > 0) setPersistedNeeds(loaded);
   }, []);

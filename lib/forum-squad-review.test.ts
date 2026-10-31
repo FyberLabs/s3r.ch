@@ -7,7 +7,7 @@ import {
   forumOfferCacheKey, offersForNeed, offerBlockedByCancel, authorizeForumOffer,
   pendingClosureContext, needClosureStatus, authorizeForumNeed, needSignerCandidates,
   authorizeForumMeshRemoval, retainPendingStatus, prunePendingStatuses, cacheForumStatus,
-  parseStatusHighWater, STATUS_CACHE_CAP, PENDING_STATUS_TTL_MS, STATUS_WATCH_TTL_MS,
+  parseStatusHighWater, restoreForumStatusCache, STATUS_CACHE_CAP, PENDING_STATUS_TTL_MS, STATUS_WATCH_TTL_MS,
   grantStatusWatch, expireStatusWatches, statusWatchCandidate, createMeshEventVersions,
   type PendingStatus,
 } from './forum-squad';
@@ -370,4 +370,32 @@ test('public-vector squad fixture cannot connect, publish, or restore former mes
   assert.match(source, /if \(!PILOT_MESH_ENABLED \|\| !gun\) return false;/);
   assert.match(source, /if \(!PILOT_MESH_ENABLED\) return;\s+const loaded = parseNeedHighWater/);
   assert.match(source, /if \(!PILOT_MESH_ENABLED\) return "local";/);
+});
+
+test('unsigned cached status cannot populate the live roster on reload', () => {
+  const fixture = PILOT_AGENTS[0];
+  const cached = { ...fixture.status, task: 'unverified cached task', state: 'emergency' as const, lastUpdate: 20 };
+  const restored = restoreForumStatusCache(JSON.stringify([cached]), PILOT_FORUM_ID);
+  const roster = squad.composeForumRoster({ sample: [fixture], mesh: [...restored.mesh.values()], removed: new Set() });
+  assert.equal(roster[0].status.task, fixture.status.task);
+  assert.equal(roster[0].drawerSource, 'sample');
+  assert.equal(restored.mesh.size, 0);
+  // Replay protection survives even though cached content cannot be displayed.
+  assert.equal(cacheForumStatus(restored.highWater, { ...cached, lastUpdate: 19 }), false);
+  assert.equal(cacheForumStatus(restored.highWater, cached), true);
+  const fresh = { ...cached, task: 'verified fresh task', lastUpdate: 21 };
+  assert.equal(cacheForumStatus(restored.highWater, fresh), true);
+  // Updating the floor is not itself display admission.
+  assert.equal(restored.mesh.size, 0);
+  const admitted = squad.composeForumRoster({ sample: [fixture], mesh: [fresh], removed: new Set() });
+  assert.equal(admitted[0].status.task, fresh.task);
+  assert.equal(admitted[0].drawerSource, 'status-only');
+});
+
+test('status restoration handles corrupt and foreign-forum caches without live rows', () => {
+  for (const raw of [null, '{', '{}', JSON.stringify([{ ...PILOT_AGENTS[0].status, forumId: 'wrong' }])]) {
+    const restored = restoreForumStatusCache(raw, PILOT_FORUM_ID);
+    assert.equal(restored.highWater.size, 0);
+    assert.equal(restored.mesh.size, 0);
+  }
 });

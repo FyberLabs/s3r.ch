@@ -211,3 +211,9 @@ subtasks, update history, prompt attribution, or artifact note. The drawer label
 this as status-only data until authenticated child records are integrated. Sample
 details remain on sample-only agents; a status signature does not authenticate
 those details. Local display labels are retained for recognition.
+
+On reload, the unsigned status cache restores only replay high-water limits. It
+does not populate the live roster or alarm state. Status rows become displayable
+only after the existing mesh signature and admission path accepts them again.
+An offline reload therefore shows the sample board rather than cached live rows.
+The cache remains a local replay floor, not authenticated ownership or child data.

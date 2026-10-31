@@ -1478,6 +1478,16 @@ export function cacheForumStatus(cache: Map<string, ForumAgentStatus>, status: F
   cache.set(status.seaPubkey, status);
   return true;
 }
+/** Restore replay limits only. Stored status fields have no signature proof.
+ * Displayable mesh rows must be populated by the normal signature/admission path.
+ */
+export function restoreForumStatusCache(raw: string | null, forumId: string): {
+  highWater: Map<string, ForumAgentStatus>;
+  mesh: Map<string, ForumAgentStatus>;
+} {
+  return { highWater: parseStatusHighWater(raw, forumId), mesh: new Map() };
+}
+
 export function parseStatusHighWater(raw: string | null, forumId: string): Map<string, ForumAgentStatus> {
   const cache = new Map<string, ForumAgentStatus>();
   if (!raw || raw.length > 2_000_000) return cache;
