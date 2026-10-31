@@ -230,3 +230,13 @@ off-curve points are rejected before constructing souls or comparing embedded
 principals. This uses the same pinned `@noble/curves` version as the upstream
 identity package, without importing SociACL at runtime. Sample agents use
 deterministic valid public points and remain mesh-disabled.
+
+### Object-record wire boundary
+
+`parseForumObjectRecord` validates and snapshots the `sociacl-object-v2`
+record, binds its minted object ID to its owner, and returns canonical signing
+bytes. Fixtures compare those bytes with the upstream implementation. The result
+is explicitly unverified: a well-shaped signature string is not proof. Nothing
+in this parser calls `putObject` or changes the graph. Current-key resolution,
+signature verification, and revalidation on key-history changes must be wired
+before these records can authorize forum or drawer access.
