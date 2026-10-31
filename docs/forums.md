@@ -223,3 +223,10 @@ only, not subjects, accepted offers, or alarm data. Each need must pass signatur
 and admission again. Accepting one row does not promote unrelated saved rows,
 and a verified row at the saved revision can be displayed without advancing the
 replay floor. Offline cached needs are not shown as live records.
+
+Forum SEA keys now require canonical base64url coordinates and a valid P-256
+point, matching the SociACL principal vectors. Invalid padding-bit aliases and
+off-curve points are rejected before constructing souls or comparing embedded
+principals. This uses the same pinned `@noble/curves` version as the upstream
+identity package, without importing SociACL at runtime. Sample agents use
+deterministic valid public points and remain mesh-disabled.
