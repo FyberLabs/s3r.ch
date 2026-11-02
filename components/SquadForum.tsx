@@ -2,6 +2,7 @@
 
 import { createForumReceiveRetry } from "@/lib/forum-receive-retry";
 import { createForumReceiveProofs } from "@/lib/forum-receive-proofs";
+import { ForumShell, type ForumTab } from "@/components/ForumShell";
 import { ForumDrawerRecords } from "@/components/ForumDrawerRecords";
 import { SquadDelegationControls } from "@/components/SquadDelegationControls";
 import Link from "next/link";
@@ -14,8 +15,6 @@ import { useIdentitySession } from "@/components/useIdentitySession";
 import {
   btnPrimary,
   btnSecondary,
-  btnTabOff,
-  btnTabOn,
   chipOff,
   chipOn,
   field,
@@ -235,7 +234,7 @@ export function SquadForum() {
   const [seaPub, setSeaPub] = useState<string | null>(null);
   const [oauthLinked, setOauthLinked] = useState(false);
   const [vitals, setVitals] = useState<VitalsMode>("auto");
-  const [tab, setTab] = useState<"board" | "chat">("board");
+  const [tab, setTab] = useState<ForumTab>("board");
   const [filters, setFilters] = useState<Set<ForumAgentState>>(() => new Set());
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -1741,6 +1740,8 @@ export function SquadForum() {
 
   return (
     <div>
+      <ForumShell tab={tab} onTab={setTab} forum={{ label: "Squad · preview", href: "/feed/squad" }}
+        header={<>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Squad forum</h1>
@@ -1789,8 +1790,8 @@ export function SquadForum() {
         </p>
       ) : null}
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)_320px]">
-        <aside className="border border-rule bg-panel p-3 text-sm">
+        </>}
+        sidebar={<>
           <p className="font-semibold text-ink">{PILOT_FORUM_LABEL}</p>
           <p className="mt-2 text-xs text-ink-muted">
             {emergencyCount} emergency · {needsCount} needs
@@ -1808,36 +1809,15 @@ export function SquadForum() {
               </button>
             ))}
           </div>
-        </aside>
-
-        <section>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={tab === "board" ? btnTabOn : btnTabOff}
-              onClick={() => setTab("board")}
-            >
-              Board
-            </button>
-            <button
-              type="button"
-              className={tab === "chat" ? btnTabOn : btnTabOff}
-              onClick={() => setTab("chat")}
-            >
-              Chat
-            </button>
-          </div>
-
-          <div
-            data-testid="squad-board"
-            className={`mt-3 ${tab === "chat" ? "hidden lg:block" : ""}`}
-          >
+        </>}
+        controls={<>
               <div className="flex flex-wrap items-center gap-2">
                 {STATES.map((state) => (
                   <button
                     key={state}
                     type="button"
                     className={filters.has(state) ? chipOn : chipOff}
+                    aria-pressed={filters.has(state)}
                     onClick={() => toggleFilter(state)}
                   >
                     {state}
@@ -1851,7 +1831,10 @@ export function SquadForum() {
                   aria-label="Filter tiles"
                 />
               </div>
+        </>}
+        board={<div data-testid="squad-board">
               <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3">
+                {!visible.length ? <p role="status" className="text-sm text-ink-muted">No contributors match these filters.</p> : null}
                 {visible.map((agent) => {
                   const open = openNeedFor(agent.status, needs);
                   const full = showFullVitals(agent.status.type, vitals);
@@ -1905,10 +1888,22 @@ export function SquadForum() {
                   );
                 })}
               </div>
-            </div>
-        </section>
-
-        <div className={tab === "board" ? "hidden lg:block" : ""}>
+        </div>}
+        list={
+          <ul data-testid="squad-list" className="mt-3 space-y-2">
+            {visible.map(agent => <li key={agent.status.seaPubkey}>
+              <button type="button" className="w-full min-w-0 border border-rule bg-panel p-3 text-left [overflow-wrap:anywhere]"
+                onClick={() => setSelected(agent.status.seaPubkey)}>
+                <span className="font-semibold text-ink">{agent.label}</span>
+                <span className="ml-2 text-xs uppercase text-ink-muted">{agent.status.state} · {agent.status.type}</span>
+                <p className="mt-1 text-sm text-ink">{agent.status.task}</p>
+                <p className="mt-1 text-xs text-ink-muted">{agent.status.result}</p>
+              </button>
+            </li>)}
+            {!visible.length ? <li className="p-3 text-sm text-ink-muted">No contributors match these filters.</li> : null}
+          </ul>
+        }
+        chat={
           <ChatColumn
             chat={chat}
             draft={draft}
@@ -1917,8 +1912,8 @@ export function SquadForum() {
             composerRef={composerRef}
             seaLabel={seaPub ? shortSea(seaPub) : "no mesh key"}
           />
-        </div>
-      </div>
+        }
+      />
 
       {active ? (
         <div

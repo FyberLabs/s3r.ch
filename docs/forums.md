@@ -6,6 +6,27 @@ The live drawer uses [authenticated child records](forum-drawer.md) for subtasks
 updates, prompt attribution and artifact references. Missing evidence remains
 status-only; sample child detail is never a live fallback.
 
+## Forum shell
+
+The shared shell presents the SEA identity, linked credentials and alarm above
+forum navigation, the main view and a conversation/links column. Board and List
+use the same severity-sorted roster and state/text filters. Either view opens
+the same drawer. On desktop Chat stays beside the board or list; on mobile the
+Chat control switches to the conversation, and Reply in chat still closes the
+drawer. The overflow menu contains Memory map, Reports and Messages.
+
+The + Create forum menu lists Business, Squad, Fleet, Command and Custom. Creation
+is disabled until authenticated admission exists; choosing a template cannot
+create a local substitute or grant access. Only the current Squad preview has an
+open link. Fleet/Command boards and business role content remain separate work.
+
+Links & Messages reserves the right-column surface for directed messages,
+situation reports and skill publishes. No source is connected yet. Shared memory,
+roadmap, ledger, report and message views show explicit unavailable states and
+mount no data. Wiring a source requires current destination Check permission;
+navigation, labels and an empty panel do not supply that permission. This shell
+does not enable the live pilot or change the separate `/forum` page.
+
 ## Tile layout
 
 The board chooses its column count from the space left beside the side panels.
