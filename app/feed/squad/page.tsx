@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { GunPeerProvider } from "@/components/GunPeerProvider";
-import { MeshAclSync } from "@/components/MeshAclSync";
-import { SeeAclProvider } from "@/components/SeeAclProvider";
+import { ForumAuthorityProvider } from "@/components/ForumAuthorityProvider";
 import { SquadForum } from "@/components/SquadForum";
 
 export const metadata: Metadata = {
@@ -19,12 +18,11 @@ export default function SquadForumPage() {
           How groups work
         </Link>
       </p>
-      <SeeAclProvider>
-        <GunPeerProvider>
-          <MeshAclSync />
+      <GunPeerProvider>
+        <ForumAuthorityProvider>
           <SquadForum />
-        </GunPeerProvider>
-      </SeeAclProvider>
+        </ForumAuthorityProvider>
+      </GunPeerProvider>
     </section>
   );
 }

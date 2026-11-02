@@ -213,6 +213,10 @@ export type SeeGraph = {
   hasObject(object: CheckObjectId): boolean;
   ownerOf(object: CheckObjectId): AccessorId | undefined;
   seeGrants(object: CheckObjectId): readonly IdentitySeeGrant[];
+  /** Optional authenticated Squad graph checks; no synthetic group grants. */
+  checkDirectSee?(object: string, accessor: string, now: number): CheckResult;
+  checkForumSee?(object: string, accessor: string, now: number): CheckResult;
+  checkPost?(object: string, accessor: string, now: number): CheckResult;
 };
 
 /** Writable dest ACL. Cancel and admit land here, not on a URL. */
@@ -548,6 +552,12 @@ export function grantLiveAt(grant: IdentitySeeGrant, now: number): boolean {
   return validCheckTime(now) && now >= grant.from && now < grant.until;
 }
 
+/** Forum-specific read gate. Legacy/sample graphs remain direct-only. */
+export function checkForumSee(graph: SeeGraph, object: string, accessor: string, now: number): CheckResult {
+  if (!validCheckTime(now)) return { allowed: false, reason: "unknown" };
+  return graph.checkForumSee ? graph.checkForumSee(object, accessor, now) : checkSee(graph, object, accessor, now);
+}
+
 /**
  * CHECK(see, object, accessor) at now.
  * see maps to dest read. Hint is ignored for allowed.
@@ -568,6 +578,7 @@ export function checkSee(
   void hint;
   void hop;
   if (!validCheckTime(now)) return { allowed: false, reason: "unknown" };
+  if (graph.checkDirectSee) return graph.checkDirectSee(object, accessor, now);
   if (isMetaId(object)) {
     return { allowed: false, reason: "meta" };
   }
@@ -1058,7 +1069,7 @@ export function offerForumHelp(input: {
   if (!validateForumNeed(input.need)) return { ok: false, reason: "bad-need", elect: false, owner };
   if (body.length === 0 || body.length > 280) return { ok: false, reason: "body", elect: false, owner };
   if (!isSeaPubkey(input.writer)) return { ok: false, reason: "writer", elect: false, owner };
-  const see = checkSee(input.graph, input.need.id, input.writer, input.now);
+  const see = checkForumSee(input.graph, input.need.id, input.writer, input.now);
   if (!see.allowed) return { ok: false, reason: see.reason, elect: false, owner };
   const id = mintForumOfferId(input.writer, input.entropy);
   if (!id) return { ok: false, reason: "entropy", elect: false, owner };
@@ -1101,7 +1112,7 @@ export function acceptForumOffer(input: {
   }
   const posted = heldLiveOffer(input.postedOffers, input.offer, input.need);
   if (!posted) return { ok: false, reason: "unposted", elect: false, owner };
-  const helperSee = checkSee(input.graph, input.need.id, posted.helper, input.now);
+  const helperSee = checkForumSee(input.graph, input.need.id, posted.helper, input.now);
   if (!helperSee.allowed) return { ok: false, reason: helperSee.reason, elect: false, owner };
   const need: ForumNeed = {
     ...input.need,
