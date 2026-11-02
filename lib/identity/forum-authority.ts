@@ -127,8 +127,15 @@ export function createForumAuthority(config: ForumAuthorityConfig, clock: () => 
         if (signers.length > 32) return fail("capacity");
         // Start all resolvers synchronously: each snapshots history and config
         // before its first await, so later caller mutation cannot change one.
+        // Roster/chat principals may have authenticated history before they
+        // own a child or appear in a grant. Resolve the bounded source accounts
+        // too; absent/invalid histories still have no genesis fallback.
+        const history = recoveryObject(snapshot.history), accounts = history && recoveryList(history.accounts);
         const principals = [...new Set([...signers, ...parsed.flatMap(e => e && (e.p.kind === "see" || e.p.kind === "post")
-          ? [e.p.row.accessor] : [])])];
+          ? [e.p.row.accessor] : []), ...(accounts ?? []).flatMap(a => {
+            const account = recoveryObject(a);
+            return account && typeof account.principal === "string" ? [account.principal] : [];
+          })])];
         if (principals.length > 128) return fail("capacity");
         const results = await Promise.all(principals.map(owner => resolveForumRecoveryHistory(owner, snapshot.history as ForumRecoverySnapshot, keys, siwe, issuers as string[], at)));
         const histories = new Map(principals.map((owner, i) => [owner, results[i]]));
