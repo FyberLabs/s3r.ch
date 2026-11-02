@@ -1,0 +1,4457 @@
+{
+  "source": "FyberLabs/SociACL b7f9bc59e800fef8420c9ced8040c925ef7ceac7 vectors/ids/records.json",
+  "context": {
+    "jwks": {
+      "keys": [
+        {
+          "kty": "EC",
+          "crv": "P-256",
+          "kid": "fixture-1",
+          "x": "UVkLelFRQNLXhMhWCGaP3--Mgv0fW-UkIVVKDcPQM-0",
+          "y": "4MF9qJBKcn2K4b82v4p5Jg0BLwDU2AiI0dC7RP2hbaQ",
+          "alg": "ES256",
+          "use": "sig",
+          "key_ops": [
+            "verify"
+          ],
+          "notBefore": 1699999000,
+          "notAfter": 1700010000
+        }
+      ]
+    },
+    "pinnedIss": [
+      "https://id.fyberlabs.com/realms/test"
+    ],
+    "now": 1700000060,
+    "genesis": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+    "currentKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+    "links": [
+      [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        8
+      ],
+      [
+        "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6",
+        18
+      ]
+    ],
+    "policy": {
+      "allowedDomains": [
+        "s3r.ch"
+      ],
+      "allowedUris": [
+        "https://s3r.ch/identity/link"
+      ],
+      "allowedChainIds": [
+        "1"
+      ]
+    },
+    "authenticatedAccounts": [
+      "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI"
+    ]
+  },
+  "records": [
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 01164ac28b53b75b70c3a885ac6221e24d8b124e064bbcaac300262d1a267e38\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0xd2b1dc6c76c6c71537e43160954b2e4f4b0a75f082f11a8fb28528cd17c257266088289470b9f725d8a7a29119fee04904740f5f6ca05852ae42c820e9ee66061c"
+        }
+      },
+      "nextSig": "mi0XktDFRJM1rDkLe8H-gf3n6FkpoXB1bTV63Qnp1xoOhx6qMShoMOxYH9NyqE7LgoCpA9X2Qzpe8qw4JLVPDg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.BqL_3eFkH64k2RsZhUXZp4nSk65Te4lQ97rExVm3wQObF-jko3gi3wQslcA4lBOMo7coproAPB4iaSAFCK5IGw"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 2,
+      "prevKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "issuedAt": 1700000040,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: aa448d68ae1cc57aad11ad6af35f25b9553885763987798929202513832334e0\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:14:00Z",
+          "signature": "0xc90ea12f3f223f27b8c4468889826fd2058055565695ba7fd0013827df28b7291c8341f752bf9b39676649e2d6664c5fddb535f5ffd2bd7051e1955e93b9022e1c"
+        }
+      },
+      "nextSig": "Vqpzfuaf-4F2SOSwCA4EbNeScKxkEgSFqp0Q17dY4BMVIobZsLopzrd0AHeP2Ny-JMl9Vh7pFMoo0qfpq42aMg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiWHN2azBhWXpDa1RJOS0tVkhVdnhaZWJHdHlIdnJhbUYtMEZtRzhibl9Xdy5oelJrREVtWV8zNDNTd2JPR21TaTdOZ3FzRFk0VDdnOW1ubXhKNko5VURJIiwic2VxIjoyLCJpYXQiOjE3MDAwMDAwNDAsImV4cCI6MTcwMDAwMDY0MCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.b_uqz9l7L5F84BTtU7t5ryPIN1p31z3Sz43h_1csiASuN3-zMacuaSjoIHDquydc-XtPNH8vgIzwAzoD7OzPcg"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 2,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6"
+      ],
+      "authorizer": {
+        "kind": "oidc-fresh-login",
+        "link": "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6"
+      },
+      "nextSig": "_PjGneOOGocLTKLmjgGkl7LxF44JsnslC1WqHtXCcw9aBFgRVG1GrAB53Jpi5wQeZsb2BKCGDMsQlgZlPYDHPg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoyLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6Im9pZGMtZnJlc2gtbG9naW4iLCJsaW5rSWQiOiJkN2ZmNzdlYTI1OTgzNmM1ZTk0MDI0OTMyZmZhOWZkZGYyNzAyNWExZmFjNTczZWQwN2RmNDM4ZTJhNWMzZmU2IiwicmV0YWluZWRMaW5rcyI6WyJkN2ZmNzdlYTI1OTgzNmM1ZTk0MDI0OTMyZmZhOWZkZGYyNzAyNWExZmFjNTczZWQwN2RmNDM4ZTJhNWMzZmU2Il19.3_xAMAQh1tHIRRFczhuTfNzZBCVX1j1Z2EkbELUc-Pnp95PzYJgOTroC6NcC2SSwOPDtHQGzwKH4YCTX2BITZw"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+      "issuedAt": 1699999999,
+      "keySig": "E93ZJwVQEXIfa_H63Xrg2MnZOtm3D992IHRD4sgcu1G1U-5mi2OoPVtaqoyx38PP6VCHi0nCYBvOlaT5opyENw",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJldm9rZS1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJyZWNvcmRJZCI6ImE0ZDgwZWQwYWM5ZGYyNjY2MWNjOTZmYzE3MmU0MzhmNzg3ZTE5MGE5NDQ3YjE1MTFlNTNlY2NlOTlhMzJmN2MiLCJpYXQiOjE2OTk5OTk5OTksImV4cCI6MTcwMDAwMDU5OX0.PPkS8VspiulNY5TurPJXd061HnG2rtBgaWS4CqcRs58vlr7Rpr4fgHSHrwhrNZtbLFECmje4x7Kx79kCIQT2ug"
+    },
+    null,
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 01164ac28b53b75b70c3a885ac6221e24d8b124e064bbcaac300262d1a267e38\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0xd2b1dc6c76c6c71537e43160954b2e4f4b0a75f082f11a8fb28528cd17c257266088289470b9f725d8a7a29119fee04904740f5f6ca05852ae42c820e9ee66061c"
+        }
+      },
+      "nextSig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.BqL_3eFkH64k2RsZhUXZp4nSk65Te4lQ97rExVm3wQObF-jko3gi3wQslcA4lBOMo7coproAPB4iaSAFCK5IGw"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "seq": 1,
+      "prevKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "issuedAt": 1700000005,
+      "retainedLinks": [],
+      "authorizer": {
+        "kind": "oidc-fresh-login",
+        "link": "e1caa43fe56dd70d44ff16eefe141bcfd2d1cf8ef7967ba4e4dd3340a8c1a1c0"
+      },
+      "nextSig": "P-KSibugFlCKuks2eSVfu0_wLs6eRqfjxjPStZJYNQdyty6dcjfP51POVdYkZbo_vwhrilFKdi1ww8NRq-wZVw",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJmUEo3R0kwRFQzNktVamdEQkxVYXc4Q0phZUozOGhzMXBndElfRWRtbVhnLkIzZFZFTnVPMEVBcFBackduM1F3MjdwOXJlWTg2WUlwbmdTM25TSjRjOUUiLCJuZXh0S2V5IjoiWHN2azBhWXpDa1RJOS0tVkhVdnhaZWJHdHlIdnJhbUYtMEZtRzhibl9Xdy5oelJrREVtWV8zNDNTd2JPR21TaTdOZ3FzRFk0VDdnOW1ubXhKNko5VURJIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMDUsImV4cCI6MTcwMDAwMDYwNSwiYXV0aCI6Im9pZGMtZnJlc2gtbG9naW4iLCJsaW5rSWQiOiJlMWNhYTQzZmU1NmRkNzBkNDRmZjE2ZWVmZTE0MWJjZmQyZDFjZjhlZjc5NjdiYTRlNGRkMzM0MGE4YzFhMWMwIiwicmV0YWluZWRMaW5rcyI6W119.QeUP5cY-ek41w7g5PmshU0I1q2FKTfZyBliOXOTzuRdVitHT1kNosO_IvhoVBKK-f5xEsnsRA92E0Na4RKjTow"
+    },
+    {
+      "v": 1,
+      "kind": "oidc",
+      "principal": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "cred": {
+        "iss": "https://id.fyberlabs.com/realms/test",
+        "tenant": "01234567-89ab-cdef-0123-456789abcdef",
+        "sub": "Case-Sensitive/Subject"
+      },
+      "issuedAt": 1700000000.0,
+      "nonce": "fixtureNonce456",
+      "keySig": "h8EWzMrLG_OYXfQxWKXFQCoZ-zNXv8zoweDKI-tl0zJ45olXZ3iCVis08jc2TFcy74z6MCnmUM3zSnMG7CCh5g",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLW9pZGMtYXR0ZXN0LXYxIiwiaXNzIjoiaHR0cHM6Ly9pZC5meWJlcmxhYnMuY29tL3JlYWxtcy90ZXN0IiwidGVuYW50IjoiMDEyMzQ1NjctODlhYi1jZGVmLTAxMjMtNDU2Nzg5YWJjZGVmIiwic3ViIjoiQ2FzZS1TZW5zaXRpdmUvU3ViamVjdCIsInByaW5jaXBhbCI6ImZQSjdHSTBEVDM2S1VqZ0RCTFVhdzhDSmFlSjM4aHMxcGd0SV9FZG1tWGcuQjNkVkVOdU8wRUFwUFpyR24zUXcyN3A5cmVZODZZSXBuZ1MzblNKNGM5RSIsImlhdCI6MTcwMDAwMDAwMCwiZXhwIjoxNzAwMDAwNjAwLCJub25jZSI6ImZpeHR1cmVOb25jZTQ1NiJ9.sf8jiuKOyYKl0Bdq89jI29nuuh_aFl-7OmzxBMlzHXiT1E_CEbVnv15hLUx701Sw6pvQbRI6n_g5RzICdk6imA"
+    },
+    {
+      "v": 1,
+      "kind": "wallet",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "address": "0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718",
+      "issuedAt": 1700000000.0,
+      "nonce": "fixtureNonce123",
+      "keySig": "iGXFYXbObvjtpzvvcJNRvvtTUMBsAmGZTGE7-ad8z7nRrW3jpyOLjUEBtoWqBWcx-jQ9QFDI7q9mA87wjAx9Og",
+      "siwe": {
+        "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: fixtureNonce123\nIssued At: 2023-11-14T22:13:20Z",
+        "signature": "0x84f6351b818c4597a06fbd9ae610321829dd7f9772701523c81e0023ee3738de53b9ea0083ce42b57e0bb525e6760b07cfc370a3e1d52f021f235b1acdfc0da31c"
+      },
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXdhbGxldC1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJsaW5rSWQiOiJhOTA4NTRhNTA3MTJjM2UwOTBlNDA3NjM4NWJlYzlkMzBjNjgzMWQ1ZjA0ODM4YzA1ODk0NDJjYTIzZTc0YjFiIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDA2MDB9.DbQ76adinFQJrdClbGXh_FwZd9KeYKAVSQirRzvG-4yP2xbuVLZZLkmSK3ljqUyg51AqPhdXQvvmnOb2axKcbg"
+    },
+    {
+      "v": 1,
+      "kind": "wallet",
+      "principal": "jlM7b6C_e0YluzBmfAH7YH75-LioD-9bMAYocDGHsqM.c-sdveAzGDZtBp-DpvWQAFPHNjPLBBshxV4ahsH0ALQ",
+      "address": "0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718",
+      "issuedAt": 1700000000.0,
+      "nonce": "fixtureNonce123",
+      "keySig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "siwe": {
+        "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: fixtureNonce123\nIssued At: 2023-11-14T22:13:20Z",
+        "signature": "0x84f6351b818c4597a06fbd9ae610321829dd7f9772701523c81e0023ee3738de53b9ea0083ce42b57e0bb525e6760b07cfc370a3e1d52f021f235b1acdfc0da31c"
+      },
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXdhbGxldC1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJsaW5rSWQiOiJhOTA4NTRhNTA3MTJjM2UwOTBlNDA3NjM4NWJlYzlkMzBjNjgzMWQ1ZjA0ODM4YzA1ODk0NDJjYTIzZTc0YjFiIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDA2MDB9.DbQ76adinFQJrdClbGXh_FwZd9KeYKAVSQirRzvG-4yP2xbuVLZZLkmSK3ljqUyg51AqPhdXQvvmnOb2axKcbg"
+    },
+    {
+      "v": 1,
+      "kind": "wallet",
+      "principal": "jlM7b6C_e0YluzBmfAH7YH75-LioD-9bMAYocDGHsqM.c-sdveAzGDZtBp-DpvWQAFPHNjPLBBshxV4ahsH0ALQ",
+      "address": "0x1212121212121212121212121212121212121212",
+      "issuedAt": 1700000000.0,
+      "nonce": "fixtureNonce123",
+      "keySig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "siwe": {
+        "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: fixtureNonce123\nIssued At: 2023-11-14T22:13:20Z",
+        "signature": "0x84f6351b818c4597a06fbd9ae610321829dd7f9772701523c81e0023ee3738de53b9ea0083ce42b57e0bb525e6760b07cfc370a3e1d52f021f235b1acdfc0da31c"
+      },
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXdhbGxldC1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJsaW5rSWQiOiJhOTA4NTRhNTA3MTJjM2UwOTBlNDA3NjM4NWJlYzlkMzBjNjgzMWQ1ZjA0ODM4YzA1ODk0NDJjYTIzZTc0YjFiIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDA2MDB9.DbQ76adinFQJrdClbGXh_FwZd9KeYKAVSQirRzvG-4yP2xbuVLZZLkmSK3ljqUyg51AqPhdXQvvmnOb2axKcbg"
+    },
+    {
+      "v": 1,
+      "kind": "wallet",
+      "principal": "jlM7b6C_e0YluzBmfAH7YH75-LioD-9bMAYocDGHsqM.c-sdveAzGDZtBp-DpvWQAFPHNjPLBBshxV4ahsH0ALQ",
+      "address": "0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718",
+      "issuedAt": 1700000010,
+      "nonce": "fixtureNonce123",
+      "keySig": "OVfHugX7F3Wc8pj2tTmDtUMPl4nZ3Cfj4DbRYgptnRI-4nVG9B8L8k1eQ-wjmbY7ju4F7JtbdwTvui90zgy90A",
+      "siwe": {
+        "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: cf9e407cb0256d058f45d2689bc77d4ddcdd2550d3c26754df6af278fde3595d\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: fixtureNonce123\nIssued At: 2023-11-14T22:13:30Z",
+        "signature": "0x5b8c2b182d148f762ddfc0f7a445fca1a549fe7fc57ebc3310124b216e89cb311d74e4803eea69c618112b860ae8007006001de58c7f87809a1173947981519d1b"
+      },
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXdhbGxldC1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJsaW5rSWQiOiJhOTA4NTRhNTA3MTJjM2UwOTBlNDA3NjM4NWJlYzlkMzBjNjgzMWQ1ZjA0ODM4YzA1ODk0NDJjYTIzZTc0YjFiIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDA2MDB9.DbQ76adinFQJrdClbGXh_FwZd9KeYKAVSQirRzvG-4yP2xbuVLZZLkmSK3ljqUyg51AqPhdXQvvmnOb2axKcbg"
+    },
+    {
+      "v": 1,
+      "kind": "wallet",
+      "principal": "jlM7b6C_e0YluzBmfAH7YH75-LioD-9bMAYocDGHsqM.c-sdveAzGDZtBp-DpvWQAFPHNjPLBBshxV4ahsH0ALQ",
+      "address": "0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718",
+      "issuedAt": 1700000010,
+      "nonce": "fixtureNonce123",
+      "keySig": "OVfHugX7F3Wc8pj2tTmDtUMPl4nZ3Cfj4DbRYgptnRI-4nVG9B8L8k1eQ-wjmbY7ju4F7JtbdwTvui90zgy90A",
+      "siwe": {
+        "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: fixtureNonce123\nIssued At: 2023-11-14T22:13:20Z",
+        "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXdhbGxldC1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJqbE03YjZDX2UwWWx1ekJtZkFIN1lINzUtTGlvRC05Yk1BWW9jREdIc3FNLmMtc2R2ZUF6R0RadEJwLURwdldRQUZQSE5qUExCQnNoeFY0YWhzSDBBTFEiLCJsaW5rSWQiOiJjZjllNDA3Y2IwMjU2ZDA1OGY0NWQyNjg5YmM3N2Q0ZGRjZGQyNTUwZDNjMjY3NTRkZjZhZjI3OGZkZTM1OTVkIiwiaWF0IjoxNzAwMDAwMDEwLCJleHAiOjE3MDAwMDA2MTB9.G5kX87ApY8wu9XKJjCeQGTLQWA6x1HE39jKi5d7cpqm7igp6jbjtStQuSwsis4ifL-r4pkSpkIn4B8P-ezyELA"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "jlM7b6C_e0YluzBmfAH7YH75-LioD-9bMAYocDGHsqM.c-sdveAzGDZtBp-DpvWQAFPHNjPLBBshxV4ahsH0ALQ",
+      "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+      "issuedAt": 1700000020,
+      "keySig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJldm9rZS1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJyZWNvcmRJZCI6IjlmYmNjMzM5OTk0N2FmOGY5NGExNWJiZDBkOTBjZTcyZWY4OWMxMTIxNzk5Y2Q3NzI0YTc4MmI0OTAyYmU1MjciLCJpYXQiOjE3MDAwMDAwMjAsImV4cCI6MTcwMDAwMDYyMH0.ZhzXgH608ljlJVVPAEy_e662jPZGH8fCx7wr83RB-9DXbbqw5I4L9JOMSA-hK6jQ4EfR0WGORzl1h9mkoQuoBA"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "jlM7b6C_e0YluzBmfAH7YH75-LioD-9bMAYocDGHsqM.c-sdveAzGDZtBp-DpvWQAFPHNjPLBBshxV4ahsH0ALQ",
+      "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+      "issuedAt": 1700000061,
+      "keySig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJldm9rZS1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJyZWNvcmRJZCI6IjlmYmNjMzM5OTk0N2FmOGY5NGExNWJiZDBkOTBjZTcyZWY4OWMxMTIxNzk5Y2Q3NzI0YTc4MmI0OTAyYmU1MjciLCJpYXQiOjE3MDAwMDAwMjAsImV4cCI6MTcwMDAwMDYyMH0.ZhzXgH608ljlJVVPAEy_e662jPZGH8fCx7wr83RB-9DXbbqw5I4L9JOMSA-hK6jQ4EfR0WGORzl1h9mkoQuoBA"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+      "issuedAt": 1700000020,
+      "keySig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJldm9rZS1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJyZWNvcmRJZCI6IjlmYmNjMzM5OTk0N2FmOGY5NGExNWJiZDBkOTBjZTcyZWY4OWMxMTIxNzk5Y2Q3NzI0YTc4MmI0OTAyYmU1MjciLCJpYXQiOjE3MDAwMDAwMjAsImV4cCI6MTcwMDAwMDYyMH0.ZhzXgH608ljlJVVPAEy_e662jPZGH8fCx7wr83RB-9DXbbqw5I4L9JOMSA-hK6jQ4EfR0WGORzl1h9mkoQuoBA"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "linkId": "0000000000000000000000000000000000000000000000000000000000000000",
+      "issuedAt": 1700000020,
+      "keySig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJldm9rZS1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJyZWNvcmRJZCI6IjlmYmNjMzM5OTk0N2FmOGY5NGExNWJiZDBkOTBjZTcyZWY4OWMxMTIxNzk5Y2Q3NzI0YTc4MmI0OTAyYmU1MjciLCJpYXQiOjE3MDAwMDAwMjAsImV4cCI6MTcwMDAwMDYyMH0.ZhzXgH608ljlJVVPAEy_e662jPZGH8fCx7wr83RB-9DXbbqw5I4L9JOMSA-hK6jQ4EfR0WGORzl1h9mkoQuoBA"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6"
+      ],
+      "authorizer": {
+        "kind": "oidc-fresh-login",
+        "link": "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6"
+      },
+      "nextSig": "FM3J0EDgI9ZILSuekzaQSXByO4mWXn01sJqoLQRuk-zhRna2c3Ac8gJCyX1deNFGrflMdIWSF8o52pysviws7A",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6Im9pZGMtZnJlc2gtbG9naW4iLCJsaW5rSWQiOiJkN2ZmNzdlYTI1OTgzNmM1ZTk0MDI0OTMyZmZhOWZkZGYyNzAyNWExZmFjNTczZWQwN2RmNDM4ZTJhNWMzZmU2IiwicmV0YWluZWRMaW5rcyI6WyJkN2ZmNzdlYTI1OTgzNmM1ZTk0MDI0OTMyZmZhOWZkZGYyNzAyNWExZmFjNTczZWQwN2RmNDM4ZTJhNWMzZmU2Il19.2kuGHhuqtsu7Vz1jayenygVkRm4c6IkTibLpBGrDlCbKnmtWA4GcAVb5ECWx11Vpk73TkUowNwCzjQJocyAsXQ"
+    },
+    {
+      "v": 1,
+      "kind": "oidc",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "cred": {
+        "iss": "https://id.fyberlabs.com/realms/test",
+        "tenant": "01234567-89ab-cdef-0123-456789abcdef",
+        "sub": "Case-Sensitive/Subject"
+      },
+      "issuedAt": 1700000000.0,
+      "nonce": "fixtureNonce456",
+      "keySig": "ovDofjFHtz9N9S8OsQy1zNr1GpwBSUd-ENySQBEiyeUUZa4yvudlBt_u5r-z7Gasig4t83Z2uFiMygL4yJpmsQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLW9pZGMtYXR0ZXN0LXYxIiwiaXNzIjoiaHR0cHM6Ly9pZC5meWJlcmxhYnMuY29tL3JlYWxtcy90ZXN0IiwidGVuYW50IjoiMDEyMzQ1NjctODlhYi1jZGVmLTAxMjMtNDU2Nzg5YWJjZGVmIiwic3ViIjoiQ2FzZS1TZW5zaXRpdmUvU3ViamVjdCIsInByaW5jaXBhbCI6ImF4ZlI4dUVzUWtmNHZPYmxZNlJBOG5jRGZZRXQ2ek9nOUtFNVJkaVl3cFkuVC1OQzR2NGFmNXVPNS10S2ZBLWVGaXZPTTFkck1WN095N1pBYURlX1VmVSIsImlhdCI6MTcwMDAwMDAwMCwiZXhwIjoxNzAwMDAwNjAwLCJub25jZSI6ImZpeHR1cmVOb25jZTQ1NiJ9.eHXh5Cr5_HuJxOAqvuh7_mF6TKGws01yzgOklDRwgc_kzV6A-0Rze0nNQiZnV8AldeAuwZSZEGuaed_W_mM6gA"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+      "issuedAt": 1700000020,
+      "keySig": "pHHN9eC_0UxEflRA-aUtAl-AEPJKk_r7ddAeWArvc2gNLaKKm3k6KVAS-V6Al9IjNgmw57zbvU-4c3AOZRCoFQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJldm9rZS1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJyZWNvcmRJZCI6IjlmYmNjMzM5OTk0N2FmOGY5NGExNWJiZDBkOTBjZTcyZWY4OWMxMTIxNzk5Y2Q3NzI0YTc4MmI0OTAyYmU1MjciLCJpYXQiOjE3MDAwMDAwMjAsImV4cCI6MTcwMDAwMDYyMH0.ZhzXgH608ljlJVVPAEy_e662jPZGH8fCx7wr83RB-9DXbbqw5I4L9JOMSA-hK6jQ4EfR0WGORzl1h9mkoQuoBA"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+      "issuedAt": 1700000020,
+      "keySig": "pHHN9eC_0UxEflRA-aUtAl-AEPJKk_r7ddAeWArvc2gNLaKKm3k6KVAS-V6Al9IjNgmw57zbvU-4c3AOZRCoFQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJldm9rZS1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJyZWNvcmRJZCI6IjZiNjVlZWUxNTUyMGVjZDk0NzY3NTRiOWJmNWJjMTY3MWJkN2EyMjU3NDAxYTAyMmYyZDVkZjMzNjIxZTY3NDgiLCJpYXQiOjE3MDAwMDAwNTAsImV4cCI6MTcwMDAwMDY1MH0.kxS_hpsloeI7YW809MBDFTEgdDTzK6rpTPOpFmHBX14JUQ77Xx5Gv68odpofUIxx4WoiwOpjMcRZwYNQ08gU7g"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+      "issuedAt": 1700000050,
+      "keySig": "tdGHJkJjCSzB_qEzXuOjyoz1lJg2XQ9OAUh9AdvcxDiJ80HVHEMmB9_IOQFT3WuiXNCacWsKiN0a6McHX6aaxQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJldm9rZS1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJyZWNvcmRJZCI6IjZiNjVlZWUxNTUyMGVjZDk0NzY3NTRiOWJmNWJjMTY3MWJkN2EyMjU3NDAxYTAyMmYyZDVkZjMzNjIxZTY3NDgiLCJpYXQiOjE3MDAwMDAwNTAsImV4cCI6MTcwMDAwMDY1MH0.kxS_hpsloeI7YW809MBDFTEgdDTzK6rpTPOpFmHBX14JUQ77Xx5Gv68odpofUIxx4WoiwOpjMcRZwYNQ08gU7g"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 01164ac28b53b75b70c3a885ac6221e24d8b124e064bbcaac300262d1a267e38\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0xd2b1dc6c76c6c71537e43160954b2e4f4b0a75f082f11a8fb28528cd17c257266088289470b9f725d8a7a29119fee04904740f5f6ca05852ae42c820e9ee66061c"
+        }
+      },
+      "nextSig": "mi0XktDFRJM1rDkLe8H-gf3n6FkpoXB1bTV63Qnp1xoOhx6qMShoMOxYH9NyqE7LgoCpA9X2Qzpe8qw4JLVPDg",
+      "attest": "broken"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+      "issuedAt": 1700000020,
+      "keySig": "pHHN9eC_0UxEflRA-aUtAl-AEPJKk_r7ddAeWArvc2gNLaKKm3k6KVAS-V6Al9IjNgmw57zbvU-4c3AOZRCoFQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 2,
+      "prevKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "issuedAt": 1700000055,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: fd2bd8f84b9427f4329143f02a54dbf6227bd91312a6a3a86eeef85b69c85ecf\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:14:15Z",
+          "signature": "0x15bed9f957003c8d1d172c31803b1858e39299a288a922529ca57d58bc22de0b2ac02a1286198be7261120a377c272d0ca2fea7d1fdfab213b61778352a073731c"
+        }
+      },
+      "nextSig": "sVG9gvuRokiq_rragptU5qFsjmDc2mMhIzkX5zMyfajYeGlZMmMCPq_aYEohrVlO50qJvBT5kYdPVisCk4WPBw",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiWHN2azBhWXpDa1RJOS0tVkhVdnhaZWJHdHlIdnJhbUYtMEZtRzhibl9Xdy5oelJrREVtWV8zNDNTd2JPR21TaTdOZ3FzRFk0VDdnOW1ubXhKNko5VURJIiwic2VxIjoyLCJpYXQiOjE3MDAwMDAwNTUsImV4cCI6MTcwMDAwMDY1NSwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.gfMzl8gd2e-_TjPsbPMtj_HzKgiaUDd0aDN01YtyYRj8tSWzcyEScm6UeZKHAxIALyPFbbe7qN-dUjFmwBN9Vw"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+      "issuedAt": 1700000050,
+      "keySig": "GogZwPht6w4TMea0rieTFn9ieFStI07b4Um1dZz97WqLZrh8zwvN7_SH8icAaxNLMV_qFFjSXZqI0-FVGqkhHA"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "linkId": "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6",
+      "issuedAt": 1700000020,
+      "keySig": "UoH8vyqAdox3CDA2g5u6WdX6Y423y3daERljJ-ndpMaJ6SQHY57_-mAh4mggJqVkWytfGel78XUjoRVwKBQWhg"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 01164ac28b53b75b70c3a885ac6221e24d8b124e064bbcaac300262d1a267e38\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "nextSig": "mi0XktDFRJM1rDkLe8H-gf3n6FkpoXB1bTV63Qnp1xoOhx6qMShoMOxYH9NyqE7LgoCpA9X2Qzpe8qw4JLVPDg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.BqL_3eFkH64k2RsZhUXZp4nSk65Te4lQ97rExVm3wQObF-jko3gi3wQslcA4lBOMo7coproAPB4iaSAFCK5IGw"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 2,
+      "prevKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "issuedAt": 1700000055,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: fd2bd8f84b9427f4329143f02a54dbf6227bd91312a6a3a86eeef85b69c85ecf\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:14:15Z",
+          "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "nextSig": "sVG9gvuRokiq_rragptU5qFsjmDc2mMhIzkX5zMyfajYeGlZMmMCPq_aYEohrVlO50qJvBT5kYdPVisCk4WPBw",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiWHN2azBhWXpDa1RJOS0tVkhVdnhaZWJHdHlIdnJhbUYtMEZtRzhibl9Xdy5oelJrREVtWV8zNDNTd2JPR21TaTdOZ3FzRFk0VDdnOW1ubXhKNko5VURJIiwic2VxIjoyLCJpYXQiOjE3MDAwMDAwNTUsImV4cCI6MTcwMDAwMDY1NSwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.gfMzl8gd2e-_TjPsbPMtj_HzKgiaUDd0aDN01YtyYRj8tSWzcyEScm6UeZKHAxIALyPFbbe7qN-dUjFmwBN9Vw"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      },
+      "nextSig": "mi0XktDFRJM1rDkLe8H-gf3n6FkpoXB1bTV63Qnp1xoOhx6qMShoMOxYH9NyqE7LgoCpA9X2Qzpe8qw4JLVPDg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.BqL_3eFkH64k2RsZhUXZp4nSk65Te4lQ97rExVm3wQObF-jko3gi3wQslcA4lBOMo7coproAPB4iaSAFCK5IGw"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": null
+      },
+      "nextSig": "mi0XktDFRJM1rDkLe8H-gf3n6FkpoXB1bTV63Qnp1xoOhx6qMShoMOxYH9NyqE7LgoCpA9X2Qzpe8qw4JLVPDg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.BqL_3eFkH64k2RsZhUXZp4nSk65Te4lQ97rExVm3wQObF-jko3gi3wQslcA4lBOMo7coproAPB4iaSAFCK5IGw"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 01164ac28b53b75b70c3a885ac6221e24d8b124e064bbcaac300262d1a267e38\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0x1234"
+        }
+      },
+      "nextSig": "mi0XktDFRJM1rDkLe8H-gf3n6FkpoXB1bTV63Qnp1xoOhx6qMShoMOxYH9NyqE7LgoCpA9X2Qzpe8qw4JLVPDg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.BqL_3eFkH64k2RsZhUXZp4nSk65Te4lQ97rExVm3wQObF-jko3gi3wQslcA4lBOMo7coproAPB4iaSAFCK5IGw"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": 42,
+          "signature": "0xd2b1dc6c76c6c71537e43160954b2e4f4b0a75f082f11a8fb28528cd17c257266088289470b9f725d8a7a29119fee04904740f5f6ca05852ae42c820e9ee66061c"
+        }
+      },
+      "nextSig": "mi0XktDFRJM1rDkLe8H-gf3n6FkpoXB1bTV63Qnp1xoOhx6qMShoMOxYH9NyqE7LgoCpA9X2Qzpe8qw4JLVPDg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.BqL_3eFkH64k2RsZhUXZp4nSk65Te4lQ97rExVm3wQObF-jko3gi3wQslcA4lBOMo7coproAPB4iaSAFCK5IGw"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 01164ac28b53b75b70c3a885ac6221e24d8b124e064bbcaac300262d1a267e38\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0xd2b1dc6c76c6c71537e43160954b2e4f4b0a75f082f11a8fb28528cd17c257266088289470b9f725d8a7a29119fee04904740f5f6ca05852ae42c820e9ee66061c",
+          "extra": true
+        }
+      },
+      "nextSig": "mi0XktDFRJM1rDkLe8H-gf3n6FkpoXB1bTV63Qnp1xoOhx6qMShoMOxYH9NyqE7LgoCpA9X2Qzpe8qw4JLVPDg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.BqL_3eFkH64k2RsZhUXZp4nSk65Te4lQ97rExVm3wQObF-jko3gi3wQslcA4lBOMo7coproAPB4iaSAFCK5IGw"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      },
+      "nextSig": "mi0XktDFRJM1rDkLe8H-gf3n6FkpoXB1bTV63Qnp1xoOhx6qMShoMOxYH9NyqE7LgoCpA9X2Qzpe8qw4JLVPDg",
+      "attest": "broken"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      },
+      "nextSig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.BqL_3eFkH64k2RsZhUXZp4nSk65Te4lQ97rExVm3wQObF-jko3gi3wQslcA4lBOMo7coproAPB4iaSAFCK5IGw"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 2db395ec4545bd07f9403175691e894e73dba53805b19c3076553bfb36368e8c\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0xdd71bc36cb5a75a41aed6fb7c549e30ca50193c879e19e5502447d9004bac4f11e58d71eeb4b74c0ef5093c70774fcc889d5545e87e8940f29cbb2974c729d141c"
+        }
+      },
+      "nextSig": "OC87avdj0MlNDjYf0NVxdhBmLm-PVZKE1DuuusdHPuKBfGjmmO_JwAhcgwlUjdkdQE0CPgtaVi44bCzmvk3uTQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjEsImlhdCI6MTcwMDAwMDAzMCwiZXhwIjoxNzAwMDAwNjMwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImQ0MDMyMzJjMzNiOWQwMGQzYzgwY2ExNDYwZWJlMjA5ZTAzMjdiYTExZGQ2NGRmNzA4OTYwYjc2NTdjYmM0ZjMifQ.f--CoYm5FnTTAcvzam8QG2lUo2bipnLTDqKzWQ6HQ_HUuvT6IiseiYhzpWq6QPAX-kNBQ2QgYcLVHkGnsNzfyQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 2,
+      "prevKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "nextEpub": "Ytl3nb7psFNAQnQtOrVMrcHSOJgPzpfbtN2dwdtvs5M.rVrMvZHp2CRP8V13EWfO4KLtUfa752p42lQKag8JlX4",
+      "issuedAt": 1700000040,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: f68433ef54e2f7680bc4f6213c181bdacb369a3d956c40d5fd5b113084eafbde\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:14:00Z",
+          "signature": "0xeb31ec35fecb0719d349fc66eac79c62c176bd98a7637b26bbf20b2ab1cfb15e0fd8d208908eddbd3745e2a4ac309cefb1ee4d00cc6e9d2ace520cd947fe76ba1c"
+        }
+      },
+      "nextSig": "5XBuWdesneu0_E5d96iIhMFWi_NX1x7s5e6h1CKa_mq7Evg2U_Qwqog8I4x6Dq4xbv-WwPr-H4Ef6AC9WFI_Fg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiWHN2azBhWXpDa1RJOS0tVkhVdnhaZWJHdHlIdnJhbUYtMEZtRzhibl9Xdy5oelJrREVtWV8zNDNTd2JPR21TaTdOZ3FzRFk0VDdnOW1ubXhKNko5VURJIiwibmV4dEVwdWIiOiJZdGwzbmI3cHNGTkFRblF0T3JWTXJjSFNPSmdQenBmYnROMmR3ZHR2czVNLnJWck12WkhwMkNSUDhWMTNFV2ZPNEtMdFVmYTc1MnA0MmxRS2FnOEpsWDQiLCJzZXEiOjIsImlhdCI6MTcwMDAwMDA0MCwiZXhwIjoxNzAwMDAwNjQwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6IjcyZjc3NTBhNzVjNjc1MmYyNGJiODNmNTIyYTA3NjZiNmYxYmJkNDMwNTAzMTc5N2ZmMjM0ZmI5OTQxMmY4YWYifQ.qGc3zPhYlEqXGlGS-1-S8XP23iiPpR4ifMFytXb-5a7goapEnqEPBvbDWsPQGwncPLwwnA7qrPjrIbGXBRcz3Q"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextEpub": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 2db395ec4545bd07f9403175691e894e73dba53805b19c3076553bfb36368e8c\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0xdd71bc36cb5a75a41aed6fb7c549e30ca50193c879e19e5502447d9004bac4f11e58d71eeb4b74c0ef5093c70774fcc889d5545e87e8940f29cbb2974c729d141c"
+        }
+      },
+      "nextSig": "OC87avdj0MlNDjYf0NVxdhBmLm-PVZKE1DuuusdHPuKBfGjmmO_JwAhcgwlUjdkdQE0CPgtaVi44bCzmvk3uTQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjEsImlhdCI6MTcwMDAwMDAzMCwiZXhwIjoxNzAwMDAwNjMwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImQ0MDMyMzJjMzNiOWQwMGQzYzgwY2ExNDYwZWJlMjA5ZTAzMjdiYTExZGQ2NGRmNzA4OTYwYjc2NTdjYmM0ZjMifQ.f--CoYm5FnTTAcvzam8QG2lUo2bipnLTDqKzWQ6HQ_HUuvT6IiseiYhzpWq6QPAX-kNBQ2QgYcLVHkGnsNzfyQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 2,
+      "prevKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000040,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 6ae56170aaf92e21ca5744d2b72de36bf12234eaf917726e69764ab6b945d289\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:14:00Z",
+          "signature": "0x315b2faaa2f05aeced6490798848fd240cc0e45f82e287e1f3fbb5729ae241ce07dd9f7758bf19e5edeb6f2e924fa48a7d2576333067e08bc451a1d3b392a84f1b"
+        }
+      },
+      "nextSig": "zgcmbzaYaaN8z5ozRcAr4wYP_q4CcfWdubFhtkdSNchuBr31Os__CMTn7zBeK5McfAvsDgKYFnsMUJxpqDe14g",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiWHN2azBhWXpDa1RJOS0tVkhVdnhaZWJHdHlIdnJhbUYtMEZtRzhibl9Xdy5oelJrREVtWV8zNDNTd2JPR21TaTdOZ3FzRFk0VDdnOW1ubXhKNko5VURJIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjIsImlhdCI6MTcwMDAwMDA0MCwiZXhwIjoxNzAwMDAwNjQwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6IjdjMzU4Nzk5NDgwODFmMDIwYTVhNjRiMTZiOTA1ODg5M2NmMzIxOWJjM2E2OGEyZmVlMWUxNTk1ZWFmOGJlODIifQ.uXDNKxiVzJgwAtNah7RuO1F0ejyh-U12lvW_L7n88JE0-PHlSWOSCDfn4jNewoyGM9PD63t5WEK2h26T5EiNiA"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 3,
+      "prevKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "nextKey": "4lNKNTLQj7ugLd5lnuYr0AMf4tt4VZbvUJMCRGsDCFI.4PFXWkxjPMcZ3-5f2oYtdk78lsPzDuAFXELCPxhO2MY",
+      "nextEpub": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000050,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 970c4f456495223e807f01b80037a5d0293291e7395ddf2246b6560b9c233a45\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:14:10Z",
+          "signature": "0xa9e3a0e95942e37a2b95ab0e5e5db6531c265d761792bd1b8f89995f128aa21042e55a09891e4f302fa21f90898d2dc3af884a77391b6c71bac5bdf1564e12631b"
+        }
+      },
+      "nextSig": "s5OxlWBu8ibAVqvyqTKI9wKA0WmJRWwWHocj7ifJMesDOB8xqxsRTA_kpP_73djH4uIpsjSZNxYuzRgEXif1dA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiNGxOS05UTFFqN3VnTGQ1bG51WXIwQU1mNHR0NFZaYnZVSk1DUkdzRENGSS40UEZYV2t4alBNY1ozLTVmMm9ZdGRrNzhsc1B6RHVBRlhFTENQeGhPMk1ZIiwibmV4dEVwdWIiOiJmUEo3R0kwRFQzNktVamdEQkxVYXc4Q0phZUozOGhzMXBndElfRWRtbVhnLkIzZFZFTnVPMEVBcFBackduM1F3MjdwOXJlWTg2WUlwbmdTM25TSjRjOUUiLCJzZXEiOjMsImlhdCI6MTcwMDAwMDA1MCwiZXhwIjoxNzAwMDAwNjUwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImRhOTNiMzcxZTc3MTE1YzdmYjJlYThhNWIzYzRiYWJkNzc5NmQ0NjQ1ZTIzZTA1YzllOGJkNzdmZjYyOGY3YTUifQ.UueNNPAmbesKqAHnZ47FrmTYz0gxwqMn5DWSXrxw4KEaIDtMNKHpg9R4rT3lx6OhcWxbRPpk25jh6U4_ulGeKg"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 2,
+      "prevKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextKey": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "nextEpub": "Ytl3nb7psFNAQnQtOrVMrcHSOJgPzpfbtN2dwdtvs5M.rVrMvZHp2CRP8V13EWfO4KLtUfa752p42lQKag8JlX4",
+      "issuedAt": 1700000040,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 7eaca42c330ba8e91a5e1158cc618e4e46631a026b512cd89572f053a4d6e062\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:14:00Z",
+          "signature": "0xe747ab7ab4c6205e6110c657a027d8c1a68c4c39836be82378ce4d7228be46291f987a004197e738d263b0f5db120684c60d4e65ebf04196e47d4e2d54af99c71c"
+        }
+      },
+      "nextSig": "brrqdYJ4iLlzgfA0csWzfP3IGmK-6eFl5H2QH_ybIQKHdx_hfgXGc1zM9JMk60NzDwMB6FwaBYcSb4EtiSeczA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5Ijoic0JvWEtuYWtZQ3lTMHlRc3VKZmQ0d0pNZEEzcnNoVzB4ckNxNlR3aWthay42RndRZERJMzJ0VnY3QTR0LTZjRGVSd0E5M0FjZmhhOV9YeElVNF9IZi1JIiwibmV4dEVwdWIiOiJZdGwzbmI3cHNGTkFRblF0T3JWTXJjSFNPSmdQenBmYnROMmR3ZHR2czVNLnJWck12WkhwMkNSUDhWMTNFV2ZPNEtMdFVmYTc1MnA0MmxRS2FnOEpsWDQiLCJzZXEiOjIsImlhdCI6MTcwMDAwMDA0MCwiZXhwIjoxNzAwMDAwNjQwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImM5NWIxYTNkNmEwNGZjMmIxNGNhZDIyZWY1Mjg1YzNkYjhhODQyZGJmYzUwOGQ5YjUyZDVhN2Q5MGQzYjZiMjQifQ.qsa1lb-y5r6GIKL9VrLVlXAjIQuOqWLT1HebJGuB5pk7AvvGsBPvAiyNemvfNkd1G4uw-oqtdeefO8SEvkD1CA"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 2,
+      "prevKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "nextEpub": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000040,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 58e564a94b6701ad323be20a7910c7072f72b7acad5e43a753014aae27e4a156\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:14:00Z",
+          "signature": "0xd9f1df8a659716ffb7dc11c14e9bd9d5bb6ce2465996d2327db2c83f4dbc80ef6dbf9e59b2109f2a37b1ec78da3ebc842bf316262640c0793caf27bad8b1f3711b"
+        }
+      },
+      "nextSig": "L29CfaSZJkcaJyg5h0J6flNHt6D6jVKn8RFNkLHIqeDC0B9WLdOn4S4CsJVw07TO8x-veMxKCB-RT9_3WlbCIQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiWHN2azBhWXpDa1RJOS0tVkhVdnhaZWJHdHlIdnJhbUYtMEZtRzhibl9Xdy5oelJrREVtWV8zNDNTd2JPR21TaTdOZ3FzRFk0VDdnOW1ubXhKNko5VURJIiwibmV4dEVwdWIiOiJmUEo3R0kwRFQzNktVamdEQkxVYXc4Q0phZUozOGhzMXBndElfRWRtbVhnLkIzZFZFTnVPMEVBcFBackduM1F3MjdwOXJlWTg2WUlwbmdTM25TSjRjOUUiLCJzZXEiOjIsImlhdCI6MTcwMDAwMDA0MCwiZXhwIjoxNzAwMDAwNjQwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6IjY4NTJhZmUyNDA3MjhkMTRmMmY2ZGI4MTE3MGVlYWQxNTg1ZTE5MGVkNWFmMTllZTMxZThhNmRlYWJlNWQ1YzIifQ.fAOSY6GiDf1A1MgYi5s-4x2m-cpgUzlMslejyNrDWjF1MEH4EXCDu5C534WkLwifuiiRy1L-8F8eDb8NPBMhbA"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      },
+      "nextSig": "OC87avdj0MlNDjYf0NVxdhBmLm-PVZKE1DuuusdHPuKBfGjmmO_JwAhcgwlUjdkdQE0CPgtaVi44bCzmvk3uTQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjEsImlhdCI6MTcwMDAwMDAzMCwiZXhwIjoxNzAwMDAwNjMwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImQ0MDMyMzJjMzNiOWQwMGQzYzgwY2ExNDYwZWJlMjA5ZTAzMjdiYTExZGQ2NGRmNzA4OTYwYjc2NTdjYmM0ZjMifQ.f--CoYm5FnTTAcvzam8QG2lUo2bipnLTDqKzWQ6HQ_HUuvT6IiseiYhzpWq6QPAX-kNBQ2QgYcLVHkGnsNzfyQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 2,
+      "prevKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "nextEpub": "jlM7b6C_e0YluzBmfAH7YH75-LioD-9bMAYocDGHsqM.c-sdveAzGDZtBp-DpvWQAFPHNjPLBBshxV4ahsH0ALQ",
+      "issuedAt": 1700000040,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 8c8ad6784e9113537ab1c9f95773b9b01fbd8f50b2dfae7b392154782c679926\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:14:00Z",
+          "signature": "0xf3ecf195bf9084326bdf7a2bf368f0a6fd37bf9518fcbe39f42350e679d7b9b4604ef31459d3dae9ab8f8391f19c3f193a13bf630efb44304a9d65bfc340921f1b"
+        }
+      },
+      "nextSig": "U3NWM10A2aiLvmt46z-0satxLK0uDMGZ1yzGvAbSSjq_lP7Jv_p-uRSVDPsGKoCuzn9l6ctjfZYJTAovc2_eBw",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiWHN2azBhWXpDa1RJOS0tVkhVdnhaZWJHdHlIdnJhbUYtMEZtRzhibl9Xdy5oelJrREVtWV8zNDNTd2JPR21TaTdOZ3FzRFk0VDdnOW1ubXhKNko5VURJIiwibmV4dEVwdWIiOiJqbE03YjZDX2UwWWx1ekJtZkFIN1lINzUtTGlvRC05Yk1BWW9jREdIc3FNLmMtc2R2ZUF6R0RadEJwLURwdldRQUZQSE5qUExCQnNoeFY0YWhzSDBBTFEiLCJzZXEiOjIsImlhdCI6MTcwMDAwMDA0MCwiZXhwIjoxNzAwMDAwNjQwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6IjE2NDRhNmQ4MTQyODY1MmU2ZTVmM2RmOWFlZjI2ZWY5YTFhZjAxY2I2ODM1N2NhZWRkZmZjNzA2NTRiZGZkMmMifQ.6YUVxi0fxtVxB9cbyOZseGD2qzyAEMxWrCh-Zg8KI9QJZeed5HSWaHDqDQUBL2dgyz7wuT9AupKoZkiLVOux3w"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 2,
+      "prevKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextKey": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000040,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: e2a359757d346b46dac3944597d4a344579dbdf6725dca9ade1d4f171a12f743\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:14:00Z",
+          "signature": "0xd4ef9076240b4188fa44f49e6b97482224d198aa8651466f310a46fe4b64dc227b69250cd8810694e3961ff92942e3693a9c02dd0e171c54cca35adf9c5a28a61c"
+        }
+      },
+      "nextSig": "EDMjLSA5kNDODOFBDt3wmJZpW9U-7tLglZGTJfhVpNX0wG9SY3bus1Yl246VDIakkP3RF3mn72IL9EF66PoyDQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5Ijoic0JvWEtuYWtZQ3lTMHlRc3VKZmQ0d0pNZEEzcnNoVzB4ckNxNlR3aWthay42RndRZERJMzJ0VnY3QTR0LTZjRGVSd0E5M0FjZmhhOV9YeElVNF9IZi1JIiwic2VxIjoyLCJpYXQiOjE3MDAwMDAwNDAsImV4cCI6MTcwMDAwMDY0MCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.Ibt_11H8o-zOyT_cJbtdTwP0fidBQRXnRBsyvF3aeJc4Opj7cuagNAOKLhcrOWOSxWpcxRXQMKnqSszOjpC2ig"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 3,
+      "prevKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "nextKey": "4lNKNTLQj7ugLd5lnuYr0AMf4tt4VZbvUJMCRGsDCFI.4PFXWkxjPMcZ3-5f2oYtdk78lsPzDuAFXELCPxhO2MY",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000050,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 71d001c83647f5b8b4f8527d9180ead919f84a2603dba3660f8c3c746b5b5718\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:14:10Z",
+          "signature": "0xeda332f2d1debacf337bd6fbf9f32729c80d18ebaca36c23bb9463deaa68336b49aaddb7f46e494f910f48e40b6a0cf24f09ce4e6fa6f835107b4e24a9a1fda11c"
+        }
+      },
+      "nextSig": "5FRYath_Uepv3MDozC1bFng3UezrMSa1us_ieoN8DCbVAPq-0bDCXOTyphJzMTNhk2u9E-gBBW2KEFre1GSy_g",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiNGxOS05UTFFqN3VnTGQ1bG51WXIwQU1mNHR0NFZaYnZVSk1DUkdzRENGSS40UEZYV2t4alBNY1ozLTVmMm9ZdGRrNzhsc1B6RHVBRlhFTENQeGhPMk1ZIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjMsImlhdCI6MTcwMDAwMDA1MCwiZXhwIjoxNzAwMDAwNjUwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImIxZTdiZTFhYWZkMWYxYzdmMzk5YWNjZjNmNDI5OWNjZDQwMmIwZjAxMTc0NzBkZTZjZDg2NGE2Yjc3YjUwOGUifQ.EepTEEcT1olPzHdQnvybFC2bkpqbXiPOJPhHlr_sdlQRYVHJwtkqYnSj-8hPgpcjiLkh1gTsA4Q5SivNUMTqUA"
+    },
+    {
+      "v": 1,
+      "kind": "genesis-epub",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "epub": "6mjXtv7fC3GHiTjVHXH4cp4Ky4wsbfiz156KS5CUnuA.KidEyXLJ_OeHAUqWSo6gyE1xT-qk3oI_6FoiSk3QSPo",
+      "issuedAt": 1700000000.0,
+      "keySig": "u9iCLK5LNiXkymcEV9gc_CbZ7AvaV3nY7yS_fJObAVdWw8vJ4bSmYrmF8z8RGYAr4ZrDORJl9dfEYeYyiu0yIw",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLWdlbmVzaXMtZXB1Yi1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJlcHViIjoiNm1qWHR2N2ZDM0dIaVRqVkhYSDRjcDRLeTR3c2JmaXoxNTZLUzVDVW51QS5LaWRFeVhMSl9PZUhBVXFXU282Z3lFMXhULXFrM29JXzZGb2lTazNRU1BvIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDA2MDB9.i4sqV3K2rdEdQslNiIjOlUd_zbyY7Fux8id9AvD_nn0W4U0pFgd44uTlGbxqlGQR2d4M6U-ZJLVIaDwFi8bJ9A"
+    },
+    {
+      "v": 1,
+      "kind": "genesis-epub",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "epub": "6mjXtv7fC3GHiTjVHXH4cp4Ky4wsbfiz156KS5CUnuA.KidEyXLJ_OeHAUqWSo6gyE1xT-qk3oI_6FoiSk3QSPo",
+      "issuedAt": 1700000000.0,
+      "keySig": "AA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLWdlbmVzaXMtZXB1Yi1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJlcHViIjoiNm1qWHR2N2ZDM0dIaVRqVkhYSDRjcDRLeTR3c2JmaXoxNTZLUzVDVW51QS5LaWRFeVhMSl9PZUhBVXFXU282Z3lFMXhULXFrM29JXzZGb2lTazNRU1BvIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDA2MDB9.i4sqV3K2rdEdQslNiIjOlUd_zbyY7Fux8id9AvD_nn0W4U0pFgd44uTlGbxqlGQR2d4M6U-ZJLVIaDwFi8bJ9A"
+    },
+    {
+      "v": 1,
+      "kind": "genesis-epub",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "epub": "6mjXtv7fC3GHiTjVHXH4cp4Ky4wsbfiz156KS5CUnuA.KidEyXLJ_OeHAUqWSo6gyE1xT-qk3oI_6FoiSk3QSPo",
+      "issuedAt": 1700000000.0,
+      "keySig": "u9iCLK5LNiXkymcEV9gc_CbZ7AvaV3nY7yS_fJObAVdWw8vJ4bSmYrmF8z8RGYAr4ZrDORJl9dfEYeYyiu0yIw",
+      "attest": "aa.bb.cc"
+    },
+    {
+      "v": 1,
+      "kind": "genesis-epub",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "epub": "6mjXtv7fC3GHiTjVHXH4cp4Ky4wsbfiz156KS5CUnuA.KidEyXLJ_OeHAUqWSo6gyE1xT-qk3oI_6FoiSk3QSPo",
+      "issuedAt": 1700000000.0,
+      "keySig": "u9iCLK5LNiXkymcEV9gc_CbZ7AvaV3nY7yS_fJObAVdWw8vJ4bSmYrmF8z8RGYAr4ZrDORJl9dfEYeYyiu0yIw",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLWdlbmVzaXMtZXB1Yi1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJlcHViIjoiNm1qWHR2N2ZDM0dIaVRqVkhYSDRjcDRLeTR3c2JmaXoxNTZLUzVDVW51QS5LaWRFeVhMSl9PZUhBVXFXU282Z3lFMXhULXFrM29JXzZGb2lTazNRU1BvIiwiaWF0IjoxNjk5OTk5OTk5LCJleHAiOjE3MDAwMDA2MDB9.DcqDtmZm3sUKfdvHdP5KQT1Qe2lA4If10mTJGw6eXMgxl72PFvhnLco-9uydSTJE6mlmoHhpI-q-x8RAhDjfyQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 2,
+      "prevKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "nextEpub": "6mjXtv7fC3GHiTjVHXH4cp4Ky4wsbfiz156KS5CUnuA.KidEyXLJ_OeHAUqWSo6gyE1xT-qk3oI_6FoiSk3QSPo",
+      "issuedAt": 1700000040,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: f2f54fabb83a8437e5cf8c94a729a49038466d5dc75f827af203026655edb7c3\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:14:00Z",
+          "signature": "0xf87ebdd851d12a79cacb4722036d355456faccd42df63bb9b7e4ab3a5ea4b17b355f69974debdf83221cffb3b2cb04e064cd1843e87a7a509a9edbb2ddce30201c"
+        }
+      },
+      "nextSig": "CisQzJJIeJ_FYQQROiP4zxELewOrCieI44xgmTpplaYaOwvTnWeFi8RwgaSPv9ohZ3-OuFPiKze_SKz0wooEzA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiWHN2azBhWXpDa1RJOS0tVkhVdnhaZWJHdHlIdnJhbUYtMEZtRzhibl9Xdy5oelJrREVtWV8zNDNTd2JPR21TaTdOZ3FzRFk0VDdnOW1ubXhKNko5VURJIiwibmV4dEVwdWIiOiI2bWpYdHY3ZkMzR0hpVGpWSFhINGNwNEt5NHdzYmZpejE1NktTNUNVbnVBLktpZEV5WExKX09lSEFVcVdTbzZneUUxeFQtcWszb0lfNkZvaVNrM1FTUG8iLCJzZXEiOjIsImlhdCI6MTcwMDAwMDA0MCwiZXhwIjoxNzAwMDAwNjQwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6IjhjNmVkNDgyMGNiN2VjZDE2ZmUzYWI4NTk5MTAxMzYwZDUwZmIyNjk3ODNjM2M5NWQwZjU2NjRhZDA4NzRlZWUifQ.I2v5ko3qwmOmBwykfY9-WApq0iOoPYQSDAJCGxoTF6rG3i5AeJdjcV8E-dbM9e09Ffl_Av73OZJ6lw6mqKaYpw"
+    },
+    {
+      "v": 1,
+      "kind": "genesis-epub",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "epub": "6mjXtv7fC3GHiTjVHXH4cp4Ky4wsbfiz156KS5CUnuA.KidEyXLJ_OeHAUqWSo6gyE1xT-qk3oI_6FoiSk3QSPo",
+      "issuedAt": 1700000050,
+      "keySig": "ZU29hNH-0A6fuJNmIgm3ki3o7wviAGY6EGD5KVkPoR4j7Pg77A8fX9xTAzSsrWq7YH4AugZXO6xZ0708U6NyyA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLWdlbmVzaXMtZXB1Yi1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJlcHViIjoiNm1qWHR2N2ZDM0dIaVRqVkhYSDRjcDRLeTR3c2JmaXoxNTZLUzVDVW51QS5LaWRFeVhMSl9PZUhBVXFXU282Z3lFMXhULXFrM29JXzZGb2lTazNRU1BvIiwiaWF0IjoxNzAwMDAwMDUwLCJleHAiOjE3MDAwMDA2NTB9.0J_sOag6Wm9HrdnQyfAzWbywNBfbP160nKUzD0iFUTqbj0mxXwp_FXRhJVg1amKgV_xPjXTuogW-7zARAKyBZQ"
+    },
+    {
+      "v": 1,
+      "kind": "genesis-epub",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "epub": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "issuedAt": 1700000000.0,
+      "keySig": "AA",
+      "attest": "aa.bb.cc"
+    },
+    {
+      "kind": "nope"
+    },
+    {
+      "v": 1,
+      "kind": "genesis-epub",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "epub": "zvZtayo6mT5ZEhTR6iI_tUXKbEccSDBuTDYGlATFcj8.h4ZioimqrpBuEjzdnTtMEFkN7Sn-dR7uyjS7qkSvB3M",
+      "issuedAt": 1700000050,
+      "keySig": "0mYr8_PMUExXn8aybvU2PbVMKQf8eORgobmNrojmc4CRWPlxF9A9ty0pBSaHzMqiQbsSGfCNFLuTAWTyxgbImw",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLWdlbmVzaXMtZXB1Yi1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJlcHViIjoienZadGF5bzZtVDVaRWhUUjZpSV90VVhLYkVjY1NEQnVURFlHbEFURmNqOC5oNFppb2ltcXJwQnVFanpkblR0TUVGa043U24tZFI3dXlqUzdxa1N2QjNNIiwiaWF0IjoxNzAwMDAwMDUwLCJleHAiOjE3MDAwMDA2NTB9._jh-QW0roN3_lNjQr4e3LTDDEohLbzZaJ99T6WhpQgE8TVOIPKTC-HVmL81whU4VDfl28itBLRxE82f_837fmg"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 01164ac28b53b75b70c3a885ac6221e24d8b124e064bbcaac300262d1a267e38\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z\nExpiration Time: 2023-11-14T22:14:00Z",
+          "signature": "0xb46a99eebe466958f22180af0bcfd58facd80a35171e2fe73a98a0b77cd4beba7b001de896831416f6709f62effd933101a052ee41c1fc7a59a6e61420ec86951c"
+        }
+      },
+      "nextSig": "mi0XktDFRJM1rDkLe8H-gf3n6FkpoXB1bTV63Qnp1xoOhx6qMShoMOxYH9NyqE7LgoCpA9X2Qzpe8qw4JLVPDg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.BqL_3eFkH64k2RsZhUXZp4nSk65Te4lQ97rExVm3wQObF-jko3gi3wQslcA4lBOMo7coproAPB4iaSAFCK5IGw"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 2db395ec4545bd07f9403175691e894e73dba53805b19c3076553bfb36368e8c\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z\nExpiration Time: 2023-11-14T22:14:00Z",
+          "signature": "0x9c4a62c9ce5e9434c29aef82665f5cfcef41ce91238dd74801d88bf139eaddaa1729e5682b9f69e5fda0ba3f6445fe1701481832ae4064d033b81a0911b9a28d1c"
+        }
+      },
+      "nextSig": "OC87avdj0MlNDjYf0NVxdhBmLm-PVZKE1DuuusdHPuKBfGjmmO_JwAhcgwlUjdkdQE0CPgtaVi44bCzmvk3uTQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjEsImlhdCI6MTcwMDAwMDAzMCwiZXhwIjoxNzAwMDAwNjMwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImU1OGIyNWVjMWQ3ZTIxODg1ZTA5ZDA3ZjUzMTQ1OWU5MTNmYWQ5ZjM1NzRlNTY1Y2JkNDU4M2JkZTM5MTA3ZjMifQ.buL784ZULb1wrJxsDayxQQvHpRGI1uU8nf5mVGyVwfscVktONmNNsIUh2GXETyFl9QhQq6aCwnFfs554EyxIvg"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 2db395ec4545bd07f9403175691e894e73dba53805b19c3076553bfb36368e8c\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 5\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0xdd71bc36cb5a75a41aed6fb7c549e30ca50193c879e19e5502447d9004bac4f11e58d71eeb4b74c0ef5093c70774fcc889d5545e87e8940f29cbb2974c729d141c"
+        }
+      },
+      "nextSig": "OC87avdj0MlNDjYf0NVxdhBmLm-PVZKE1DuuusdHPuKBfGjmmO_JwAhcgwlUjdkdQE0CPgtaVi44bCzmvk3uTQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjEsImlhdCI6MTcwMDAwMDAzMCwiZXhwIjoxNzAwMDAwNjMwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImQ0MDMyMzJjMzNiOWQwMGQzYzgwY2ExNDYwZWJlMjA5ZTAzMjdiYTExZGQ2NGRmNzA4OTYwYjc2NTdjYmM0ZjMifQ.f--CoYm5FnTTAcvzam8QG2lUo2bipnLTDqKzWQ6HQ_HUuvT6IiseiYhzpWq6QPAX-kNBQ2QgYcLVHkGnsNzfyQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 2db395ec4545bd07f9403175691e894e73dba53805b19c3076553bfb36368e8c\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z\nchanged",
+          "signature": "0xdd71bc36cb5a75a41aed6fb7c549e30ca50193c879e19e5502447d9004bac4f11e58d71eeb4b74c0ef5093c70774fcc889d5545e87e8940f29cbb2974c729d141c"
+        }
+      },
+      "nextSig": "OC87avdj0MlNDjYf0NVxdhBmLm-PVZKE1DuuusdHPuKBfGjmmO_JwAhcgwlUjdkdQE0CPgtaVi44bCzmvk3uTQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjEsImlhdCI6MTcwMDAwMDAzMCwiZXhwIjoxNzAwMDAwNjMwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImQ0MDMyMzJjMzNiOWQwMGQzYzgwY2ExNDYwZWJlMjA5ZTAzMjdiYTExZGQ2NGRmNzA4OTYwYjc2NTdjYmM0ZjMifQ.f--CoYm5FnTTAcvzam8QG2lUo2bipnLTDqKzWQ6HQ_HUuvT6IiseiYhzpWq6QPAX-kNBQ2QgYcLVHkGnsNzfyQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 2db395ec4545bd07f9403175691e894e73dba53805b19c3076553bfb36368e8c\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "nextSig": "OC87avdj0MlNDjYf0NVxdhBmLm-PVZKE1DuuusdHPuKBfGjmmO_JwAhcgwlUjdkdQE0CPgtaVi44bCzmvk3uTQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjEsImlhdCI6MTcwMDAwMDAzMCwiZXhwIjoxNzAwMDAwNjMwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImQ0MDMyMzJjMzNiOWQwMGQzYzgwY2ExNDYwZWJlMjA5ZTAzMjdiYTExZGQ2NGRmNzA4OTYwYjc2NTdjYmM0ZjMifQ.f--CoYm5FnTTAcvzam8QG2lUo2bipnLTDqKzWQ6HQ_HUuvT6IiseiYhzpWq6QPAX-kNBQ2QgYcLVHkGnsNzfyQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": null
+      },
+      "nextSig": "OC87avdj0MlNDjYf0NVxdhBmLm-PVZKE1DuuusdHPuKBfGjmmO_JwAhcgwlUjdkdQE0CPgtaVi44bCzmvk3uTQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjEsImlhdCI6MTcwMDAwMDAzMCwiZXhwIjoxNzAwMDAwNjMwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImQ0MDMyMzJjMzNiOWQwMGQzYzgwY2ExNDYwZWJlMjA5ZTAzMjdiYTExZGQ2NGRmNzA4OTYwYjc2NTdjYmM0ZjMifQ.f--CoYm5FnTTAcvzam8QG2lUo2bipnLTDqKzWQ6HQ_HUuvT6IiseiYhzpWq6QPAX-kNBQ2QgYcLVHkGnsNzfyQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {}
+      },
+      "nextSig": "OC87avdj0MlNDjYf0NVxdhBmLm-PVZKE1DuuusdHPuKBfGjmmO_JwAhcgwlUjdkdQE0CPgtaVi44bCzmvk3uTQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjEsImlhdCI6MTcwMDAwMDAzMCwiZXhwIjoxNzAwMDAwNjMwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImQ0MDMyMzJjMzNiOWQwMGQzYzgwY2ExNDYwZWJlMjA5ZTAzMjdiYTExZGQ2NGRmNzA4OTYwYjc2NTdjYmM0ZjMifQ.f--CoYm5FnTTAcvzam8QG2lUo2bipnLTDqKzWQ6HQ_HUuvT6IiseiYhzpWq6QPAX-kNBQ2QgYcLVHkGnsNzfyQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": 1,
+          "signature": "0xdd71bc36cb5a75a41aed6fb7c549e30ca50193c879e19e5502447d9004bac4f11e58d71eeb4b74c0ef5093c70774fcc889d5545e87e8940f29cbb2974c729d141c"
+        }
+      },
+      "nextSig": "OC87avdj0MlNDjYf0NVxdhBmLm-PVZKE1DuuusdHPuKBfGjmmO_JwAhcgwlUjdkdQE0CPgtaVi44bCzmvk3uTQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjEsImlhdCI6MTcwMDAwMDAzMCwiZXhwIjoxNzAwMDAwNjMwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImQ0MDMyMzJjMzNiOWQwMGQzYzgwY2ExNDYwZWJlMjA5ZTAzMjdiYTExZGQ2NGRmNzA4OTYwYjc2NTdjYmM0ZjMifQ.f--CoYm5FnTTAcvzam8QG2lUo2bipnLTDqKzWQ6HQ_HUuvT6IiseiYhzpWq6QPAX-kNBQ2QgYcLVHkGnsNzfyQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 2db395ec4545bd07f9403175691e894e73dba53805b19c3076553bfb36368e8c\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 5\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0xdd71bc36cb5a75a41aed6fb7c549e30ca50193c879e19e5502447d9004bac4f11e58d71eeb4b74c0ef5093c70774fcc889d5545e87e8940f29cbb2974c729d141c"
+        }
+      },
+      "nextSig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjEsImlhdCI6MTcwMDAwMDAzMCwiZXhwIjoxNzAwMDAwNjMwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6ImQ0MDMyMzJjMzNiOWQwMGQzYzgwY2ExNDYwZWJlMjA5ZTAzMjdiYTExZGQ2NGRmNzA4OTYwYjc2NTdjYmM0ZjMifQ.f--CoYm5FnTTAcvzam8QG2lUo2bipnLTDqKzWQ6HQ_HUuvT6IiseiYhzpWq6QPAX-kNBQ2QgYcLVHkGnsNzfyQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 2db395ec4545bd07f9403175691e894e73dba53805b19c3076553bfb36368e8c\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 5\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0xdd71bc36cb5a75a41aed6fb7c549e30ca50193c879e19e5502447d9004bac4f11e58d71eeb4b74c0ef5093c70774fcc889d5545e87e8940f29cbb2974c729d141c"
+        }
+      },
+      "nextSig": "OC87avdj0MlNDjYf0NVxdhBmLm-PVZKE1DuuusdHPuKBfGjmmO_JwAhcgwlUjdkdQE0CPgtaVi44bCzmvk3uTQ",
+      "attest": "broken"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: e4a778b52d98c849eb8d0757ed6d89b585cd969b6763ef6e775d456a402cfd7c\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0xe4c2536dfa0cee42040839b5bb0ddfd871d673ec38f387855a7fea14ae93b672557db827c32a6b2489ec0d8914c8c882f8b15736d28a25f29b28cf7bbbfc77801c"
+        }
+      },
+      "nextSig": "64B5Mzos1e7-5ar797qkuvaEyRDAoBJKthCykMljQcV5tqFUt79UTk6furV-5A18zixqs_d6cpRn5fqR4U7AEw",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiWHN2azBhWXpDa1RJOS0tVkhVdnhaZWJHdHlIdnJhbUYtMEZtRzhibl9Xdy5oelJrREVtWV8zNDNTd2JPR21TaTdOZ3FzRFk0VDdnOW1ubXhKNko5VURJIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.rASh9gJuiB7veAY983uVIaHqGW2NtRCcPpdBItMgx2cmJkBsPG2o3kyJ_9mwOPcEAPJhxDhE-MR6jsqI9hdGGw"
+    },
+    {
+      "v": 1,
+      "kind": "wallet",
+      "principal": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "address": "0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718",
+      "issuedAt": 1700000010,
+      "nonce": "fixtureNonce123",
+      "keySig": "vDSWf9tGqNwTPLXn61rm41Oxu2ArifB60K26nTtq7tcl5hhxuCVW1KSj_IJ5iLaSgm0K-XHH_ci5nYB-HKVmKA",
+      "siwe": {
+        "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 877b1cd0c955c7c38346efdaca23b0550b2c1cf058e332cb949afc8db39e992b\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: fixtureNonce123\nIssued At: 2023-11-14T22:13:30Z",
+        "signature": "0x18cc92de18aab0b088cd86272f8b4ddc4793c65a15c3720f193fb5648842b3d426f3de0ba7c5a3645d2a731109b976b7277b8a15facd8651a00ef4d095825b0f1c"
+      },
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXdhbGxldC1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJmUEo3R0kwRFQzNktVamdEQkxVYXc4Q0phZUozOGhzMXBndElfRWRtbVhnLkIzZFZFTnVPMEVBcFBackduM1F3MjdwOXJlWTg2WUlwbmdTM25TSjRjOUUiLCJsaW5rSWQiOiI4NzdiMWNkMGM5NTVjN2MzODM0NmVmZGFjYTIzYjA1NTBiMmMxY2YwNThlMzMyY2I5NDlhZmM4ZGIzOWU5OTJiIiwiaWF0IjoxNzAwMDAwMDEwLCJleHAiOjE3MDAwMDA2MTB9.p98yUWE6mY0VmTEhq0I6VFlyrsOX-M_4KijaIwk3rRQ6M2V5T4UX1mPhuDVhovhy7BQvM9Pv1uax6wlO1i1j3Q"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+      "issuedAt": 1700000030,
+      "keySig": "qFNlapysY7qymyy48kIRjyvp4FWBH1g0_i0KKDYrIpl3XYZbvqSRpqQTGAMapy_Y0pvSkP326TNnpLCV1-YOoQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJldm9rZS1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJyZWNvcmRJZCI6ImQ5NjQxMzUzYzI5MzI0Njc2Y2EyZmViM2RhMzAyNTg2ZTI3YzA2ODMwOTQ3ZGI0MWI4ZGQ4MmU3YjkwOGYxZGQiLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMH0.UmXBIcsaS2cdDhJ7ZImSd8-p7Ucyr0eHGmbUROVwebV3cnn5a6LvOoQH4BrleCd7jA7cAdK3d-tZYkn3Q8D_1Q"
+    },
+    {
+      "v": 1,
+      "kind": "wallet",
+      "principal": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "address": "0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718",
+      "issuedAt": 1700000010,
+      "nonce": "fixtureNonce123",
+      "keySig": "4YuGegEpExUMr7VEUNxvEmIE6WInG6wtxZg7fG69yw8kCPRhRgcpXTdEXFM7c4_NJtMH0qws2s69bwTlwE8Rlg",
+      "siwe": {
+        "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 877b1cd0c955c7c38346efdaca23b0550b2c1cf058e332cb949afc8db39e992b\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: fixtureNonce123\nIssued At: 2023-11-14T22:13:30Z",
+        "signature": "0x18cc92de18aab0b088cd86272f8b4ddc4793c65a15c3720f193fb5648842b3d426f3de0ba7c5a3645d2a731109b976b7277b8a15facd8651a00ef4d095825b0f1c"
+      },
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXdhbGxldC1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJmUEo3R0kwRFQzNktVamdEQkxVYXc4Q0phZUozOGhzMXBndElfRWRtbVhnLkIzZFZFTnVPMEVBcFBackduM1F3MjdwOXJlWTg2WUlwbmdTM25TSjRjOUUiLCJsaW5rSWQiOiI4NzdiMWNkMGM5NTVjN2MzODM0NmVmZGFjYTIzYjA1NTBiMmMxY2YwNThlMzMyY2I5NDlhZmM4ZGIzOWU5OTJiIiwiaWF0IjoxNzAwMDAwMDEwLCJleHAiOjE3MDAwMDA2MTB9.p98yUWE6mY0VmTEhq0I6VFlyrsOX-M_4KijaIwk3rRQ6M2V5T4UX1mPhuDVhovhy7BQvM9Pv1uax6wlO1i1j3Q"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [],
+      "authorizer": {
+        "kind": "oidc-fresh-login",
+        "link": "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6"
+      },
+      "nextSig": "tPSoNVo4N1Sj1U8Xl-m_igaEtweoXyVxZWv405zfeDe6J_Yts2M7O3kb_vnFEZ_NLEnxsjjnLUanWBti05FeBA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6Im9pZGMtZnJlc2gtbG9naW4iLCJsaW5rSWQiOiJkN2ZmNzdlYTI1OTgzNmM1ZTk0MDI0OTMyZmZhOWZkZGYyNzAyNWExZmFjNTczZWQwN2RmNDM4ZTJhNWMzZmU2IiwicmV0YWluZWRMaW5rcyI6W119.GRmgPtPyrDHT5jV8Ss2lsfiv_dQkhGwofrtEHyNDsvg_T_IZS_A4foY51ukRvrFi4qHuVvqSNau51K7n3p2jaQ"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "linkId": "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6",
+      "issuedAt": 1700000020,
+      "keySig": "UoH8vyqAdox3CDA2g5u6WdX6Y423y3daERljJ-ndpMaJ6SQHY57_-mAh4mggJqVkWytfGel78XUjoRVwKBQWhg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJldm9rZS1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJyZWNvcmRJZCI6ImU2NzYxYjBkOTFjNjIxMTUwY2MzNjRjNTc5MzVhN2QyN2Y3OTM1MGE5ZWY2YjcwYjliMzNhMTI0YzYzMGM3NWMiLCJpYXQiOjE3MDAwMDAwMjAsImV4cCI6MTcwMDAwMDYyMH0.HNyN873bcwa57sZi7uwkTbRcLRQDjw1OPXjDH1U1DxWxL0rfpPR8kHDiiwGp038p_2aeW0pv1jCE76HBmBHqUg"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6"
+      ],
+      "authorizer": {
+        "kind": "oidc-fresh-login",
+        "link": "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6"
+      },
+      "nextSig": "aWcWBbE0aLYXWUgkjBQKUvsIb9dMidhNgoSaK1E7Bhc99DPPJhn0ct37QXY1LTLkBoIJD8IhyowQ_CkucbhcSQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6Im9pZGMtZnJlc2gtbG9naW4iLCJsaW5rSWQiOiJkN2ZmNzdlYTI1OTgzNmM1ZTk0MDI0OTMyZmZhOWZkZGYyNzAyNWExZmFjNTczZWQwN2RmNDM4ZTJhNWMzZmU2IiwicmV0YWluZWRMaW5rcyI6WyJhOTA4NTRhNTA3MTJjM2UwOTBlNDA3NjM4NWJlYzlkMzBjNjgzMWQ1ZjA0ODM4YzA1ODk0NDJjYTIzZTc0YjFiIiwiZDdmZjc3ZWEyNTk4MzZjNWU5NDAyNDkzMmZmYTlmZGRmMjcwMjVhMWZhYzU3M2VkMDdkZjQzOGUyYTVjM2ZlNiJdfQ.G7rE4n6CkQVTJ88BwZeumm3o3yoycIzt4i1LaEskHpb95mzjMDz8w56RWaGe-Kguqr8SecAstGbK7YS3W7-HcQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 093e168865654d54b22c289a35237863db78dd39769dc81ae3182b8fb115fd39\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0x49d3aeda0c059538c5fb6b5f7a536d27411184d9c0514d88da29aeb4cdfdd4357b2b451ee8d309eb2fb0af13a460d3a3a859f17f976993395c720032f7a6e2361c"
+        }
+      },
+      "nextSig": "zWEZVuMoky84lcYQiI2exLTXeC4e5HsVnCx_CCVpSLjqzo2CCSBNXgDu3IWgeMeU3n_B3KukEa3zSxhi-lvwhg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJkN2ZmNzdlYTI1OTgzNmM1ZTk0MDI0OTMyZmZhOWZkZGYyNzAyNWExZmFjNTczZWQwN2RmNDM4ZTJhNWMzZmU2Il19.l74BhA8qzZz8ybH_5OzrhjxZeyyjNxFyLZAduvDWI9cvbkDKFt1qESCopBEuJ6pICuF8Md_SPSIhkDnc43lxbQ"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 2,
+      "prevKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "nextKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "issuedAt": 1700000040,
+      "retainedLinks": [
+        "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6"
+      ],
+      "authorizer": {
+        "kind": "oidc-fresh-login",
+        "link": "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6"
+      },
+      "nextSig": "0ntxSfLaC_ii8JmRD-2ZwwA1QSDfpm63pLsVPZTzrPNNUdyiESkcq5XDl1o4urSMfnutUnkl8pFpusxSYX1TLQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiWHN2azBhWXpDa1RJOS0tVkhVdnhaZWJHdHlIdnJhbUYtMEZtRzhibl9Xdy5oelJrREVtWV8zNDNTd2JPR21TaTdOZ3FzRFk0VDdnOW1ubXhKNko5VURJIiwic2VxIjoyLCJpYXQiOjE3MDAwMDAwNDAsImV4cCI6MTcwMDAwMDY0MCwiYXV0aCI6Im9pZGMtZnJlc2gtbG9naW4iLCJsaW5rSWQiOiJkN2ZmNzdlYTI1OTgzNmM1ZTk0MDI0OTMyZmZhOWZkZGYyNzAyNWExZmFjNTczZWQwN2RmNDM4ZTJhNWMzZmU2IiwicmV0YWluZWRMaW5rcyI6WyJkN2ZmNzdlYTI1OTgzNmM1ZTk0MDI0OTMyZmZhOWZkZGYyNzAyNWExZmFjNTczZWQwN2RmNDM4ZTJhNWMzZmU2Il19.BwcqUzIswTtfn25vS5jz-T2upUAkpQ4DxbJFoGIbHg0aRqAb1SVfMNL8hvhIhdEP0kVuxbyPfIAnLd56yvqm6A"
+    },
+    {
+      "v": 1,
+      "kind": "oidc",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "cred": {
+        "iss": "https://id.fyberlabs.com/realms/test",
+        "tenant": "01234567-89ab-cdef-0123-456789abcdef",
+        "sub": "Case-Sensitive/Subject"
+      },
+      "issuedAt": 1700000000.0,
+      "nonce": "fixtureNonce456",
+      "keySig": "ovDofjFHtz9N9S8OsQy1zNr1GpwBSUd-ENySQBEiyeUUZa4yvudlBt_u5r-z7Gasig4t83Z2uFiMygL4yJpmsQ",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLW9pZGMtYXR0ZXN0LXYxIiwiaXNzIjoiaHR0cHM6Ly9vdGhlci5zM3IuY2giLCJ0ZW5hbnQiOiIwMTIzNDU2Ny04OWFiLWNkZWYtMDEyMy00NTY3ODlhYmNkZWYiLCJzdWIiOiJDYXNlLVNlbnNpdGl2ZS9TdWJqZWN0IiwicHJpbmNpcGFsIjoiYXhmUjh1RXNRa2Y0dk9ibFk2UkE4bmNEZllFdDZ6T2c5S0U1UmRpWXdwWS5ULU5DNHY0YWY1dU81LXRLZkEtZUZpdk9NMWRyTVY3T3k3WkFhRGVfVWZVIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDA2MDAsIm5vbmNlIjoiZml4dHVyZU5vbmNlNDU2In0.OUFHyK2sZt8v9f-uN-sE6g48kD_xH8iEsrCup7knSfCIC7AJ8t6Hc6G_l6MfbUMKnd7QVdjEHXHGn-v-xEt85g"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+      "issuedAt": 1700000025,
+      "keySig": "uF_l__1lvZ_MYy3xTH7wSIbeqp9b7wQPArCRlofwgcKAVruA8KEbTRxD4vrkuC1CkXfqBdtRxNn4jE59tsr0jw",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJldm9rZS1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJyZWNvcmRJZCI6IjVkZTcxZGYyOTI3OTYwNTIyYWU4OGU4NzY4ZGNmZGNkNjU2YmM4ZTJiMWFlNzVjN2YxNzE4NmZlYjE3OTgzNjEiLCJpYXQiOjE3MDAwMDAwMjUsImV4cCI6MTcwMDAwMDYyNX0.auF6cha9br3GM4CrFU3waBS9DLH2nPQE1Ym8eknXUZCE9O4LQCgwHIubbHDoMcHqVId8NtuW9RRsGwXYh8QZHw"
+    },
+    {
+      "v": 1,
+      "kind": "wallet",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "address": "0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718",
+      "issuedAt": 1700000000.0,
+      "nonce": "fixtureNonce123",
+      "keySig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "siwe": {
+        "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: fixtureNonce123\nIssued At: 2023-11-14T22:13:20Z",
+        "signature": "0x84f6351b818c4597a06fbd9ae610321829dd7f9772701523c81e0023ee3738de53b9ea0083ce42b57e0bb525e6760b07cfc370a3e1d52f021f235b1acdfc0da31c"
+      },
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXdhbGxldC1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJsaW5rSWQiOiJhOTA4NTRhNTA3MTJjM2UwOTBlNDA3NjM4NWJlYzlkMzBjNjgzMWQ1ZjA0ODM4YzA1ODk0NDJjYTIzZTc0YjFiIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDA2MDB9.DbQ76adinFQJrdClbGXh_FwZd9KeYKAVSQirRzvG-4yP2xbuVLZZLkmSK3ljqUyg51AqPhdXQvvmnOb2axKcbg"
+    },
+    {
+      "v": 1,
+      "kind": "oidc",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "cred": {
+        "iss": "https://id.fyberlabs.com/realms/test",
+        "tenant": "01234567-89ab-cdef-0123-456789abcdef",
+        "sub": "Case-Sensitive/Subject"
+      },
+      "issuedAt": 1700000000.0,
+      "nonce": "fixtureNonce456",
+      "keySig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLW9pZGMtYXR0ZXN0LXYxIiwiaXNzIjoiaHR0cHM6Ly9pZC5meWJlcmxhYnMuY29tL3JlYWxtcy90ZXN0IiwidGVuYW50IjoiMDEyMzQ1NjctODlhYi1jZGVmLTAxMjMtNDU2Nzg5YWJjZGVmIiwic3ViIjoiQ2FzZS1TZW5zaXRpdmUvU3ViamVjdCIsInByaW5jaXBhbCI6ImF4ZlI4dUVzUWtmNHZPYmxZNlJBOG5jRGZZRXQ2ek9nOUtFNVJkaVl3cFkuVC1OQzR2NGFmNXVPNS10S2ZBLWVGaXZPTTFkck1WN095N1pBYURlX1VmVSIsImlhdCI6MTcwMDAwMDAwMCwiZXhwIjoxNzAwMDAwNjAwLCJub25jZSI6ImZpeHR1cmVOb25jZTQ1NiJ9.eHXh5Cr5_HuJxOAqvuh7_mF6TKGws01yzgOklDRwgc_kzV6A-0Rze0nNQiZnV8AldeAuwZSZEGuaed_W_mM6gA"
+    },
+    {
+      "v": 1,
+      "kind": "wallet",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "address": "0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718",
+      "issuedAt": 1700000000.0,
+      "nonce": "fixtureNonce123",
+      "keySig": "iGXFYXbObvjtpzvvcJNRvvtTUMBsAmGZTGE7-ad8z7nRrW3jpyOLjUEBtoWqBWcx-jQ9QFDI7q9mA87wjAx9Og",
+      "siwe": {
+        "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: fixtureNonce123\nIssued At: 2023-11-14T22:13:20Z",
+        "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXdhbGxldC1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJsaW5rSWQiOiJhOTA4NTRhNTA3MTJjM2UwOTBlNDA3NjM4NWJlYzlkMzBjNjgzMWQ1ZjA0ODM4YzA1ODk0NDJjYTIzZTc0YjFiIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDA2MDB9.DbQ76adinFQJrdClbGXh_FwZd9KeYKAVSQirRzvG-4yP2xbuVLZZLkmSK3ljqUyg51AqPhdXQvvmnOb2axKcbg"
+    },
+    {
+      "v": 1,
+      "kind": "wallet",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "address": "0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718",
+      "issuedAt": 1700000000.0,
+      "nonce": "fixtureNonce123",
+      "keySig": "iGXFYXbObvjtpzvvcJNRvvtTUMBsAmGZTGE7-ad8z7nRrW3jpyOLjUEBtoWqBWcx-jQ9QFDI7q9mA87wjAx9Og",
+      "siwe": {
+        "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: fixtureNonce123\nIssued At: 2023-11-14T22:13:20Z",
+        "signature": "0x84f6351b818c4597a06fbd9ae610321829dd7f9772701523c81e0023ee3738de53b9ea0083ce42b57e0bb525e6760b07cfc370a3e1d52f021f235b1acdfc0da31c"
+      },
+      "attest": "broken"
+    },
+    {
+      "v": 1,
+      "kind": "oidc",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "cred": {
+        "iss": "https://id.fyberlabs.com/realms/test",
+        "tenant": "01234567-89ab-cdef-0123-456789abcdef",
+        "sub": "Case-Sensitive/Subject"
+      },
+      "issuedAt": 1700000000.0,
+      "nonce": "fixtureNonce456",
+      "keySig": "ovDofjFHtz9N9S8OsQy1zNr1GpwBSUd-ENySQBEiyeUUZa4yvudlBt_u5r-z7Gasig4t83Z2uFiMygL4yJpmsQ",
+      "attest": "broken"
+    },
+    {
+      "v": 1,
+      "kind": "revoke",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+      "issuedAt": 1700000050,
+      "keySig": "GogZwPht6w4TMea0rieTFn9ieFStI07b4Um1dZz97WqLZrh8zwvN7_SH8icAaxNLMV_qFFjSXZqI0-FVGqkhHA",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJldm9rZS1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJyZWNvcmRJZCI6IjZiNjVlZWUxNTUyMGVjZDk0NzY3NTRiOWJmNWJjMTY3MWJkN2EyMjU3NDAxYTAyMmYyZDVkZjMzNjIxZTY3NDgiLCJpYXQiOjE3MDAwMDAwNTAsImV4cCI6MTcwMDAwMDY1MH0.kxS_hpsloeI7YW809MBDFTEgdDTzK6rpTPOpFmHBX14JUQ77Xx5Gv68odpofUIxx4WoiwOpjMcRZwYNQ08gU7g"
+    },
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: e4a778b52d98c849eb8d0757ed6d89b585cd969b6763ef6e775d456a402cfd7c\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "nextSig": "64B5Mzos1e7-5ar797qkuvaEyRDAoBJKthCykMljQcV5tqFUt79UTk6furV-5A18zixqs_d6cpRn5fqR4U7AEw",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiWHN2azBhWXpDa1RJOS0tVkhVdnhaZWJHdHlIdnJhbUYtMEZtRzhibl9Xdy5oelJrREVtWV8zNDNTd2JPR21TaTdOZ3FzRFk0VDdnOW1ubXhKNko5VURJIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.rASh9gJuiB7veAY983uVIaHqGW2NtRCcPpdBItMgx2cmJkBsPG2o3kyJ_9mwOPcEAPJhxDhE-MR6jsqI9hdGGw"
+    },
+    {
+      "v": 1,
+      "kind": "genesis-epub",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "epub": "zvZtayo6mT5ZEhTR6iI_tUXKbEccSDBuTDYGlATFcj8.h4ZioimqrpBuEjzdnTtMEFkN7Sn-dR7uyjS7qkSvB3M",
+      "issuedAt": 1700000001,
+      "keySig": "H4l4N8nUM5pUiErKJUWwDtCgs-ZFy9Z20aPEhFclY-2g-qnyDBQVhqBSit0XXJAP3KQCK8M33xoYsVvLdNi-yg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLWdlbmVzaXMtZXB1Yi1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJlcHViIjoienZadGF5bzZtVDVaRWhUUjZpSV90VVhLYkVjY1NEQnVURFlHbEFURmNqOC5oNFppb2ltcXJwQnVFanpkblR0TUVGa043U24tZFI3dXlqUzdxa1N2QjNNIiwiaWF0IjoxNzAwMDAwMDAxLCJleHAiOjE3MDAwMDA2MDF9.O4Hf9RaE_KaQpdUc6Nv3qDh4AYVCbkmW_VlABevTvuHHMbv7_PGapQDTsUa79Srocb-PY68uGqTqvMHuyfCcSw"
+    },
+    {},
+    {
+      "v": 1,
+      "kind": "rotate",
+      "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "seq": 1,
+      "prevKey": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "nextKey": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "nextEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "issuedAt": 1700000030,
+      "retainedLinks": [
+        "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+      ],
+      "authorizer": {
+        "kind": "wallet",
+        "link": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "siwe": {
+          "message": "s3r.ch wants you to sign in with your Ethereum account:\n0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718\n\nSociACL link: 00b817d2ab1dddc311b5a4c41e77e58a0a0f16d8a56ca685b300665aa3054557\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: rotation1234\nIssued At: 2023-11-14T22:13:50Z",
+          "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "nextSig": "_T2moNkrY5cbaEZVbZ71wVeUVDKBL_Pe8F5LwdWD7CAvoldVGm7H70bfoA2hzLWERN6Vk1x7LYhbKkVSjkAskg",
+      "attest": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjQiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiWHN2azBhWXpDa1RJOS0tVkhVdnhaZWJHdHlIdnJhbUYtMEZtRzhibl9Xdy5oelJrREVtWV8zNDNTd2JPR21TaTdOZ3FzRFk0VDdnOW1ubXhKNko5VURJIiwibmV4dEVwdWIiOiJzQm9YS25ha1lDeVMweVFzdUpmZDR3Sk1kQTNyc2hXMHhyQ3E2VHdpa2FrLjZGd1FkREkzMnRWdjdBNHQtNmNEZVJ3QTkzQWNmaGE5X1h4SVU0X0hmLUkiLCJzZXEiOjEsImlhdCI6MTcwMDAwMDAzMCwiZXhwIjoxNzAwMDAwNjMwLCJhdXRoIjoid2FsbGV0IiwibGlua0lkIjoiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiIsInJldGFpbmVkTGlua3MiOlsiYTkwODU0YTUwNzEyYzNlMDkwZTQwNzYzODViZWM5ZDMwYzY4MzFkNWYwNDgzOGMwNTg5NDQyY2EyM2U3NGIxYiJdLCJzaXdlSGFzaCI6IjFmNDczMzMyN2VjYzg2MjVjNDY1YTc3MmZiZjcwNzVmM2IzOTYwNDhiOTg2OWU2MDJlMTJhODQzZWVhN2ZjMWUifQ.JUFWcjIDtww12jaC04HbRNJ2pKY0XWZB_mwPJ-ppDmoSVBKavyZ7W0AbxeS7eqlGBaXan6fJts1MxRe7oi8q2w"
+    }
+  ],
+  "cases": [
+    {
+      "name": "resolve",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "accept": true,
+      "rotations": [
+        0
+      ]
+    },
+    {
+      "name": "duplicate-rotation",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "accept": true,
+      "rotations": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "reordered-history",
+      "canonical": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "accept": true,
+      "rotations": [
+        1,
+        0
+      ]
+    },
+    {
+      "name": "sequence-gap",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "diagnosticReasons": [
+        "bad-sequence"
+      ],
+      "accept": true,
+      "rotations": [
+        2
+      ]
+    },
+    {
+      "name": "witness-window-historical-resolution",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "now": 1700050000,
+      "jwks": {
+        "keys": [
+          {
+            "kty": "EC",
+            "crv": "P-256",
+            "kid": "fixture-1",
+            "x": "UVkLelFRQNLXhMhWCGaP3--Mgv0fW-UkIVVKDcPQM-0",
+            "y": "4MF9qJBKcn2K4b82v4p5Jg0BLwDU2AiI0dC7RP2hbaQ",
+            "alg": "ES256",
+            "use": "sig",
+            "key_ops": [
+              "verify"
+            ],
+            "notBefore": 1700000000.0,
+            "notAfter": 1700000031
+          }
+        ]
+      },
+      "accept": true,
+      "rotations": [
+        0
+      ]
+    },
+    {
+      "name": "revoke-before-link-does-not-remove-link",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "revocations": [
+        3
+      ]
+    },
+    {
+      "name": "skip-malformed-forged-rotations",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "bad-record",
+        "bad-signature"
+      ],
+      "accept": true,
+      "rotations": [
+        4,
+        5,
+        0
+      ]
+    },
+    {
+      "name": "external-history-fixture-authenticates",
+      "canonical": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "genesis": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "accept": true,
+      "rotations": [
+        6
+      ],
+      "links": [
+        [
+          "e1caa43fe56dd70d44ff16eefe141bcfd2d1cf8ef7967ba4e4dd3340a8c1a1c0",
+          7
+        ]
+      ]
+    },
+    {
+      "name": "invalid-map-entry-skipped",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "bad-record"
+      ],
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          8
+        ],
+        [
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          4
+        ]
+      ]
+    },
+    {
+      "name": "poison-rotation-map-foreign-principal",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "bad-signature"
+      ],
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          8
+        ],
+        [
+          "3b79614467346b0c361b514a9c6c1739509a4fc63615a1972b243a69ab7f2e93",
+          9
+        ]
+      ]
+    },
+    {
+      "name": "poison-rotation-map-different-address",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [],
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          8
+        ],
+        [
+          "a637467d0019575beb63a66fa4cc5eac8b011b9e8fea4b3b027b4964f45bc93d",
+          10
+        ]
+      ]
+    },
+    {
+      "name": "poison-rotation-map-bad-attestation",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "bad-attestation"
+      ],
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          8
+        ],
+        [
+          "cf9e407cb0256d058f45d2689bc77d4ddcdd2550d3c26754df6af278fde3595d",
+          11
+        ]
+      ]
+    },
+    {
+      "name": "poison-rotation-map-bad-siwe",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "bad-signature"
+      ],
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          8
+        ],
+        [
+          "cf9e407cb0256d058f45d2689bc77d4ddcdd2550d3c26754df6af278fde3595d",
+          12
+        ]
+      ]
+    },
+    {
+      "name": "poison-rotation-revoke-foreign",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [],
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "revocations": [
+        13
+      ]
+    },
+    {
+      "name": "poison-rotation-revoke-future",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "future-record"
+      ],
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "revocations": [
+        14
+      ]
+    },
+    {
+      "name": "poison-rotation-revoke-forged",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "bad-signature"
+      ],
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "revocations": [
+        15
+      ]
+    },
+    {
+      "name": "poison-rotation-revoke-other-id",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [],
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "revocations": [
+        16
+      ]
+    },
+    {
+      "name": "oidc-only-recovery",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "accept": true,
+      "rotations": [
+        17
+      ],
+      "links": [
+        [
+          "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6",
+          18
+        ]
+      ]
+    },
+    {
+      "name": "oidc-recovery-after-wallet-revoke",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "accept": true,
+      "rotations": [
+        17
+      ],
+      "revocations": [
+        19
+      ]
+    },
+    {
+      "name": "backdated-revoke-cannot-rollback-rotation",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "future-record"
+      ],
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "revocations": [
+        20
+      ]
+    },
+    {
+      "name": "late-retired-revoke-cannot-block-earlier-rotation",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "future-record"
+      ],
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "revocations": [
+        21
+      ]
+    },
+    {
+      "name": "unwitnessed-rotation-cannot-demand-missing-links",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "diagnosticReasons": [
+        "bad-attestation"
+      ],
+      "accept": true,
+      "rotations": [
+        22
+      ],
+      "links": []
+    },
+    {
+      "name": "unsigned-rotation-cannot-demand-missing-links",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "diagnosticReasons": [
+        "bad-signature"
+      ],
+      "accept": true,
+      "rotations": [
+        5
+      ],
+      "links": []
+    },
+    {
+      "name": "offline-retired-revoke-cannot-rollback-rotation",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "bad-attestation"
+      ],
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "revocations": [
+        23
+      ]
+    },
+    {
+      "name": "offline-revoke-cannot-block-second-rotation",
+      "canonical": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "diagnosticReasons": [
+        "future-record",
+        "bad-attestation"
+      ],
+      "accept": true,
+      "rotations": [
+        0,
+        24
+      ],
+      "revocations": [
+        25
+      ]
+    },
+    {
+      "name": "offline-oidc-revoke-cannot-rewrite-oidc-rotation",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "bad-attestation"
+      ],
+      "accept": true,
+      "rotations": [
+        17
+      ],
+      "revocations": [
+        26
+      ],
+      "links": [
+        [
+          "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6",
+          18
+        ]
+      ]
+    },
+    {
+      "name": "rotation-duplicate-proof-valid-first",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        0,
+        27
+      ]
+    },
+    {
+      "name": "rotation-duplicate-proof-valid-last",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        27,
+        0
+      ]
+    },
+    {
+      "name": "duplicate-proof-at-next-sequence",
+      "canonical": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        0,
+        28,
+        24
+      ]
+    },
+    {
+      "name": "duplicate-proof-plus-unattested-copy",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "missing-history",
+        "bad-attestation"
+      ],
+      "accept": true,
+      "rotations": [
+        27,
+        22,
+        0
+      ]
+    },
+    {
+      "name": "duplicate-malformed-proof-absent-first",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        29,
+        0
+      ]
+    },
+    {
+      "name": "duplicate-malformed-proof-absent-last",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        0,
+        29
+      ]
+    },
+    {
+      "name": "duplicate-malformed-proof-null-first",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        30,
+        0
+      ]
+    },
+    {
+      "name": "duplicate-malformed-proof-null-last",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        0,
+        30
+      ]
+    },
+    {
+      "name": "duplicate-malformed-proof-short-signature-first",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        31,
+        0
+      ]
+    },
+    {
+      "name": "duplicate-malformed-proof-short-signature-last",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        0,
+        31
+      ]
+    },
+    {
+      "name": "duplicate-malformed-proof-bad-message-first",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        32,
+        0
+      ]
+    },
+    {
+      "name": "duplicate-malformed-proof-bad-message-last",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        0,
+        32
+      ]
+    },
+    {
+      "name": "duplicate-malformed-proof-extra-field-first",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        33,
+        0
+      ]
+    },
+    {
+      "name": "duplicate-malformed-proof-extra-field-last",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        0,
+        33
+      ]
+    },
+    {
+      "name": "missing-proof-without-valid-witness-cannot-freeze",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "diagnosticReasons": [
+        "bad-attestation"
+      ],
+      "accept": true,
+      "rotations": [
+        34
+      ],
+      "links": []
+    },
+    {
+      "name": "missing-proof-without-valid-new-key-signature-cannot-freeze",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "diagnosticReasons": [
+        "bad-signature"
+      ],
+      "accept": true,
+      "rotations": [
+        35
+      ],
+      "links": []
+    },
+    {
+      "name": "build-rotation-excluding-offline-revoked-oidc",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "accept": true,
+      "rotations": [
+        0
+      ],
+      "revocations": [
+        26
+      ]
+    },
+    {
+      "name": "rotate-v3-resolve",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "accept": true,
+      "rotations": [
+        36
+      ]
+    },
+    {
+      "name": "rotate-v3-after-v2",
+      "canonical": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "currentEpub": "Ytl3nb7psFNAQnQtOrVMrcHSOJgPzpfbtN2dwdtvs5M.rVrMvZHp2CRP8V13EWfO4KLtUfa752p42lQKag8JlX4",
+      "accept": true,
+      "rotations": [
+        0,
+        37
+      ]
+    },
+    {
+      "name": "v2-after-v3-clears-epub",
+      "canonical": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "accept": true,
+      "rotations": [
+        36,
+        1
+      ]
+    },
+    {
+      "name": "rotate-v3-tampered-does-not-resolve",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "diagnosticReasons": [
+        "bad-signature"
+      ],
+      "accept": true,
+      "rotations": [
+        38
+      ]
+    },
+    {
+      "name": "rotate-v3-epub-reuses-prior-epub",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "bad-sequence"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        39
+      ]
+    },
+    {
+      "name": "rotate-v3-epub-reuses-earlier-signing-key",
+      "canonical": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "currentEpub": "Ytl3nb7psFNAQnQtOrVMrcHSOJgPzpfbtN2dwdtvs5M.rVrMvZHp2CRP8V13EWfO4KLtUfa752p42lQKag8JlX4",
+      "diagnosticReasons": [
+        "bad-sequence"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        37,
+        40
+      ]
+    },
+    {
+      "name": "rotate-v3-nextkey-reuses-prior-epub",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "bad-sequence"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        41
+      ]
+    },
+    {
+      "name": "probe-epub-reuse-across-rotations",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "bad-sequence"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        39
+      ]
+    },
+    {
+      "name": "probe-epub-equals-prior-signing-key",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "bad-sequence"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        42
+      ]
+    },
+    {
+      "name": "probe-v3-damaged-copy-plus-good",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "accept": true,
+      "rotations": [
+        43,
+        36
+      ]
+    },
+    {
+      "name": "probe-v3-then-v2-clears-epub",
+      "canonical": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "accept": true,
+      "rotations": [
+        36,
+        1
+      ]
+    },
+    {
+      "name": "probe-v3-then-v3",
+      "canonical": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "currentEpub": "jlM7b6C_e0YluzBmfAH7YH75-LioD-9bMAYocDGHsqM.c-sdveAzGDZtBp-DpvWQAFPHNjPLBBshxV4ahsH0ALQ",
+      "accept": true,
+      "rotations": [
+        36,
+        44
+      ]
+    },
+    {
+      "name": "probe-v2-only-epub-null",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "accept": true,
+      "rotations": [
+        0
+      ]
+    },
+    {
+      "name": "probe-no-rotations-epub-null",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "accept": true,
+      "rotations": []
+    },
+    {
+      "name": "probe-v2-nextkey-reuses-prior-epub",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "bad-sequence"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        45
+      ]
+    },
+    {
+      "name": "probe-v3-v2-v3-reuses-first-epub",
+      "canonical": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "diagnosticReasons": [
+        "bad-sequence"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        1,
+        46
+      ]
+    },
+    {
+      "name": "binding-valid-no-rotation",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "currentEpub": "6mjXtv7fC3GHiTjVHXH4cp4Ky4wsbfiz156KS5CUnuA.KidEyXLJ_OeHAUqWSo6gyE1xT-qk3oI_6FoiSk3QSPo",
+      "accept": true,
+      "rotations": [],
+      "genesisEpubBindings": [
+        47
+      ]
+    },
+    {
+      "name": "binding-bad-signature",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "diagnosticReasons": [
+        "bad-signature"
+      ],
+      "accept": true,
+      "rotations": [],
+      "genesisEpubBindings": [
+        48
+      ]
+    },
+    {
+      "name": "binding-bad-attestation",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "diagnosticReasons": [
+        "bad-attestation"
+      ],
+      "accept": true,
+      "rotations": [],
+      "genesisEpubBindings": [
+        49
+      ]
+    },
+    {
+      "name": "binding-iat-mismatch",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "diagnosticReasons": [
+        "bad-attestation"
+      ],
+      "accept": true,
+      "rotations": [],
+      "genesisEpubBindings": [
+        50
+      ]
+    },
+    {
+      "name": "binding-after-first-rotation",
+      "canonical": "Xsvk0aYzCkTI9--VHUvxZebGtyHvramF-0FmG8bn_Ww.hzRkDEmY_343SwbOGmSi7NgqsDY4T7g9mnmxJ6J9UDI",
+      "currentEpub": "6mjXtv7fC3GHiTjVHXH4cp4Ky4wsbfiz156KS5CUnuA.KidEyXLJ_OeHAUqWSo6gyE1xT-qk3oI_6FoiSk3QSPo",
+      "diagnosticReasons": [
+        "bad-sequence"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        51
+      ],
+      "genesisEpubBindings": [
+        52
+      ]
+    },
+    {
+      "name": "binding-epub-equals-genesis",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "diagnosticReasons": [
+        "bad-record"
+      ],
+      "accept": true,
+      "rotations": [],
+      "genesisEpubBindings": [
+        53
+      ]
+    },
+    {
+      "name": "binding-reused-by-later-next-epub",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "bad-sequence"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        51
+      ],
+      "genesisEpubBindings": [
+        47
+      ]
+    },
+    {
+      "name": "probe-genesis-epub-at-seq-2",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "bad-sequence"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        51
+      ],
+      "genesisEpubBindings": [
+        47
+      ]
+    },
+    {
+      "name": "unwitnessed-genesis-epub-ignored",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "genesisEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "accept": true,
+      "rotations": [
+        36
+      ]
+    },
+    {
+      "name": "junk-binding-skipped",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "bad-record"
+      ],
+      "accept": true,
+      "rotations": [
+        36
+      ],
+      "genesisEpubBindings": [
+        54
+      ]
+    },
+    {
+      "name": "r2-late-second-binding-skipped",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "bad-sequence"
+      ],
+      "accept": true,
+      "rotations": [
+        36
+      ],
+      "genesisEpubBindings": [
+        47,
+        55
+      ]
+    },
+    {
+      "name": "binding-clock-skew",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "currentEpub": "6mjXtv7fC3GHiTjVHXH4cp4Ky4wsbfiz156KS5CUnuA.KidEyXLJ_OeHAUqWSo6gyE1xT-qk3oI_6FoiSk3QSPo",
+      "now": 1699999970,
+      "policy": {
+        "allowedDomains": [
+          "s3r.ch"
+        ],
+        "allowedUris": [
+          "https://s3r.ch/identity/link"
+        ],
+        "allowedChainIds": [
+          "1"
+        ],
+        "clockSkewSeconds": 60
+      },
+      "accept": true,
+      "rotations": [],
+      "genesisEpubBindings": [
+        47
+      ]
+    },
+    {
+      "name": "r3-binding-valid-after-expiry",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "currentEpub": "6mjXtv7fC3GHiTjVHXH4cp4Ky4wsbfiz156KS5CUnuA.KidEyXLJ_OeHAUqWSo6gyE1xT-qk3oI_6FoiSk3QSPo",
+      "now": 1700002000,
+      "accept": true,
+      "rotations": [],
+      "genesisEpubBindings": [
+        47
+      ]
+    },
+    {
+      "name": "siwe-expiry-v2-resolve",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "now": 1700100000,
+      "currentEpub": null,
+      "accept": true,
+      "rotations": [
+        56
+      ]
+    },
+    {
+      "name": "siwe-expiry-v4-resolve",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "now": 1700100000,
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "accept": true,
+      "rotations": [
+        57
+      ]
+    },
+    {
+      "name": "rotate-v4-resolve",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "accept": true,
+      "rotations": [
+        36
+      ]
+    },
+    {
+      "name": "rotate-v4-tampered-duplicate-valid-first",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        58
+      ]
+    },
+    {
+      "name": "rotate-v4-tampered-duplicate-valid-last",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        58,
+        36
+      ]
+    },
+    {
+      "name": "v4-damaged-copy-message-first",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        59,
+        36
+      ]
+    },
+    {
+      "name": "v4-damaged-copy-message-last",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        59
+      ]
+    },
+    {
+      "name": "v4-damaged-copy-signature-first",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        60,
+        36
+      ]
+    },
+    {
+      "name": "v4-damaged-copy-signature-last",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        60
+      ]
+    },
+    {
+      "name": "v4-damaged-copy-missing-first",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        43,
+        36
+      ]
+    },
+    {
+      "name": "v4-damaged-copy-missing-last",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        43
+      ]
+    },
+    {
+      "name": "v4-damaged-copy-null-first",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        61,
+        36
+      ]
+    },
+    {
+      "name": "v4-damaged-copy-null-last",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        61
+      ]
+    },
+    {
+      "name": "v4-damaged-copy-empty-first",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        62,
+        36
+      ]
+    },
+    {
+      "name": "v4-damaged-copy-empty-last",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        62
+      ]
+    },
+    {
+      "name": "v4-damaged-copy-wrong-message-type-first",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        63,
+        36
+      ]
+    },
+    {
+      "name": "v4-damaged-copy-wrong-message-type-last",
+      "canonical": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+      "currentEpub": "sBoXKnakYCyS0yQsuJfd4wJMdA3rshW0xrCq6Twikak.6FwQdDI32tVv7A4t-6cDeRwA93Acfha9_XxIU4_Hf-I",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": true,
+      "rotations": [
+        36,
+        63
+      ]
+    },
+    {
+      "name": "v4-untrusted-damaged-next-signature",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "diagnosticReasons": [
+        "bad-signature"
+      ],
+      "accept": true,
+      "rotations": [
+        64
+      ]
+    },
+    {
+      "name": "v4-untrusted-damaged-attestation",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "diagnosticReasons": [
+        "bad-attestation"
+      ],
+      "accept": true,
+      "rotations": [
+        65
+      ]
+    },
+    {
+      "name": "fork",
+      "reason": "rotation-fork",
+      "accept": false,
+      "rotations": [
+        0,
+        66
+      ]
+    },
+    {
+      "name": "revoked-recovery",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        0
+      ],
+      "revocations": [
+        19
+      ]
+    },
+    {
+      "name": "new-wallet-owner-blocks-old-recovery",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        0
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          8
+        ],
+        [
+          "877b1cd0c955c7c38346efdaca23b0550b2c1cf058e332cb949afc8db39e992b",
+          67
+        ]
+      ]
+    },
+    {
+      "name": "same-second-revoke-precedes-rotation",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        0
+      ],
+      "revocations": [
+        68
+      ]
+    },
+    {
+      "name": "forgery-does-not-hide-valid-fork",
+      "reason": "rotation-fork",
+      "diagnosticReasons": [
+        "bad-signature"
+      ],
+      "accept": false,
+      "rotations": [
+        5,
+        0,
+        66
+      ]
+    },
+    {
+      "name": "rotated-external-owner-blocks-recovery",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        0
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          8
+        ],
+        [
+          "877b1cd0c955c7c38346efdaca23b0550b2c1cf058e332cb949afc8db39e992b",
+          69
+        ]
+      ],
+      "histories": [
+        [
+          "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+          [
+            6
+          ]
+        ]
+      ]
+    },
+    {
+      "name": "oidc-recovery-blocked-by-wallet",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        17
+      ]
+    },
+    {
+      "name": "oidc-cannot-drop-active-wallet",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        70
+      ]
+    },
+    {
+      "name": "oidc-missing-enrolled-link",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        17
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          8
+        ]
+      ]
+    },
+    {
+      "name": "oidc-revoked-enrolled-link",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        17
+      ],
+      "revocations": [
+        71
+      ],
+      "links": [
+        [
+          "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6",
+          18
+        ]
+      ]
+    },
+    {
+      "name": "rotation-cannot-retain-revoked-wallet",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        72
+      ],
+      "revocations": [
+        19
+      ]
+    },
+    {
+      "name": "rotation-cannot-retain-revoked-oidc",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        73
+      ],
+      "revocations": [
+        71
+      ]
+    },
+    {
+      "name": "oidc-unretained-after-wallet-recovery",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        0,
+        74
+      ]
+    },
+    {
+      "name": "oidc-invalid-attestation",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        17
+      ],
+      "links": [
+        [
+          "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6",
+          75
+        ]
+      ]
+    },
+    {
+      "name": "oidc-issuer-not-pinned",
+      "reason": "missing-history",
+      "pinnedIss": [],
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        17
+      ],
+      "links": [
+        [
+          "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6",
+          18
+        ]
+      ]
+    },
+    {
+      "name": "witness-equivocation-freezes-rotation",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        0
+      ],
+      "revocations": [
+        76
+      ]
+    },
+    {
+      "name": "required-wallet-missing",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        0
+      ],
+      "links": []
+    },
+    {
+      "name": "required-retained-oidc-missing",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        73
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          8
+        ]
+      ]
+    },
+    {
+      "name": "required-wallet-key-signature",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        0
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          77
+        ]
+      ]
+    },
+    {
+      "name": "required-retained-oidc-key-signature",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        73
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          8
+        ],
+        [
+          "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6",
+          78
+        ]
+      ]
+    },
+    {
+      "name": "required-wallet-siwe",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        0
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          79
+        ]
+      ]
+    },
+    {
+      "name": "required-retained-wallet-siwe",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        72
+      ],
+      "links": [
+        [
+          "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6",
+          18
+        ],
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          79
+        ]
+      ]
+    },
+    {
+      "name": "required-wallet-attestation",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        0
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          80
+        ]
+      ]
+    },
+    {
+      "name": "required-retained-oidc-attestation",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        73
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          8
+        ],
+        [
+          "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6",
+          81
+        ]
+      ]
+    },
+    {
+      "name": "required-wallet-malformed",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        0
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          4
+        ]
+      ]
+    },
+    {
+      "name": "required-retained-oidc-malformed",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        73
+      ],
+      "links": [
+        [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+          8
+        ],
+        [
+          "d7ff77ea259836c5e94024932ffa9fddf27025a1fac573ed07df438e2a5c3fe6",
+          4
+        ]
+      ]
+    },
+    {
+      "name": "required-rotation-wallet-proof",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        27
+      ]
+    },
+    {
+      "name": "second-rotation-conflict-does-not-return-previous-key",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "future-record",
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        0,
+        24
+      ],
+      "revocations": [
+        82
+      ]
+    },
+    {
+      "name": "offline-revoke-does-not-erase-wallet-from-historical-oidc-recovery",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "bad-attestation",
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        17
+      ],
+      "revocations": [
+        23
+      ]
+    },
+    {
+      "name": "duplicate-proof-cannot-hide-valid-fork-valid-first",
+      "reason": "rotation-fork",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        0,
+        27,
+        66
+      ]
+    },
+    {
+      "name": "duplicate-proof-cannot-hide-witness-conflict-valid-first",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "rotation-conflict",
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        0,
+        27
+      ],
+      "revocations": [
+        19
+      ]
+    },
+    {
+      "name": "duplicate-proof-cannot-supply-missing-link-valid-first",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history",
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        0,
+        27
+      ],
+      "links": []
+    },
+    {
+      "name": "duplicate-proof-cannot-hide-valid-fork-valid-last",
+      "reason": "rotation-fork",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        27,
+        0,
+        66
+      ]
+    },
+    {
+      "name": "duplicate-proof-cannot-hide-witness-conflict-valid-last",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "rotation-conflict",
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        27,
+        0
+      ],
+      "revocations": [
+        19
+      ]
+    },
+    {
+      "name": "duplicate-proof-cannot-supply-missing-link-valid-last",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history",
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        27,
+        0
+      ],
+      "links": []
+    },
+    {
+      "name": "no-verifying-copy-of-authenticated-rotation",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history",
+        "bad-signature"
+      ],
+      "accept": false,
+      "rotations": [
+        27,
+        5
+      ]
+    },
+    {
+      "name": "distinct-authenticated-id-still-needs-proof-valid-first",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        0,
+        83
+      ]
+    },
+    {
+      "name": "distinct-authenticated-id-still-needs-proof-valid-last",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        83,
+        0
+      ]
+    },
+    {
+      "name": "authenticated-rotation-proof-absent",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        29
+      ]
+    },
+    {
+      "name": "authenticated-rotation-proof-null",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        30
+      ]
+    },
+    {
+      "name": "authenticated-rotation-proof-short-signature",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        31
+      ]
+    },
+    {
+      "name": "authenticated-rotation-proof-bad-message",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        32
+      ]
+    },
+    {
+      "name": "authenticated-rotation-proof-extra-field",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        33
+      ]
+    },
+    {
+      "name": "rotate-v3-revoked-recovery",
+      "reason": "rotation-conflict",
+      "diagnosticReasons": [
+        "rotation-conflict"
+      ],
+      "accept": false,
+      "rotations": [
+        36
+      ],
+      "revocations": [
+        19
+      ]
+    },
+    {
+      "name": "probe-v2-and-v3-copy-same-transition-fork",
+      "reason": "rotation-fork",
+      "accept": false,
+      "rotations": [
+        0,
+        36
+      ]
+    },
+    {
+      "name": "probe-strip-epub-resigned-v2-attest-fork",
+      "reason": "rotation-fork",
+      "accept": false,
+      "rotations": [
+        36,
+        0
+      ]
+    },
+    {
+      "name": "binding-two-freeze",
+      "reason": "rotation-fork",
+      "diagnosticReasons": [
+        "rotation-fork"
+      ],
+      "accept": false,
+      "rotations": [],
+      "genesisEpubBindings": [
+        47,
+        84
+      ]
+    },
+    {
+      "name": "resolve-input-too-long",
+      "reason": "too-long",
+      "accept": false,
+      "rotations": [
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85,
+        85
+      ]
+    },
+    {
+      "name": "v4-damaged-only-message",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        59
+      ]
+    },
+    {
+      "name": "v4-damaged-only-signature",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        60
+      ]
+    },
+    {
+      "name": "v4-damaged-only-missing",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        43
+      ]
+    },
+    {
+      "name": "v4-damaged-only-null",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        61
+      ]
+    },
+    {
+      "name": "v4-damaged-only-empty",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        62
+      ]
+    },
+    {
+      "name": "v4-damaged-only-wrong-message-type",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        63
+      ]
+    },
+    {
+      "name": "v4-distinct-id-needs-proof-last",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        36,
+        86
+      ]
+    },
+    {
+      "name": "v4-distinct-id-needs-proof-first",
+      "reason": "missing-history",
+      "diagnosticReasons": [
+        "missing-history"
+      ],
+      "accept": false,
+      "rotations": [
+        86,
+        36
+      ]
+    }
+  ]
+}

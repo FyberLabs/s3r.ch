@@ -21,6 +21,10 @@ including non-fixture needs; there is no unsigned fallback.
 
 Identity is the GunDB SEA pubkey. A wallet and a Panopticon OAuth subject are linked header credentials. They are not the forum principal.
 
+The [recovery-history verifier](forum-recovery-history.md) authenticates raw
+identity evidence and exposes an exact-time authority provider. Production
+snapshot completeness and runtime wiring remain prerequisites for live access.
+
 ## Souls
 
 ```
@@ -60,7 +64,8 @@ before pause or replacement grants. None of those may be inferred from a status
 put, a missing row, a stale Check, or an offline local edit. There is no enable
 flag for these controls; implementing and testing the actual coordinator is
 required before they become actionable. Group/drawer adoption and that
-coordinator remain in s3r.ch #140 (with #146 as the duplicate context).
+coordinator are tracked in s3r.ch #186, #187 and #188. The former #140
+tracker is superseded; #190 tracks deployed pilot acceptance.
 
 ## Alarm
 
