@@ -5,7 +5,8 @@ import Link from "next/link";
 import { forumSoulNode } from "@/lib/forum-transport";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGunPeer, type FeedGun } from "@/components/GunPeerProvider";
-import { useSeeAcl } from "@/components/SeeAclProvider";
+import { publishForumAuthorized } from "@/lib/forum-authorized-publish";
+import { useForumAuthority } from "@/components/ForumAuthorityProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
 import {
   btnPrimary,
@@ -100,7 +101,6 @@ import {
   offerSeeWait,
   needIds,
   openNeedFor,
-  overlaySeeGraph,
   parseForumAgentRemoval,
   parseForumAgentStatus,
   parseForumMeshRemoval,
@@ -120,8 +120,8 @@ import { soulKeyMatches } from "@/lib/unshare";
 import { browserGunOptions, listenThenConnectSeedPeer, type SeedPeerEmitter } from "@/lib/gun-peer";
 import {
   acceptForumOffer,
-  admitFeedNode,
   declineForumOffer,
+  continueForumOfferCancellation,
   forumAgentSoul,
   forumAlarmSoul,
   forumChatTag,
@@ -215,7 +215,7 @@ function authorLabel(pub: string): string {
 
 export function SquadForum() {
   const session = useIdentitySession();
-  const see = useSeeAcl();
+  const authority = useForumAuthority();
   const gunPeer = useGunPeer();
   const register = gunPeer?.register;
   const [seaPub, setSeaPub] = useState<string | null>(null);
@@ -1218,10 +1218,8 @@ export function SquadForum() {
   }, [register]);
 
   useEffect(() => {
-    const acl = see?.acl;
-    if (!acl) return;
-    return acl.subscribe(() => setAclRev((n) => n + 1));
-  }, [see?.acl]);
+    return authority?.subscribe(() => setAclRev((n) => n + 1));
+  }, [authority]);
 
   useEffect(() => {
     const now = Date.now();
@@ -1262,7 +1260,7 @@ export function SquadForum() {
       prunePendingOffers(pendingOffersRef.current, at);
     }, Math.max(0, earliest - Date.now()) + 5);
     return () => clearTimeout(timer);
-  }, [aclRev, localNeeds, localOffers, meshNeeds, meshOffers, see?.ready]);
+  }, [aclRev, localNeeds, localOffers, meshNeeds, meshOffers]);
 
   useEffect(() => {
     if (!selected) return;
@@ -1273,7 +1271,7 @@ export function SquadForum() {
     return () => window.removeEventListener("keydown", onKey);
   }, [selected]);
 
-  const graph: SeeGraph | null = see ? overlaySeeGraph(see.acl, sampleAcl) : null;
+  const graph: SeeGraph | null = PILOT_MESH_ENABLED ? authority?.graph ?? null : sampleAcl;
   graphRef.current = graph;
   chatRowsRef.current = [...PILOT_CHAT, ...meshChat, ...localChat];
   chatIdsRef.current = chatRowsRef.current.map((item) => item.id);
@@ -1345,7 +1343,7 @@ export function SquadForum() {
   );
 
   const requireGraph = useCallback((): SeeGraph | null => {
-    if (!see?.ready || !graph) {
+    if (!graph) {
       setNotice("Check is still loading.");
       return null;
     }
@@ -1354,7 +1352,7 @@ export function SquadForum() {
       return null;
     }
     return graph;
-  }, [graph, seaPub, see?.ready]);
+  }, [graph, seaPub]);
 
   function toggleFilter(state: ForumAgentState) {
     setFilters((prev) => {
@@ -1376,11 +1374,12 @@ export function SquadForum() {
     return `Check denied ${verb} (${reason}).`;
   }
 
-  function meshNote(kind: string, wrote: "signed" | "offline" | "local", okLine: string): string {
+  function meshNote(kind: string, wrote: "signed" | "offline" | "local" | "denied", okLine: string): string {
     if (!PILOT_MESH_ENABLED) return `${kind} on this browser until mesh publish.`;
+    if (wrote === "denied") return "Authority changed before publication. Refresh and try again.";
     if (wrote === "signed") return okLine;
-    if (wrote === "offline") return `${kind} on this browser. The mesh peer was not ready.`;
-    return `${kind} on this browser. The mesh put needs a signature from this mesh key.`;
+    if (wrote === "offline") return "The mesh peer was not ready. Refresh before retrying the change.";
+    return "A signature from this mesh key is required to publish the change.";
   }
 
   function offerEntropy(): string {
@@ -1411,7 +1410,7 @@ export function SquadForum() {
       return;
     }
     const offer = decision.offer;
-    setLocalOffers((prev) => {
+    if (!PILOT_MESH_ENABLED) setLocalOffers((prev) => {
       return retainForumOffer(prev, offer);
     });
     setOfferBody("");
@@ -1419,6 +1418,11 @@ export function SquadForum() {
       forumOfferSoul(offer.forumId, offer.need, offer.id),
       offer,
       seaPub,
+      () => {
+        const fresh = graphRef.current, need = needsRef.current.get(open.id);
+        return !!fresh && !!need && need.stated === 1 && offerForumHelp({ graph: fresh, writer: seaPub,
+          need, body: offer.body, artifacts: offer.artifacts, entropy: offer.id.slice(-32), now: Math.floor(Date.now() / 1000) }).ok;
+      },
     );
     setNotice(meshNote("Offer kept", wrote, "Offer posted. The need stays open."));
   }
@@ -1456,7 +1460,7 @@ export function SquadForum() {
       return;
     }
     const next = decision.need;
-    setLocalNeeds((prev) => {
+    if (!PILOT_MESH_ENABLED) setLocalNeeds((prev) => {
       const map = new Map(prev);
       map.set(next.id, next);
       return map;
@@ -1464,7 +1468,11 @@ export function SquadForum() {
     const needOwner = current.ownerOf(open.id);
     const admit = needOwner && seaPub !== needOwner ? needAdmitRef.current.get(open.id) : undefined;
     const record = admit ? { ...next, admit } : next;
-    const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), record, seaPub);
+    const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), record, seaPub, () => {
+      const fresh = graphRef.current, need = needsRef.current.get(open.id);
+      return !!fresh && !!need && need.hamState === open.hamState && acceptForumOffer({ graph: fresh, writer: seaPub,
+        need, offer, postedOffers: offersForNeed(offersRef.current, open.id), now: Math.floor(Date.now() / 1000) }).ok;
+    });
     setNotice(meshNote("Accept kept", wrote, "Offer accepted. The need is closed."));
   }
 
@@ -1494,18 +1502,24 @@ export function SquadForum() {
       return;
     }
     const next = decision.offer;
-    if (!offerCancelsRef.current.has(forumOfferCacheKey(next.need, next.id))) {
+    if (!PILOT_MESH_ENABLED && !offerCancelsRef.current.has(forumOfferCacheKey(next.need, next.id))) {
       const ids = new Set(offerCancelsRef.current);
       ids.add(forumOfferCacheKey(next.need, next.id));
       offerCancelsRef.current = ids;
       setOfferCancels(ids);
     }
-    setLocalOffers((prev) => {
+    if (!PILOT_MESH_ENABLED) setLocalOffers((prev) => {
       return retainForumOffer(prev, next);
     });
-    const wrote = await putAuthedRecord(forumOfferSoul(next.forumId, next.need, next.id), next, seaPub);
+    const authorized = (tail = false) => {
+      const fresh = graphRef.current, need = needsRef.current.get(open.id);
+      const check = tail ? continueForumOfferCancellation : declineForumOffer;
+      return !!fresh && !!need && need.hamState === open.hamState && check({ graph: fresh, writer: seaPub, need, offer,
+        postedOffers: offersForNeed(offersRef.current, open.id), now: Math.floor(Date.now() / 1000) }).ok;
+    };
+    let wrote = await putAuthedRecord(forumOfferSoul(next.forumId, next.need, next.id), next, seaPub, authorized);
     if (wrote === "signed") {
-      await putAuthedRecord(forumOfferCancelSoul(next.forumId, next.need, next.id), next, seaPub);
+      wrote = await putAuthedRecord(forumOfferCancelSoul(next.forumId, next.need, next.id), next, seaPub, () => authorized(true));
     }
     setNotice(meshNote("Decline kept", wrote, "Offer declined. The need stays open."));
   }
@@ -1531,12 +1545,15 @@ export function SquadForum() {
       return;
     }
     const next = decision.need;
-    setLocalNeeds((prev) => {
+    if (!PILOT_MESH_ENABLED) setLocalNeeds((prev) => {
       const map = new Map(prev);
       map.set(next.id, next);
       return map;
     });
-    const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), next, seaPub);
+    const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), next, seaPub, () => {
+      const fresh = graphRef.current, need = needsRef.current.get(listed.id);
+      return !!fresh && !!need && need.hamState === listed.hamState && reopenForumNeed({ graph: fresh, writer: seaPub, need, now: Math.floor(Date.now() / 1000) }).ok;
+    });
     setNotice(meshNote("Reopen kept", wrote, "Need reopened. Earlier offers stay."));
   }
 
@@ -1552,18 +1569,18 @@ export function SquadForum() {
     soul: string,
     record: object,
     writer: string,
-  ): Promise<"signed" | "offline" | "local"> {
+    authorized: () => boolean,
+  ): Promise<"signed" | "offline" | "local" | "denied"> {
     if (!PILOT_MESH_ENABLED) return "local";
     const pair = pairRef.current;
     if (!pair || pair.pub !== writer) return "local";
-    const sig = await signForumRecord(record, pair);
-    if (!sig) return "local";
-    return putSoul(gunRef.current, soul, { ...record, sig }) ? "signed" : "offline";
+    return publishForumAuthorized({ record, authorized, sign: value => signForumRecord(value, pair),
+      put: value => putSoul(gunRef.current, soul, value) });
   }
 
   async function onSend() {
-    if (!see?.ready || !seaPub) {
-      setNotice(seaPub ? "Check is still loading." : "A mesh key on this browser is required.");
+    if (!seaPub) {
+      setNotice("A mesh key on this browser is required.");
       return;
     }
     const now = Math.floor(Date.now() / 1000);
@@ -1585,8 +1602,9 @@ export function SquadForum() {
       return;
     }
     const node = toGunNode(item);
-    const admitted = admitFeedNode(see.acl, node, seaPub);
-    if ("denied" in admitted) {
+    // Descriptive chat never creates ACL ownership. A separately signed
+    // object admission and current direct post authority must already exist.
+    if (!graph?.checkPost?.(item.id, seaPub, now).allowed) {
       setNotice("Check denied the statement.");
       return;
     }
@@ -1598,13 +1616,14 @@ export function SquadForum() {
       return;
     }
     const pair = pairRef.current;
-    const sig = pair && pair.pub === seaPub ? await signForumRecord(node, pair) : null;
-    const wrote = sig ? putSoul(gunRef.current, soul, { ...node, sig }) : false;
-    void see.persist();
+    const wrote = pair && pair.pub === seaPub ? await publishForumAuthorized({ record: node,
+      authorized: () => !!graphRef.current?.checkPost?.(item.id, seaPub, Math.floor(Date.now() / 1000)).allowed,
+      sign: value => signForumRecord(value, pair), put: value => putSoul(gunRef.current, soul, value),
+    }) : "denied";
     setLocalChat((prev) => retainForumChat(prev, item));
     setDraft("");
-    if (!sig) setNotice("Statement kept on this browser. The mesh put needs a signature from this mesh key.");
-    else if (!wrote) setNotice("Statement kept on this browser. The mesh peer was not ready.");
+    if (wrote === "denied") setNotice("Statement kept on this browser. Current post authority or a mesh signature was unavailable.");
+    else if (wrote === "offline") setNotice("Statement kept on this browser. The mesh peer was not ready.");
     else setNotice("Statement sent.");
   }
 

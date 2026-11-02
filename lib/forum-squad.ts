@@ -19,7 +19,7 @@ import {
   forumOfferSoul,
   forumStatementSoul,
   isForumChatExtraTag,
-  checkSee,
+  checkForumSee,
   embeddedPrincipalKey,
   isForumObjectId,
   isRoleToken,
@@ -720,9 +720,9 @@ export function needClosureStatus(
   if (!validateForumOffer(posted) || posted.stated !== 1) return "denied";
   if (posted.need !== need.id || posted.forumId !== need.forumId) return "denied";
   if (!closure.graph.hasObject(need.id)) return "wait";
-  const see = checkSee(closure.graph, need.id, posted.helper, closure.now);
+  const see = checkForumSee(closure.graph, need.id, posted.helper, closure.now);
   if (see.allowed) return "ok";
-  if (see.reason === "missing-grant" || see.reason === "missing-object") return "wait";
+  if (see.reason === "missing-grant" || see.reason === "missing-object" || see.reason === "missing-authority") return "wait";
   return "denied";
 }
 
@@ -756,7 +756,7 @@ export function authorizeForumOffer(
     }
     if (!seen || seen.need.id !== offer.need || seen.need.forumId !== offer.forumId) return false;
     if (!seen.graph.hasObject(seen.need.id)) return false;
-    return checkSee(seen.graph, seen.need.id, signer, seen.now).allowed;
+    return checkForumSee(seen.graph, seen.need.id, signer, seen.now).allowed;
   }
   if (offer.stated !== 0) return false;
   return signer === party?.owner || signer === party?.subject;
@@ -776,8 +776,8 @@ export function offerSeeWait(input: {
   if (!input.graph || !input.need) return true;
   if (input.need.id !== input.offer.need || input.need.forumId !== input.offer.forumId) return false;
   if (!input.graph.hasObject(input.need.id)) return true;
-  const see = checkSee(input.graph, input.need.id, input.offer.helper, input.now);
-  return !see.allowed && (see.reason === "missing-grant" || see.reason === "missing-object");
+  const see = checkForumSee(input.graph, input.need.id, input.offer.helper, input.now);
+  return !see.allowed && (see.reason === "missing-grant" || see.reason === "missing-object" || see.reason === "missing-authority");
 }
 
 /**

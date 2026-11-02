@@ -23,7 +23,9 @@ Identity is the GunDB SEA pubkey. A wallet and a Panopticon OAuth subject are li
 
 The [recovery-history verifier](forum-recovery-history.md) authenticates raw
 identity evidence and exposes an exact-time authority provider. Production
-snapshot completeness and runtime wiring remain prerequisites for live access.
+snapshot completeness and provisioning remain prerequisites for live access.
+The [authority integration](forum-authority.md) connects signed ownership, direct
+grants and jointly signed group membership to Squad offer and acceptance gates.
 
 ## Souls
 
@@ -64,7 +66,8 @@ before pause or replacement grants. None of those may be inferred from a status
 put, a missing row, a stale Check, or an offline local edit. There is no enable
 flag for these controls; implementing and testing the actual coordinator is
 required before they become actionable. Group/drawer adoption and that
-coordinator are tracked in s3r.ch #186, #187 and #188. The former #140
+coordinator are tracked in s3r.ch #187 and #188. Signed graph and group
+admission are described in the authority integration above. The former #140
 tracker is superseded; #190 tracks deployed pilot acceptance.
 
 ## Alarm
