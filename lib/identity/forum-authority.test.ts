@@ -346,3 +346,35 @@ test("cancellation tail survives its self-echo but rechecks current authority an
   assert.equal(await revoked, "denied");
   assert.equal(puts, 2);
 });
+
+test("drawer key lookup requires authenticated delegate history and current evaluation time", async () => {
+  let now = time;
+  const a = createForumAuthority(config, () => now);
+  const source = snapshot([owned(), direct(), direct("post")]);
+  const missing = { ...source, history: { ...source.history,
+    accounts: source.history.accounts.filter(account => account.principal !== helper) } };
+  assert.ok((await a.refresh(missing, time)).ok);
+  assert.equal(a.graph.writerKey(helper, time - 1, time), null);
+  assert.equal(a.graph.principalForKey(helper, time), null);
+  assert.equal(a.graph.writerKey(owner, time - 1, time), owner);
+  await a.refresh(source, time);
+  assert.equal(a.graph.writerKey(helper, time - 1, time), helper);
+  assert.equal(a.graph.writerKey(helper, time + 1, time), null);
+  const ids = a.graph.ownedObjects(owner) as string[];
+  ids.length = 0;
+  assert.deepEqual(a.graph.ownedObjects(owner), [object]);
+  now++;
+  assert.equal(a.graph.writerKey(helper, time - 1, time), null);
+  assert.equal(a.graph.principalForKey(helper, now), null);
+  assert.deepEqual(a.graph.ownedObjects(owner), []);
+});
+
+test("a key shared by two authenticated principals has no inferred publication identity", async () => {
+  const a = createForumAuthority(config, () => time);
+  const rows = [sign("object", { object, owner }, 2),
+    sign("see", { owner, object, accessor: helper, stated: 1, hamState: 1, from: 0, until: time + 100 }, 2)];
+  assert.ok((await a.refresh(rotatedSnapshot(rows), time)).ok);
+  assert.equal(a.graph.writerKey(owner, time - 1, time), helper);
+  assert.equal(a.graph.writerKey(helper, time - 1, time), helper);
+  assert.equal(a.graph.principalForKey(helper, time), null);
+});

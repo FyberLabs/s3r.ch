@@ -3,6 +3,7 @@ import { createForumKeyResolver } from "./forum-history-adapter";
 import { resolveForumRecoveryHistory, type ForumRecoverySnapshot } from "./forum-recovery-history";
 import { verifyForumKeySignature } from "./forum-key-signature";
 import { verifyForumWitness, type ForumWitnessKey } from "./forum-witness-verification";
+import type { ForumKeyResolver } from "./forum-object-verification";
 import type { ForumSiwePolicy } from "./forum-siwe";
 import { recoveryObject, recoveryList, recoveryInteger, recoveryId } from "./forum-recovery-records";
 import { parseForumAuthority, objectPrincipal, directGrantSoul, membershipRecordSoul,
@@ -19,6 +20,9 @@ export type ForumAuthoritySnapshot = Readonly<{
 }>;
 export type ForumAuthorityConfig = Readonly<{ keys: readonly ForumWitnessKey[]; policy: ForumSiwePolicy; pinnedIssuers: readonly string[] }>;
 export type ForumAuthorityGraph = SeeGraph & {
+  writerKey(principal: string, issuedAt: number, now: number): string | null;
+  principalForKey(key: string, now: number): string | null;
+  ownedObjects(owner: string): readonly string[];
   checkDirectSee(object: string, accessor: string, now: number): CheckResult;
   checkForumSee(object: string, accessor: string, now: number): CheckResult;
   checkPost(object: string, accessor: string, now: number): CheckResult;
@@ -42,7 +46,7 @@ function wins(next: ParsedAuthority, prev: ParsedAuthority | undefined): boolean
  */
 export function createForumAuthority(config: ForumAuthorityConfig, clock: () => number = () => Math.floor(Date.now() / 1000)) {
   let generation = 0;
-  let state: { at: number; owners: Map<string, string>; rows: Map<string, ParsedAuthority>; cancels: Map<string, Set<string>> } | null = null;
+  let state: { at: number; owners: Map<string, string>; rows: Map<string, ParsedAuthority>; cancels: Map<string, Set<string>>; resolver: ForumKeyResolver; principals: readonly string[] } | null = null;
   const listeners = new Set<() => void>();
   const notify = () => { for (const fn of listeners) fn(); };
   const current = (now = clock()) => recoveryInteger(now) && state?.at === now && clock() === now ? state : null;
@@ -61,6 +65,17 @@ export function createForumAuthority(config: ForumAuthorityConfig, clock: () => 
   }
   const graph: ForumAuthorityGraph = Object.freeze({
     hasObject: (object: string) => !!ownerOf(object), ownerOf,
+    ownedObjects: (owner: string) => [...(current()?.owners ?? [])].flatMap(([id, who]) => who === owner ? [id] : []),
+    writerKey(principal: string, issuedAt: number, now: number) {
+      if (!recoveryInteger(issuedAt) || issuedAt > now) return null;
+      const key = current(now)?.resolver(principal, issuedAt, now);
+      return key && key.keyAtIssuedAt === key.currentKey ? key.currentKey : null;
+    },
+    principalForKey(key: string, now: number) {
+      const s = current(now); if (!s) return null;
+      const matches = s.principals.filter(p => s.resolver(p, now, now)?.currentKey === key);
+      return matches.length === 1 ? matches[0] : null;
+    },
     // Legacy Check gets only verified DIRECT grants. Group access must never
     // accidentally confer direct child-write authority.
     seeGrants(object: string) {
@@ -112,11 +127,14 @@ export function createForumAuthority(config: ForumAuthorityConfig, clock: () => 
         if (signers.length > 32) return fail("capacity");
         // Start all resolvers synchronously: each snapshots history and config
         // before its first await, so later caller mutation cannot change one.
-        const results = await Promise.all(signers.map(owner => resolveForumRecoveryHistory(owner, snapshot.history as ForumRecoverySnapshot, keys, siwe, issuers as string[], at)));
-        const histories = new Map(signers.map((owner, i) => [owner, results[i]]));
+        const principals = [...new Set([...signers, ...parsed.flatMap(e => e && (e.p.kind === "see" || e.p.kind === "post")
+          ? [e.p.row.accessor] : [])])];
+        if (principals.length > 128) return fail("capacity");
+        const results = await Promise.all(principals.map(owner => resolveForumRecoveryHistory(owner, snapshot.history as ForumRecoverySnapshot, keys, siwe, issuers as string[], at)));
+        const histories = new Map(principals.map((owner, i) => [owner, results[i]]));
         // Missing/forked authority for any evidence signer invalidates the
         // entire snapshot, including previously admitted rows/cancels.
-        if (results.some(r => !r.ok)) return fail("missing-history");
+        if (signers.some(p => !histories.get(p)?.ok)) return fail("missing-history");
         const owners = new Map<string, string>(), admitted = new Map<string, ParsedAuthority>(), cancels = new Map<string, Set<string>>();
         const cancelEvidence: Extract<ParsedAuthority, { kind: "cancel" }>[] = [];
         const resolver = createForumKeyResolver((owner, now) => {
@@ -164,7 +182,7 @@ export function createForumAuthority(config: ForumAuthorityConfig, clock: () => 
         for (const id of priorById.keys()) if (!visit(id)) return fail("cyclic-cancellation-history");
         for (const p of admitted.values()) if (p.kind === "object") owners.set(p.row.object, p.row.owner);
         if (generation !== token || at !== clock()) return fail("superseded");
-        state = { at, owners, rows: admitted, cancels }; notify();
+        state = { at, owners, rows: admitted, cancels, resolver, principals }; notify();
         return Object.freeze({ ok: true as const, diagnostics: Object.freeze(diagnostics) });
       } catch { return fail("bad-input"); }
     },

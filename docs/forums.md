@@ -2,6 +2,10 @@
 
 `/feed/squad` is the squad board: contributor tiles, chat, and a drawer. The board stays in this browser until mesh publish.
 
+The live drawer uses [authenticated child records](forum-drawer.md) for subtasks,
+updates, prompt attribution and artifact references. Missing evidence remains
+status-only; sample child detail is never a live fallback.
+
 ## Tile layout
 
 The board chooses its column count from the space left beside the side panels.
