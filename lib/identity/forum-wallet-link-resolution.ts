@@ -1,3 +1,4 @@
+import { verifyForumWalletLinkWitness } from "./forum-wallet-link-proof";
 import { getAddress } from "viem";
 import { parseForumWalletLinkRecord } from "./forum-wallet-link-record";
 import { checkForumWalletLinkEligibility, type ForumRecoveryProvider } from "./forum-wallet-eligibility";
@@ -23,12 +24,19 @@ export async function resolveForumWalletRecoveryLink(
     const length: unknown = descriptors.length.value;
     if (typeof length !== "number" || !Number.isSafeInteger(length) || length < 0 || length > 1024) return deny("bad-input");
     const rows = Array.from({ length }, (_, i) => parseForumWalletLinkRecord(descriptors[String(i)]?.value)?.record ?? null);
-    // Start checks synchronously: each check snapshots its history, proof, policy
-    // and revocations before its first await, isolating subsequent caller edits.
+    if (!Array.isArray(keys) || keys.length > 1024) return deny("bad-input");
+    const trust = keys.map(k => ({ ...k, ...(k.key_ops ? { key_ops: [...k.key_ops] } : {}) }));
+    const rules = { ...policy, allowedDomains: [...policy.allowedDomains], allowedUris: [...policy.allowedUris], allowedChainIds: [...policy.allowedChainIds] };
+    // Authenticate independent evidence before looking up candidate principals.
+    // Forged index rows must not convert unavailable attacker history into a
+    // fatal recovery failure. Authenticated candidates still fail closed.
     const pending = rows.map((row, index) => {
       if (!row) { diagnostics.push({ index, reason: "bad-record" }); return null; }
       if (row.address !== address) return null;
-      return checkForumWalletLinkEligibility(row, provider, keys, policy, at, mode);
+      return (async () => {
+        if (row.issuedAt > at || !await verifyForumWalletLinkWitness(row, trust, rules, row.issuedAt)) return { ok: false as const, reason: "bad-proof" as const };
+        return checkForumWalletLinkEligibility(row, provider, trust, rules, at, mode);
+      })();
     });
     const results = await Promise.all(pending);
     type Eligible = Extract<Awaited<ReturnType<typeof checkForumWalletLinkEligibility>>, { ok: true }>;

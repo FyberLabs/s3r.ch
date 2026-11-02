@@ -3,22 +3,17 @@ import { verifyForumKeySignature } from "./forum-key-signature";
 import { verifyForumSiwe, type ForumSiwePolicy } from "./forum-siwe";
 import { verifyForumWitness, type ForumWitnessKey } from "./forum-witness-verification";
 
-/** Verify the proof bundle under a supplied historical signing key.
- * The caller must independently authenticate that key for this principal and
- * issuance time, and check retained-link membership and revocation at use time.
- * Success is cryptographic evidence, NOT current recovery eligibility.
- * `at` is explicit: historical proofs must be evaluated at the historical event.
- */
-export async function verifyForumWalletLinkProof(
-  input: unknown, signingKey: string, trustedKeys: readonly ForumWitnessKey[],
-  policy: ForumSiwePolicy, at: number,
-): Promise<Readonly<{ record: UnverifiedForumWalletLink; linkId: string; signingKey: string }> | null> {
+/** Independent wallet signature and timestamp witness gate, before querying
+ * an untrusted candidate's principal history. Does not verify the identity-key
+ * signature or establish recovery eligibility. */
+export async function verifyForumWalletLinkWitness(
+  input: unknown, trustedKeys: readonly ForumWitnessKey[], policy: ForumSiwePolicy, at: number,
+): Promise<Readonly<{ record: UnverifiedForumWalletLink; linkId: string }> | null> {
   try {
     if (!Number.isSafeInteger(at) || at < 0 || Object.is(at, -0)) return null;
     const parsed = parseForumWalletLinkRecord(input);
     if (!parsed || parsed.record.issuedAt > at) return null;
     const { record: r, bytes } = parsed;
-    if (!verifyForumKeySignature(signingKey, r.keySig, bytes)) return null;
     // Resolve trusted witness config synchronously before any await. The claims
     // and record are frozen snapshots; later caller mutation cannot replace them.
     const claims = verifyForumWitness(r.attest, trustedKeys, at);
@@ -29,6 +24,18 @@ export async function verifyForumWalletLinkProof(
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes)));
     const linkId = Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
     if (!await walletCheck || claims.linkId !== linkId) return null;
-    return Object.freeze({ record: r, linkId, signingKey });
+    return Object.freeze({ record: r, linkId });
   } catch { return null; }
+}
+
+/** Full proof under a supplied historical signing key. The caller still must
+ * authenticate that key and check retention/revocation before recovery use. */
+export async function verifyForumWalletLinkProof(
+  input: unknown, signingKey: string, trustedKeys: readonly ForumWitnessKey[],
+  policy: ForumSiwePolicy, at: number,
+): Promise<Readonly<{ record: UnverifiedForumWalletLink; linkId: string; signingKey: string }> | null> {
+  const parsed = parseForumWalletLinkRecord(input);
+  if (!parsed || !verifyForumKeySignature(signingKey, parsed.record.keySig, parsed.bytes)) return null;
+  const witness = await verifyForumWalletLinkWitness(parsed.record, trustedKeys, policy, at);
+  return witness ? Object.freeze({ ...witness, signingKey }) : null;
 }

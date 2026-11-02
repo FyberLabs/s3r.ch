@@ -54,11 +54,14 @@ test('newest eligible link wins and distinct links at the same time are ambiguou
   const pub = p256.getPublicKey(witnessSecret, false);
   const b64 = (v: string | Uint8Array) => Buffer.from(v).toString('base64url');
   const trust: ForumWitnessKey = { kid: 'test', kty: 'EC', crv: 'P-256', x: b64(pub.slice(1,33)), y: b64(pub.slice(33)), notBefore: 0, notAfter: Number.MAX_SAFE_INTEGER };
-  async function mint(nonce: string, issuedAt: number) {
+  async function mint(nonce: string, issuedAt: number, scalar = 1) {
     const row = structuredClone(link); row.nonce = nonce; row.issuedAt = issuedAt;
+    const signingSecret = secret.slice(); signingSecret[31] = scalar;
+    const identity = p256.getPublicKey(signingSecret, false);
+    row.principal = b64(identity.slice(1,33)) + '.' + b64(identity.slice(33));
     const bytes = parseForumWalletLinkRecord(row)!.bytes;
     const id = createHash('sha256').update(bytes).digest('hex');
-    row.keySig = b64(p256.sign(bytes, secret, { prehash: true, format: 'compact' }));
+    row.keySig = b64(p256.sign(bytes, signingSecret, { prehash: true, format: 'compact' }));
     row.siwe.message = link.siwe.message.replace(wallet.wallet.linkId, id).replace(link.nonce, nonce).replace('2023-11-14T22:13:20Z', new Date(issuedAt * 1000).toISOString().replace('.000Z','Z'));
     row.siwe.signature = await account.signMessage({ message: row.siwe.message });
     const msg = b64(JSON.stringify({ alg: 'ES256', kid: 'test' })) + '.' + b64(JSON.stringify({ typ: 'sociacl-wallet-attest-v1', principal: row.principal, linkId: id, iat: issuedAt, exp: issuedAt + 600 }));
@@ -73,4 +76,21 @@ test('newest eligible link wins and distinct links at the same time are ambiguou
   }
   const ambiguous = await run([link, newer, sibling]);
   assert.equal(ambiguous.ok, false); if (!ambiguous.ok) assert.equal(ambiguous.reason, 'ambiguous-link');
+  const foreign = await mint('foreignNonce123', newer.issuedAt + 1, 2);
+  const selective: ForumRecoveryProvider = (owner, at) => owner === link.principal ? provider(owner, at) : null;
+  const missing = await resolveForumWalletRecoveryLink(link.address, [link, foreign], selective, [...keys, trust], policy, newer.issuedAt + 1000, 'historical');
+  assert.equal(missing.ok, false); if (!missing.ok) assert.equal(missing.reason, 'missing-history');
+});
+
+test('forged unknown-principal candidates cannot make missing history fatal', async () => {
+  const foreign = keys[0].x + '.' + keys[0].y;
+  const fake = { ...link, principal: foreign, keySig: 'dummy', attest: 'dummy', siwe: { message: '', signature: '0x' + '00'.repeat(65) } };
+  for (const rows of [[fake, link], [link, fake], [{ ...link, principal: foreign }, link]]) {
+    const requested: string[] = [];
+    const p: ForumRecoveryProvider = (owner, at) => { requested.push(owner); return owner === link.principal ? provider(owner, at) : null; };
+    const result = await resolve(rows, p);
+    assert.ok(result.ok); assert.equal(result.link.linkId, wallet.wallet.linkId);
+    assert.deepEqual(requested, [link.principal]);
+    assert.ok(result.diagnostics.some(d => d.reason === 'bad-proof'));
+  }
 });
