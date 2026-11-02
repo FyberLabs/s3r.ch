@@ -1,0 +1,63 @@
+{
+  "source": "FyberLabs/SociACL b7f9bc59 vectors/ids/records.json",
+  "keys": [
+    {
+      "kty": "EC",
+      "crv": "P-256",
+      "kid": "fixture-1",
+      "x": "UVkLelFRQNLXhMhWCGaP3--Mgv0fW-UkIVVKDcPQM-0",
+      "y": "4MF9qJBKcn2K4b82v4p5Jg0BLwDU2AiI0dC7RP2hbaQ",
+      "alg": "ES256",
+      "use": "sig",
+      "key_ops": [
+        "verify"
+      ],
+      "notBefore": 1699999000,
+      "notAfter": 1700010000
+    }
+  ],
+  "accept": [
+    {
+      "name": "wallet",
+      "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXdhbGxldC1hdHRlc3QtdjEiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJsaW5rSWQiOiJhOTA4NTRhNTA3MTJjM2UwOTBlNDA3NjM4NWJlYzlkMzBjNjgzMWQ1ZjA0ODM4YzA1ODk0NDJjYTIzZTc0YjFiIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDA2MDB9.DbQ76adinFQJrdClbGXh_FwZd9KeYKAVSQirRzvG-4yP2xbuVLZZLkmSK3ljqUyg51AqPhdXQvvmnOb2axKcbg",
+      "claims": {
+        "typ": "sociacl-wallet-attest-v1",
+        "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+        "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "iat": 1700000000,
+        "exp": 1700000600
+      }
+    },
+    {
+      "name": "oidc",
+      "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLW9pZGMtYXR0ZXN0LXYxIiwiaXNzIjoiaHR0cHM6Ly9pZC5meWJlcmxhYnMuY29tL3JlYWxtcy90ZXN0IiwidGVuYW50IjoiMDEyMzQ1NjctODlhYi1jZGVmLTAxMjMtNDU2Nzg5YWJjZGVmIiwic3ViIjoiQ2FzZS1TZW5zaXRpdmUvU3ViamVjdCIsInByaW5jaXBhbCI6ImF4ZlI4dUVzUWtmNHZPYmxZNlJBOG5jRGZZRXQ2ek9nOUtFNVJkaVl3cFkuVC1OQzR2NGFmNXVPNS10S2ZBLWVGaXZPTTFkck1WN095N1pBYURlX1VmVSIsImlhdCI6MTcwMDAwMDAwMCwiZXhwIjoxNzAwMDAwNjAwLCJub25jZSI6ImZpeHR1cmVOb25jZTQ1NiJ9.eHXh5Cr5_HuJxOAqvuh7_mF6TKGws01yzgOklDRwgc_kzV6A-0Rze0nNQiZnV8AldeAuwZSZEGuaed_W_mM6gA",
+      "claims": {
+        "typ": "sociacl-oidc-attest-v1",
+        "iss": "https://id.fyberlabs.com/realms/test",
+        "tenant": "01234567-89ab-cdef-0123-456789abcdef",
+        "sub": "Case-Sensitive/Subject",
+        "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+        "iat": 1700000000,
+        "exp": 1700000600,
+        "nonce": "fixtureNonce456"
+      }
+    },
+    {
+      "name": "wallet-rotate",
+      "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImZpeHR1cmUtMSIsInR5cCI6IkpXVCJ9.eyJ0eXAiOiJzb2NpYWNsLXJvdGF0ZS1hdHRlc3QtdjIiLCJwcmluY2lwYWwiOiJheGZSOHVFc1FrZjR2T2JsWTZSQThuY0RmWUV0NnpPZzlLRTVSZGlZd3BZLlQtTkM0djRhZjV1TzUtdEtmQS1lRml2T00xZHJNVjdPeTdaQWFEZV9VZlUiLCJuZXh0S2V5IjoiZlBKN0dJMERUMzZLVWpnREJMVWF3OENKYWVKMzhoczFwZ3RJX0VkbW1YZy5CM2RWRU51TzBFQXBQWnJHbjNRdzI3cDlyZVk4NllJcG5nUzNuU0o0YzlFIiwic2VxIjoxLCJpYXQiOjE3MDAwMDAwMzAsImV4cCI6MTcwMDAwMDYzMCwiYXV0aCI6IndhbGxldCIsImxpbmtJZCI6ImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiLCJyZXRhaW5lZExpbmtzIjpbImE5MDg1NGE1MDcxMmMzZTA5MGU0MDc2Mzg1YmVjOWQzMGM2ODMxZDVmMDQ4MzhjMDU4OTQ0MmNhMjNlNzRiMWIiXX0.BqL_3eFkH64k2RsZhUXZp4nSk65Te4lQ97rExVm3wQObF-jko3gi3wQslcA4lBOMo7coproAPB4iaSAFCK5IGw",
+      "claims": {
+        "typ": "sociacl-rotate-attest-v2",
+        "principal": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+        "nextKey": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+        "seq": 1,
+        "iat": 1700000030,
+        "exp": 1700000630,
+        "auth": "wallet",
+        "linkId": "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b",
+        "retainedLinks": [
+          "a90854a50712c3e090e4076385bec9d30c6831d5f04838c0589442ca23e74b1b"
+        ]
+      }
+    }
+  ]
+}
