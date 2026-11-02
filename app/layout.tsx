@@ -19,7 +19,23 @@ export const metadata: Metadata = {
   description:
     "Tagged posts and rooms. Sign in with a wallet or Hypermesh, then share what you choose.",
   metadataBase: new URL("https://s3r.ch"),
-  icons: { icon: "/favicon.svg", apple: "/favicon.svg" },
+  icons: {
+    icon: [
+      { url: "/brand/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/brand/favicon-16.png", sizes: "16x16", type: "image/png" },
+      {
+        url: "/brand/favicon.svg",
+        type: "image/svg+xml",
+        media: "(prefers-color-scheme: dark)",
+      },
+      {
+        url: "/brand/favicon-light.svg",
+        type: "image/svg+xml",
+        media: "(prefers-color-scheme: light)",
+      },
+    ],
+    apple: [{ url: "/brand/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   openGraph: {
     title: "s3r.ch",
     description:
@@ -27,14 +43,22 @@ export const metadata: Metadata = {
     url: "https://s3r.ch",
     siteName: "s3r.ch",
     type: "website",
-    images: [{ url: "/og.svg", width: 1200, height: 630, alt: "s3r.ch" }],
+    images: [
+      {
+        url: "/brand/og.png",
+        width: 1200,
+        height: 630,
+        alt: "s3r.ch",
+        type: "image/png",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "s3r.ch",
     description:
       "Tagged posts and rooms. Sign in with a wallet or Hypermesh, then share what you choose.",
-    images: ["/og.svg"],
+    images: ["/brand/og.png"],
   },
 };
 
