@@ -680,6 +680,10 @@ export function SquadForum() {
           }
           return false;
         }
+        if (offer.stated === 0 && offerCancelAwaitingKeys({ graph: graphRef.current, need: parentNeed, needId: parentNeedId })) {
+          queueOffer("authority", offer.id);
+          return false;
+        }
         const named = parentNeed;
         if (named && !proof.depend(named)) return false;
         const party = {
@@ -1075,6 +1079,19 @@ export function SquadForum() {
         }
         return undefined;
       }
+      function watchChatRemoval(key: string) {
+        if (cancelled) return;
+        const now = Date.now();
+        expireChatRemovalWatches(now);
+        if (!grantChatRemovalWatch({ watches: chatRemovalWatches, key, verified: true, now, onEvict(old) {
+          chatRemovalOffs.get(old)?.off?.(); chatRemovalOffs.delete(old);
+        } })) return;
+        const off = gun.get("s3rch").get("items").get(key).get("remove").on((row) => {
+          if (cancelled || row == null) return;
+          void acceptChat(row, key, true);
+        });
+        chatRemovalOffs.set(key, off);
+      }
       async function acceptChat(data: unknown, key: string | undefined, fromRemoval = false, retryGen?: number): Promise<boolean> {
         const proof = proofs.begin();
         if (data === undefined || typeof key !== "string") return false;
@@ -1100,6 +1117,7 @@ export function SquadForum() {
           retries.forget(retryId);
           setMeshChat((prev) => retainForumChat(prev, item));
           setLocalChat((prev) => retireLocalChat(prev, item.id));
+          watchChatRemoval(key);
           return true;
         }
         const sig = signatureOf(data);
@@ -1270,19 +1288,7 @@ export function SquadForum() {
       offItems = gun.get("s3rch").get("items").map().on((data, key) => {
         if (cancelled || typeof key !== "string" || data === undefined) return;
         if (!chatRemovalCandidate(key, data, PILOT_FORUM_ID)) return;
-        void acceptChat(data, key).then((verified) => {
-          if (cancelled || !verified) return;
-          const now = Date.now();
-          expireChatRemovalWatches(now);
-          if (!grantChatRemovalWatch({ watches: chatRemovalWatches, key, verified, now, onEvict(old) {
-            chatRemovalOffs.get(old)?.off?.(); chatRemovalOffs.delete(old);
-          } })) return;
-          const off = gun.get("s3rch").get("items").get(key).get("remove").on((row) => {
-            if (cancelled || row == null) return;
-            void acceptChat(row, key, true);
-          });
-          chatRemovalOffs.set(key, off);
-        });
+        void acceptChat(data, key);
       });
     })();
 
