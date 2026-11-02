@@ -104,3 +104,29 @@ export function parseForumRotationRecord(input: unknown): Readonly<{
   }
   return Object.freeze({ record, bytes });
 }
+
+/** Preserve signed rotation identity when an unsigned wallet proof is damaged.
+ * `unverified` means structurally present, NEVER authenticated. `malformed`
+ * candidates carry a deliberately invalid placeholder proof so signature and
+ * witness checks can still identify conflicts before recovery fails closed.
+ * Neither result may be fed directly to the authenticated history adapter.
+ */
+export function parseForumRotationCandidate(input: unknown): Readonly<{
+  record: UnverifiedForumRotation;
+  bytes: Uint8Array;
+  recoveryProof: "unverified" | "malformed";
+}> | null {
+  // Detach the signed fields and authorizer once, before trying either path.
+  const row = data(input);
+  if (!row || row.kind !== "rotate") return null;
+  const authorizer = data(row.authorizer);
+  if (!authorizer) return null;
+  const detached = { ...row, authorizer };
+  const parsed = parseForumRotationRecord(detached);
+  if (parsed) return Object.freeze({ ...parsed, recoveryProof: "unverified" });
+  if (authorizer.kind !== "wallet") return null;
+  const candidate = parseForumRotationRecord({ ...detached, authorizer: {
+    ...authorizer, siwe: { message: "", signature: "0x" + "00".repeat(65) },
+  } });
+  return candidate ? Object.freeze({ ...candidate, recoveryProof: "malformed" }) : null;
+}
