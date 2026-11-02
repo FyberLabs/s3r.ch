@@ -30,7 +30,10 @@ export async function checkForumWalletLinkEligibility(
     if (typeof provider !== "function") return deny("missing-history");
     const bundle = provider(parsed.record.principal, at);
     if (!bundle || !Array.isArray(bundle.revocations) || bundle.revocations.length > 1024) return deny("missing-history");
-    const state = createForumLinkKeyResolver(() => bundle.history)(parsed.record.principal, parsed.record.issuedAt, at);
+    if (!Array.isArray(bundle.history.rotations) || bundle.history.rotations.length > 1024) return deny("missing-history");
+    const history = { owner: bundle.history.owner, evaluatedAt: bundle.history.evaluatedAt,
+      rotations: bundle.history.rotations.map(r => ({ seq: r.seq, prevKey: r.prevKey, nextKey: r.nextKey, issuedAt: r.issuedAt, retainedLinks: [...r.retainedLinks] })) };
+    const state = createForumLinkKeyResolver(() => history)(parsed.record.principal, parsed.record.issuedAt, at);
     if (!state) return deny("missing-history");
     const descriptors = Object.getOwnPropertyDescriptors(bundle.revocations) as unknown as Record<string, PropertyDescriptor>;
     const revocations = Array.from({ length: bundle.revocations.length }, (_, i) => parseForumRevoke(descriptors[String(i)]?.value)?.record ?? null);
@@ -41,7 +44,8 @@ export async function checkForumWalletLinkEligibility(
     const proof = await verifyForumWalletLinkProof(parsed.record, state.keyAtIssuedAt, keys, policy, parsed.record.issuedAt);
     if (!proof) return deny("bad-proof");
     if (state.retainedLinks !== null && !state.retainedLinks.includes(proof.linkId)) return deny("unretained-link");
-    const revocation = await checkForumLinkRevocations({ principal: proof.record.principal, linkId: proof.linkId, issuedAt: proof.record.issuedAt }, revocations, state.currentKey, keys, at, mode);
+    const revocation = await checkForumLinkRevocations({ principal: proof.record.principal, linkId: proof.linkId, issuedAt: proof.record.issuedAt }, revocations, state.currentKey, keys, at, mode,
+      issuedAt => history.rotations.filter(r => r.issuedAt < issuedAt).at(-1)?.nextKey ?? history.owner);
     if (!revocation.ok) return deny("missing-history");
     if (revocation.revoked) return deny("revoked-link");
     return Object.freeze({ ok: true as const, record: proof.record, linkId: proof.linkId, evaluatedAt: at, mode, diagnostics: revocation.diagnostics });

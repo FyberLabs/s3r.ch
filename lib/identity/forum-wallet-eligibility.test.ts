@@ -52,3 +52,44 @@ test('provider snapshots precede asynchronous proof verification', async () => {
   rows[0].keySig = 'mutated'; rows.length = 0;
   assert.deepEqual(await pending, { ok: false, reason: 'revoked-link' }); assert.equal(calls, 1);
 });
+
+test('witnessed old-key revocations survive later retention in both modes', async () => {
+  const rotation = rotations.accept[0].input;
+  for (const rotationAt of [revoke.issuedAt, revoke.issuedAt + 1]) {
+    const p: ForumRecoveryProvider = (owner, at) => ({ history: { owner, evaluatedAt: at, rotations: [{ seq: 1, prevKey: owner, nextKey: rotation.nextKey, issuedAt: rotationAt, retainedLinks: [wallet.wallet.linkId] }] }, revocations: [revoke] });
+    for (const mode of ['historical', 'present'] as const) assert.deepEqual(await check(p, mode), { ok: false, reason: 'revoked-link' });
+  }
+});
+
+test('retired-key offline or backdated unwitnessed revokes do not gain historical validity', async () => {
+  const rotation = rotations.accept[0].input;
+  const { attest: _, ...offline } = revoke;
+  const p: ForumRecoveryProvider = (owner, at) => ({ history: { owner, evaluatedAt: at, rotations: [{ seq: 1, prevKey: owner, nextKey: rotation.nextKey, issuedAt: revoke.issuedAt + 1, retainedLinks: [wallet.wallet.linkId] }] }, revocations: [offline] });
+  for (const mode of ['historical', 'present'] as const) assert.ok((await check(p, mode)).ok);
+});
+
+test('historical key selection uses the snapshotted history after async proof checks', async () => {
+  const rotation = rotations.accept[0].input;
+  const history = { owner: link.principal, evaluatedAt: revoke.issuedAt + 10000, rotations: [{ seq: 1, prevKey: link.principal, nextKey: rotation.nextKey, issuedAt: revoke.issuedAt + 1, retainedLinks: [wallet.wallet.linkId] }] };
+  const pending = check(() => ({ history, revocations: [revoke] }));
+  history.rotations[0].issuedAt = link.issuedAt + 1;
+  assert.deepEqual(await pending, { ok: false, reason: 'revoked-link' });
+});
+
+test('new-current-key offline revokes apply only in present mode after rotation', async () => {
+  const { p256 } = await import('@noble/curves/nist.js');
+  const { parseForumRevoke } = await import('./forum-revocation');
+  const rotation = rotations.accept[0].input;
+  const { attest: _, ...offline } = revoke;
+  const secret = new Uint8Array(32); secret[31] = 2;
+  offline.keySig = Buffer.from(p256.sign(parseForumRevoke(offline)!.bytes, secret, { prehash: true, format: 'compact' })).toString('base64url');
+  const p: ForumRecoveryProvider = (owner, at) => ({ history: { owner, evaluatedAt: at, rotations: [{ seq: 1, prevKey: owner, nextKey: rotation.nextKey, issuedAt: revoke.issuedAt - 1, retainedLinks: [wallet.wallet.linkId] }] }, revocations: [offline] });
+  assert.ok((await check(p, 'historical')).ok);
+  assert.deepEqual(await check(p, 'present'), { ok: false, reason: 'revoked-link' });
+});
+
+test('witnessed revocation signed by an already retired key is not applicable', async () => {
+  const rotation = rotations.accept[0].input;
+  const p: ForumRecoveryProvider = (owner, at) => ({ history: { owner, evaluatedAt: at, rotations: [{ seq: 1, prevKey: owner, nextKey: rotation.nextKey, issuedAt: revoke.issuedAt - 1, retainedLinks: [wallet.wallet.linkId] }] }, revocations: [revoke] });
+  for (const mode of ['historical', 'present'] as const) assert.ok((await check(p, mode)).ok);
+});
