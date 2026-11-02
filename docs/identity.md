@@ -443,7 +443,7 @@ People not in crypto yet still need an address before they can SIWE. This slice 
 ```ts
 coinbaseWallet({
   appName: "s3r.ch",
-  appLogoUrl: "https://s3r.ch/favicon.ico",
+  appLogoUrl: "https://s3r.ch/brand/apple-touch-icon.png",
   preference: { options: "smartWalletOnly" },
 })
 ```

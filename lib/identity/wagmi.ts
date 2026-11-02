@@ -27,7 +27,7 @@ const WALLETCONNECT_METADATA = {
   name: "s3r.ch",
   description: "s3r.ch",
   url: "https://s3r.ch",
-  icons: ["https://s3r.ch/favicon.ico"],
+  icons: ["https://s3r.ch/brand/apple-touch-icon.png"],
 };
 
 /**
@@ -37,7 +37,7 @@ const WALLETCONNECT_METADATA = {
 export function coinbaseSmartWalletConnector(): CreateConnectorFn {
   return coinbaseWallet({
     appName: "s3r.ch",
-    appLogoUrl: "https://s3r.ch/favicon.ico",
+    appLogoUrl: "https://s3r.ch/brand/apple-touch-icon.png",
     preference: { options: "smartWalletOnly" },
   });
 }
