@@ -296,3 +296,6 @@ resolution and denies missing history rather than assuming genesis authority.
 The provider must verify all rotation and recovery evidence before returning
 its projection; this adapter does not authenticate raw rotation records. The
 production provider is still required before live graph integration.
+
+The [Squad admission audit](forum-admission-audit.md) maps the current receive and
+publish paths to regression tests, cache bounds and remaining live acceptance.

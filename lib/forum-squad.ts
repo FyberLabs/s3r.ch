@@ -1284,12 +1284,13 @@ export function parseForumAlarmUpdate(value: unknown, forumId: string): ForumAla
   return { kind: "pin", alarm: { forumId, need: row.need, pinned: 1 }, rev: row.rev };
 }
 
-/** A replay at or below the last accepted rev does not replace the pin. */
+/** Only an identical, freshly verified update can rehydrate an equal replay floor. */
 export function commitForumAlarm(
-  state: { rev?: number },
+  state: { rev?: number; previous?: ForumAlarmUpdate },
   update: ForumAlarmUpdate,
 ): { rev: number; alarm: ForumAlarm | null } | null {
-  if (state.rev !== undefined && update.rev <= state.rev) return null;
+  if (state.rev !== undefined && (update.rev < state.rev || (update.rev === state.rev &&
+    (!state.previous || JSON.stringify(update) !== JSON.stringify(state.previous))))) return null;
   if (update.kind === "unpin") return { rev: update.rev, alarm: null };
   return { rev: update.rev, alarm: update.alarm };
 }
@@ -1650,5 +1651,15 @@ export function retainForumOffer(rows: ReadonlyMap<string, ForumOffer>, offer: F
   const siblings = [...next].filter(([, row]) => row.need === offer.need);
   for (const [id] of siblings.slice(0, Math.max(0, siblings.length - FORUM_OFFER_PER_NEED_CAP))) next.delete(id);
   while (next.size > FORUM_OFFER_CAP) next.delete(next.keys().next().value!);
+  return next;
+}
+
+/** Session-only removal floors. Replays do not renew eviction order; mesh tails
+ * must be delivered again after reload or bounded eviction. */
+export function retainForumRemoval(floors: ReadonlySet<string>, id: string): ReadonlySet<string> {
+  if (floors.has(id)) return floors;
+  const next = new Set(floors);
+  if (next.size >= 512) next.delete(next.values().next().value!);
+  next.add(id);
   return next;
 }

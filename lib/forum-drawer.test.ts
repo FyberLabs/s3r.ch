@@ -208,7 +208,7 @@ test("rotation hides old-key rows and accepts the new key without changing owner
   await h.send(record({ writer: owner }), { key: owner }); assert.equal(h.c.rows().length, 1);
   const input = snapshot([owned(child, 2)]);
   const rotated = { ...input, history: { completeThrough: time, links: vectors.context.links.map(([, r]) => r),
-    accounts: vectors.context.authenticatedAccounts.map(principal => ({ principal,
+    accounts: vectors.context.authenticatedAccounts.filter(principal => principal !== writer).map(principal => ({ principal,
       rotations: principal === owner ? vectors.context.rotationSets.rotated : [], revocations: [], genesisEpubBindings: [] })) } };
   assert.ok((await h.authority.refresh(rotated, time)).ok);
   assert.equal(h.c.rows().length, 0);

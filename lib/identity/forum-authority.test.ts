@@ -378,3 +378,13 @@ test("a key shared by two authenticated principals has no inferred publication i
   assert.equal(a.graph.writerKey(helper, time - 1, time), helper);
   assert.equal(a.graph.principalForKey(helper, time), null);
 });
+
+test("roster principals resolve from authenticated history before owning objects or receiving grants", async () => {
+  const a = createForumAuthority(config, () => time);
+  assert.ok((await a.refresh(snapshot([owned(forum)]), time)).ok);
+  assert.equal(a.graph.writerKey(outsider, time, time), outsider);
+  assert.equal(a.graph.principalForKey(outsider, time), outsider);
+  assert.equal(a.graph.checkPost(forum, outsider, time).allowed, false);
+  assert.equal(a.graph.checkForumSee(forum, outsider, time).allowed, false);
+  a.invalidate(); assert.equal(a.graph.writerKey(outsider, time, time), null);
+});

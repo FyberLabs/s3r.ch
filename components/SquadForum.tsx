@@ -1,5 +1,7 @@
 "use client";
 
+import { createForumReceiveRetry } from "@/lib/forum-receive-retry";
+import { createForumReceiveProofs } from "@/lib/forum-receive-proofs";
 import { ForumDrawerRecords } from "@/components/ForumDrawerRecords";
 import { SquadDelegationControls } from "@/components/SquadDelegationControls";
 import Link from "next/link";
@@ -44,6 +46,7 @@ import {
   cacheForumNeed,
   chatRemovalCandidate,
   commitForumAlarm,
+  retainForumRemoval,
   composeForumNeeds,
   composeForumRoster,
   grantChatRemovalWatch,
@@ -219,6 +222,16 @@ export function SquadForum() {
   const authority = useForumAuthority();
   const gunPeer = useGunPeer();
   const register = gunPeer?.register;
+  const connectedRef = useRef(false);
+  const retryRef = useRef<ReturnType<typeof createForumReceiveRetry> | null>(null);
+  const proofs = useMemo(() => createForumReceiveProofs({
+    key: principal => {
+      const now = Math.floor(Date.now() / 1000);
+      return authority?.graph.writerKey(principal, now, now) ?? null;
+    },
+    ready: () => connectedRef.current && !!authority?.graph.ownerOf(PILOT_FORUM_ID),
+    verify: readForumSignature,
+  }), [authority]);
   const [seaPub, setSeaPub] = useState<string | null>(null);
   const [oauthLinked, setOauthLinked] = useState(false);
   const [vitals, setVitals] = useState<VitalsMode>("auto");
@@ -246,7 +259,7 @@ export function SquadForum() {
   const [removedAgents, setRemovedAgents] = useState<ReadonlyMap<string, number>>(() => new Map());
   const [chatTombs, setChatTombs] = useState<ReadonlyMap<string, number>>(() => new Map());
   const [admitted, setAdmitted] = useState<ReadonlySet<string>>(
-    () => new Set(PILOT_AGENTS.map((agent) => agent.status.seaPubkey)),
+    () => new Set(PILOT_MESH_ENABLED ? [] : PILOT_AGENTS.map((agent) => agent.status.seaPubkey)),
   );
   const gunRef = useRef<FeedGun | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -255,7 +268,7 @@ export function SquadForum() {
   const needsRef = useRef<Map<string, ForumNeed>>(new Map());
   const offersRef = useRef<Map<string, ForumOffer>>(new Map());
   const pendingNeedsRef = useRef<Map<string, PendingNeedEntry>>(new Map());
-  const alarmRevRef = useRef<number | undefined>(undefined);
+  const alarmFloorRef = useRef<ReturnType<typeof parseForumAlarmUpdate>>(null);
   const pendingOffersRef = useRef<Map<string, PendingOfferEntry>>(new Map());
   const highWaterRef = useRef<Map<string, ForumNeed>>(new Map());
   const needAdmitRef = useRef<Map<string, string>>(new Map());
@@ -384,6 +397,10 @@ export function SquadForum() {
     if (!PILOT_MESH_ENABLED) return;
     const loaded = restoreForumNeedCache(forumStorage()?.getItem(NEED_HIGH_WATER_KEY) ?? null);
     const statuses = restoreForumStatusCache(forumStorage()?.getItem("s3rch:squad:status-high-water:v1") ?? null, PILOT_FORUM_ID);
+    try {
+      const saved = forumStorage()?.getItem("s3rch:squad:alarm-floor:v1");
+      alarmFloorRef.current = saved && saved.length <= 4096 ? parseForumAlarmUpdate(JSON.parse(saved), PILOT_FORUM_ID) : null;
+    } catch { alarmFloorRef.current = null; }
     statusHighWaterRef.current = statuses.highWater;
     setMeshStatus(statuses.mesh);
     highWaterRef.current = loaded.highWater;
@@ -393,6 +410,7 @@ export function SquadForum() {
   useEffect(() => {
     if (!PILOT_MESH_ENABLED || !register) return;
     let cancelled = false;
+    const retries = createForumReceiveRetry(); retryRef.current = retries;
     let offAgents: { off?: () => void } | undefined;
     let offNeeds: { off?: () => void } | undefined;
     const forumOffs = new Map<string, { off?: () => void }>();
@@ -412,13 +430,19 @@ export function SquadForum() {
       const gun = Gun(browserGunOptions());
       gunRef.current = gun;
       register(gun);
-      listenThenConnectSeedPeer(gun as unknown as SeedPeerEmitter, window.location.origin, () => {});
+      listenThenConnectSeedPeer(gun as unknown as SeedPeerEmitter, window.location.origin, up => {
+        if (cancelled) return;
+        connectedRef.current = up;
+        if (!up) proofs.interrupt();
+        setAclRev(n => n + 1);
+      });
       const forum = gun.get("s3rch").get("forums").get(PILOT_FORUM_ID);
       const versions = createMeshEventVersions();
       function knownChatIds(): string[] {
         return chatIdsRef.current;
       }
-      function enrollPub(pub: string) {
+      function enrollPub(pub: string, evidence: object) {
+        if (!proofs.enroll(pub, evidence)) return;
         if (!admittedRef.current.has(pub)) {
           const next = new Set(admittedRef.current);
           next.add(pub);
@@ -427,12 +451,13 @@ export function SquadForum() {
         }
         prunePendingStatuses(pendingStatusRef.current, Date.now());
         const waiting = pendingStatusRef.current.get(pub);
-        if (!waiting) return;
+        if (!waiting || !proofs.valid(waiting.status)) return;
         pendingStatusRef.current.delete(pub);
         watchStatusRemoval(pub);
         commitMeshStatus(waiting.status);
       }
       function commitMeshStatus(status: ForumAgentStatus) {
+        if (!proofs.valid(status) || !proofs.enrolled(status.seaPubkey)) return;
         if (!cacheForumStatus(statusHighWaterRef.current, status)) return;
         try {
           forumStorage()?.setItem("s3rch:squad:status-high-water:v1", JSON.stringify([...statusHighWaterRef.current.values()]));
@@ -481,29 +506,27 @@ export function SquadForum() {
       function noteOfferCancel(need: string, offer: string) {
         const id = forumOfferCacheKey(need, offer);
         if (offerCancelsRef.current.has(id)) return;
-        const next = new Set(offerCancelsRef.current);
-        next.add(id);
+        const next = retainForumRemoval(offerCancelsRef.current, id);
         offerCancelsRef.current = next;
         setOfferCancels(next);
       }
       function noteOfferRemoval(need: string, offer: string) {
         const id = forumOfferCacheKey(need, offer);
         if (removedOffersRef.current.has(id)) return;
-        const next = new Set(removedOffersRef.current);
-        next.add(id);
+        const next = retainForumRemoval(removedOffersRef.current, id);
         removedOffersRef.current = next;
         setRemovedOffers(next);
       }
       function noteNeedRemoval(id: string) {
         if (removedNeedsRef.current.has(id)) return;
-        const next = new Set(removedNeedsRef.current);
-        next.add(id);
+        const next = retainForumRemoval(removedNeedsRef.current, id);
         removedNeedsRef.current = next;
         setRemovedNeeds(next);
       }
       function noteAgentRemoval(pub: string) {
         if (removedAgentsRef.current.has(pub)) return;
         const next = new Map(removedAgentsRef.current);
+        if (next.size >= 128) next.delete(next.keys().next().value!);
         next.set(pub, Number.POSITIVE_INFINITY);
         removedAgentsRef.current = next;
         setRemovedAgents(next);
@@ -529,8 +552,12 @@ export function SquadForum() {
         fromCancel = false,
         fromRemoval = false,
       ): Promise<boolean> {
+        const proof = proofs.begin();
         const queueKey = `${fromRemoval ? "remove" : fromCancel ? "cancel" : "offer"}:${parentNeedId}:${key ?? ""}`;
         const versionScope = fromRemoval ? "offer-remove" : fromCancel ? "offer-cancel" : "offer";
+        if (cancelled || !versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return false;
+        const retryId = `${versionScope}:${parentNeedId}:${key ?? ""}`;
+        retries.remember(retryId, data, row => acceptOffer(row, key, parentNeedId, gen, fromCancel, fromRemoval));
         const sig = signatureOf(data);
         if (!sig || !data || typeof data !== "object") return false;
         if (!forumOfferFits(data)) return false;
@@ -539,6 +566,7 @@ export function SquadForum() {
         if (hintedNeed !== undefined && hintedNeed !== parentNeedId) return false;
         const pending = pendingNeedsRef.current.get(parentNeedId);
         let parentNeed = freshestOfferParent(needsRef.current.get(parentNeedId), pending, Date.now());
+        if (parentNeed && !proofs.valid(parentNeed)) parentNeed = undefined;
         const candidates = offerSignerCandidates({
           offerId: key,
           hintedHelper: typeof row.helper === "string" ? row.helper : undefined,
@@ -548,15 +576,15 @@ export function SquadForum() {
         let payload: unknown = null;
         let signer = "";
         for (const pub of candidates) {
-          if (cancelled || !versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return false;
-          const verified = await readForumSignature(sig, pub);
+          if (cancelled || !proof.current() || !versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return false;
+          const verified = await proof.read(sig, pub);
           if (verified) {
             payload = verified;
             signer = pub;
             break;
           }
         }
-        if (cancelled || !versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return false;
+        if (cancelled || !proof.current() || !versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return false;
         const queueOffer = (reason: "authority" | "grant", offerKey: string) => {
           const now = Date.now();
           const kept = retainPendingOffer(
@@ -594,6 +622,7 @@ export function SquadForum() {
           return false;
         }
         parentNeed = freshestOfferParent(needsRef.current.get(parentNeedId), pendingNeedsRef.current.get(parentNeedId), Date.now());
+        if (parentNeed && !proofs.valid(parentNeed)) parentNeed = undefined;
         const removal = parseForumMeshRemoval(payload);
         if (removal) {
           if (key === undefined || removal.kind !== "offer" || removal.need === undefined) return false;
@@ -628,8 +657,10 @@ export function SquadForum() {
           ) {
             return false;
           }
-          if (!versions.current(versionScope, `${parentNeedId}:${key}`, gen)) return false;
+          if (!proof.current() || !versions.current(versionScope, `${parentNeedId}:${key}`, gen)) return false;
           pendingOffersRef.current.delete(queueKey);
+          if (!proofs.ready()) return false;
+          retries.forget(retryId);
           noteOfferRemoval(parentNeedId, removal.id);
           stickSigned(forumOfferRemovalSoul(PILOT_FORUM_ID, parentNeedId, removal.id), data);
           setMeshOffers((prev) => {
@@ -649,7 +680,12 @@ export function SquadForum() {
           }
           return false;
         }
+        if (offer.stated === 0 && offerCancelAwaitingKeys({ graph: graphRef.current, need: parentNeed, needId: parentNeedId })) {
+          queueOffer("authority", offer.id);
+          return false;
+        }
         const named = parentNeed;
+        if (named && !proof.depend(named)) return false;
         const party = {
           owner: graphRef.current?.ownerOf(offer.need),
           subject: named?.subject,
@@ -682,9 +718,11 @@ export function SquadForum() {
           return false;
         }
         if (key !== undefined && key !== offer.id) return false;
-        if (!versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return false;
+        if (!proof.current() || !versions.current(versionScope, `${parentNeedId}:${key ?? ""}`, gen)) return false;
         if (removedOffersRef.current.has(forumOfferCacheKey(offer.need, offer.id))) return false;
         if (offer.stated === 1 && offerBlockedByCancel(offerCancelsRef.current, offer)) return false;
+        if (!proofs.ready() || !proof.retain(offer)) return false;
+        retries.forget(retryId);
         if (offer.stated === 0) noteOfferCancel(offer.need, offer.id);
         pendingOffersRef.current.delete(queueKey);
         setMeshOffers((prev) => {
@@ -704,7 +742,11 @@ export function SquadForum() {
         return true;
       }
       async function acceptStatus(data: unknown, key: string, gen: number, fromRemoval = false, fromAdmission = false) {
+        const proof = proofs.begin();
         const versionScope = fromAdmission ? "status-admission" : fromRemoval ? "status-remove" : "status";
+        if (cancelled || !versions.current(versionScope, key, gen)) return;
+        const retryId = `${versionScope}:${key}`;
+        retries.remember(retryId, data, row => acceptStatus(row, key, gen, fromRemoval, fromAdmission));
         const sig = signatureOf(data);
         if (!sig || !data || typeof data !== "object") return;
         const row = data as { seaPubkey?: unknown; id?: unknown };
@@ -718,15 +760,15 @@ export function SquadForum() {
         let payload: unknown = null;
         let signer = "";
         for (const pub of candidates) {
-          if (cancelled || !versions.current(versionScope, key, gen)) return;
-          const verified = await readForumSignature(sig, pub);
+          if (cancelled || !proof.current() || !versions.current(versionScope, key, gen)) return;
+          const verified = await proof.read(sig, pub);
           if (verified) {
             payload = verified;
             signer = pub;
             break;
           }
         }
-        if (cancelled || !versions.current(versionScope, key, gen) || !payload) return;
+        if (cancelled || !proof.current() || !versions.current(versionScope, key, gen) || !payload) return;
         const removal = parseForumAgentRemoval(payload);
         if (removal) {
           if (fromAdmission) return;
@@ -742,18 +784,21 @@ export function SquadForum() {
           ) {
             return;
           }
-          if (!versions.current(versionScope, key, gen)) return;
+          if (!proof.current() || !versions.current(versionScope, key, gen)) return;
+          if (!proofs.ready()) return;
+          retries.forget(retryId);
           noteAgentRemoval(removal.seaPubkey);
           dropMeshStatus(removal.seaPubkey);
           stickSigned(forumStatusRemovalSoul(PILOT_FORUM_ID, removal.seaPubkey), data);
           return;
         }
         const status = parseForumAgentStatus(payload);
-        if (!status || fromRemoval) return;
-        if (liveReplayBlocked(status.lastUpdate, removedAgentsRef.current.get(status.seaPubkey))) return;
         const forumOwner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
+        if (!status || fromRemoval || !proof.retain(status, () => signer === forumOwner
+          ? graphRef.current?.ownerOf(PILOT_FORUM_ID) === signer : signer === status.seaPubkey)) return;
+        if (liveReplayBlocked(status.lastUpdate, removedAgentsRef.current.get(status.seaPubkey))) return;
         if (fromAdmission && !authorizeStatusAdmission(status, key, signer, forumOwner, PILOT_FORUM_ID)) return;
-        const enrolled = admittedRef.current.has(status.seaPubkey);
+        const enrolled = proofs.enrolled(status.seaPubkey);
         const admission = forumStatusAdmission({
           status,
           mapKey: key,
@@ -762,7 +807,7 @@ export function SquadForum() {
           forumId: PILOT_FORUM_ID,
           enrolled,
         });
-        if (!versions.current(versionScope, key, gen)) return;
+        if (!proof.current() || !versions.current(versionScope, key, gen)) return;
         if (!statusRevisionAllowed(status, signer, forumOwner, Math.floor(Date.now() / 1000))) return;
         if (admission === "pending") {
           retainPendingStatus(pendingStatusRef.current, status, Date.now());
@@ -770,17 +815,23 @@ export function SquadForum() {
           return;
         }
         if (admission !== "owner" && admission !== "enrolled") return;
+        if (!proofs.ready()) return;
+        retries.forget(retryId);
         if (admission === "owner") {
           if (!fromAdmission) stickSigned(`${forumAgentSoul(PILOT_FORUM_ID, key)}/admission`, data);
-          enrollPub(status.seaPubkey);
+          enrollPub(status.seaPubkey, status);
         }
         pendingStatusRef.current.delete(status.seaPubkey);
         watchStatusRemoval(status.seaPubkey);
         commitMeshStatus(status);
       }
       async function acceptNeed(data: unknown, key: string, gen: number, fromRemoval = false, fromPending = false) {
+        const proof = proofs.begin();
         const queueKey = pendingNeedKey(key, fromRemoval);
         const versionScope = fromPending ? "need-pending" : fromRemoval ? "need-remove" : "need";
+        if (cancelled || !versions.current(versionScope, key, gen)) return;
+        const retryId = `${versionScope}:${key}`;
+        retries.remember(retryId, data, row => acceptNeed(row, key, gen, fromRemoval, fromPending));
         const discardUnverified = () => {
           if (!pendingNeedsRef.current.get(queueKey)?.context) pendingNeedsRef.current.delete(queueKey);
         };
@@ -795,15 +846,16 @@ export function SquadForum() {
           discardUnverified();
           return;
         }
-        const owner = graphRef.current?.ownerOf(hintedId);
+        let owner = graphRef.current?.ownerOf(hintedId);
         let signer = "";
         let payload: unknown = null;
         for (const candidate of needSignerCandidates(owner, needsRef.current.get(key)?.subject, hintedSubject)) {
-          if (cancelled || !versions.current(versionScope, key, gen)) return;
-          payload = await readForumSignature(sig, candidate);
+          if (cancelled || !proof.current() || !versions.current(versionScope, key, gen)) return;
+          payload = await proof.read(sig, candidate);
           if (payload) { signer = candidate; break; }
         }
-        if (cancelled || !versions.current(versionScope, key, gen)) return;
+        if (cancelled || !proof.current() || !versions.current(versionScope, key, gen)) return;
+        owner = graphRef.current?.ownerOf(hintedId);
         if (!payload) {
           const now = Date.now();
           const kept =
@@ -827,7 +879,8 @@ export function SquadForum() {
         }
         const removal = parseForumMeshRemoval(payload);
         if (removal && removal.kind === "need") {
-          const known = needsRef.current.get(removal.id);
+          const candidate = needsRef.current.get(removal.id);
+          const known = proofs.valid(candidate) ? candidate : undefined;
           if (
             !authorizeForumMeshRemoval({
               removal,
@@ -840,11 +893,13 @@ export function SquadForum() {
           ) {
             return;
           }
-          if (!versions.current(versionScope, key, gen)) return;
+          if (!proof.current() || !versions.current(versionScope, key, gen)) return;
           discardUnverified();
           pendingNeedsRef.current.delete(queueKey);
           pendingNeedsRef.current.delete(pendingNeedKey(key));
           versions.bump("need-pending", key);
+          if (!proofs.ready()) return;
+          retries.forget(retryId);
           noteNeedRemoval(removal.id);
           stickSigned(forumNeedRemovalSoul(PILOT_FORUM_ID, removal.id), data);
           setMeshNeeds((prev) => {
@@ -867,31 +922,39 @@ export function SquadForum() {
           return;
         }
         if (pendingClosureDominates(pendingNeedsRef.current.get(key), need, Date.now())) return;
-        const known = needsRef.current.get(need.id);
-        const closure =
+        const candidate = needsRef.current.get(need.id);
+        const known = proofs.valid(candidate) ? candidate : undefined;
+        const closure = () =>
           graphRef.current
             ? {
                 graph: graphRef.current,
-                postedOffers: offersForNeed(offersRef.current, need.id),
+                postedOffers: offersForNeed(new Map([...offersRef.current].filter(([, row]) => proofs.valid(row))), need.id),
                 now: Math.floor(Date.now() / 1000),
               }
             : undefined;
         const admitSig = ownerAdmitSig(payload);
         let admitted: ForumNeed | undefined;
+        const admissionOwner = owner;
         if (admitSig && owner) {
-          const opened = await readForumSignature(admitSig, owner);
-          if (cancelled || !versions.current(versionScope, key, gen)) return;
+          const opened = await proof.read(admitSig, owner);
+          if (cancelled || !proof.current() || !versions.current(versionScope, key, gen)) return;
           const parsed = opened ? parseForumNeed(opened) : null;
           if (parsed && forumNeedAdmission(parsed, need)) admitted = parsed;
         }
-        const allowed = authorizeForumNeed(need, signer, owner, PILOT_FORUM_ID, known, closure, admitted);
-        if (!versions.current(versionScope, key, gen)) {
+        owner = graphRef.current?.ownerOf(hintedId);
+        if (owner !== admissionOwner) return;
+        if (signer !== owner && !admitted && known && !proof.depend(known)) return;
+        const admittedOwner = owner;
+        if (!proof.retain(need, () => graphRef.current?.ownerOf(need.id) === admittedOwner)) return;
+        const allowed = authorizeForumNeed(need, signer, owner, PILOT_FORUM_ID, known, closure(), admitted);
+        if (!proof.current() || !versions.current(versionScope, key, gen)) {
           discardUnverified();
           return;
         }
         if (!allowed) {
           const closing = need.stated === 0 && !!need.acceptedOffer;
-          const gate = closing && closure ? needClosureStatus(need, closure) : "denied";
+          const freshClosure = closure();
+          const gate = closing && freshClosure ? needClosureStatus(need, freshClosure) : "denied";
           const now = Date.now();
           const waitingOnOwner = !owner && signer !== need.subject && isSeaPubkey(signer);
           const waitingOnAdmission = closing && !known && !owner && signer === need.subject && !!admitSig;
@@ -924,6 +987,8 @@ export function SquadForum() {
           if (!kept) discardUnverified();
           return;
         }
+        if (!proofs.ready()) return;
+        retries.forget(retryId);
         pendingNeedsRef.current.delete(queueKey);
         versions.bump("need-pending", key);
         const cached = cacheForumNeed(needsRef.current, need, highWaterRef.current.get(need.id));
@@ -951,27 +1016,41 @@ export function SquadForum() {
       acceptNeedRef.current = acceptNeed;
       acceptOfferRef.current = acceptOffer;
       async function acceptAlarm(data: unknown, gen: number) {
+        const proof = proofs.begin();
+        if (cancelled || !versions.current("alarm", "pin", gen)) return;
+        const retryId = "alarm:pin";
+        retries.remember(retryId, data, row => acceptAlarm(row, gen));
         const sig = signatureOf(data);
         const owner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
         if (!sig || !owner) return;
-        const payload = await readForumSignature(sig, owner);
-        if (cancelled || !versions.current("alarm", "pin", gen) || !payload || typeof payload !== "object") return;
+        const payload = await proof.read(sig, owner);
+        if (cancelled || !proof.current() || !versions.current("alarm", "pin", gen) || !payload || typeof payload !== "object") return;
+        if (!proofs.ready() || graphRef.current?.ownerOf(PILOT_FORUM_ID) !== owner) return;
         const update = parseForumAlarmUpdate(payload, PILOT_FORUM_ID);
         if (!update) return;
         if (update.kind === "pin" && !authorizeForumAlarm(update.alarm, owner, owner, PILOT_FORUM_ID)) return;
-        if (!versions.current("alarm", "pin", gen)) return;
-        const committed = commitForumAlarm({ rev: alarmRevRef.current }, update);
+        if (!proof.current() || !versions.current("alarm", "pin", gen)) return;
+        const committed = commitForumAlarm({ rev: alarmFloorRef.current?.rev, previous: alarmFloorRef.current ?? undefined }, update);
         if (!committed) return;
-        alarmRevRef.current = committed.rev;
+        if (committed.alarm && !proof.retain(committed.alarm, () => graphRef.current?.ownerOf(PILOT_FORUM_ID) === owner)) return;
+        retries.forget(retryId);
+        alarmFloorRef.current = update;
+        try { forumStorage()?.setItem("s3rch:squad:alarm-floor:v1", JSON.stringify(update.kind === "pin"
+          ? { ...update.alarm, rev: update.rev } : { forumId: update.forumId, pinned: 0, rev: update.rev })); } catch { /* Keep the in-memory floor. */ }
         setAlarmHeard(true);
         setMeshAlarm(committed.alarm);
       }
       async function acceptRole(data: unknown, roleToken: string, mapKey: string, gen: number) {
+        const proof = proofs.begin();
+        if (cancelled || !versions.current("role", `${roleToken}:${mapKey}`, gen)) return;
+        const retryId = `role:${roleToken}:${mapKey}`;
+        retries.remember(retryId, data, row => acceptRole(row, roleToken, mapKey, gen));
         const sig = signatureOf(data);
         const forumOwner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
         if (!sig || !forumOwner || !data || typeof data !== "object") return;
-        const payload = await readForumSignature(sig, forumOwner);
-        if (cancelled || !versions.current("role", `${roleToken}:${mapKey}`, gen) || !payload) return;
+        const payload = await proof.read(sig, forumOwner);
+        if (cancelled || !proof.current() || !versions.current("role", `${roleToken}:${mapKey}`, gen) || !payload) return;
+        if (!proofs.ready() || graphRef.current?.ownerOf(PILOT_FORUM_ID) !== forumOwner) return;
         const membership = parseForumRoleMembership(payload);
         if (!membership) return;
         if (
@@ -986,9 +1065,11 @@ export function SquadForum() {
         ) {
           return;
         }
-        if (!versions.current("role", `${roleToken}:${mapKey}`, gen) || !forumWatches.has(`role:${roleToken}`)) return;
+        if (!proof.current() || !versions.current("role", `${roleToken}:${mapKey}`, gen) || !forumWatches.has(`role:${roleToken}`)) return;
         grantForumWatch(forumWatches, "role", roleToken, true, Date.now());
-        enrollPub(membership.principal);
+        if (!proof.retain(membership, () => graphRef.current?.ownerOf(PILOT_FORUM_ID) === forumOwner)) return;
+        retries.forget(retryId);
+        enrollPub(membership.principal, membership);
       }
       function chatTombStamp(id: string): number | undefined {
         const direct = chatTombsRef.current.get(id);
@@ -998,24 +1079,45 @@ export function SquadForum() {
         }
         return undefined;
       }
-      async function acceptChat(data: unknown, key: string | undefined, fromRemoval = false): Promise<boolean> {
+      function watchChatRemoval(key: string) {
+        if (cancelled) return;
+        const now = Date.now();
+        expireChatRemovalWatches(now);
+        if (!grantChatRemovalWatch({ watches: chatRemovalWatches, key, verified: true, now, onEvict(old) {
+          chatRemovalOffs.get(old)?.off?.(); chatRemovalOffs.delete(old);
+        } })) return;
+        const off = gun.get("s3rch").get("items").get(key).get("remove").on((row) => {
+          if (cancelled || row == null) return;
+          void acceptChat(row, key, true);
+        });
+        chatRemovalOffs.set(key, off);
+      }
+      async function acceptChat(data: unknown, key: string | undefined, fromRemoval = false, retryGen?: number): Promise<boolean> {
+        const proof = proofs.begin();
         if (data === undefined || typeof key !== "string") return false;
         const versionScope = fromRemoval ? "chat-remove" : "chat";
-        const gen = versions.bump(versionScope, key);
+        const gen = retryGen ?? versions.bump(versionScope, key);
+        if (cancelled || !versions.current(versionScope, key, gen)) return false;
+        const retryId = `${versionScope}:${key}`;
+        retries.remember(retryId, data, row => acceptChat(row, key, fromRemoval, gen));
         const live = fromRemoval ? null : forumStatementFromNode(data, PILOT_FORUM_ID);
         if (live) {
           const sig = signatureOf(data);
           const author = live.author;
           if (!sig) return false;
-          const payload = await readForumSignature(sig, author);
-          if (cancelled || !versions.current(versionScope, key, gen) || !payload) return false;
+          const payload = await proof.read(sig, author);
+          if (cancelled || !proof.current() || !versions.current(versionScope, key, gen) || !payload) return false;
           const item = forumStatementFromNode(payload, PILOT_FORUM_ID);
           const priorAuthor = chatRowsRef.current.find((row) => row.id === item?.id)?.author;
           if (!item || !forumChatFits(item) || !authorizeForumChat(item, author, key, PILOT_FORUM_ID, priorAuthor)) return false;
-          if (!versions.current(versionScope, key, gen)) return false;
+          if (!proof.current() || !versions.current(versionScope, key, gen)) return false;
           if (liveReplayBlocked(item.ts, chatTombStamp(item.id))) return false;
+          const graph = authority?.graph, now = Math.floor(Date.now() / 1000);
+          if (!proofs.ready() || !graph?.checkDirectSee(item.id, author, now).allowed || !graph.checkPost(item.id, author, now).allowed || !proof.retain(item)) return false;
+          retries.forget(retryId);
           setMeshChat((prev) => retainForumChat(prev, item));
           setLocalChat((prev) => retireLocalChat(prev, item.id));
+          watchChatRemoval(key);
           return true;
         }
         const sig = signatureOf(data);
@@ -1030,20 +1132,21 @@ export function SquadForum() {
         let payload: unknown = null;
         let signer = "";
         for (const pub of candidates) {
-          if (cancelled || !versions.current(versionScope, key, gen)) return false;
-          const verified = await readForumSignature(sig, pub);
+          if (cancelled || !proof.current() || !versions.current(versionScope, key, gen)) return false;
+          const verified = await proof.read(sig, pub);
           if (verified) {
             payload = verified;
             signer = pub;
             break;
           }
         }
-        if (cancelled || !versions.current(versionScope, key, gen) || !payload) return false;
+        if (cancelled || !proof.current() || !versions.current(versionScope, key, gen) || !payload) return false;
         const payloadId = typeof (payload as { id?: unknown }).id === "string" ? (payload as { id: string }).id : hintedId;
         const author = chatAuthorFromStatementId(payloadId) ?? embedded ?? remembered;
-        if (!authorizeForumChatTombstone({ signer, author, owner })) return false;
+        if (!proofs.ready() || !authorizeForumChatTombstone({ signer, author, owner: graphRef.current?.ownerOf(PILOT_FORUM_ID) })) return false;
         const ids = chatRetractionIds(payload, key, knownChatIds(), PILOT_FORUM_ID);
-        if (!versions.current(versionScope, key, gen) || ids.length === 0) return false;
+        if (!proof.current() || !versions.current(versionScope, key, gen) || ids.length === 0) return false;
+        retries.forget(retryId);
         hideChat(ids);
         const statementId = typeof (payload as { id?: unknown }).id === "string" ? (payload as { id: string }).id : key;
         stickSigned(forumChatRemovalSoul(statementId), data);
@@ -1114,7 +1217,7 @@ export function SquadForum() {
           }),
         );
       };
-      for (const need of PILOT_NEEDS) {
+      for (const need of (PILOT_MESH_ENABLED ? [] : PILOT_NEEDS)) {
         watchOffers(need.id);
         watchNeedRemoval(need.id);
       }
@@ -1150,7 +1253,7 @@ export function SquadForum() {
         });
         statusOffs.set(pub, { off() { removalOff?.off?.(); admissionOff?.off?.(); } });
       }
-      for (const agent of PILOT_AGENTS) watchStatusRemoval(agent.status.seaPubkey);
+      for (const agent of (PILOT_MESH_ENABLED ? [] : PILOT_AGENTS)) watchStatusRemoval(agent.status.seaPubkey);
       statusTimer = setInterval(expireStatuses, 30_000);
       offAgents = forum.get("agents").map().on((data, key) => {
         if (cancelled || typeof key !== "string" || !statusWatchCandidate(key, data)) return;
@@ -1185,19 +1288,7 @@ export function SquadForum() {
       offItems = gun.get("s3rch").get("items").map().on((data, key) => {
         if (cancelled || typeof key !== "string" || data === undefined) return;
         if (!chatRemovalCandidate(key, data, PILOT_FORUM_ID)) return;
-        void acceptChat(data, key).then((verified) => {
-          if (cancelled || !verified) return;
-          const now = Date.now();
-          expireChatRemovalWatches(now);
-          if (!grantChatRemovalWatch({ watches: chatRemovalWatches, key, verified, now, onEvict(old) {
-            chatRemovalOffs.get(old)?.off?.(); chatRemovalOffs.delete(old);
-          } })) return;
-          const off = gun.get("s3rch").get("items").get(key).get("remove").on((row) => {
-            if (cancelled || row == null) return;
-            void acceptChat(row, key, true);
-          });
-          chatRemovalOffs.set(key, off);
-        });
+        void acceptChat(data, key);
       });
     })();
 
@@ -1214,15 +1305,20 @@ export function SquadForum() {
       offAlarm?.off?.();
       offItems?.off?.();
       gunRef.current = null;
+      connectedRef.current = false; proofs.reset(); retries.clear(); retryRef.current = null;
       register(null);
     };
-  }, [register]);
+  }, [register, proofs, authority]);
 
   useEffect(() => {
-    return authority?.subscribe(() => setAclRev((n) => n + 1));
+    if (!PILOT_MESH_ENABLED) return;
+    const off = authority?.subscribe(() => setAclRev((n) => n + 1));
+    const timer = setInterval(() => setAclRev(n => n + 1), 1000);
+    return () => { off?.(); clearInterval(timer); };
   }, [authority]);
 
   useEffect(() => {
+    retryRef.current?.retry();
     const now = Date.now();
     let earliest = Number.POSITIVE_INFINITY;
     for (const [key, row] of [...pendingNeedsRef.current]) {
@@ -1274,24 +1370,25 @@ export function SquadForum() {
 
   const graph: SeeGraph | null = PILOT_MESH_ENABLED ? authority?.graph ?? null : sampleAcl;
   graphRef.current = graph;
-  chatRowsRef.current = [...PILOT_CHAT, ...meshChat, ...localChat];
+  chatRowsRef.current = PILOT_MESH_ENABLED ? meshChat.filter(row => proofs.valid(row)) : [...PILOT_CHAT, ...meshChat, ...localChat];
   chatIdsRef.current = chatRowsRef.current.map((item) => item.id);
 
   const needs = useMemo(
     () =>
       composeForumNeeds({
-        pilot: PILOT_NEEDS,
-        mesh: [...authenticatedNeeds.values(), ...meshNeeds.values()],
-        local: [...localNeeds.values()],
+        pilot: PILOT_MESH_ENABLED ? [] : PILOT_NEEDS,
+        mesh: [...authenticatedNeeds.values(), ...meshNeeds.values()].filter(row => !PILOT_MESH_ENABLED || (proofs.valid(row) && !!graph?.hasObject(row.id))),
+        local: PILOT_MESH_ENABLED ? [] : [...localNeeds.values()],
         removed: removedNeeds,
       }),
-    [localNeeds, meshNeeds, authenticatedNeeds, removedNeeds],
+    [localNeeds, meshNeeds, authenticatedNeeds, removedNeeds, aclRev, proofs, graph],
   );
   needsRef.current = needs;
 
   const offers = useMemo(() => {
-    const map = new Map(meshOffers);
-    for (const offer of localOffers.values()) {
+    const map = new Map([...meshOffers].filter(([, row]) => !PILOT_MESH_ENABLED || (proofs.valid(row) &&
+      (row.stated === 0 || !!authority?.graph.checkForumSee(row.need, row.helper, Math.floor(Date.now() / 1000)).allowed))));
+    for (const offer of (PILOT_MESH_ENABLED ? [] : localOffers.values())) {
       const seen = map.get(forumOfferCacheKey(offer.need, offer.id));
       if (!seen || (offer.stated === 0 && seen.stated === 1)) map.set(forumOfferCacheKey(offer.need, offer.id), offer);
     }
@@ -1305,29 +1402,29 @@ export function SquadForum() {
     let bounded = new Map<string, ForumOffer>();
     for (const offer of map.values()) bounded = retainForumOffer(bounded, offer);
     return bounded;
-  }, [localOffers, meshOffers, offerCancels, removedOffers]);
+  }, [localOffers, meshOffers, offerCancels, removedOffers, aclRev, proofs, authority]);
   offersRef.current = offers;
 
   const roster = useMemo(() => {
     const merged = composeForumRoster({
-      sample: PILOT_AGENTS,
-      mesh: [...meshStatus.values()],
+      sample: PILOT_MESH_ENABLED ? [] : PILOT_AGENTS,
+      mesh: [...meshStatus.values()].filter(row => !PILOT_MESH_ENABLED || (proofs.valid(row) && proofs.enrolled(row.seaPubkey))),
       admitted,
       removed: new Set(removedAgents.keys()),
     });
     return merged.map((agent) => {
-      const over = localStatus.get(agent.status.seaPubkey);
+      const over = PILOT_MESH_ENABLED ? undefined : localStatus.get(agent.status.seaPubkey);
       const status = pickDisplayedStatus(agent.status, over);
       return status === agent.status ? agent : { ...agent, status };
     });
-  }, [admitted, localStatus, meshStatus, removedAgents]);
+  }, [admitted, localStatus, meshStatus, removedAgents, aclRev, proofs]);
 
   const visible = useMemo(
     () => filterAgents(roster, filters, query),
     [filters, query, roster],
   );
 
-  const alarm = meshAlarm ?? (alarmHeard ? null : PILOT_ALARM);
+  const alarm = PILOT_MESH_ENABLED ? (proofs.valid(meshAlarm) ? meshAlarm : null) : meshAlarm ?? (alarmHeard ? null : PILOT_ALARM);
   const pinnedNeed = alarm ? (needs.get(alarm.need) ?? null) : null;
   const alarmOn = forumEmergencyAlarm(
     roster.map((agent) => agent.status.state),
@@ -1339,9 +1436,18 @@ export function SquadForum() {
   const active = roster.find((agent) => agent.status.seaPubkey === selected) ?? null;
 
   const chat = useMemo(
-    () => mergeForumChat({ pilot: PILOT_CHAT, mesh: meshChat, local: localChat, hidden: hiddenChat }),
-    [hiddenChat, localChat, meshChat],
+    () => mergeForumChat({ pilot: PILOT_MESH_ENABLED ? [] : PILOT_CHAT,
+      mesh: meshChat.filter(row => !PILOT_MESH_ENABLED || (proofs.valid(row) &&
+        !!authority?.graph.checkDirectSee(row.id, row.author, Math.floor(Date.now() / 1000)).allowed &&
+        authority.graph.checkPost(row.id, row.author, Math.floor(Date.now() / 1000)).allowed)),
+      local: PILOT_MESH_ENABLED ? [] : localChat, hidden: hiddenChat }),
+    [hiddenChat, localChat, meshChat, aclRev, proofs, authority],
   );
+
+  function signingPrincipal() {
+    if (!PILOT_MESH_ENABLED) return seaPub;
+    return seaPub ? authority?.graph.principalForKey(seaPub, Math.floor(Date.now() / 1000)) ?? null : null;
+  }
 
   const requireGraph = useCallback((): SeeGraph | null => {
     if (!graph) {
@@ -1390,8 +1496,8 @@ export function SquadForum() {
   }
 
   async function onOffer(agent: SquadAgent) {
-    const current = requireGraph();
-    if (!current || !seaPub) return;
+    const current = requireGraph(), writer = signingPrincipal();
+    if (!current || !writer) return;
     const open = openNeedFor(agent.status, needs);
     if (!open) {
       setNotice("No open need on this tile.");
@@ -1400,7 +1506,7 @@ export function SquadForum() {
     const now = Math.floor(Date.now() / 1000);
     const decision = offerForumHelp({
       graph: current,
-      writer: seaPub,
+      writer: writer,
       need: open,
       body: offerBody,
       now,
@@ -1418,10 +1524,10 @@ export function SquadForum() {
     const wrote = await putAuthedRecord(
       forumOfferSoul(offer.forumId, offer.need, offer.id),
       offer,
-      seaPub,
+      writer,
       () => {
         const fresh = graphRef.current, need = needsRef.current.get(open.id);
-        return !!fresh && !!need && need.stated === 1 && offerForumHelp({ graph: fresh, writer: seaPub,
+        return !!fresh && !!need && (!PILOT_MESH_ENABLED || proofs.valid(need)) && need.stated === 1 && offerForumHelp({ graph: fresh, writer: writer,
           need, body: offer.body, artifacts: offer.artifacts, entropy: offer.id.slice(-32), now: Math.floor(Date.now() / 1000) }).ok;
       },
     );
@@ -1436,8 +1542,8 @@ export function SquadForum() {
   }
 
   async function onAccept(agent: SquadAgent) {
-    const current = requireGraph();
-    if (!current || !seaPub) return;
+    const current = requireGraph(), writer = signingPrincipal();
+    if (!current || !writer) return;
     const open = openNeedFor(agent.status, needs);
     if (!open) {
       setNotice("No open need on this tile.");
@@ -1450,7 +1556,7 @@ export function SquadForum() {
     }
     const decision = acceptForumOffer({
       graph: current,
-      writer: seaPub,
+      writer: writer,
       need: open,
       offer,
       postedOffers: offersForNeed(offers, open.id),
@@ -1467,19 +1573,19 @@ export function SquadForum() {
       return map;
     });
     const needOwner = current.ownerOf(open.id);
-    const admit = needOwner && seaPub !== needOwner ? needAdmitRef.current.get(open.id) : undefined;
+    const admit = needOwner && writer !== needOwner ? needAdmitRef.current.get(open.id) : undefined;
     const record = admit ? { ...next, admit } : next;
-    const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), record, seaPub, () => {
+    const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), record, writer, () => {
       const fresh = graphRef.current, need = needsRef.current.get(open.id);
-      return !!fresh && !!need && need.hamState === open.hamState && acceptForumOffer({ graph: fresh, writer: seaPub,
+      return !!fresh && !!need && (!PILOT_MESH_ENABLED || proofs.valid(need)) && need.hamState === open.hamState && (!PILOT_MESH_ENABLED || proofs.valid(offer)) && acceptForumOffer({ graph: fresh, writer: writer,
         need, offer, postedOffers: offersForNeed(offersRef.current, open.id), now: Math.floor(Date.now() / 1000) }).ok;
     });
     setNotice(meshNote("Accept kept", wrote, "Offer accepted. The need is closed."));
   }
 
   async function onDecline(agent: SquadAgent) {
-    const current = requireGraph();
-    if (!current || !seaPub) return;
+    const current = requireGraph(), writer = signingPrincipal();
+    if (!current || !writer) return;
     const open = openNeedFor(agent.status, needs);
     if (!open) {
       setNotice("No open need on this tile.");
@@ -1492,7 +1598,7 @@ export function SquadForum() {
     }
     const decision = declineForumOffer({
       graph: current,
-      writer: seaPub,
+      writer: writer,
       need: open,
       offer,
       postedOffers: offersForNeed(offers, open.id),
@@ -1515,19 +1621,19 @@ export function SquadForum() {
     const authorized = (tail = false) => {
       const fresh = graphRef.current, need = needsRef.current.get(open.id);
       const check = tail ? continueForumOfferCancellation : declineForumOffer;
-      return !!fresh && !!need && need.hamState === open.hamState && check({ graph: fresh, writer: seaPub, need, offer,
+      return !!fresh && !!need && (!PILOT_MESH_ENABLED || proofs.valid(need)) && need.hamState === open.hamState && (!PILOT_MESH_ENABLED || proofs.valid(offer)) && check({ graph: fresh, writer: writer, need, offer,
         postedOffers: offersForNeed(offersRef.current, open.id), now: Math.floor(Date.now() / 1000) }).ok;
     };
-    let wrote = await putAuthedRecord(forumOfferSoul(next.forumId, next.need, next.id), next, seaPub, authorized);
+    let wrote = await putAuthedRecord(forumOfferSoul(next.forumId, next.need, next.id), next, writer, authorized);
     if (wrote === "signed") {
-      wrote = await putAuthedRecord(forumOfferCancelSoul(next.forumId, next.need, next.id), next, seaPub, () => authorized(true));
+      wrote = await putAuthedRecord(forumOfferCancelSoul(next.forumId, next.need, next.id), next, writer, () => authorized(true));
     }
     setNotice(meshNote("Decline kept", wrote, "Offer declined. The need stays open."));
   }
 
   async function onReopen(agent: SquadAgent) {
-    const current = requireGraph();
-    if (!current || !seaPub) return;
+    const current = requireGraph(), writer = signingPrincipal();
+    if (!current || !writer) return;
     const listed = needIds(agent.status.needs)
       .map((id) => needs.get(id))
       .find((need) => need && need.stated === 0);
@@ -1537,7 +1643,7 @@ export function SquadForum() {
     }
     const decision = reopenForumNeed({
       graph: current,
-      writer: seaPub,
+      writer: writer,
       need: listed,
       now: Math.floor(Date.now() / 1000),
     });
@@ -1551,9 +1657,9 @@ export function SquadForum() {
       map.set(next.id, next);
       return map;
     });
-    const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), next, seaPub, () => {
+    const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), next, writer, () => {
       const fresh = graphRef.current, need = needsRef.current.get(listed.id);
-      return !!fresh && !!need && need.hamState === listed.hamState && reopenForumNeed({ graph: fresh, writer: seaPub, need, now: Math.floor(Date.now() / 1000) }).ok;
+      return !!fresh && !!need && (!PILOT_MESH_ENABLED || proofs.valid(need)) && need.hamState === listed.hamState && reopenForumNeed({ graph: fresh, writer: writer, need, now: Math.floor(Date.now() / 1000) }).ok;
     });
     setNotice(meshNote("Reopen kept", wrote, "Need reopened. Earlier offers stay."));
   }
@@ -1574,20 +1680,22 @@ export function SquadForum() {
   ): Promise<"signed" | "offline" | "local" | "denied"> {
     if (!PILOT_MESH_ENABLED) return "local";
     const pair = pairRef.current;
-    if (!pair || pair.pub !== writer) return "local";
-    return publishForumAuthorized({ record, authorized, sign: value => signForumRecord(value, pair),
+    if (!pair || authority?.graph.writerKey(writer, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)) !== pair.pub) return "local";
+    return publishForumAuthorized({ record, authorized: () => proofs.ready() && authorized() && pairRef.current === pair &&
+      authority?.graph.writerKey(writer, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)) === pair.pub, sign: value => signForumRecord(value, pair),
       put: value => putSoul(gunRef.current, soul, value) });
   }
 
   async function onSend() {
-    if (!seaPub) {
+    const writer = signingPrincipal();
+    if (!writer) {
       setNotice("A mesh key on this browser is required.");
       return;
     }
     const now = Math.floor(Date.now() / 1000);
     const item = buildForumStatement({
       forumId: PILOT_FORUM_ID,
-      author: seaPub,
+      author: writer,
       body: draft,
       now,
       entropy: entropy(),
@@ -1605,7 +1713,7 @@ export function SquadForum() {
     const node = toGunNode(item);
     // Descriptive chat never creates ACL ownership. A separately signed
     // object admission and current direct post authority must already exist.
-    if (!graph?.checkPost?.(item.id, seaPub, now).allowed) {
+    if (!graph?.checkPost?.(item.id, writer, now).allowed) {
       setNotice("Check denied the statement.");
       return;
     }
@@ -1616,15 +1724,14 @@ export function SquadForum() {
       setNotice("Statement was not accepted.");
       return;
     }
-    const pair = pairRef.current;
-    const wrote = pair && pair.pub === seaPub ? await publishForumAuthorized({ record: node,
-      authorized: () => !!graphRef.current?.checkPost?.(item.id, seaPub, Math.floor(Date.now() / 1000)).allowed,
-      sign: value => signForumRecord(value, pair), put: value => putSoul(gunRef.current, soul, value),
-    }) : "denied";
-    setLocalChat((prev) => retainForumChat(prev, item));
-    setDraft("");
-    if (wrote === "denied") setNotice("Statement kept on this browser. Current post authority or a mesh signature was unavailable.");
-    else if (wrote === "offline") setNotice("Statement kept on this browser. The mesh peer was not ready.");
+    const wrote = await putAuthedRecord(soul, node, writer, () => {
+      const now = Math.floor(Date.now() / 1000);
+      return !!authority?.graph.checkDirectSee(item.id, writer, now).allowed &&
+        authority.graph.checkPost(item.id, writer, now).allowed;
+    });
+    if (wrote === "signed") setDraft("");
+    if (wrote === "denied" || wrote === "local") setNotice("Statement not sent. Current post authority or a mesh signature was unavailable.");
+    else if (wrote === "offline") setNotice("Statement not sent. The mesh peer was not ready.");
     else setNotice("Statement sent.");
   }
 
