@@ -30,7 +30,10 @@ introduce a new Gun collection. Never copy the envelope address from an untruste
 record's claimed address. Signatures bind all authority-bearing fields.
 
 The graph accepts at most 1,024 rows and 32 distinct signers per refresh. The
-underlying recovery resolver has its own documented bounds. Missing or conflicting
+underlying recovery resolver has its own documented bounds. Drawer signing-key
+lookup additionally resolves direct-grant accessor histories, with a total cap
+of 128 principals. A missing accessor history refuses that accessor's key lookup
+without creating a genesis fallback or invalidating unrelated signer evidence. Missing or conflicting
 history for any evidence signer invalidates the snapshot. Malformed or forged
 rows are reported and cannot contribute authority. Refresh diagnostics distinguish
 bad record/address, bad proof and retired-key rejection.

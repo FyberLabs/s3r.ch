@@ -1,5 +1,6 @@
 "use client";
 
+import { ForumDrawerRecords } from "@/components/ForumDrawerRecords";
 import { SquadDelegationControls } from "@/components/SquadDelegationControls";
 import Link from "next/link";
 import { forumSoulNode } from "@/lib/forum-transport";
@@ -1849,6 +1850,13 @@ export function SquadForum() {
           <div className="mt-2 h-1 bg-rule">
             <div className="h-1 bg-signal" style={{ width: `${clampProgress(active.status.progress)}%` }} />
           </div>
+          {PILOT_MESH_ENABLED ? (authority ? (
+            <ForumDrawerRecords key={active.status.seaPubkey} forum={PILOT_FORUM_ID}
+              agent={active.status.seaPubkey} authority={authority} gun={gunPeer?.gun ?? null}
+              viewerKey={seaPub} active={meshStatus.has(active.status.seaPubkey) && admitted.has(active.status.seaPubkey) && !removedAgents.has(active.status.seaPubkey)}
+              getPair={() => pairRef.current} />
+          ) : <p role="status">Waiting for current drawer authority.</p>) : (
+            <>
           {active.drawerSource === "status-only" ? (
             <p role="note" className="mt-3 text-xs text-ink-muted">
               Only status data is available. Subtasks, update history, and artifact records
@@ -1876,9 +1884,11 @@ export function SquadForum() {
               </li>
             ))}
           </ul>
+            </>
+          )}
           <h3 className="mt-4 text-xs font-semibold uppercase text-ink-muted">Results</h3>
           <p className="mt-1 text-sm text-ink">{active.status.result}</p>
-          {active.artifactNote ? <p className="mt-1 text-xs text-ink-muted">{active.artifactNote}</p> : null}
+          {!PILOT_MESH_ENABLED && active.artifactNote ? <p className="mt-1 text-xs text-ink-muted">{active.artifactNote}</p> : null}
           <h3 className="mt-4 text-xs font-semibold uppercase text-ink-muted">Needs</h3>
           <ul className="mt-2 space-y-1 text-sm text-ink">
             {needIds(active.status.needs).map((id) => {
