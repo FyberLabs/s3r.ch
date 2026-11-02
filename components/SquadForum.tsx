@@ -121,6 +121,7 @@ import { browserGunOptions, listenThenConnectSeedPeer, type SeedPeerEmitter } fr
 import {
   acceptForumOffer,
   declineForumOffer,
+  continueForumOfferCancellation,
   forumAgentSoul,
   forumAlarmSoul,
   forumChatTag,
@@ -1510,14 +1511,15 @@ export function SquadForum() {
     if (!PILOT_MESH_ENABLED) setLocalOffers((prev) => {
       return retainForumOffer(prev, next);
     });
-    const authorized = () => {
+    const authorized = (tail = false) => {
       const fresh = graphRef.current, need = needsRef.current.get(open.id);
-      return !!fresh && !!need && declineForumOffer({ graph: fresh, writer: seaPub, need, offer,
+      const check = tail ? continueForumOfferCancellation : declineForumOffer;
+      return !!fresh && !!need && need.hamState === open.hamState && check({ graph: fresh, writer: seaPub, need, offer,
         postedOffers: offersForNeed(offersRef.current, open.id), now: Math.floor(Date.now() / 1000) }).ok;
     };
-    const wrote = await putAuthedRecord(forumOfferSoul(next.forumId, next.need, next.id), next, seaPub, authorized);
+    let wrote = await putAuthedRecord(forumOfferSoul(next.forumId, next.need, next.id), next, seaPub, authorized);
     if (wrote === "signed") {
-      await putAuthedRecord(forumOfferCancelSoul(next.forumId, next.need, next.id), next, seaPub, authorized);
+      wrote = await putAuthedRecord(forumOfferCancelSoul(next.forumId, next.need, next.id), next, seaPub, () => authorized(true));
     }
     setNotice(meshNote("Decline kept", wrote, "Offer declined. The need stays open."));
   }

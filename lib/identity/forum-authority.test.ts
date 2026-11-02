@@ -4,7 +4,8 @@ import { p256 } from "@noble/curves/nist.js";
 import { createForumAuthority, type ForumAuthoritySnapshot } from "./forum-authority";
 import { parseForumAuthority, type AuthorityKind } from "./forum-authority-records";
 import { seaToPrincipalKey, type ForumNeed } from "./forum-check";
-import { checkSee, checkForumSee, offerForumHelp, acceptForumOffer } from "./check";
+import { checkSee, checkForumSee, offerForumHelp, acceptForumOffer, declineForumOffer, continueForumOfferCancellation } from "./check";
+import { publishForumAuthorized } from "../forum-authorized-publish";
 import { createMemorySeeAcl } from "./see-acl";
 import { readFileSync } from "node:fs";
 import vectors from "./vectors/forum-authority.json";
@@ -254,4 +255,94 @@ test("receive paths defer offers until signed grants arrive, then recheck the sa
   assert.equal(offerSeeWait({ graph: a.graph, need, offer, now: time }), false);
   assert.equal(authorizeForumOffer(offer, helper, forum, { owner, subject: need.subject }, { graph: a.graph, need, now: time }), false);
   a.invalidate(); assert.equal(offerSeeWait({ graph: a.graph, need, offer, now: time }), true);
+});
+
+const issued = (row: ForumAuthoritySnapshot["rows"][number], issuedAt: number) =>
+  sign(row.kind, { ...(row.record as Record<string, unknown>), issuedAt },
+    row.kind === "membership" && (row.record as { role: string }).role === "member" ? 2 : 1);
+
+for (const [name, rows, futureIndex, check] of [
+  ["object", [owned(), direct()], 0, "see"],
+  ["see", [owned(), direct()], 1, "see"],
+  ["post", [owned(), direct("post")], 1, "post"],
+  ["member assent", group(), 1, "forum"],
+  ["set assent", group(), 2, "forum"],
+  ["object-set", group(), 3, "forum"],
+] as const) test(`future-issued ${name} cannot authorize before its issuance boundary`, async () => {
+  let now = time;
+  const a = createForumAuthority(config, () => now);
+  const records = rows.map((row, index) => index === futureIndex ? issued(row, time + 1) : row);
+  const allowed = () => (check === "post" ? a.graph.checkPost(object, helper, now) :
+    check === "see" ? checkSee(a.graph, object, helper, now) : checkForumSee(a.graph, object, helper, now)).allowed;
+  const result = await a.refresh(snapshot(records, now), now);
+  assert.ok(result.ok);
+  assert.deepEqual(result.diagnostics, [{ index: futureIndex, reason: "future-record" }]);
+  assert.equal(allowed(), false);
+  now++;
+  assert.ok((await a.refresh(snapshot(records, now), now)).ok);
+  assert.equal(allowed(), true);
+});
+
+for (const row of [direct("see", 0, 2), direct("post", 0, 2), member("member", 0, [], 2),
+  member("set", 0, [], 2), binding(0, [], 2), cancel("membership"), cancel("object-set")]) {
+  test(`future-issued cancellation is inactive: ${row.kind} ${(row.record as { role?: string; kind?: string }).role ?? (row.record as { kind?: string }).kind ?? ""}`, async () => {
+    let now = time;
+    const a = createForumAuthority(config, () => now);
+    const directKind = row.kind === "see" || row.kind === "post" ? row.kind : null;
+    const rows = [...(directKind ? [owned(), direct(directKind)] : group()), issued(row, time + 1)];
+    const allowed = () => (directKind === "post" ? a.graph.checkPost(object, helper, now) :
+      checkForumSee(a.graph, object, helper, now)).allowed;
+    const result = await a.refresh(snapshot(rows, now), now);
+    assert.ok(result.ok);
+    assert.equal(result.diagnostics.at(-1)?.reason, "future-record");
+    assert.equal(allowed(), true);
+    now++;
+    assert.ok((await a.refresh(snapshot(rows, now), now)).ok);
+    assert.equal(allowed(), false);
+  });
+}
+
+test("cancellation tail survives its self-echo but rechecks current authority and parent state", async () => {
+  const a = createForumAuthority(config, () => time);
+  await a.refresh(snapshot([owned(), direct()]), time);
+  const offered = offerForumHelp({ ...offerInput, graph: a.graph });
+  assert.ok(offered.ok && offered.offer);
+  const offer = offered.offer;
+  const posted = new Map([[offer.id, offer]]);
+  let parent = need;
+  const input = () => ({ graph: a.graph, writer: owner, need: parent, offer, postedOffers: posted, now: time });
+  const declined = declineForumOffer(input());
+  assert.ok(declined.ok && declined.offer);
+  const record = declined.offer;
+  let puts = 0;
+  assert.equal(await publishForumAuthorized({ record, authorized: () => declineForumOffer(input()).ok,
+    sign: async () => "signature", put: () => { puts++; return true; } }), "signed");
+  let finish!: (sig: string) => void;
+  const tail = () => publishForumAuthorized({ record,
+    authorized: () => continueForumOfferCancellation(input()).ok,
+    sign: () => new Promise<string>(resolve => { finish = resolve; }),
+    put: () => { puts++; return true; } });
+  const pending = tail();
+  posted.set(offer.id, record); // First put echoes while the tail is signing.
+  assert.equal(declineForumOffer(input()).ok, false);
+  finish("signature");
+  assert.equal(await pending, "signed");
+  assert.equal(puts, 2);
+  for (const changed of [{ ...record, body: "different" }, { ...record, artifacts: object },
+    { ...record, need: id("need", 1, "2") }]) {
+    posted.set(offer.id, changed);
+    assert.equal(continueForumOfferCancellation(input()).ok, false);
+  }
+  posted.set(offer.id, record);
+  assert.equal(continueForumOfferCancellation({ ...input(), writer: helper }).ok, false);
+  const closed = tail();
+  parent = { ...need, stated: 0 };
+  finish("signature");
+  assert.equal(await closed, "denied");
+  parent = need;
+  const revoked = tail();
+  a.invalidate();
+  finish("signature");
+  assert.equal(await revoked, "denied");
+  assert.equal(puts, 2);
 });

@@ -101,6 +101,7 @@ export function createForumAuthority(config: ForumAuthorityConfig, clock: () => 
           const e = recoveryObject(raw);
           const p = e && parseForumAuthority(e.kind as AuthorityKind, e.record);
           if (!p || e!.soul !== p.soul) { diagnostics.push({ index, reason: "bad-record-or-soul" }); return null; }
+          if (p.row.issuedAt > at) { diagnostics.push({ index, reason: "future-record" }); return null; }
           return { p, index };
         });
         const k = recoveryList(config.keys), policy = recoveryObject(config.policy), issuers = recoveryList(config.pinnedIssuers);

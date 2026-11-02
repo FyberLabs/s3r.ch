@@ -1035,9 +1035,10 @@ function heldLiveOffer(
   postedOffers: ReadonlyMap<string, ForumOffer>,
   offer: ForumOffer,
   need: ForumNeed,
+  allowCancelled = false,
 ): ForumOffer | null {
   const posted = postedOffers.get(offer.id);
-  if (!posted || !validateForumOffer(posted) || posted.stated !== 1) return null;
+  if (!posted || !validateForumOffer(posted) || (posted.stated !== 1 && !allowCancelled)) return null;
   if (posted.id !== offer.id || posted.need !== need.id || posted.forumId !== need.forumId) return null;
   if (posted.helper !== offer.helper || posted.body !== offer.body || posted.artifacts !== offer.artifacts) {
     return null;
@@ -1127,7 +1128,16 @@ export function acceptForumOffer(input: {
 /**
  * Owner or subject cancels that offer. The need stays open.
  */
-export function declineForumOffer(input: {
+export function declineForumOffer(input: Parameters<typeof checkForumOfferCancellation>[0]): OfferResult {
+  return checkForumOfferCancellation(input, false);
+}
+
+/** Reauthorize the cancellation tail after an identical cancellation self-echo. */
+export function continueForumOfferCancellation(input: Parameters<typeof checkForumOfferCancellation>[0]): OfferResult {
+  return checkForumOfferCancellation(input, true);
+}
+
+function checkForumOfferCancellation(input: {
   graph: SeeGraph;
   writer: AccessorId;
   need: ForumNeed;
@@ -1136,7 +1146,7 @@ export function declineForumOffer(input: {
   now: number;
   hint?: HandoffHint;
   hop?: HopFactor;
-}): OfferResult {
+}, allowCancelled: boolean): OfferResult {
   void input.hint;
   void input.hop;
   void input.now;
@@ -1147,7 +1157,7 @@ export function declineForumOffer(input: {
   if (input.writer !== owner && input.writer !== input.need.subject) {
     return { ok: false, reason: "party", elect: false, owner };
   }
-  const posted = heldLiveOffer(input.postedOffers, input.offer, input.need);
+  const posted = heldLiveOffer(input.postedOffers, input.offer, input.need, allowCancelled);
   if (!posted) return { ok: false, reason: "unposted", elect: false, owner };
   return { ok: true, offer: { ...posted, stated: 0 }, need: input.need, elect: false, owner };
 }
