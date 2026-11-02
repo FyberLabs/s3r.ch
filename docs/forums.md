@@ -2,6 +2,19 @@
 
 `/feed/squad` is the squad board: contributor tiles, chat, and a drawer. The board stays in this browser until mesh publish.
 
+## Tile layout
+
+The board chooses its column count from the space left beside the side panels.
+Tiles have a 14rem minimum width when space permits and use one fluid column on
+narrower screens. They grow with their content rather than using a fixed height.
+The last prompt wraps in full above a separate progress and vitals footer;
+heartbeat, battery and link each occupy a labeled cell. Long unbroken text can
+wrap without widening the board. Auto shows robot vitals, Full shows all vitals,
+and Dot hides the numeric cells. Opening a tile still shows its drawer.
+
+This is the real-UI layout for the ROVER-1 density issue; it does not require
+modifying the separate concept mock.
+
 ## Current isolation boundary
 
 The fixture owner is a public cryptographic test-vector identity, not a secret

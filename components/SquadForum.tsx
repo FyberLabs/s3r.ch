@@ -1743,7 +1743,7 @@ export function SquadForum() {
                   aria-label="Filter tiles"
                 />
               </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3">
                 {visible.map((agent) => {
                   const open = openNeedFor(agent.status, needs);
                   const full = showFullVitals(agent.status.type, vitals);
@@ -1752,14 +1752,14 @@ export function SquadForum() {
                       key={agent.status.seaPubkey}
                       type="button"
                       data-testid={`squad-tile-${slug(agent.label)}`}
-                      className={`border bg-panel p-3 text-left ${
+                      className={`flex min-w-0 flex-col border bg-panel p-3 text-left [overflow-wrap:anywhere] ${
                         agent.status.state === "emergency" ? "border-status-fail" : "border-rule"
                       }`}
                       onClick={() => setSelected(agent.status.seaPubkey)}
                     >
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                         <span className="flex items-center gap-2 font-semibold text-ink">
-                          <span className={`inline-block size-2 ${stateDot(agent.status.state)}`} aria-hidden />
+                          <span className={`inline-block size-2 shrink-0 ${stateDot(agent.status.state)}`} aria-hidden />
                           {agent.label}
                         </span>
                         <span className="text-xs uppercase text-ink-muted">{agent.status.type}</span>
@@ -1767,20 +1767,32 @@ export function SquadForum() {
                       <p className="mt-1 text-xs uppercase text-ink-muted">{agent.status.state}</p>
                       <p className="mt-2 text-sm text-ink">{agent.status.task}</p>
                       <p className="mt-1 text-xs text-ink-muted">{agent.status.result}</p>
-                      <p className="mt-2 line-clamp-2 text-xs text-ink">{agent.status.lastPrompt}</p>
+                      <p data-testid="squad-tile-prompt" className="mt-2 text-xs leading-relaxed text-ink">{agent.status.lastPrompt}</p>
                       {open ? <p className="mt-2 text-xs text-ink">{open.body}</p> : null}
-                      <div className="mt-2 h-1 bg-rule">
-                        <div
-                          className="h-1 bg-signal"
-                          style={{ width: `${clampProgress(agent.status.progress)}%` }}
-                        />
+                      <div className="mt-auto pt-3">
+                        <div className="h-1 bg-rule">
+                          <div
+                            className="h-1 bg-signal"
+                            style={{ width: `${clampProgress(agent.status.progress)}%` }}
+                          />
+                        </div>
+                        {full ? (
+                          <dl data-testid="squad-tile-vitals" className="mt-2 grid grid-cols-3 gap-2 font-data text-xs leading-relaxed text-ink-muted">
+                            <div>
+                              <dt title="Heartbeat">hb</dt>
+                              <dd>{agent.status.hb ?? "—"}</dd>
+                            </div>
+                            <div>
+                              <dt title="Battery">batt</dt>
+                              <dd>{agent.status.batt ?? "—"}</dd>
+                            </div>
+                            <div>
+                              <dt title="Link">link</dt>
+                              <dd>{agent.status.link ?? "—"}</dd>
+                            </div>
+                          </dl>
+                        ) : null}
                       </div>
-                      {full ? (
-                        <p className="mt-2 font-data text-xs text-ink-muted">
-                          hb {agent.status.hb ?? "—"} · batt {agent.status.batt ?? "—"} · link{" "}
-                          {agent.status.link ?? "—"}
-                        </p>
-                      ) : null}
                     </button>
                   );
                 })}
