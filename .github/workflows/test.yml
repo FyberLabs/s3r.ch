@@ -87,3 +87,16 @@ jobs:
 
       - name: Boot image without Panopticon
         run: bash scripts/smoke-image.sh s3rch:ci
+
+  cancellation-storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Exercise conditional writes and restart recovery in Azurite
+        run: bash scripts/test-delegation-blob.sh
