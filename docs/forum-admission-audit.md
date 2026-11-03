@@ -19,7 +19,7 @@ Publication resolves the active physical key to one unambiguous stable principal
 Offer, accept, decline, reopen and chat writes recheck the signing identity and
 applicable authority after asynchronous signing. Live chat requires direct see
 and post authority on its separately admitted object. Descriptive rows do not
-create ACL objects or cancel a worker's execution authority.
+create ACL objects or change an assignee's destination permissions.
 
 ## Case-to-test map
 
@@ -79,7 +79,7 @@ pin/unpin fan-in. The automated evidence above covers the app's shared boundarie
 and controlled child controller; it does not mount every Squad handler against
 a live Gun peer.
 
-#188 separately retains durable cancellation, coordinator/worker acknowledgement
-and reassignment fencing. A status, removed tile or accepted offer is never
-proof that a worker stopped. No environment configuration, fixture activation or
+#188 separately retains durable cancellation, assignment/grant concurrency control
+and fresh replacement grants. A status, removed tile or accepted offer is never
+proof that destination permissions changed. No environment configuration, fixture activation or
 deployment is part of this audit.
