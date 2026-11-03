@@ -108,6 +108,8 @@ coordinator are tracked in s3r.ch #187 and #188. Signed graph and group
 admission are described in the authority integration above. The former #140
 tracker is superseded; #190 tracks deployed pilot acceptance.
 
+
+Cancellation retry storage is described in [delegation cancellation recovery](delegation-cancellation.md).
 ## Alarm
 
 The alarm chip is on when a tile state is `emergency`, or when the alarm soul pins an open emergency need in the same forum. Either one is enough. The pin counts only when `pinned` is `1`, `alarm.need` is that need, severity is `emergency`, and `stated` is `1`. A pin and an unpin each carry an owner-signed `rev`. A signed copy at or below the last accepted `rev` does not replace the pin. The alarm record is data, not a grant.
