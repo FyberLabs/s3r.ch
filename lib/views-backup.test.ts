@@ -20,7 +20,7 @@ import {
   BACKUP_FILE_MAX_BYTES,
   type GraphChain,
 } from "./views-backup";
-import { adoptRetirements, emptyState, saveView, toggleFavorite, touchRecent, type ViewsState } from "./views-store";
+import { adoptRetirements, emptyState, resolveConflict, saveView, toggleFavorite, touchRecent, type ViewsState } from "./views-store";
 import { coversCausal } from "./views-vv";
 import type { View } from "./views-window";
 
@@ -43,8 +43,8 @@ function view(id: string, title: string): View {
   };
 }
 
-function fakeGraph(): GraphChain & { data: Map<string, string>; failDeletes: number; beforePut(fn: ((path: string, value: string | null) => void | Promise<void>) | undefined): void } {
-  const data = new Map<string, string>();
+function fakeGraph(retainDeletes = false): GraphChain & { data: Map<string, string | null>; failDeletes: number; beforePut(fn: ((path: string, value: string | null) => void | Promise<void>) | undefined): void } {
+  const data = new Map<string, string | null>();
   const state = { failDeletes: 0, beforePut: undefined as ((path: string, value: string | null) => void | Promise<void>) | undefined };
   const at = (path: string): GraphChain => ({
     get: (k) => at(`${path}/${k}`),
@@ -55,19 +55,19 @@ function fakeGraph(): GraphChain & { data: Map<string, string>; failDeletes: num
         state.failDeletes -= 1;
         return cb?.({ err: "unavailable" });
       }
-      if (v === null) data.delete(path);
+      if (v === null && !retainDeletes) data.delete(path);
       else data.set(path, v);
       cb?.({});
       })();
     },
     once: (cb) => {
       if (data.has(path)) return cb(data.get(path));
-      const children: Record<string, string> = {};
+      const children: Record<string, string | null> = {};
       for (const [k, v] of data) if (k.startsWith(`${path}/`) && !k.slice(path.length + 1).includes("/")) children[k.slice(path.length + 1)] = v;
       cb(Object.keys(children).length ? { _: {}, ...children } : undefined);
     },
   });
-  const root = at("~") as GraphChain & { data: Map<string, string>; failDeletes: number; beforePut(fn: ((path: string, value: string | null) => void | Promise<void>) | undefined): void };
+  const root = at("~") as GraphChain & { data: Map<string, string | null>; failDeletes: number; beforePut(fn: ((path: string, value: string | null) => void | Promise<void>) | undefined): void };
   root.data = data;
   Object.defineProperty(root, "failDeletes", { get: () => state.failDeletes, set: (n: number) => (state.failDeletes = n) });
   root.beforePut = (fn) => {
@@ -258,8 +258,14 @@ describe("backup", () => {
     assert.equal(r.state.views.keep, undefined);
     assert.equal(r.notices.length, 1);
     const older = await buildBackup(saveView(emptyState(ALICE, "d1"), view("keep", "x")).state, pair, "old", 1);
-    const again = await restoreBackup(r.state, pair, [older.manifest], async (a) => older.records[a]);
+    const file = exportBackupFile([await buildBackup(r.state, pair, "checkpoint", 1)]);
+    assert.ok(file.ok);
+    const fresh = await restoreBackupFile(emptyState(ALICE, "fresh"), pair, file.text);
+    assert.equal(fresh.notices.length, 0);
+    assert.ok(fresh.state.dropped.keep);
+    const again = await restoreBackup(fresh.state, pair, [older.manifest], async (a) => older.records[a]);
     assert.equal(again.state.views.keep, undefined);
+    assert.ok(again.state.dropped.keep);
   });
 
   it("does not reuse cached ciphertext after the key pair changes", async () => {
@@ -567,8 +573,8 @@ describe("backup", () => {
 
   it("bounds live publication rows and live vectors across repeated restores", async () => {
     const pair = await testPair();
-    const g = fakeGraph();
-    const count = (prefix: string) => [...g.data.keys()].filter((k) => k.startsWith(prefix)).length;
+    const g = fakeGraph(true);
+    const count = (prefix: string) => [...g.data.entries()].filter(([k, value]) => k.startsWith(prefix) && value !== null).length;
     let state = saveView(emptyState(ALICE, "d0"), view("v1", "t0")).state;
     let published = await publishViewsBackup(g, pair, state, "w0", 1);
     for (let i = 1; i <= 32; i++) {
@@ -584,6 +590,8 @@ describe("backup", () => {
       assert.equal(count("~/s3rch-views-staging/"), 0);
     }
     assert.deepEqual(await listGraphWriters(g), ["w32"]);
+    // Gun may retain deletion metadata: live data is bounded, historical keys are not.
+    assert.ok([...g.data.values()].filter(value => value === null).length > 32);
     const current = published.state.views.v1!.current;
     assert.equal(current.view?.title, "t32");
     assert.equal(Object.keys(current.vv).length, 1);
@@ -860,4 +868,34 @@ it("retains signed staging intent until failed orphan cleanup can be retried", a
   const restored = await restoreFromGraph(emptyState(ALICE, "reader"), pair, g);
   assert.equal(restored.notices.length, 0);
   assert.equal(restored.state.views.v1?.current.view?.title, "latest");
+});
+
+it("resolves capped branches after file recovery and suppresses every stale branch on another device", async () => {
+  const pair = await testPair();
+  const parts = [];
+  for (let n = 0; n < 6; n++) parts.push(await buildBackup(
+    saveView(emptyState(ALICE, `device${n}`), view("v1", `branch${n}`)).state, pair, `writer${n}`, 1));
+  const records = Object.assign({}, ...parts.map(part => part.records));
+  const merged = await restoreBackup(emptyState(ALICE, "merger"), pair, parts.map(part => part.manifest), async address => records[address]);
+  assert.equal(merged.state.views.v1!.hidden!.length, 2);
+  const checkpoint = exportBackupFile([await buildBackup(merged.state, pair, "checkpoint", 1)]);
+  assert.ok(checkpoint.ok);
+  const recovered = await restoreBackupFile(emptyState(ALICE, "resolver"), pair, checkpoint.text);
+  assert.equal(recovered.notices.length, 0);
+  assert.equal(recovered.state.views.v1!.hidden!.length, 2);
+  const chosen = recovered.state.views.v1!.current;
+  const resolved = resolveConflict(recovered.state, "v1", chosen);
+  const finalFile = exportBackupFile([await buildBackup(resolved, pair, "resolved", 1)]);
+  assert.ok(finalFile.ok);
+  for (const order of [parts, [...parts].reverse()]) {
+    const fresh = await restoreBackupFile(emptyState(ALICE, "new-device"), pair, finalFile.text);
+    const replayed = await restoreBackup(fresh.state, pair, order.map(part => part.manifest), async address => records[address]);
+    const entry = replayed.state.views.v1!;
+    assert.equal(replayed.notices.length, 0);
+    assert.equal(entry.current.view?.title, chosen.view?.title);
+    assert.equal(entry.conflicts.length, 0);
+    assert.equal(entry.hidden, undefined);
+    for (let n = 0; n < 6; n++) assert.equal(entry.current.vv[`device${n}`], 1);
+    assert.equal(entry.current.vv.resolver, 1);
+  }
 });
