@@ -4,6 +4,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createBlobCancellationOutboxStore } from "../lib/delegation-blob-outbox";
 import { createBlobInventoryStore } from "../lib/delegation-blob-inventory";
 import { createDelegationInventory } from "../lib/delegation-inventory";
+import { p256 } from "@noble/curves/nist.js";
+import { createInventoryBoundOutbox } from "../lib/delegation-bound-outbox";
+import { createCancellationOutbox } from "../lib/delegation-outbox";
+import { seaToPrincipalKey } from "../lib/identity/forum-check";
+import { parseForumAuthority } from "../lib/identity/forum-authority-records";
 async function main() {
 const port = process.argv[2], phase = process.argv[3];
 assert.match(port, /^[0-9]+$/); assert.ok(phase === "write" || phase === "read");
@@ -67,7 +72,32 @@ if (phase === "write") {
   await assert.rejects(inventory.register(destination(4)), /frozen/);
   await assert.rejects(inventory.initialize([]));
 }
-console.log(`cancellation Blob and inventory integration ${phase} passed`);
+// Exercise composition of both real adapters. These are structural storage
+// fixtures, not authenticated cancellation or worker-stop evidence.
+const fixtureSecret = new Uint8Array(32); fixtureSecret[31] = 1;
+const fixtureKey = p256.getPublicKey(fixtureSecret, false);
+const agent = Buffer.from(fixtureKey.slice(1, 33)).toString("base64url") + "." + Buffer.from(fixtureKey.slice(33)).toString("base64url");
+const forum = `forum_${seaToPrincipalKey(agent)}_${"1".repeat(32)}`;
+const boundScope = "f".repeat(64);
+const boundInventory = createDelegationInventory(createBlobInventoryStore(container, boundScope));
+const bound = createInventoryBoundOutbox(boundInventory,
+  createCancellationOutbox(createBlobCancellationOutboxStore(container, boundScope)), { forum, agent });
+const record = { owner: agent, object: forum, accessor: agent, stated: 0, from: 0, until: 10,
+  issuedAt: 1, hamState: 2, sig: "unverified-storage-fixture" };
+const parsed = parseForumAuthority("post", record); assert.ok(parsed);
+const cancellations = [{ kind: "post" as const, soul: parsed.soul, recordJson: JSON.stringify(record) }];
+if (phase === "write") {
+  await boundInventory.initialize([forum]); await boundInventory.freeze(id);
+  await bound.prepare(id, cancellations);
+} else {
+  assert.deepEqual((await bound.load(id))?.cancellations, cancellations);
+  assert.deepEqual((await bound.prepare(id, cancellations)).cancellations, cancellations);
+  const wrong = createInventoryBoundOutbox(boundInventory,
+    createCancellationOutbox(createBlobCancellationOutboxStore(container, boundScope)),
+    { forum: forum.replace(/1{32}$/, "2".repeat(32)), agent });
+  await assert.rejects(wrong.load(id), /binding mismatch/);
+}
+console.log(`cancellation Blob, inventory and bound recovery ${phase} passed`);
 
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

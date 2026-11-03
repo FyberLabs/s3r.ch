@@ -18,7 +18,7 @@ export type CancellationOperation = Readonly<{
 const MAX_BYTES = 1_048_576, MAX_RECORDS = 256;
 const operationId = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
 const bytes = (v: string) => new TextEncoder().encode(v).length;
-function parse(input: unknown): CancellationOperation {
+export function snapshotCancellationOperation(input: unknown): CancellationOperation {
   const r = recoveryObject(input), list = r && recoveryList(r.cancellations);
   if (!r || Object.keys(r).sort().join() !== "agent,cancellations,fence,forum,operationId" ||
       !operationId(r.operationId) || typeof r.forum !== "string" || !isForumObjectId(r.forum, "forum") ||
@@ -52,14 +52,14 @@ export function createCancellationOutbox(store: CancellationOutboxStore) {
     const text = await store.read(id);
     if (text === null) return null;
     if (typeof text !== "string" || bytes(text) > MAX_BYTES) throw Error("invalid outbox document");
-    const saved = parse(JSON.parse(text));
+    const saved = snapshotCancellationOperation(JSON.parse(text));
     if (saved.operationId !== id) throw Error("outbox operation mismatch");
     return saved;
   }
   return Object.freeze({ load,
     async prepare(input: CancellationOperation): Promise<CancellationOperation> {
       // Snapshot before any await; recordJson preserves signature/attestation bytes.
-      const requested = parse(input), text = JSON.stringify(requested);
+      const requested = snapshotCancellationOperation(input), text = JSON.stringify(requested);
       if (bytes(text) > MAX_BYTES) throw Error("outbox capacity");
       await store.create(requested.operationId, text);
       const saved = await load(requested.operationId);

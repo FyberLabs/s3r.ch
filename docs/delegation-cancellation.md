@@ -83,3 +83,22 @@ cancellation took effect. Pause and Reassign remain unavailable.
 The Azurite job covers independent concurrent registrations, stale ETag refusal,
 registration racing a freeze, competing operations and frozen-state recovery
 across emulator/process restart. Real worker and live Azure acceptance remain.
+
+## Inventory-bound outbox recovery
+
+`lib/delegation-bound-outbox.ts` composes the registry and outbox for a trusted
+forum/agent scope. Preparation requires the registry to be frozen by the same
+operation ID. The outbox's fence field stores a domain-separated digest of the
+forum, agent, operation ID and exact ordered frozen destinations. Recovery checks
+that binding again; a different scope or inventory cannot reuse those records.
+Caller-provided cancellation bytes are snapshotted before the first storage read.
+Unexpected inventory replacement during storage I/O fails without deleting the
+saved material. Retrying after a lost acknowledgement recovers the same bytes.
+
+This digest introduces no new signed ACL format and grants no authority. It binds
+records to the registered snapshot; it does not prove that the registry includes
+every live destination or that the cancellation batch covers all independent
+access paths. Both storage adapters must use the same authenticated namespace.
+The coordinator must still reconcile complete inventory, verify owner/cancellation
+proofs, enforce dispatch/grant fences and obtain worker drain evidence before
+reporting completion. The helper exposes neither publication nor resume controls.

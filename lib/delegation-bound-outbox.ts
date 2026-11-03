@@ -1,0 +1,49 @@
+import { createCancellationOutbox, snapshotCancellationOperation, type CancellationEnvelope, type CancellationOperation } from "./delegation-outbox";
+import { createDelegationInventory } from "./delegation-inventory";
+import { recoveryBytes, recoveryId, recoveryObject } from "./identity/forum-recovery-records";
+import { isForumObjectId, isSeaPubkey } from "./identity/forum-check";
+
+/** Bind recovery material to a trusted coordinator scope and exact frozen
+ * destination registry. The digest is correlation/integrity, not a signing
+ * domain, ACL proof, inventory-completeness proof, or worker fencing token.
+ * Both dependencies must use the same authenticated storage namespace.
+ */
+export function createInventoryBoundOutbox(
+  inventory: Pick<ReturnType<typeof createDelegationInventory>, "load">,
+  outbox: ReturnType<typeof createCancellationOutbox>,
+  scope: Readonly<{ forum: string; agent: string }>,
+) {
+  const input = recoveryObject(scope);
+  if (!input || typeof input.forum !== "string" || !isForumObjectId(input.forum, "forum") ||
+      typeof input.agent !== "string" || !isSeaPubkey(input.agent)) throw Error("invalid coordinator scope");
+  const forum = input.forum, agent = input.agent;
+  async function binding(operationId: string) {
+    if (typeof operationId !== "string" || !/^[0-9a-f]{32}$/.test(operationId)) throw Error("invalid operation ID");
+    const state = await inventory.load();
+    if (state.operation !== operationId) throw Error("operation does not own frozen inventory");
+    return recoveryId(recoveryBytes(["s3rch-cancellation-inventory-binding-v1", forum, agent,
+      operationId, String(state.destinations.length), ...state.destinations]));
+  }
+  function check(saved: CancellationOperation, operationId: string, fence: string) {
+    if (saved.operationId !== operationId || saved.forum !== forum || saved.agent !== agent || saved.fence !== fence)
+      throw Error("cancellation inventory binding mismatch");
+  }
+  return Object.freeze({
+    async prepare(operationId: string, cancellations: readonly CancellationEnvelope[]) {
+      // Snapshot signed material before inventory I/O can yield to the caller.
+      const request = snapshotCancellationOperation({ operationId, forum, agent, fence: "unbound", cancellations });
+      const fence = await binding(operationId);
+      const saved = await outbox.prepare({ ...request, fence });
+      // Frozen state is immutable by contract. Still fail closed on unexpected
+      // storage loss/replacement during preparation; retain saved bytes for diagnosis.
+      check(saved, operationId, await binding(operationId));
+      return saved;
+    },
+    async load(operationId: string) {
+      const fence = await binding(operationId), saved = await outbox.load(operationId);
+      if (await binding(operationId) !== fence) throw Error("inventory changed during recovery");
+      if (saved) check(saved, operationId, fence);
+      return saved;
+    },
+  });
+}
