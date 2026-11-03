@@ -40,7 +40,8 @@ export function SquadDelegationControls({ scope, client: supplied }: { scope?: A
           : await client.start({ forum, owner }, crypto.randomUUID().replaceAll("-", ""), target.trim(), view.revision);
         if (token !== epoch.current) return;
         if (result.status === "complete") setConfirmedOperation(result.receipt.operationId);
-        else setNotice("Access changes are pending. Retry the saved operation.");
+        // Pending comes from the polled durable operation, so another client
+        // completing it cannot leave a stale local pending message behind.
       }
       const current = await client.read({ forum, owner });
       if (token === epoch.current && current.forum === forum && current.owner === owner) setView(current);
@@ -67,7 +68,7 @@ export function SquadDelegationControls({ scope, client: supplied }: { scope?: A
     </div>
     <p id="squad-delegation-unavailable" role="status" className="mt-2 text-xs text-ink-muted">
       {!available ? "Reassignment is unavailable until access changes can be verified. Updating an assignment or status alone does not change permissions."
-        : notice || (confirmedOperation && view?.operation?.id === confirmedOperation && view.operation.phase === "complete" ? "Assignment and access changes confirmed." : pending ? "Access changes are pending. Existing cancellations remain in effect." : view ? "Changes preserve object ownership and paths." : "Loading verified assignment…")}
+        : notice || (confirmedOperation && view?.operation?.id === confirmedOperation && view.operation.phase === "complete" ? "Assignment and access changes confirmed." : pending ? "Access changes are pending. Retry the saved operation. Existing cancellations remain in effect." : view?.operation?.phase === "aborted" ? "Change canceled. Existing access cancellations remain in effect." : view ? "Changes preserve object ownership and paths." : "Loading verified assignment…")}
     </p>
   </fieldset>;
 }
