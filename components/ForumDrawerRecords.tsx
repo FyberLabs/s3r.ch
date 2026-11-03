@@ -60,12 +60,13 @@ export function ForumDrawerRecords(props: {
     const principal = pair && latest.current.authority.graph.principalForKey(pair.pub, at);
     if (!pair || !principal) { setNotice("A current signing key is required."); return; }
     const id = remove?.id ?? destination;
-    const rev = controller.revision(id) + 1;
-    const record: DrawerRecord = { domain: "s3rch-forum-child-v1", kind, forumId: props.forum, agent: props.agent,
-      id, body: body.trim(), target: kind === "artifact" ? target.trim() : "", state: kind === "subtask" ? state : "",
-      ...remove, rev, issuedAt: at, writer: principal, stated: remove ? 0 : 1 };
     setBusy(true); setNotice("");
     try {
+      await controller.recover(id);
+      const rev = controller.revision(id) + 1;
+      const record: DrawerRecord = { domain: "s3rch-forum-child-v1", kind, forumId: props.forum, agent: props.agent,
+        id, body: body.trim(), target: kind === "artifact" ? target.trim() : "", state: kind === "subtask" ? state : "",
+        ...remove, rev, issuedAt: at, writer: principal, stated: remove ? 0 : 1 };
       const result = await controller.publish(record, { key: pair.pub, sign: row => signForumRecord(row, pair) });
       setNotice(result === "signed" ? "Sent. Waiting for a verified copy from the mesh." :
         result === "offline" ? "The mesh is unavailable. Try again after reconnecting." :

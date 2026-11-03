@@ -91,16 +91,17 @@ The need owner or the subject accepts one live offer only when the graph holds t
 
 This page puts those four rows with a Gun signature from the writer. It does not put an unsigned stand-in. `body` and `severity` stay as posted. `spec` is an optional object id and stays as posted. A resolved need refuses withdrawal of the offer it names.
 
-Squads coordinate assignments and SociACL access. The Reassign control remains
-unavailable until the assignment/access coordinator verifies prior-assignee
-cancellations and fresh grants. A status or assignment edit alone does not change
+Squads coordinate assignments and SociACL access. The Reassign control uses an explicitly
+provisioned assignment client and stays disabled without one. It confirms a change
+only after the coordinator verifies durable prior-assignee cancellations and fresh grants. A status or assignment edit alone does not change
 permissions. Existing object ownership and paths are preserved.
 
 The workflow requires durable complete destination inventory, authority from each
 destination owner, signed post/see/group cancellations, reconciliation after lost
 responses, and concurrency control for assignment and grant changes. Missing rows,
-stale Checks and offline edits do not establish completion. Integration is tracked
-in #188; #190 tracks deployed multi-client acceptance.
+stale Checks and offline edits do not establish completion. The connected runtime and isolated synthetic acceptance are described in
+[durable assignment and access](assignment-runtime.md); #190 tracks production
+provisioning and deployed multi-client acceptance.
 
 Squads do not require an execution runtime in s3r.ch. A future optional router
 layer may forward `pause`/`stop` command verbs to independent recipients. Delivery,

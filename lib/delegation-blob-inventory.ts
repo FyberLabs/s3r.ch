@@ -2,7 +2,6 @@ import type { ContainerClient } from "@azure/storage-blob";
 import type { Readable } from "node:stream";
 import type { InventoryStore } from "./delegation-inventory";
 
-const CAP = 131072;
 const matches = (error: unknown, statusCode: number, code: string) => {
   const e = error as { statusCode?: number; code?: string } | null;
   return e?.statusCode === statusCode && e.code === code;
@@ -11,8 +10,16 @@ const matches = (error: unknown, statusCode: number, code: string) => {
  * Distinct path: the mutable registry never replaces immutable signed records.
  */
 export function createBlobInventoryStore(container: Pick<ContainerClient, "getBlockBlobClient">, namespace: string): InventoryStore {
+  return createBlobCasStore(container, namespace, "s3rch-delegation-inventory/v1", 131072);
+}
+/** Separate bounded slot for the authoritative assignment journal. Supply an
+ * authenticated primary container and a server-derived Squad namespace. */
+export function createBlobAssignmentJournalStore(container: Pick<ContainerClient, "getBlockBlobClient">, namespace: string): InventoryStore {
+  return createBlobCasStore(container, namespace, "s3rch-assignment-journal/v1", 2_097_152);
+}
+function createBlobCasStore(container: Pick<ContainerClient, "getBlockBlobClient">, namespace: string, prefix: string, CAP: number): InventoryStore {
   if (typeof namespace !== "string" || !/^[0-9a-f]{64}$/.test(namespace)) throw Error("invalid inventory namespace");
-  const blob = container.getBlockBlobClient(`s3rch-delegation-inventory/v1/${namespace}.json`);
+  const blob = container.getBlockBlobClient(`${prefix}/${namespace}.json`);
   return Object.freeze({
     async read() {
       try {

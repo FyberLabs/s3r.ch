@@ -33,6 +33,8 @@ export function parseDrawerRecord(input: unknown): DrawerRecord | null {
   return Object.freeze(Object.fromEntries(fields.map(k => [k, r[k]]))) as DrawerRecord;
 }
 export type DrawerAuthority = {
+  readChild?: (scope: { forum: string; owner: string }, id: string) => Promise<{ record: DrawerRecord; signature: string } | null>;
+  publishChild?: (record: DrawerRecord, signature: string) => Promise<boolean>;
   graph: ForumAuthorityGraph;
   subscribe(fn: () => void): () => void;
 };
@@ -50,6 +52,7 @@ export function createForumDrawer(input: {
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   const millis = input.millis ?? Date.now;
   const held = new Map<string, Held>();
+  const committedRevisions = new Map<string, number>();
   const seen = new Map<string, string>();
   const pending = new Map<string, { id: string; sig: string; writer: string; at: number; path: string; tail: boolean }>();
   const waiting = new Set<string>(), checking = new Set<string>();
@@ -172,7 +175,30 @@ export function createForumDrawer(input: {
         .map(h => h.row).sort((a, b) => a.issuedAt - b.issuedAt || a.id.localeCompare(b.id));
     },
     atCapacity() { return held.size >= DRAWER_LIMIT; },
-    revision(id: string) { return held.get(id)?.row.rev ?? -1; },
+    revision(id: string) { return Math.max(held.get(id)?.row.rev ?? -1, committedRevisions.get(id) ?? -1); },
+    async recover(id: string) {
+      if (!input.authority.readChild) return;
+      const token = epoch, viewer = input.viewer();
+      const saved = await input.authority.readChild({ forum: input.forum, owner: input.agent }, id);
+      if (disposed || token !== epoch || input.viewer() !== viewer || !input.active()) throw Error("child recovery superseded");
+      if (!saved) return;
+      const row = parseDrawerRecord(saved.record);
+      if (!row || row.id !== id || row.forumId !== input.forum || row.agent !== input.agent || !viewer ||
+          !input.authority.graph.checkDirectSee(id, viewer, clock()).allowed ||
+          (row.target && !input.authority.graph.checkDirectSee(row.target, viewer, clock()).allowed)) throw Error("child recovery denied");
+      if (!committedRevisions.has(id) && committedRevisions.size >= DRAWER_LIMIT) throw Error("child recovery capacity");
+      // Authenticated journal revision is only a write-conflict floor. Content
+      // still traverses SEA verification and current ACL admission below.
+      committedRevisions.set(id, Math.max(committedRevisions.get(id) ?? -1, row.rev));
+      const accepted = await receive({ ...row, sig: saved.signature }, id, drawerSoul(row));
+      const verified = held.get(id);
+      if (accepted && verified && JSON.stringify(verified.row) === JSON.stringify(row) &&
+          token === epoch && gun && readable(verified.row) && nowKey(verified.row) === verified.key) {
+        const value = { ...verified.row, sig: verified.sig };
+        if (!row.stated) forumSoulNode(gun, drawerSoul(row) + "/remove")?.put(value);
+        forumSoulNode(gun, drawerSoul(row))?.put(value);
+      }
+    },
     refresh,
     connect(next: FeedGun) {
       disconnect(); if (disposed || !isForumObjectId(input.forum, "forum") || !isSeaPubkey(input.agent)) return;
@@ -197,12 +223,19 @@ export function createForumDrawer(input: {
           (!previous || row.rev > previous.rev || (row.stated === 0 && row.rev === previous.rev && JSON.stringify(row) === JSON.stringify(previous)));
       };
       const put = (path: string) => publishForumAuthorized({ record: row, authorized: allowed,
-        sign: signing.sign, put: value => { const node = gun && forumSoulNode(gun, path); if (!node) return false; node.put(value); return true; } });
+        sign: signing.sign, put: async value => {
+          const node = gun && forumSoulNode(gun, path); if (!node) return false;
+          // A provisioned assignment source commits against the same journal as
+          // reassignment. A browser's earlier allow cannot cross its CAS fence.
+          if (input.authority.publishChild && !await input.authority.publishChild(row, value.sig)) return false;
+          if (!allowed()) return false;
+          node.put(value); return true;
+        } });
       // Publish the separate removal tail first; a lost main-row put may
       // not erase the independently subscribed tombstone.
       if (!row.stated) { const result = await put(drawerSoul(row) + "/remove"); if (result !== "signed") return result; }
       return put(drawerSoul(row));
     },
-    dispose() { disposed = true; disconnect(); stopAuthority(); held.clear(); listeners.clear(); },
+    dispose() { disposed = true; disconnect(); stopAuthority(); held.clear(); committedRevisions.clear(); listeners.clear(); },
   };
 }

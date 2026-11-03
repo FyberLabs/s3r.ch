@@ -20,6 +20,7 @@ export type ForumAuthoritySnapshot = Readonly<{
 }>;
 export type ForumAuthorityConfig = Readonly<{ keys: readonly ForumWitnessKey[]; policy: ForumSiwePolicy; pinnedIssuers: readonly string[] }>;
 export type ForumAuthorityGraph = SeeGraph & {
+  groupMembership(object: string, accessor: string, now: number): Readonly<{ set: string; predicate: string; soul: string; setOwner: string }> | null;
   writerKey(principal: string, issuedAt: number, now: number): string | null;
   principalForKey(key: string, now: number): string | null;
   ownedObjects(owner: string): readonly string[];
@@ -63,6 +64,22 @@ export function createForumAuthority(config: ForumAuthorityConfig, clock: () => 
     if (now >= p.row.until) return denied("expired");
     return { allowed: true, reason: kind + "-grant" };
   }
+  function effectiveGroup(object: string, accessor: string, now: number) {
+    const read = direct("see", object, accessor, now);
+    const fail = (reason = "missing-authority") => ({ reason, membership: null });
+    const s = current(now), owner = s?.owners.get(object); if (!s || !owner) return fail(read.reason);
+    const edge = s.rows.get("object-set:" + object);
+    if (!edge || edge.kind !== "object-set" || edge.row.owner !== owner) return fail(read.reason);
+    if (edge.row.stated !== 1) return fail("denied");
+    const covers = (p: ParsedAuthority) => "cancels" in p.row && [...(s.cancels.get(p.soul) ?? [])].every(id => (p.row as { cancels: readonly string[] }).cancels.includes(id));
+    if (!covers(edge)) return fail("denied");
+    const setOwner = objectPrincipal(edge.row.set); if (!setOwner) return fail();
+    const soul = membershipRecordSoul({ setOwner, set: edge.row.set, predicate: edge.row.predicate, member: accessor });
+    const member = s.rows.get(soul + ":member"), set = s.rows.get(soul + ":set");
+    if (!member || !set || member.kind !== "membership" || set.kind !== "membership" || member.row.member !== accessor || set.row.setOwner !== setOwner ||
+      member.row.stated !== 1 || set.row.stated !== 1 || !covers(member) || !covers(set)) return fail(!member || !set ? "missing-grant" : "denied");
+    return { reason: edge.row.predicate, membership: { set: edge.row.set, predicate: edge.row.predicate, soul, setOwner } };
+  }
   const graph: ForumAuthorityGraph = Object.freeze({
     hasObject: (object: string) => !!ownerOf(object), ownerOf,
     ownedObjects: (owner: string) => [...(current()?.owners ?? [])].flatMap(([id, who]) => who === owner ? [id] : []),
@@ -88,19 +105,10 @@ export function createForumAuthority(config: ForumAuthorityConfig, clock: () => 
     checkPost: (object: string, accessor: string, now: number) => direct("post", object, accessor, now),
     checkForumSee(object: string, accessor: string, now: number): CheckResult {
       const read = direct("see", object, accessor, now); if (read.allowed) return read;
-      const s = current(now), owner = s?.owners.get(object); if (!s || !owner) return read;
-      const edge = s.rows.get("object-set:" + object);
-      if (!edge || edge.kind !== "object-set" || edge.row.owner !== owner) return read;
-      if (edge.row.stated !== 1) return denied("denied");
-      const covers = (p: ParsedAuthority) => "cancels" in p.row && [...(s.cancels.get(p.soul) ?? [])].every(id => (p.row as { cancels: readonly string[] }).cancels.includes(id));
-      if (!covers(edge)) return denied("denied");
-      const setOwner = objectPrincipal(edge.row.set); if (!setOwner) return denied();
-      const soul = membershipRecordSoul({ setOwner, set: edge.row.set, predicate: edge.row.predicate, member: accessor });
-      const member = s.rows.get(soul + ":member"), set = s.rows.get(soul + ":set");
-      if (!member || !set || member.kind !== "membership" || set.kind !== "membership" || member.row.member !== accessor || set.row.setOwner !== setOwner ||
-        member.row.stated !== 1 || set.row.stated !== 1 || !covers(member) || !covers(set)) return denied(!member || !set ? "missing-grant" : "denied");
-      return { allowed: true, reason: edge.row.predicate };
+      const group = effectiveGroup(object, accessor, now);
+      return { allowed: !!group.membership, reason: group.reason };
     },
+    groupMembership: (object, accessor, now) => effectiveGroup(object, accessor, now).membership,
   });
   return Object.freeze({ graph,
     subscribe(fn: () => void) { listeners.add(fn); return () => { listeners.delete(fn); }; },

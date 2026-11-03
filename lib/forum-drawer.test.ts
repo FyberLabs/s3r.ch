@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
-import { createForumDrawer, drawerSoul, parseDrawerRecord, DRAWER_LIMIT, DRAWER_PENDING_MS, type DrawerRecord } from "./forum-drawer";
+import { createForumDrawer, drawerSoul, parseDrawerRecord, DRAWER_LIMIT, DRAWER_PENDING_MS, type DrawerRecord, type DrawerAuthority } from "./forum-drawer";
 import { createForumAuthority, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
 import { seaToPrincipalKey, forumAgentSoul } from "./identity/forum-check";
@@ -57,12 +57,12 @@ class Wire {
     for (const fn of this.callbacks.get(path) ?? []) fn(value, key);
   }
 }
-async function setup(evidence: readonly Evidence[] = [owned(), grant("see"), grant("post")], verifier = verify) {
+async function setup(evidence: readonly Evidence[] = [owned(), grant("see"), grant("post")], verifier = verify, publishChild?: DrawerAuthority["publishChild"], readChild?: DrawerAuthority["readChild"]) {
   let now = time, ms = time * 1000, active = true, viewer: string | null = writer;
   const authority = createForumAuthority(config, () => now);
   assert.ok((await authority.refresh(snapshot(evidence), now)).ok);
   const wire = new Wire();
-  const c = createForumDrawer({ forum, agent: owner, authority, verify: verifier, clock: () => now, millis: () => ms,
+  const c = createForumDrawer({ forum, agent: owner, authority: { ...authority, publishChild, readChild }, verify: verifier, clock: () => now, millis: () => ms,
     viewer: () => viewer, active: () => active });
   c.connect(wire.node());
   return { c, authority, wire,
@@ -327,5 +327,47 @@ test("reconnect accepts a new valid signature of the same winning payload", asyn
   await flush();
   assert.equal(h.c.rows().length, 1);
   assert.equal(h.c.rows()[0].body, record().body);
+  h.c.dispose();
+});
+
+test("assignment sink rejection after signing prevents every Gun mirror write", async () => {
+  let finish!: (ok: boolean) => void;
+  const h = await setup(undefined, undefined, () => new Promise<boolean>(resolve => { finish = resolve; }));
+  const publication = h.c.publish(record(), { key: writer, sign: async r => signature(r) });
+  await flush(); assert.equal(h.wire.puts.length, 0);
+  finish(false); assert.equal(await publication, "offline"); assert.equal(h.wire.puts.length, 0);
+  h.c.dispose();
+});
+test("authority lost while durable child submission is pending blocks the Gun mirror", async () => {
+  let finish!: (ok: boolean) => void;
+  const h = await setup(undefined, undefined, () => new Promise<boolean>(resolve => { finish = resolve; }));
+  const publication = h.c.publish(record(), { key: writer, sign: async r => signature(r) });
+  await flush(); h.authority.invalidate(); finish(true);
+  assert.equal(await publication, "offline"); assert.equal(h.wire.puts.length, 0);
+  h.c.dispose();
+});
+
+test("lost child acknowledgement recovers exact committed content after controller restart", async () => {
+  let saved: { record: DrawerRecord; signature: string } | null = null;
+  const commit = async (row: DrawerRecord, sig: string) => { saved = { record: row, signature: sig }; return false; };
+  const first = await setup(undefined, undefined, commit, async () => saved);
+  assert.equal(await first.c.publish(record(), { key: writer, sign: async row => signature(row) }), "offline");
+  assert.equal(first.wire.puts.length, 0); first.c.dispose();
+  const next = await setup(undefined, undefined, async () => true, async () => saved);
+  await next.c.recover(child);
+  assert.equal(next.c.revision(child), 1); assert.equal(next.c.rows()[0].body, record().body);
+  assert.deepEqual(next.wire.puts[0], { path: drawerSoul(record()), value: { ...record(), sig: signature(record()) } });
+  const changed = record({ rev: next.c.revision(child) + 1, issuedAt: time, body: "After recovery" });
+  assert.equal(await next.c.publish(changed, { key: writer, sign: async row => signature(row) }), "signed");
+  next.c.dispose();
+});
+test("a new assignee recovers the committed revision without admitting a revoked writer's content", async () => {
+  const saved = record({ rev: 7 });
+  const h = await setup([owned(), grant("see", child, outsider), grant("post", child, outsider)], undefined, async () => true,
+    async () => ({ record: saved, signature: signature(saved) }));
+  h.setViewer(outsider);
+  await h.c.recover(child);
+  assert.equal(h.c.revision(child), 7); assert.equal(h.c.rows().length, 0); assert.equal(h.wire.puts.length, 0);
+  assert.equal(await h.c.publish(record({ writer: outsider, rev: 8 }), { key: outsider, sign: async row => signature(row, outsider) }), "signed");
   h.c.dispose();
 });
