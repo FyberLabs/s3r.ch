@@ -20,10 +20,10 @@ function parse(text: string): InventoryState {
       (r.operation !== null && (typeof r.operation !== "string" || !/^[0-9a-f]{32}$/.test(r.operation)))) throw Error("invalid inventory state");
   return Object.freeze({ version: 1, operation: r.operation as string | null, destinations: destinations(r.destinations) });
 }
-/** Coordination data, not ACL authority or worker-stop evidence. All destinations
- * must be registered BEFORE dispatch, child creation or grant publication. A
+/** Assignment coordination data, not ACL authority. All destinations
+ * must be registered BEFORE child creation or grant publication. A
  * successful registration is only an inventory reservation, not permission to
- * execute later: consumers still need dispatch fencing and worker drain.
+ * publish later: consumers still need assignment/grant concurrency control.
  * There is deliberately no thaw, removal, expiry or missing-state reset.
  */
 export function createDelegationInventory(store: InventoryStore) {

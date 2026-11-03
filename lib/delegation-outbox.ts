@@ -43,7 +43,7 @@ export function snapshotCancellationOperation(input: unknown): CancellationOpera
 
 /** Immutable retry material only. Parsing proves neither signature validity nor
  * owner authority, inventory completeness, fencing, durable ACL cancellation,
- * worker drain, or permission to resume. No publication/completion API exists.
+ * or permission to issue replacement grants. No publication/completion API exists.
  * The future coordinator must verify those facts independently on every retry.
  */
 export function createCancellationOutbox(store: CancellationOutboxStore) {
