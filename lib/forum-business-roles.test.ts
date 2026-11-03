@@ -3,7 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { BusinessRoleStrips } from "../components/BusinessRoleStrips";
-import { createBusinessRoles, parseBusinessTemplate } from "./forum-business-roles";
+import { businessTemplateRetryKey, createBusinessRoles, parseBusinessTemplate } from "./forum-business-roles";
 import { PILOT_FORUM_ID as forumId, PILOT_AGENTS } from "./forum-squad-fixture";
 import type { ForumRoleMembership, ForumTemplate } from "./identity/forum-check";
 const a = PILOT_AGENTS[0].status.seaPubkey, b = PILOT_AGENTS[1].status.seaPubkey;
@@ -79,4 +79,14 @@ test("conflict and waiting states never render supplied principals or roster det
     assert.ok(!html.includes(a)); assert.doesNotMatch(html, /Open contributor/);
     assert.equal((html.match(/disabled=""/g) ?? []).length, 4);
   }
+});
+
+test("template retry identity is bounded, stable and distinct for separate evidence", async () => {
+  const sig = "SEA" + "a".repeat(32765);
+  const key = await businessTemplateRetryKey(sig);
+  assert.match(key!, /^template:[0-9a-f]{64}$/);
+  assert.equal(await businessTemplateRetryKey(sig), key);
+  assert.notEqual(await businessTemplateRetryKey(sig.slice(0, -1) + "b"), key);
+  assert.equal(await businessTemplateRetryKey(sig + "a"), null);
+  assert.equal(await businessTemplateRetryKey("unsigned"), null);
 });

@@ -334,7 +334,9 @@ The template soul carries a SEA-signed payload with exactly `forumId` and `mode`
 against the forum owner's current signing key. Membership is the existing
 `{forumId, role, principal}` contract at `roles/<role>/<principal>`. The signature,
 not the outer Gun fields or arrival order, supplies these values. Missing key
-history uses the same bounded receive retry path as other forum rows.
+history uses the same bounded receive retry path as other forum rows. Each
+signature has its own retry slot, so concurrent verification or missing keys
+cannot make a later template arrival overwrite a conflicting signed mode.
 
 Every displayed assignment still needs its retained verification receipt and
 current forum ownership. Separate-principal templates prohibit a principal in

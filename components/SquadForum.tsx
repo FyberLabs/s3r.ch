@@ -3,7 +3,7 @@
 import { createForumReceiveRetry } from "@/lib/forum-receive-retry";
 import { createForumReceiveProofs } from "@/lib/forum-receive-proofs";
 import { BusinessRoleStrips } from "@/components/BusinessRoleStrips";
-import { createBusinessRoles, parseBusinessTemplate } from "@/lib/forum-business-roles";
+import { businessTemplateRetryKey, createBusinessRoles, parseBusinessTemplate } from "@/lib/forum-business-roles";
 import { ForumShell, type ForumTab } from "@/components/ForumShell";
 import { ForumDrawerRecords } from "@/components/ForumDrawerRecords";
 import { SquadDelegationControls } from "@/components/SquadDelegationControls";
@@ -1043,19 +1043,24 @@ export function SquadForum() {
         setAlarmHeard(true);
         setMeshAlarm(committed.alarm);
       }
-      async function acceptTemplate(data: unknown, gen: number) {
+      async function acceptTemplate(data: unknown, knownRetryId?: string) {
         const proof = proofs.begin();
-        if (cancelled || !versions.current("template", "mode", gen)) return;
-        retries.remember("template:mode", data, row => acceptTemplate(row, gen));
-        const owner = graphRef.current?.ownerOf(PILOT_FORUM_ID), sig = signatureOf(data);
-        if (!owner || !sig) return;
+        if (cancelled) return;
+        const sig = signatureOf(data);
+        if (!sig) return;
+        const retryId = knownRetryId ?? await businessTemplateRetryKey(sig);
+        if (!retryId || cancelled || !proof.current()) return;
+        // Unversioned templates must all verify independently. A newer arrival
+        // cannot discard a conflicting mode, including while keys are missing.
+        retries.remember(retryId, { sig }, row => acceptTemplate(row, retryId));
+        const owner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
+        if (!owner) return;
         const payload = await proof.read(sig, owner);
-        if (cancelled || !proof.current() || !versions.current("template", "mode", gen) ||
-            !proofs.ready() || graphRef.current?.ownerOf(PILOT_FORUM_ID) !== owner) return;
+        if (cancelled || !proof.current() || !proofs.ready() || graphRef.current?.ownerOf(PILOT_FORUM_ID) !== owner) return;
         const template = parseBusinessTemplate(payload, PILOT_FORUM_ID);
         if (!template || !proof.retain(template, () => graphRef.current?.ownerOf(PILOT_FORUM_ID) === owner)) return;
         businessRoles.template(template);
-        retries.forget("template:mode");
+        retries.forget(retryId);
         setAclRev(n => n + 1);
       }
       async function acceptRole(data: unknown, roleToken: string, mapKey: string, gen: number) {
@@ -1282,8 +1287,7 @@ export function SquadForum() {
       });
       offTemplate = forum.get("template").on(data => {
         if (cancelled || data == null) return;
-        const gen = versions.bump("template", "mode");
-        void acceptTemplate(data, gen);
+        void acceptTemplate(data);
       });
       offRoles = forum.get("roles").map().on((data, token) => {
         if (cancelled || typeof token !== "string" || !isRoleToken(token)) return;

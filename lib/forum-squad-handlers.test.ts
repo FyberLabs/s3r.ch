@@ -29,11 +29,12 @@ function handlers(names: string[], bindings: Record<string, unknown>) {
 }
 const flush = async () => { for (let n = 0; n < 4; n++) await new Promise<void>(resolve => setImmediate(resolve)); };
 const envelope = (row: object, key: string) => ({ ...row, sig: "SEA" + JSON.stringify([row, key]) });
-function proofSetup() {
+const verifyEnvelope = async (sig: string, key: string) => { const [row, signedKey] = JSON.parse(sig.slice(3)); return signedKey === key ? row : null; };
+function proofSetup(verify = verifyEnvelope) {
   const keys = new Map(fixture.PILOT_AGENTS.map(a => [a.status.seaPubkey, a.status.seaPubkey]));
   keys.set(fixture.PILOT_OWNER, fixture.PILOT_OWNER);
   const proofs = createForumReceiveProofs({ key: p => keys.get(p) ?? null, ready: () => true,
-    verify: async (sig, key) => { const [row, signedKey] = JSON.parse(sig.slice(3)); return signedKey === key ? row : null; } });
+    verify });
   return { keys, proofs };
 }
 
@@ -104,8 +105,8 @@ for (const fromCancel of [false, true]) test(`actual offer ${fromCancel ? "tail"
   assert.equal(cancels.size, 1); assert.equal(offers.size, 1);
 });
 
-function businessHandlers() {
-  const h = proofSetup(), owner = fixture.PILOT_OWNER;
+function businessHandlers(verify = verifyEnvelope) {
+  const h = proofSetup(verify), owner = fixture.PILOT_OWNER;
   const graph = createMemorySeeAcl(); graph.putObject(fixture.PILOT_FORUM_ID, owner);
   const businessRoles = business.createBusinessRoles(fixture.PILOT_FORUM_ID, h.proofs.valid);
   const versions = squad.createMeshEventVersions(), retries = createForumReceiveRetry();
@@ -115,7 +116,7 @@ function businessHandlers() {
     cancelled: false, proofs: h.proofs, retries, versions, graphRef: { current: graph }, businessRoles,
     forumWatches: watches, enrollPub: (pub: string, row: object) => h.proofs.enroll(pub, row), setAclRev: () => {},
   });
-  const template = (data: unknown) => fns.acceptTemplate(data, versions.bump("template", "mode"));
+  const template = (data: unknown) => fns.acceptTemplate(data);
   const role = (data: unknown, principal: string) => fns.acceptRole(data, "treasurer", principal, versions.bump("role", `treasurer:${principal}`));
   return { ...h, graph, businessRoles, template, role, retries, owner };
 }
@@ -148,4 +149,59 @@ test("actual receivers reject forged signatures and wrong role routes without er
   assert.equal(h.businessRoles.view().state, "ready"); assert.equal(h.businessRoles.view().members.length, 1);
   await h.template(envelope({ ...t, mode: "distinct-principals" }, h.owner));
   assert.equal(h.businessRoles.view().state, "conflict");
+});
+
+for (const reverse of [false, true]) test(`concurrent template modes retain the conflict (${reverse ? "reverse" : "arrival"} verification order)`, async () => {
+  const release = new Map<string, () => void>();
+  let started!: () => void;
+  const bothStarted = new Promise<void>(resolve => { started = resolve; });
+  const h = businessHandlers(async (sig, key) => {
+    const row = await verifyEnvelope(sig, key);
+    await new Promise<void>(resolve => { release.set(row.mode, resolve); if (release.size === 2) started(); });
+    return row;
+  });
+  const modes = ["role-labels", "distinct-principals"];
+  const tasks = modes.map(mode => h.template(envelope({ forumId: fixture.PILOT_FORUM_ID, mode }, h.owner)));
+  await bothStarted;
+  const first = reverse ? 1 : 0;
+  release.get(modes[first])!(); await tasks[first];
+  assert.equal(h.businessRoles.view().state, "ready");
+  release.get(modes[1 - first])!(); await tasks[1 - first];
+  assert.equal(h.businessRoles.view().state, "conflict");
+  assert.deepEqual(h.businessRoles.view().members, []);
+});
+test("both template modes survive missing-key retries", async () => {
+  const h = businessHandlers(); h.keys.delete(h.owner);
+  for (const mode of ["role-labels", "distinct-principals"])
+    await h.template(envelope({ forumId: fixture.PILOT_FORUM_ID, mode }, h.owner));
+  assert.equal(h.retries.size(), 2);
+  h.keys.set(h.owner, h.owner); h.retries.retry(); await flush();
+  assert.equal(h.businessRoles.view().state, "conflict");
+  assert.equal(h.retries.size(), 0);
+});
+for (const change of ["rotation", "owner", "cleanup", "disconnect"] as const)
+  test(`pending template verification is fenced by ${change}`, async () => {
+    let release!: () => void, started!: () => void;
+    const verifying = new Promise<void>(resolve => { started = resolve; });
+    const h = businessHandlers(async (sig, key) => {
+      await new Promise<void>(resolve => { release = resolve; started(); });
+      return verifyEnvelope(sig, key);
+    });
+    const pending = h.template(envelope({ forumId: fixture.PILOT_FORUM_ID, mode: "role-labels" }, h.owner));
+    await verifying;
+    if (change === "rotation") h.keys.set(h.owner, "new-key");
+    if (change === "owner") h.graph.putObject(fixture.PILOT_FORUM_ID, fixture.PILOT_AGENTS[1].status.seaPubkey);
+    if (change === "cleanup") h.proofs.reset();
+    if (change === "disconnect") h.proofs.interrupt();
+    release(); await pending;
+    assert.equal(h.businessRoles.view().state, "waiting");
+  });
+
+test("cleanup during retry-key hashing cannot enqueue old-source evidence", async () => {
+  const h = businessHandlers();
+  const pending = h.template(envelope({ forumId: fixture.PILOT_FORUM_ID, mode: "role-labels" }, h.owner));
+  h.proofs.reset(); h.retries.clear();
+  await pending;
+  assert.equal(h.businessRoles.view().state, "waiting");
+  assert.equal(h.retries.size(), 0);
 });

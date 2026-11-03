@@ -15,6 +15,14 @@ export function parseBusinessTemplate(input: unknown, forumId: string): ForumTem
   return Object.freeze({ forumId, mode: row.mode });
 }
 
+/** Separate bounded retry slots for signed evidence, never for an unsigned mode
+ * hint. A fixed-size digest stays within the shared retry-key length limit. */
+export async function businessTemplateRetryKey(sig: string): Promise<string | null> {
+  if (!sig.startsWith("SEA") || sig.length > 32768) return null;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sig));
+  return "template:" + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
+}
+
 export type BusinessRoleView = {
   state: "waiting" | "conflict" | "capacity" | "ready";
   mode: ForumTemplate["mode"] | null;
