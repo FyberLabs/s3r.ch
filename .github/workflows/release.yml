@@ -111,11 +111,12 @@ jobs:
           LOCAL_TAG: s3rch:release
         run: node scripts/publish-version-tag.mjs
 
-      - name: Require an anonymous pull
+      - name: Pull and boot the published digest anonymously
         working-directory: trusted
         env:
           IMAGE: ${{ steps.ver.outputs.image }}
           VERSION: ${{ steps.ver.outputs.version }}
+          DIGEST: ${{ steps.push.outputs.digest }}
         run: bash scripts/require-anonymous-pull.sh
 
       - name: Move minor and latest only when this version is not older
