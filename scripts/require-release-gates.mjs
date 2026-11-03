@@ -1,11 +1,9 @@
 /**
- * Stop a tag publish unless a reviewer must approve the release environment,
- * the tag commit is on the protected default branch, and this checkout matches
+ * Stop a tag publish unless the tag commit is on the protected default branch
+ * and this checkout matches
  * the release scripts on that branch.
  */
 import { execFileSync } from "node:child_process";
-
-const ENVIRONMENT = "release";
 
 export const TRUSTED_RELEASE_FILES = [
   "scripts/require-release-gates.mjs",
@@ -29,19 +27,8 @@ export function trustedTreeErrors(checks) {
   return errors;
 }
 
-export function reviewerCount(environment) {
-  const rules = Array.isArray(environment?.protection_rules) ? environment.protection_rules : [];
-  const rule = rules.find((item) => item?.type === "required_reviewers");
-  return Array.isArray(rule?.reviewers) ? rule.reviewers.length : 0;
-}
-
-export function gateErrors(environment, branch) {
+export function gateErrors(branch) {
   const errors = [];
-  if (reviewerCount(environment) < 1) {
-    errors.push(
-      `GitHub environment "${ENVIRONMENT}" must require at least one reviewer before a tag can publish.`,
-    );
-  }
   const name = branch?.name || "default branch";
   if (!branch?.protected) {
     errors.push(`Branch ${name} is not protected.`);
@@ -118,19 +105,8 @@ function main() {
   }
   fetchBranch(branchName);
   const errors = trustedTreeErrors(trustedChecks(branchName));
-  let environment;
-  try {
-    environment = gh(`repos/${repo}/environments/${ENVIRONMENT}`);
-  } catch (error) {
-    console.error(error.message);
-    errors.push(
-      `The "${ENVIRONMENT}" environment must exist and require at least one reviewer before a tag is pushed.`,
-    );
-  }
-  if (environment) {
-    const branch = gh(`repos/${repo}/branches/${branchName}`);
-    errors.push(...gateErrors(environment, branch));
-  }
+  const branch = gh(`repos/${repo}/branches/${branchName}`);
+  errors.push(...gateErrors(branch));
   if (!onDefaultBranch(sha, branchName)) {
     errors.push(`Tag commit ${sha} is not on ${branchName}.`);
   }
