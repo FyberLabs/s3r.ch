@@ -1,3 +1,4 @@
+import type { CancellationEnvelope } from "./delegation-outbox";
 import type { createInventoryBoundOutbox } from "./delegation-bound-outbox";
 import type { createReplacementGrantOutbox } from "./delegation-replacement-grants";
 import { isSeaPubkey } from "./identity/forum-check";
@@ -8,6 +9,7 @@ import { recoveryList, recoveryObject } from "./identity/forum-recovery-records"
 
 type Result = Readonly<{ ok: true; operationId: string; evaluatedAt: number; fence: string; status: "acl-reconciled" }> |
   Readonly<{ ok: true; operationId: string; evaluatedAt: number; fence: string; status: "reassignment-access-reconciled"; replacement: string; checkedGrants: number }> |
+  Readonly<{ ok: true; operationId: string; evaluatedAt: number; fence: string; status: "replacement-publication-ready"; replacement: string; grants: readonly CancellationEnvelope[] }> |
   Readonly<{ ok: false; reason: string }>;
 /** The provider must supply complete authenticated history and durable ACL
  * evidence, not a browser cache or a Gun put acknowledgement. All ports
@@ -23,7 +25,7 @@ export function createCancellationReconciler(input: {
   clock?: () => number;
 }) {
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
-  async function reconcile(operationId: string, replacement: string | null = null): Promise<Result> {
+  async function reconcile(operationId: string, replacement: string | null = null, preflight = false): Promise<Result> {
     const fail = (reason: string): Result => Object.freeze({ ok: false, reason });
     try {
       const saved = await input.outbox.load(operationId);
@@ -46,6 +48,16 @@ export function createCancellationReconciler(input: {
         rows.push({ kind: p.kind, soul: p.soul, record: p.row });
         evidence.add(JSON.stringify([p.kind, p.soul, p.row]));
       }
+      // Prospective rows are restricted to positive direct grants for the saved
+      // replacement, so they cannot cancel old access or introduce ownership.
+      // Keep durable evidence separate: candidates never establish publication.
+      if (preflight && plan) for (const record of plan.grants) {
+        const p = parseForumAuthority(record.kind, JSON.parse(record.recordJson));
+        if (!p || (p.kind !== "see" && p.kind !== "post") || p.cancellation ||
+            p.row.accessor !== replacement || !inventory.destinations.includes(p.row.object))
+          return fail("invalid-replacement-candidate");
+        rows.push({ kind: p.kind, soul: p.soul, record: p.row });
+      }
       const authority = createForumAuthority(input.config, clock);
       const admitted = await authority.refresh({ completeThrough: supplied.completeThrough as number,
         history: supplied.history as ForumAuthoritySnapshot["history"], rows }, at);
@@ -65,7 +77,7 @@ export function createCancellationReconciler(input: {
         const p = parseForumAuthority(record.kind, JSON.parse(record.recordJson));
         if (!p || (p.kind !== "see" && p.kind !== "post") || p.cancellation ||
             p.row.accessor !== replacement || !inventory.destinations.includes(p.row.object) ||
-            !evidence.has(JSON.stringify([p.kind, p.soul, p.row]))) return fail("missing-exact-replacement-grant");
+            (!preflight && !evidence.has(JSON.stringify([p.kind, p.soul, p.row])))) return fail("missing-exact-replacement-grant");
         // Independent group access cannot stand in for a saved direct-see grant.
         // Presence of a signed record alone does not prove it is effective now.
         const check = p.kind === "post" ? authority.graph.checkPost : authority.graph.checkDirectSee;
@@ -82,6 +94,8 @@ export function createCancellationReconciler(input: {
         if (!latestPlan || JSON.stringify(latestPlan) !== JSON.stringify(plan)) return fail("replacement-plan-changed");
       }
       if (clock() !== at) return fail("stale-evaluation");
+      if (preflight && replacement !== null && plan) return Object.freeze({ ok: true, operationId, evaluatedAt: at,
+        fence: saved.fence, status: "replacement-publication-ready", replacement, grants: plan.grants });
       if (replacement !== null && plan) return Object.freeze({ ok: true, operationId, evaluatedAt: at,
         fence: saved.fence, status: "reassignment-access-reconciled", replacement, checkedGrants: plan.grants.length });
       return Object.freeze({ ok: true, operationId, evaluatedAt: at, fence: saved.fence, status: "acl-reconciled" });
@@ -89,6 +103,13 @@ export function createCancellationReconciler(input: {
   }
   return Object.freeze({
     reconcile: (operationId: string) => reconcile(operationId),
+    // Internal preflight only: the publisher must serialize assignment/grant
+    // mutations and revalidate at dispatch. This is not a durable permission token.
+    async preflightReplacement(operationId: string, replacement: string): Promise<Result> {
+      if (typeof replacement !== "string" || !isSeaPubkey(replacement))
+        return Object.freeze({ ok: false, reason: "invalid-replacement" });
+      return reconcile(operationId, replacement, true);
+    },
     async reconcileReassignment(operationId: string, replacement: string): Promise<Result> {
       if (typeof replacement !== "string" || !isSeaPubkey(replacement))
         return Object.freeze({ ok: false, reason: "invalid-replacement" });

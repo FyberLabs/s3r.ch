@@ -135,6 +135,28 @@ The coordinator still needs serialized mutation and complete durable providers
 before this can drive the UI. Cancellation-only `reconcile` keeps its existing
 meaning and does not require a replacement plan.
 
+## Before publishing replacement grants
+
+`preflightReplacement(operationId, replacement)` verifies the saved grant batch
+before it is sent. It loads complete durable ACL/history evidence and evaluates
+that evidence together with the saved candidate grants. Candidates are restricted
+to positive direct-see/post grants for the saved replacement at registered
+destinations; they cannot establish ownership or cancel the old assignee's access.
+Exact old cancellations must already be present in the durable evidence, with no
+remaining old-assignee access. Owner signatures, current-key history, grant windows
+and newer replacement cancellations are checked by the same authority resolver.
+
+Success returns `replacement-publication-ready` and the entire exact saved batch,
+including records that may already have been published before a lost response.
+It does not alter the source snapshot or treat candidate records as durable
+publication evidence. `reconcileReassignment` still requires those records in
+actual durable evidence before reporting replacement access.
+
+The preflight is an instantaneous internal check, not a portable permission token.
+The publisher must serialize assignment/grant mutations, revalidate at dispatch,
+send only the saved bytes, and reconcile after publication. No publication adapter,
+assignment completion receipt or UI enablement is introduced by this helper.
+
 ## Remaining integration and validation
 
 - Wire authenticated scope, managed-identity storage and a trusted complete

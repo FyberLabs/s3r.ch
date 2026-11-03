@@ -179,3 +179,64 @@ for (const window of [{ from: at - 20, until: at }, { from: at + 1, until: at + 
     assert.deepEqual(await r.reconciler.reconcileReassignment(operationId, replacement), { ok: false, reason: "replacement-access-missing" });
   });
 }
+
+function unpublish(r: Awaited<ReturnType<typeof reassignmentHarness>>) {
+  r.h.snapshot = { ...r.h.snapshot, rows: r.h.snapshot.rows.filter(row => !r.grants.includes(row)) };
+}
+test("preflight validates unpublished saved grants without claiming durable publication", async () => {
+  const r = await reassignmentHarness(); unpublish(r);
+  const before = JSON.stringify(r.h.snapshot);
+  const result = await r.reconciler.preflightReplacement(operationId, replacement);
+  assert.ok(result.ok, JSON.stringify(result)); assert.equal(result.status, "replacement-publication-ready");
+  if (result.status === "replacement-publication-ready") assert.deepEqual(result.grants, r.plan.grants);
+  assert.equal(JSON.stringify(r.h.snapshot), before);
+  assert.deepEqual(await r.reconciler.reconcileReassignment(operationId, replacement), { ok: false, reason: "missing-exact-replacement-grant" });
+});
+test("partial publication still returns the entire original batch for idempotent retry", async () => {
+  const r = await reassignmentHarness();
+  r.h.snapshot = { ...r.h.snapshot, rows: r.h.snapshot.rows.filter(row => row !== r.grants[1]) };
+  const result = await r.reconciler.preflightReplacement(operationId, replacement);
+  assert.ok(result.ok, JSON.stringify(result)); assert.equal(result.status, "replacement-publication-ready");
+  if (result.status === "replacement-publication-ready") assert.deepEqual(result.grants, r.plan.grants);
+});
+test("preflight verifies stored candidate signatures, not just their structure", async () => {
+  const r = await reassignmentHarness(); unpublish(r);
+  const corrupted = structuredClone(r.plan);
+  const row = JSON.parse(corrupted.grants[0].recordJson); row.sig = "forged";
+  r.documents.set(operationId, JSON.stringify({ ...corrupted, grants: [
+    { ...corrupted.grants[0], recordJson: JSON.stringify(row) }, corrupted.grants[1],
+  ] }));
+  assert.deepEqual(await r.reconciler.preflightReplacement(operationId, replacement), { ok: false, reason: "unverified-authority" });
+});
+for (const missing of ["cancellation", "ownership", "history", "old-access"] as const) {
+  test(`preflight cannot replace durable ${missing} evidence with candidate grants`, async () => {
+    const r = await reassignmentHarness(); unpublish(r);
+    if (missing === "cancellation") r.h.snapshot = { ...r.h.snapshot, rows: r.h.snapshot.rows.filter(row => row !== r.h.records[0]) };
+    if (missing === "ownership") r.h.snapshot = { ...r.h.snapshot, rows: r.h.snapshot.rows.filter(row => row.kind !== "object") };
+    if (missing === "history") r.h.snapshot = { ...r.h.snapshot, history: { ...r.h.snapshot.history, completeThrough: at - 1 } };
+    if (missing === "old-access") r.h.snapshot = { ...r.h.snapshot, rows: [...r.h.snapshot.rows, ...group()] };
+    assert.equal((await r.reconciler.preflightReplacement(operationId, replacement)).ok, false);
+  });
+}
+test("a newer replacement cancellation blocks replaying the saved grant batch", async () => {
+  const r = await reassignmentHarness(); unpublish(r);
+  r.h.snapshot = { ...r.h.snapshot, rows: [...r.h.snapshot.rows, grant("post", 0, 5, destination, replacement)] };
+  assert.deepEqual(await r.reconciler.preflightReplacement(operationId, replacement), { ok: false, reason: "replacement-access-missing" });
+});
+for (const window of [{ from: at - 20, until: at }, { from: at + 1, until: at + 100 }]) {
+  test(`preflight rejects inactive saved windows: ${JSON.stringify(window)}`, async () => {
+    const r = await reassignmentHarness(window); unpublish(r);
+    assert.deepEqual(await r.reconciler.preflightReplacement(operationId, replacement), { ok: false, reason: "replacement-access-missing" });
+  });
+}
+test("preflight rechecks plan durability and evaluation time after verification", async () => {
+  const r = await reassignmentHarness(); unpublish(r); let reads = 0;
+  const missing = createCancellationReconciler({ ...r.input, replacementGrants: { async load(id, target) {
+    if (++reads > 1) r.documents.clear(); return r.plans.load(id, target);
+  } } });
+  assert.deepEqual(await missing.preflightReplacement(operationId, replacement), { ok: false, reason: "replacement-plan-changed" });
+  const fresh = await reassignmentHarness(); unpublish(fresh); reads = 0;
+  const expired = createCancellationReconciler({ ...fresh.input, clock: () => at + (reads > 1 ? 1 : 0),
+    replacementGrants: { async load(id, target) { reads++; return fresh.plans.load(id, target); } } });
+  assert.deepEqual(await expired.preflightReplacement(operationId, replacement), { ok: false, reason: "stale-evaluation" });
+});
