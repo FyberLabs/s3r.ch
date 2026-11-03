@@ -118,6 +118,23 @@ After verification, the helper rereads storage and rejects changes or an expired
 evaluation second. `acl-reconciled` is an instantaneous internal observation,
 not an assignment-completion receipt or permission to issue arbitrary new grants.
 
+`reconcileReassignment(operationId, replacement)` additionally loads the immutable
+replacement plan and checks both sides against the same authenticated snapshot:
+old-assignee access is absent at every registered destination, each exact saved
+replacement grant is present, and its requested direct-see/post permission is
+currently effective. Saved grant windows must be active; other grants or group
+access cannot substitute for missing exact evidence or a canceled direct grant.
+The cancellation document, inventory and replacement plan are rechecked after
+verification, and an expired evaluation second invalidates the result.
+
+`reassignment-access-reconciled` reports the recipient and number of checked
+grants. It checks the chosen plan, not whether that plan includes every permission
+an assignment needs. It remains an instantaneous internal observation: it does
+not publish grants, change assignment metadata, or persist a completion receipt.
+The coordinator still needs serialized mutation and complete durable providers
+before this can drive the UI. Cancellation-only `reconcile` keeps its existing
+meaning and does not require a replacement plan.
+
 ## Remaining integration and validation
 
 - Wire authenticated scope, managed-identity storage and a trusted complete
