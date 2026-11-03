@@ -18,7 +18,7 @@ drawer. The overflow menu contains Memory map, Reports and Messages.
 The + Create forum menu lists Business, Squad, Fleet, Command and Custom. Creation
 is disabled until authenticated admission exists; choosing a template cannot
 create a local substitute or grant access. Only the current Squad preview has an
-open link. Fleet/Command boards and business role content remain separate work.
+open link. Fleet/Command boards and role-specific business data remain separate work.
 
 Links & Messages reserves the right-column surface for directed messages,
 situation reports and skill publishes. No source is connected yet. Shared memory,
@@ -320,3 +320,39 @@ production provider is still required before live graph integration.
 
 The [Squad admission audit](forum-admission-audit.md) maps the current receive and
 publish paths to regression tests, cache bounds and remaining live acceptance.
+
+## Business role windows
+
+The board shows Treasurer (`treasurer`), Secretary (`secretary`), Practice Manager
+(`practice-manager`) and President / PM (`president`) windows. These are role
+labels, not grants. An assigned principal can open its current contributor drawer;
+without verified status there is no drawer shortcut. Sample contributors do not
+populate business assignments.
+
+The template soul carries a SEA-signed payload with exactly `forumId` and `mode`
+(`distinct-principals` or `role-labels`). Both template and membership must verify
+against the forum owner's current signing key. Membership is the existing
+`{forumId, role, principal}` contract at `roles/<role>/<principal>`. The signature,
+not the outer Gun fields or arrival order, supplies these values. Missing key
+history uses the same bounded receive retry path as other forum rows.
+
+Every displayed assignment still needs its retained verification receipt and
+current forum ownership. Separate-principal templates prohibit a principal in
+multiple roles; label templates require a single principal. Both prohibit two
+principals for one role. Validation includes other admitted role tokens, not just
+the four visible windows. Conflicting signed template modes or assignments hide
+all assignments. There is no revision/removal contract for these records yet, so
+the view cannot choose a winner or treat an unsigned deletion as a role change.
+The session retains at most 128 membership pairs; exceeding that bound hides
+assignments rather than overlooking a possible conflict. Reload is not proof of
+complete membership history.
+
+Allocation records, memory links/onboarding, distilled skills/scorecards, and
+roadmap entries do not yet have connected authenticated sources. The windows say
+so and do not substitute sample amounts, graphs or tasks. Commission, Publish
+and Assign remain disabled until their own role authorization paths exist.
+Resolving a need does not elect an owner or change membership.
+
+Issue #141 remains open for those role-specific sources and their read models;
+#190 retains deployed, authenticated end-to-end acceptance. This interface does
+not enable the public fixture mesh or introduce configuration variables.

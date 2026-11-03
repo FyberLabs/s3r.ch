@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
+import * as business from "./forum-business-roles";
 import * as squad from "./forum-squad";
 import * as check from "./identity/check";
 import * as fixture from "./forum-squad-fixture";
@@ -23,7 +24,7 @@ function handlers(names: string[], bindings: Record<string, unknown>) {
     return declaration[0];
   });
   const body = stripTypeScriptTypes(found.join("\n"));
-  const env = { ...squad, ...check, ...fixture, signatureOf, soulKeyMatches, ...bindings };
+  const env = { ...business, ...squad, ...check, ...fixture, signatureOf, soulKeyMatches, ...bindings };
   return new Function(...Object.keys(env), `${body}\nreturn { ${names.join(",")} };`)(...Object.values(env));
 }
 const flush = async () => { for (let n = 0; n < 4; n++) await new Promise<void>(resolve => setImmediate(resolve)); };
@@ -101,4 +102,50 @@ for (const fromCancel of [false, true]) test(`actual offer ${fromCancel ? "tail"
   const next = versions.bump(scope, `${base.id}:${offer.id}`);
   assert.equal(await accept(envelope(offer, helper), offer.id, base.id, next, fromCancel), true);
   assert.equal(cancels.size, 1); assert.equal(offers.size, 1);
+});
+
+function businessHandlers() {
+  const h = proofSetup(), owner = fixture.PILOT_OWNER;
+  const graph = createMemorySeeAcl(); graph.putObject(fixture.PILOT_FORUM_ID, owner);
+  const businessRoles = business.createBusinessRoles(fixture.PILOT_FORUM_ID, h.proofs.valid);
+  const versions = squad.createMeshEventVersions(), retries = createForumReceiveRetry();
+  const watches = new Map<string, squad.ForumWatch>();
+  squad.grantForumWatch(watches, "role", "treasurer", false, Date.now());
+  const fns = handlers(["acceptTemplate", "acceptRole"], {
+    cancelled: false, proofs: h.proofs, retries, versions, graphRef: { current: graph }, businessRoles,
+    forumWatches: watches, enrollPub: (pub: string, row: object) => h.proofs.enroll(pub, row), setAclRev: () => {},
+  });
+  const template = (data: unknown) => fns.acceptTemplate(data, versions.bump("template", "mode"));
+  const role = (data: unknown, principal: string) => fns.acceptRole(data, "treasurer", principal, versions.bump("role", `treasurer:${principal}`));
+  return { ...h, graph, businessRoles, template, role, retries, owner };
+}
+test("actual role/template receivers retry missing keys and withdraw display on rotation or ownership change", async () => {
+  const h = businessHandlers(), forumId = fixture.PILOT_FORUM_ID, principal = fixture.PILOT_AGENTS[0].status.seaPubkey;
+  const t = { forumId, mode: "role-labels" }, m = { forumId, role: "treasurer", principal };
+  h.keys.delete(h.owner);
+  await h.template(envelope(t, h.owner)); await h.role(envelope(m, h.owner), principal);
+  assert.equal(h.businessRoles.view().state, "waiting");
+  h.keys.set(h.owner, h.owner); h.retries.retry(); await flush();
+  assert.equal(h.businessRoles.view().state, "ready"); assert.equal(h.businessRoles.view().members.length, 1);
+  h.keys.set(h.owner, "new-key"); assert.equal(h.businessRoles.view().state, "waiting");
+  await h.template(envelope(t, "new-key")); assert.deepEqual(h.businessRoles.view().members, []);
+  await h.role(envelope(m, "new-key"), principal); assert.equal(h.businessRoles.view().members.length, 1);
+  h.graph.putObject(forumId, fixture.PILOT_AGENTS[1].status.seaPubkey);
+  assert.equal(h.businessRoles.view().state, "waiting");
+});
+test("actual receivers reject forged signatures and wrong role routes without erasing verified assignments", async () => {
+  const h = businessHandlers(), forumId = fixture.PILOT_FORUM_ID, principal = fixture.PILOT_AGENTS[0].status.seaPubkey;
+  const t = { forumId, mode: "role-labels" }, m = { forumId, role: "treasurer", principal };
+  await h.template(envelope(t, "attacker")); await h.role(envelope(m, "attacker"), principal);
+  assert.equal(h.businessRoles.view().state, "waiting");
+  await h.template(envelope(t, h.owner));
+  await h.role(envelope({ ...m, role: "secretary" }, h.owner), principal);
+  await h.role(envelope(m, h.owner), fixture.PILOT_AGENTS[1].status.seaPubkey);
+  assert.deepEqual(h.businessRoles.view().members, []);
+  await h.role(envelope(m, h.owner), principal);
+  await h.template(envelope({ ...t, mode: "distinct-principals" }, "attacker"));
+  await h.role(null, principal);
+  assert.equal(h.businessRoles.view().state, "ready"); assert.equal(h.businessRoles.view().members.length, 1);
+  await h.template(envelope({ ...t, mode: "distinct-principals" }, h.owner));
+  assert.equal(h.businessRoles.view().state, "conflict");
 });
