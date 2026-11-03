@@ -102,3 +102,26 @@ access paths. Both storage adapters must use the same authenticated namespace.
 The coordinator must still reconcile complete inventory, verify owner/cancellation
 proofs, enforce dispatch/grant fences and obtain worker drain evidence before
 reporting completion. The helper exposes neither publication nor resume controls.
+
+## Cancellation reconciliation
+
+`lib/delegation-reconcile.ts` composes the inventory-bound outbox with the existing
+signed forum authority resolver. A trusted provider must return complete durable
+ACL evidence and authenticated recovery history for the evaluation time. Browser
+caches and Gun write acknowledgements do not satisfy this provider contract.
+
+Every saved cancellation must appear in the verified snapshot with the same
+signature and attestation. Invalid proof diagnostics block reconciliation. Every
+frozen destination needs authenticated ownership, and post, direct-see and group
+read access must all be absent. A canceled post grant does not stand in for a
+canceled read grant. An agent that owns the destination still has owner authority;
+this flow neither transfers ownership nor pretends to revoke it.
+
+After verification, the helper rereads the bound operation and inventory, rejects
+changes or missing storage, and checks that the evaluation second has not expired.
+The result `acl-reconciled` is an instantaneous internal observation, not a signed
+receipt, a durable pause result, or permission to issue replacement grants. There
+is no publication, worker-stop, resume or UI-enable method. Live provider wiring,
+complete destination registration, dispatch/grant fencing and worker drain are
+still required. Cancellation proofs signed by retired keys continue to use the
+existing resolver's witness requirements.
