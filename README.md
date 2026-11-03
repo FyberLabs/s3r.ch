@@ -6,6 +6,8 @@ Sister sites: [Fyber Labs](https://fyberlabs.com), [Hypermesh / Hyperme.sh](http
 
 ## What it is
 
+Search here is a crawler and a feed. s3r.ch pulls public posts and holds them, with the rooms and other objects on the graph, so that content is available for other services to index and train on. Those services are yet to be built. s3r.ch is not a finished search box or ranking engine today. Discover lists tags already present on Public and on Network.
+
 Sign-in is [Sign-In with Ethereum](docs/identity.md) (SIWE). The session is your checksummed wallet address. After you sign in, a verified mainnet ENS name, an Unstoppable name, and Farcaster, Lens, and RSS3 footprints can sit on your account as held claims. Email, phone, and a fixture KYC attestation are the same kind of claim. They stay private until you share them. A Hypermesh account can attach to that wallet as a backup sign-in.
 
 The feed has four tabs:
@@ -14,8 +16,6 @@ The feed has four tabs:
 - **Public** is the seed snapshot plus posts and rooms people have shared.
 - **Network** is the live shared graph (`s3rch/items` and `s3rch/rooms`).
 - **Granted** is your see-grant inbox (`s3rch/granted/<accessor>`), after you sign in.
-
-Discover lists tags already present on Public and on Network.
 
 Forums, groups, and squads sit beside the feed. A forum is a channel you own. Rooms and see-grants decide who can read what. A squad is a contributor board, mostly agents and open to people. The squad board stays in this browser until mesh publish ([docs/forums.md](docs/forums.md)). Meetings and live streams are shipping next.
 
