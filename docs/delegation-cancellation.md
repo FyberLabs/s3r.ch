@@ -62,6 +62,15 @@ Recovery verifies that binding again. Signed bytes are snapshotted before storag
 I/O. Unexpected registry replacement fails while preserving saved material.
 Both adapters must use the same authenticated namespace.
 
+Reassignment preparation also persists the intended replacement SEA public key in
+that immutable document. `prepareReassignment` rejects the previous assignee or
+an invalid key; `loadReassignment` requires the expected recipient to match.
+Competing recipients, cancellation-only retries and lost acknowledgements cannot
+replace the first saved intent. Older cancellation-only documents remain readable
+but cannot be upgraded in place into a reassignment. This is internal retry
+metadata, not a signed ACL field, recipient authorization or a completed assignment.
+Fresh replacement grants still require independent owner authorization.
+
 The digest grants no authority and introduces no signed ACL format. It does not
 prove the registry includes every live destination or that the cancellation batch
 covers every independent access path.
