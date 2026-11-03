@@ -33,6 +33,7 @@ export function parseDrawerRecord(input: unknown): DrawerRecord | null {
   return Object.freeze(Object.fromEntries(fields.map(k => [k, r[k]]))) as DrawerRecord;
 }
 export type DrawerAuthority = {
+  publishChild?: (record: DrawerRecord, signature: string) => Promise<boolean>;
   graph: ForumAuthorityGraph;
   subscribe(fn: () => void): () => void;
 };
@@ -197,7 +198,14 @@ export function createForumDrawer(input: {
           (!previous || row.rev > previous.rev || (row.stated === 0 && row.rev === previous.rev && JSON.stringify(row) === JSON.stringify(previous)));
       };
       const put = (path: string) => publishForumAuthorized({ record: row, authorized: allowed,
-        sign: signing.sign, put: value => { const node = gun && forumSoulNode(gun, path); if (!node) return false; node.put(value); return true; } });
+        sign: signing.sign, put: async value => {
+          const node = gun && forumSoulNode(gun, path); if (!node) return false;
+          // A provisioned assignment source commits against the same journal as
+          // reassignment. A browser's earlier allow cannot cross its CAS fence.
+          if (input.authority.publishChild && !await input.authority.publishChild(row, value.sig)) return false;
+          if (!allowed()) return false;
+          node.put(value); return true;
+        } });
       // Publish the separate removal tail first; a lost main-row put may
       // not erase the independently subscribed tombstone.
       if (!row.stated) { const result = await put(drawerSoul(row) + "/remove"); if (result !== "signed") return result; }

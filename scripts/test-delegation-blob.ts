@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { BlobServiceClient, StorageSharedKeyCredential } from "@azure/storage-blob";
 import { setTimeout as delay } from "node:timers/promises";
 import { createBlobCancellationOutboxStore, createBlobReplacementGrantStore } from "../lib/delegation-blob-outbox";
-import { createBlobInventoryStore } from "../lib/delegation-blob-inventory";
+import { createBlobInventoryStore, createBlobAssignmentJournalStore } from "../lib/delegation-blob-inventory";
 import { createDelegationInventory } from "../lib/delegation-inventory";
 import { p256 } from "@noble/curves/nist.js";
 import { createInventoryBoundOutbox } from "../lib/delegation-bound-outbox";
@@ -50,6 +50,17 @@ if (phase === "write") {
   await store.create(id, "replacement after restart");
   assert.equal(await store.read(id), payload);
 }
+const journalStore = createBlobAssignmentJournalStore(container, scope);
+const journalText = JSON.stringify({ storageFixture: "x".repeat(140000) });
+if (phase === "write") {
+  assert.equal(await journalStore.read(), null);
+  assert.equal(await journalStore.compareAndSwap(null, journalText), true);
+  const held = (await journalStore.read())!;
+  const independent = createBlobAssignmentJournalStore(service().getContainerClient("cancellation-test"), scope);
+  assert.equal(await independent.compareAndSwap(held.etag, journalText + " "), true);
+  assert.equal(await journalStore.compareAndSwap(held.etag, "stale"), false);
+  assert.equal(await journalStore.compareAndSwap(null, "reset"), false);
+} else assert.equal((await journalStore.read())?.text, journalText + " ", "assignment CAS journal survives restart");
 const inventoryStore = createBlobInventoryStore(container, scope);
 const inventory = createDelegationInventory(inventoryStore);
 const destination = (n: number) => `need_p_${"1".repeat(128)}_${n.toString(16).padStart(32, "0")}`;

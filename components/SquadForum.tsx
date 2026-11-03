@@ -2094,7 +2094,7 @@ export function SquadForum() {
               Reply in chat
             </button>
           </div>
-          <SquadDelegationControls />
+          <SquadDelegationControls scope={{ forum: PILOT_FORUM_ID, owner: active.status.seaPubkey }} />
           <p className="mt-3 text-xs text-ink-muted">Tag {forumChatTag(PILOT_FORUM_ID)}</p>
         </div>
       ) : null}

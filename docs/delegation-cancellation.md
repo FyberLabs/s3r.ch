@@ -182,16 +182,13 @@ The publisher must serialize assignment/grant mutations, revalidate at dispatch,
 send only the saved bytes, and reconcile after publication. No publication adapter,
 assignment completion receipt or UI enablement is introduced by this helper.
 
-## Remaining integration and validation
+## Connected runtime and validation
 
-- Wire authenticated scope, managed-identity storage and a trusted complete
-  authority provider, including infra/config ownership and live validation.
-- Register every destination/child and serialize assignment/grant mutations.
-- Publish and reconcile exact saved cancellations, then issue fresh replacement
-  grants under destination-owner authority.
-- Persist assignment results and recover partial failures without restoring old
-  grants; support later authorized assignment operations.
-- Connect the controls and verify multi-client reload, retry and concurrent edits.
+[Durable assignment and access](assignment-runtime.md) connects these components
+to an authenticated runtime, conditional journal, fresh-grant publisher, saved
+operation controls, and fenced drawer child writes. It documents the isolated
+synthetic Squad acceptance and the production provider/deployment work retained
+in #190. The helper preflights above still do not themselves prove publication.
 
 `bash scripts/test-delegation-blob.sh` runs digest-pinned Azurite on a random
 loopback port and removes it afterward. Independent SDK clients test conflicts,

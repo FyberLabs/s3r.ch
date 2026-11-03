@@ -34,6 +34,9 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Synthetic Squad multi-client recovery acceptance
+        run: node scripts/test-assignment-acceptance.mjs
+
   build:
     # Builds and starts the site with no Panopticon or identity storage
     # settings, so those integrations stay optional.

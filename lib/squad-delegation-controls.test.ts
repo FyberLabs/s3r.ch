@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { ForumAuthorityProvider } from "../components/ForumAuthorityProvider";
 import { SquadDelegationControls } from "../components/SquadDelegationControls";
 
 test("task controls render disabled and explain the missing revocation confirmation", () => {
@@ -16,4 +17,9 @@ test("task controls render disabled and explain the missing revocation confirmat
   assert.match(html, /Reassignment is unavailable until access changes can be verified/);
   assert.doesNotMatch(html, /squad-pause|>Pause<|>Stop<|worker/i);
   assert.match(html, /status alone does not change permissions/);
+});
+
+test("authority provider wraps immutable authority without enabling an unprovisioned client", () => {
+  const html = renderToStaticMarkup(createElement(ForumAuthorityProvider, { children: createElement(SquadDelegationControls) }));
+  assert.match(html, /Reassignment is unavailable/);
 });
