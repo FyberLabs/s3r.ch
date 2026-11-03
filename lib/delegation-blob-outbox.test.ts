@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Readable } from "node:stream";
 import type { ContainerClient } from "@azure/storage-blob";
-import { createBlobCancellationOutboxStore, CANCELLATION_BLOB_MAX_BYTES as cap } from "./delegation-blob-outbox";
+import { createBlobCancellationOutboxStore, createBlobReplacementGrantStore, CANCELLATION_BLOB_MAX_BYTES as cap } from "./delegation-blob-outbox";
 const id = "a".repeat(32), scope = "b".repeat(64);
 function setup(client: object) {
   const names: string[] = [];
@@ -50,4 +50,27 @@ test("bounded reads reject oversized, truncated, invalid UTF-8 and incomplete re
     else await assert.rejects(store.read(id));
     assert.equal(stream.destroyed, true);
   }
+});
+
+test("replacement grant documents cannot overwrite cancellation slots for the same operation", async () => {
+  const documents = new Map<string, Buffer>();
+  const container = { getBlockBlobClient(name: string) { return {
+    async upload(body: Buffer, _length: number, options: any) {
+      assert.deepEqual(options.conditions, { ifNoneMatch: "*" });
+      if (documents.has(name)) throw failure(412, "ConditionNotMet");
+      documents.set(name, body); return { etag: "tag" };
+    },
+    async download() {
+      const body = documents.get(name)!;
+      return { etag: "tag", contentLength: body.length, readableStreamBody: Readable.from([body]) };
+    },
+  }; } } as unknown as ContainerClient;
+  const cancellation = createBlobCancellationOutboxStore(container, scope);
+  const replacement = createBlobReplacementGrantStore(container, scope);
+  await cancellation.create(id, "cancellation"); await replacement.create(id, "grants");
+  await replacement.create(id, "changed");
+  assert.equal(await cancellation.read(id), "cancellation");
+  assert.equal(await replacement.read(id), "grants");
+  assert.equal(documents.size, 2);
+  assert.ok(documents.has(`s3rch-delegation-replacement-grants/v1/${scope}/${id}.json`));
 });

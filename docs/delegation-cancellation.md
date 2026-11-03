@@ -75,6 +75,34 @@ The digest grants no authority and introduces no signed ACL format. It does not
 prove the registry includes every live destination or that the cancellation batch
 covers every independent access path.
 
+## Replacement-grant retry storage
+
+`lib/delegation-replacement-grants.ts` persists a separate immutable plan of exact
+signed direct-see/post grants. Before publishing any replacement grant, prepare
+its complete intended batch with the saved reassignment operation ID and recipient.
+The plan binds the entire cancellation document (including recipient and exact
+signed cancellation bytes) and frozen inventory. Only positive grants for that
+recipient at registered destinations are accepted; duplicate souls fail closed.
+Group membership and object ownership changes are not part of this grant plan.
+
+Retries preserve signatures, attestations, permissions and expiry. If only part of
+the batch was published, recover and retry the original batch; do not shorten it,
+renew its windows or restore old grants. A conflicting plan or changed operation
+fails without deleting either document. Legacy cancellation-only operations cannot
+prepare replacement grants. Plans are bounded to 512 records (at most one see and
+one post per registered destination) and 1 MiB; no truncation is permitted.
+
+`createBlobReplacementGrantStore` reuses the bounded conditional Blob adapter in
+`s3rch-delegation-replacement-grants/v1/<scope>/<operation>.json`, separate from
+the cancellation slot but under the same authenticated scope. No additional
+configuration or environment variables are introduced.
+
+This storage layer checks structure and intent, not signatures, owner authority,
+freshness, cancellation completion or whether the chosen permissions satisfy the
+assignment. The coordinator must independently authorize fresh grants, reconcile
+old access before publishing, and verify complete durable replacement ACL evidence
+afterward. Saving or loading a plan neither publishes it nor completes assignment.
+
 ## Access reconciliation
 
 `lib/delegation-reconcile.ts` combines the bound outbox with the signed forum
@@ -103,8 +131,8 @@ not an assignment-completion receipt or permission to issue arbitrary new grants
 
 `bash scripts/test-delegation-blob.sh` runs digest-pinned Azurite on a random
 loopback port and removes it afterward. Independent SDK clients test conflicts,
-namespace isolation, stale ETags and bound recovery after emulator/process
-restart. Signed reconciliation tests exercise surviving independent grants,
+namespace isolation, stale ETags, bound recovery and replacement-grant plans after
+emulator/process restart. Signed reconciliation tests exercise surviving independent grants,
 missing authority, forged evidence and stale evaluations. Emulator and unit
 results do not replace live Azure or multi-client acceptance.
 
