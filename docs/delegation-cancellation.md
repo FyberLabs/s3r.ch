@@ -57,3 +57,29 @@ emulator behavior, not live Azure durability, permissions, or worker fencing.
 
 References: [Azure concurrency semantics](https://learn.microsoft.com/en-us/azure/storage/blobs/concurrency-manage)
 and [Azurite](https://learn.microsoft.com/en-us/azure/storage/common/storage-install-azurite).
+
+## Destination inventory freeze
+
+`lib/delegation-inventory.ts` maintains a bounded destination registry with an
+operation-owned freeze. `lib/delegation-blob-inventory.ts` stores it separately
+at `s3rch-delegation-inventory/v1/<scope>.json`. Registration and freezing use
+ETag compare-and-swap against the same blob: a registration racing a freeze
+must either be included in the frozen snapshot or fail. Competing cancellation
+operations cannot replace the winning operation. A lost freeze response is
+reconciled by retrying the same operation ID, including after process restart.
+
+Initialization is an explicit provisioning step, never a recovery fallback.
+Missing or corrupt live state fails closed. Capacity errors retain existing
+inventory. No destination removal, automatic expiry, thaw, or reset is exposed.
+
+This registry is not yet wired into child creation, grant publication or worker
+dispatch. Every destination must be registered before any such action. A
+successful registration reserves inventory only; it does not authorize an
+external side effect after the freeze. Those paths still need enforced fencing,
+authenticated complete inventory reconciliation and worker acknowledgement/drain.
+A stored frozen operation is not evidence that a worker stopped or that an ACL
+cancellation took effect. Pause and Reassign remain unavailable.
+
+The Azurite job covers independent concurrent registrations, stale ETag refusal,
+registration racing a freeze, competing operations and frozen-state recovery
+across emulator/process restart. Real worker and live Azure acceptance remain.
