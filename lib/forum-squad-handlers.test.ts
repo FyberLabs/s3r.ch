@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
+import * as business from "./forum-business-roles";
 import * as squad from "./forum-squad";
 import * as check from "./identity/check";
 import * as fixture from "./forum-squad-fixture";
@@ -23,16 +24,17 @@ function handlers(names: string[], bindings: Record<string, unknown>) {
     return declaration[0];
   });
   const body = stripTypeScriptTypes(found.join("\n"));
-  const env = { ...squad, ...check, ...fixture, signatureOf, soulKeyMatches, ...bindings };
+  const env = { ...business, ...squad, ...check, ...fixture, signatureOf, soulKeyMatches, ...bindings };
   return new Function(...Object.keys(env), `${body}\nreturn { ${names.join(",")} };`)(...Object.values(env));
 }
 const flush = async () => { for (let n = 0; n < 4; n++) await new Promise<void>(resolve => setImmediate(resolve)); };
 const envelope = (row: object, key: string) => ({ ...row, sig: "SEA" + JSON.stringify([row, key]) });
-function proofSetup() {
+const verifyEnvelope = async (sig: string, key: string) => { const [row, signedKey] = JSON.parse(sig.slice(3)); return signedKey === key ? row : null; };
+function proofSetup(verify = verifyEnvelope) {
   const keys = new Map(fixture.PILOT_AGENTS.map(a => [a.status.seaPubkey, a.status.seaPubkey]));
   keys.set(fixture.PILOT_OWNER, fixture.PILOT_OWNER);
   const proofs = createForumReceiveProofs({ key: p => keys.get(p) ?? null, ready: () => true,
-    verify: async (sig, key) => { const [row, signedKey] = JSON.parse(sig.slice(3)); return signedKey === key ? row : null; } });
+    verify });
   return { keys, proofs };
 }
 
@@ -101,4 +103,105 @@ for (const fromCancel of [false, true]) test(`actual offer ${fromCancel ? "tail"
   const next = versions.bump(scope, `${base.id}:${offer.id}`);
   assert.equal(await accept(envelope(offer, helper), offer.id, base.id, next, fromCancel), true);
   assert.equal(cancels.size, 1); assert.equal(offers.size, 1);
+});
+
+function businessHandlers(verify = verifyEnvelope) {
+  const h = proofSetup(verify), owner = fixture.PILOT_OWNER;
+  const graph = createMemorySeeAcl(); graph.putObject(fixture.PILOT_FORUM_ID, owner);
+  const businessRoles = business.createBusinessRoles(fixture.PILOT_FORUM_ID, h.proofs.valid);
+  const versions = squad.createMeshEventVersions(), retries = createForumReceiveRetry();
+  const watches = new Map<string, squad.ForumWatch>();
+  squad.grantForumWatch(watches, "role", "treasurer", false, Date.now());
+  const fns = handlers(["acceptTemplate", "acceptRole"], {
+    cancelled: false, proofs: h.proofs, retries, versions, graphRef: { current: graph }, businessRoles,
+    forumWatches: watches, enrollPub: (pub: string, row: object) => h.proofs.enroll(pub, row), setAclRev: () => {},
+  });
+  const template = (data: unknown) => fns.acceptTemplate(data);
+  const role = (data: unknown, principal: string) => fns.acceptRole(data, "treasurer", principal, versions.bump("role", `treasurer:${principal}`));
+  return { ...h, graph, businessRoles, template, role, retries, owner };
+}
+test("actual role/template receivers retry missing keys and withdraw display on rotation or ownership change", async () => {
+  const h = businessHandlers(), forumId = fixture.PILOT_FORUM_ID, principal = fixture.PILOT_AGENTS[0].status.seaPubkey;
+  const t = { forumId, mode: "role-labels" }, m = { forumId, role: "treasurer", principal };
+  h.keys.delete(h.owner);
+  await h.template(envelope(t, h.owner)); await h.role(envelope(m, h.owner), principal);
+  assert.equal(h.businessRoles.view().state, "waiting");
+  h.keys.set(h.owner, h.owner); h.retries.retry(); await flush();
+  assert.equal(h.businessRoles.view().state, "ready"); assert.equal(h.businessRoles.view().members.length, 1);
+  h.keys.set(h.owner, "new-key"); assert.equal(h.businessRoles.view().state, "waiting");
+  await h.template(envelope(t, "new-key")); assert.deepEqual(h.businessRoles.view().members, []);
+  await h.role(envelope(m, "new-key"), principal); assert.equal(h.businessRoles.view().members.length, 1);
+  h.graph.putObject(forumId, fixture.PILOT_AGENTS[1].status.seaPubkey);
+  assert.equal(h.businessRoles.view().state, "waiting");
+});
+test("actual receivers reject forged signatures and wrong role routes without erasing verified assignments", async () => {
+  const h = businessHandlers(), forumId = fixture.PILOT_FORUM_ID, principal = fixture.PILOT_AGENTS[0].status.seaPubkey;
+  const t = { forumId, mode: "role-labels" }, m = { forumId, role: "treasurer", principal };
+  await h.template(envelope(t, "attacker")); await h.role(envelope(m, "attacker"), principal);
+  assert.equal(h.businessRoles.view().state, "waiting");
+  await h.template(envelope(t, h.owner));
+  await h.role(envelope({ ...m, role: "secretary" }, h.owner), principal);
+  await h.role(envelope(m, h.owner), fixture.PILOT_AGENTS[1].status.seaPubkey);
+  assert.deepEqual(h.businessRoles.view().members, []);
+  await h.role(envelope(m, h.owner), principal);
+  await h.template(envelope({ ...t, mode: "distinct-principals" }, "attacker"));
+  await h.role(null, principal);
+  assert.equal(h.businessRoles.view().state, "ready"); assert.equal(h.businessRoles.view().members.length, 1);
+  await h.template(envelope({ ...t, mode: "distinct-principals" }, h.owner));
+  assert.equal(h.businessRoles.view().state, "conflict");
+});
+
+for (const reverse of [false, true]) test(`concurrent template modes retain the conflict (${reverse ? "reverse" : "arrival"} verification order)`, async () => {
+  const release = new Map<string, () => void>();
+  let started!: () => void;
+  const bothStarted = new Promise<void>(resolve => { started = resolve; });
+  const h = businessHandlers(async (sig, key) => {
+    const row = await verifyEnvelope(sig, key);
+    await new Promise<void>(resolve => { release.set(row.mode, resolve); if (release.size === 2) started(); });
+    return row;
+  });
+  const modes = ["role-labels", "distinct-principals"];
+  const tasks = modes.map(mode => h.template(envelope({ forumId: fixture.PILOT_FORUM_ID, mode }, h.owner)));
+  await bothStarted;
+  const first = reverse ? 1 : 0;
+  release.get(modes[first])!(); await tasks[first];
+  assert.equal(h.businessRoles.view().state, "ready");
+  release.get(modes[1 - first])!(); await tasks[1 - first];
+  assert.equal(h.businessRoles.view().state, "conflict");
+  assert.deepEqual(h.businessRoles.view().members, []);
+});
+test("both template modes survive missing-key retries", async () => {
+  const h = businessHandlers(); h.keys.delete(h.owner);
+  for (const mode of ["role-labels", "distinct-principals"])
+    await h.template(envelope({ forumId: fixture.PILOT_FORUM_ID, mode }, h.owner));
+  assert.equal(h.retries.size(), 2);
+  h.keys.set(h.owner, h.owner); h.retries.retry(); await flush();
+  assert.equal(h.businessRoles.view().state, "conflict");
+  assert.equal(h.retries.size(), 0);
+});
+for (const change of ["rotation", "owner", "cleanup", "disconnect"] as const)
+  test(`pending template verification is fenced by ${change}`, async () => {
+    let release!: () => void, started!: () => void;
+    const verifying = new Promise<void>(resolve => { started = resolve; });
+    const h = businessHandlers(async (sig, key) => {
+      await new Promise<void>(resolve => { release = resolve; started(); });
+      return verifyEnvelope(sig, key);
+    });
+    const pending = h.template(envelope({ forumId: fixture.PILOT_FORUM_ID, mode: "role-labels" }, h.owner));
+    await verifying;
+    if (change === "rotation") h.keys.set(h.owner, "new-key");
+    if (change === "owner") h.graph.putObject(fixture.PILOT_FORUM_ID, fixture.PILOT_AGENTS[1].status.seaPubkey);
+    if (change === "cleanup") h.proofs.reset();
+    if (change === "disconnect") h.proofs.interrupt();
+    release(); await pending;
+    assert.equal(h.businessRoles.view().state, "waiting");
+  });
+
+test("cleanup during retry-key hashing cannot enqueue old-source evidence", async () => {
+  const h = businessHandlers();
+  const pending = h.template(envelope({ forumId: fixture.PILOT_FORUM_ID, mode: "role-labels" }, h.owner));
+  h.proofs.reset(); h.retries.clear();
+  await pending;
+  assert.equal(h.businessRoles.view().state, "waiting");
+  assert.equal(h.retries.size(), 0);
 });

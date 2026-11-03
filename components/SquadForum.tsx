@@ -2,6 +2,8 @@
 
 import { createForumReceiveRetry } from "@/lib/forum-receive-retry";
 import { createForumReceiveProofs } from "@/lib/forum-receive-proofs";
+import { BusinessRoleStrips } from "@/components/BusinessRoleStrips";
+import { businessTemplateRetryKey, createBusinessRoles, parseBusinessTemplate } from "@/lib/forum-business-roles";
 import { ForumShell, type ForumTab } from "@/components/ForumShell";
 import { ForumDrawerRecords } from "@/components/ForumDrawerRecords";
 import { SquadDelegationControls } from "@/components/SquadDelegationControls";
@@ -231,6 +233,7 @@ export function SquadForum() {
     ready: () => connectedRef.current && !!authority?.graph.ownerOf(PILOT_FORUM_ID),
     verify: readForumSignature,
   }), [authority]);
+  const businessRoles = useMemo(() => createBusinessRoles(PILOT_FORUM_ID, proofs.valid), [proofs]);
   const [seaPub, setSeaPub] = useState<string | null>(null);
   const [oauthLinked, setOauthLinked] = useState(false);
   const [vitals, setVitals] = useState<VitalsMode>("auto");
@@ -420,6 +423,7 @@ export function SquadForum() {
     const offerTailOffs = new Map<string, { off?: () => void }>();
     let offAlarm: { off?: () => void } | undefined;
     let offItems: { off?: () => void } | undefined;
+    let offTemplate: { off?: () => void } | undefined;
     let offRoles: { off?: () => void } | undefined;
 
     void (async () => {
@@ -1039,6 +1043,26 @@ export function SquadForum() {
         setAlarmHeard(true);
         setMeshAlarm(committed.alarm);
       }
+      async function acceptTemplate(data: unknown, knownRetryId?: string) {
+        const proof = proofs.begin();
+        if (cancelled) return;
+        const sig = signatureOf(data);
+        if (!sig) return;
+        const retryId = knownRetryId ?? await businessTemplateRetryKey(sig);
+        if (!retryId || cancelled || !proof.current()) return;
+        // Unversioned templates must all verify independently. A newer arrival
+        // cannot discard a conflicting mode, including while keys are missing.
+        retries.remember(retryId, { sig }, row => acceptTemplate(row, retryId));
+        const owner = graphRef.current?.ownerOf(PILOT_FORUM_ID);
+        if (!owner) return;
+        const payload = await proof.read(sig, owner);
+        if (cancelled || !proof.current() || !proofs.ready() || graphRef.current?.ownerOf(PILOT_FORUM_ID) !== owner) return;
+        const template = parseBusinessTemplate(payload, PILOT_FORUM_ID);
+        if (!template || !proof.retain(template, () => graphRef.current?.ownerOf(PILOT_FORUM_ID) === owner)) return;
+        businessRoles.template(template);
+        retries.forget(retryId);
+        setAclRev(n => n + 1);
+      }
       async function acceptRole(data: unknown, roleToken: string, mapKey: string, gen: number) {
         const proof = proofs.begin();
         if (cancelled || !versions.current("role", `${roleToken}:${mapKey}`, gen)) return;
@@ -1069,6 +1093,8 @@ export function SquadForum() {
         if (!proof.retain(membership, () => graphRef.current?.ownerOf(PILOT_FORUM_ID) === forumOwner)) return;
         retries.forget(retryId);
         enrollPub(membership.principal, membership);
+        businessRoles.membership(membership);
+        setAclRev(n => n + 1);
       }
       function chatTombStamp(id: string): number | undefined {
         const direct = chatTombsRef.current.get(id);
@@ -1259,6 +1285,10 @@ export function SquadForum() {
         const gen = versions.bump("status", key);
         void acceptStatus(data, key, gen);
       });
+      offTemplate = forum.get("template").on(data => {
+        if (cancelled || data == null) return;
+        void acceptTemplate(data);
+      });
       offRoles = forum.get("roles").map().on((data, token) => {
         if (cancelled || typeof token !== "string" || !isRoleToken(token)) return;
         expireForumListeners();
@@ -1296,6 +1326,8 @@ export function SquadForum() {
       offAgents?.off?.();
       offNeeds?.off?.();
       offRoles?.off?.();
+      offTemplate?.off?.();
+      businessRoles.reset();
       for (const off of forumOffs.values()) off.off?.();
       for (const off of chatRemovalOffs.values()) off.off?.();
       for (const off of offerTailOffs.values()) off.off?.();
@@ -1307,7 +1339,7 @@ export function SquadForum() {
       connectedRef.current = false; proofs.reset(); retries.clear(); retryRef.current = null;
       register(null);
     };
-  }, [register, proofs, authority]);
+  }, [register, proofs, authority, businessRoles]);
 
   useEffect(() => {
     if (!PILOT_MESH_ENABLED) return;
@@ -1833,6 +1865,7 @@ export function SquadForum() {
               </div>
         </>}
         board={<div data-testid="squad-board">
+              <BusinessRoleStrips view={businessRoles.view()} roster={PILOT_MESH_ENABLED ? roster : []} onOpen={setSelected} />
               <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3">
                 {!visible.length ? <p role="status" className="text-sm text-ink-muted">No contributors match these filters.</p> : null}
                 {visible.map((agent) => {
