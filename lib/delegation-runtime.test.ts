@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { p256 } from "@noble/curves/nist.js";
-import { createAssignmentJournal } from "./delegation-journal";
+import { createAssignmentJournal, MAX_ASSIGNMENT_DESTINATIONS } from "./delegation-journal";
 import { createDelegationRuntime } from "./delegation-runtime";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
 import { createForumAuthority } from "./identity/forum-authority";
@@ -24,14 +24,14 @@ function cas() {
   } } satisfies InventoryStore;
 }
 async function setup() {
-  let signed = 0, writes = 0, failAt = -1, dropAck = false;
+  let signed = 0, writes = 0, failAt = -1, dropAck = false, clockAt = at;
   const base = cas();
   const backing = { ...base, async compareAndSwap(etag: string | null, text: string) {
     writes++; if (writes === failAt && !dropAck) throw Error("offline");
     const result = await base.compareAndSwap(etag, text);
     if (writes === failAt && dropAck) throw Error("response lost"); return result;
   } };
-  const journal = createAssignmentJournal(backing, () => at);
+  const journal = createAssignmentJournal(backing, () => clockAt);
   await journal.initialize({ forum, owner, assignee: old, destinations: [destination], rows: [
     ...[forum, destination].map(object => sign("object", { owner, object, issuedAt: at - 100 })),
     ...(["post", "see"] as const).map(kind => sign(kind, { owner, object: destination, accessor: old, stated: 1, hamState: 1, from: at - 100, until: at + 1000, issuedAt: at - 100 })),
@@ -39,12 +39,13 @@ async function setup() {
   const stores = new Map<string, { inventory: InventoryStore; cancellations: ReturnType<typeof outbox>; grants: ReturnType<typeof outbox> }>();
   function outbox() { const documents = new Map<string, string>(); return { documents, async read(id: string) { return documents.get(id) ?? null; }, async create(id: string, value: string) { if (!documents.has(id)) documents.set(id, value); } }; }
   const history = async (time: number) => ({ completeThrough: time, links: [], accounts: [owner, old, replacement, other].map(principal => ({ principal, rotations: [], revocations: [], genesisEpubBindings: [] })) });
-  const dependencies = { journal, config, clock: () => at, history,
+  const dependencies = { journal, config, clock: () => clockAt, history,
     operationStores(id: string) { let s = stores.get(id); if (!s) { s = { inventory: cas(), cancellations: outbox(), grants: outbox() }; stores.set(id, s); } return s; },
     async sign(kind: AuthorityKind, fields: Record<string, unknown>) { signed++; return sign(kind, fields); },
   };
   const runtime = createDelegationRuntime(dependencies);
   return { journal, runtime, dependencies, stores, backing: base, get signed() { return signed; },
+    tick(seconds: number) { clockAt += seconds; },
     failAfter(n: number, ack = false) { failAt = writes + n; dropAck = ack; },
     async graph() { const a = createForumAuthority(config, () => at); const r = await a.refresh({ completeThrough: at, history: await history(at), rows: (await journal.load()).rows }, at); assert.ok(r.ok); return a.graph; } };
 }
@@ -104,7 +105,7 @@ test("abort refuses a partially published replacement; retry finishes without re
   await finish(h); assert.equal((await h.graph()).checkPost(destination, old, at).allowed, false);
 });
 test("lost prepared storage fails closed instead of issuing new signatures", async () => {
-  const h = await setup(); await h.runtime.start(owner, id, replacement, 0);
+  const h = await setup(); h.failAfter(8); await h.runtime.start(owner, id, replacement, 0);
   const signed = h.signed; h.stores.get(id)!.grants.documents.clear();
   const result = await h.runtime.resume(owner, id, replacement);
   assert.equal(result.status, "pending"); assert.equal(h.signed, signed);
@@ -164,4 +165,55 @@ test("destination admission cannot smuggle a second unregistered authority desti
   const h = await setup(), hidden = destination.replace(/2{32}$/, "5".repeat(32));
   await assert.rejects(h.runtime.admit(owner, 0, destination, [sign("object", { owner, object: hidden, issuedAt: at })]), /missing from inventory/);
   assert.equal((await h.journal.load()).revision, 0);
+});
+
+test("committed receipt replays after expiry, registration, and a later assignment", async () => {
+  const h = await setup(), completed = await h.runtime.start(owner, id, replacement, 0);
+  assert.equal(completed.status, "complete");
+  h.tick(86401);
+  assert.deepEqual(await h.runtime.resume(owner, id, replacement), completed);
+  const child = destination.replace(/2{32}$/, "7".repeat(32));
+  await h.runtime.admit(owner, (await h.journal.load()).revision, child, [sign("object", { owner, object: child, issuedAt: at })]);
+  assert.deepEqual(await h.runtime.resume(owner, id, replacement), completed);
+  await h.journal.claim(owner, "b".repeat(32), other, (await h.journal.load()).revision);
+  assert.deepEqual(await h.runtime.resume(owner, id, replacement), completed);
+  assert.deepEqual(await h.runtime.start(owner, id, replacement, 0), completed);
+  await assert.rejects(h.runtime.resume(owner, id, other), /receipt replacement/);
+  await assert.rejects(h.runtime.resume(other, id, replacement), /owner/);
+});
+test("immutable owner cannot be selected as replacement", async () => {
+  const h = await setup();
+  await assert.rejects(h.runtime.start(owner, id, owner, 0), /conflict/);
+  assert.equal((await h.journal.load()).operation, null);
+});
+test("journal refuses destinations beyond the planner's bounded cancellation capacity", async () => {
+  const h = await setup(), initial = await h.journal.load();
+  const destinations = Array.from({ length: MAX_ASSIGNMENT_DESTINATIONS }, (_, i) =>
+    `need_${seaToPrincipalKey(owner)}_${(i + 1).toString(16).padStart(32, "0")}`);
+  const journal = createAssignmentJournal(cas());
+  await journal.initialize({ forum, owner, assignee: old, destinations, rows: [] });
+  await assert.rejects(journal.admit(owner, 0, destination, []), /journal/);
+  assert.equal((await journal.load()).destinations.length, MAX_ASSIGNMENT_DESTINATIONS);
+  assert.ok(MAX_ASSIGNMENT_DESTINATIONS * 3 <= 256);
+  assert.equal(initial.assignee, old);
+});
+for (const mode of ["disabled", "superseded"] as const) test(`historical external group ${mode} does not block reassignment`, async () => {
+  const h = await setup(), set = `set_${seaToPrincipalKey(other)}_${"8".repeat(32)}`;
+  const external = [
+    sign("membership", { role: "member", predicate: "same-group", set, member: old, setOwner: other, stated: 1, hamState: 1, cancels: [], issuedAt: at }),
+    sign("membership", { role: "set", predicate: "same-group", set, member: old, setOwner: other, stated: 1, hamState: 1, cancels: [], issuedAt: at }),
+    sign("object-set", { owner, object: destination, predicate: "same-group", set, stated: 1, hamState: 1, cancels: [], issuedAt: at }),
+    sign("object-set", { owner, object: destination, predicate: "same-group", set: mode === "disabled" ? set : `set_${seaToPrincipalKey(owner)}_${"9".repeat(32)}`,
+      stated: mode === "disabled" ? 0 : 1, hamState: 2, cancels: [], issuedAt: at }),
+  ];
+  await h.runtime.admit(owner, 0, destination, external);
+  assert.equal((await h.runtime.start(owner, id, replacement, (await h.journal.load()).revision)).status, "complete");
+});
+
+test("claim reserves publication row capacity before freezing ordinary writes", async () => {
+  const h = await setup(), held = (await h.backing.read())!, state = JSON.parse(held.text);
+  state.rows = Array.from({ length: 1020 }, () => state.rows[0]);
+  await h.backing.compareAndSwap(held.etag, JSON.stringify(state));
+  await assert.rejects(h.journal.claim(owner, id, replacement, 0), /capacity/);
+  assert.equal((await h.journal.load()).operation, null);
 });

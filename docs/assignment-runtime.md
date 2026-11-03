@@ -10,7 +10,8 @@ production provisioning and deployed acceptance remain #190.
 
 The server derives the Squad namespace and actor from its authenticated session,
 not request fields. It verifies current signed forum ownership and complete
-history before accepting owner commands. Destinations must have independently
+history before accepting owner commands. The immutable owner cannot be the assignee;
+owner access is not revocable by assignment. Destinations must have independently
 verified ownership. `runtime.admit` registers destination ownership/ACL evidence
 and inventory together, using the expected journal revision. Every authoritative
 ACL writer, destination registration, drawer child write, and assignment change
@@ -45,16 +46,20 @@ Before the first replacement publication, the journal enters the replacement
 phase. Abort is allowed only before that phase and never restores cancellations.
 After replacement begins, retry must finish the saved operation. A completion
 receipt is committed only after the actual durable snapshot proves both old
-access absent and new access effective. Receipts record an evaluation time, not
-perpetual access. Every subsequent read/write still checks fresh authority.
+access absent and new access effective. Saved receipts replay for the authenticated
+owner even after later assignments,
+destination registration, or grant expiry; a mismatched replacement is refused.
+Receipts record an evaluation time, not perpetual access. Every subsequent read/write still checks fresh authority.
 
 A lost acknowledgement, process restart, or partial batch resumes the same
 operation and bytes. Missing prepared inventory or signed documents fails
 closed; it is not an invitation to create a new operation or signature. Used
-operation IDs and receipts are retained. Capacity is explicit: 256 destinations,
-children and operations, 1024 ACL rows, and a 2 MiB journal. Reaching a limit
-fails rather than dropping historical revocations. Long-lived retention and
-compaction must preserve authenticated evidence.
+operation IDs and receipts are retained. Capacity is explicit: 64 destinations/
+children, 256 operations, 1024 ACL rows, and a 2 MiB journal. Claim reserves row
+capacity for two direct cancellations, one effective group cancellation and two
+new grants per destination. Destination and row-capacity failures occur before
+claim; byte/retention limits also fail closed rather than dropping historical
+revocations. Long-lived compaction must preserve authenticated evidence.
 
 The server-side history provider is independently trusted and complete. Its
 rotation/revocation updates must be serialized with this authority sink, or the
@@ -79,6 +84,10 @@ Completion responses must match the requested operation and replacement.
 Drawer writes pass their real SEA-signed record through the authoritative child
 sink before the existing Gun mirror; the sink verifies current key, scope,
 registered destination, see/post and artifact-target access, then CAS-writes.
+Before choosing the next revision, the drawer recovers the committed child from
+the authenticated journal. Lost responses cannot strand a write between the
+journal and Gun. Recovered revisions are conflict floors only; recovered content
+still passes SEA verification and current ACL checks before display or mirroring.
 Unknown child IDs must first go through authenticated destination admission;
 metadata alone cannot create ownership or grants. Pending assignment blocks that
 admission. Direct Gun writes cannot add destinations to this source.

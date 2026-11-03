@@ -61,7 +61,7 @@ export function SquadDelegationControls({ scope, client: supplied }: { scope?: A
       <input disabled={!available || !view || !!pending || busy} aria-label="Reassign target" data-testid="squad-reassign-target"
         value={pending?.replacement ?? target} onChange={event => setTarget(event.target.value)} placeholder="Mesh key"
         className="min-w-0 flex-1 rounded border bg-transparent px-3 py-2 disabled:opacity-50" />
-      <button type="button" disabled={!available || !view || !!pending || busy || !isSeaPubkey(target.trim()) || target.trim() === view.assignee}
+      <button type="button" disabled={!available || !view || !!pending || busy || !isSeaPubkey(target.trim()) || target.trim() === view.assignee || target.trim() === owner}
         data-testid="squad-reassign" onClick={() => void act("start")} className="rounded border px-3 py-2 disabled:opacity-50">Reassign</button>
       {pending && <button type="button" disabled={busy} data-testid="squad-reassign-retry" onClick={() => void act("resume")}>Retry saved change</button>}
       {pending?.phase === "cancellations" && <button type="button" disabled={busy} data-testid="squad-reassign-abort" onClick={() => void act("abort")}>Cancel change</button>}

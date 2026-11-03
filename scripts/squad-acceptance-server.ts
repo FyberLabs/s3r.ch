@@ -47,7 +47,7 @@ async function main() {
           : db.prepare("UPDATE documents SET value=?, revision=revision+1 WHERE name=? AND revision=?").run(text, name, Number(etag)).changes;
         if (changed && previous && fault) {
           const old = JSON.parse(previous.text), next = JSON.parse(text), appended = next.rows?.slice(old.rows.length) ?? [];
-          const hit = fault === "commit-ack" ? next.operation?.phase === "complete" && old.operation?.phase !== "complete"
+          const hit = fault === "child-ack" ? JSON.stringify(next.children) !== JSON.stringify(old.children) : fault === "commit-ack" ? next.operation?.phase === "complete" && old.operation?.phase !== "complete"
             : appended.some((r: { record: { stated: number } }) => r.record.stated === (fault === "grant-ack" ? 1 : 0));
           if (hit) { fault = ""; throw Error("synthetic lost acknowledgement"); }
         }
@@ -113,7 +113,8 @@ async function main() {
           answered = true; break;
         }
         if (!answered) throw Error("access evidence expired; retry");
-      } else if (action === "child") {
+      } else if (action === "read-child") reply(200, await runtime.readChild(identity.pub, body.id));
+      else if (action === "child") {
         await runtime.publishChild(identity.pub, (await journal.load()).revision, body.record, body.signature); reply(200, { ok: true });
       } else if (action === "synthetic-write") {
         const at = Math.floor(Date.now() / 1000), state = await journal.load();
@@ -124,7 +125,7 @@ async function main() {
         if (!signature) throw Error("synthetic signing failed");
         await runtime.publishChild(identity.pub, state.revision, record, signature); reply(200, { ok: true, child: record.id });
       } else if (action === "fault" && identity.pub === owner) {
-        if (!["cancellation-ack", "grant-ack", "commit-ack", ""].includes(body.kind)) throw Error("unknown fault");
+        if (!["cancellation-ack", "grant-ack", "commit-ack", "child-ack", ""].includes(body.kind)) throw Error("unknown fault");
         fault = body.kind; reply(200, { ok: true });
       } else if (action === "inspect" && identity.pub === owner) reply(200, { state: await journal.load(), signatures });
       else if (action === "register" && identity.pub === owner) {

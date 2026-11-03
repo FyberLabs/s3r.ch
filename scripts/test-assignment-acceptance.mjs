@@ -35,6 +35,12 @@ try {
   await boot();
   assert.equal((await call("access", 1)).canPost, true);
   await call("synthetic-write", 1, { body: "Before reassignment" });
+  await call("fault", 0, { kind: "child-ack" });
+  await call("synthetic-write", 1, { body: "Committed despite lost response" }, 409);
+  const recoveredChild = await call("read-child", 1, { id: config.child });
+  assert.equal(recoveredChild.record.body, "Committed despite lost response");
+  await call("child", 1, recoveredChild);
+  await call("synthetic-write", 1, { body: "Next revision after recovery" });
   await call("read", 1, {}, 403);
   await call("read", 0, { forum: "foreign", owner: config.owner }, 409);
   const id = randomBytes(16).toString("hex"), replacement = credentials[2].pub;
@@ -81,5 +87,5 @@ try {
   const revoked = (await call("inspect")).state.rows.find(r => r.kind === "post" && r.record.accessor === credentials[3].pub && r.record.stated === 0);
   assert.ok(revoked);
   assert.equal((await call("access", 3, { destination: revoked.record.object })).canPost, false);
-  console.log("PASS: isolated synthetic Squad; signed SEA child writes; authenticated independent HTTP clients; lost grant acknowledgement; process restart; exact retry bytes; assignment receipt replay; new-child inventory; concurrent assignment conflict; revoked writes; ownership/path preservation; abort without restoring access.");
+  console.log("PASS: isolated synthetic Squad; signed SEA child writes and lost-ack recovery; authenticated independent HTTP clients; lost grant acknowledgement; process restart; exact retry bytes; assignment receipt replay; new-child inventory; concurrent assignment conflict; revoked writes; ownership/path preservation; abort without restoring access.");
 } finally { await stop(); if (process.env.KEEP_ASSIGNMENT_TEST_STATE !== "1") rmSync(directory, { recursive: true, force: true }); }

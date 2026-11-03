@@ -5,6 +5,8 @@ import type { ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { parseForumAuthority } from "./identity/forum-authority-records";
 import { isForumObjectId, isSeaPubkey } from "./identity/forum-check";
 
+// Two direct cancellations plus at most one effective group cancellation per destination.
+export const MAX_ASSIGNMENT_DESTINATIONS = 64;
 type Row = ForumAuthoritySnapshot["rows"][number];
 type Operation = { cancellationDigest?: string; grantDigest?: string; id: string; previous: string; replacement: string; phase: "cancellations" | "replacement" | "complete" | "aborted" };
 export type AssignmentJournalState = Readonly<{
@@ -20,8 +22,8 @@ function parse(text: string): AssignmentJournalState {
   if (Buffer.byteLength(text) > 2_097_152) throw Error("assignment journal capacity");
   const s = JSON.parse(text) as AssignmentJournalState;
   if (!s || s.version !== 1 || !Number.isSafeInteger(s.revision) || s.revision < 0 ||
-      !isForumObjectId(s.forum, "forum") || !isSeaPubkey(s.owner) || !isSeaPubkey(s.assignee) ||
-      !Array.isArray(s.destinations) || s.destinations.length > 256 || new Set(s.destinations).size !== s.destinations.length ||
+      !isForumObjectId(s.forum, "forum") || !isSeaPubkey(s.owner) || !isSeaPubkey(s.assignee) || s.assignee === s.owner ||
+      !Array.isArray(s.destinations) || s.destinations.length > MAX_ASSIGNMENT_DESTINATIONS || new Set(s.destinations).size !== s.destinations.length ||
       s.destinations.some(d => !isForumObjectId(d)) || !Array.isArray(s.rows) || s.rows.length > 1024 ||
       !Array.isArray(s.usedOperations) || s.usedOperations.length > 256 || s.usedOperations.some(id => !idOK(id)) ||
       new Set(s.usedOperations).size !== s.usedOperations.length || !s.children || typeof s.children !== "object" || Array.isArray(s.children) || Object.keys(s.children).length > 256 || !s.receipts || typeof s.receipts !== "object" || Array.isArray(s.receipts) || Object.keys(s.receipts).length > 256)
@@ -89,7 +91,8 @@ export function createAssignmentJournal(store: InventoryStore, clock = () => Mat
       if (s.operation?.id === id) { active(s, id, replacement); return s; }
       if (s.usedOperations.includes(id)) throw Error("retired operation ID cannot be reused");
       idle(s);
-      if (s.revision !== expectedRevision || s.assignee === replacement) throw Error("assignment conflict");
+      if (s.rows.length + s.destinations.length * 5 > 1024) throw Error("insufficient assignment journal capacity");
+      if (s.revision !== expectedRevision || s.assignee === replacement || s.owner === replacement) throw Error("assignment conflict");
       const next = { ...s, revision: s.revision + 1, usedOperations: [...s.usedOperations, id], operation: { id, previous: s.assignee, replacement, phase: "cancellations" as const } };
       await write(etag, next); return next;
     },

@@ -15,9 +15,10 @@ export type ForumAuthoritySource = Readonly<{
   subscribe(receive: (snapshot: ForumAuthoritySnapshot | null, at: number) => void): () => void;
 }>;
 const denyConfig: ForumAuthorityConfig = { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] };
-const Context = createContext<(ReturnType<typeof createForumAuthority> & Pick<DrawerAuthority, "publishChild">) | null>(null);
+const Context = createContext<(ReturnType<typeof createForumAuthority> & Pick<DrawerAuthority, "publishChild" | "readChild">) | null>(null);
 export function ForumAuthorityProvider({ children, source }: { children: ReactNode; source?: ForumAuthoritySource }) {
   const authority = useMemo(() => ({ ...createForumAuthority(source?.config ?? denyConfig),
+    readChild: source?.assignments ? ((scope, id) => source.assignments!.readChild(scope, id)) as NonNullable<DrawerAuthority["readChild"]> : undefined,
     publishChild: source?.assignments ? ((record, signature) => source.assignments!.publishChild(
       { forum: record.forumId, owner: record.agent }, record, signature)) as NonNullable<DrawerAuthority["publishChild"]> : undefined,
   }), [source]);

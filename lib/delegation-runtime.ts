@@ -85,15 +85,19 @@ export function createDelegationRuntime(input: {
     // Cancel membership of the old assignee, preserving object owners/paths and
     // other group members. Every relevant membership must be owner-signable.
     const groups = new Map<string, { set: string; predicate: string; soul: string; setOwner: string }>();
-    for (const r of b.state.rows) {
-      const p = parseForumAuthority(r.kind, r.record);
-      if (!p || p.kind !== "object-set" || !b.state.destinations.includes(p.row.object)) continue;
-      for (const member of b.state.rows) {
-        const m = parseForumAuthority(member.kind, member.record);
-        if (m?.kind === "membership" && m.row.member === b.op.previous && m.row.set === p.row.set && m.row.predicate === p.row.predicate)
-          groups.set(m.soul, { set: m.row.set, predicate: m.row.predicate, soul: m.soul, setOwner: m.row.setOwner });
+    let planned = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const at = clock(), authority = createForumAuthority(input.config, clock);
+      const admitted = await authority.refresh({ completeThrough: at, rows: b.state.rows, history: await input.history(at) }, at);
+      if (clock() !== at) continue;
+      if (!admitted.ok || admitted.diagnostics.length) throw Error("unverified group cancellation authority");
+      for (const destination of b.state.destinations) {
+        const membership = authority.graph.groupMembership(destination, b.op.previous, at);
+        if (membership) groups.set(membership.soul, membership);
       }
+      planned = true; break;
     }
+    if (!planned) throw Error("group authority expired; retry");
     for (const group of groups.values()) {
       if (group.setOwner !== b.state.owner) throw Error("external group owner cancellation required");
       const prior = b.state.rows.flatMap(r => { const p = parseForumAuthority(r.kind, r.record);
@@ -109,11 +113,20 @@ export function createDelegationRuntime(input: {
   return Object.freeze({
     async read(actor: string) { return owner(actor); },
     async start(actor: string, id: string, replacement: string, expectedRevision: number) {
-      await owner(actor); await input.journal.claim(actor, id, replacement, expectedRevision);
+      const state = await owner(actor), receipt = state.receipts[id];
+      if (receipt) {
+        if (receipt.replacement !== replacement) throw Error("receipt replacement mismatch");
+        return { status: "complete" as const, receipt };
+      }
+      await input.journal.claim(actor, id, replacement, expectedRevision);
       return this.resume(actor, id, replacement);
     },
     async resume(actor: string, id: string, replacement: string) {
-      await owner(actor);
+      const state = await owner(actor), receipt = state.receipts[id];
+      if (receipt) {
+        if (receipt.replacement !== replacement) throw Error("receipt replacement mismatch");
+        return { status: "complete" as const, receipt };
+      }
       // A missing cancellation document after the first journal publication must
       // never mint replacement cancellation bytes. Provisioning is allowed only
       // while no record for this operation has been published (enforced below).
@@ -131,6 +144,19 @@ export function createDelegationRuntime(input: {
       return publisher.resume(id, replacement);
     },
     async abort(actor: string, id: string) { await owner(actor); return input.journal.abort(actor, id); },
+    async readChild(actor: string, id: string) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const state = await input.journal.load(), at = clock(), authority = createForumAuthority(input.config, clock);
+        const admitted = await authority.refresh(await source(at), at);
+        if (clock() !== at) continue;
+        const saved = state.children[id] ?? null;
+        if (!admitted.ok || admitted.diagnostics.length || !state.destinations.includes(id) ||
+            !authority.graph.checkDirectSee(id, actor, at).allowed ||
+            (saved?.record.target && !authority.graph.checkDirectSee(saved.record.target, actor, at).allowed)) throw Error("child read denied");
+        return saved;
+      }
+      throw Error("child read authority expired; retry");
+    },
     async publishChild(actor: string, expectedRevision: number, raw: unknown, signature: string) {
       const record = parseDrawerRecord(raw), state = await input.journal.load();
       if (!record || record.writer !== actor || record.forumId !== state.forum || record.agent !== state.owner)

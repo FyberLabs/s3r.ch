@@ -1,5 +1,5 @@
 import { isSeaPubkey } from "./identity/forum-check";
-import type { DrawerRecord } from "./forum-drawer";
+import { parseDrawerRecord, type DrawerRecord } from "./forum-drawer";
 import type { AssignmentJournalState } from "./delegation-journal";
 import type { AssignmentRunResult } from "./delegation-publish";
 export type AssignmentScope = Readonly<{ forum: string; owner: string }>;
@@ -8,6 +8,7 @@ export type AssignmentClient = Readonly<{
   read(scope: AssignmentScope): Promise<AssignmentView>;
   start(scope: AssignmentScope, operationId: string, replacement: string, revision: number): Promise<AssignmentRunResult>;
   resume(scope: AssignmentScope, operationId: string, replacement: string): Promise<AssignmentRunResult>;
+  readChild(scope: AssignmentScope, id: string): Promise<{ record: DrawerRecord; signature: string } | null>;
   publishChild(scope: AssignmentScope, record: DrawerRecord, signature: string): Promise<boolean>;
   abort(scope: AssignmentScope, operationId: string): Promise<void>;
 }>;
@@ -48,6 +49,15 @@ export function createHttpAssignmentClient(input: { base: string; fetch?: typeof
     },
     start: (scope, operationId, replacement, revision) => result("start", scope, operationId, replacement, { revision }),
     resume: (scope, operationId, replacement) => result("resume", scope, operationId, replacement),
+    async readChild(scope, id) {
+      const value = await request<{ record: DrawerRecord; signature: string } | null>("read-child", scope, { id });
+      if (value === null) return null;
+      const record = parseDrawerRecord(value?.record);
+      if (!record || record.id !== id || record.forumId !== scope.forum || record.agent !== scope.owner ||
+          typeof value.signature !== "string" || !value.signature.startsWith("SEA") || value.signature.length > 32768)
+        throw Error("Invalid saved child evidence.");
+      return { record, signature: value.signature };
+    },
     async publishChild(scope, record, signature) {
       try { return (await request<{ ok: boolean }>("child", scope, { record, signature })).ok === true; } catch { return false; }
     },
