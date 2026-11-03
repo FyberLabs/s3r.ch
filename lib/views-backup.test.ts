@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import type { SeaPair } from "./identity/sea";
 import {
   buildBackup,
+  deriveBackupKey, encryptVersion, recordAddress, signManifest,
   canonicalJson,
   exportBackupFile,
   parseBackupFile,
@@ -724,4 +725,44 @@ describe("backup", () => {
     assert.equal(parseBackupFile("{").ok, false);
     assert.equal(parseBackupFile('{"kind":"other","v":1,"manifests":[],"records":{}}').ok, false);
   });
+});
+
+describe("causal capacity across encrypted backups", () => {
+  it("refuses an unreadable export before changing the encryption cache or graph", async () => {
+    const pair = await testPair(), g = fakeGraph(), cache = new Map();
+    const state = saveView(emptyState(ALICE, "local"), view("v1", "saved")).state;
+    state.views.v1!.hidden = Array.from({ length: 129 }, (_, n) => ({ vv: { [`hidden${n}`]: 1 } }));
+    await assert.rejects(buildBackup(state, pair, "writer", 1, cache), /Conflict history limit/);
+    await assert.rejects(publishViewsBackup(g, pair, state, "writer", 1), /Conflict history limit/);
+    assert.equal(cache.size, 0); assert.equal(g.data.size, 0);
+  });
+  for (const kind of ["conflicts", "deletions"] as const) it(`refuses a ${kind} union above capacity in either manifest order`, async () => {
+    const pair = await testPair();
+    const parts = [];
+    for (const device of ["a", "b"]) {
+      const state = saveView(emptyState(ALICE, device), view("v1", device)).state;
+      if (kind === "conflicts") state.views.v1!.hidden = Array.from({ length: 65 }, (_, n) => ({ vv: { [`${device}${n}`]: 1 } }));
+      else state.dropped = Object.fromEntries(Array.from({ length: 5001 }, (_, n) => [`${device}${n}`, { vv: { [device]: 2 } }]));
+      parts.push(await buildBackup(state, pair, device, 1));
+    }
+    const records = Object.assign({}, ...parts.map(p => p.records));
+    const local = saveView(emptyState(ALICE, "local"), view("keep", "unchanged")).state;
+    const before = structuredClone(local);
+    for (const order of [parts, [...parts].reverse()]) {
+      await assert.rejects(restoreBackup(local, pair, order.map(p => p.manifest), async a => records[a]), /history limit/);
+      assert.deepEqual(local, before);
+    }
+  });
+});
+
+it("an older encrypted record above the history cap aborts restore rather than being skipped", async () => {
+  const pair = await testPair(), key = await deriveBackupKey(pair);
+  const state = saveView(emptyState(ALICE, "local"), view("v1", "keep")).state;
+  const before = structuredClone(state);
+  const record = await encryptVersion(key, ALICE, state.views.v1!.current,
+    Array.from({ length: 129 }, (_, n) => ({ vv: { [`hidden${n}`]: 1 } })));
+  const address = await recordAddress(record);
+  const manifest = await signManifest(pair, { v: 1, owner: ALICE, writerId: "legacy", seq: 1, entries: [{ id: "v1", address }] });
+  await assert.rejects(restoreBackup(state, pair, [manifest], async () => record), /Conflict history limit/);
+  assert.deepEqual(state, before);
 });

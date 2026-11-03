@@ -83,7 +83,20 @@ const noId = () => {
   throw new Error("stored views must already have unique window ids");
 };
 
-const DROPPED_MAX = 10_000;
+export const DROPPED_MAX = 10_000;
+export const HIDDEN_MAX = 128;
+
+/** Capacity is an operation failure, never permission to forget causal history.
+ * Check raw input before parsing and completed state before persisting/exporting. */
+export function assertViewsCausalityBounds(input: unknown): void {
+  if (!isRecord(input)) return;
+  if (isRecord(input.dropped) && Object.keys(input.dropped).length > DROPPED_MAX)
+    throw new Error("Deletion history limit reached; existing Views data has not been replaced");
+  if (isRecord(input.views)) for (const entry of Object.values(input.views)) {
+    if (isRecord(entry) && Array.isArray(entry.hidden) && entry.hidden.length > HIDDEN_MAX)
+      throw new Error("Conflict history limit reached; resolve conflicts before combining more copies");
+  }
+}
 
 function parseCausal(input: unknown): Causal | null {
   if (!isRecord(input) || !isVersionVector(input.vv)) return null;
@@ -135,9 +148,10 @@ function tidyFrontier(stamps: (Causal | undefined)[]): Causal[] | undefined {
 function parseFrontier(input: unknown, notices: Notice[], id: string): Causal[] | undefined {
   if (input === undefined) return undefined;
   const raw = Array.isArray(input) ? input : [input];
+  if (raw.length > HIDDEN_MAX) throw new Error("Conflict history limit reached; resolve conflicts before combining more copies");
   const out: Causal[] = [];
   let invalid = false;
-  for (const item of raw.slice(0, 128)) {
+  for (const item of raw) {
     const causal = parseCausal(item);
     if (!causal) invalid = true;
     else out.push(causal);
@@ -184,6 +198,7 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
   const notices: Notice[] = [];
   const state = emptyState(owner, deviceId);
   if (!isRecord(input) || input.v !== 1 || input.owner !== state.owner) return { state, notices };
+  assertViewsCausalityBounds(input);
   if (isVersionVector(input.retirements)) state.retirements = { ...input.retirements };
   if (isRecord(input.views)) {
     for (const [id, raw] of Object.entries(input.views).slice(0, ENTRIES_MAX)) {
@@ -205,7 +220,7 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
       const entry = tidyEntry({ current, conflicts, hidden });
       const counts = countEntries(state);
       if (isLiveEntry(entry) ? counts.live >= VIEWS_MAX : counts.tombstones >= TOMBSTONES_MAX) {
-        if (!isLiveEntry(entry) && Object.keys(state.dropped).length < DROPPED_MAX) {
+        if (!isLiveEntry(entry)) {
           const parts = [entry.current, ...entry.conflicts, ...(entry.hidden ?? [])].map((c) => expandFolded(causalOf(c), state.retirements));
           state.dropped[id] = maxCausal(state.dropped[id], ...parts);
         }
@@ -235,7 +250,7 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
   if (input.favoritesFoldedAll === true) state.favoritesFoldedAll = true;
   if (isRecord(input.dropped)) {
     for (const [id, raw] of Object.entries(input.dropped)) {
-      if (!isSafeKey(id) || (Object.keys(state.dropped).length >= DROPPED_MAX && !Object.hasOwn(state.dropped, id))) continue;
+      if (!isSafeKey(id)) continue;
       const causal = parseCausal(raw);
       if (!causal) continue;
       const expanded = expandFolded(causal, state.retirements);
@@ -243,6 +258,7 @@ export function parseState(input: unknown, owner: string, deviceId: string): { s
       state.dropped[id] = maxCausal(prior, expanded);
     }
   }
+  assertViewsCausalityBounds(state);
   return { state: collapseState(compactState(state, state.retirements), state.retirements), notices };
 }
 
@@ -661,6 +677,7 @@ function makeStore(io: RawIO, lock: Lock): ViewsStore {
         const { state, notices } = parseState(await io.get(key), key, deviceId);
         const next = fn(state);
         if (next.owner !== key) throw new Error("owner changed");
+        assertViewsCausalityBounds(next);
         await io.put(key, next);
         return { state: next, notices };
       });

@@ -12,7 +12,7 @@ import { canonicalJson } from "./views-canonical";
 import { defaultLock } from "./views-store";
 
 export { canonicalJson };
-import { adoptRetirements, applyDropped, CONFLICTS_MAX, countEntries, emptyState, expandState, mergePrefs, ENTRIES_MAX, isLiveEntry, mergeVersionChecked, parseVersionPayload, TOMBSTONES_MAX, VIEWS_MAX, type ViewEntry, type ViewsState, type ViewVersion } from "./views-store";
+import { assertViewsCausalityBounds, adoptRetirements, applyDropped, CONFLICTS_MAX, countEntries, emptyState, expandState, mergePrefs, ENTRIES_MAX, isLiveEntry, mergeVersionChecked, parseVersionPayload, TOMBSTONES_MAX, VIEWS_MAX, type ViewEntry, type ViewsState, type ViewVersion } from "./views-store";
 import { coversCausal, expandFolded, isSafeKey, isVersionVector, maxCausal, readCausal, unionRetirements, type Causal, type VersionVector } from "./views-vv";
 import type { Notice } from "./views-window";
 
@@ -165,15 +165,19 @@ export async function decryptVersion(
   record: EncryptedRecord,
   notices: Notice[],
 ): Promise<{ version: ViewVersion; hidden?: Causal[] } | null> {
+  let payload: unknown;
   try {
     const iv = fromB64u(record.iv);
     if (iv.length !== 12) return null;
     const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: aad(owner, id) }, key, fromB64u(record.ct));
-    const parsed = parseVersionPayload(JSON.parse(dec.decode(pt)), notices);
-    return parsed && parsed.version.id === id ? parsed : null;
+    payload = JSON.parse(dec.decode(pt));
   } catch {
     return null;
   }
+  // Capacity errors abort the restore; treating one as an unreadable record
+  // would discard the very ancestry that prevents stale copies returning.
+  const parsed = parseVersionPayload(payload, notices);
+  return parsed && parsed.version.id === id ? parsed : null;
 }
 
 function manifestBody(m: Omit<Manifest, "sig">): string {
@@ -239,6 +243,7 @@ export async function buildBackup(
   seq: number,
   cache: RecordCache = new Map(),
 ): Promise<{ manifest: Manifest; records: Record<string, EncryptedRecord> }> {
+  assertViewsCausalityBounds(state);
   if (!isSafeKey(writerId)) throw new Error("writerId is empty or reserved");
   if (!Number.isSafeInteger(seq) || seq < 0) throw new Error("seq must be a nonnegative safe integer");
   const key = await deriveBackupKey(pair);
@@ -350,6 +355,7 @@ export async function restoreBackup(
   const notices: Notice[] = [];
   const key = await deriveBackupKey(pair);
   // Expand against the map these stamps were saved with, before incoming retirements exist.
+  assertViewsCausalityBounds(state);
   const base = expandState(state);
   const views = { ...base.views };
   // Keep only the highest seq per writer.
@@ -435,7 +441,9 @@ export async function restoreBackup(
   enforceLimits(base.views, prepared.views, notices, prepared.dropped);
   const merged = applyDropped(prepared);
   // Retirements are adopted only after versions have been merged on their own stamps.
-  return { state: adoptRetirements(merged, unionRetirements(retirementMaps)), notices };
+  const result = adoptRetirements(merged, unionRetirements(retirementMaps));
+  assertViewsCausalityBounds(result);
+  return { state: result, notices };
 }
 
 /**
@@ -962,6 +970,7 @@ export async function publishViewsBackup(
   cache?: RecordCache,
   opts?: { pub?: string; lock?: <T>(name: string, run: () => Promise<T>) => Promise<T>; now?: () => number },
 ): Promise<{ state: ViewsState; status: "written" | "stale"; removed: string[]; pending: string[] }> {
+  assertViewsCausalityBounds(state);
   const pub = opts?.pub ?? pair.pub;
   const lock = opts?.lock ?? defaultLock();
   await retryWriterTombstones(user, pair, pub, lock);

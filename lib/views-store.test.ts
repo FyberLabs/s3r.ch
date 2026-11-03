@@ -306,3 +306,42 @@ describe("store", () => {
     assert.equal(state.recents.length, 10);
   });
 });
+
+describe("causal history capacity", () => {
+  it("refuses oversized hidden history instead of silently dropping the last branch", () => {
+    const state = saveView(emptyState(ALICE, "local"), view("v1")).state;
+    state.views.v1!.hidden = Array.from({ length: 129 }, (_, n) => ({ vv: { [`hidden${n}`]: 1 } }));
+    assert.throws(() => parseState(state, ALICE, "restored"), /Conflict history limit/);
+    assert.equal(state.views.v1!.hidden.length, 129);
+  });
+  it("refuses oversized deletion history instead of letting old views return", () => {
+    const state = emptyState(ALICE, "local");
+    state.dropped = Object.fromEntries(Array.from({ length: 10001 }, (_, n) => [`deleted${n}`, { vv: { device: 2 } }]));
+    assert.throws(() => parseState(state, ALICE, "restored"), /Deletion history limit/);
+    assert.equal(Object.keys(state.dropped).length, 10001);
+  });
+  it("a rejected store update preserves the last complete state", async () => {
+    const store = createMemoryViewsStore();
+    await store.update(ALICE, "local", state => saveView(state, view("v1", "saved")).state);
+    const before = await store.read(ALICE, "local");
+    await assert.rejects(store.update(ALICE, "local", state => {
+      state.views.v1!.hidden = Array.from({ length: 129 }, (_, n) => ({ vv: { [`hidden${n}`]: 1 } }));
+      return state;
+    }), /Conflict history limit/);
+    assert.deepEqual(await store.read(ALICE, "local"), before);
+  });
+});
+
+it("keeps full history at both limits and can resolve the retained hidden branches", () => {
+  const state = saveView(emptyState(ALICE, "local"), view("v1")).state;
+  state.views.v1!.hidden = Array.from({ length: 128 }, (_, n) => ({ vv: { [`hidden${n}`]: 1 } }));
+  state.dropped = Object.fromEntries(Array.from({ length: 10000 }, (_, n) => [`deleted${n}`, { vv: { device: 2 } }]));
+  const parsed = parseState(state, ALICE, "restored");
+  assert.equal(parsed.notices.length, 0);
+  assert.equal(parsed.state.views.v1!.hidden!.length, 128);
+  assert.equal(Object.keys(parsed.state.dropped).length, 10000);
+  const resolved = resolveConflict(parsed.state, "v1", parsed.state.views.v1!.current);
+  assert.equal(resolved.views.v1!.hidden, undefined);
+  assert.equal(resolved.views.v1!.current.vv.hidden127, 1);
+  assert.equal(Object.keys(resolved.dropped).length, 10000);
+});
