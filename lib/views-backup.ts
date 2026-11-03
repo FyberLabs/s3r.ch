@@ -49,6 +49,8 @@ export type Manifest = {
   owner: string;
   writerId: string;
   seq: number;
+  /** Publication-specific graph records; absent on legacy shared namespaces. */
+  recordScope?: "publication";
   /** Device whose component this writer advances. Retired with the writer. */
   deviceId?: string;
   entries: ManifestEntry[];
@@ -65,6 +67,7 @@ export type WriterTombstone = {
   writerId: string;
   seq: number;
   manifestHash: string;
+  recordScope?: "publication";
   deviceId?: string;
   counter: number;
   sig: string;
@@ -186,6 +189,7 @@ function manifestBody(m: Omit<Manifest, "sig">): string {
     owner: m.owner,
     writerId: m.writerId,
     seq: m.seq,
+    recordScope: m.recordScope,
     deviceId: m.deviceId,
     entries: m.entries,
     prefs: m.prefs,
@@ -194,7 +198,7 @@ function manifestBody(m: Omit<Manifest, "sig">): string {
 }
 
 function tombstoneBody(t: Omit<WriterTombstone, "sig">): string {
-  return canonicalJson({ v: t.v, owner: t.owner, writerId: t.writerId, seq: t.seq, manifestHash: t.manifestHash, deviceId: t.deviceId, counter: t.counter });
+  return canonicalJson({ v: t.v, owner: t.owner, writerId: t.writerId, seq: t.seq, manifestHash: t.manifestHash, recordScope: t.recordScope, deviceId: t.deviceId, counter: t.counter });
 }
 
 async function signText(pair: Pick<SeaPair, "pub" | "priv">, text: string): Promise<string> {
@@ -287,7 +291,7 @@ export async function buildBackup(
   for (const k of [...cache.keys()]) if (!used.has(k)) cache.delete(k);
   entries.sort((a, b) => (a.id + a.address < b.id + b.address ? -1 : 1));
   const retirements = Object.keys(state.retirements).length ? state.retirements : undefined;
-  const manifest = await signManifest(pair, { v: 1, owner: state.owner, writerId, deviceId: state.deviceId, seq, entries, prefs: prefsHit.address, retirements });
+  const manifest = await signManifest(pair, { v: 1, owner: state.owner, writerId, deviceId: state.deviceId, seq, recordScope: "publication", entries, prefs: prefsHit.address, retirements });
   return { manifest, records };
 }
 
@@ -302,6 +306,7 @@ function isManifestShape(value: unknown): value is Manifest {
   const m = value as Manifest;
   return (
     typeof m === "object" && m !== null && m.v === 1 && typeof m.owner === "string" && typeof m.writerId === "string" && isSafeKey(m.writerId) &&
+    (m.recordScope === undefined || m.recordScope === "publication") &&
     (m.deviceId === undefined || (typeof m.deviceId === "string" && isSafeKey(m.deviceId))) &&
     Number.isSafeInteger(m.seq) && m.seq >= 0 && typeof m.sig === "string" && Array.isArray(m.entries) && m.entries.length <= BACKUP_MAX_ENTRIES &&
     m.entries.every((e) => typeof e === "object" && e !== null && typeof e.id === "string" && isSafeKey(e.id) && typeof e.address === "string" && /^[0-9a-f]{64}$/.test(e.address)) &&
@@ -315,6 +320,7 @@ function isTombstoneShape(value: unknown): value is WriterTombstone {
   return (
     typeof t === "object" && t !== null && t.v === 1 && typeof t.owner === "string" && typeof t.writerId === "string" && isSafeKey(t.writerId) &&
     Number.isSafeInteger(t.seq) && t.seq >= 0 && typeof t.manifestHash === "string" && /^[0-9a-f]{64}$/.test(t.manifestHash) &&
+    (t.recordScope === undefined || t.recordScope === "publication") &&
     (t.deviceId === undefined || (typeof t.deviceId === "string" && isSafeKey(t.deviceId))) &&
     Number.isSafeInteger(t.counter) && t.counter >= 0 && typeof t.sig === "string"
   );
@@ -350,7 +356,7 @@ export async function restoreBackup(
   state: ViewsState,
   pair: SeaPair,
   manifests: unknown[],
-  fetchRecord: (address: string, writerId: string) => Promise<unknown>,
+  fetchRecord: (address: string, writerId: string, manifest: Manifest) => Promise<unknown>,
 ): Promise<{ state: ViewsState; notices: Notice[] }> {
   const notices: Notice[] = [];
   const key = await deriveBackupKey(pair);
@@ -379,7 +385,7 @@ export async function restoreBackup(
     if (m.prefs) {
       let raw: unknown;
       try {
-        raw = await fetchRecord(m.prefs, m.writerId);
+        raw = await fetchRecord(m.prefs, m.writerId, m);
       } catch {
         raw = undefined;
       }
@@ -397,7 +403,7 @@ export async function restoreBackup(
     // order, so a cap does not depend on which manifest arrived first.
     const fetched = await mapPool(m.entries, FETCH_CONCURRENCY, async (e) => {
       try {
-        return await fetchRecord(e.address, m.writerId);
+        return await fetchRecord(e.address, m.writerId, m);
       } catch {
         return undefined;
       }
@@ -603,14 +609,49 @@ function highestPub(pubs: Publication[]): Publication | null {
   return pubs.reduce<Publication | null>((best, p) => (!best || p.seq > best.seq ? p : best), null);
 }
 
+/** Stable across re-signing; includes the writer, sequence and full signed content. */
+export function publicationRecordKey(manifest: Manifest): Promise<string> {
+  return sha256Hex(manifestBody(manifest));
+}
+
+async function graphRecords(user: GraphChain, manifest: Manifest): Promise<GraphChain> {
+  return manifest.recordScope === "publication"
+    ? user.get("s3rch-views-records-v2").get(manifest.writerId).get(await publicationRecordKey(manifest))
+    : user.get("s3rch-views-records").get(manifest.writerId);
+}
+
+/** Resolve each signed manifest's namespace once per restore, not per record. */
+function graphRecordReader(user: GraphChain) {
+  const nodes = new WeakMap<Manifest, Promise<GraphChain>>();
+  return async (address: string, _writerId: string, manifest: Manifest) => {
+    let node = nodes.get(manifest);
+    if (!node) { node = graphRecords(user, manifest); nodes.set(manifest, node); }
+    return readString((await node).get(address));
+  };
+}
+
+/** Signed staging intents make failed publications discoverable for later cleanup.
+ * Only a later sequence of the same writer retires an unfinished publication. */
+async function stagedPublications(user: GraphChain, writerId: string, pub: string): Promise<Manifest[]> {
+  const node = await readNode(user.get("s3rch-views-staging").get(writerId));
+  if (!node || typeof node !== "object") return [];
+  const out: Manifest[] = [];
+  for (const [hash, value] of Object.entries(node)) {
+    const m = typeof value === "string" ? safeParse(value) : value;
+    if (isManifestShape(m) && m.writerId === writerId && m.recordScope === "publication" &&
+        await verifyManifest(pub, m) && await publicationRecordKey(m) === hash) out.push(m);
+  }
+  return out;
+}
+
 /**
  * Write records, then the manifest, below the user's own space. Each sequence lives at
  * `~<pub>/s3rch-views/<writerId>/<seq>` and is not replaced with a different body. A
  * tombstone for that slot refuses another write. The manifest is written after its records.
  *
- * Reclamation is a sweep, not a queue: records live in a per-writer namespace, so after each
- * call every record in that namespace that the published manifest does not name is removed.
- * Older sequence slots of this same writer are removed after the new one is stored.
+ * Each new publication has a signed, hash-bound record namespace and staging intent.
+ * Sweeps never cross publication boundaries, including when another device is writing.
+ * Legacy shared records are readable but cannot be safely reclaimed online.
  */
 export async function writeBackupToGraph(
   user: GraphChain,
@@ -622,6 +663,7 @@ export async function writeBackupToGraph(
   const now = opts.now ?? Date.now;
   // Publish only what restore accepts: valid shape and a signature by this user's key.
   if (!isManifestShape(manifest) || !(await verifyManifest(opts.pub, manifest))) throw new Error("manifest is invalid");
+  if (manifest.recordScope !== "publication") throw new Error("rebuild legacy backup before graph publication");
   // Every address the manifest names must be supplied and match its content address.
   for (const address of addressesOf(manifest)) {
     const record = Object.hasOwn(backup.records, address) ? backup.records[address] : undefined;
@@ -635,27 +677,18 @@ export async function writeBackupToGraph(
     const pubs = await publicationsOf(user, manifest.writerId, opts.pub);
     const sameSeq = pubs.find((p) => p.seq === manifest.seq) ?? null;
     const head = highestPub(pubs);
-    const recordsOf = user.get("s3rch-views-records").get(manifest.writerId);
+    const recordsOf = await graphRecords(user, manifest);
+    const recordKey = await publicationRecordKey(manifest);
+    const staging = user.get("s3rch-views-staging").get(manifest.writerId);
     const sameAsPublished = sameSeq !== null && manifestBody(sameSeq.manifest) === manifestBody(manifest);
-    if (head && head.seq > manifest.seq) {
-      await sweepRecords(recordsOf, addressesOf(head.manifest));
-      if (sameSeq && sameAsPublished) {
-        try {
-          await deletePublication(user, manifest.writerId, sameSeq);
-        } catch {
-          /* a later publication of the newer head removes the slot */
-        }
-      }
-      return "stale";
-    }
-    // A different body never replaces an existing sequence slot.
-    if (sameSeq && !sameAsPublished) {
-      await sweepRecords(recordsOf, addressesOf(sameSeq.manifest));
-      return "stale";
-    }
+    if (head && head.seq > manifest.seq) return "stale";
+    // Never sweep another publication as a side effect of rejecting this one.
+    if (sameSeq && !sameAsPublished) return "stale";
+    await putString(staging.get(recordKey), JSON.stringify(manifest));
     const prior = sameAsPublished ? sameSeq.manifest : null;
     const known = new Set(prior ? addressesOf(prior) : []);
-    for (const [address, record] of Object.entries(backup.records)) {
+    for (const address of addressesOf(manifest)) {
+      const record = backup.records[address]!;
       // Rewrite a known record if it is no longer readable (for example, lost by partial retention).
       if (known.has(address)) {
         const stored = await readString(recordsOf.get(address));
@@ -681,14 +714,23 @@ export async function writeBackupToGraph(
     // One key per sequence, so removing an old sequence cannot clear a newer one.
     await putString(user.get("s3rch-views-writers").get(writerSlotKey(manifest.writerId, manifest.seq)), String(now()));
     await sweepRecords(recordsOf, addressesOf(manifest));
+    // Retain the old publication/intention until its own record cleanup succeeds.
+    // A crash or failed delete is retried from those signed references next time.
     for (const p of pubs) {
       if (p.seq >= manifest.seq) continue;
       try {
+        if (p.manifest.recordScope === "publication" && !(await sweepRecords(await graphRecords(user, p.manifest), []))) continue;
         await deletePublication(user, manifest.writerId, p);
-      } catch {
-        /* the next publish of this writer removes the slot again */
-      }
+      } catch { /* Retry on a later publication. */ }
     }
+    for (const staged of await stagedPublications(user, manifest.writerId, opts.pub)) {
+      if (staged.owner !== manifest.owner || staged.seq >= manifest.seq) continue;
+      try {
+        if (await sweepRecords(await graphRecords(user, staged), []))
+          await putString(staging.get(await publicationRecordKey(staged)), null);
+      } catch { /* Keep the staging intent for retry. */ }
+    }
+    try { await putString(staging.get(recordKey), null); } catch { /* The committed manifest still names the records. */ }
     return "written";
   });
 }
@@ -777,11 +819,11 @@ async function loadTombstones(user: GraphChain, pub: string): Promise<WriterTomb
 }
 
 /**
- * Delete a tombstoned slot, then records nothing live still names, then the tombstone.
- * The caller runs this in the writer's publication queue. A leftover record keeps the tombstone.
+ * Delete the named slot and only its dedicated records, then the tombstone.
+ * Legacy shared records are retained. A leftover dedicated record keeps the tombstone.
  */
 async function finishTombstoneBody(user: GraphChain, t: WriterTombstone, pub: string): Promise<boolean> {
-  const recordsOf = user.get("s3rch-views-records").get(t.writerId);
+  const recordsOf = user.get("s3rch-views-records-v2").get(t.writerId).get(t.manifestHash);
   const tomb = user.get("s3rch-views-retired").get(writerSlotKey(t.writerId, t.seq));
   try {
     const pubs = await publicationsOf(user, t.writerId, pub);
@@ -797,9 +839,10 @@ async function finishTombstoneBody(user: GraphChain, t: WriterTombstone, pub: st
       await putString(user.get("s3rch-views-writers").get(writerSlotKey(t.writerId, t.seq)), null);
     }
     if ((await publicationsOf(user, t.writerId, pub)).some((p) => p.seq === t.seq)) return false;
-    const remaining = (await publicationsOf(user, t.writerId, pub)).filter((p) => p.seq !== t.seq);
-    const keep = remaining.flatMap((p) => addressesOf(p.manifest));
-    if (!(await sweepRecords(recordsOf, keep))) return false;
+    if (t.recordScope === "publication") {
+      if (!(await sweepRecords(recordsOf, []))) return false;
+      await putString(user.get("s3rch-views-staging").get(t.writerId).get(t.manifestHash), null);
+    }
     await putString(tomb, null);
     return true;
   } catch {
@@ -872,7 +915,7 @@ function highWater(state: ViewsState, deviceId: string): number {
 
 async function loadWriter(pair: SeaPair, user: GraphChain, manifest: Manifest): Promise<{ state: ViewsState; notices: Notice[] }> {
   const deviceId = manifest.deviceId && isSafeKey(manifest.deviceId) ? manifest.deviceId : "reader";
-  return restoreBackup(emptyState(manifest.owner, deviceId), pair, [manifest], (a, w) => readString(user.get("s3rch-views-records").get(w).get(a)));
+  return restoreBackup(emptyState(manifest.owner, deviceId), pair, [manifest], graphRecordReader(user));
 }
 
 async function planRetirements(user: GraphChain, pair: SeaPair, state: ViewsState, publishingWriterId: string): Promise<VersionVector> {
@@ -919,7 +962,7 @@ export async function pruneSupersededWriters(
   const writers = await listGraphWriters(user);
   for (const writerId of writers.slice(0, GRAPH_SCAN_MAX)) {
     if (writerId === survivor.writerId) continue;
-    // Same queue as publication, so a sweep cannot run while this writer's records are stored and its manifest is not.
+    // Local serialization is an optimization. Record isolation protects independent devices.
     await lock(writerQueue(survivor.owner, writerId), async () => {
       const pubs = await publicationsOf(user, writerId, pub);
       const head = highestPub(pubs);
@@ -941,6 +984,7 @@ export async function pruneSupersededWriters(
             writerId,
             seq: p.seq,
             manifestHash: hash,
+            recordScope: p.manifest.recordScope,
             deviceId,
             counter: water,
           });
@@ -1002,5 +1046,5 @@ export async function restoreFromGraph(state: ViewsState, pair: SeaPair, user: G
     const legacy = await readString(user.get("s3rch-views").get(w));
     if (isManifestShape(legacy) && legacy.owner === state.owner && legacy.writerId === w && (await verifyManifest(pair.pub, legacy))) manifests.push(legacy);
   }
-  return restoreBackup(state, pair, manifests, (a, w) => readString(user.get("s3rch-views-records").get(w).get(a)));
+  return restoreBackup(state, pair, manifests, graphRecordReader(user));
 }

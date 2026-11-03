@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { SeaPair } from "./identity/sea";
 import {
-  buildBackup,
+  buildBackup, publicationRecordKey,
   deriveBackupKey, encryptVersion, recordAddress, signManifest,
   canonicalJson,
   exportBackupFile,
@@ -198,13 +198,13 @@ describe("backup", () => {
     assert.equal(await writeBackupToGraph(g, first, { pub: pair.pub }), "written");
     assert.equal(await writeBackupToGraph(g, second, { pub: pair.pub }), "written");
     assert.equal(await writeBackupToGraph(g, first, { pub: pair.pub }), "stale");
-    const recordKeys = [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/"));
+    const recordKeys = [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records-v2/w/"));
     assert.equal(recordKeys.length, 3);
     g.data.set(recordKeys[1]!, JSON.stringify({ v: 1, iv: "AAAAAAAAAAAAAAAA", ct: "corrupt" }));
     g.data.delete(recordKeys[0]!);
     const third = await buildBackup(s, pair, "w", 3, cache);
     assert.equal(await writeBackupToGraph(g, third, { pub: pair.pub }), "written");
-    assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/")).length, 3);
+    assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records-v2/w/")).length, 3);
     const repaired = await restoreFromGraph(emptyState(ALICE, "d4"), pair, g, ["w"]);
     assert.equal(repaired.notices.length, 0);
     const r = await restoreFromGraph(emptyState(ALICE, "d2"), pair, g, ["w"]);
@@ -284,7 +284,7 @@ describe("backup", () => {
     const second = await buildBackup(s, pair, "w", 2);
     g.failDeletes = 2;
     assert.equal(await writeBackupToGraph(g, second, { pub: pair.pub }), "written");
-    const count = () => [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/")).length;
+    const count = () => [...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records-v2/w/")).length;
     assert.equal(count(), 4);
     assert.equal(await writeBackupToGraph(g, second, { pub: pair.pub }), "written");
     assert.equal(count(), 2);
@@ -326,7 +326,7 @@ describe("backup", () => {
     await assert.rejects(writeBackupToGraph(failing, await buildBackup(s2, pair, "w", 2), { pub: pair.pub }));
     const s3 = saveView(s2, view("v1", "c")).state;
     await writeBackupToGraph(g, await buildBackup(s3, pair, "w", 3), { pub: pair.pub });
-    assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records/w/")).length, 2);
+    assert.equal([...g.data.keys()].filter((k) => k.startsWith("~/s3rch-views-records-v2/w/")).length, 2);
   });
 
   it("refuses to publish a manifest with a bad signature", async () => {
@@ -432,7 +432,7 @@ describe("backup", () => {
     g.data.delete(`~/s3rch-views-writers/${writerSlotKey("old", 1)}`);
     assert.equal(await writeBackupToGraph(g, b, { pub: pair.pub }), "written");
     assert.ok(g.data.has(`~/s3rch-views-writers/${writerSlotKey("old", 1)}`));
-    const recKey = [...g.data.keys()].find((k) => k.startsWith("~/s3rch-views-records/old/"))!;
+    const recKey = [...g.data.keys()].find((k) => k.startsWith("~/s3rch-views-records-v2/old/"))!;
     g.data.delete(recKey);
     await writeBackupToGraph(g, b, { pub: pair.pub });
     assert.ok(g.data.has(recKey));
@@ -455,7 +455,7 @@ describe("backup", () => {
     const manifest = JSON.parse(g.data.get("~/s3rch-views/w2/2")!) as { retirements?: { d1?: number } };
     assert.ok((manifest.retirements?.d1 ?? 0) >= 1);
     assert.equal(g.data.has("~/s3rch-views/w1/1"), false);
-    assert.equal([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-records/w1/")), false);
+    assert.equal([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-records-v2/w1/")), false);
     assert.equal(g.data.has(`~/s3rch-views-writers/${writerSlotKey("w1", 1)}`), false);
     assert.equal([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-retired/")), false);
 
@@ -475,7 +475,7 @@ describe("backup", () => {
     g2.failDeletes = 0;
     assert.deepEqual((await retryWriterTombstones(g2, pair)).pending, []);
     assert.equal(g2.data.has("~/s3rch-views/w1/1"), false);
-    assert.equal([...g2.data.keys()].some((k) => k.startsWith("~/s3rch-views-records/w1/")), false);
+    assert.equal([...g2.data.keys()].some((k) => k.startsWith("~/s3rch-views-records-v2/w1/")), false);
     assert.equal([...g2.data.keys()].some((k) => k.startsWith("~/s3rch-views-retired/")), false);
     const back = await restoreFromGraph(emptyState(ALICE, "d3"), pair, g);
     assert.equal(back.state.views.v1?.current.view?.title, "new");
@@ -500,10 +500,11 @@ describe("backup", () => {
     await writeBackupToGraph(g, await buildBackup(first, pair, "w1", 1), { pub: pair.pub });
     const survivor = saveView((await restoreFromGraph(emptyState(ALICE, "d2"), pair, g)).state, view("v1", "kept")).state;
     const raced = await buildBackup(saveView(first, view("v1", "raced")).state, pair, "w1", 2);
+    const racedRecordKey = await publicationRecordKey(raced.manifest);
     g.beforePut((path, value) => {
       if (path === "~/s3rch-views/w1/1" && value === null && !g.data.has("~/s3rch-views/w1/2")) {
         g.data.set("~/s3rch-views/w1/2", JSON.stringify(raced.manifest));
-        for (const [address, record] of Object.entries(raced.records)) g.data.set(`~/s3rch-views-records/w1/${address}`, JSON.stringify(record));
+        for (const [address, record] of Object.entries(raced.records)) g.data.set(`~/s3rch-views-records-v2/w1/${racedRecordKey}/${address}`, JSON.stringify(record));
         g.data.set(`~/s3rch-views-writers/${writerSlotKey("w1", 2)}`, "9");
       }
     });
@@ -564,29 +565,30 @@ describe("backup", () => {
     for (let i = 0; i < 6; i++) if (!kept.has(`c${i}`)) assert.ok((entry.hidden ?? []).some((h) => coversCausal(h, { vv: { [`d${i}`]: 1 } })));
   });
 
-  it("keeps graph keys and live vectors bounded across repeated restores", async () => {
+  it("bounds live publication rows and live vectors across repeated restores", async () => {
     const pair = await testPair();
     const g = fakeGraph();
     const count = (prefix: string) => [...g.data.keys()].filter((k) => k.startsWith(prefix)).length;
     let state = saveView(emptyState(ALICE, "d0"), view("v1", "t0")).state;
     let published = await publishViewsBackup(g, pair, state, "w0", 1);
-    for (let i = 1; i <= 8; i++) {
+    for (let i = 1; i <= 32; i++) {
       const restored = await restoreFromGraph(emptyState(ALICE, `d${i}`), pair, g);
       assert.equal(restored.notices.length, 0);
       state = saveView(restored.state, view("v1", `t${i}`)).state;
       published = await publishViewsBackup(g, pair, state, `w${i}`, 1);
       assert.equal(published.status, "written");
       assert.equal(count("~/s3rch-views/"), 1);
-      assert.ok(count("~/s3rch-views-records/") <= 2);
+      assert.ok(count("~/s3rch-views-records-v2/") <= 2);
       assert.equal(count("~/s3rch-views-writers/"), 1);
       assert.equal(count("~/s3rch-views-retired/"), 0);
+      assert.equal(count("~/s3rch-views-staging/"), 0);
     }
-    assert.deepEqual(await listGraphWriters(g), ["w8"]);
+    assert.deepEqual(await listGraphWriters(g), ["w32"]);
     const current = published.state.views.v1!.current;
-    assert.equal(current.view?.title, "t8");
+    assert.equal(current.view?.title, "t32");
     assert.equal(Object.keys(current.vv).length, 1);
     assert.equal(current.foldedAll, true);
-    assert.equal(Object.keys(published.state.retirements).length, 8);
+    assert.equal(Object.keys(published.state.retirements).length, 32);
   });
 
   it("does not sweep a newer head when an older identical slot is retried", async () => {
@@ -616,20 +618,20 @@ describe("backup", () => {
     const backup = await buildBackup(survivor, pair, "w2", 1);
     await writeBackupToGraph(g, backup, { pub: pair.pub });
     g.beforePut((path, value) => {
-      if (value === null && path.startsWith("~/s3rch-views-records/w1/")) g.failDeletes = 1;
+      if (value === null && path.startsWith("~/s3rch-views-records-v2/w1/")) g.failDeletes = 1;
     });
     const pruned = await pruneSupersededWriters(g, pair, backup.manifest);
     assert.equal(pruned.removed.length, 0);
     assert.ok(pruned.pending.length > 0);
     assert.ok([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-retired/")));
-    assert.ok([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-records/w1/")));
+    assert.ok([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-records-v2/w1/")));
     g.beforePut(undefined);
     assert.deepEqual((await retryWriterTombstones(g, pair)).pending, []);
-    assert.equal([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-records/w1/")), false);
+    assert.equal([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-records-v2/w1/")), false);
     assert.equal([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-retired/")), false);
   });
 
-  it("does not remove records of a publication that is still being written", async () => {
+  it("does not remove in-flight records when publisher and pruner have independent locks", async () => {
     const pair = await testPair();
     const g = fakeGraph();
     const first = saveView(emptyState(ALICE, "d1"), view("v1", "old")).state;
@@ -638,39 +640,43 @@ describe("backup", () => {
     const survivorBackup = await buildBackup(survivor, pair, "w2", 1);
     await writeBackupToGraph(g, survivorBackup, { pub: pair.pub });
     const raced = await buildBackup(saveView(first, view("v1", "raced")).state, pair, "w1", 2);
+    const racedRecordKey = await publicationRecordKey(raced.manifest);
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    let paused = false;
+    let notifyPaused!: () => void;
+    const paused = new Promise<void>(resolve => { notifyPaused = resolve; });
+    const independentLock = async <T>(_name: string, run: () => Promise<T>) => run();
     g.beforePut(async (path, value) => {
       if (path === "~/s3rch-views/w1/2" && typeof value === "string") {
-        paused = true;
+        notifyPaused();
         await gate;
       }
     });
-    const writing = writeBackupToGraph(g, raced, { pub: pair.pub });
-    for (let i = 0; i < 50 && !paused; i++) await new Promise((resolve) => setTimeout(resolve, 5));
-    assert.equal(paused, true);
-    const pruning = pruneSupersededWriters(g, pair, survivorBackup.manifest);
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    for (const address of Object.keys(raced.records)) assert.equal(g.data.has(`~/s3rch-views-records/w1/${address}`), true);
-    release();
-    assert.equal(await writing, "written");
-    await pruning;
+    const writing = writeBackupToGraph(g, raced, { pub: pair.pub, lock: independentLock });
+    await paused;
+    try {
+      await pruneSupersededWriters(g, pair, survivorBackup.manifest, pair.pub, independentLock);
+      for (const address of Object.keys(raced.records)) assert.equal(g.data.has(`~/s3rch-views-records-v2/w1/${racedRecordKey}/${address}`), true);
+    } finally { release(); await writing; }
     const restored = await restoreFromGraph(emptyState(ALICE, "d3"), pair, g, ["w1"]);
     assert.equal(restored.notices.length, 0);
     assert.equal(restored.state.views.v1?.current.view?.title, "raced");
   });
 
-  it("removes a legacy publication at its original paths", async () => {
+  it("removes legacy manifest paths but retains shared records for older clients", async () => {
     const pair = await testPair();
     const g = fakeGraph();
     const first = saveView(emptyState(ALICE, "d1"), view("v1", "old")).state;
     const legacy = await buildBackup(first, pair, "w1", 1);
+    legacy.manifest = await signManifest(pair, { ...legacy.manifest, recordScope: undefined });
     g.data.set("~/s3rch-views/w1", JSON.stringify(legacy.manifest));
     for (const [address, record] of Object.entries(legacy.records)) g.data.set(`~/s3rch-views-records/w1/${address}`, JSON.stringify(record));
     g.data.set("~/s3rch-views-writers/w1", "5");
+    const restoredLegacy = await restoreFromGraph(emptyState(ALICE, "reader"), pair, g);
+    assert.equal(restoredLegacy.notices.length, 0);
+    assert.equal(restoredLegacy.state.views.v1?.current.view?.title, "old");
     const survivor = adoptRetirements(saveView((await restoreFromGraph(emptyState(ALICE, "d2"), pair, g)).state, view("v1", "new")).state, { d1: 1 });
     const backup = await buildBackup(survivor, pair, "w2", 1);
     await writeBackupToGraph(g, backup, { pub: pair.pub });
@@ -678,7 +684,7 @@ describe("backup", () => {
     assert.deepEqual(pruned.pending, []);
     assert.equal(g.data.has("~/s3rch-views/w1"), false);
     assert.equal(g.data.has("~/s3rch-views-writers/w1"), false);
-    assert.equal([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-records/w1/")), false);
+    assert.equal([...g.data.keys()].some((k) => k.startsWith("~/s3rch-views-records/w1/")), true);
     const restored = await restoreFromGraph(emptyState(ALICE, "d3"), pair, g);
     assert.equal(restored.state.views.v1?.current.view?.title, "new");
     assert.equal(restored.notices.length, 0);
@@ -765,4 +771,93 @@ it("an older encrypted record above the history cap aborts restore rather than b
   const manifest = await signManifest(pair, { v: 1, owner: ALICE, writerId: "legacy", seq: 1, entries: [{ id: "v1", address }] });
   await assert.rejects(restoreBackup(state, pair, [manifest], async () => record), /Conflict history limit/);
   assert.deepEqual(state, before);
+});
+
+for (const phase of ["records", "manifest"] as const) it(`independent pruning preserves reused ciphertext during ${phase} publication`, async () => {
+  const pair = await testPair(), g = fakeGraph(), cache = new Map();
+  const independent = async <T>(_name: string, run: () => Promise<T>) => run();
+  const firstState = saveView(emptyState(ALICE, "d1"), view("v1", "unchanged")).state;
+  const first = await buildBackup(firstState, pair, "w1", 1, cache);
+  await writeBackupToGraph(g, first, { pub: pair.pub });
+  const nextState = saveView(firstState, view("v2", "new work")).state;
+  const next = await buildBackup(nextState, pair, "w1", 2, cache);
+  const shared = first.manifest.entries[0]!.address;
+  assert.ok(next.manifest.entries.some(e => e.address === shared));
+  const oldKey = await publicationRecordKey(first.manifest), newKey = await publicationRecordKey(next.manifest);
+  assert.notEqual(newKey, oldKey);
+  const survivor = await buildBackup(adoptRetirements({ ...firstState, deviceId: "d2" }, { d1: 1 }), pair, "w0", 1);
+  await writeBackupToGraph(g, survivor, { pub: pair.pub });
+  let resume!: () => void, notify!: () => void;
+  const gate = new Promise<void>(resolve => { resume = resolve; });
+  const paused = new Promise<void>(resolve => { notify = resolve; });
+  const recordPrefix = `~/s3rch-views-records-v2/w1/${newKey}/`;
+  let recordWrites = 0;
+  g.beforePut(async (path, value) => {
+    if (typeof value !== "string") return;
+    if (path.startsWith(recordPrefix)) recordWrites++;
+    if ((phase === "manifest" && path === "~/s3rch-views/w1/2") ||
+        (phase === "records" && path.startsWith(recordPrefix) && recordWrites === 2)) {
+      notify(); await gate;
+    }
+  });
+  const publishing = writeBackupToGraph(g, next, { pub: pair.pub, lock: independent });
+  await paused;
+  const staged = [...g.data.entries()].filter(([path]) => path.startsWith(recordPrefix));
+  assert.ok(staged.length > 0);
+  try {
+    const pruned = await pruneSupersededWriters(g, pair, survivor.manifest, pair.pub, independent);
+    assert.ok(pruned.removed.includes(writerSlotKey("w1", 1)));
+    for (const [path, value] of staged) assert.equal(g.data.get(path), value);
+    assert.equal(g.data.has(`~/s3rch-views-records-v2/w1/${oldKey}/${shared}`), false);
+    assert.ok(g.data.has(`~/s3rch-views-staging/w1/${newKey}`));
+  } finally { resume(); await publishing; }
+  const restored = await restoreFromGraph(emptyState(ALICE, "reader"), pair, g, ["w1"]);
+  assert.equal(restored.notices.length, 0);
+  assert.equal(restored.state.views.v1?.current.view?.title, "unchanged");
+  assert.equal(restored.state.views.v2?.current.view?.title, "new work");
+  assert.equal(g.data.has(`~/s3rch-views-staging/w1/${newKey}`), false);
+});
+
+it("authenticates record scope and staging identity before namespace cleanup", async () => {
+  const pair = await testPair(), g = fakeGraph();
+  const state = saveView(emptyState(ALICE, "device"), view("v1", "data")).state;
+  const first = await buildBackup(state, pair, "w", 1);
+  await assert.rejects(writeBackupToGraph(g, { ...first, manifest: { ...first.manifest, recordScope: undefined } }, { pub: pair.pub }), /manifest is invalid/);
+  const { verifyManifest } = await import("./views-backup");
+  const resigned = await signManifest(pair, first.manifest);
+  assert.equal(await publicationRecordKey(resigned), await publicationRecordKey(first.manifest));
+  assert.ok(await verifyManifest(pair.pub, resigned));
+  const legacy = await signManifest(pair, { ...first.manifest, recordScope: undefined });
+  assert.ok(await verifyManifest(pair.pub, legacy));
+  await assert.rejects(writeBackupToGraph(g, { ...first, manifest: legacy }, { pub: pair.pub }), /rebuild legacy/);
+  // A valid intent stored at a different hash must not authorize sweeping there.
+  const wrong = "ab".repeat(32);
+  g.data.set(`~/s3rch-views-staging/w/${wrong}`, JSON.stringify(first.manifest));
+  g.data.set(`~/s3rch-views-records-v2/w/${wrong}/sentinel`, "untouched");
+  await writeBackupToGraph(g, await buildBackup(state, pair, "w", 2), { pub: pair.pub });
+  assert.equal(g.data.get(`~/s3rch-views-records-v2/w/${wrong}/sentinel`), "untouched");
+});
+
+it("retains signed staging intent until failed orphan cleanup can be retried", async () => {
+  const pair = await testPair(), g = fakeGraph();
+  const state = saveView(emptyState(ALICE, "device"), view("v1", "old")).state;
+  const interrupted = await buildBackup(state, pair, "writer", 1);
+  const hash = await publicationRecordKey(interrupted.manifest);
+  const intent = `~/s3rch-views-staging/writer/${hash}`;
+  const prefix = `~/s3rch-views-records-v2/writer/${hash}/`;
+  // Crash after staging records, before the manifest/index commit.
+  g.data.set(intent, JSON.stringify(interrupted.manifest));
+  for (const [address, record] of Object.entries(interrupted.records)) g.data.set(prefix + address, JSON.stringify(record));
+  const latest = await buildBackup(saveView(state, view("v1", "latest")).state, pair, "writer", 2);
+  g.beforePut((path, value) => { if (value === null && path.startsWith(prefix)) g.failDeletes = 1; });
+  assert.equal(await writeBackupToGraph(g, latest, { pub: pair.pub }), "written");
+  assert.ok(g.data.has(intent));
+  assert.ok([...g.data.keys()].some(path => path.startsWith(prefix)));
+  g.beforePut(undefined); g.failDeletes = 0;
+  assert.equal(await writeBackupToGraph(g, latest, { pub: pair.pub }), "written");
+  assert.equal(g.data.has(intent), false);
+  assert.equal([...g.data.keys()].some(path => path.startsWith(prefix)), false);
+  const restored = await restoreFromGraph(emptyState(ALICE, "reader"), pair, g);
+  assert.equal(restored.notices.length, 0);
+  assert.equal(restored.state.views.v1?.current.view?.title, "latest");
 });

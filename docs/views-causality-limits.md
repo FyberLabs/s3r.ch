@@ -30,9 +30,46 @@ does not establish bounded physical Gun storage: the in-memory graph removes
 null-valued keys, while replicated deletion metadata may remain. The account
 retirement map also retains a counter per retired device.
 
-The concurrent publish/prune test uses a shared in-process writer lock. Replacing the publisher lock with an independent no-op lock reproduces deletion
-of its staged records while its manifest write is paused. Cross-device cleanup must
-protect the record namespace of an in-flight publication without depending on
-that lock. Issue #121 remains open for that protocol and end-to-end storage-bound
-acceptance. History-cap refusal prevents silent loss but does not complete those
-requirements.
+## Publication isolation and upgrade behavior
+
+New manifests sign `recordScope: "publication"`. Records are stored at
+`~<pub>/s3rch-views-records-v2/<writerId>/<manifestHash>/<address>`, where
+`manifestHash` is SHA-256 of the canonical signed manifest body without its
+signature. Re-signing identical content keeps the same namespace. Different
+sequences or contents have separate namespaces even when cached ciphertext and
+its content address are identical.
+
+Before writing records, the publisher stores its signed manifest as a staging
+intent at `~<pub>/s3rch-views-staging/<writerId>/<manifestHash>`. A completed
+publication removes its intent. A later sequence from that writer cleans up
+older staged publications in their own namespaces; a failed cleanup leaves its
+signed intent for retry. Pruning uses the manifest hash and signed record scope
+in the removal tombstone, including after the manifest has already been deleted.
+It never sweeps another publication's namespace.
+
+Tests pause a publisher during record writes and during the manifest write,
+then complete pruning using an independent lock. Both the staged records and
+reused ciphertext survive, and the published backup restores without missing
+records. The original independent-lock regression fails before isolation.
+
+Legacy manifests without `recordScope` still restore from
+`~<pub>/s3rch-views-records/<writerId>/<address>`. Their superseded manifest and
+index can be removed, but their shared records are retained: an older client may
+still be writing there. New graph publication rejects legacy manifests; restore
+them and build a new backup before publishing. No encrypted file contents need
+to be rewritten just to read an old backup.
+
+Upgrade all backup-writing clients before relying on new publications. Older
+clients do not include `recordScope` in signature verification and cannot read
+new manifests. Record paths, the signed manifest and tombstone format, and staging
+intents changed; no environment variables or deployment flags were added.
+
+## Remaining acceptance for #121
+
+The reproduced cross-device record sweep is fixed for new publications. This is
+not yet full storage-bound acceptance: safe reclamation of legacy shared records,
+physical Gun deletion metadata, and retirement-map growth remain. The repeated
+restore test covers 32 fresh writers with bounded live rows, no pending staging
+intents, and one live vector component; it deliberately asserts that the shared
+retirement map still contains 32 device counters. Issue #121 stays open until
+those remaining storage and migration requirements have a safe solution.
