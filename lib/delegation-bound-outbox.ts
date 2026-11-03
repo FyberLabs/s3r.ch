@@ -28,21 +28,38 @@ export function createInventoryBoundOutbox(
     if (saved.operationId !== operationId || saved.forum !== forum || saved.agent !== agent || saved.fence !== fence)
       throw Error("cancellation inventory binding mismatch");
   }
+  async function prepare(operationId: string, cancellations: readonly CancellationEnvelope[], replacement?: string) {
+    // Snapshot signed material before inventory I/O can yield to the caller.
+    const request = snapshotCancellationOperation({ operationId, forum, agent, fence: "unbound", cancellations,
+      ...(replacement === undefined ? {} : { replacement }) });
+    const fence = await binding(operationId);
+    const saved = await outbox.prepare({ ...request, fence });
+    // Frozen state is immutable by contract. Still fail closed on unexpected
+    // storage loss/replacement during preparation; retain saved bytes for diagnosis.
+    check(saved, operationId, await binding(operationId));
+    return saved;
+  }
+  async function load(operationId: string) {
+    const fence = await binding(operationId), saved = await outbox.load(operationId);
+    if (await binding(operationId) !== fence) throw Error("inventory changed during recovery");
+    if (saved) check(saved, operationId, fence);
+    return saved;
+  }
   return Object.freeze({
-    async prepare(operationId: string, cancellations: readonly CancellationEnvelope[]) {
-      // Snapshot signed material before inventory I/O can yield to the caller.
-      const request = snapshotCancellationOperation({ operationId, forum, agent, fence: "unbound", cancellations });
-      const fence = await binding(operationId);
-      const saved = await outbox.prepare({ ...request, fence });
-      // Frozen state is immutable by contract. Still fail closed on unexpected
-      // storage loss/replacement during preparation; retain saved bytes for diagnosis.
-      check(saved, operationId, await binding(operationId));
-      return saved;
+    prepare(operationId: string, cancellations: readonly CancellationEnvelope[]) {
+      return prepare(operationId, cancellations);
     },
-    async load(operationId: string) {
-      const fence = await binding(operationId), saved = await outbox.load(operationId);
-      if (await binding(operationId) !== fence) throw Error("inventory changed during recovery");
-      if (saved) check(saved, operationId, fence);
+    load,
+    async prepareReassignment(operationId: string, replacement: string, cancellations: readonly CancellationEnvelope[]) {
+      if (typeof replacement !== "string" || !isSeaPubkey(replacement) || replacement === agent) throw Error("invalid replacement assignee");
+      return prepare(operationId, cancellations, replacement);
+    },
+    async loadReassignment(operationId: string, expectedReplacement: string) {
+      if (typeof expectedReplacement !== "string" || !isSeaPubkey(expectedReplacement) || expectedReplacement === agent) throw Error("invalid replacement assignee");
+      const saved = await load(operationId);
+      // Legacy cancellation-only records stay readable but can never silently
+      // become a reassignment to a target supplied after cancellation.
+      if (!saved || saved.replacement !== expectedReplacement) throw Error("missing or mismatched reassignment intent");
       return saved;
     },
   });

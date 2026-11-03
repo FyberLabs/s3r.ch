@@ -13,6 +13,7 @@ export type CancellationOutboxStore = {
 export type CancellationEnvelope = Readonly<{ kind: AuthorityKind; soul: string; recordJson: string }>;
 export type CancellationOperation = Readonly<{
   operationId: string; forum: string; agent: string; fence: string;
+  replacement?: string;
   cancellations: readonly CancellationEnvelope[];
 }>;
 const MAX_BYTES = 1_048_576, MAX_RECORDS = 256;
@@ -20,10 +21,12 @@ const operationId = (v: unknown): v is string => typeof v === "string" && /^[0-9
 const bytes = (v: string) => new TextEncoder().encode(v).length;
 export function snapshotCancellationOperation(input: unknown): CancellationOperation {
   const r = recoveryObject(input), list = r && recoveryList(r.cancellations);
-  if (!r || Object.keys(r).sort().join() !== "agent,cancellations,fence,forum,operationId" ||
+  const hasReplacement = !!r && Object.hasOwn(r, "replacement");
+  if (!r || Object.keys(r).sort().join() !== (hasReplacement ? "agent,cancellations,fence,forum,operationId,replacement" : "agent,cancellations,fence,forum,operationId") ||
       !operationId(r.operationId) || typeof r.forum !== "string" || !isForumObjectId(r.forum, "forum") ||
       typeof r.agent !== "string" || !isSeaPubkey(r.agent) || typeof r.fence !== "string" ||
       !r.fence.length || r.fence.length > 256 || !list?.length || list.length > MAX_RECORDS) throw Error("invalid cancellation operation");
+  if (hasReplacement && (typeof r.replacement !== "string" || !isSeaPubkey(r.replacement) || r.replacement === r.agent)) throw Error("invalid replacement assignee");
   const seen = new Set<string>();
   const cancellations = list.map(raw => {
     const row = recoveryObject(raw);
@@ -38,6 +41,7 @@ export function snapshotCancellationOperation(input: unknown): CancellationOpera
     return Object.freeze({ kind: row.kind as AuthorityKind, soul: row.soul, recordJson: row.recordJson });
   });
   return Object.freeze({ operationId: r.operationId, forum: r.forum, agent: r.agent, fence: r.fence,
+    ...(hasReplacement ? { replacement: r.replacement as string } : {}),
     cancellations: Object.freeze(cancellations) });
 }
 
