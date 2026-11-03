@@ -14,10 +14,18 @@ function serviceError(error: unknown, status: number, code: string): boolean {
  * No container creation, deletion, or grant publication happens here.
  */
 export function createBlobCancellationOutboxStore(container: Container, namespace: string): CancellationOutboxStore {
+  return createBlobRetryStore(container, namespace, "s3rch-delegation-outbox");
+}
+/** Separate immutable slot for replacement grants; never overwrite cancellation
+ * evidence. Uses the same authenticated scope and operation ID as that outbox. */
+export function createBlobReplacementGrantStore(container: Container, namespace: string): CancellationOutboxStore {
+  return createBlobRetryStore(container, namespace, "s3rch-delegation-replacement-grants");
+}
+function createBlobRetryStore(container: Container, namespace: string, prefix: string): CancellationOutboxStore {
   if (!/^[0-9a-f]{64}$/.test(namespace)) throw Error("invalid outbox namespace");
   const blob = (id: string) => {
     if (!/^[0-9a-f]{32}$/.test(id)) throw Error("invalid operation ID");
-    return container.getBlockBlobClient(`s3rch-delegation-outbox/v1/${namespace}/${id}.json`);
+    return container.getBlockBlobClient(`${prefix}/v1/${namespace}/${id}.json`);
   };
   return Object.freeze({
     async create(id: string, text: string) {

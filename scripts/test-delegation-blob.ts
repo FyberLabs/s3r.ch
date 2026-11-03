@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { BlobServiceClient, StorageSharedKeyCredential } from "@azure/storage-blob";
 import { setTimeout as delay } from "node:timers/promises";
-import { createBlobCancellationOutboxStore } from "../lib/delegation-blob-outbox";
+import { createBlobCancellationOutboxStore, createBlobReplacementGrantStore } from "../lib/delegation-blob-outbox";
 import { createBlobInventoryStore } from "../lib/delegation-blob-inventory";
 import { createDelegationInventory } from "../lib/delegation-inventory";
 import { p256 } from "@noble/curves/nist.js";
@@ -9,6 +9,7 @@ import { createInventoryBoundOutbox } from "../lib/delegation-bound-outbox";
 import { createCancellationOutbox } from "../lib/delegation-outbox";
 import { seaToPrincipalKey } from "../lib/identity/forum-check";
 import { parseForumAuthority } from "../lib/identity/forum-authority-records";
+import { createReplacementGrantOutbox } from "../lib/delegation-replacement-grants";
 async function main() {
 const port = process.argv[2], phase = process.argv[3];
 assert.match(port, /^[0-9]+$/); assert.ok(phase === "write" || phase === "read");
@@ -102,7 +103,21 @@ if (phase === "write") {
     { forum: forum.replace(/1{32}$/, "2".repeat(32)), agent });
   await assert.rejects(wrong.load(id), /binding mismatch/);
 }
-console.log(`cancellation Blob, inventory and bound recovery ${phase} passed`);
+const replacementStore = createBlobReplacementGrantStore(container, boundScope);
+const grantOutbox = createReplacementGrantOutbox({ inventory: boundInventory, outbox: bound, store: replacementStore });
+const grantRecord = { ...record, stated: 1, accessor: replacement };
+const grantParsed = parseForumAuthority("post", grantRecord); assert.ok(grantParsed);
+const grants = [{ kind: "post" as const, soul: grantParsed.soul, recordJson: JSON.stringify(grantRecord) }];
+if (phase === "write") {
+  await grantOutbox.prepare(id, replacement, grants);
+} else {
+  assert.deepEqual((await grantOutbox.load(id, replacement))?.grants, grants);
+  assert.deepEqual((await grantOutbox.prepare(id, replacement, grants)).grants, grants);
+  const changed = [{ ...grants[0], recordJson: JSON.stringify({ ...grantRecord, until: 20 }) }];
+  await assert.rejects(grantOutbox.prepare(id, replacement, changed), /conflict/);
+  assert.deepEqual((await bound.loadReassignment(id, replacement)).cancellations, cancellations);
+}
+console.log(`cancellation Blob, inventory, bound recovery and replacement grants ${phase} passed`);
 
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
