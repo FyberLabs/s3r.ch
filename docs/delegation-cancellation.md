@@ -135,6 +135,31 @@ The coordinator still needs serialized mutation and complete durable providers
 before this can drive the UI. Cancellation-only `reconcile` keeps its existing
 meaning and does not require a replacement plan.
 
+## Before publishing cancellations
+
+`preflightCancellation(operationId)` evaluates the exact saved cancellation batch
+with complete authenticated ACL/history evidence. Direct cancellations must name
+the prior assignee and a registered destination. Object-set cancellations must
+name a registered destination. Membership cancellations must name the prior
+assignee and a set/predicate linked by a signed object-set row in the durable
+source to a registered destination. Candidate rows cannot supply that scope link.
+
+The authority resolver verifies candidate signatures, current-key or witnessed
+retired-key authority, cancellation predecessors and destination ownership. The
+resulting graph must deny post, direct-see and group access for the old assignee
+at every registered destination. Surviving independent access blocks preflight.
+Group cancellation can affect other users or destinations sharing that relation;
+scope relevance does not prove exclusive effects. The caller must select the
+intended cancellation strategy before preparing the immutable batch.
+
+Success returns `cancellation-publication-ready` with the original full batch for
+retry, including records already published before a lost response. This is a
+projection, not proof of durable revocation: source evidence remains unchanged,
+and `reconcile` still requires the exact cancellations in durable evidence. The
+publisher must serialize mutation, revalidate at dispatch, publish the saved
+bytes, and reconcile afterward. Storage changes or evaluation expiry invalidate
+the preflight. No runtime pause, drain or assignment-completion API is introduced.
+
 ## Before publishing replacement grants
 
 `preflightReplacement(operationId, replacement)` verifies the saved grant batch

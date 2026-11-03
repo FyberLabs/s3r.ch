@@ -4,13 +4,25 @@ import type { createReplacementGrantOutbox } from "./delegation-replacement-gran
 import { isSeaPubkey } from "./identity/forum-check";
 import type { createDelegationInventory } from "./delegation-inventory";
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
-import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
+import { parseForumAuthority, type AuthorityKind, type ParsedAuthority } from "./identity/forum-authority-records";
 import { recoveryList, recoveryObject } from "./identity/forum-recovery-records";
 
 type Result = Readonly<{ ok: true; operationId: string; evaluatedAt: number; fence: string; status: "acl-reconciled" }> |
   Readonly<{ ok: true; operationId: string; evaluatedAt: number; fence: string; status: "reassignment-access-reconciled"; replacement: string; checkedGrants: number }> |
   Readonly<{ ok: true; operationId: string; evaluatedAt: number; fence: string; status: "replacement-publication-ready"; replacement: string; grants: readonly CancellationEnvelope[] }> |
+  Readonly<{ ok: true; operationId: string; evaluatedAt: number; fence: string; status: "cancellation-publication-ready"; cancellations: readonly CancellationEnvelope[] }> |
   Readonly<{ ok: false; reason: string }>;
+
+type Mode = "reconcile" | "replacement-preflight" | "cancellation-preflight";
+function cancellationInScope(p: ParsedAuthority, agent: string, destinations: readonly string[], groups: ReadonlySet<string>) {
+  if (!p.cancellation) return false;
+  if (p.kind === "post" || p.kind === "see") return p.row.accessor === agent && destinations.includes(p.row.object);
+  if (p.kind === "object-set") return destinations.includes(p.row.object);
+  if (p.kind === "cancel" && p.row.kind === "object-set") return !!p.row.object && destinations.includes(p.row.object);
+  if (p.kind === "membership" || (p.kind === "cancel" && p.row.kind === "membership"))
+    return p.row.member === agent && groups.has(JSON.stringify([p.row.set, p.row.predicate]));
+  return false;
+}
 /** The provider must supply complete authenticated history and durable ACL
  * evidence, not a browser cache or a Gun put acknowledgement. All ports
  * must refer to the same trusted coordinator scope. Success is an instantaneous
@@ -25,7 +37,7 @@ export function createCancellationReconciler(input: {
   clock?: () => number;
 }) {
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
-  async function reconcile(operationId: string, replacement: string | null = null, preflight = false): Promise<Result> {
+  async function reconcile(operationId: string, replacement: string | null = null, mode: Mode = "reconcile"): Promise<Result> {
     const fail = (reason: string): Result => Object.freeze({ ok: false, reason });
     try {
       const saved = await input.outbox.load(operationId);
@@ -41,17 +53,25 @@ export function createCancellationReconciler(input: {
       // Normalize the same rows that refresh will verify before any await.
       // Never compare stored records to mutable provider data after verification.
       const rows: ForumAuthoritySnapshot["rows"][number][] = [];
-      const evidence = new Set<string>();
+      const evidence = new Set<string>(), groups = new Set<string>();
       for (const raw of rawRows) {
         const r = recoveryObject(raw), p = r && parseForumAuthority(r.kind as AuthorityKind, r.record);
         if (!p || r!.soul !== p.soul) return fail("invalid-authority-record");
         rows.push({ kind: p.kind, soul: p.soul, record: p.row });
         evidence.add(JSON.stringify([p.kind, p.soul, p.row]));
+        if (p.kind === "object-set" && p.row.stated === 1 && inventory.destinations.includes(p.row.object))
+          groups.add(JSON.stringify([p.row.set, p.row.predicate]));
+      }
+      if (mode === "cancellation-preflight") for (const record of saved.cancellations) {
+        const p = parseForumAuthority(record.kind, JSON.parse(record.recordJson));
+        if (!p || !cancellationInScope(p, saved.agent, inventory.destinations, groups))
+          return fail("cancellation-outside-operation");
+        rows.push({ kind: p.kind, soul: p.soul, record: p.row });
       }
       // Prospective rows are restricted to positive direct grants for the saved
       // replacement, so they cannot cancel old access or introduce ownership.
       // Keep durable evidence separate: candidates never establish publication.
-      if (preflight && plan) for (const record of plan.grants) {
+      if (mode === "replacement-preflight" && plan) for (const record of plan.grants) {
         const p = parseForumAuthority(record.kind, JSON.parse(record.recordJson));
         if (!p || (p.kind !== "see" && p.kind !== "post") || p.cancellation ||
             p.row.accessor !== replacement || !inventory.destinations.includes(p.row.object))
@@ -64,7 +84,7 @@ export function createCancellationReconciler(input: {
       if (!admitted.ok || admitted.diagnostics.length) return fail("unverified-authority");
       for (const record of saved.cancellations) {
         const p = parseForumAuthority(record.kind, JSON.parse(record.recordJson));
-        if (!p?.cancellation || !evidence.has(JSON.stringify([p.kind, p.soul, p.row]))) return fail("missing-exact-cancellation");
+        if (!p?.cancellation || (mode !== "cancellation-preflight" && !evidence.has(JSON.stringify([p.kind, p.soul, p.row])))) return fail("missing-exact-cancellation");
       }
       for (const destination of inventory.destinations) {
         const graph = authority.graph;
@@ -77,7 +97,7 @@ export function createCancellationReconciler(input: {
         const p = parseForumAuthority(record.kind, JSON.parse(record.recordJson));
         if (!p || (p.kind !== "see" && p.kind !== "post") || p.cancellation ||
             p.row.accessor !== replacement || !inventory.destinations.includes(p.row.object) ||
-            (!preflight && !evidence.has(JSON.stringify([p.kind, p.soul, p.row])))) return fail("missing-exact-replacement-grant");
+            (mode !== "replacement-preflight" && !evidence.has(JSON.stringify([p.kind, p.soul, p.row])))) return fail("missing-exact-replacement-grant");
         // Independent group access cannot stand in for a saved direct-see grant.
         // Presence of a signed record alone does not prove it is effective now.
         const check = p.kind === "post" ? authority.graph.checkPost : authority.graph.checkDirectSee;
@@ -94,7 +114,9 @@ export function createCancellationReconciler(input: {
         if (!latestPlan || JSON.stringify(latestPlan) !== JSON.stringify(plan)) return fail("replacement-plan-changed");
       }
       if (clock() !== at) return fail("stale-evaluation");
-      if (preflight && replacement !== null && plan) return Object.freeze({ ok: true, operationId, evaluatedAt: at,
+      if (mode === "cancellation-preflight") return Object.freeze({ ok: true, operationId, evaluatedAt: at,
+        fence: saved.fence, status: "cancellation-publication-ready", cancellations: saved.cancellations });
+      if (mode === "replacement-preflight" && replacement !== null && plan) return Object.freeze({ ok: true, operationId, evaluatedAt: at,
         fence: saved.fence, status: "replacement-publication-ready", replacement, grants: plan.grants });
       if (replacement !== null && plan) return Object.freeze({ ok: true, operationId, evaluatedAt: at,
         fence: saved.fence, status: "reassignment-access-reconciled", replacement, checkedGrants: plan.grants.length });
@@ -103,12 +125,13 @@ export function createCancellationReconciler(input: {
   }
   return Object.freeze({
     reconcile: (operationId: string) => reconcile(operationId),
+    preflightCancellation: (operationId: string) => reconcile(operationId, null, "cancellation-preflight"),
     // Internal preflight only: the publisher must serialize assignment/grant
     // mutations and revalidate at dispatch. This is not a durable permission token.
     async preflightReplacement(operationId: string, replacement: string): Promise<Result> {
       if (typeof replacement !== "string" || !isSeaPubkey(replacement))
         return Object.freeze({ ok: false, reason: "invalid-replacement" });
-      return reconcile(operationId, replacement, true);
+      return reconcile(operationId, replacement, "replacement-preflight");
     },
     async reconcileReassignment(operationId: string, replacement: string): Promise<Result> {
       if (typeof replacement !== "string" || !isSeaPubkey(replacement))

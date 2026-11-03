@@ -31,13 +31,13 @@ const group = (member = agent, key = 2) => [
   sign("membership", { role: "set", predicate: "same-group", set, member, setOwner: owner, stated: 1, hamState: 1, cancels: [] }),
   sign("object-set", { owner, object: destination, predicate: "same-group", set, stated: 1, hamState: 1, cancels: [] }),
 ];
-async function harness(destinations = [destination], subject = agent, replacement?: string) {
+async function harness(destinations = [destination], subject = agent, replacement?: string, cancellationRows?: Row[]) {
   let state: { text: string; etag: string } | null = null, revision = 0, now = at;
   const inventory = createDelegationInventory({ async read() { return state; }, async compareAndSwap(etag, text) {
     if ((state?.etag ?? null) !== etag) return false; state = { text, etag: String(++revision) }; return true;
   } });
   await inventory.initialize(destinations); await inventory.freeze(operationId);
-  const records = [grant("post", 0, 2, destination, subject), grant("see", 0, 2, destination, subject)];
+  const records = cancellationRows ?? [grant("post", 0, 2, destination, subject), grant("see", 0, 2, destination, subject)];
   const documents = new Map<string, string>();
   const outbox = createInventoryBoundOutbox(inventory, createCancellationOutbox({ async read(id) { return documents.get(id) ?? null; }, async create(id, text) { if (!documents.has(id)) documents.set(id, text); } }), { forum, agent: subject });
   const envelopes = records.map(r => ({ kind: r.kind, soul: r.soul, recordJson: JSON.stringify(r.record) }));
@@ -239,4 +239,80 @@ test("preflight rechecks plan durability and evaluation time after verification"
   const expired = createCancellationReconciler({ ...fresh.input, clock: () => at + (reads > 1 ? 1 : 0),
     replacementGrants: { async load(id, target) { reads++; return fresh.plans.load(id, target); } } });
   assert.deepEqual(await expired.preflightReplacement(operationId, replacement), { ok: false, reason: "stale-evaluation" });
+});
+
+function beforeCancellation(h: Awaited<ReturnType<typeof harness>>, extra: Row[] = []) {
+  h.snapshot = { ...h.snapshot, rows: [ownership(), grant("post", 1, 1), grant("see", 1, 1), ...extra] };
+}
+test("cancellation preflight verifies the saved batch without claiming revocation", async () => {
+  const h = await harness(); beforeCancellation(h);
+  const before = JSON.stringify(h.snapshot), saved = await h.outbox.load(operationId);
+  const result = await h.reconciler.preflightCancellation(operationId);
+  assert.ok(result.ok, JSON.stringify(result)); assert.equal(result.status, "cancellation-publication-ready");
+  if (result.status === "cancellation-publication-ready") assert.deepEqual(result.cancellations, saved!.cancellations);
+  assert.equal(JSON.stringify(h.snapshot), before);
+  assert.deepEqual(await h.reconciler.reconcile(operationId), { ok: false, reason: "missing-exact-cancellation" });
+});
+test("partial cancellation publication retains the entire original retry batch", async () => {
+  const h = await harness(); beforeCancellation(h, [h.records[0]]);
+  const result = await h.reconciler.preflightCancellation(operationId);
+  assert.ok(result.ok, JSON.stringify(result));
+  if (result.status === "cancellation-publication-ready") assert.equal(result.cancellations.length, 2);
+});
+for (const row of [grant("post", 0, 2, destination, pub(3)), grant("post", 0, 2, object("need", "2"))]) {
+  test(`cancellation preflight refuses unrelated target ${row.soul}`, async () => {
+    const h = await harness([destination], agent, undefined, [row]); beforeCancellation(h);
+    assert.deepEqual(await h.reconciler.preflightCancellation(operationId), { ok: false, reason: "cancellation-outside-operation" });
+  });
+}
+test("forged saved cancellation bytes fail signature validation", async () => {
+  const original = grant("post"), row = { ...original, record: { ...original.record as object, sig: "forged" } };
+  const h = await harness([destination], agent, undefined, [row, grant("see")]); beforeCancellation(h);
+  assert.deepEqual(await h.reconciler.preflightCancellation(operationId), { ok: false, reason: "unverified-authority" });
+});
+for (const extra of [[grant("post", 1, 3)], group()]) test("cancellation preflight refuses surviving independent access", async () => {
+  const h = await harness(); beforeCancellation(h, extra);
+  assert.deepEqual(await h.reconciler.preflightCancellation(operationId), { ok: false, reason: "access-remains" });
+});
+function groupCancellation(kind: "membership" | "object-set", prior: string[] = []) {
+  const ref = group()[kind === "membership" ? 0 : 2];
+  return sign("cancel", { kind, rowSoul: ref.soul, cancelId: "a".repeat(64), prior, signer: owner,
+    predicate: "same-group", set, member: agent, setOwner: owner, ...(kind === "object-set" ? { object: destination } : {}) });
+}
+for (const kind of ["membership", "object-set"] as const) test(`verified ${kind} cancellation can remove group access`, async () => {
+  const h = await harness([destination], agent, undefined, [grant("post"), grant("see"), groupCancellation(kind)]);
+  beforeCancellation(h, group());
+  const result = await h.reconciler.preflightCancellation(operationId);
+  assert.ok(result.ok, JSON.stringify(result)); assert.equal(result.status, "cancellation-publication-ready");
+});
+test("membership cancellation requires a durable relation to a registered destination", async () => {
+  const h = await harness([destination], agent, undefined, [grant("post"), grant("see"), groupCancellation("membership")]);
+  beforeCancellation(h, group().slice(0, 2));
+  assert.deepEqual(await h.reconciler.preflightCancellation(operationId), { ok: false, reason: "cancellation-outside-operation" });
+});
+test("group cancellation cannot omit its predecessor history", async () => {
+  const h = await harness([destination], agent, undefined, [grant("post"), grant("see"), groupCancellation("membership", ["b".repeat(64)])]);
+  beforeCancellation(h, group());
+  assert.deepEqual(await h.reconciler.preflightCancellation(operationId), { ok: false, reason: "unverified-authority" });
+});
+test("cancellation preflight requires ownership and current complete history", async () => {
+  const h = await harness(); beforeCancellation(h);
+  const original = h.snapshot;
+  h.snapshot = { ...original, rows: original.rows.filter(row => row.kind !== "object") };
+  assert.equal((await h.reconciler.preflightCancellation(operationId)).ok, false);
+  h.snapshot = { ...original, history: { ...original.history, completeThrough: at - 1 } };
+  assert.equal((await h.reconciler.preflightCancellation(operationId)).ok, false);
+});
+test("cancellation preflight rejects storage loss and an expired evaluation", async () => {
+  const h = await harness(); beforeCancellation(h); let reads = 0;
+  const input = { inventory: h.inventory, config: h.config, source: async () => h.snapshot, clock: () => at };
+  const lost = createCancellationReconciler({ ...input, outbox: { async load(id) {
+    if (++reads > 1) return null; return h.outbox.load(id);
+  } } });
+  assert.deepEqual(await lost.preflightCancellation(operationId), { ok: false, reason: "operation-changed" });
+  reads = 0;
+  const expired = createCancellationReconciler({ ...input, clock: () => at + (reads > 1 ? 1 : 0), outbox: { async load(id) {
+    reads++; return h.outbox.load(id);
+  } } });
+  assert.deepEqual(await expired.preflightCancellation(operationId), { ok: false, reason: "stale-evaluation" });
 });
