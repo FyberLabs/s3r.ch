@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 # One publish runs at a time. queue: max keeps later tag runs waiting,
-# including runs that still need approval, instead of replacing them.
+# instead of replacing an earlier publish.
 concurrency:
   group: release-publish
   cancel-in-progress: false
@@ -60,7 +60,7 @@ jobs:
           echo "minor=${minor}" >> "$GITHUB_OUTPUT"
           echo "image=ghcr.io/${repo}" >> "$GITHUB_OUTPUT"
 
-      - name: Require release approval and a protected-branch commit
+      - name: Require a protected-branch commit and trusted release scripts
         working-directory: trusted
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
