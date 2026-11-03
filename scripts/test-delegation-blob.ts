@@ -73,11 +73,14 @@ if (phase === "write") {
   await assert.rejects(inventory.initialize([]));
 }
 // Exercise composition of both real adapters. These are structural storage
-// fixtures, not authenticated cancellation or worker-stop evidence.
+// fixtures, not authenticated cancellation or assignment-completion evidence.
 const fixtureSecret = new Uint8Array(32); fixtureSecret[31] = 1;
 const fixtureKey = p256.getPublicKey(fixtureSecret, false);
 const agent = Buffer.from(fixtureKey.slice(1, 33)).toString("base64url") + "." + Buffer.from(fixtureKey.slice(33)).toString("base64url");
 const forum = `forum_${seaToPrincipalKey(agent)}_${"1".repeat(32)}`;
+fixtureSecret[31] = 2;
+const replacementKey = p256.getPublicKey(fixtureSecret, false);
+const replacement = Buffer.from(replacementKey.slice(1, 33)).toString("base64url") + "." + Buffer.from(replacementKey.slice(33)).toString("base64url");
 const boundScope = "f".repeat(64);
 const boundInventory = createDelegationInventory(createBlobInventoryStore(container, boundScope));
 const bound = createInventoryBoundOutbox(boundInventory,
@@ -88,10 +91,12 @@ const parsed = parseForumAuthority("post", record); assert.ok(parsed);
 const cancellations = [{ kind: "post" as const, soul: parsed.soul, recordJson: JSON.stringify(record) }];
 if (phase === "write") {
   await boundInventory.initialize([forum]); await boundInventory.freeze(id);
-  await bound.prepare(id, cancellations);
+  await bound.prepareReassignment(id, replacement, cancellations);
 } else {
-  assert.deepEqual((await bound.load(id))?.cancellations, cancellations);
-  assert.deepEqual((await bound.prepare(id, cancellations)).cancellations, cancellations);
+  assert.deepEqual((await bound.loadReassignment(id, replacement))?.cancellations, cancellations);
+  assert.deepEqual((await bound.prepareReassignment(id, replacement, cancellations)).cancellations, cancellations);
+  assert.equal((await bound.loadReassignment(id, replacement)).replacement, replacement);
+  await assert.rejects(bound.prepare(id, cancellations), /conflict/);
   const wrong = createInventoryBoundOutbox(boundInventory,
     createCancellationOutbox(createBlobCancellationOutboxStore(container, boundScope)),
     { forum: forum.replace(/1{32}$/, "2".repeat(32)), agent });
