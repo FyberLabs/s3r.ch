@@ -6,6 +6,7 @@ import { isForumObjectId, isSeaPubkey, sameEmbeddedPrincipal, forumAgentSoul,
 import { recoveryInteger, recoveryObject } from "./identity/forum-recovery-records";
 import { forumSoulNode } from "./forum-transport";
 import { publishForumAuthorized } from "./forum-authorized-publish";
+import { createForumPublicationFence } from "./forum-publication-fence";
 
 export type DrawerKind = "subtask" | "update" | "prompt" | "artifact";
 export type DrawerRecord = Readonly<{
@@ -48,6 +49,7 @@ export function createForumDrawer(input: {
   clock?: () => number; millis?: () => number;
 }) {
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
+  const publicationFence = createForumPublicationFence();
   const millis = input.millis ?? Date.now;
   const held = new Map<string, Held>();
   const seen = new Map<string, string>();
@@ -188,6 +190,9 @@ export function createForumDrawer(input: {
       notify();
     },
     disconnect,
+    // Local signing/dispatch drain; not a durable cancellation or worker receipt.
+    // Reconnect cannot reopen this instance after quiescence.
+    quiescePublications: () => publicationFence.close(),
     async publish(raw: unknown, signing: { key: string; sign: (r: DrawerRecord) => Promise<string | null> }) {
       const row = parseDrawerRecord(raw), token = epoch;
       if (!row) return "denied" as const;
@@ -196,13 +201,13 @@ export function createForumDrawer(input: {
         return !!gun && token === epoch && input.viewer() === row.writer && (held.has(row.id) || held.size < DRAWER_LIMIT) && authorized(row) && nowKey(row) === signing.key &&
           (!previous || row.rev > previous.rev || (row.stated === 0 && row.rev === previous.rev && JSON.stringify(row) === JSON.stringify(previous)));
       };
-      const put = (path: string) => publishForumAuthorized({ record: row, authorized: allowed,
+      const put = (path: string) => publishForumAuthorized({ record: row, authorized: allowed, fence: publicationFence,
         sign: signing.sign, put: value => { const node = gun && forumSoulNode(gun, path); if (!node) return false; node.put(value); return true; } });
       // Publish the separate removal tail first; a lost main-row put may
       // not erase the independently subscribed tombstone.
       if (!row.stated) { const result = await put(drawerSoul(row) + "/remove"); if (result !== "signed") return result; }
       return put(drawerSoul(row));
     },
-    dispose() { disposed = true; disconnect(); stopAuthority(); held.clear(); listeners.clear(); },
+    dispose() { disposed = true; void publicationFence.close(); disconnect(); stopAuthority(); held.clear(); listeners.clear(); },
   };
 }

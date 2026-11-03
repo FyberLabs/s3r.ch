@@ -329,3 +329,24 @@ test("reconnect accepts a new valid signature of the same winning payload", asyn
   assert.equal(h.c.rows()[0].body, record().body);
   h.c.dispose();
 });
+
+test("drawer quiescence drains signing and stays closed after reconnect", async () => {
+  const h = await setup(); let finish!: (sig: string) => void, drained = false, signs = 0;
+  const signing = { key: writer, sign: () => { signs++; return new Promise<string>(resolve => { finish = resolve; }); } };
+  const pending = h.c.publish(record(), signing);
+  const drain = h.c.quiescePublications().then(() => { drained = true; });
+  await Promise.resolve(); assert.equal(drained, false);
+  h.c.connect(h.wire.node());
+  assert.equal(await h.c.publish(record(), signing), "denied"); assert.equal(signs, 1);
+  finish(signature(record())); assert.equal(await pending, "denied"); await drain;
+  assert.equal(h.wire.puts.length, 0); h.c.dispose();
+});
+test("quiescing after the removal tail prevents the following main-row dispatch", async () => {
+  const h = await setup(), row = record({ stated: 0 });
+  let drain: Promise<void> | undefined;
+  const subscription = h.wire.node(drawerSoul(row).split("/")).get("remove").on(() => { drain = h.c.quiescePublications(); });
+  assert.equal(await h.c.publish(row, { key: writer, sign: async r => signature(r) }), "denied");
+  assert.ok(drain); await drain;
+  assert.equal(h.wire.puts.length, 1); assert.ok(h.wire.puts[0].path.endsWith("/remove"));
+  subscription.off?.(); h.c.dispose();
+});

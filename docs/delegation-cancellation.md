@@ -125,3 +125,24 @@ is no publication, worker-stop, resume or UI-enable method. Live provider wiring
 complete destination registration, dispatch/grant fencing and worker drain are
 still required. Cancellation proofs signed by retired keys continue to use the
 existing resolver's witness requirements.
+
+## Local publication quiescence
+
+`createForumPublicationFence` closes synchronously and permanently for one
+process-local publisher. `publishForumAuthorized` accepts this fence and checks
+it after signing, immediately before dispatch. Reservations are released even if
+authorization, signing or the put callback throws. Closing waits for every
+accepted call to settle; a signer that never settles keeps drain pending.
+
+The real drawer publisher uses this fence. `quiescePublications()` blocks new
+signing and pending dispatch, including the second write of a removal after its
+tail has already been sent. Reconnect cannot reopen a quiesced drawer; disposal
+also closes it. An already-dispatched put cannot be recalled.
+
+This promise acknowledges only local signing and synchronous dispatch completion.
+It does not acknowledge durable Gun writes, stop other clients, revoke authority,
+or prove an external worker drained. Pause/Reassign remain disabled. Integration
+must first identify the authoritative Squad execution runtime and connect its
+dispatch, restart and drain interface to the durable coordinator. The current
+s3r.ch routes do not provide that worker interface; no second control plane is
+introduced here.
