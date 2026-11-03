@@ -18,6 +18,7 @@ import {
   parseSignerKey,
   readFarcasterOutboundConfig,
 } from "./farcaster-outbound";
+import { Message } from "@farcaster/core";
 import { createMemorySeeAcl } from "./identity/see-acl";
 import { createOutboundAdapters } from "./outbound-adapters";
 import {
@@ -208,6 +209,10 @@ describe("FarcasterOutbound", () => {
       signerKey: parseSignerKey(SIGNER) ?? new Uint8Array(32),
     });
     assert.ok(bytes.byteLength > 20);
+    const message = Message.decode(bytes);
+    assert.equal(message.data?.castAddBody?.formatVersion, 0);
+    assert.equal(message.data?.castAddBody?.text, "fixture");
+    assert.equal(message.data?.fid, 1);
   });
 });
 

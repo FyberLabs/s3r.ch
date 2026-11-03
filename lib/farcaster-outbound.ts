@@ -95,6 +95,7 @@ export async function encodeCastAdd(input: EncodeCastInput): Promise<Uint8Array>
       mentions: [],
       mentionsPositions: [],
       type: CastType.CAST,
+      formatVersion: 0,
     },
     { fid: input.fid, network: FarcasterNetwork.MAINNET },
     signer,
