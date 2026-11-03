@@ -127,5 +127,5 @@ Regenerate them with `scripts/fixtures/copy-forum-child-vectors.py`.
 Public-fixture mesh remains disabled. These are application/controller tests,
 not deployed multi-client evidence. Real identity/source provisioning and
 end-to-end rollout remain [#190](https://github.com/FyberLabs/s3r.ch/issues/190);
-durable worker fencing and complete destination inventories remain
+durable assignment/access changes and complete destination inventories remain
 [#188](https://github.com/FyberLabs/s3r.ch/issues/188).

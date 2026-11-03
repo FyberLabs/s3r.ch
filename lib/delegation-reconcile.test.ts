@@ -46,11 +46,11 @@ async function harness(destinations = [destination], subject = agent) {
   const reconciler = createCancellationReconciler({ inventory, outbox, config, clock: () => now, source: async () => snapshot });
   return { reconciler, records, outbox, inventory, config, documents, get snapshot() { return snapshot; }, set snapshot(value) { snapshot = value; }, tick() { now++; } };
 }
-test("exact verified cancellations reconcile only ACL access, not worker completion", async () => {
+test("exact verified cancellations reconcile ACL access without completing reassignment", async () => {
   const h = await harness();
   const result = await h.reconciler.reconcile(operationId);
   assert.ok(result.ok, JSON.stringify(result)); assert.equal(result.status, "acl-reconciled");
-  assert.equal(result.evaluatedAt, at); assert.equal("workerDrained" in result, false);
+  assert.equal(result.evaluatedAt, at); assert.equal("assignmentComplete" in result, false);
 });
 for (const path of ["post", "see", "group"] as const) test(`surviving ${path} access blocks reconciliation`, async () => {
   const h = await harness(); h.snapshot = { ...h.snapshot, rows: [...h.snapshot.rows, ...(path === "group" ? group() : [grant(path, 1, 3)])] };

@@ -5,7 +5,7 @@ import { isForumObjectId, isSeaPubkey } from "./identity/forum-check";
 
 /** Bind recovery material to a trusted coordinator scope and exact frozen
  * destination registry. The digest is correlation/integrity, not a signing
- * domain, ACL proof, inventory-completeness proof, or worker fencing token.
+ * domain, ACL proof, inventory-completeness proof, or assignment completion receipt.
  * Both dependencies must use the same authenticated storage namespace.
  */
 export function createInventoryBoundOutbox(

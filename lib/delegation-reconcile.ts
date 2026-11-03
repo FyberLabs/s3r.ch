@@ -9,7 +9,7 @@ type Result = Readonly<{ ok: true; operationId: string; evaluatedAt: number; fen
 /** The provider must supply complete authenticated history and durable ACL
  * evidence, not a browser cache or a Gun put acknowledgement. All three ports
  * must refer to the same trusted coordinator scope. Success is an instantaneous
- * ACL check, not a durable completion receipt or worker-stop acknowledgement.
+ * ACL check, not a durable assignment-completion receipt.
  */
 export function createCancellationReconciler(input: {
   inventory: Pick<ReturnType<typeof createDelegationInventory>, "load">;

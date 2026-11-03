@@ -11,7 +11,7 @@ function serviceError(error: unknown, status: number, code: string): boolean {
 /** Server-only storage adapter. Supply a trusted primary-endpoint container
  * client without secondary-read failover. Namespace is an authenticated scope
  * digest chosen by the coordinator, never an arbitrary browser-supplied path.
- * No container creation, deletion, grants, or worker control happens here.
+ * No container creation, deletion, or grant publication happens here.
  */
 export function createBlobCancellationOutboxStore(container: Container, namespace: string): CancellationOutboxStore {
   if (!/^[0-9a-f]{64}$/.test(namespace)) throw Error("invalid outbox namespace");
