@@ -175,3 +175,25 @@ do not pass the existing wallet cookie as a SEA session. Secret rotation invalid
 outstanding challenges/sessions. These dependencies must be configured in app and
 infra together before enabling the live route. The existing wallet/OAuth linked
 credential and recovery policy is unchanged.
+
+## HTTPS cookie handlers and service composition
+
+`createSquadHttpServices` constructs session and authority handlers from the same
+fixed Squad/origin configuration. Its challenge, exchange and logout handlers
+require same-origin JSON POSTs and bounded request bodies. Challenge issuance sets
+an HttpOnly challenge cookie; exchange requires that exact cookie as well as the
+SEA signature, so a proof from another browser cannot establish a session.
+
+Successful exchange sets `__Host-s3rch-squad-session` with Secure, HttpOnly,
+SameSite=Strict, Path=/ and a five-minute Max-Age. The token is not returned in
+JSON. The challenge cookie has a 60-second lifetime and is cleared after exchange.
+Duplicate session cookies fail authentication. Logout clears both cookies; it
+removes this browser's session, not an independently copied bearer token, which
+remains bounded by expiry and per-request current-key/ACL checks.
+
+The composition injects the cookie authenticator directly into the authority
+service. A valid cookie alone does not make missing or revoked authority valid.
+All responses are no-store. HTTPS is mandatory for these handlers, including a
+locally deployed acceptance environment. No Next route is registered by this
+factory: production must still supply the explicit secret, dedicated durable
+replay store and atomic complete-history reader and wire those through infra.
