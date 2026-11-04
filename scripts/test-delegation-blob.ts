@@ -1,9 +1,10 @@
+import { createForumAuthoritySnapshotStore } from "../lib/forum-authority-store";
 import { createSquadSessionReplayStore } from "../lib/identity/squad-session-replay";
 import assert from "node:assert/strict";
 import { BlobServiceClient, StorageSharedKeyCredential } from "@azure/storage-blob";
 import { setTimeout as delay } from "node:timers/promises";
 import { createBlobCancellationOutboxStore, createBlobReplacementGrantStore } from "../lib/delegation-blob-outbox";
-import { createBlobInventoryStore, createBlobAssignmentJournalStore, createBlobSquadSessionReplayStore } from "../lib/delegation-blob-inventory";
+import { createBlobInventoryStore, createBlobAssignmentJournalStore, createBlobSquadSessionReplayStore, createBlobForumAuthorityStore } from "../lib/delegation-blob-inventory";
 import { createDelegationInventory } from "../lib/delegation-inventory";
 import { p256 } from "@noble/curves/nist.js";
 import { createInventoryBoundOutbox } from "../lib/delegation-bound-outbox";
@@ -41,6 +42,21 @@ if (phase === "write") {
 } else {
   assert.equal(await consume(replayId, 160), false, "used challenge survives process and emulator restart");
   assert.equal(await consume("b".repeat(64), 160), true);
+}
+const sourceKey = p256.getPublicKey(new Uint8Array(32).fill(53), false);
+const sourceOwner = Buffer.from(sourceKey.slice(1, 33)).toString("base64url") + "." + Buffer.from(sourceKey.slice(33)).toString("base64url");
+const sourceSpec = { owner: sourceOwner, forumId: `forum_${seaToPrincipalKey(sourceOwner)}_${"a".repeat(32)}`, label: "Source storage acceptance" };
+const source = createForumAuthoritySnapshotStore(createBlobForumAuthorityStore(container, scope), sourceSpec);
+const sourceSnapshot = { completeThrough: 101, rows: [], history: { completeThrough: 101, accounts: [], links: [] } };
+if (phase === "write") {
+  await source.initialize({ ...sourceSnapshot, completeThrough: 100, history: { ...sourceSnapshot.history, completeThrough: 100 } });
+  const independent = createForumAuthoritySnapshotStore(createBlobForumAuthorityStore(service().getContainerClient("cancellation-test"), scope), sourceSpec);
+  const held = await source.load();
+  assert.deepEqual((await Promise.all([source.replace(held.etag, sourceSnapshot), independent.replace(held.etag, sourceSnapshot)])).sort(), [false, true]);
+  await assert.rejects(source.initialize(sourceSnapshot));
+} else {
+  assert.deepEqual(await source.read(101, new AbortController().signal), sourceSnapshot);
+  await assert.rejects(source.read(102, new AbortController().signal), /incomplete/);
 }
 const store = createBlobCancellationOutboxStore(container, scope);
 if (phase === "write") {
