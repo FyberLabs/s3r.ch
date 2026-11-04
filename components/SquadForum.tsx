@@ -452,6 +452,7 @@ function SquadForumView({ view }: { view: SquadView }) {
         return chatIdsRef.current;
       }
       function enrollPub(pub: string, evidence: object) {
+        if (liveEnabled && isPublicSquadPrincipal(pub)) return;
         if (!proofs.enroll(pub, evidence)) return;
         if (!admittedRef.current.has(pub)) {
           const next = new Set(admittedRef.current);
@@ -467,6 +468,7 @@ function SquadForumView({ view }: { view: SquadView }) {
         commitMeshStatus(waiting.status);
       }
       function commitMeshStatus(status: ForumAgentStatus) {
+        if (liveEnabled && isPublicSquadPrincipal(status.seaPubkey)) return;
         if (!proofs.valid(status) || !proofs.enrolled(status.seaPubkey)) return;
         if (!cacheForumStatus(statusHighWaterRef.current, status)) return;
         try {
@@ -804,7 +806,7 @@ function SquadForumView({ view }: { view: SquadView }) {
         }
         const status = parseForumAgentStatus(payload);
         const forumOwner = graphRef.current?.ownerOf(forumId);
-        if (!status || fromRemoval || !proof.retain(status, () => signer === forumOwner
+        if (!status || (liveEnabled && isPublicSquadPrincipal(status.seaPubkey)) || fromRemoval || !proof.retain(status, () => signer === forumOwner
           ? graphRef.current?.ownerOf(forumId) === signer : signer === status.seaPubkey)) return;
         if (liveReplayBlocked(status.lastUpdate, removedAgentsRef.current.get(status.seaPubkey))) return;
         if (fromAdmission && !authorizeStatusAdmission(status, key, signer, forumOwner, forumId)) return;
@@ -1082,7 +1084,7 @@ function SquadForumView({ view }: { view: SquadView }) {
         if (cancelled || !proof.current() || !versions.current("role", `${roleToken}:${mapKey}`, gen) || !payload) return;
         if (!proofs.ready() || graphRef.current?.ownerOf(forumId) !== forumOwner) return;
         const membership = parseForumRoleMembership(payload);
-        if (!membership) return;
+        if (!membership || (liveEnabled && isPublicSquadPrincipal(membership.principal))) return;
         if (
           !authorizeForumRoleAdmission({
             membership,

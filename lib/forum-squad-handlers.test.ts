@@ -6,6 +6,7 @@ import * as business from "./forum-business-roles";
 import * as squad from "./forum-squad";
 import * as check from "./identity/check";
 import * as fixture from "./forum-squad-fixture";
+import { isPublicSquadPrincipal } from "./squad-view";
 import { signatureOf } from "./forum-sign";
 import { soulKeyMatches } from "./unshare";
 import { createForumReceiveProofs } from "./forum-receive-proofs";
@@ -24,7 +25,7 @@ function handlers(names: string[], bindings: Record<string, unknown>) {
     return declaration[0];
   });
   const body = stripTypeScriptTypes(found.join("\n"));
-  const env = { ...business, ...squad, ...check, ...fixture, forumId: fixture.PILOT_FORUM_ID, liveEnabled: true, storage: { status: "test-status", alarm: "test-alarm", needs: "test-needs" }, signatureOf, soulKeyMatches, ...bindings };
+  const env = { isPublicSquadPrincipal, ...business, ...squad, ...check, ...fixture, forumId: fixture.PILOT_FORUM_ID, liveEnabled: true, storage: { status: "test-status", alarm: "test-alarm", needs: "test-needs" }, signatureOf, soulKeyMatches, ...bindings };
   return new Function(...Object.keys(env), `${body}\nreturn { ${names.join(",")} };`)(...Object.values(env));
 }
 const flush = async () => { for (let n = 0; n < 4; n++) await new Promise<void>(resolve => setImmediate(resolve)); };
@@ -105,7 +106,7 @@ for (const fromCancel of [false, true]) test(`actual offer ${fromCancel ? "tail"
   assert.equal(cancels.size, 1); assert.equal(offers.size, 1);
 });
 
-function businessHandlers(verify = verifyEnvelope) {
+function businessHandlers(verify = verifyEnvelope, liveEnabled = false) {
   const h = proofSetup(verify), owner = fixture.PILOT_OWNER;
   const graph = createMemorySeeAcl(); graph.putObject(fixture.PILOT_FORUM_ID, owner);
   const businessRoles = business.createBusinessRoles(fixture.PILOT_FORUM_ID, h.proofs.valid);
@@ -114,7 +115,7 @@ function businessHandlers(verify = verifyEnvelope) {
   squad.grantForumWatch(watches, "role", "treasurer", false, Date.now());
   const fns = handlers(["acceptTemplate", "acceptRole"], {
     cancelled: false, proofs: h.proofs, retries, versions, graphRef: { current: graph }, businessRoles,
-    forumWatches: watches, enrollPub: (pub: string, row: object) => h.proofs.enroll(pub, row), setAclRev: () => {},
+    liveEnabled, forumWatches: watches, enrollPub: (pub: string, row: object) => h.proofs.enroll(pub, row), setAclRev: () => {},
   });
   const template = (data: unknown) => fns.acceptTemplate(data);
   const role = (data: unknown, principal: string) => fns.acceptRole(data, "treasurer", principal, versions.bump("role", `treasurer:${principal}`));
@@ -204,4 +205,45 @@ test("cleanup during retry-key hashing cannot enqueue old-source evidence", asyn
   await pending;
   assert.equal(h.businessRoles.view().state, "waiting");
   assert.equal(h.retries.size(), 0);
+});
+
+test("live owner-signed fixture subjects cannot enter status or role admission", async () => {
+  const h = proofSetup();
+  const versions = squad.createMeshEventVersions();
+  const graph = createMemorySeeAcl(); graph.putObject(fixture.PILOT_FORUM_ID, fixture.PILOT_OWNER);
+  let retained = 0;
+  const begin = h.proofs.begin;
+  const proofs = { ...h.proofs, begin: () => {
+    const proof = begin();
+    return { ...proof, retain: (...args: Parameters<typeof proof.retain>) => { retained++; return proof.retain(...args); } };
+  } };
+  const accept = handlers(["acceptStatus"], {
+    proofs, versions, cancelled: false, retries: createForumReceiveRetry(), graphRef: { current: graph },
+  }).acceptStatus;
+  for (const agent of fixture.PILOT_AGENTS) {
+    for (const fromAdmission of [false, true]) {
+      const status = agent.status;
+      assert.ok(squad.parseForumAgentStatus(status), "regression row must parse");
+      const scope = fromAdmission ? "status-admission" : "status";
+      await accept(envelope(status, fixture.PILOT_OWNER), status.seaPubkey,
+        versions.bump(scope, status.seaPubkey), false, fromAdmission);
+    }
+  }
+  assert.equal(retained, 0, "reject subjects before proof retention or any roster/cache side effects");
+  const roles = businessHandlers(verifyEnvelope, true);
+  await roles.template(envelope({ forumId: fixture.PILOT_FORUM_ID, mode: "role-labels" }, roles.owner));
+  for (const agent of fixture.PILOT_AGENTS) {
+    const principal = agent.status.seaPubkey;
+    await roles.role(envelope({ forumId: fixture.PILOT_FORUM_ID, role: "treasurer", principal }, roles.owner), principal);
+    assert.equal(roles.proofs.enrolled(principal), false);
+  }
+  assert.deepEqual(roles.businessRoles.view().members, []);
+});
+test("live enrollment and status commit reject fixture subjects even with retained proof", () => {
+  const unexpected = () => { throw new Error("fixture reached proof or state mutation"); };
+  const fns = handlers(["enrollPub", "commitMeshStatus"], { proofs: { enroll: unexpected, valid: unexpected } });
+  for (const agent of fixture.PILOT_AGENTS) {
+    fns.enrollPub(agent.status.seaPubkey, agent.status);
+    fns.commitMeshStatus(agent.status);
+  }
 });
