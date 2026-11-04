@@ -2,6 +2,8 @@
 
 Every merge to `master` (this repository's default branch) builds one linux/amd64 image, anonymously pulls and smoke-tests its digest, and deploys it to **https://test.s3r.ch**. The job verifies the baked commit at `/api/version` and durable identity/Gun health before publishing the `test-<full SHA>` prerelease and `:test` package alias.
 
+The successful test job signs its deployment manifest with GitHub artifact attestation. Promotion and infra verify that signature against the exact source, workflow and successful run before accepting the image digest. Evidence persists independently of expiring CI artifacts.
+
 A stable `vX.Y.Z` tag on that tested default-branch commit promotes **the same digest**, without rebuilding. The release job waits for that commit's successful test deployment, publishes `release-manifest.json`, and assigns `:X.Y.Z`, `:prod`, and `:latest`. Older versions cannot replace newer production aliases; an existing version cannot change digest. Test and production are channels of the existing public `ghcr.io/fyberlabs/s3r.ch` package.
 
 ```text

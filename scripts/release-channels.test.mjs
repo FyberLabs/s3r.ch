@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateManifest, compareTags, validTestRun } from './release-channels.mjs';
+import { validateManifest, compareTags, validTestRun, signedByTestRun } from './release-channels.mjs';
 const revision = 'a'.repeat(40), repository = 'FyberLabs/s3r.ch', tag = `test-${revision}`;
 const candidate = { schema: 1, repository, channel: 'test', tag, revision, image: 'ghcr.io/fyberlabs/s3r.ch', digest: 'sha256:' + 'b'.repeat(64), test_run_id: '123' };
 test('promotion is bound to the exact repository, tested revision, image and channel', () => {
@@ -21,4 +21,11 @@ test('an unrelated green run or wrong branch is not test-deployment evidence', (
   const run = { head_sha: revision, head_branch: 'master', event: 'push', conclusion: 'success', path: '.github/workflows/deploy.yml', name: 'Deploy test' };
   assert.equal(validTestRun(run, revision), true);
   for (const change of [{ head_sha: 'c'.repeat(40) }, { head_branch: 'feature' }, { event: 'pull_request' }, { conclusion: 'failure' }, { path: '.github/workflows/test.yml' }, { name: 'Deploy' }]) assert.equal(validTestRun({ ...run, ...change }, revision), false);
+});
+
+test('verified provenance must identify the exact successful test invocation', () => {
+  const proof = run => [{ verificationResult: { statement: { predicate: { runDetails: { metadata: { invocationId: `https://github.com/FyberLabs/s3r.ch/actions/runs/${run}/attempts/1` } } } } } }];
+  assert.equal(signedByTestRun(proof('123'), candidate), true);
+  assert.equal(signedByTestRun(proof('124'), candidate), false);
+  assert.equal(signedByTestRun([], candidate), false);
 });

@@ -21,6 +21,24 @@ export function validTestRun(run, revision) {
     ['push', 'workflow_dispatch'].includes(run.event) && run.conclusion === 'success' &&
     run.path?.split('@')[0] === '.github/workflows/deploy.yml' && run.name === 'Deploy test';
 }
+export function signedByTestRun(results, m) {
+  const prefix = `https://github.com/${m.repository}/actions/runs/${m.test_run_id}/attempts/`;
+  return results.some(row => {
+    const id = row.verificationResult?.statement?.predicate?.runDetails?.metadata?.invocationId;
+    return typeof id === 'string' && id.startsWith(prefix) && /^[1-9][0-9]*$(?![\s\S])/.test(id.slice(prefix.length));
+  });
+}
+function verifyTestManifest(m) {
+  const dir = mkdtempSync(join(tmpdir(), 'tested-manifest-'));
+  try {
+    const path = join(dir, 'release-manifest.json');
+    writeFileSync(path, JSON.stringify(m, null, 2) + '\n');
+    const verified = JSON.parse(run('gh', ['attestation', 'verify', path, '--repo', m.repository,
+      '--signer-workflow', `${m.repository}/.github/workflows/deploy.yml`, '--source-ref', 'refs/heads/master',
+      '--source-digest', m.revision, '--format', 'json']));
+    if (!signedByTestRun(verified, m)) throw Error('Manifest was not signed by the successful test run');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
 async function publishedDigest(image, tag) {
   const path = image.slice('ghcr.io/'.length);
   const auth = await fetch(`https://ghcr.io/token?service=ghcr.io&scope=${encodeURIComponent('repository:' + path + ':pull')}`, { signal: AbortSignal.timeout(15000) });
@@ -102,7 +120,9 @@ async function main() {
     const m = validateManifest({ schema: 1, repository, channel: 'test', tag, revision, image, digest,
       test_run_id: held?.test_run_id ?? process.env.GITHUB_RUN_ID }, repository, 'test', revision, tag);
     if (registryDigest(`${image}@${digest}`) !== digest) throw Error('Candidate unavailable');
-    alias(image, digest, 'test'); publish(m); return;
+    alias(image, digest, 'test');
+    writeFileSync(join(process.env.RUNNER_TEMP, 'tested-release-manifest.json'), JSON.stringify(m, null, 2) + '\n');
+    publish(m); return;
   }
   if (action !== 'promote' || !STABLE.test(process.env.GITHUB_REF_NAME ?? '') || process.env.GITHUB_REF !== `refs/tags/${process.env.GITHUB_REF_NAME}`) throw Error('Stable tag required');
   const stableTag = process.env.GITHUB_REF_NAME;
@@ -121,14 +141,15 @@ async function main() {
     await delay(15000); evidence = gh(`repos/${repository}/actions/runs/${candidate.test_run_id}`);
   }
   if (!validTestRun(evidence, revision)) throw Error('Test deployment run is not successful');
+  verifyTestManifest(candidate);
   const held = download(repository, stableTag, 'prod', revision);
   if (held && held.digest !== candidate.digest) throw Error('Stable release is immutable');
   const versionDigest = await publishedDigest(image, stableTag.slice(1));
   if (versionDigest && versionDigest !== candidate.digest) throw Error('Version image tag is immutable');
   alias(image, candidate.digest, stableTag.slice(1));
   publish({ ...candidate, channel: 'prod', tag: stableTag });
-  const releases = JSON.parse(run('gh', ['api', '--paginate', '--slurp', `repos/${repository}/releases?per_page=100`])).flat();
-  const newer = releases.some(r => !r.draft && !r.prerelease && STABLE.test(r.tag_name) && compareTags(r.tag_name, stableTag) > 0);
+  const tags = run('gh', ['api', '--paginate', `repos/${repository}/releases?per_page=100`, '--jq', '.[] | select(.draft == false and .prerelease == false) | .tag_name']).trim().split('\n');
+  const newer = tags.some(tag => STABLE.test(tag) && compareTags(tag, stableTag) > 0);
   if (!newer) {
     alias(image, candidate.digest, 'prod'); alias(image, candidate.digest, 'latest');
     run('gh', ['release', 'edit', stableTag, '--repo', repository, '--latest']);
