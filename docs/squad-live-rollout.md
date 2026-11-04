@@ -98,3 +98,27 @@ provisioning retained history. Exceeding it denies access; it must never trigger
 truncation of revocation/cancellation evidence. Server implementation, complete
 history storage/fencing, session-to-SEA mapping and production configuration remain
 required before connecting this reader to a live route.
+
+## Server snapshot service
+
+`createForumAuthorityService` implements the matching Request/Response handler.
+Its deployment-owned dependencies are a fixed live Squad, canonical origin,
+trust policy, session authenticator and atomic complete-snapshot reader. It is
+not installed as an application route yet. The authenticator must establish
+possession of the session SEA key; neither a wallet cookie nor a pubkey in the
+request proves this. The fixed namespace is never selected from request fields.
+
+The service requires a same-origin JSON POST, bounds the request to 2 KiB and
+rejects mismatched scope/evaluation time before reading authority storage. It
+copies the snapshot, verifies recovery and ACL signatures, confirms the configured
+forum owner, resolves the authenticated key to its current stable principal and
+checks forum read access. Outsiders, cancelled members, incomplete/forged evidence
+and evaluations that cross a clock boundary receive no snapshot. Responses are
+uncacheable. Successful responses retain the client's 4 MiB/1024-row limits.
+
+The reader must provide a namespace-scoped atomic history/ACL view whose history
+updates participate in the assignment serialization boundary. The service cannot
+prove omitted evidence or turn two independent reads into an atomic snapshot.
+Its authentication and reader callbacks remain mandatory production integration
+work, along with infrastructure configuration and deployed acceptance. Synthetic
+signed service tests do not establish production identity or deployment readiness.
