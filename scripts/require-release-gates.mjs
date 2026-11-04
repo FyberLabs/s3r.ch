@@ -6,6 +6,7 @@
 import { execFileSync } from "node:child_process";
 
 export const TRUSTED_RELEASE_FILES = [
+  "scripts/release-channels.mjs",
   "scripts/require-release-gates.mjs",
   "scripts/publish-version-tag.mjs",
   "scripts/advance-release-aliases.mjs",

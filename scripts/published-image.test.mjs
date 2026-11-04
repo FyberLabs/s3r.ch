@@ -58,13 +58,14 @@ for (const mode of ["pull-fails", "package-missing", "boot-fails"]) test(`publis
 for (const value of ["", "sha256:bad", `sha256:${"ab".repeat(32)};echo injected`]) test(`rejects invalid digest ${JSON.stringify(value)}`, () => {
   const r = run("ok", { DIGEST: value }); assert.notEqual(r.status, 0); assert.equal(r.calls.length, 0);
 });
-test("release gate receives the pushed digest and precedes aliases and release publication", () => {
-  const workflow = readFileSync(".github/workflows/release.yml", "utf8");
-  const gate = workflow.indexOf("- name: Pull and boot the published digest anonymously");
-  const aliases = workflow.indexOf("- name: Move minor and latest");
-  const release = workflow.indexOf("- name: Publish GitHub Release");
-  assert.ok(gate > 0 && aliases > gate && release > aliases);
-  assert.match(workflow.slice(gate, aliases), /DIGEST: \$\{\{ steps\.push\.outputs\.digest \}\}/);
-  for (const file of ["scripts/require-anonymous-pull.sh", "scripts/smoke-image.sh", "scripts/startup-packages.mjs"])
-    assert.ok(TRUSTED_RELEASE_FILES.includes(file), `${file} must match the trusted branch`);
+test("test image is anonymously checked before deployment and publication; promotion does not rebuild", () => {
+  const testWorkflow = readFileSync(".github/workflows/deploy.yml", "utf8");
+  const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
+  const gate = testWorkflow.indexOf("name: Verify public package");
+  const deployment = testWorkflow.indexOf("name: Deploy and verify");
+  const publication = testWorkflow.indexOf("name: Publish successful test release");
+  assert.ok(gate > 0 && deployment > gate && publication > deployment);
+  assert.doesNotMatch(releaseWorkflow, /build-push-action|docker build|npm run build/);
+  assert.match(releaseWorkflow, /release-channels.mjs promote/);
+  assert.ok(TRUSTED_RELEASE_FILES.includes("scripts/release-channels.mjs"));
 });
