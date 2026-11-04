@@ -7,7 +7,7 @@ while (Date.now() < deadline) {
   try {
     const [version, health] = await Promise.all(['/api/version', '/api/health'].map(async path => {
       const r = await fetch(origin + path, { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000) });
-      if (!r.ok) throw Error('Not ready'); return r.json();
+      if (r.status !== 200) throw Error('Not ready'); return r.json();
     }));
     if (version.revision === sha && health.status === 'ok' && health.dependencies?.identity?.writable === true && health.dependencies?.gun?.status === 'ok' && health.dependencies?.identity?.status === 'ok') { ready = true; break; }
   } catch { /* Deployment or dependency startup is not ready yet. */ }
