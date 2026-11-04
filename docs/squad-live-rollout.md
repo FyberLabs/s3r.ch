@@ -197,3 +197,34 @@ All responses are no-store. HTTPS is mandatory for these handlers, including a
 locally deployed acceptance environment. No Next route is registered by this
 factory: production must still supply the explicit secret, dedicated durable
 replay store and atomic complete-history reader and wire those through infra.
+
+## Atomic authority snapshot storage
+
+`createForumAuthoritySnapshotStore` stores the fixed Squad scope and complete
+history/ACL snapshot in one conditional document. Its trusted importer initializes
+only an absent slot and replaces only the expected ETag. Concurrent writers must
+reload and reconcile after a conflict; they cannot silently overwrite one another.
+The reader returns both histories and ACL evidence from that one storage snapshot
+and refuses evaluation beyond either supplied completeness horizon. It never
+advances those horizons based on the local clock.
+
+Updates retain every prior ACL row, global link and account's rotation, revocation
+and genesis binding records, and cannot regress either completeness horizon.
+Retention uses conservative exact JSON record comparison; reordered record fields
+may be rejected and must preserve their stored representation. Array ordering can
+change. Old cancellation/recovery evidence is not discarded merely because a newer
+row exists. Capacity fails closed rather than compacting records: 4 MiB total,
+1024 ACL rows, 128 accounts and 1024 entries per history list.
+
+`createBlobForumAuthorityStore` backs this document at
+`s3rch-forum-authority/v1/<server-derived-64-hex-namespace>.json` in the trusted
+primary container. The existing Azurite acceptance run tests independent-client
+CAS races, absent-only initialization and complete snapshot reads after restart.
+
+This store preserves supplied evidence; it does not authenticate the importer or
+prove completeness, signatures or ownership. The existing authority verifier must
+still check all evidence. Do not populate it from arbitrary Gun data or a pair of
+independently read history/ACL sources. Production ingestion must deliver a complete
+atomic source view. Assignment writes and history updates are not yet connected to
+this shared commit boundary; live enablement must wait for that integration and
+for app/infra provisioning. No new production setting or endpoint is enabled here.

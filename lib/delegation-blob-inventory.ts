@@ -22,6 +22,10 @@ export function createBlobAssignmentJournalStore(container: Pick<ContainerClient
 export function createBlobSquadSessionReplayStore(container: Pick<ContainerClient, "getBlockBlobClient">, namespace: string): InventoryStore {
   return createBlobCasStore(container, namespace, "s3rch-squad-session-replay/v1", 400_000);
 }
+/** Atomic complete authority/history snapshot, independently provisioned. */
+export function createBlobForumAuthorityStore(container: Pick<ContainerClient, "getBlockBlobClient">, namespace: string): InventoryStore {
+  return createBlobCasStore(container, namespace, "s3rch-forum-authority/v1", 4 * 1024 * 1024);
+}
 function createBlobCasStore(container: Pick<ContainerClient, "getBlockBlobClient">, namespace: string, prefix: string, CAP: number): InventoryStore {
   if (typeof namespace !== "string" || !/^[0-9a-f]{64}$/.test(namespace)) throw Error("invalid inventory namespace");
   const blob = container.getBlockBlobClient(`${prefix}/${namespace}.json`);
