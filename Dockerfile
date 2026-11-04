@@ -20,8 +20,11 @@ RUN npm run build
 
 FROM base AS runner
 ARG VERSION=dev
+ARG SOURCE_REVISION
+ENV APP_BUILD_REVISION=$SOURCE_REVISION
 LABEL org.opencontainers.image.title="s3r.ch" \
       org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}" \
       org.opencontainers.image.source="https://github.com/FyberLabs/s3r.ch"
 WORKDIR /app
 RUN apk add --no-cache libc6-compat

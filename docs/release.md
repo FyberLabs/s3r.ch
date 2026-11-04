@@ -1,29 +1,29 @@
-# Packaged release
+# Test and production releases
 
-A `vX.Y.Z` tag (no pre-release suffix) builds the repo `Dockerfile` and publishes one linux/amd64 image to GHCR. The first publish of `X.Y.Z` records that digest. A rerun reuses the published digest and does not upload a replacement image. The workflow moves `X.Y` and `latest` only when this version is greater than or equal to the version those tags already have.
+Every merge to `master` (this repository's default branch) builds one linux/amd64 image, anonymously pulls and smoke-tests its digest, and deploys it to **https://test.s3r.ch**. The job verifies the baked commit at `/api/version` and durable identity/Gun health before publishing the `test-<full SHA>` prerelease and `:test` package alias.
 
-The image name is `ghcr.io/` plus the repository name in lowercase. For this repository that is `ghcr.io/fyberlabs/s3r.ch`.
+A stable `vX.Y.Z` tag on that tested default-branch commit promotes **the same digest**, without rebuilding. The release job waits for that commit's successful test deployment, publishes `release-manifest.json`, and assigns `:X.Y.Z`, `:prod`, and `:latest`. Older versions cannot replace newer production aliases; an existing version cannot change digest. Test and production are channels of the existing public `ghcr.io/fyberlabs/s3r.ch` package.
 
 ```text
+ghcr.io/fyberlabs/s3r.ch:test
 ghcr.io/fyberlabs/s3r.ch:1.2.3
-ghcr.io/fyberlabs/s3r.ch:1.2
-ghcr.io/fyberlabs/s3r.ch:latest
+ghcr.io/fyberlabs/s3r.ch:prod
 ghcr.io/fyberlabs/s3r.ch@sha256:<digest>
 ```
 
-Pin the digest from the Release. `X.Y.Z` stays on the first published digest. If that tag already exists with a different version label, the job fails instead of replacing it. An equal version refreshes `X.Y` and `latest` from the published image. An older tag does not replace a newer alias. The comparison uses the image label `org.opencontainers.image.version`. One publish runs at a time. Later tag runs stay queued so a new tag does not cancel an earlier publish. The Release body is [`.github/RELEASE_TEMPLATE.md`](../.github/RELEASE_TEMPLATE.md) with the digest filled in. It always has **Config changes** and **Migration** sections. Edit those in the template on the commit you tag, or edit the Release after it is published. The notes list `X.Y` and `latest` only when this run moved them.
+Infra reconciles **https://s3r.ch** to the highest stable semantic-version release after a successful Terraform apply and every 15 minutes. It verifies the manifest, tag commit and successful test run, imports the exact digest into ACR, and verifies the deployed revision and dependencies. There is no per-release credential setup, rebuild, or manual deploy step. Infra preserves production app settings, including the existing Panopticon tenant. Failed deployment remains a failure until a subsequent reconciliation succeeds; it is never recorded as accepted production.
 
-`NEXT_PUBLIC_WC_PROJECT_ID` is empty in this image, so WalletConnect is left out of the bundle. Pass that build-arg only when you build the Dockerfile yourself.
+The GitHub `release` environment has no required reviewer. Default-branch ancestry and trusted release scripts remain enforced. Configure package visibility as Public once; the merge pipeline checks anonymous pulling. WalletConnect's build setting is taken from `NEXT_PUBLIC_WC_PROJECT_ID` on the test build and remains identical in production.
 
-## Before the first tag
+## Initial infrastructure migration
 
-The Release workflow does not change package visibility. Alias updates and the GitHub Release wait until the checks below succeed. Authorization runs from the default branch, not from the tagged commit.
+Merge and apply the companion infra change first. It creates the separate test App Service, identity container, generated Key Vault session/seed secrets, scoped Azure deployment identity and public DNS. Infra config maps the output to the `test` environment variable `S3RCH_TEST_DEPLOY_CLIENT_ID`; restrict that environment to `master` without adding reviewers. Production stays on its existing deployment until the first stable release with a promotion manifest. Legacy releases without that manifest are not reinterpreted as tested artifacts.
 
-1. The publish job uses the GitHub environment named `release`. No required reviewer or manual approval is needed for PRs or releases.
-2. Protect the default branch. The tag must point at a commit that is already on that branch. The release scripts that decide whether to publish are the copies on that branch. A checkout that does not match them is refused before the image is pushed.
-3. Set the GHCR package to Public in package settings. Do this once, after the package exists. The job pushes `X.Y.Z` only when that tag is absent, then pulls its immutable digest with an empty Docker credential directory and boots that digest with Panopticon unset. Startup-package, non-root user and health checks run against the published artifact, including on reruns that reuse a version. A rerun keeps the digest already stored for that tag. If the anonymous pull or published-image smoke fails, the job stops. `X.Y` and `latest` stay put, and the GitHub Release is not created. Set the package to Public and rerun the workflow.
+The test app has its own credentials and identity storage, and does not inherit production Panopticon API credentials. Optional authenticated Panopticon services require separately scoped test credentials. Test OAuth redirects must be registered in the identity provider. Existing production tenant/configuration remains provisioned independently of releases.
 
-Install steps for a core deployment and for optional Panopticon are [install-minimal.md](install-minimal.md) and [install-panopticon.md](install-panopticon.md). Every `S3RCH_*`, `PANOPTICON_*`, and Gun setting is [configuration.md](configuration.md).
+`SOURCE_REVISION` is a Docker build argument baked into `APP_BUILD_REVISION`; it is not a new runtime secret or operator input. `/api/version` exposes only this public commit identifier.
+
+Install guides: [core](install-minimal.md), [optional Panopticon](install-panopticon.md), [configuration](configuration.md).
 
 ## Run with Panopticon unset
 
@@ -49,9 +49,3 @@ docker run --rm -p 8080:8080 \
 | Azure Blob `identity-links.json` | Production identity document, via `S3RCH_IDENTITY_BLOB_ACCOUNT` and `S3RCH_IDENTITY_BLOB_CONTAINER`. Not stored on `/app/data`. |
 
 The image declares `VOLUME /app/data`. A bind mount must be writable by uid 1001. Replacing the container without that volume drops radisk, the snapshot, and the forum file. The identity blob survives when the two blob settings still point at it. Copying server disk does not copy the browser's Gun SEA key.
-
-## This repository's App Service deploy
-
-Pushes to `master` still build this repo and push `${ACR_LOGIN_SERVER}/s3rch:<git sha>` and `:prod`, then point App Service at the `:prod` tag. That path is unchanged, including the required `S3RCH_PANOPTICON_TENANT_ID` check and the identity blob check. Those checks are this deploy workflow, not a requirement of the image.
-
-To deploy a published release instead of building, run the Deploy workflow manually and set `image_digest` to the `sha256:…` value from the GitHub Release. The job pulls `ghcr.io/<repository>@<digest>`, pushes that image into the existing registry, and sets the App Service container to the registry digest. Leave `image_digest` empty to build the selected ref, the same as a master push. The published image does not include `NEXT_PUBLIC_WC_PROJECT_ID`; a master build still passes that variable when it is set.

@@ -80,72 +80,13 @@ describe("require-panopticon-tenant-id", () => {
   });
 });
 
-describe("deploy workflow owns PANOPTICON_TENANT_ID", () => {
-  const workflow = readFileSync(
-    new URL("../.github/workflows/deploy.yml", import.meta.url),
-    "utf8",
-  ).replace(/\r\n/g, "\n");
-
-  it("reads the repo variable and sets only that App Service setting", () => {
-    assert.match(workflow, /S3RCH_PANOPTICON_TENANT_ID: \$\{\{ vars\.S3RCH_PANOPTICON_TENANT_ID \}\}/);
-    assert.match(workflow, /bash scripts\/require-panopticon-tenant-id\.sh/);
-    assert.match(workflow, /PANOPTICON_TENANT_ID=\$\{tenant_id\}/);
-    assert.equal(
-      /PANOPTICON_TENANT_ID[:=]\s*["']?[0-9a-fA-F]{8}-/.test(workflow),
-      false,
-    );
-  });
-
-  it("preflights a missing tenant id before checkout and image push", () => {
-    const deploy = workflow.slice(workflow.indexOf("\n  deploy:\n"));
-    const preflight = deploy.indexOf("name: Require Panopticon tenant id");
-    const checkout = deploy.indexOf("actions/checkout@");
-    const push = deploy.indexOf("docker/build-push-action@");
-    const scriptStep = deploy.indexOf("bash scripts/require-panopticon-tenant-id.sh\n");
-    assert.ok(preflight >= 0 && preflight < checkout && checkout < scriptStep && scriptStep < push);
-    assert.match(deploy.slice(0, checkout), /repository variable or a prod environment variable/);
-    assert.match(deploy.slice(0, checkout), /PANOPTICON_TENANT_ID is not cleared/);
-    const write = deploy.slice(deploy.indexOf("name: Set Panopticon tenant id"));
-    assert.equal(write.includes("Skipping PANOPTICON_TENANT_ID"), false);
-    assert.ok(write.indexOf("bash scripts/require-panopticon-tenant-id.sh") < write.indexOf("az webapp config appsettings set"));
-    const script = readFileSync(SCRIPT, "utf8");
-    const uuidPattern =
-      "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
-    assert.equal(script.includes(uuidPattern), true);
-    assert.equal(deploy.slice(0, checkout).includes(uuidPattern), false);
-  });
-
-  it("skips Azure logout when the job never signed in", () => {
-    const deploy = workflow.slice(workflow.indexOf("\n  deploy:\n"));
-    const logout = deploy.slice(deploy.indexOf("name: Log out of Azure and ACR"));
-    assert.match(logout, /az account show >\/dev\/null 2>&1/);
-    assert.match(logout, /\[ -d "\$AZURE_CONFIG_DIR" \] && az account show/);
-  });
-
-  it("documents the tenant id with the other deploy variables", () => {
-    const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
-    for (const name of [
-      "ACR_NAME",
-      "ACR_LOGIN_SERVER",
-      "SEED_URL",
-      "NEXT_PUBLIC_WC_PROJECT_ID",
-      "S3RCH_PANOPTICON_TENANT_ID",
-    ]) {
-      assert.equal(readme.includes(name), true, name);
-    }
-    assert.match(
-      readme,
-      /Panopticon marketplace tenant id the app uses, set as `PANOPTICON_TENANT_ID` on the App Service; it is an identifier, not a secret/,
-    );
-    assert.match(readme, /\| `S3RCH_PANOPTICON_TENANT_ID` \| yes \|/);
-    assert.match(readme, /required for the prod Deploy/);
-    assert.match(readme, /before checkout and image push/);
-  });
-
-  it("stays on the self-hosted deploy runner and does not run for pull requests", () => {
-    assert.match(workflow, /push:\s*\n\s*branches: \[master\]/);
-    assert.match(workflow, /workflow_dispatch:/);
-    assert.equal(workflow.includes("pull_request:"), false);
-    assert.match(workflow, /runs-on: \[self-hosted, linux, x64\]/);
+describe("merge deployment is isolated from production tenant settings", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/deploy.yml", import.meta.url), "utf8");
+  const deploy = readFileSync(new URL("../scripts/deploy-test.sh", import.meta.url), "utf8");
+  it("targets only test and never writes production marketplace credentials", () => {
+    assert.match(workflow, /environment: test/);
+    assert.match(deploy, /app=s3rch-fyberlabs-test/);
+    assert.doesNotMatch(deploy, /appsettings set|PANOPTICON_TENANT_ID|app=s3rch-fyberlabs-prod/);
+    assert.doesNotMatch(workflow, /environment: prod|S3RCH_PANOPTICON_TENANT_ID/);
   });
 });

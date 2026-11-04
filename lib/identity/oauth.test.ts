@@ -65,13 +65,15 @@ describe("OAuth config fails closed", () => {
       [
         "https://s3r.ch/api/identity/oauth/callback",
         "https://www.s3r.ch/api/identity/oauth/callback",
+        "https://test.s3r.ch/api/identity/oauth/callback",
         "http://localhost:3000/api/identity/oauth/callback",
         "http://127.0.0.1:3000/api/identity/oauth/callback",
       ],
     );
     assert.equal(callbackUriFor("s3r.ch", true), OAUTH_REDIRECT_URIS[0]);
     assert.equal(callbackUriFor("www.s3r.ch", true), OAUTH_REDIRECT_URIS[1]);
-    assert.equal(callbackUriFor("localhost:3000", false), OAUTH_REDIRECT_URIS[2]);
+    assert.equal(callbackUriFor("test.s3r.ch", true), OAUTH_REDIRECT_URIS[2]);
+    assert.equal(callbackUriFor("localhost:3000", false), OAUTH_REDIRECT_URIS[3]);
     assert.equal(callbackUriFor("evil.example", true), null);
     assert.equal(callbackUriFor("s3r.ch", false), null);
     assert.equal(callbackUriFor("localhost:3001", false), null);
