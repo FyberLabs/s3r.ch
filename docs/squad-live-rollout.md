@@ -339,7 +339,11 @@ It activates transport only after successful exchange. Session exchanges time ou
 sign-in start, before the five-minute server token limit. Reconnection requires a
 fresh user/session action; private keys are not retained for automatic renewal.
 
-The component remounts on key, namespace, endpoint or trust-policy changes. Each
+The connection remounts on namespace, endpoint or trust-policy changes. Key
+changes, including a null pair on lock/logout, go through the same serialized
+connection; null explicitly requests server logout. The forum content remounts
+on key changes to clear local view state. Disconnect remains available to retry
+failed network logout even while locally disconnected. Each
 layout-effect setup constructs a fresh connection, including React Strict Mode replay;
 unmount disposes it. The initial/server-rendered view is empty and disconnected.
 A connected session is not itself proof of ACL access: the authority provider and
