@@ -366,10 +366,10 @@ test('public-vector squad fixture cannot connect, publish, or restore former mes
   assert.equal(PILOT_MESH_ENABLED, false);
   const { readFileSync } = await import('node:fs');
   const source = readFileSync('components/SquadForum.tsx', 'utf8');
-  assert.match(source, /if \(!PILOT_MESH_ENABLED \|\| !register\) return;/);
-  assert.match(source, /if \(!PILOT_MESH_ENABLED \|\| !gun\) return false;/);
-  assert.match(source, /if \(!PILOT_MESH_ENABLED\) return;\s+const loaded = restoreForumNeedCache/);
-  assert.match(source, /if \(!PILOT_MESH_ENABLED\) return "local";/);
+  assert.match(source, /if \(!liveEnabled \|\| !register\) return;/);
+  assert.match(source, /if \(!live \|\| !gun\) return false;/);
+  assert.match(source, /if \(!liveEnabled\) return;\s+const loaded = restoreForumNeedCache/);
+  assert.match(source, /if \(!liveEnabled\) return "local";/);
 });
 
 test('unsigned cached status cannot populate the live roster on reload', () => {

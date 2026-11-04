@@ -151,7 +151,7 @@ test("Squad uses the isolated provider, not legacy ACL hydration or implicit cha
   const page = readFileSync("app/feed/squad/page.tsx", "utf8"), component = readFileSync("components/SquadForum.tsx", "utf8");
   assert.match(page, /ForumAuthorityProvider/); assert.doesNotMatch(page, /SeeAclProvider|MeshAclSync/);
   assert.doesNotMatch(component, /admitFeedNode|see\.acl|see\.persist|overlaySeeGraph/);
-  assert.match(component, /PILOT_MESH_ENABLED \? authority\?\.graph \?\? null : sampleAcl/);
+  assert.match(component, /liveEnabled \? authority\?\.graph \?\? null : sampleAcl/);
   assert.match(component, /publishForumAuthorized/);
 });
 
