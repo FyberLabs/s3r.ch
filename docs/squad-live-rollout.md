@@ -324,3 +324,28 @@ partial assignment is recovered with a fresh authenticated request and the saved
 operation ID. Completion remains based on durable cancellation and replacement
 evidence, never status metadata. Mutation routes and production provisioning must
 still supply this service with trusted stores and an authenticated history importer.
+
+## Live client connection wrapper
+
+`LiveSquadForum` composes the actual live forum with the authority provider and
+`createSquadConnection`. It accepts a locally unlocked SEA pair and explicit
+Squad/trust/endpoint configuration. Never pass private pairs through server props
+or deployment configuration. The public demo route does not mount this component.
+
+The connection serializes sign-in/logout, disables authority synchronously before
+key changes or disconnect, aborts superseded exchanges and ignores stale success.
+It activates transport only after successful exchange. Session exchanges time out after
+15 seconds, and the local connection expires conservatively four minutes from
+sign-in start, before the five-minute server token limit. Reconnection requires a
+fresh user/session action; private keys are not retained for automatic renewal.
+
+The connection remounts on namespace, endpoint or trust-policy changes. Key
+changes, including a null pair on lock/logout, go through the same serialized
+connection; null explicitly requests server logout. The forum content remounts
+on key changes to clear local view state. Disconnect remains available to retry
+failed network logout even while locally disconnected. Each
+layout-effect setup constructs a fresh connection, including React Strict Mode replay;
+unmount disposes it. The initial/server-rendered view is empty and disconnected.
+A connected session is not itself proof of ACL access: the authority provider and
+server still verify evidence. Production route registration, history ingestion,
+configuration and deployed multi-client acceptance remain separate gates.
