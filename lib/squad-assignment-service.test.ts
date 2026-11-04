@@ -34,15 +34,22 @@ async function setup() {
   const squad = { owner, forumId: forum, label: "Assignment HTTP" }, source = createSquadCommitStore(memory(), squad, () => at);
   await source.initialize(state, { completeThrough: at, links: [], accounts: [owner, old, replacement].map(principal => ({ principal, rotations: [], revocations: [], genesisEpubBindings: [] })) });
   const stores = new Map<string, { inventory: InventoryStore; cancellations: ReturnType<typeof outbox>; grants: ReturnType<typeof outbox> }>();
-  let key: string | null = owner;
-  const service = createSquadAssignmentService({ squad, source, origin: "https://s3r.ch", authenticate: async () => key ? { key } : null,
-    runtime: { clock: () => at, config: { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] }, sign,
+  let key: string | null = owner, now = at, expireOnAbort = false;
+  const guardedSource = { ...source, async open(guard?: () => void) {
+    const pinned = await source.open(guard);
+    return { ...pinned, journal: { ...pinned.journal, async abort(...args: Parameters<typeof pinned.journal.abort>) {
+      if (expireOnAbort) now++;
+      return pinned.journal.abort(...args);
+    } } };
+  } };
+  const service = createSquadAssignmentService({ squad, source: guardedSource, origin: "https://s3r.ch", authenticate: async () => key ? { key } : null,
+    runtime: { clock: () => now, config: { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] }, sign,
       operationStores(id) { let s = stores.get(id); if (!s) { s = { inventory: memory(), cancellations: outbox(), grants: outbox() }; stores.set(id, s); } return s; } } });
   const client = createHttpAssignmentClient({ base: "/api/squad/assignment", fetch: async (url, init) => {
     const headers = new Headers(init?.headers); headers.set("Origin", "https://s3r.ch");
     return service(String(url).split("/").at(-1) as Parameters<typeof service>[0], new Request(`https://s3r.ch${url}`, { ...init, headers }));
   } });
-  return { service, client, source, as: (next: string | null) => { key = next; } };
+  return { service, client, source, expireAbort: () => { expireOnAbort = true; }, as: (next: string | null) => { key = next; } };
 }
 test("HTTP client completes signed reassignment through the shared runtime and replays receipt", async () => {
   const h = await setup(); assert.equal((await h.client.read(scope)).assignee, old);
@@ -69,4 +76,14 @@ test("responses project only assignment state and malformed oversized requests f
   assert.deepEqual(Object.keys(await res.json()).sort(), ["assignee", "forum", "operation", "owner", "receipts", "revision"]);
   assert.equal((await h.service("start", request({ ...scope, operationId: "bad", replacement, revision: 0 }))).status, 400);
   assert.equal((await h.service("child", request({ ...scope, record: "x".repeat(131073), signature: "SEA" }))).status, 413);
+});
+
+test("abort crossing the evaluation deadline cannot commit through the pinned journal", async () => {
+  const h = await setup(), id = "d".repeat(32);
+  const pinned = await h.source.open();
+  await pinned.journal.claim(owner, id, replacement, 0);
+  h.expireAbort();
+  const res = await h.service("abort", request({ ...scope, operationId: id }));
+  assert.equal(res.status, 409);
+  assert.equal((await h.source.load()).journal.operation?.phase, "cancellations");
 });

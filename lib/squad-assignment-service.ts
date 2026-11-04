@@ -54,7 +54,9 @@ export function createSquadAssignmentService(input: {
       if (action === "start" && (!Number.isSafeInteger(body.revision) || body.revision < 0)) return reply(400, { error: "revision" });
       if (action === "read-child" && !isForumObjectId(body.id)) return reply(400, { error: "child" });
       if (action === "child" && (typeof body.signature !== "string" || body.signature.length > 32768)) return reply(400, { error: "signature" });
-      const pinned = await source.open(), state = await pinned.journal.load(), at = clock();
+      const at = clock();
+      const evaluationClock = () => { request.signal.throwIfAborted(); if (clock() !== at) throw Error("evaluation expired"); return at; };
+      const pinned = await source.open(evaluationClock), state = await pinned.journal.load();
       if (state.forum !== view.forumId || state.owner !== view.owner) return reply(503, { error: "source-scope" });
       const authority = createForumAuthority(options.config, clock);
       const verified = await authority.refresh({ completeThrough: at, rows: state.rows, history: await pinned.history(at) }, at);
@@ -64,7 +66,6 @@ export function createSquadAssignmentService(input: {
       if (!["child", "read-child"].includes(action) && actor !== view.owner) return reply(403, { error: "owner" });
       // Do not re-resolve a retired session key as a stable actor in a later
       // evaluation second. New requests reauthenticate against a fresh view.
-      const evaluationClock = () => { request.signal.throwIfAborted(); if (clock() !== at) throw Error("evaluation expired"); return at; };
       evaluationClock();
       const runtime = createDelegationRuntime({ ...options, ...pinned, clock: evaluationClock });
       if (action === "read") {

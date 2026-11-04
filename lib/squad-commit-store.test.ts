@@ -86,3 +86,12 @@ test("lost acknowledgement poisons only the request view and durable state is re
   assert.equal((await source.load()).journal.operation?.id, "c".repeat(32));
   assert.equal((await (await source.open()).journal.load()).operation?.id, "c".repeat(32));
 });
+
+test("request cancellation guards every journal CAS and invalidates a rejected view", async () => {
+  const { source } = await setup(), controller = new AbortController();
+  const pinned = await source.open(() => controller.signal.throwIfAborted());
+  await pinned.journal.load(); controller.abort();
+  await assert.rejects(pinned.journal.claim(owner, "e".repeat(32), replacement, 0));
+  assert.equal((await source.load()).journal.operation, null);
+  await assert.rejects(pinned.journal.load(), /invalid/);
+});
