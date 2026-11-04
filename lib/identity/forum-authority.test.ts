@@ -388,3 +388,27 @@ test("roster principals resolve from authenticated history before owning objects
   assert.equal(a.graph.checkForumSee(forum, outsider, time).allowed, false);
   a.invalidate(); assert.equal(a.graph.writerKey(outsider, time, time), null);
 });
+
+
+test("polled source admits signed authority and withdraws it on a failed next read", async t => {
+  const { createForumAuthoritySource } = await import("../forum-authority-source");
+  t.mock.timers.enable({ apis: ["Date", "setInterval", "setTimeout"], now: time * 1000 });
+  const source = createForumAuthoritySource({ config, read: async at => {
+    if (at !== time) throw Error("history service unavailable");
+    return snapshot([owned(), direct()], at);
+  } });
+  const authority = createForumAuthority(source.config);
+  let refreshed: Promise<unknown> | undefined;
+  const stop = source.subscribe((input, at) => {
+    if (input) refreshed = authority.refresh(input, at);
+    else authority.invalidate();
+  });
+  for (let n = 0; n < 8; n++) await Promise.resolve();
+  await refreshed;
+  assert.equal(authority.graph.checkDirectSee(object, helper, time).allowed, true);
+  t.mock.timers.tick(1000);
+  for (let n = 0; n < 8; n++) await Promise.resolve();
+  assert.equal(authority.graph.checkDirectSee(object, helper, time + 1).allowed, false);
+  assert.equal(authority.graph.ownerOf(object), undefined);
+  stop();
+});

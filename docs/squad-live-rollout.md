@@ -50,3 +50,26 @@ carrying live state into a fixture view.
 
 The namespace and empty-state tests are consumer isolation evidence, not proof of
 production history completeness, provisioning, deployment or live acceptance.
+
+## Complete-history source lifecycle
+
+`createForumAuthoritySource` implements the `ForumAuthorityProvider` subscription
+contract around an injected, provisioned `ForumAuthorityReader`. It invalidates
+before each new evaluation second, requests a fresh atomic history/ACL snapshot,
+and aborts a read after 800 ms or when its generation ends. Late responses cannot
+revive authority, and neither completeness horizon is extended locally. Transport
+failure, missing history, timeout and backward clock movement leave access denied.
+Each subscriber owns its requests and timers; unsubscribe aborts its work. The
+provider invalidates the graph when the source is removed or replaced.
+
+Witness keys, issuer pins and SIWE policy are copied and frozen for the source's
+lifetime. Rotate trust by constructing a new source and replacing the provider
+input, which also discards pending verification under the previous policy.
+
+This adapter does not authenticate a transport or establish completeness. Its
+reader must use a separately authenticated production service, supply atomic
+complete history and ACL evidence, and honor its AbortSignal. Never plug in raw
+Gun rows, browser persistence or peer-declared completeness. Signed rows still
+pass through the existing recovery and authority verifiers. No production reader,
+route, environment variable or deployment setting is enabled by this adapter;
+those remain the production gates above.
