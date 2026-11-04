@@ -6,6 +6,7 @@ import { randomBytes } from "node:crypto";
 import { AzureCliCredential } from "@azure/identity";
 import { BlobServiceClient } from "@azure/storage-blob";
 import { p256 } from "@noble/curves/nist.js";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createAssignmentJournal } from "../lib/delegation-journal";
 import { parseForumAuthority, type AuthorityKind } from "../lib/identity/forum-authority-records";
 import { createForumAuthority } from "../lib/identity/forum-authority";
@@ -26,7 +27,10 @@ async function main() {
       const pub = (s: Uint8Array) => { const k = p256.getPublicKey(s, false); return Buffer.from(k.slice(1, 33)).toString("base64url") + "." + Buffer.from(k.slice(33)).toString("base64url"); };
       return { pub: pub(priv), priv: Buffer.from(priv).toString("base64url"), epub: pub(epriv), epriv: Buffer.from(epriv).toString("base64url") };
     };
-    const identities = Array.from({ length: 4 }, pair), owner = identities[0], witness = pair(), now = Math.floor(Date.now() / 1000);
+    const identities = Array.from({ length: 4 }, () => {
+      const walletPrivateKey = generatePrivateKey();
+      return { ...pair(), walletPrivateKey, address: privateKeyToAccount(walletPrivateKey).address };
+    }), owner = identities[0], witness = pair(), now = Math.floor(Date.now() / 1000);
     const config = { version: 1, origin: args[0], squad: { forumId: `forum_${seaToPrincipalKey(owner.pub)}_${randomBytes(16).toString("hex")}`, owner: owner.pub, label: "Synthetic agent pilot" },
       authority: { keys: [{ kid: `pilot-${randomBytes(8).toString("hex")}`, kty: "EC", crv: "P-256", x: witness.pub.split(".")[0], y: witness.pub.split(".")[1], notBefore: now, notAfter: now + 86400 * 90 }],
         policy: { allowedDomains: [new URL(args[0]).host], allowedUris: [args[0]], allowedChainIds: ["84532"] }, pinnedIssuers: [] },
@@ -56,7 +60,7 @@ async function main() {
     const memory: InventoryStore = { read: async () => held, compareAndSwap: async (etag, text) => { if (etag !== null || held) return false; held = { text, etag: "seed" }; return true; } };
     const journal = await createAssignmentJournal(memory).initialize({ forum, owner, assignee: identities[1].pub, destinations, rows: destinations.flatMap(object => [
       sign("object", { owner, object, issuedAt: now }),
-      ...identities.slice(1).flatMap((p: { pub: string }) => (["see", "post"] as const).map(kind => sign(kind, { owner, object, accessor: p.pub, stated: 1, hamState: 1, from: now, until: now + 86400 * 30, issuedAt: now }))),
+      ...identities.slice(1, 2).flatMap((p: { pub: string }) => (["see", "post"] as const).map(kind => sign(kind, { owner, object, accessor: p.pub, stated: 1, hamState: 1, from: now, until: now + 86400 * 30, issuedAt: now }))),
     ]) });
     await pilot.source.initialize(journal, { completeThrough: now, links: [], accounts: identities.map((p: { pub: string }) => ({ principal: p.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) });
     console.log("Created primary pilot ledger with absent-only CAS. No app setting changed.");

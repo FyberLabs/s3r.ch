@@ -414,3 +414,16 @@ separate session clients, real SEA challenge signatures, assignment cancellation
 and replacement, logout denial and replay after emulator/process restart. Those
 results remain distinct from Azure provisioning, image deployment, browser
 acceptance and provider credential/recovery acceptance.
+
+The explicit live HTTP acceptance command is
+`npx tsx scripts/test-squad-pilot-live.ts PRIVATE_DIRECTORY reassign`. It changes
+the synthetic Squad's assignment from the first agent to the second, persists its
+operation ID for recovery, checks durable child writes, old-writer denial,
+reconnect and logout with independent cookie jars, and emits no credentials.
+Use only the isolated pilot namespace. It is not a browser or recovery test.
+
+A rotation regression currently confirms that retained retired-key ownership rows
+are excluded by the verifier even when current-key ownership resolves correctly.
+The higher-level runtime still rejects all diagnostics, so reissuing records
+alone does not yet restore operation after rotation. Do not delete the old rows
+to work around this: the rotation acceptance gate remains pending.
