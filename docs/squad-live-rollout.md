@@ -250,6 +250,27 @@ atomic source view. Assignment writes and history updates are not yet connected 
 this shared commit boundary; live enablement must wait for that integration and
 for app/infra provisioning. No new production setting or endpoint is enabled here.
 
+## Browser SEA session transport
+
+`createSquadSessionClient` performs challenge/exchange/logout against explicitly
+configured same-origin HTTPS endpoints. Before signing a challenge with the
+selected SEA pair, it checks the challenge token type, origin, forum, owner, key,
+nonce and short validity interval. These decoded claims constrain signing intent;
+the server still verifies the challenge MAC, browser cookie and single-use proof.
+The client snapshots the selected pair before awaiting network responses.
+
+Responses are bounded to 8 KiB, redirects are refused and requests are no-store.
+The exchange returns a boolean; bearer tokens stay in HttpOnly cookies and are
+never copied to localStorage or returned to application JavaScript. One client
+instance refuses overlapping login/logout operations. Aborted or invalid exchanges
+fail closed. A network error after exchange may still mean the server set a cookie;
+callers must use verified authority reads, not the boolean alone, as access proof.
+
+UI wiring must invalidate authority when the selected key changes or logout starts,
+handle failed/expired sessions, and request a fresh sign-in when needed. This helper
+does not yet mount a live UI, register an endpoint or configure production storage.
+
+
 ## Shared assignment/history commit boundary
 
 `createSquadCommitStore` now combines the assignment journal and complete recovery
