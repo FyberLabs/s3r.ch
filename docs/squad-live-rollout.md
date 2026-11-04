@@ -198,6 +198,27 @@ locally deployed acceptance environment. No Next route is registered by this
 factory: production must still supply the explicit secret, dedicated durable
 replay store and atomic complete-history reader and wire those through infra.
 
+## Browser source activation and invalidation
+
+`createSquadBrowserSource` combines the authority HTTP reader, per-second refresh
+lifecycle and assignment client under a fixed live Squad. It starts disabled and
+makes no network calls until explicitly activated after the session exchange.
+Activation permits transport only; the server and authority provider still verify
+current history, signatures and permissions. No source is mounted automatically.
+
+On logout, key change or teardown, call `deactivate` synchronously before awaiting
+network cleanup. It withdraws subscribed authority, stops refresh timers and aborts
+in-flight transports. Generation checks reject late assignment/authority results,
+including across reactivation. `dispose` permanently disables the source. Every
+assignment call must match the configured owner/forum, and production requests use
+same-origin credentials, no-store and redirect rejection.
+
+Aborting transport cannot undo a mutation already committed by the server. After
+a lost response, reopen the saved operation through a fresh authenticated request.
+UI integration must still coordinate session renewal, selected-key changes and
+provider mounting; production routes, config and deployed acceptance remain open.
+
+
 ## Atomic authority snapshot storage
 
 `createForumAuthoritySnapshotStore` stores the fixed Squad scope and complete
