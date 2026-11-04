@@ -82,10 +82,15 @@ try {
   const abortedId = randomBytes(16).toString("hex"), abortBefore = await call("read");
   await call("fault", 0, { kind: "cancellation-ack" });
   await call("start", 0, { operationId: abortedId, replacement: credentials[1].pub, revision: abortBefore.revision });
+  // Cancellation order depends on the synthetic identities' random keys.
+  // The lost acknowledgement may follow either a see or a post cancellation.
+  const revoked = (await call("inspect")).state.rows.find(r => ["see", "post"].includes(r.kind) && r.record.accessor === credentials[3].pub && r.record.stated === 0);
+  assert.ok(revoked, "the lost acknowledgement must follow a committed cancellation");
   await call("abort", 0, { operationId: abortedId });
   await call("resume", 0, { operationId: abortedId, replacement: credentials[1].pub }, 409);
-  const revoked = (await call("inspect")).state.rows.find(r => r.kind === "post" && r.record.accessor === credentials[3].pub && r.record.stated === 0);
-  assert.ok(revoked);
-  assert.equal((await call("access", 3, { destination: revoked.record.object })).canPost, false);
+  const retainedRevocation = (await call("inspect")).state.rows.find(r => r.kind === revoked.kind && JSON.stringify(r.record) === JSON.stringify(revoked.record));
+  assert.deepEqual(retainedRevocation, revoked, "abort preserves the exact signed cancellation");
+  const access = await call("access", 3, { destination: revoked.record.object });
+  assert.equal(access[revoked.kind === "see" ? "canRead" : "canPost"], false);
   console.log("PASS: isolated synthetic Squad; signed SEA child writes and lost-ack recovery; authenticated independent HTTP clients; lost grant acknowledgement; process restart; exact retry bytes; assignment receipt replay; new-child inventory; concurrent assignment conflict; revoked writes; ownership/path preservation; abort without restoring access.");
 } finally { await stop(); if (process.env.KEEP_ASSIGNMENT_TEST_STATE !== "1") rmSync(directory, { recursive: true, force: true }); }
