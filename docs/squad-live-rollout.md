@@ -280,3 +280,26 @@ and combined state after restart. These establish the storage/runtime boundary,
 not production importer completeness, session authorization for mutation routes,
 or deployed acceptance. Production routes must open a new runtime request per
 call and connect every writer to this combined document before enabling live use.
+
+## Authenticated assignment HTTP service
+
+`createSquadAssignmentService` implements the existing assignment client's read,
+start, resume, abort, child-read and signed child-write operations. Deployment fixes
+the HTTPS origin, Squad, combined source, signer and immutable operation stores.
+`createSquadHttpServices` can compose it with the SEA cookie authenticator and the
+same trust policy/clock as the authority service. No route is enabled by default.
+
+Each request validates same-origin JSON, bounded body size and an exact action
+schema before opening a fresh combined history/journal view. The actor comes from
+resolving the authenticated SEA key against that view; request fields cannot
+choose an actor or namespace. Owner operations require the resolved owner. Child
+operations retain the runtime's direct read/write and signature checks. Assignment
+reads return only the consumer view, not child content or full authority history.
+
+The request stops if its evaluation second changes rather than carrying a key's
+old principal resolution into a later evaluation. Concurrent history/journal
+changes still fence writes through the shared ETag. A conflict, lost response or
+partial assignment is recovered with a fresh authenticated request and the saved
+operation ID. Completion remains based on durable cancellation and replacement
+evidence, never status metadata. Mutation routes and production provisioning must
+still supply this service with trusted stores and an authenticated history importer.
