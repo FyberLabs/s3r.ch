@@ -17,6 +17,11 @@ export function createBlobInventoryStore(container: Pick<ContainerClient, "getBl
 export function createBlobAssignmentJournalStore(container: Pick<ContainerClient, "getBlockBlobClient">, namespace: string): InventoryStore {
   return createBlobCasStore(container, namespace, "s3rch-assignment-journal/v1", 2_097_152);
 }
+/** Dedicated replay slot; never shares assignment state. Provision on a primary
+ * container without deletion/rollback while any challenge can remain valid. */
+export function createBlobSquadSessionReplayStore(container: Pick<ContainerClient, "getBlockBlobClient">, namespace: string): InventoryStore {
+  return createBlobCasStore(container, namespace, "s3rch-squad-session-replay/v1", 400_000);
+}
 function createBlobCasStore(container: Pick<ContainerClient, "getBlockBlobClient">, namespace: string, prefix: string, CAP: number): InventoryStore {
   if (typeof namespace !== "string" || !/^[0-9a-f]{64}$/.test(namespace)) throw Error("invalid inventory namespace");
   const blob = container.getBlockBlobClient(`${prefix}/${namespace}.json`);

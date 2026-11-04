@@ -123,6 +123,30 @@ Its authentication and reader callbacks remain mandatory production integration
 work, along with infrastructure configuration and deployed acceptance. Synthetic
 signed service tests do not establish production identity or deployment readiness.
 
+## Blob-backed session replay storage
+
+`createBlobSquadSessionReplayStore(primaryContainer, serverNamespace)` supplies
+`createSquadSessionReplayStore` with a dedicated conditional Blob slot:
+`s3rch-squad-session-replay/v1/<64-hex-namespace>.json`. It is separate from
+assignment journals, inventories and immutable outboxes even when they use the
+same namespace. Reads bind a bounded body to its ETag; creation requires absence
+and subsequent writes require the exact ETag. The slot is capped at 400,000 bytes.
+Authentication, missing-container and transport failures never become an empty
+replay ledger or a successful consumption.
+
+Provision this on the trusted primary container. Do not delete, restore an older
+version of, or apply lifecycle expiry to a live replay ledger while challenges
+remain valid; such rollback loses consumed-ID evidence. Namespace selection comes
+from server provisioning, never request input. No environment variable or Azure
+resource is introduced here. Container identity/configuration wiring remains a
+production rollout gate.
+
+The existing `scripts/test-delegation-blob.sh` CI run now races independent SDK
+clients consuming the same challenge, rejects stale ETags/absent-only resets, and
+verifies that consumed IDs survive process and Azurite restarts. This is emulator
+storage acceptance, not evidence of a deployed Azure configuration.
+
+
 ## SEA possession sessions
 
 `createSquadSessions` provides a separate session protocol from wallet login.
