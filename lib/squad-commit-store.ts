@@ -50,7 +50,7 @@ export function createSquadCommitStore(store: InventoryStore, spec: LiveSquadSpe
       const text = JSON.stringify(candidate); await validate(text);
       return store.compareAndSwap(expectedETag, text);
     },
-    async open() {
+    async open(beforeCommit: () => void = () => {}) {
       let held = await load(), poisoned = false;
       // This view belongs to one runtime request. It must never refresh its
       // history independently after verification or silently retry a lost CAS.
@@ -63,6 +63,9 @@ export function createSquadCommitStore(store: InventoryStore, spec: LiveSquadSpe
           if (poisoned || etag !== held.etag) return false;
           const text = JSON.stringify({ ...held.doc, journal: JSON.parse(journalText) }); await validate(text);
           try {
+            // Recheck after every awaited validation, immediately before issuing
+            // the conditional write. A failed request guard poisons this view.
+            beforeCommit();
             if (!await store.compareAndSwap(etag, text)) { poisoned = true; return false; }
             const next = await load();
             if (next.text !== text) throw Error("combined authority advanced; reopen");
