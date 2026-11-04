@@ -1,8 +1,9 @@
+import { createSquadSessionReplayStore } from "../lib/identity/squad-session-replay";
 import assert from "node:assert/strict";
 import { BlobServiceClient, StorageSharedKeyCredential } from "@azure/storage-blob";
 import { setTimeout as delay } from "node:timers/promises";
 import { createBlobCancellationOutboxStore, createBlobReplacementGrantStore } from "../lib/delegation-blob-outbox";
-import { createBlobInventoryStore, createBlobAssignmentJournalStore } from "../lib/delegation-blob-inventory";
+import { createBlobInventoryStore, createBlobAssignmentJournalStore, createBlobSquadSessionReplayStore } from "../lib/delegation-blob-inventory";
 import { createDelegationInventory } from "../lib/delegation-inventory";
 import { p256 } from "@noble/curves/nist.js";
 import { createInventoryBoundOutbox } from "../lib/delegation-bound-outbox";
@@ -24,6 +25,23 @@ for (;;) {
   catch (error) { if (Date.now() >= deadline) throw error; await delay(100); }
 }
 const scope = "b".repeat(64), id = "a".repeat(32), payload = JSON.stringify({ sig: "exact-签名", attest: "preserved" });
+// Independent SDK clients share one durable replay slot. A fixed evaluation
+// clock keeps the challenge live across the owned emulator restart.
+const replayStore = createBlobSquadSessionReplayStore(container, scope);
+const consume = createSquadSessionReplayStore(replayStore, () => 100);
+const replayId = "a".repeat(64);
+if (phase === "write") {
+  const independent = createSquadSessionReplayStore(createBlobSquadSessionReplayStore(service().getContainerClient("cancellation-test"), scope), () => 100);
+  const results = await Promise.all([consume(replayId, 160), independent(replayId, 160)]);
+  assert.deepEqual(results.sort(), [false, true]);
+  const held = (await replayStore.read())!;
+  assert.equal(await replayStore.compareAndSwap(null, "reset"), false);
+  assert.equal(await replayStore.compareAndSwap(held.etag, held.text + " "), true);
+  assert.equal(await replayStore.compareAndSwap(held.etag, "stale"), false);
+} else {
+  assert.equal(await consume(replayId, 160), false, "used challenge survives process and emulator restart");
+  assert.equal(await consume("b".repeat(64), 160), true);
+}
 const store = createBlobCancellationOutboxStore(container, scope);
 if (phase === "write") {
   assert.equal(await store.read(id), null);

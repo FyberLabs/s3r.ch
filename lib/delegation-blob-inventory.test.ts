@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Readable } from "node:stream";
 import type { ContainerClient } from "@azure/storage-blob";
-import { createBlobInventoryStore } from "./delegation-blob-inventory";
+import { createBlobInventoryStore, createBlobSquadSessionReplayStore } from "./delegation-blob-inventory";
 const setup = (client: object) => createBlobInventoryStore({ getBlockBlobClient() { return client; } } as unknown as ContainerClient, "b".repeat(64));
 test("inventory writes require the exact ETag and never use unconditional replacement", async () => {
   const conditions: unknown[] = [];
@@ -37,4 +37,19 @@ test("corrupt read and missing container cannot become an absent registry", asyn
   assert.ok(stream.destroyed);
   const missingContainer = Object.assign(Error("container"), { statusCode: 404, code: "ContainerNotFound" });
   await assert.rejects(setup({ async download() { throw missingContainer; } }).read(), e => e === missingContainer);
+});
+
+test("session replay uses a distinct bounded blob and rejects oversize writes", async () => {
+  let path = "", writes = 0;
+  const store = createBlobSquadSessionReplayStore({ getBlockBlobClient(name: string) {
+    path = name;
+    return { async upload() { writes++; return { etag: "new" }; }, async download(_offset: number, count: number) {
+      assert.equal(count, 400001);
+      return { etag: "read", contentLength: 2, readableStreamBody: Readable.from([Buffer.from("{}")]) };
+    } };
+  } } as unknown as ContainerClient, "b".repeat(64));
+  assert.equal(path, `s3rch-squad-session-replay/v1/${"b".repeat(64)}.json`);
+  assert.deepEqual(await store.read(), { text: "{}", etag: "read" });
+  await assert.rejects(store.compareAndSwap(null, "x".repeat(400001)), /capacity/);
+  assert.equal(writes, 0);
 });
