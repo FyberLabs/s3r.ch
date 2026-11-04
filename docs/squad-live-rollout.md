@@ -122,3 +122,32 @@ prove omitted evidence or turn two independent reads into an atomic snapshot.
 Its authentication and reader callbacks remain mandatory production integration
 work, along with infrastructure configuration and deployed acceptance. Synthetic
 signed service tests do not establish production identity or deployment readiness.
+
+## SEA possession sessions
+
+`createSquadSessions` provides a separate session protocol from wallet login.
+The server issues a 60-second HS256 challenge bound to its origin, configured
+forum/owner and requested SEA key. The client signs the exact challenge string
+with `signForumRecord(challenge, pair)`. Exchange verifies the real SEA signature,
+atomically consumes the challenge ID and issues a five-minute session token.
+Token types distinguish challenges from sessions; neither crosses origin or
+namespace. Public fixture keys are refused. Session authentication returns only
+the proven key: the authority service must still resolve that key against current
+history and check access on every request. A session is never an ACL grant.
+
+`createSquadSessionReplayStore` supplies the single-use consumer over a dedicated
+InventoryStore CAS slot shared by all instances. Used IDs survive restarts;
+expired entries may be removed, but live entries are never evicted to admit a
+new login. At 4096 live challenges or after four CAS conflicts, exchange fails
+closed. Storage corruption/unavailability likewise denies exchange. The replay
+slot must not share an assignment/inventory document and must not be reset while
+challenges remain valid.
+
+No session endpoints or cookies are installed yet. Production wiring must supply
+an explicit server secret (no local fallback), dedicated durable replay storage,
+same-origin challenge/exchange handlers and secure HttpOnly cookie transport.
+Use `sessions.authenticate(cookieValue)` in the authority service authenticator;
+do not pass the existing wallet cookie as a SEA session. Secret rotation invalidates
+outstanding challenges/sessions. These dependencies must be configured in app and
+infra together before enabling the live route. The existing wallet/OAuth linked
+credential and recovery policy is unchanged.
