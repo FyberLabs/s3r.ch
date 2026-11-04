@@ -73,3 +73,28 @@ Gun rows, browser persistence or peer-declared completeness. Signed rows still
 pass through the existing recovery and authority verifiers. No production reader,
 route, environment variable or deployment setting is enabled by this adapter;
 those remain the production gates above.
+
+## Same-origin snapshot transport
+
+`createHttpForumAuthorityReader({ endpoint, squad })` supplies the reader for
+`createForumAuthoritySource`. Deployment must explicitly provide an absolute-path
+same-origin endpoint and a valid live Squad specification. No endpoint is enabled
+by this change. The reader posts `{ version: 1, forumId, owner, evaluatedAt }` with
+same-origin session credentials, no caching and redirect rejection. The service
+must independently authenticate and authorize the caller and derive the namespace;
+these request fields only assert the expected scope.
+
+The response is JSON `{ version: 1, forumId, owner, evaluatedAt, snapshot }`, where
+`snapshot` is the existing complete authority/history contract. Scope and evaluation
+time must match exactly. Both completeness horizons must cover that time. The
+reader rejects error/login responses, malformed envelopes, over 1024 ACL rows and
+bodies over 4 MiB, including chunked bodies or false Content-Length. Cancellation
+also stops a stalled body read. The downstream authority verifier still checks
+signatures, histories and ACL semantics; a successful HTTP response is not proof
+of authority or source completeness.
+
+The 4 MiB response limit bounds transport memory and must be considered when
+provisioning retained history. Exceeding it denies access; it must never trigger
+truncation of revocation/cancellation evidence. Server implementation, complete
+history storage/fencing, session-to-SEA mapping and production configuration remain
+required before connecting this reader to a live route.
