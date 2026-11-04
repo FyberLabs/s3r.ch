@@ -38,3 +38,11 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 | `S3RCH_TURN_USERNAME` | only with the insecure flag | unset | yes | Fixed TURN username paired with `S3RCH_TURN_CREDENTIAL`. |
 
 `S3RCH_IDENTITY_STORAGE_ROOT` is not read. A user-assigned Azure identity also needs `AZURE_CLIENT_ID` (the client id, not a secret). The Azure SDK reads that name; this table does not, and the checker does not scan it.
+
+## Controlled Squad pilot
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `S3RCH_SQUAD_PILOT` | Empty (disabled) | Key Vault-backed JSON deployment contract for the separately provisioned synthetic Squad. Contains the fixed HTTPS origin, fresh namespace/owner, explicit witness and credential policy, random session secret and owner signing key. Never expose as NEXT_PUBLIC or print it. Infra owns the reference through `squad_pilot_secret_name`. Uses a dedicated private primary Blob container with scoped managed-identity access; missing state denies rather than initializes. See `docs/squad-live-rollout.md`. |
+| `S3RCH_SQUAD_BLOB_ACCOUNT` | Unset | Pilot storage account, supplied by infra from its managed storage resource. Required only when the pilot is enabled. Managed identity only; no account key or CLI fallback. |
+| `S3RCH_SQUAD_BLOB_CONTAINER` | Unset | Dedicated private pilot container, supplied by infra. Never point at identity-links storage, a secondary replica or an imported snapshot mirror. |

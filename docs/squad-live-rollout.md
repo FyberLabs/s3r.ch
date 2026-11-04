@@ -349,3 +349,68 @@ unmount disposes it. The initial/server-rendered view is empty and disconnected.
 A connected session is not itself proof of ACL access: the authority provider and
 server still verify evidence. Production route registration, history ingestion,
 configuration and deployed multi-client acceptance remain separate gates.
+
+## Controlled primary-ledger deployment
+
+The synthetic pilot uses a separately provisioned, authoritative ledger, not an
+import of arbitrary Gun/Panopticon history. All pilot history admissions and
+assignment/destination mutations use the same primary conditional document.
+`authoritative-ledger` mode supplies completeness only for the second in which a
+fresh primary read began and completed. The pinned view expires on the next
+second, and any concurrent history admission fences a mutation by ETag. Reads do
+not rewrite horizons/revisions. The existing default `imported-snapshot` mode
+continues to require the source's authenticated completeness horizon. Never enable
+ledger mode on a replica, peer cache, partial history or externally writable
+namespace. Public fixture accounts are refused in ledger mode.
+
+`/feed/squad/live` and `/api/squad/pilot/{session/*,authority,assignment/*}` are
+mounted separately from `/feed/squad` and `/forum`. The session key comes from the
+existing locally unlocked identity, not a server prop. The deployment JSON's
+public projection includes only scope, origin, trust policy and endpoint paths.
+The private owner signer and session secret stay on the server. The readiness
+endpoint `/api/squad/pilot/health` verifies a fresh primary read and signed owner
+authority; 404 means disabled and 503 means unavailable. It returns no history or
+credentials. Readiness is not deployed multi-client acceptance.
+
+Infra owns `squad_pilot_secret_name` in `config/environments/production.yaml` and
+renders its Key Vault reference into `S3RCH_SQUAD_PILOT`. Empty disables the pilot.
+The dedicated private `s3rch-squad-pilot` container has its own system-identity
+Blob Data Contributor grant. Infra also supplies `S3RCH_SQUAD_BLOB_ACCOUNT` and
+`S3RCH_SQUAD_BLOB_CONTAINER`. Application access uses managed identity only; it
+cannot fall back to Azure CLI, shared keys, account-link storage or local files.
+
+Operator preparation uses `npx tsx scripts/squad-pilot.ts prepare NEW_PRIVATE_DIR
+https://s3r.ch`. It creates random SEA identities and a separate witness key,
+0600 files inside a new 0700 directory, and no remote state. `deployment.json`
+is the Key Vault secret value; `operator.json` contains synthetic agent and
+witness private material and must remain in independent operator custody, never
+in the app container or public config. The initial policy allows Base Sepolia
+wallet proofs for the exact origin and no OIDC issuer. Do not claim Panopticon
+credential acceptance from that policy.
+
+`provision DIRECTORY ACCOUNT CONTAINER` conditionally creates the complete
+ledger only when absent, including registered owner-held child destinations and
+signed grants. Use an explicitly selected Azure subscription via
+`AZURE_SUBSCRIPTION_ID` and a container-scoped operator credential. No existing
+ledger is reset. `verify DIRECTORY ACCOUNT CONTAINER` rereads primary storage and
+verifies authority. `admit-history DIRECTORY ACCOUNT CONTAINER HISTORY_JSON`
+is a trusted operator admission, not a public import endpoint: reconcile the
+complete candidate with current ledger state first. Prior evidence cannot be
+removed and concurrent changes require explicit reconciliation. Signature/key
+verification still controls runtime authority; an operator can freeze the pilot
+by admitting conflicting evidence and cannot treat a successful storage write as
+successful recovery. CLI errors omit secret values.
+
+Provision before setting the Key Vault reference and check readiness after the
+exact tested image is deployed. To roll back access, empty the configured secret
+name and redeploy/apply settings; retain the ledger, replay state, immutable
+outboxes and historical public witness keys. Never restore an older ledger or
+rotate the namespace as an error-recovery shortcut. Witness rotation must retain
+historical keys and their issuance intervals; do not reuse a kid/key or extend an
+old issuance window. Missing or expired evidence denies access.
+
+The emulator acceptance now exercises the actual pilot server composition with
+separate session clients, real SEA challenge signatures, assignment cancellation
+and replacement, logout denial and replay after emulator/process restart. Those
+results remain distinct from Azure provisioning, image deployment, browser
+acceptance and provider credential/recovery acceptance.
