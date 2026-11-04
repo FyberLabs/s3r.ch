@@ -228,3 +228,34 @@ independently read history/ACL sources. Production ingestion must deliver a comp
 atomic source view. Assignment writes and history updates are not yet connected to
 this shared commit boundary; live enablement must wait for that integration and
 for app/infra provisioning. No new production setting or endpoint is enabled here.
+
+## Shared assignment/history commit boundary
+
+`createSquadCommitStore` now combines the assignment journal and complete recovery
+history in one primary conditional document. `createSquadRuntimeRequest` opens a
+fresh pinned journal/history view for each authenticated runtime request. Reads
+and proof checks use that view; every mutation compares the same underlying ETag.
+If history or another journal writer advances it, the old view cannot commit and
+must be discarded. Lost acknowledgements poison the view too; reopen the durable
+operation on a new request rather than retrying on stale verified evidence.
+
+Authenticated history import uses `updateHistory(expectedETag, history)`. It
+preserves recovery/link evidence and horizons using the snapshot store's rules,
+and increments the journal revision in the same commit. Clients holding an old
+assignment revision must reload. Conversely, a journal commit invalidates a
+history import's old ETag. The combined source's `read` supplies authority evidence
+from that same document. No independent legacy history lookup may be substituted.
+
+`createBlobSquadCommitStore` uses the dedicated primary-container path
+`s3rch-squad-commit/v1/<namespace>.json`, capped at 6 MiB; existing 2 MiB journal
+and 4 MiB authority-validation limits still apply inside it. The separate journal
+and snapshot adapters remain available for existing tests/import tooling but are
+not an alternative shared live commit boundary. Provision the combined document
+explicitly from an authenticated consistent source; missing state never resets.
+
+The runtime race test verifies that a history update after owner verification
+prevents an assignment claim. Azurite tests verify cross-client history fencing
+and combined state after restart. These establish the storage/runtime boundary,
+not production importer completeness, session authorization for mutation routes,
+or deployed acceptance. Production routes must open a new runtime request per
+call and connect every writer to this combined document before enabling live use.
