@@ -3,17 +3,10 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import type { DrawerAuthority } from "@/lib/forum-drawer";
 import { SquadDelegationProvider } from "./SquadDelegationProvider";
-import type { AssignmentClient } from "@/lib/assignment-client";
-import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "@/lib/identity/forum-authority";
+import type { ForumAuthoritySource } from "@/lib/forum-authority-source";
+export type { ForumAuthoritySource } from "@/lib/forum-authority-source";
+import { createForumAuthority, type ForumAuthorityConfig } from "@/lib/identity/forum-authority";
 
-/** Provisioned source contract for #190. Never build this from legacy IndexedDB
- * ownership or a peer's self-reported completeness flag. The application must
- * arrange fresh snapshots for each evaluation second and signal invalidation. */
-export type ForumAuthoritySource = Readonly<{
-  config: ForumAuthorityConfig;
-  assignments?: AssignmentClient;
-  subscribe(receive: (snapshot: ForumAuthoritySnapshot | null, at: number) => void): () => void;
-}>;
 const denyConfig: ForumAuthorityConfig = { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] };
 const Context = createContext<(ReturnType<typeof createForumAuthority> & Pick<DrawerAuthority, "publishChild" | "readChild">) | null>(null);
 export function ForumAuthorityProvider({ children, source }: { children: ReactNode; source?: ForumAuthoritySource }) {
