@@ -360,3 +360,11 @@ Resolving a need does not elect an owner or change membership.
 Issue #141 remains open for those role-specific sources and their read models;
 #190 retains deployed, authenticated end-to-end acceptance. This interface does
 not enable the public fixture mesh or introduce configuration variables.
+
+## Live Squad namespace provisioning
+
+The public `/feed/squad` remains the demo. The component supports a separately
+validated live owner/forum binding with empty initial data and namespace-specific
+replay caches. It never enables the public fixture for live use. See
+[Squad live rollout](squad-live-rollout.md) for the consumer boundary and remaining
+production source, configuration and deployment gates in #190.

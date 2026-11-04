@@ -24,7 +24,7 @@ function handlers(names: string[], bindings: Record<string, unknown>) {
     return declaration[0];
   });
   const body = stripTypeScriptTypes(found.join("\n"));
-  const env = { ...business, ...squad, ...check, ...fixture, signatureOf, soulKeyMatches, ...bindings };
+  const env = { ...business, ...squad, ...check, ...fixture, forumId: fixture.PILOT_FORUM_ID, liveEnabled: true, storage: { status: "test-status", alarm: "test-alarm", needs: "test-needs" }, signatureOf, soulKeyMatches, ...bindings };
   return new Function(...Object.keys(env), `${body}\nreturn { ${names.join(",")} };`)(...Object.values(env));
 }
 const flush = async () => { for (let n = 0; n < 4; n++) await new Promise<void>(resolve => setImmediate(resolve)); };
