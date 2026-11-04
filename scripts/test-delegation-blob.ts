@@ -1,10 +1,11 @@
+import { createSquadCommitStore } from "../lib/squad-commit-store";
 import { createForumAuthoritySnapshotStore } from "../lib/forum-authority-store";
 import { createSquadSessionReplayStore } from "../lib/identity/squad-session-replay";
 import assert from "node:assert/strict";
 import { BlobServiceClient, StorageSharedKeyCredential } from "@azure/storage-blob";
 import { setTimeout as delay } from "node:timers/promises";
 import { createBlobCancellationOutboxStore, createBlobReplacementGrantStore } from "../lib/delegation-blob-outbox";
-import { createBlobInventoryStore, createBlobAssignmentJournalStore, createBlobSquadSessionReplayStore, createBlobForumAuthorityStore } from "../lib/delegation-blob-inventory";
+import { createBlobInventoryStore, createBlobAssignmentJournalStore, createBlobSquadSessionReplayStore, createBlobForumAuthorityStore, createBlobSquadCommitStore } from "../lib/delegation-blob-inventory";
 import { createDelegationInventory } from "../lib/delegation-inventory";
 import { p256 } from "@noble/curves/nist.js";
 import { createInventoryBoundOutbox } from "../lib/delegation-bound-outbox";
@@ -57,6 +58,21 @@ if (phase === "write") {
 } else {
   assert.deepEqual(await source.read(101, new AbortController().signal), sourceSnapshot);
   await assert.rejects(source.read(102, new AbortController().signal), /incomplete/);
+}
+const combined = createSquadCommitStore(createBlobSquadCommitStore(container, scope), sourceSpec, () => 100);
+const combinedAgentKey = p256.getPublicKey(new Uint8Array(32).fill(54), false);
+const combinedAgent = Buffer.from(combinedAgentKey.slice(1,33)).toString("base64url") + "." + Buffer.from(combinedAgentKey.slice(33)).toString("base64url");
+if (phase === "write") {
+  await combined.initialize({ version: 1, revision: 0, forum: sourceSpec.forumId, owner: sourceOwner, assignee: combinedAgent,
+    destinations: [sourceSpec.forumId], rows: [], operation: null, children: {}, receipts: {}, usedOperations: [] }, sourceSnapshot.history);
+  const view = await combined.open(), before = await combined.load();
+  const independent = createSquadCommitStore(createBlobSquadCommitStore(service().getContainerClient("cancellation-test"), scope), sourceSpec, () => 100);
+  assert.equal(await independent.updateHistory(before.etag, { ...sourceSnapshot.history, completeThrough: 102 }), true);
+  await assert.rejects(view.journal.admit(sourceOwner, 0, sourceSpec.forumId, []), /changed/);
+} else {
+  const held = await combined.load();
+  assert.equal(held.journal.revision, 1); assert.equal(held.history.completeThrough, 102);
+  assert.equal((await combined.read(102, new AbortController().signal)).history.completeThrough, 102);
 }
 const store = createBlobCancellationOutboxStore(container, scope);
 if (phase === "write") {

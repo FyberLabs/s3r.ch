@@ -26,6 +26,10 @@ export function createBlobSquadSessionReplayStore(container: Pick<ContainerClien
 export function createBlobForumAuthorityStore(container: Pick<ContainerClient, "getBlockBlobClient">, namespace: string): InventoryStore {
   return createBlobCasStore(container, namespace, "s3rch-forum-authority/v1", 4 * 1024 * 1024);
 }
+/** Shared assignment/history commit boundary; not the legacy separate slots. */
+export function createBlobSquadCommitStore(container: Pick<ContainerClient, "getBlockBlobClient">, namespace: string): InventoryStore {
+  return createBlobCasStore(container, namespace, "s3rch-squad-commit/v1", 6 * 1024 * 1024);
+}
 function createBlobCasStore(container: Pick<ContainerClient, "getBlockBlobClient">, namespace: string, prefix: string, CAP: number): InventoryStore {
   if (typeof namespace !== "string" || !/^[0-9a-f]{64}$/.test(namespace)) throw Error("invalid inventory namespace");
   const blob = container.getBlockBlobClient(`${prefix}/${namespace}.json`);
