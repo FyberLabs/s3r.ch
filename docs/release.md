@@ -15,7 +15,7 @@ ghcr.io/fyberlabs/s3r.ch@sha256:<digest>
 
 Infra reconciles **https://s3r.ch** to the highest stable semantic-version release after a successful Terraform apply and every 15 minutes. It verifies the manifest, tag commit and successful test run, imports the exact digest into ACR, and verifies the deployed revision and dependencies. There is no per-release credential setup, rebuild, or manual deploy step. Infra preserves production app settings, including the existing Panopticon tenant. Failed deployment remains a failure until a subsequent reconciliation succeeds; it is never recorded as accepted production.
 
-The GitHub `release` environment has no required reviewer. Default-branch ancestry and trusted release scripts remain enforced. Configure package visibility as Public once; the merge pipeline checks anonymous pulling. WalletConnect's build setting is taken from `NEXT_PUBLIC_WC_PROJECT_ID` on the test build and remains identical in production.
+The GitHub `release` environment has no required reviewer. Publication does not require branch protection. Default-branch ancestry and trusted release scripts remain enforced. Configure package visibility as Public once; the merge pipeline checks anonymous pulling. WalletConnect's build setting is taken from `NEXT_PUBLIC_WC_PROJECT_ID` on the test build and remains identical in production.
 
 ## Initial infrastructure migration
 
