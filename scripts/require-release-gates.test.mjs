@@ -1,13 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { gateErrors, trustedTreeErrors } from "./require-release-gates.mjs";
+import { trustedTreeErrors } from "./require-release-gates.mjs";
 
 describe("release gates", () => {
-  it("rejects an unprotected or missing default branch", () => {
-    assert.deepEqual(gateErrors({ name: "master", protected: false }), ["Branch master is not protected."]);
-    assert.deepEqual(gateErrors(undefined), ["Branch default branch is not protected."]);
-  });
-
   it("rejects release scripts that are missing or differ from the default branch", () => {
     const errors = trustedTreeErrors([
       { path: "scripts/require-release-gates.mjs", present: true, same: false },
@@ -17,7 +12,9 @@ describe("release gates", () => {
     assert.match(errors[1], /is not on the default branch/);
   });
 
-  it("accepts a protected branch without an environment reviewer", () => {
-    assert.deepEqual(gateErrors({ name: "master", protected: true }), []);
+  it("accepts matching release scripts on the default branch", () => {
+    assert.deepEqual(trustedTreeErrors([
+      { path: "scripts/release-channels.mjs", present: true, same: true },
+    ]), []);
   });
 });

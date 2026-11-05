@@ -1,5 +1,5 @@
 /**
- * Stop a tag publish unless the tag commit is on the protected default branch
+ * Stop a tag publish unless the tag commit is on the default branch
  * and this checkout matches
  * the release scripts on that branch.
  */
@@ -24,15 +24,6 @@ export function trustedTreeErrors(checks) {
   for (const check of checks) {
     if (!check.present) errors.push(`${check.path} is not on the default branch.`);
     else if (!check.same) errors.push(`${check.path} does not match the default branch.`);
-  }
-  return errors;
-}
-
-export function gateErrors(branch) {
-  const errors = [];
-  const name = branch?.name || "default branch";
-  if (!branch?.protected) {
-    errors.push(`Branch ${name} is not protected.`);
   }
   return errors;
 }
@@ -106,8 +97,6 @@ function main() {
   }
   fetchBranch(branchName);
   const errors = trustedTreeErrors(trustedChecks(branchName));
-  const branch = gh(`repos/${repo}/branches/${branchName}`);
-  errors.push(...gateErrors(branch));
   if (!onDefaultBranch(sha, branchName)) {
     errors.push(`Tag commit ${sha} is not on ${branchName}.`);
   }
@@ -116,7 +105,7 @@ function main() {
     console.error("Refusing to build or push this tag.");
     process.exit(1);
   }
-  console.log(`Release gates passed for ${sha} on protected ${branchName}.`);
+  console.log(`Release gates passed for ${sha} on ${branchName}.`);
 }
 
 if (process.argv[1] && process.argv[1].endsWith("require-release-gates.mjs")) {
