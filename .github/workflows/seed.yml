@@ -6,6 +6,10 @@ on:
     - cron: "15 13-21/2 * * 1-5"
   workflow_dispatch:
 
+# POST to the seed endpoint only. This job does not use GITHUB_TOKEN.
+permissions:
+  contents: none
+
 jobs:
   seed:
     runs-on: ubuntu-latest

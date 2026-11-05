@@ -134,13 +134,17 @@ function stripTags(value: string): string {
   return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&amp;": "&",
+};
+
+/** One pass, so `&amp;lt;` stays `&lt;` instead of becoming `<`. */
 function decode(value: string): string {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+  return value.replace(/&(?:lt|gt|quot|amp|#39);/g, (entity) => NAMED_ENTITIES[entity] ?? entity);
 }
 
 function clip(value: string, max: number): string {

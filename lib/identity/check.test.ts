@@ -147,7 +147,7 @@ describe("consume contract artifact", () => {
       "acceptHop",
       "decodeHop",
     ]) {
-      assert.match(dts, new RegExp(needle.replace(/[()]/g, "\\$&")));
+      assert.match(dts, new RegExp(needle.replace(/[\\()]/g, "\\$&")));
     }
     const lower = dts.toLowerCase();
     for (const banned of [

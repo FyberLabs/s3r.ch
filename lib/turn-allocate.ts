@@ -313,13 +313,18 @@ function insecureStaticEnabled(env: EnvLike): boolean {
   return /^(1|true|yes)$/i.test(trimEnv(env[ENV_STATIC_TURN_INSECURE]));
 }
 
-/** TURN REST credential (coturn `use-auth-secret`). */
+/**
+ * TURN REST credential (coturn `use-auth-secret` / `static-auth-secret`).
+ * draft-uberti-behave-turn-rest defines the password as
+ * base64(HMAC-SHA1(secret, username)). SHA-256 is not accepted by those relays.
+ */
 export function turnRestCredential(
   secret: string,
   expiresAtSec: number,
   sessionId: string,
 ): { username: string; credential: string } {
   const username = `${expiresAtSec}:${sessionId}`;
+  // codeql[js/weak-cryptographic-algorithm] -- TURN REST mandates HMAC-SHA1 (draft-uberti-behave-turn-rest, coturn static-auth-secret).
   const credential = createHmac("sha1", secret).update(username).digest("base64");
   return { username, credential };
 }
