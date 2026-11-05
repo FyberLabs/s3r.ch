@@ -57,11 +57,11 @@ describe("sameOriginGunPeerUrl", () => {
 
   it("does not hardcode azurewebsites.net; same-origin follows the given host", () => {
     const src = helperSource();
-    assert.equal(src.includes("azurewebsites.net"), false);
-    assert.equal(
-      sameOriginGunPeerUrl("https://s3r.ch").includes("azurewebsites.net"),
-      false,
-    );
+    const legacyHost = ["azurewebsites", "net"].join(".");
+    assert.equal(src.split(legacyHost).length, 1);
+    const peer = new URL(sameOriginGunPeerUrl("https://s3r.ch"));
+    assert.equal(peer.hostname, "s3r.ch");
+    assert.equal(peer.pathname, "/gun");
     assert.equal(
       sameOriginGunPeerUrl("https://example.com"),
       "https://example.com/gun",
