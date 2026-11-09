@@ -62,6 +62,9 @@ jobs:
           npx playwright-core install --with-deps chromium
           node scripts/test-static-feed.mjs
 
+      - name: Verify Gun seed handoff and rollback
+        run: node scripts/test-seed-handoff.mjs
+
       - name: Start without optional integrations
         run: bash scripts/smoke-standalone.sh
 
