@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { LookupAddress, LookupOptions } from "node:dns";
+import { Agent } from "undici";
 import { createPublicLookup } from "./public-fetch-server";
 
 function resolveThroughSocket(signal: AbortSignal, resolver: (host: string) => Promise<LookupAddress[]>, options: LookupOptions = {}) {
@@ -40,6 +41,23 @@ describe("public connection DNS lookup", () => {
     await assert.rejects(resolveThroughSocket(new AbortController().signal, async () => { throw new Error("DNS failed"); }), /DNS failed/);
     await assert.rejects(resolveThroughSocket(new AbortController().signal, async () => []), /not allowed/);
     await assert.rejects(resolveThroughSocket(new AbortController().signal, async () => [{ address: "not-an-IP", family: 4 }]), /not allowed/);
+  });
+
+  it("Node fetch reaches the guarded socket lookup with the installed dispatcher", async () => {
+    let resolutions = 0;
+    const dispatcher = new Agent({ connect: { lookup: createPublicLookup(new AbortController().signal, async () => {
+      resolutions += 1;
+      throw new Error("Guarded lookup reached without opening a socket");
+    }) } });
+    try {
+      await assert.rejects(fetch("https://guarded.example/", { dispatcher } as RequestInit & { dispatcher: Agent }), (error: unknown) => {
+        assert.equal((error as Error & { cause?: Error }).cause?.message, "Guarded lookup reached without opening a socket");
+        return true;
+      });
+      assert.equal(resolutions, 1);
+    } finally {
+      await dispatcher.close();
+    }
   });
 
   it("a shared deadline aborts a stalled lookup and ignores a late answer", async () => {
