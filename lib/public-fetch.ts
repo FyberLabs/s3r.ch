@@ -32,29 +32,33 @@ export async function fetchPublicText(url: string | URL, options: FeedOptions = 
       await response.body?.cancel();
       throw new Error(`${options.httpLabel ?? url} HTTP ${response.status}`);
     }
-    const reader = response.body?.getReader();
-    if (!reader) return { text: "", url: response.url };
-
-    // A single capped buffer also bounds bookkeeping for tiny or empty chunks.
-    try {
-      const bytes = new Uint8Array(PUBLIC_FEED_BYTES);
-      let used = 0;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value.byteLength > bytes.length - used) throw new Error("Feed is larger than 1MB.");
-        bytes.set(value, used);
-        used += value.byteLength;
-      }
-      return { text: new TextDecoder().decode(bytes.subarray(0, used)), url: response.url };
-    } catch (error) {
-      await reader.cancel().catch(() => undefined);
-      throw error;
-    } finally {
-      reader.releaseLock();
-    }
+    return await readPublicFeedBody(response);
   } finally {
     activePulls--;
+  }
+}
+
+export async function readPublicFeedBody(response: Response) {
+  const reader = response.body?.getReader();
+  if (!reader) return { text: "", url: response.url };
+
+  // A single capped buffer also bounds bookkeeping for tiny or empty chunks.
+  try {
+    const bytes = new Uint8Array(PUBLIC_FEED_BYTES);
+    let used = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value.byteLength > bytes.length - used) throw new Error("Feed is larger than 1MB.");
+      bytes.set(value, used);
+      used += value.byteLength;
+    }
+    return { text: new TextDecoder().decode(bytes.subarray(0, used)), url: response.url };
+  } catch (error) {
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  } finally {
+    reader.releaseLock();
   }
 }
 
