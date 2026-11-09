@@ -13,6 +13,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # NEXT_PUBLIC_* is inlined at `next build`. Empty ARG omits WalletConnect;
 # injected + ungated Smart Wallet still ship.
+ARG NEXT_PUBLIC_SEED_PEER_URL
+ENV NEXT_PUBLIC_SEED_PEER_URL=$NEXT_PUBLIC_SEED_PEER_URL
 ARG NEXT_PUBLIC_WC_PROJECT_ID
 ENV NEXT_PUBLIC_WC_PROJECT_ID=$NEXT_PUBLIC_WC_PROJECT_ID
 ENV NEXT_TELEMETRY_DISABLED=1

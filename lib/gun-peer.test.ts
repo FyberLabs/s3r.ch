@@ -119,6 +119,14 @@ describe("seedPeerConnectOptions", () => {
   });
 });
 
+it("uses the configured external seed and matches only its connection events", () => {
+  const endpoint = "https://relay.example.org/mesh/bootstrap";
+  assert.deepEqual(seedPeerConnectOptions("https://s3r.ch", endpoint).peers, [endpoint]);
+  assert.equal(isSeedWirePeer({ url: endpoint }, endpoint), true);
+  assert.equal(isSeedWirePeer({ url: "https://another.example/gun" }, endpoint), false);
+  assert.throws(() => seedPeerConnectOptions("https://s3r.ch", "http://relay.example/gun"));
+});
+
 describe("peer status copy", () => {
   it("distinguishes seed peer (ws) from snapshot only without claiming mesh", () => {
     assert.equal(peerStatusLine(true), "seed peer (ws)");

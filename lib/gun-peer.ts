@@ -82,10 +82,16 @@ export function browserGunOptions(
 }
 
 /** `gun.opt` payload that opens the same-origin `/gun` peer after listen. */
-export function seedPeerConnectOptions(origin: string): SeedPeerConnectOptions {
-  return {
-    peers: [sameOriginGunPeerUrl(origin)],
-  };
+export function seedPeerConnectOptions(
+  origin: string,
+  configured = process.env.NEXT_PUBLIC_SEED_PEER_URL,
+): SeedPeerConnectOptions {
+  if (!configured?.trim()) return { peers: [sameOriginGunPeerUrl(origin)] };
+  const peer = new URL(configured);
+  if (peer.protocol !== "https:" || peer.username || peer.password || peer.search || peer.hash) {
+    throw new Error("The external seed peer needs a public HTTPS endpoint without credentials.");
+  }
+  return { peers: [peer.href] };
 }
 
 /**
@@ -93,10 +99,10 @@ export function seedPeerConnectOptions(origin: string): SeedPeerConnectOptions {
  * `gun/lib/webrtc` call `mesh.hi` without that URL — they must not flip
  * **seed peer (ws)**.
  */
-export function isSeedWirePeer(peer?: unknown): boolean {
+export function isSeedWirePeer(peer?: unknown, expected?: string): boolean {
   if (!peer || typeof peer !== "object") return false;
   const url = (peer as { url?: unknown }).url;
-  return typeof url === "string" && url.includes(GUN_PEER_PATH);
+  return typeof url === "string" && (expected ? url === expected : url.endsWith(GUN_PEER_PATH));
 }
 
 export function peerStatusLine(seedWsUp: boolean): string {
@@ -157,14 +163,15 @@ export function meshHiByeOn(
 export function attachSeedPeerStatus(
   gun: SeedPeerEmitter,
   onStatus: (up: boolean) => void,
+  expected?: string,
 ): void {
   const on = meshHiByeOn(gun);
   if (typeof on !== "function") return;
   on("hi", (peer) => {
-    if (isSeedWirePeer(peer)) onStatus(true);
+    if (isSeedWirePeer(peer, expected)) onStatus(true);
   });
   on("bye", (peer) => {
-    if (isSeedWirePeer(peer)) onStatus(false);
+    if (isSeedWirePeer(peer, expected)) onStatus(false);
   });
 }
 
@@ -191,9 +198,10 @@ export function listenThenConnectSeedPeer(
   origin: string,
   onStatus: (up: boolean) => void,
 ): void {
-  attachSeedPeerStatus(gun, onStatus);
+  const options = seedPeerConnectOptions(origin);
+  attachSeedPeerStatus(gun, onStatus, options.peers[0]);
   if (typeof gun.opt === "function") {
-    gun.opt(seedPeerConnectOptions(origin));
+    gun.opt(options);
   }
   kickSeedPeerWire(gun);
 }
