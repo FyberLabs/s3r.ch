@@ -15,7 +15,7 @@ import { fromGunChatNode, type ChatMessage } from "@/lib/chat";
 import { isUnsharePut, type FeedItem } from "@/lib/feed-types";
 import type { ForumMessage } from "@/lib/forum";
 import { acceptGrantDelivery, grantInboxRef } from "@/lib/grant-delivery";
-import { browserGunOptions, listenThenConnectSeedPeer, type SeedPeerEmitter } from "@/lib/gun-peer";
+import { acquireBrowserGun } from "@/lib/browser-gun";
 import { encodeKey } from "@/lib/identity/check";
 import { dropRooms, fromGunRoomNode, mergeRooms, type Room } from "@/lib/rooms";
 import { readUnshareId } from "@/lib/unshare";
@@ -250,15 +250,13 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
     let cancelled = false;
     let offRooms: (() => void) | undefined;
 
+    const connection = acquireBrowserGun(window.location.origin);
     (async () => {
       try {
-        const GunMod = await import("gun/browser");
-        const Gun = (GunMod.default ?? GunMod) as unknown as (opts?: object) => FeedGun;
+        const gun = await connection.ready;
         if (cancelled) return;
-        const gun = Gun(browserGunOptions());
         gunRef.current = gun;
         registerRef.current?.(gun);
-        listenThenConnectSeedPeer(gun as unknown as SeedPeerEmitter, window.location.origin, () => {});
 
         const roomsListener = gun.get("s3rch").get("rooms").map().on((data, key) => {
           if (cancelled) return;
@@ -299,6 +297,7 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
       offRooms?.();
       publicRoomIds.current = new Set();
       gunRef.current = null;
+      connection.release();
       registerRef.current?.(null);
       setGunReady(false);
       setPublicEpoch((n) => n + 1);

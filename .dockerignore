@@ -6,3 +6,4 @@ node_modules
 *.md
 .gitignore
 data
+public/feed-cache/snapshot.json*

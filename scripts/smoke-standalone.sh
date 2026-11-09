@@ -52,3 +52,9 @@ echo "$health" | grep -Fq '"panopticon":{"status":"not-configured"' || { echo "p
 echo "$health" | grep -Fq '"gun":{"status":"ok"}' || { echo "gun peer should be attached" >&2; fail=1; }
 
 if [ "$fail" -ne 0 ]; then cat "$log"; exit 1; fi
+
+# Two unrelated deep links must use the same prerendered shell.
+node -e 'const assert = require("node:assert/strict"); const routes = require("./.next/prerender-manifest.json").routes; assert.ok(routes["/saved-view"])'
+for id in first-view second-view; do
+  curl --max-time 10 -fsS "http://127.0.0.1:$port/views/$id" -o "$data/$id.html"
+done

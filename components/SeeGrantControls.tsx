@@ -131,6 +131,10 @@ export function SeeGrantControls({
   }
 
   async function onGrant() {
+    if (peer && !peer.gun) {
+      setMessage("Connect to peers before changing a grant.");
+      return;
+    }
     setMessage(null);
     const accessor = parseGrantAccessor(accessorInput);
     if (!accessor) {
@@ -188,6 +192,10 @@ export function SeeGrantControls({
   }
 
   async function onRevoke(grant: IdentitySeeGrant) {
+    if (peer && !peer.gun) {
+      setMessage("Connect to peers before changing a grant.");
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
