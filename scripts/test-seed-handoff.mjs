@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { cp, mkdtemp, readdir, rm, symlink } from "node:fs/promises";
+import { cp, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -20,6 +20,12 @@ const origin = "http://127.0.0.1:" + probe.address().port;
 await new Promise((resolve, reject) => probe.close(error => error ? reject(error) : resolve()));
 const clientScript = createRequire(import.meta.url).resolve("gun/gun.js");
 const soul = "handoff-" + randomUUID();
+const revision = "a".repeat(40);
+const snapshot = {
+  items: [{ id: soul, source: "rss", kind: "post", author: "Reader", body: "Handoff fixture",
+    ts: 1, tags: [], provenance: "RSS", permalink: "https://example.org/post" }],
+  seededAt: "2026-01-01T00:00:00Z", sourcesOk: 1, sourcesTried: 1, error: null,
+};
 let browser;
 let child;
 let exit;
@@ -27,11 +33,13 @@ let log;
 
 async function start(embedded) {
   assert.equal(child, undefined, "the previous volume owner must exit first");
+  // A replacement container gets a fresh public directory. Only GUN_SNAPSHOT survives.
+  await rm(path.join(root, "public/feed-cache/snapshot.json"), { force: true });
   log = "";
   child = spawn(process.execPath, embedded ? ["-r", "./gun-preload.cjs", "server.js"] : ["seed-peer.cjs"], {
     cwd: root, env: {
       PATH: process.env.PATH, HOME: root, NODE_ENV: "production", HOSTNAME: "127.0.0.1", PORT: new URL(origin).port,
-      GUN_FILE: path.join(root, "radata"), GUN_SNAPSHOT: path.join(root, "snapshot.json"),
+      APP_BUILD_REVISION: revision, GUN_FILE: path.join(root, "radata"), GUN_SNAPSHOT: path.join(root, "snapshot.json"),
     }, stdio: ["ignore", "pipe", "pipe"],
   });
   exit = once(child, "exit");
@@ -39,7 +47,16 @@ async function start(embedded) {
   for (let i = 0; i < 100; i++) {
     if (child.exitCode !== null || child.signalCode !== null) throw Error(log);
     const res = await fetch(origin + "/api/health", { signal: AbortSignal.timeout(1000) }).catch(() => null);
-    if (res?.ok) return;
+    if (res?.ok) {
+      const identity = await fetch(origin + "/api/version");
+      assert.equal(identity.status, 200);
+      assert.match(identity.headers.get("cache-control") ?? "", /no-store/);
+      assert.deepEqual(await identity.json(), { revision });
+      const published = await fetch(origin + "/feed-cache/snapshot.json");
+      assert.equal(published.status, 200);
+      assert.deepEqual(await published.json(), snapshot);
+      return;
+    }
     await delay(100);
   }
   throw Error("Seed startup timed out: " + log);
@@ -94,6 +111,7 @@ try {
     if (name === "server.js" || name === "public") await cp(source, dest, { recursive: true });
     else await symlink(source, dest);
   }
+  await writeFile(path.join(root, "snapshot.json"), JSON.stringify(snapshot));
   browser = await chromium.launch();
   await start(true);
   const original = await client();

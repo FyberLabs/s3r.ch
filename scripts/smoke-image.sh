@@ -11,7 +11,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 secret="smoke-only-identity-session-secret-0123456789"
 
 cleanup() {
-  docker rm -f "$name" >/dev/null 2>&1 || true
+  docker rm -fv "$name" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -52,6 +52,7 @@ docker run -d --name "$name" -p "127.0.0.1:${port}:8080" \
 # The image must not carry Panopticon configuration.
 docker exec "$name" node -e 'const keys=Object.keys(process.env).filter((key)=>key.startsWith("PANOPTICON_")); if (keys.length) { console.error(keys.join(" ")); process.exit(1); }'
 
+web_ready=false
 for _ in $(seq 1 40); do
   if [ "$(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null || true)" != "true" ]; then
     echo "container exited before health" >&2
@@ -63,12 +64,32 @@ for _ in $(seq 1 40); do
     printf '%s\n' "$body" | grep -Fq '"status":"ok"'
     printf '%s\n' "$body" | grep -Fq '"panopticon":{"status":"not-configured"'
     printf '%s\n' "$body" | grep -Fq '"gun":{"status":"ok"'
-    echo "image smoke passed"
-    exit 0
+    web_ready=true
+    break
   fi
   sleep 2
 done
 
-echo "GET /api/health did not return 200" >&2
+if [[ "$web_ready" != true ]]; then
+  echo "GET /api/health did not return 200" >&2
+  docker logs "$name" || true
+  exit 1
+fi
+
+# TEST starts this same image with a command override and its baked-in revision.
+cleanup
+docker run -d --name "$name" -p "127.0.0.1:${port}:8080" "$image" node /app/seed-peer.cjs >/dev/null
+revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")"
+for _ in $(seq 1 40); do
+  if [[ "$(docker inspect -f '{{.State.Running}}' "$name")" != true ]]; then break; fi
+  if body="$(curl --max-time 5 -fsS "http://127.0.0.1:${port}/api/version" 2>/dev/null)"; then
+    node -e 'const assert = require("node:assert/strict"); const [body, revision] = process.argv.slice(1);
+      assert.deepEqual(JSON.parse(body), { revision: revision || null });' "$body" "$revision"
+    echo "Web and standalone peer image smoke passed"
+    exit 0
+  fi
+  sleep 2
+done
+echo "Standalone peer failed its revision check" >&2
 docker logs "$name" || true
 exit 1
