@@ -29,6 +29,11 @@ const nextConfig = {
     // Filesystem routes, including the development picker preview, take priority.
     return [{ source: "/views/:id", destination: "/saved-view" }];
   },
+  async headers() {
+    return [{ source: "/feed-cache/snapshot.json", headers: [
+      { key: "Cache-Control", value: "public, max-age=60, s-maxage=60" },
+    ] }];
+  },
   async redirects() {
     return [
       { source: "/design", destination: "/", permanent: false },
@@ -36,4 +41,10 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default async function config(phase) {
+  if (phase === "phase-development-server") {
+    const { restorePublicFeed } = await import("./public-feed-cache.cjs");
+    restorePublicFeed(process.cwd(), process.env.GUN_SNAPSHOT || "data/snapshot.json");
+  }
+  return nextConfig;
+}

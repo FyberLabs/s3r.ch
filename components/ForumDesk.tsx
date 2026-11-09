@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { deskPanels, type DeskPanel, type DeskRead } from "@/lib/forum-desktop";
 
+import { ForumLayout } from "./ForumLayout";
+
 const POLL_MS = 4000;
 
 export function ForumDesk() {
@@ -47,11 +49,11 @@ export function ForumDesk() {
   }
 
   return (
-    <div className="mt-6 flex flex-col gap-8">
-      {panels.map((panel) => (
-        <DeskPanelView key={`${panel.role}:${panel.owner}`} panel={panel} />
-      ))}
-    </div>
+    <ForumLayout forums={panels.map(panel => ({
+      id: `${panel.role}:${panel.owner}`,
+      label: panel.role === "owner" ? "Your channel" : `Shared · ${panel.owner}`,
+      content: <DeskPanelView panel={panel} />,
+    }))} />
   );
 }
 

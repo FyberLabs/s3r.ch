@@ -1,4 +1,5 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, readFileSync, writeFileSync } from "node:fs";
+import { publishPublicFeed } from "../public-feed-cache.cjs";
 import { dirname } from "node:path";
 import type { Server } from "node:http";
 import type { FeedItem, FeedSnapshot, GunFeedNode } from "./feed-types";
@@ -120,6 +121,7 @@ export function setSeedMeta(meta: {
   store.error = meta.error;
   persistMeta(store);
   persistSnapshot(store);
+  publishPublicFeed(process.cwd(), listSnapshot());
 }
 
 export function listSnapshot(): FeedSnapshot {
@@ -157,7 +159,9 @@ function persistSnapshot(store: MemoryStore): void {
     sourcesTried: store.sourcesTried,
     error: store.error,
   };
-  writeFileSync(/*turbopackIgnore: true*/ path, JSON.stringify(body), "utf8");
+  const temporary = path + "." + process.pid + ".tmp";
+  writeFileSync(/*turbopackIgnore: true*/ temporary, JSON.stringify(body), "utf8");
+  renameSync(/*turbopackIgnore: true*/ temporary, /*turbopackIgnore: true*/ path);
 }
 
 function loadSnapshot(store: MemoryStore): void {

@@ -9,7 +9,7 @@
  * graph `.on`. `Gun({ peers })` starts the wire immediately (websocket.js
  * `onopen` → `mesh.hi` → `root.on('hi', peer)`), so `/feed` must listen
  * before `opt({ peers })`. WebRTC data channels also call `mesh.hi` —
- * only peers with a `/gun` URL count as the seed WebSocket.
+ * only the connected seed endpoint counts as the seed WebSocket.
  *
  * Gun's HTTP `web` adapter serves WebSocket at `/gun` (see gun/lib/ws.js
  * `ws.path = ws.path || '/gun'`). The browser mesh replaces `http` with `ws`
@@ -93,10 +93,18 @@ export function seedPeerConnectOptions(origin: string): SeedPeerConnectOptions {
  * `gun/lib/webrtc` call `mesh.hi` without that URL — they must not flip
  * **seed peer (ws)**.
  */
-export function isSeedWirePeer(peer?: unknown): boolean {
+export function isSeedWirePeer(peer: unknown, expectedUrl: string): boolean {
   if (!peer || typeof peer !== "object") return false;
   const url = (peer as { url?: unknown }).url;
-  return typeof url === "string" && url.includes(GUN_PEER_PATH);
+  if (typeof url !== "string") return false;
+  try {
+    const endpoint = new URL(url);
+    if (endpoint.protocol === "ws:") endpoint.protocol = "http:";
+    if (endpoint.protocol === "wss:") endpoint.protocol = "https:";
+    return endpoint.href === expectedUrl;
+  } catch {
+    return false;
+  }
 }
 
 export function peerStatusLine(seedWsUp: boolean): string {
@@ -156,16 +164,23 @@ export function meshHiByeOn(
  */
 export function attachSeedPeerStatus(
   gun: SeedPeerEmitter,
+  expectedUrl: string,
   onStatus: (up: boolean) => void,
 ): void {
   const on = meshHiByeOn(gun);
   if (typeof on !== "function") return;
-  on("hi", (peer) => {
-    if (isSeedWirePeer(peer)) onStatus(true);
-  });
-  on("bye", (peer) => {
-    if (isSeedWirePeer(peer)) onStatus(false);
-  });
+  function listener(up: boolean) {
+    return function (this: { to?: { next: (peer: unknown) => void } } | void, peer?: unknown) {
+      try {
+        if (isSeedWirePeer(peer, expectedUrl)) onStatus(up);
+      } finally {
+        // Gun's onto is middleware. Later listeners receive only forwarded events.
+        this?.to?.next(peer);
+      }
+    };
+  }
+  on("hi", listener(true));
+  on("bye", listener(false));
 }
 
 /**
@@ -191,9 +206,10 @@ export function listenThenConnectSeedPeer(
   origin: string,
   onStatus: (up: boolean) => void,
 ): void {
-  attachSeedPeerStatus(gun, onStatus);
+  const options = seedPeerConnectOptions(origin);
+  attachSeedPeerStatus(gun, options.peers[0], onStatus);
   if (typeof gun.opt === "function") {
-    gun.opt(seedPeerConnectOptions(origin));
+    gun.opt(options);
   }
   kickSeedPeerWire(gun);
 }
