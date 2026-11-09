@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
@@ -182,7 +183,7 @@ describe("peer status copy", () => {
         },
       },
     };
-    attachSeedPeerStatus(fake, (up) => seen.push(up));
+    attachSeedPeerStatus(fake, "https://s3r.ch/gun", (up) => seen.push(up));
     listeners.get("hi")?.forEach((cb) => cb({ url: "https://s3r.ch/gun" }));
     listeners.get("bye")?.forEach((cb) => cb({ url: "https://s3r.ch/gun" }));
     assert.deepEqual(seen, [true, false]);
@@ -203,16 +204,38 @@ describe("peer status copy", () => {
         },
       },
     };
-    attachSeedPeerStatus(fake, (up) => seen.push(up));
+    attachSeedPeerStatus(fake, "https://s3r.ch/gun", (up) => seen.push(up));
     listeners.get("hi")?.forEach((cb) => cb({ createDataChannel() {} }));
     listeners.get("hi")?.forEach((cb) => cb({ url: "https://s3r.ch/gun" }));
     listeners.get("bye")?.forEach((cb) => cb({ createDataChannel() {} }));
     assert.deepEqual(seen, [true]);
     listeners.get("bye")?.forEach((cb) => cb({ url: "https://s3r.ch/gun" }));
     assert.deepEqual(seen, [true, false]);
-    assert.equal(isSeedWirePeer({ url: "https://s3r.ch/gun" }), true);
-    assert.equal(isSeedWirePeer({}), false);
-    assert.equal(isSeedWirePeer({ createDataChannel() {} }), false);
+    assert.equal(isSeedWirePeer({ url: "https://s3r.ch/gun" }, "https://s3r.ch/gun"), true);
+    assert.equal(isSeedWirePeer({}, "https://s3r.ch/gun"), false);
+    assert.equal(isSeedWirePeer({ createDataChannel() {} }, "https://s3r.ch/gun"), false);
+  });
+
+  it("matches the selected endpoint and preserves later Gun mesh listeners", () => {
+    const expected = "https://seed.example/gun";
+    const onto = createRequire(import.meta.url)("gun/src/onto") as SeedPeerOnto;
+    const root = { on: onto };
+    const status: boolean[] = [];
+    const forwarded: unknown[] = [];
+    attachSeedPeerStatus({ _: root }, expected, up => status.push(up));
+    root.on("hi", peer => forwarded.push(peer));
+    root.on("bye", peer => forwarded.push(peer));
+    const unrelated = [
+      { url: "https://other.example/gun" }, { url: expected + "ner" },
+      { url: expected + "?q=1" }, { url: "ws://seed.example/gun" },
+      { url: "https://user@seed.example/gun" }, { url: "/gun" }, {},
+    ];
+    const seed = { url: "wss://SEED.example:443/gun" };
+    for (const peer of unrelated) root.on("hi", peer);
+    root.on("hi", seed);
+    root.on("bye", seed);
+    assert.deepEqual(status, [true, false]);
+    assert.deepEqual(forwarded, [...unrelated, seed, seed]);
   });
 
   it("prefers gun._.on (mesh onto) over graph gun.on", () => {
@@ -230,7 +253,7 @@ describe("peer status copy", () => {
         },
       },
     };
-    attachSeedPeerStatus(fake, () => {});
+    attachSeedPeerStatus(fake, "https://s3r.ch/gun", () => {});
     assert.deepEqual(onto, ["hi", "bye"]);
     assert.deepEqual(graph, []);
     const bound = meshHiByeOn(fake);
@@ -252,7 +275,7 @@ describe("peer status copy", () => {
         return root;
       },
     };
-    attachSeedPeerStatus(fake, () => {});
+    attachSeedPeerStatus(fake, "https://s3r.ch/gun", () => {});
     assert.deepEqual(onto, ["hi", "bye"]);
   });
 });
@@ -309,7 +332,7 @@ describe("listenThenConnectSeedPeer", () => {
       },
     };
     fake.opt({ peers: ["https://s3r.ch/gun"] });
-    attachSeedPeerStatus(fake, (up) => seen.push(up));
+    attachSeedPeerStatus(fake, "https://s3r.ch/gun", (up) => seen.push(up));
     assert.deepEqual(seen, []);
   });
 });

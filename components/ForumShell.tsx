@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, type ReactNode } from "react";
+import { ForumLayout } from "./ForumLayout";
 import Link from "next/link";
 import { btnTabOn, btnTabOff } from "@/lib/brand-ui";
 
@@ -25,7 +26,8 @@ export function ForumShell(props: {
   const locked = props.tab === "memory" || props.tab === "reports" || props.tab === "messages" ? unavailable[props.tab] : null;
   return <div data-testid="forum-shell" className="min-w-0">
     {props.header}
-    <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-[180px_minmax(0,1fr)_300px]">
+    <ForumLayout forums={[{ id: props.forum.href, label: props.forum.label, content: (
+    <div className="grid min-w-0 gap-4 lg:grid-cols-[180px_minmax(0,1fr)_300px]">
       <aside aria-label="Forum navigation" className="min-w-0 space-y-4 border border-rule bg-panel p-3 text-sm">
         <nav aria-label="Open forums">
           <p className="text-xs font-semibold uppercase text-ink-muted">Forums</p>
@@ -76,5 +78,6 @@ export function ForumShell(props: {
         </section>
       </aside>
     </div>
+    ) }]} />
   </div>;
 }
