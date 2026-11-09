@@ -18,7 +18,7 @@
 
 import { getAddress, type Address } from "viem";
 import { FARCASTER_HUB_BASE, usernameFromUserData } from "../farcaster";
-import { fetchPublic } from "../public-fetch";
+import { fetchPublicJson } from "../public-fetch";
 
 export type FarcasterHeldClaim = {
   name: string | null;
@@ -154,11 +154,7 @@ function parseIdRegistryEvent(value: unknown): FarcasterIdRegistryEvent | null {
 }
 
 async function fetchHubJson(url: URL): Promise<Record<string, unknown>> {
-  const response = await fetchPublic(url);
-  if (!response.ok) {
-    throw new Error(`hub ${url.pathname} HTTP ${response.status}`);
-  }
-  const body: unknown = await response.json();
+  const body = await fetchPublicJson(url, { httpLabel: `hub ${url.pathname}` });
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new Error(`hub ${url.pathname} unexpected payload`);
   }

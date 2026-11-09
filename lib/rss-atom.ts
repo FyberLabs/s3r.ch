@@ -1,11 +1,10 @@
 import type { FeedItem, FeedSource, SourcePull } from "./feed-types";
 import { normalizeTags } from "./feed-types";
 import { canonicalKey } from "./merge";
-import { fetchPublic } from "./public-fetch";
+import { fetchPublicText } from "./public-fetch";
 
 const MAX_ITEMS = 30;
 const BODY_MAX = 320;
-const MAX_BYTES = 1_000_000;
 
 export type PublicRssFeed = {
   url: string;
@@ -203,14 +202,10 @@ export async function fetchPublicRss(): Promise<SourcePull> {
 }
 
 async function pullRss(feed: PublicRssFeed): Promise<FeedItem[]> {
-  const response = await fetchPublic(feed.url, {
+  const { text: xml, url } = await fetchPublicText(feed.url, {
     accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
   });
-  if (!response.ok) {
-    throw new Error(`${feed.url} HTTP ${response.status}`);
-  }
-  const xml = await readLimited(response);
-  const parsed = parseRssAtom(xml, response.url || feed.url);
+  const parsed = parseRssAtom(xml, url || feed.url);
   return parsed.items.map((item) => ({
     ...item,
     tags: normalizeTags([
@@ -218,21 +213,4 @@ async function pullRss(feed: PublicRssFeed): Promise<FeedItem[]> {
       ...feed.extraTags,
     ]),
   }));
-}
-
-async function readLimited(response: Response): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) return "";
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > MAX_BYTES) {
-      throw new Error("Feed is larger than 1MB.");
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks).toString("utf8");
 }

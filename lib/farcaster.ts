@@ -10,7 +10,7 @@
 import type { FeedItem, SourcePull } from "./feed-types";
 import { normalizeTags } from "./feed-types";
 import { canonicalKey } from "./merge";
-import { fetchPublic } from "./public-fetch";
+import { fetchPublicJson } from "./public-fetch";
 import { asString, isRecord } from "./rss3";
 
 export const FARCASTER_HUB_BASE =
@@ -173,11 +173,7 @@ function castsByFidUrl(fid: number): string {
 }
 
 async function fetchJson(url: string): Promise<Record<string, unknown>> {
-  const response = await fetchPublic(url);
-  if (!response.ok) {
-    throw new Error(`${url} HTTP ${response.status}`);
-  }
-  const body: unknown = await response.json();
+  const body = await fetchPublicJson(url);
   if (!isRecord(body)) {
     throw new Error(`${url} unexpected payload`);
   }

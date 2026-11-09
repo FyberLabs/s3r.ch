@@ -1,6 +1,6 @@
 import { parseIngestRequest } from "@/lib/browser-pull";
 import { normalizeRss3Activities } from "@/lib/normalize";
-import { fetchPublic } from "@/lib/public-fetch";
+import { fetchPublicText } from "@/lib/public-fetch";
 import { parseRssAtom } from "@/lib/rss-atom";
 import { fetchAccountActivities, GI_BASE, isRss3Account } from "@/lib/rss3";
 import { pullAllowedSource } from "@/lib/seed";
@@ -9,8 +9,6 @@ import type { SourcePull } from "@/lib/feed-types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-const MAX_BYTES = 1_000_000;
 
 /**
  * Fetch + normalize only. Does not write the public Gun seed.
@@ -83,16 +81,10 @@ async function ingestRss(rawUrl: string) {
   }
 
   try {
-    const response = await fetchPublic(url, {
+    const { text: xml } = await fetchPublicText(url, {
+      httpLabel: "Feed",
       accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
     });
-    if (!response.ok) {
-      return Response.json(
-        { items: [], error: `Feed HTTP ${response.status}` },
-        { status: 502 },
-      );
-    }
-    const xml = await readLimited(response);
     const parsed = parseRssAtom(xml, url.toString());
     return Response.json({
       items: parsed.items,
@@ -128,21 +120,4 @@ async function ingestRss3Account(account: string) {
     },
     { status: pulled.sourcesOk === 0 ? 502 : 200 },
   );
-}
-
-async function readLimited(response: Response): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) return "";
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > MAX_BYTES) {
-      throw new Error("Feed is larger than 1MB.");
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks).toString("utf8");
 }
