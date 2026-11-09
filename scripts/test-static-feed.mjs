@@ -74,6 +74,15 @@ try {
   assert.equal(sockets.length, 1);
   assert.deepEqual(requests.slice(returned).filter(url => url.startsWith("/api/")), []);
   assert.equal(requests.includes("/api/turn/allocate"), false);
+  const forumReads = () => requests.filter(url => url === "/api/forum").length;
+  await page.route("**/api/forum", route => route.fulfill({ status: 401, json: {} }));
+  await page.goto(origin + "/forum");
+  await page.getByText("Sign in to see a forum channel.").waitFor();
+  const reads = forumReads();
+  const identityReads = requests.filter(url => url === "/api/identity/session").length;
+  await delay(8500);
+  assert.equal(forumReads(), reads);
+  assert.equal(requests.filter(url => url === "/api/identity/session").length, identityReads);
   console.log("Signed-out public browsing, live opt-in, and disconnect passed.");
 } finally {
   await browser?.close();
