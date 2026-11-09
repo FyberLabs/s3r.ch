@@ -47,7 +47,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/identity-health.cjs ./identity-he
 COPY --from=builder --chown=nextjs:nodejs /app/identity-monitor.cjs ./identity-monitor.cjs
 COPY --from=builder --chown=nextjs:nodejs /app/identity-probe-worker.cjs ./identity-probe-worker.cjs
 
-RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data /app/public/feed-cache
 ENV GUN_FILE=/app/data/radata
 ENV GUN_SNAPSHOT=/app/data/snapshot.json
 

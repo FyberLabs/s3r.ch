@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { FeedStream } from "@/components/FeedStream";
 import { GunPeerProvider } from "@/components/GunPeerProvider";
-import { IdentityBar } from "@/components/IdentityBar";
 import { MeshAclSync } from "@/components/MeshAclSync";
 import { SeeAclProvider } from "@/components/SeeAclProvider";
 
@@ -32,7 +31,6 @@ export default function FeedPage() {
       <SeeAclProvider>
         <GunPeerProvider>
           <MeshAclSync />
-          <IdentityBar />
 
           <FeedStream />
         </GunPeerProvider>
