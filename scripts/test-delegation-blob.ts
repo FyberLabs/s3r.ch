@@ -1,3 +1,4 @@
+import { testSquadPilot } from "./squad-pilot-acceptance";
 import { createSquadCommitStore } from "../lib/squad-commit-store";
 import { createForumAuthoritySnapshotStore } from "../lib/forum-authority-store";
 import { createSquadSessionReplayStore } from "../lib/identity/squad-session-replay";
@@ -26,6 +27,7 @@ for (;;) {
   try { await container.createIfNotExists({ abortSignal: AbortSignal.timeout(1000) }); break; }
   catch (error) { if (Date.now() >= deadline) throw error; await delay(100); }
 }
+await testSquadPilot(container, phase);
 const scope = "b".repeat(64), id = "a".repeat(32), payload = JSON.stringify({ sig: "exact-签名", attest: "preserved" });
 // Independent SDK clients share one durable replay slot. A fixed evaluation
 // clock keeps the challenge live across the owned emulator restart.

@@ -412,3 +412,15 @@ test("polled source admits signed authority and withdraws it on a failed next re
   assert.equal(authority.graph.ownerOf(object), undefined);
   stop();
 });
+
+test("retained retired ownership is excluded while reissued current ownership resolves", async () => {
+  const a = createForumAuthority(config, () => time);
+  const oldObject = sign("object", { object, owner, issuedAt: time - 40 });
+  const currentObject = sign("object", { object, owner }, 2);
+  const accepted = await a.refresh(rotatedSnapshot([oldObject, currentObject]), time);
+  assert.ok(accepted.ok); assert.ok(accepted.diagnostics.some(d => d.reason === "retired-key"));
+  assert.equal(a.graph.ownerOf(object), owner);
+  assert.equal(a.graph.writerKey(owner, time, time), helper);
+  const onlyRetired = await a.refresh(rotatedSnapshot([oldObject]), time);
+  assert.ok(onlyRetired.ok); assert.equal(a.graph.ownerOf(object), undefined);
+});

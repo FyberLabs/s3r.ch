@@ -1,0 +1,34 @@
+import { getSquadPilotServer } from "@/lib/squad-pilot-server";
+import { createForumAuthority } from "@/lib/identity/forum-authority";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export async function GET(request: Request, context: { params: Promise<{ path: string[] }> }) {
+  const headers = { "Cache-Control": "no-store" };
+  try {
+    const { path } = await context.params;
+    if (path.length !== 1 || path[0] !== "health") return Response.json({ ready: false }, { status: 404, headers });
+    const pilot = getSquadPilotServer();
+    if (!pilot) return Response.json({ ready: false }, { status: 404, headers });
+    const at = Math.floor(Date.now() / 1000), authority = createForumAuthority(pilot.config.authority);
+    const result = await authority.refresh(await pilot.source.read(at, request.signal), at);
+    const ready = result.ok && !result.diagnostics.length && authority.graph.ownerOf(pilot.config.squad.forumId) === pilot.config.squad.owner;
+    return Response.json({ ready }, { status: ready ? 200 : 503, headers });
+  } catch { return Response.json({ ready: false }, { status: 503, headers }); }
+}
+export async function POST(request: Request, context: { params: Promise<{ path: string[] }> }) {
+  const reply = (status: number) => Response.json({ error: "pilot-unavailable" }, { status, headers: { "Cache-Control": "no-store" } });
+  try {
+    const { path } = await context.params, pilot = getSquadPilotServer();
+    if (!pilot) return reply(404);
+    if (path.length === 1 && path[0] === "authority") return pilot.services.authority(request);
+    if (path.length === 2 && path[0] === "session") {
+      const action = path[1];
+      if (action === "challenge" || action === "exchange" || action === "logout") return pilot.services[action](request);
+    }
+    if (path.length === 2 && path[0] === "assignment") {
+      const action = path[1];
+      if (action === "read" || action === "start" || action === "resume" || action === "abort" || action === "read-child" || action === "child") return pilot.services.assignments!(action, request);
+    }
+    return reply(404);
+  } catch { return reply(503); }
+}

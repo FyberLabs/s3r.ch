@@ -95,3 +95,30 @@ test("request cancellation guards every journal CAS and invalidates a rejected v
   assert.equal((await source.load()).journal.operation, null);
   await assert.rejects(pinned.journal.load(), /invalid/);
 });
+
+test("authoritative primary ledger supplies current completeness without rewriting revision or imported horizons", async () => {
+  const { backing, source: imported } = await setup(); let now = 120;
+  const ledger = createSquadCommitStore(backing, spec, () => now, "authoritative-ledger");
+  const before = await backing.read();
+  assert.equal((await ledger.read(now, new AbortController().signal)).history.completeThrough, now);
+  assert.deepEqual(await backing.read(), before);
+  await assert.rejects(imported.read(now, new AbortController().signal), /unavailable|incomplete/);
+  const pinned = await ledger.open(); assert.equal((await pinned.history(now)).completeThrough, now);
+  now++;
+  await assert.rejects(pinned.history(now), /expired/);
+  await assert.rejects(pinned.journal.claim(owner, "e".repeat(32), replacement, 0), /expired/);
+  assert.deepEqual(await backing.read(), before);
+});
+
+test("ledger read crossing a second and concurrent identity admission cannot authorize a stale mutation", async () => {
+  const { backing } = await setup(); let now = 120, delayed = false;
+  const ledger = createSquadCommitStore({ ...backing, read: async () => {
+    const value = await backing.read(); if (delayed) now++; return value;
+  } }, spec, () => now, "authoritative-ledger");
+  delayed = true;
+  await assert.rejects(ledger.read(now, new AbortController().signal), /expired/);
+  delayed = false;
+  const pinned = await ledger.open(), current = await ledger.load();
+  await ledger.updateHistory(current.etag, { ...current.history, completeThrough: now });
+  await assert.rejects(pinned.journal.claim(owner, "f".repeat(32), replacement, 0), /changed/);
+});
