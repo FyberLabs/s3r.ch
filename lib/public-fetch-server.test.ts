@@ -31,6 +31,19 @@ describe("public connection DNS lookup", () => {
     }
   });
 
+  it("validates every raw DNS address and its family before selecting any answer", async () => {
+    for (const row of [
+      { address: "198.18.0.1", family: 4 }, { address: "3fff::1", family: 6 },
+      { address: "8.8.8.8", family: 6 }, { address: "2606:4700::1", family: 4 },
+      { address: "8.8.8.8 ", family: 4 }, { address: "008.8.8.8", family: 4 },
+      { address: "[2606:4700::1]", family: 6 }, { address: "2606:4700::1%eth0", family: 6 },
+    ]) {
+      await assert.rejects(resolveThroughSocket(new AbortController().signal, async () => [
+        { address: "192.0.0.9", family: 4 }, row,
+      ], { family: 4 }), /not allowed/, row.address);
+    }
+  });
+
   it("preserves validated IPv4 and IPv6 answers for socket family selection", async () => {
     const records = [{ address: "8.8.8.8", family: 4 }, { address: "2606:4700::1", family: 6 }];
     assert.deepEqual(await resolveThroughSocket(new AbortController().signal, async () => records, { all: true }), records);

@@ -64,6 +64,31 @@ describe("assertPublicHttpUrl", () => {
 });
 
 describe("isBlockedIpAddress", () => {
+  it("applies special-purpose prefix boundaries and globally reachable exceptions to URL literals", () => {
+    const blocked = [
+      "192.0.0.0", "192.0.0.8", "192.0.0.11", "192.0.0.255", "192.0.2.255",
+      "192.88.99.2", "198.18.0.0", "198.19.255.255", "198.51.100.0", "203.0.113.255",
+      "100::1", "100:0:0:1::1", "2001::1", "2001:1::4", "2001:2::1",
+      "2001:4:113::1", "2001:40::1", "2001:1ff:ffff::1", "2001:db8::1",
+      "2002:0808:0808::1", "3fff:fff:ffff::1", "5f00::1", "4000::1",
+      "::ffff:192.0.2.1", "::ffff:0:8.8.8.8", "::8.8.8.8", "64:ff9b::c612:1",
+      "64:ff9b:1::808:808", "2606:4700::200:5efe:808:808",
+    ];
+    const allowed = [
+      "192.0.0.9", "192.0.0.10", "192.0.1.255", "192.0.3.0", "192.31.196.1",
+      "198.17.255.255", "198.20.0.0", "198.51.99.255", "203.0.114.0",
+      "2001:1::1", "2001:1::2", "2001:1::3", "2001:3:ffff::1", "2001:4:112:ffff::1",
+      "2001:20::", "2001:2f:ffff::1", "2001:30::", "2001:3f:ffff::1",
+      "2001:200::1", "3fff:1000::1", "::ffff:8.8.8.8", "64:ff9b::192.0.0.9",
+    ];
+    for (const address of [...blocked, ...allowed]) {
+      const url = address.includes(":") ? `https://[${address}]/` : `https://${address}/`;
+      assert.equal(isBlockedIpAddress(address), blocked.includes(address), address);
+      if (blocked.includes(address)) assert.throws(() => assertPublicHttpUrl(url), /not allowed/, address);
+      else assert.doesNotThrow(() => assertPublicHttpUrl(url), address);
+    }
+  });
+
   it("blocks DNS answers in private and metadata ranges", () => {
     assert.equal(isBlockedIpAddress("8.8.8.8"), false);
     assert.equal(isBlockedIpAddress("2606:4700::1"), false);
@@ -118,6 +143,16 @@ describe("fetchPublic", () => {
     }) as typeof fetch;
     await assert.rejects(() => fetchPublic("https://1.1.1.1/feed"), /not allowed/);
     assert.deepEqual(calls, ["https://1.1.1.1/feed"]);
+  });
+
+  it("applies the address policy before taking a redirected hop", async () => {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response(null, { status: 302, headers: { location: "https://[2001:db8::1]/feed" } });
+    };
+    await assert.rejects(fetchPublic("https://feeds.example/start"), /not allowed/);
+    assert.equal(calls, 1);
   });
 
   it("stops after too many redirects", async () => {

@@ -127,7 +127,7 @@ async function main() {
       } else if (action === "fault" && identity.pub === owner) {
         if (!["cancellation-ack", "grant-ack", "commit-ack", "child-ack", ""].includes(body.kind)) throw Error("unknown fault");
         fault = body.kind; reply(200, { ok: true });
-      } else if (action === "inspect" && identity.pub === owner) reply(200, { state: await journal.load(), signatures });
+      } else if (action === "inspect" && identity.pub === owner) reply(200, { state: await journal.load(), signatures, armedFault: fault });
       else if (action === "register" && identity.pub === owner) {
         const state = await journal.load(), at = Math.floor(Date.now() / 1000);
         const object = `update_${seaToPrincipalKey(owner)}_${body.id}`;

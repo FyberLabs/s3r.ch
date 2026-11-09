@@ -26,6 +26,21 @@ async function finish(id, replacement) {
   for (let i = 0; i < 8; i++) { const result = await call("resume", 0, { operationId: id, replacement }); if (result.status === "complete") return result; }
   throw Error("assignment did not complete");
 }
+// A resume can return pending before publication (for example when its
+// evaluation second expires). Stop driving it as soon as the fault fires.
+async function startWithLostAck(kind, operationId, replacement, revision) {
+  await call("fault", 0, { kind });
+  let result = await call("start", 0, { operationId, replacement, revision });
+  for (let attempt = 0; attempt < 8; attempt++) {
+    assert.equal(result.status, "pending");
+    const { armedFault } = await call("inspect");
+    if (armedFault === "") return;
+    assert.equal(armedFault, kind);
+    result = await call("resume", 0, { operationId, replacement });
+  }
+  assert.equal((await call("inspect")).armedFault, "", `fault was never reached: ${kind}`);
+  assert.equal(result.status, "pending");
+}
 function documents() {
   const db = new DatabaseSync(join(directory, "squad.sqlite"), { readOnly: true });
   const rows = db.prepare("SELECT name,value FROM documents WHERE name LIKE 'cancellations/%' OR name LIKE 'grants/%'").all(); db.close();
@@ -44,12 +59,8 @@ try {
   await call("read", 1, {}, 403);
   await call("read", 0, { forum: "foreign", owner: config.owner }, 409);
   const id = randomBytes(16).toString("hex"), replacement = credentials[2].pub;
-  await call("fault", 0, { kind: "grant-ack" });
   const before = await call("read");
-  const started = await call("start", 0, { operationId: id, replacement, revision: before.revision });
-  assert.equal(started.status, "pending");
-  for (let i = 0; i < 8 && (await call("read")).operation.phase === "cancellations"; i++)
-    await call("resume", 0, { operationId: id, replacement });
+  await startWithLostAck("grant-ack", id, replacement, before.revision);
   assert.equal((await call("read")).operation.phase, "replacement");
   await call("abort", 0, { operationId: id }, 409);
   const retained = documents();
@@ -80,8 +91,7 @@ try {
   // A lost cancellation acknowledgement remains retryable, or can be aborted
   // before any replacement grant without restoring the old permissions.
   const abortedId = randomBytes(16).toString("hex"), abortBefore = await call("read");
-  await call("fault", 0, { kind: "cancellation-ack" });
-  await call("start", 0, { operationId: abortedId, replacement: credentials[1].pub, revision: abortBefore.revision });
+  await startWithLostAck("cancellation-ack", abortedId, credentials[1].pub, abortBefore.revision);
   // Cancellation order depends on the synthetic identities' random keys.
   // The lost acknowledgement may follow either a see or a post cancellation.
   const revoked = (await call("inspect")).state.rows.find(r => ["see", "post"].includes(r.kind) && r.record.accessor === credentials[3].pub && r.record.stated === 0);

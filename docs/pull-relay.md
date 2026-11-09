@@ -13,6 +13,14 @@ Signed-in browsers still use same-origin `POST /api/ingest` as a CORS proxy. Dir
 - No secrets on Gun or `NEXT_PUBLIC_*`.
 - Do not turn off CORS on source hosts. This path exists because CORS is still there.
 
+## Server feed destination policy
+
+The server checks each literal URL, redirect and DNS answer against the same public-address rules. DNS answers must parse as the reported family, and all answers must pass before socket family selection. HTTP and HTTPS feeds may use public IPv4 or IPv6.
+
+IPv4 excludes multicast, reserved and non-global special-purpose ranges, with the registered public anycast exceptions inside 192.0.0.0/24. Native IPv6 uses the global unicast allocation 2000::/3, excluding documentation space and non-global protocol assignments. The guard permits the more-specific globally reachable IETF assignments. IPv4-mapped and well-known NAT64 addresses inherit the embedded IPv4 policy. The server rejects local translation prefixes, deprecated compatible/translated forms, 6to4, Teredo and ISATAP.
+
+When IANA changes the special-purpose registries or allocates new global unicast space, review the prefix tables in `lib/url-guard.ts` and update the boundary and exception tests in the same change. Treat blank or conditional global reachability in a special-purpose allocation conservatively. [IANA IPv4 registry](https://www.iana.org/assignments/iana-ipv4-special-registry/) · [IANA IPv6 registry](https://www.iana.org/assignments/iana-ipv6-special-registry/)
+
 ## Server feed response limits
 
 The server accepts up to 1,000,000 decoded bytes per ActivityPub, ATProto, Farcaster, RSS3 or RSS/Atom response, including custom RSS URLs and the Farcaster and RSS3 claim lookups. The JSON feeds request small pages and share the existing RSS budget. The reader counts bytes after HTTP decompression regardless of Content-Length. An oversized or failed upstream response is discarded before feed parsing.
