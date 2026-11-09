@@ -52,3 +52,32 @@ echo "$health" | grep -Fq '"panopticon":{"status":"not-configured"' || { echo "p
 echo "$health" | grep -Fq '"gun":{"status":"ok"}' || { echo "gun peer should be attached" >&2; fail=1; }
 
 if [ "$fail" -ne 0 ]; then cat "$log"; exit 1; fi
+
+# Run the independent peer with its own data and a real Gun websocket.
+peer_port=$((port + 1))
+mkdir -p "$data/peer/public/feed-cache"
+(
+  cd "$data/peer"
+  export GUN_FILE="$data/peer/radata" GUN_SNAPSHOT="$data/peer/snapshot.json"
+  export SEED_SECRET="smoke-only" NODE_ENV=production PORT="$peer_port" HOSTNAME=127.0.0.1
+  exec node "$OLDPWD/seed-peer.cjs"
+) > "$data/peer.log" 2>&1 &
+peer_pid=$!
+trap 'kill "$peer_pid" "$pid" 2>/dev/null || true; rm -rf "$data"' EXIT
+for _ in $(seq 1 30); do
+  if curl --max-time 3 -fsS "http://127.0.0.1:$peer_port/api/health" >/dev/null 2>&1; then break; fi
+  if ! kill -0 "$peer_pid" 2>/dev/null; then cat "$data/peer.log"; exit 1; fi
+  sleep 1
+done
+node --input-type=module - "$peer_port" <<'JS'
+import assert from "node:assert/strict";
+const origin = "http://127.0.0.1:" + process.argv[2];
+assert.deepEqual((await (await fetch(origin + "/feed-cache/snapshot.json")).json()).items, []);
+assert.equal((await fetch(origin + "/api/seed", { method: "POST" })).status, 401);
+assert.equal((await fetch(origin + "/api/identity/session")).status, 404);
+const socket = new WebSocket(origin.replace("http:", "ws:") + "/gun");
+const timeout = setTimeout(() => { throw Error("Gun handshake timed out"); }, 5000);
+await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
+clearTimeout(timeout);
+socket.close();
+JS

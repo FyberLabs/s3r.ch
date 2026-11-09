@@ -16,7 +16,7 @@ export async function GET() {
     {
       status: "ok",
       dependencies: {
-        gun: { status: gun ? "ok" : "not-attached" },
+        gun: { status: gun ? "ok" : process.env.GUN_EXTERNAL_PEER === "1" ? "external" : "not-attached" },
         identity: {
           status: identity.status,
           writable: identity.status === "ok" || identity.status === "unchecked",

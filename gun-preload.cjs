@@ -11,7 +11,7 @@
 // identity monitor and attaches Gun.
 if (require("node:worker_threads").isMainThread) {
   require("./identity-monitor.cjs").startIdentityMonitor();
-  attachGun();
+  if (process.env.GUN_EXTERNAL_PEER !== "1") attachGun();
 }
 
 function attachGun() {

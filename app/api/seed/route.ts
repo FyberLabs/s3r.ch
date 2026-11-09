@@ -5,6 +5,9 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  if (process.env.GUN_EXTERNAL_PEER === "1") {
+    return Response.json({ error: "Route seed requests to the configured bootstrap peer." }, { status: 503 });
+  }
   if (!authorizeSeed(request)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
