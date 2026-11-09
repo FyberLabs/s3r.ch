@@ -67,6 +67,7 @@ jobs:
           build-args: |
             VERSION=test-${{ github.sha }}
             SOURCE_REVISION=${{ github.sha }}
+            NEXT_PUBLIC_SEED_PEER_URL=${{ vars.NEXT_PUBLIC_SEED_PEER_URL }}
             NEXT_PUBLIC_WC_PROJECT_ID=${{ vars.NEXT_PUBLIC_WC_PROJECT_ID }}
       - name: Select immutable candidate
         env:
