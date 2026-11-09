@@ -70,7 +70,7 @@ import { RoomsList } from "@/components/RoomsList";
 import { TagChips } from "@/components/TagChips";
 import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
-import { objectOwner, useIdentitySession } from "@/components/useIdentitySession";
+import { objectOwner, useIdentitySessionState } from "@/components/useIdentitySession";
 import {
   browserGunOptions,
   listenThenConnectSeedPeer,
@@ -79,7 +79,6 @@ import {
 import {
   attachGunWebrtcLib,
   stunOnlyRtcOptions,
-  type BrowserRtcOptions,
 } from "@/lib/gun-webrtc";
 import {
   applyRtcIceServers,
@@ -133,12 +132,13 @@ export function FeedStream() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [sharePeers, setSharePeers] = useState(false);
   const [openRoomId, setOpenRoomId] = useState<string | null>(null);
-  const session = useIdentitySession(tab !== "public" || accountOpen || openRoomId !== null);
+  const identity = useIdentitySessionState(tab !== "public" || accountOpen || openRoomId !== null);
+  const session = identity ?? null;
+  const sessionResolved = identity !== undefined;
   const see = useSeeAcl();
   const gunPeer = useGunPeer();
   const registerGun = gunPeer?.register;
   const gunRef = useRef<GunRef | null>(null);
-  const rtcRef = useRef<BrowserRtcOptions>(stunOnlyRtcOptions());
   const iceRefreshRef = useRef<IceRefreshHandle | null>(null);
   const seeRef = useRef(see);
   seeRef.current = see;
@@ -211,7 +211,7 @@ export function FeedStream() {
   }, []);
 
   useEffect(() => {
-    if (!live) return;
+    if (!live || !sessionResolved) return;
     let cancelled = false;
     let off: (() => void) | undefined;
     let offRooms: (() => void) | undefined;
@@ -227,9 +227,14 @@ export function FeedStream() {
       // on gun._.on, then opt the same-origin /gun peer. Constructing
       // with peers can fire hi before the listener. No user.recall.
       // See docs/ARCHITECTURE.md.
-      const rtc = rtcRef.current;
+      if (cancelled) return;
+      const rtc = stunOnlyRtcOptions();
+      const allocation = session?.address ? await fetchTurnAllocate() : null;
+      if (cancelled) return;
+      if (allocation) applyRtcIceServers(rtc, allocation.iceServers);
       await attachGunWebrtcLib(Gun);
       if (cancelled) return;
+      iceRefreshRef.current = startTurnIceRefresh({ rtc, expiresAt: allocation?.expiresAt ?? null });
       const gun = Gun(browserGunOptions(undefined, rtc));
       gunRef.current = gun;
       setGunReady(true);
@@ -340,27 +345,7 @@ export function FeedStream() {
       seedWsUpRef.current = false;
       setSeedWsUp(false);
     };
-  }, [live]);
-
-  useEffect(() => {
-    if (!gunReady || !session?.address) return;
-    const rtc = rtcRef.current;
-    let cancelled = false;
-    void fetchTurnAllocate().then((allocated) => {
-      if (cancelled || !allocated) return;
-      applyRtcIceServers(rtc, allocated.iceServers);
-      iceRefreshRef.current?.stop();
-      iceRefreshRef.current = startTurnIceRefresh({
-        rtc,
-        expiresAt: allocated.expiresAt,
-      });
-    });
-    return () => {
-      cancelled = true;
-      iceRefreshRef.current?.stop();
-      applyRtcIceServers(rtc, stunOnlyRtcOptions().iceServers);
-    };
-  }, [gunReady, session?.address]);
+  }, [live, sessionResolved, session?.address]);
 
   useEffect(() => {
     seedWsUpRef.current = seedWsUp;

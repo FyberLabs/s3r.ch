@@ -51,7 +51,7 @@ function onStorage(event: StorageEvent) {
   if (event.key === changeKey) invalidate();
 }
 
-export function useIdentitySession(enabled = true): IdentitySession | null {
+export function useIdentitySessionState(enabled = true): IdentitySession | null | undefined {
   useEffect(() => {
     if (!enabled) return;
     if (++consumers === 1) {
@@ -74,6 +74,11 @@ export function useIdentitySession(enabled = true): IdentitySession | null {
       ? Math.max(1000, query.state.data.expiresAt - Date.now())
       : false,
   }, client);
+  if (!enabled || query.isPending) return undefined;
   const session = query.data;
   return enabled && !query.isError && session && session.expiresAt > Date.now() ? session : null;
+}
+
+export function useIdentitySession(enabled = true): IdentitySession | null {
+  return useIdentitySessionState(enabled) ?? null;
 }

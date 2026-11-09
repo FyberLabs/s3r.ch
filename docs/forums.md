@@ -8,6 +8,11 @@ status-only; sample child detail is never a live fallback.
 
 ## Forum shell
 
+Forum layout defaults to Tiles. Choose Tabs to show one open forum at a time,
+with its tab strip on the top, left or right. The Squad shell shows its current
+forum. On the forum desk, the strip lists your channel and channels shared with
+you. Use arrow keys along the strip, or Home and End, to switch forums.
+
 The shared shell presents the SEA identity, linked credentials and alarm above
 forum navigation, the main view and a conversation/links column. Board and List
 use the same severity-sorted roster and state/text filters. Either view opens
