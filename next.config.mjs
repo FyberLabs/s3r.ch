@@ -25,6 +25,10 @@ const nextConfig = {
   experimental: {
     useTypeScriptCli: true,
   },
+  async rewrites() {
+    // Filesystem routes, including the development picker preview, take priority.
+    return [{ source: "/views/:id", destination: "/saved-view" }];
+  },
   async headers() {
     return [{ source: "/feed-cache/snapshot.json", headers: [
       { key: "Cache-Control", value: "public, max-age=60, s-maxage=60" },
