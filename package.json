@@ -25,6 +25,7 @@
     "react": "^19",
     "react-dom": "^19",
     "siwe": "^3.0.0",
+    "undici": "7.30.2",
     "viem": "^2.57.13",
     "wagmi": "^3.7.9"
   },
@@ -45,6 +46,7 @@
   },
   "overrides": {
     "axios": ">=1.18.0",
-    "@faker-js/faker": "$@faker-js/faker"
+    "@faker-js/faker": "$@faker-js/faker",
+    "zod": "4.6.7"
   }
 }

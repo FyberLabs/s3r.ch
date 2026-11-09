@@ -139,6 +139,19 @@ describe("parseRssAtom", () => {
     assert.equal(parsed.items[0].permalink, "https://example.com/1");
   });
 
+  it("decodes entities once", () => {
+    const xml = `<?xml version="1.0"?>
+      <rss version="2.0"><channel>
+        <item>
+          <title>AT&amp;T &quot;hi&quot; it&#39;s &amp;lt;kept&amp;gt;</title>
+          <link>https://example.com/e</link>
+          <guid>https://example.com/e</guid>
+        </item>
+      </channel></rss>`;
+    const parsed = parseRssAtom(xml, "https://example.com/feed.xml");
+    assert.equal(parsed.items[0].body, `AT&T "hi" it's &lt;kept&gt;`);
+  });
+
   it("public RSS seed tags drop user and add network slugs", () => {
     const xml = `<?xml version="1.0"?>
       <rss version="2.0"><channel>

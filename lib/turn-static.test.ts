@@ -18,6 +18,7 @@ describe("static TURN fallback", () => {
     assert.deepEqual(server, {
       urls: ["turn:relay.example.org:3478", "turns:relay.example.org:5349"],
       username,
+      // codeql[js/weak-cryptographic-algorithm] -- same HMAC-SHA1 vector coturn static-auth-secret produces.
       credential: createHmac("sha1", "relay-secret").update(username).digest("base64"),
     });
     // Known vector: coturn computes the same value with static-auth-secret.
