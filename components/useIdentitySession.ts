@@ -21,7 +21,8 @@ const changeKey = "s3rch-session-changed";
 
 async function refresh({ signal }: { signal: AbortSignal }) {
   const response = await fetch("/api/identity/session", { cache: "no-store", signal });
-  if (!response.ok) return null;
+  if (response.status === 401) return null;
+  if (!response.ok) throw new Error("Identity service unavailable.");
   const payload = await response.json();
   if (typeof payload.address !== "string" || !payload.address) return null;
   return {
@@ -68,11 +69,12 @@ export function useIdentitySessionState(enabled = true): IdentitySession | null 
 
   const query = useQuery({
     queryKey: key, queryFn: refresh, enabled,
-    retry: false, gcTime: 0, staleTime: Infinity,
+    retry: false, gcTime: 0, staleTime: 0,
     refetchOnWindowFocus: "always",
-    refetchInterval: query => query.state.data
-      ? Math.max(1000, query.state.data.expiresAt - Date.now())
-      : false,
+    refetchInterval: query => {
+      if (query.state.status === "error") return 30_000;
+      return query.state.data ? Math.max(1000, query.state.data.expiresAt - Date.now()) : false;
+    },
   }, client);
   if (!enabled || query.isPending) return undefined;
   const session = query.data;
