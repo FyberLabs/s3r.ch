@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 export type IdentitySession = {
   /** Wallet that signed. Gun mesh key stays here. */
@@ -14,37 +14,43 @@ export function objectOwner(session: IdentitySession): string {
   return session.owner || session.address;
 }
 
-export function useIdentitySession(enabled = true): IdentitySession | null {
-  const [session, setSession] = useState<IdentitySession | null>(null);
-
-  const refresh = useCallback(async () => {
-    try {
-      const response = await fetch("/api/identity/session", { cache: "no-store" });
-      if (!response.ok) {
-        setSession(null);
-        return;
-      }
-      const payload = (await response.json()) as Partial<IdentitySession>;
-      if (typeof payload.address === "string" && payload.address) {
-        const owner =
-          typeof payload.owner === "string" && payload.owner ? payload.owner : payload.address;
-        setSession({
-          address: payload.address,
-          owner,
-          chainId: typeof payload.chainId === "number" ? payload.chainId : 1,
-        });
-        return;
-      }
-      setSession(null);
-    } catch {
-      setSession(null);
-    }
-  }, []);
-
+export function useIdentitySessionState(enabled = true) {
+  const [session, setSession] = useState<IdentitySession | null>();
   useEffect(() => {
     if (!enabled) {
-      setSession(null);
+      setSession(undefined);
       return;
+    }
+    let request: AbortController;
+    async function refresh() {
+      request?.abort();
+      const controller = new AbortController();
+      request = controller;
+
+
+      try {
+        const response = await fetch("/api/identity/session", { cache: "no-store", signal: controller.signal });
+        if (controller.signal.aborted) return;
+        if (!response.ok) {
+          setSession(null);
+          return;
+        }
+        const payload = (await response.json()) as Partial<IdentitySession>;
+        if (controller.signal.aborted) return;
+        if (typeof payload.address === "string" && payload.address) {
+          const owner =
+            typeof payload.owner === "string" && payload.owner ? payload.owner : payload.address;
+          setSession({
+            address: payload.address,
+            owner,
+            chainId: typeof payload.chainId === "number" ? payload.chainId : 1,
+          });
+          return;
+        }
+        setSession(null);
+      } catch {
+        if (!controller.signal.aborted) setSession(null);
+      }
     }
     void refresh();
     const onVis = () => {
@@ -53,10 +59,15 @@ export function useIdentitySession(enabled = true): IdentitySession | null {
     document.addEventListener("visibilitychange", onVis);
     const timer = window.setInterval(() => void refresh(), 4000);
     return () => {
+      request?.abort();
       document.removeEventListener("visibilitychange", onVis);
       window.clearInterval(timer);
     };
-  }, [enabled, refresh]);
+  }, [enabled]);
 
-  return enabled ? session : null;
+  return enabled ? session : undefined;
+}
+
+export function useIdentitySession(enabled = true): IdentitySession | null {
+  return useIdentitySessionState(enabled) ?? null;
 }
