@@ -1,10 +1,10 @@
 /** Node transport, loaded only by the server branch of public-fetch. */
 import { lookup } from "node:dns/promises";
 import type { LookupAddress } from "node:dns";
-import type { LookupFunction } from "node:net";
+import { isIP, type LookupFunction } from "node:net";
 import { Agent } from "undici";
 import { PUBLIC_FETCH_MS, PUBLIC_USER_AGENT } from "./public-fetch";
-import { assertPublicHttpUrl, isBlockedIpAddress, isIpLiteralHost } from "./url-guard";
+import { assertPublicHttpUrl, isBlockedIpAddress } from "./url-guard";
 
 type Resolver = (host: string) => Promise<LookupAddress[]>;
 
@@ -36,8 +36,8 @@ export function createPublicLookup(
     }).then((records) => {
       if (signal.aborted) return abort();
       if (!records.length || records.some((row) =>
-        !isIpLiteralHost(row.address) || isBlockedIpAddress(row.address)
-        || (row.family !== 4 && row.family !== 6))) {
+        (row.family !== 4 && row.family !== 6) || isIP(row.address) !== row.family
+        || isBlockedIpAddress(row.address))) {
         throw new Error("That host is not allowed.");
       }
       const family = options.family;

@@ -34,33 +34,69 @@ export function assertPublicHttpUrl(raw: string): URL {
   return url;
 }
 
-/** True when `address` is an IP literal in a non-public range. */
+// Prefix lists follow the IANA special-purpose registries. See docs/pull-relay.md.
+function ipv4Number(address: string): bigint {
+  return address.split(".").reduce((value, octet) => (value << 8n) | BigInt(octet), 0n);
+}
+
+function ipv6Number(words: number[]): bigint {
+  return words.reduce((value, word) => (value << 16n) | BigInt(word), 0n);
+}
+
+type Prefix = { network: bigint; shift: bigint };
+
+function prefix(cidr: string): Prefix {
+  const [address, bits] = cidr.split("/");
+  const v6 = address.includes(":");
+  const network = v6 ? ipv6Number(parseIpv6(address)!) : ipv4Number(address);
+  const shift = BigInt((v6 ? 128 : 32) - Number(bits));
+  return { network: network >> shift, shift };
+}
+
+function within(value: bigint, range: Prefix): boolean {
+  return value >> range.shift === range.network;
+}
+
+const blockedV4 = [
+  "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",
+  "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24",
+  "192.88.99.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24",
+  "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4",
+].map(prefix);
+const publicV4Exceptions = new Set(["192.0.0.9", "192.0.0.10"].map(ipv4Number));
+
+function blockedIpv4(value: bigint): boolean {
+  return !publicV4Exceptions.has(value) && blockedV4.some(range => within(value, range));
+}
+
+const globalUnicast = prefix("2000::/3");
+const mappedV4 = prefix("::ffff:0:0/96");
+const wellKnownNat64 = prefix("64:ff9b::/96");
+const blockedV6 = ["2001::/23", "2001:db8::/32", "2002::/16", "3fff::/20"].map(prefix);
+const publicV6Exceptions = [
+  "2001:1::1/128", "2001:1::2/128", "2001:1::3/128",
+  "2001:3::/32", "2001:4:112::/48", "2001:20::/28", "2001:30::/28",
+].map(prefix);
+
+/** URL hosts are canonicalized by WHATWG. The DNS caller checks raw syntax and family first. */
 export function isBlockedIpAddress(address: string): boolean {
-  const bare = address.trim().toLowerCase().replace(/^\[|\]$/g, "");
-  if (bare.includes(":")) return isPrivateIpv6(bare);
-  return isPrivateIpv4(bare);
-}
-
-/** Dotted IPv4 or an IPv6 literal (brackets optional). Hostnames are false. */
-export function isIpLiteralHost(hostname: string): boolean {
-  const bare = hostname.trim().toLowerCase().replace(/\.$/, "").replace(/^\[|\]$/g, "");
-  if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(bare)) return true;
-  return bare.includes(":");
-}
-
-function isPrivateIpv4(host: string): boolean {
-  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!ipv4) return false;
-  const parts = ipv4.slice(1).map(Number);
-  if (parts.some((n) => n > 255)) return true;
-  const [a, b] = parts;
-  if (a === 10 || a === 127 || a === 0) return true;
-  if (a === 169 && b === 254) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 100 && b >= 64 && b <= 127) return true;
-  if (a >= 224) return true;
-  return false;
+  const bare = address.startsWith("[") && address.endsWith("]") ? address.slice(1, -1) : address;
+  if (!bare.includes(":")) {
+    if (!/^(?:\d{1,3}\.){3}\d{1,3}$/.test(bare)) return false;
+    if (bare.split(".").some(octet => Number(octet) > 255)) return true;
+    return blockedIpv4(ipv4Number(bare));
+  }
+  const words = parseIpv6(bare);
+  if (!words) return true;
+  const value = ipv6Number(words);
+  if (within(value, mappedV4) || within(value, wellKnownNat64)) {
+    return blockedIpv4(value & 0xffffffffn);
+  }
+  if (!within(value, globalUnicast)) return true;
+  // ISATAP interface identifiers can occur under ordinary unicast prefixes.
+  if ((words[4] === 0 || words[4] === 0x0200) && words[5] === 0x5efe) return true;
+  if (publicV6Exceptions.some(range => within(value, range))) return false;
+  return blockedV6.some(range => within(value, range));
 }
 
 /** Eight 16-bit words, or null when the text is not an IPv6 address. */
@@ -85,34 +121,4 @@ function parseIpv6(host: string): number[] | null {
   if (halves.length === 2 && known > 7) return null;
   const zeros = halves.length === 2 ? new Array<number>(8 - known).fill(0) : [];
   return [...head.map((w) => parseInt(w, 16)), ...zeros, ...rest.map((w) => parseInt(w, 16)), ...tail];
-}
-
-function ipv4FromWords(hi: number, lo: number): string {
-  return [hi >> 8, hi & 255, lo >> 8, lo & 255].join(".");
-}
-
-/** Unspecified, loopback, unique-local, link-local, multicast, and embedded private IPv4. */
-function isPrivateIpv6(host: string): boolean {
-  const words = parseIpv6(host);
-  if (!words || words.length !== 8) return true;
-  if (words.slice(0, 7).every((w) => w === 0) && (words[7] === 0 || words[7] === 1)) return true;
-  if ((words[0] & 0xfe00) === 0xfc00) return true; // fc00::/7
-  if ((words[0] & 0xffc0) === 0xfe80) return true; // fe80::/10
-  if ((words[0] & 0xffc0) === 0xfec0) return true; // fec0::/10
-  if ((words[0] & 0xff00) === 0xff00) return true; // ff00::/8
-  if (words.slice(0, 5).every((w) => w === 0) && words[5] === 0xffff) {
-    return isPrivateIpv4(ipv4FromWords(words[6], words[7]));
-  }
-  // 6to4 and well-known NAT64 embed an IPv4 address that must itself be public.
-  if (words[0] === 0x2002 && isPrivateIpv4(ipv4FromWords(words[1], words[2]))) return true;
-  if (words[0] === 0x64 && words[1] === 0xff9b && words[2] === 1) return true; // 64:ff9b:1::/48
-  if (
-    words[0] === 0x64 &&
-    words[1] === 0xff9b &&
-    words.slice(2, 6).every((w) => w === 0) &&
-    isPrivateIpv4(ipv4FromWords(words[6], words[7]))
-  ) {
-    return true;
-  }
-  return false;
 }
