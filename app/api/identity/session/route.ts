@@ -36,6 +36,7 @@ export async function GET(request: Request) {
     return Response.json({
       address: session.address,
       chainId: session.chainId,
+      expiresAt: session.exp * 1000,
       owner,
     });
   } catch {

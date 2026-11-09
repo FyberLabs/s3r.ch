@@ -64,7 +64,7 @@ describe("public marketing copy", () => {
     assert.equal(home.includes('href="/feed"'), true);
     assert.equal(home.includes("Public feeds"), true);
     assert.equal(home.includes("quiet"), true);
-    assert.equal(preview.includes('"/api/feed"'), true);
+    assert.equal(preview.includes('"/feed-cache/snapshot.json"'), true);
   });
 
   it("keeps the squad browser-only boundary in the smoke check and the board", () => {

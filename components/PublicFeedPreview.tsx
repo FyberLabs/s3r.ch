@@ -79,7 +79,7 @@ export function PublicFeedPreview() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/feed", { cache: "no-store" })
+    fetch("/feed-cache/snapshot.json")
       .then((response) => (response.ok ? response.json() : null))
       .then((body: { items?: unknown } | null) => {
         if (cancelled) return;

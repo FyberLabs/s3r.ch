@@ -368,7 +368,7 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
     let cancelled = false;
     async function load() {
       try {
-        const response = await fetch("/api/feed", { cache: "no-store" });
+        const response = await fetch("/feed-cache/snapshot.json");
         if (cancelled || !response.ok) return;
         seedItems.current = readFeedItems(await response.json());
         if (!cancelled) rememberItems();
