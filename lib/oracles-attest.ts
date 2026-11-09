@@ -80,8 +80,11 @@ export function trimEnv(value: string | undefined): string {
  * so a lab Panopticon on :8013 works. Empty / invalid = not configured.
  */
 export function readOraclesAttestEnv(env: EnvLike = process.env): OraclesAttestEnv | null {
-  const tenantId = trimEnv(env[ENV_TENANT_ID]);
-  const apiKey = trimEnv(env[ENV_API_KEY]);
+  const dedicatedTenant = env["PANOPTICON_ORACLES_TENANT_ID"];
+  const dedicatedKey = env["PANOPTICON_ORACLES_API_KEY"];
+  const useDedicated = dedicatedTenant !== undefined || dedicatedKey !== undefined;
+  const tenantId = trimEnv(useDedicated ? dedicatedTenant : env[ENV_TENANT_ID]);
+  const apiKey = trimEnv(useDedicated ? dedicatedKey : env[ENV_API_KEY]);
   const rawBase = trimEnv(env[ENV_ORACLES_BASE]);
   if (!tenantId || !apiKey || !rawBase) return null;
   const base = normalizeOraclesBase(rawBase);
