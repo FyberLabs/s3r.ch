@@ -16,6 +16,8 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 | `GUN_SNAPSHOT` | no | `data/snapshot.json` under the cwd; the image sets `/app/data/snapshot.json` | no | JSON cache of seeder public items. |
 | `PANOPTICON_API_KEY` | no | unset | yes | `X-Api-Key` for the TURN, oracles, and payments hops. All three of this key, `PANOPTICON_TENANT_ID`, and that hop's base must be set or the hop stays unconfigured. |
 | `PANOPTICON_ORACLES_BASE` | no | unset | no | Attest origin, or that origin plus the `/api/v1` prefix the hop already joins. |
+| `PANOPTICON_ORACLES_TENANT_ID` | no | unset | no | Tenant for the Oracles-only product key. Set both Oracles credential settings together. |
+| `PANOPTICON_ORACLES_API_KEY` | no | unset | yes | Server-only Oracles product key. A partial dedicated pair disables the hop. When both settings are absent Oracles uses the shared product credentials. |
 | `PANOPTICON_PAYMENTS_BASE` | no | unset | no | Payments origin, or that origin plus the `/api/v1` prefix the hop already joins. |
 | `PANOPTICON_TENANT_ID` | no | unset | no | Marketplace tenant UUID sent as `X-Tenant-ID`. An identifier. The process treats a missing value as unconfigured. |
 | `PANOPTICON_TURN_BASE` | no | unset | no | TURN allocate origin, or that origin plus the `/api/v1` prefix the hop already joins. |
