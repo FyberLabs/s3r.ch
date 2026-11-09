@@ -81,3 +81,8 @@ await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror
 clearTimeout(timeout);
 socket.close();
 JS
+# Two unrelated deep links must use the same prerendered shell.
+node -e 'const assert = require("node:assert/strict"); const routes = require("./.next/prerender-manifest.json").routes; assert.ok(routes["/saved-view"])'
+for id in first-view second-view; do
+  curl --max-time 10 -fsS "http://127.0.0.1:$port/views/$id" -o "$data/$id.html"
+done
