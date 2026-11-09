@@ -119,7 +119,7 @@ import {
 } from "@/lib/forum-squad";
 import { readForumSignature, signForumRecord, signatureOf } from "@/lib/forum-sign";
 import { soulKeyMatches } from "@/lib/unshare";
-import { browserGunOptions, listenThenConnectSeedPeer, type SeedPeerEmitter } from "@/lib/gun-peer";
+import { acquireBrowserGun } from "@/lib/browser-gun";
 import {
   acceptForumOffer,
   declineForumOffer,
@@ -433,14 +433,14 @@ function SquadForumView({ view }: { view: SquadView }) {
     let offTemplate: { off?: () => void } | undefined;
     let offRoles: { off?: () => void } | undefined;
 
+    const connection = acquireBrowserGun(window.location.origin);
     void (async () => {
-      const GunMod = await import("gun/browser");
-      const Gun = (GunMod.default ?? GunMod) as unknown as (opts?: object) => FeedGun;
-      if (cancelled) return;
-      const gun = Gun(browserGunOptions());
+      const root = await connection.ready.catch(() => null);
+      if (!root || cancelled) return;
+      const gun = root;
       gunRef.current = gun;
       register(gun);
-      listenThenConnectSeedPeer(gun as unknown as SeedPeerEmitter, window.location.origin, up => {
+      connection.onStatus(up => {
         if (cancelled) return;
         connectedRef.current = up;
         if (!up) proofs.interrupt();
@@ -1346,6 +1346,7 @@ function SquadForumView({ view }: { view: SquadView }) {
       offItems?.off?.();
       gunRef.current = null;
       connectedRef.current = false; proofs.reset(); retries.clear(); retryRef.current = null;
+      connection.release();
       register(null);
     };
   }, [register, proofs, authority, businessRoles]);

@@ -82,10 +82,16 @@ export function browserGunOptions(
 }
 
 /** `gun.opt` payload that opens the same-origin `/gun` peer after listen. */
-export function seedPeerConnectOptions(origin: string): SeedPeerConnectOptions {
-  return {
-    peers: [sameOriginGunPeerUrl(origin)],
-  };
+export function seedPeerConnectOptions(
+  origin: string,
+  configured = process.env.NEXT_PUBLIC_SEED_PEER_URL,
+): SeedPeerConnectOptions {
+  if (!configured?.trim()) return { peers: [sameOriginGunPeerUrl(origin)] };
+  const peer = new URL(configured);
+  if (peer.protocol !== "https:" || peer.username || peer.password || peer.search || peer.hash) {
+    throw new Error("The external seed peer needs a public HTTPS endpoint without credentials.");
+  }
+  return { peers: [peer.href] };
 }
 
 /**

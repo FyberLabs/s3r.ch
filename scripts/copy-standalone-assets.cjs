@@ -25,3 +25,10 @@ copy(path.join(__dirname, "..", "identity-health.cjs"), path.join(standalone, "i
 copy(path.join(__dirname, "..", "identity-monitor.cjs"), path.join(standalone, "identity-monitor.cjs"));
 copy(path.join(__dirname, "..", "identity-probe-worker.cjs"), path.join(standalone, "identity-probe-worker.cjs"));
 console.log("[s3r.ch] standalone assets copied");
+
+// The same image can run the bootstrap peer without loading Next or identity.
+require("esbuild").buildSync({
+  entryPoints: [path.join(__dirname, "seed-peer.ts")],
+  outfile: path.join(standalone, "seed-peer.cjs"),
+  platform: "node", target: "node24", bundle: true, packages: "external",
+});

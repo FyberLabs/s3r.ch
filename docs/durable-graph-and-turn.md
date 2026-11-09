@@ -307,3 +307,15 @@ Checklist for live TURN:
 | Live TURN on App Service? | Three application settings. Bases and the API key Key Vault secret stay in FyberLabs/infra `terraform/s3rch`. `PANOPTICON_TENANT_ID` is written by this repo's Deploy from GitHub variable `S3RCH_PANOPTICON_TENANT_ID`. [Operator / infra habit](#operator--infra-habit-live-turn). | Leave empty → STUN + `/gun`. |
 
 Copy on `/feed` stays: STUN ≠ TURN; seed / snapshot if ICE fails; Network / Granted can be empty; not a finished P2P mesh.
+
+### Running the bootstrap peer separately
+
+The standalone image includes a dedicated Node entry point, `node seed-peer.cjs`.
+It serves Gun at `/gun`, the public JSON at `/feed-cache/snapshot.json`, the legacy
+feed read at `/api/feed`, and the bearer-authenticated seeder at `POST /api/seed`.
+Its health endpoint is `/api/health`. Set `SEED_SECRET` to enable seeding. Give this
+process its own writable Gun volume and configure the scheduled seed URL to target
+it. Keep exactly one seed writer per volume. Route the bootstrap paths to the
+peer at the edge when cutting over, preserving the origin of identity cookies. Set `GUN_EXTERNAL_PEER=1` on the web process
+after routing `/gun`, `/feed-cache/snapshot.json` and `/api/seed` to the peer. This disables
+the embedded Gun server and prevents a second seed writer. Health reports `external`.
