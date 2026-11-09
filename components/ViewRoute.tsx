@@ -123,7 +123,7 @@ function OwnedView({ id, owner, store, data }: { id: string; owner: string; stor
   }, [owner, store, show, id]);
 
   const view = loaded && !("missing" in loaded) ? loaded.view : null;
-  const live = useViewLiveData(view, owner, data === undefined && view !== null);
+  const live = useViewLiveData(view, owner, data === undefined && view !== null, picking);
   const shown = data ?? live;
   // Serialized so effects rerun only when the ids change; JSON keeps any id intact.
   const windowIds = view ? JSON.stringify(view.windows.map((w) => w.id)) : null;

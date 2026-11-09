@@ -143,7 +143,7 @@ function subscribeRoomChat(gun: FeedGun, ref: SourceRef, onRows: (rows: ViewRow[
   };
 }
 
-export function useViewLiveData(view: View | null, owner: string, enabled: boolean) {
+export function useViewLiveData(view: View | null, owner: string, enabled: boolean, picking: boolean) {
   const see = useSeeAcl();
   const peer = useGunPeer();
   const registerRef = useRef(peer?.register);
@@ -179,6 +179,9 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
   const publicRoomIds = useRef(new Set<string>());
 
   const sources = useMemo(() => (enabled ? sourcesOfView(view) : []), [enabled, view]);
+  const needsRooms = enabled && (picking || sources.some(ref => ref.kind === "chat"));
+  const needsForum = enabled && (picking || sources.some(ref => ref.kind === "forum"));
+  const needsFeed = enabled && (picking || sources.some(ref => ref.kind === "feed"));
   const sourceKey = sources.map((ref) => formatCanonical(ref)).join("\n");
   sourcesRef.current = sources;
 
@@ -248,7 +251,7 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
   }, [enabled]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!needsRooms) return;
     let cancelled = false;
     let offRooms: (() => void) | undefined;
 
@@ -298,13 +301,14 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
       cancelled = true;
       offRooms?.();
       publicRoomIds.current = new Set();
+      setRooms([]);
       gunRef.current = null;
       connection.release();
       registerRef.current?.(null);
       setGunReady(false);
       setPublicEpoch((n) => n + 1);
     };
-  }, [enabled]);
+  }, [needsRooms]);
 
   useEffect(() => {
     if (!enabled || !gunReady || !owner || !see?.ready) return;
@@ -362,8 +366,8 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
     }
     return true;
   }, [rememberItems]);
-  useVisibleRead(enabled, readForum, FORUM_POLL_MS);
-  useVisibleRead(enabled, readFeed, FEED_POLL_MS);
+  useVisibleRead(needsForum, readForum, FORUM_POLL_MS);
+  useVisibleRead(needsFeed, readFeed, FEED_POLL_MS);
 
   useEffect(() => {
     if (!enabled || !view) {
