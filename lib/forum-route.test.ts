@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { GET, POST } from "../app/api/forum/route";
 import { GET as sessionGET } from "../app/api/identity/session/route";
 import { oauthSessionCookieName, sessionCookieName } from "./identity/cookies";
-import { linkLoginPaths } from "./identity/link";
+import { linkLoginPaths, useLinkStore, unavailableLinkStore } from "./identity/link";
 import { signBackupSession } from "./identity/oauth";
 import { getIdentitySecret } from "./identity/secret";
 import { signSessionToken } from "./identity/session";
@@ -215,6 +215,27 @@ describe("forum route resolves a login, then honors invites", { concurrency: 1 }
         ).status,
         401,
       );
+
+      const oldEnv = process.env.NODE_ENV;
+      const oldSecret = process.env.IDENTITY_SESSION_SECRET;
+      try {
+        Object.assign(process.env, { NODE_ENV: "production", IDENTITY_SESSION_SECRET: secret });
+        useLinkStore(unavailableLinkStore);
+        for (const cookie of [bob, carol]) {
+          const unavailable = await GET(req(cookie));
+          assert.equal(unavailable.status, 503);
+          assert.equal(unavailable.headers.get("retry-after"), "60");
+        }
+        assert.equal((await GET(req())).status, 401);
+      } finally {
+        useLinkStore(null);
+        if (oldEnv === undefined) Reflect.deleteProperty(process.env, "NODE_ENV");
+        else Object.assign(process.env, { NODE_ENV: oldEnv });
+        if (oldSecret === undefined) delete process.env.IDENTITY_SESSION_SECRET;
+        else process.env.IDENTITY_SESSION_SECRET = oldSecret;
+      }
+      assert.equal((await GET(req(bob))).status, 200);
+      assert.equal((await GET(req(carol))).status, 200);
 
       const sessionRoute = readFileSync(
         fileURLToPath(new URL("../app/api/identity/session/route.ts", import.meta.url)),

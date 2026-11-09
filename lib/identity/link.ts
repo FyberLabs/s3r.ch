@@ -236,6 +236,7 @@ export type Links = {
   link(input: { wallet: string; sub: string; idp: LinkIdp | null }): { owner: string } | LinkDenied;
   ownerForWallet(wallet: string): string | null;
   ownerForOAuth(sub: string): string | null;
+  ownerForOAuthResult(sub: string): string | null | LinkDenied;
   ageStatusForWallet(wallet: string, oauthSub?: string | null): AgeStatus;
   ageStatusForOAuth(sub: string, wallet?: string | null): AgeStatus;
   saveWalletAge(
@@ -382,11 +383,11 @@ export function openLinks(store: LinkStore): Links {
     return personForWallet(opened.file, address)?.owner ?? address;
   }
 
-  function ownerForOAuth(sub: string): string | null {
+  function ownerForOAuthResult(sub: string): string | null | LinkDenied {
     const cleaned = cleanSub(sub);
     if (!cleaned) return null;
     const opened = load();
-    if ("denied" in opened) return null;
+    if ("denied" in opened) return opened;
     return personForSub(opened.file, cleaned)?.owner ?? null;
   }
 
@@ -479,7 +480,11 @@ export function openLinks(store: LinkStore): Links {
   return {
     link,
     ownerForWallet,
-    ownerForOAuth,
+    ownerForOAuthResult,
+    ownerForOAuth(sub) {
+      const result = ownerForOAuthResult(sub);
+      return typeof result === "string" ? result : null;
+    },
     ageStatusForWallet,
     ageStatusForOAuth,
     saveWalletAge,
@@ -570,13 +575,18 @@ export function ownerForWallet(wallet: string): string | null {
   }
 }
 
-export function ownerForOAuth(sub: string): string | null {
+export function ownerForOAuthResult(sub: string): string | null | LinkDenied {
   try {
-    return getLinks().ownerForOAuth(sub);
+    return getLinks().ownerForOAuthResult(sub);
   } catch (error) {
     if (process.env.NODE_ENV !== "production") throw error;
-    return null;
+    return { denied: true, reason: "store-unreadable" };
   }
+}
+
+export function ownerForOAuth(sub: string): string | null {
+  const result = ownerForOAuthResult(sub);
+  return typeof result === "string" ? result : null;
 }
 
 export function parseLinkFile(value: unknown): ReturnType<LinkStore["load"]> {
