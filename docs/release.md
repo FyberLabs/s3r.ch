@@ -1,6 +1,6 @@
 # Test and production releases
 
-Every merge to `master` (this repository's default branch) builds one linux/amd64 image, anonymously pulls and smoke-tests its digest, and deploys it to **https://test.s3r.ch**. The job verifies the baked commit at `/api/version` and durable identity/Gun health before publishing the `test-<full SHA>` prerelease and `:test` package alias.
+Every merge to `master` (this repository's default branch) builds one linux/amd64 image, anonymously pulls and smoke-tests its digest, and advances the public `:test` channel. The web app and Gun peer restart on that channel. The job checks each running revision and its own dependencies before publishing the `test-<full SHA>` prerelease. A failed rollout restores the previous channel image.
 
 The successful test job signs its deployment manifest with GitHub artifact attestation. Promotion and infra verify that signature against the exact source, workflow and successful run before accepting the image digest. Evidence persists independently of expiring CI artifacts.
 

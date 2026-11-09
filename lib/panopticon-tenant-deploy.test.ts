@@ -85,8 +85,9 @@ describe("merge deployment is isolated from production tenant settings", () => {
   const deploy = readFileSync(new URL("../scripts/deploy-test.sh", import.meta.url), "utf8");
   it("targets only test and never writes production marketplace credentials", () => {
     assert.match(workflow, /environment: test/);
-    assert.match(deploy, /app=s3rch-fyberlabs-test/);
-    assert.doesNotMatch(deploy, /appsettings set|PANOPTICON_TENANT_ID|app=s3rch-fyberlabs-prod/);
+    assert.match(deploy, /web=s3rch-fyberlabs-test/);
+    assert.match(deploy, /peer=s3rch-fyberlabs-peer-test/);
+    assert.doesNotMatch(deploy, /appsettings set|PANOPTICON_TENANT_ID|(?:app|web|peer)=s3rch-fyberlabs-prod/);
     assert.doesNotMatch(workflow, /environment: prod|S3RCH_PANOPTICON_TENANT_ID/);
   });
 });
