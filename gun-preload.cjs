@@ -29,6 +29,9 @@ fs.mkdirSync(gunFile, { recursive: true });
 const origListen = http.Server.prototype.listen;
 http.Server.prototype.listen = function patchedListen(...args) {
   if (!globalThis.__s3rchGun) {
+    const root = process.cwd();
+    require("./public-feed-cache.cjs").restorePublicFeed(root,
+      process.env.GUN_SNAPSHOT || path.join(root, "data", "snapshot.json"));
     const Gun = require("gun");
     const factory = typeof Gun === "function" ? Gun : Gun.default;
     globalThis.__s3rchGun = factory({

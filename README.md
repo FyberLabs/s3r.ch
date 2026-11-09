@@ -23,9 +23,9 @@ Open the app at [https://s3r.ch](https://s3r.ch). Feature pages are under `/feat
 
 ## How GunDB fits
 
-Gun is the graph. The site runs a seed peer on the same server, at `/gun`. Radisk (`GUN_FILE`, `/app/data/radata` in the image) and a JSON snapshot (`GUN_SNAPSHOT`) are the bootstrap, so the feed can already have posts. Your browser connects to that seed and, when it can, to other browsers over WebRTC.
+Gun is the graph. The site runs a seed peer on the same server, at `/gun`. Radisk (`GUN_FILE`, `/app/data/radata` in the image) and a JSON snapshot (`GUN_SNAPSHOT`) are the bootstrap, so the feed can already have posts. Public reads a cacheable JSON file at `/feed-cache/snapshot.json`. Opening Network starts a connection to the seed and, when possible, to other browsers over WebRTC.
 
-ICE starts on public STUN (`stun:stun.l.google.com:19302`). TURN is a relay you configure: a signed-in session can pick up short-lived servers from `POST /api/turn/allocate`. If the socket is down, Public still loads from `GET /api/feed`. Network and Granted show rows as the seed or WebRTC delivers them.
+ICE starts on public STUN (`stun:stun.l.google.com:19302`). TURN is a relay you configure: a signed-in session can pick up short-lived servers from `POST /api/turn/allocate`. The seeder refreshes the public file, and startup restores it from `GUN_SNAPSHOT`. Browsers and shared caches can reuse it for 60 seconds. Network and Granted show rows as the seed or WebRTC delivers them.
 
 Paths:
 

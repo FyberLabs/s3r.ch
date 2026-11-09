@@ -55,6 +55,10 @@ export function PostSeeGrantControls({
   }
 
   async function onGrant() {
+    if (peer && !peer.gun) {
+      setMessage("Connect to peers before changing a grant.");
+      return;
+    }
     setMessage(null);
     if (!see?.acl) {
       setMessage("Could not grant see.");
@@ -108,6 +112,10 @@ export function PostSeeGrantControls({
 
   async function onRevoke(grant: IdentitySeeGrant) {
     if (!see?.acl) return;
+    if (peer && !peer.gun) {
+      setMessage("Connect to peers before changing a grant.");
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
