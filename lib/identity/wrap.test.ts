@@ -39,19 +39,20 @@ describe("PRF wrap crypto", () => {
 
   it("resolves per-origin rp.id and rejects a parent / lookalike host", () => {
     assert.equal(resolveRpId("s3r.ch"), "s3r.ch");
+    assert.equal(resolveRpId("test.s3r.ch"), "test.s3r.ch");
     assert.equal(resolveRpId("localhost:3000"), "localhost");
     assert.equal(resolveRpId("127.0.0.1"), "127.0.0.1");
     assert.throws(() => resolveRpId("evil.s3r.ch"), /rp\.id is not allowed/);
     assert.throws(() => resolveRpId("s3r.ch.evil.com"), /rp\.id is not allowed/);
   });
 
-  it("wraps and unwraps a SEA pair with synthetic PRF + secondary bytes", async () => {
+  it("wraps and unwraps a test-site SEA pair with synthetic PRF + secondary bytes", async () => {
     const prfOutput = randomBytes(32);
     const secondaryKey = randomBytes(32);
     const envelope = await wrapSeaPair({
       pair: fixturePair(),
       address: ADDRESS.toLowerCase(),
-      rpId: "localhost",
+      rpId: "test.s3r.ch",
       credentialId: randomBytes(16),
       prfSalt: randomBytes(32),
       prfOutput,

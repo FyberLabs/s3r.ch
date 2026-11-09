@@ -21,7 +21,7 @@ import { hostnameOf } from "./siwe";
 
 export type WrapKekKind = "prf" | "secondary";
 
-export type SeaWrapRpId = "s3r.ch" | "localhost" | "127.0.0.1";
+export type SeaWrapRpId = "s3r.ch" | "test.s3r.ch" | "localhost" | "127.0.0.1";
 
 export type SeaWrapSecondaryKind = "wallet" | "paper";
 
@@ -46,7 +46,7 @@ const IV_BYTES = 12;
 const MIN_IKM_BYTES = 16;
 const MIN_SALT_BYTES = 16;
 const HKDF_INFO_BYTES = new TextEncoder().encode(SEA_WRAP_HKDF_INFO);
-const ALLOWED_RP_IDS = new Set<SeaWrapRpId>(["s3r.ch", "localhost", "127.0.0.1"]);
+const ALLOWED_RP_IDS = new Set<SeaWrapRpId>(["s3r.ch", "test.s3r.ch", "localhost", "127.0.0.1"]);
 
 export type PrfWrapEnvelope = {
   version: 1;
@@ -104,6 +104,7 @@ export type UnwrapSeaPairInput = {
 export function resolveRpId(host: string): SeaWrapRpId {
   const hostname = hostnameOf(host);
   if (hostname === "s3r.ch") return "s3r.ch";
+  if (hostname === "test.s3r.ch") return "test.s3r.ch";
   if (hostname === "localhost") return "localhost";
   if (hostname === "127.0.0.1") return "127.0.0.1";
   throw new Error("WebAuthn rp.id is not allowed for this host.");
@@ -380,7 +381,7 @@ function checksumAddress(address: string): string {
 }
 
 function isSeaWrapRpId(value: unknown): value is SeaWrapRpId {
-  return value === "s3r.ch" || value === "localhost" || value === "127.0.0.1";
+  return value === "s3r.ch" || value === "test.s3r.ch" || value === "localhost" || value === "127.0.0.1";
 }
 
 function isSecondaryKind(value: unknown): value is SeaWrapSecondaryKind {

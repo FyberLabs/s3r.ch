@@ -17,7 +17,8 @@ describe("forum bot token", () => {
       LOCAL_SESSION_SECRET,
       now,
     );
-    assert.equal(token.includes("hm_"), false);
+    // Base64url signature bytes may contain hm_; API keys use it as a prefix.
+    assert.equal(token.startsWith("hm_"), false);
     const claims = await readForumBotToken(token, LOCAL_SESSION_SECRET);
     assert.equal(claims.owner, ALICE);
     assert.equal(claims.exp - claims.iat, SESSION_TTL_SECONDS);

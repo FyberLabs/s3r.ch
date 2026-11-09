@@ -83,7 +83,7 @@ The published image leaves WalletConnect out. Injected wallets and the passkey w
 
 ### Fyber App Service
 
-A push to `master` builds this repo and deploys it to Azure App Service. To deploy a published release instead, run Deploy with `image_digest` set to the `sha256:…` value from the GitHub Release. Leave `image_digest` empty to build the selected ref. See [docs/release.md](docs/release.md).
+A merge to `master` builds and deploys the test channel to https://test.s3r.ch. A stable tag promotes that tested digest; infra automatically deploys it to https://s3r.ch. See [docs/release.md](docs/release.md).
 
 ## Install
 
@@ -165,8 +165,8 @@ Deploy (`.github/workflows/deploy.yml`) and the seed workflow use these settings
 | `ACR_LOGIN_SERVER` | yes | Registry host used to push the image and point App Service at it. Set in the Deploy workflow env. |
 | `SEED_URL` | no | GitHub variable for `.github/workflows/seed.yml`. Unset posts to the prod `/api/seed` URL. |
 | `NEXT_PUBLIC_WC_PROJECT_ID` | no | GitHub variable passed as a Docker build-arg. Empty leaves WalletConnect off. |
-| `S3RCH_PANOPTICON_TENANT_ID` | yes | The Panopticon marketplace tenant id the app uses, set as `PANOPTICON_TENANT_ID` on the App Service; it is an identifier, not a secret. |
+| `S3RCH_PANOPTICON_TENANT_ID` | bootstrap only | The Panopticon marketplace tenant id the app uses, set as `PANOPTICON_TENANT_ID` on the App Service; it is an identifier, not a secret. |
 
-`S3RCH_PANOPTICON_TENANT_ID` is required for the prod Deploy. Create it as a repository variable or a `prod` environment variable. Do not commit the value. Deploy checks it before checkout and image push. An unset or non-UUID value fails the job and does not clear the live App Service setting. The running app still treats a missing `PANOPTICON_TENANT_ID` as unconfigured.
+Production tenant settings are provisioned separately and preserved during release promotion. The test deploy uses the infra-managed `S3RCH_TEST_DEPLOY_CLIENT_ID` environment variable and separate test app credentials.
 
 Runtime settings are in [docs/configuration.md](docs/configuration.md). Core without Panopticon is [docs/install-minimal.md](docs/install-minimal.md). Optional Panopticon login and hops are [docs/install-panopticon.md](docs/install-panopticon.md).
