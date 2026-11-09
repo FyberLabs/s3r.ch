@@ -42,6 +42,18 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 describe("readOraclesAttestEnv", () => {
+  it("uses a complete dedicated tenant/key pair and refuses a partial override", () => {
+    const dedicated = {
+      ...ATTEST_HOP_ENV,
+      PANOPTICON_ORACLES_TENANT_ID: "oracles-tenant",
+      PANOPTICON_ORACLES_API_KEY: "fixture.oracles",
+    };
+    assert.equal(readOraclesAttestEnv(dedicated)?.apiKey, "fixture.oracles");
+    assert.equal(readOraclesAttestEnv(dedicated)?.tenantId, "oracles-tenant");
+    assert.equal(readOraclesAttestEnv({...dedicated, PANOPTICON_ORACLES_API_KEY: undefined}), null);
+    assert.equal(readOraclesAttestEnv({...dedicated, PANOPTICON_ORACLES_TENANT_ID: ""}), null);
+  });
+
   it("is null when any of the three server env names is empty", () => {
     assert.equal(readOraclesAttestEnv({}), null);
     assert.equal(
