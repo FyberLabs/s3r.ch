@@ -12,6 +12,7 @@ const nextConfig = {
     // (next build: Failed to collect /api/outbound).
     "@faker-js/faker",
     "@farcaster/core",
+    "undici",
     "@azure/identity",
     "@azure/storage-blob",
     // gun-preload.cjs loads identity-link-schema.cjs, which require()s viem

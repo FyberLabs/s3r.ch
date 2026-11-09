@@ -335,3 +335,20 @@ Stop writers first so the copy is a single version of each file.
 **Gun.** Copy the `GUN_FILE` directory and the `GUN_SNAPSHOT` file. Restore both into the same paths, then start one process. That restores the radisk and the seeder snapshot that were on disk. Shared mesh state that never reached this peer is not in the copy. `POST /api/seed` fills seeder public items again; it does not restore account links or browser SEA keys.
 
 Redeploying the image without these copies drops radisk and the snapshot on ephemeral disk. The identity blob survives a new container when the two blob settings still point at it.
+
+## Public feed transport
+
+Server-side seed and ingestion requests use a 15-second budget shared by DNS,
+connections and redirects. Each socket resolves through the public-address guard;
+validated answers are supplied directly to the connection, preserving the original
+HTTP Host and TLS certificate name. Resolver errors and mixed public/private DNS
+answers fail without an unchecked retry. Redirects are manual and revalidated.
+
+Browser-shared feed parsers and relay helpers do not import the Node transport.
+Direct public-feed fetching through this helper requires the server. The standalone
+image includes the pinned Undici dependency used for its per-request dispatcher.
+
+Additional address-policy coverage and bounded JSON decoding remain tracked in
+[#240](https://github.com/FyberLabs/s3r.ch/issues/240) and
+[#241](https://github.com/FyberLabs/s3r.ch/issues/241); the transport deadline does
+not establish a response-size limit.
