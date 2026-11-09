@@ -71,21 +71,7 @@ import { TagChips } from "@/components/TagChips";
 import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { objectOwner, useIdentitySessionState } from "@/components/useIdentitySession";
-import {
-  browserGunOptions,
-  listenThenConnectSeedPeer,
-  type SeedPeerEmitter,
-} from "@/lib/gun-peer";
-import {
-  attachGunWebrtcLib,
-  stunOnlyRtcOptions,
-} from "@/lib/gun-webrtc";
-import {
-  applyRtcIceServers,
-  fetchTurnAllocate,
-  startTurnIceRefresh,
-  type IceRefreshHandle,
-} from "@/lib/turn-ice";
+import { acquireBrowserGun } from "@/lib/browser-gun";
 import {
   btnSecondary,
   btnTabOff,
@@ -95,17 +81,6 @@ import {
 } from "@/lib/brand-ui";
 
 const IdentityBar = dynamic(() => import("./IdentityBar").then(module => module.IdentityBar));
-
-type GunRef = SeedPeerEmitter & {
-  _?: { opt?: { peers?: Record<string, {
-    defer?: ReturnType<typeof setTimeout>;
-    wire?: { close: () => void };
-    close?: () => void;
-  }> } };
-  get: (key: string) => GunRef;
-  put: (data: unknown) => GunRef;
-  map: () => { on: (cb: (data: unknown, key: string) => void) => { off?: () => void } };
-};
 
 function readDiscoverTagQuery(): string[] {
   if (typeof window === "undefined") return [];
@@ -138,8 +113,7 @@ export function FeedStream() {
   const see = useSeeAcl();
   const gunPeer = useGunPeer();
   const registerGun = gunPeer?.register;
-  const gunRef = useRef<GunRef | null>(null);
-  const iceRefreshRef = useRef<IceRefreshHandle | null>(null);
+  const gunRef = useRef<FeedGun | null>(null);
   const seeRef = useRef(see);
   seeRef.current = see;
   const sessionRef = useRef(session);
@@ -217,30 +191,14 @@ export function FeedStream() {
     let offRooms: (() => void) | undefined;
     let offUsers: (() => void) | undefined;
 
-    (async () => {
-      const GunMod = await import("gun/browser");
-      const Gun = (GunMod.default ?? GunMod) as unknown as (opts?: object) => GunRef;
-      // gun/lib/webrtc hooks Gun.on('opt') and must load before construct.
-      // STUN by default. Signed-in allocate may add short-lived TURN
-      // iceServers onto the same rtc object. If RTC is missing, allocate
-      // fails, or ICE fails, seed / snapshot stay. Listen for mesh hi/bye
-      // on gun._.on, then opt the same-origin /gun peer. Constructing
-      // with peers can fire hi before the listener. No user.recall.
-      // See docs/ARCHITECTURE.md.
+    const connection = acquireBrowserGun(window.location.origin, session?.address);
+    void connection.ready.then(gun => {
       if (cancelled) return;
-      const rtc = stunOnlyRtcOptions();
-      const allocation = session?.address ? await fetchTurnAllocate() : null;
-      if (cancelled) return;
-      if (allocation) applyRtcIceServers(rtc, allocation.iceServers);
-      await attachGunWebrtcLib(Gun);
-      if (cancelled) return;
-      iceRefreshRef.current = startTurnIceRefresh({ rtc, expiresAt: allocation?.expiresAt ?? null });
-      const gun = Gun(browserGunOptions(undefined, rtc));
       gunRef.current = gun;
       setGunReady(true);
-      listenThenConnectSeedPeer(gun, window.location.origin, (up) => {
+      connection.onStatus(up => {
         if (cancelled) return;
-        registerGunRef.current?.(up ? gun as unknown as FeedGun : null);
+        registerGunRef.current?.(up ? gun : null);
         seedWsUpRef.current = up;
         setSeedWsUp(up);
       });
@@ -323,22 +281,14 @@ export function FeedStream() {
           ? () => usersListener.off?.()
           : undefined;
 
-    })();
+    }, () => { if (!cancelled) setGunReady(false); });
 
     return () => {
       cancelled = true;
-      iceRefreshRef.current?.stop();
-      iceRefreshRef.current = null;
       off?.();
       offRooms?.();
       offUsers?.();
-      const peers = gunRef.current?._?.opt?.peers;
-      for (const [key, peer] of Object.entries(peers ?? {})) {
-        if (peers) delete peers[key];
-        clearTimeout(peer.defer);
-        peer.wire?.close();
-        peer.close?.();
-      }
+      connection.release();
       registerGunRef.current?.(null);
       gunRef.current = null;
       setGunReady(false);
