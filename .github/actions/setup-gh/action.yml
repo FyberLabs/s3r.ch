@@ -1,0 +1,24 @@
+name: Setup GitHub CLI
+description: Install a pinned, verified CLI for config synchronization tests without sudo.
+runs:
+  using: composite
+  steps:
+    - name: Install verified GitHub CLI
+      shell: bash
+      run: |
+        set -euo pipefail
+        [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]] || {
+          echo "GitHub CLI fixture setup requires Linux x64" >&2
+          exit 1
+        }
+        cli_root="$RUNNER_TEMP/gh-cli-2.96.0"
+        mkdir -p "$cli_root"
+        curl --fail --silent --show-error --location --retry 3 --connect-timeout 15 --max-time 120 \
+          https://github.com/cli/cli/releases/download/v2.96.0/gh_2.96.0_linux_amd64.tar.gz \
+          --output "$cli_root/archive.tar.gz"
+        printf '%s  %s\n' \
+          83d5c2ccad5498f58bf6368acb1ab32588cf43ab3a4b1c301bf36328b1c8bd60 \
+          "$cli_root/archive.tar.gz" | sha256sum --check --status
+        tar -xzf "$cli_root/archive.tar.gz" -C "$cli_root" --strip-components=1 gh_2.96.0_linux_amd64/bin/gh
+        echo "$cli_root/bin" >> "$GITHUB_PATH"
+        "$cli_root/bin/gh" --version

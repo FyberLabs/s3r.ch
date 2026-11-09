@@ -85,7 +85,7 @@ describe("identity blob configuration", () => {
   });
 
   it("the deploy pre-check requires the blob settings and not a home mount", () => {
-    const workflow = readFileSync(new URL("../../.github/workflows/deploy.yml", import.meta.url), "utf8");
+    const workflow = readFileSync(new URL("../../scripts/deploy-test.sh", import.meta.url), "utf8");
     assert.equal(workflow.includes("WEBSITES_ENABLE_APP_SERVICE_STORAGE"), false);
     assert.equal(workflow.includes("S3RCH_IDENTITY_STORAGE_ROOT"), false);
     assert.match(workflow, /S3RCH_IDENTITY_BLOB_ACCOUNT/);
