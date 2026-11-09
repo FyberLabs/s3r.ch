@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { deskPanels, type DeskPanel, type DeskRead } from "@/lib/forum-desktop";
+
+import { useVisibleRead } from "./useVisibleRead";
 
 const POLL_MS = 4000;
 
@@ -9,32 +11,23 @@ export function ForumDesk() {
   const [panels, setPanels] = useState<DeskPanel[] | null>(null);
   const [signedOut, setSignedOut] = useState(false);
 
-  useEffect(() => {
-    let stopped = false;
-    async function load() {
-      try {
-        const response = await fetch("/api/forum", { cache: "no-store" });
-        if (stopped) return;
-        if (response.status === 401) {
-          setSignedOut(true);
-          setPanels([]);
-          return;
-        }
-        if (!response.ok) return;
-        const body = (await response.json()) as DeskRead;
-        setSignedOut(false);
-        setPanels(deskPanels(body));
-      } catch {
-        if (!stopped) setPanels((current) => current);
-      }
+  const read = useCallback(async (signal: AbortSignal) => {
+    const response = await fetch("/api/forum", { cache: "no-store", signal });
+    if (signal.aborted) return false;
+    if (response.status === 401 || response.status === 403) {
+      setSignedOut(true);
+      setPanels([]);
+      return false;
     }
-    void load();
-    const timer = setInterval(() => void load(), POLL_MS);
-    return () => {
-      stopped = true;
-      clearInterval(timer);
-    };
+    if (response.ok) {
+      const body: DeskRead = await response.json();
+      if (signal.aborted) return false;
+      setSignedOut(false);
+      setPanels(deskPanels(body));
+    }
+    return true;
   }, []);
+  useVisibleRead(true, read, POLL_MS);
 
   if (signedOut) {
     return <p className="mt-6 text-sm text-ink-muted">Sign in to see a forum channel.</p>;

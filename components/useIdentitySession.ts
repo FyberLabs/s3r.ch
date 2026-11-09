@@ -35,6 +35,7 @@ async function refresh({ signal }: { signal: AbortSignal }) {
 function invalidate() {
   void client.cancelQueries({ queryKey: key });
   client.setQueryData(key, null);
+  window.dispatchEvent(new Event(changeKey));
   void client.invalidateQueries({ queryKey: key });
 }
 
