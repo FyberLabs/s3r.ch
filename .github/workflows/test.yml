@@ -95,6 +95,7 @@ jobs:
           tags: s3rch:ci
           build-args: |
             VERSION=ci
+            SOURCE_REVISION=${{ github.sha }}
 
       - name: Boot image without Panopticon
         run: bash scripts/smoke-image.sh s3rch:ci

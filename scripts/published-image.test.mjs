@@ -17,13 +17,22 @@ function run(mode = "ok", override = {}) {
       if (fs.readdirSync(args[1]).length !== 0) process.exit(8);
       process.exit(mode === "pull-fails" ? 1 : 0);
     }
-    if (args[0] === "image") console.log("nextjs");
+    if (args[0] === "image") {
+      if (args.includes("{{.Config.User}}")) console.log("nextjs");
+      else if (args.some(arg => arg.includes("org.opencontainers.image.revision"))) console.log("a".repeat(40));
+      else process.exit(1);
+    }
     if (args[0] === "run" && args.includes("id")) console.log("1001");
     if (args[0] === "run" && args.includes("node") && mode === "package-missing") process.exit(1);
     if (args[0] === "run" && args.includes("-d")) console.log("container-id");
     if (args[0] === "inspect") console.log(mode === "boot-fails" ? "false" : "true");
   `);
-  executable("curl", 'console.log(JSON.stringify({status:"ok",dependencies:{panopticon:{status:"not-configured"},gun:{status:"ok"}}}));');
+  executable("curl", `
+    const path = new URL(process.argv.at(-1)).pathname;
+    if (path === "/api/health") console.log(JSON.stringify({status:"ok",dependencies:{panopticon:{status:"not-configured"},gun:{status:"ok"}}}));
+    else if (path === "/api/version") console.log(JSON.stringify({revision:(process.env.TEST_MODE === "wrong-revision" ? "b" : "a").repeat(40)}));
+    else process.exit(1);
+  `);
   executable("sleep", "");
   try {
     const result = spawnSync("bash", [resolve("scripts/require-anonymous-pull.sh")], {
@@ -48,7 +57,7 @@ test("pulls and boots the immutable published digest, never the local rebuild or
   assert.ok(!r.calls.flat().includes("s3rch:release"));
   assert.ok(!r.calls.flat().includes(`${image}:0.1.0`));
 });
-for (const mode of ["pull-fails", "package-missing", "boot-fails"]) test(`published artifact gate fails closed when ${mode}`, () => {
+for (const mode of ["pull-fails", "package-missing", "boot-fails", "wrong-revision"]) test(`published artifact gate fails closed when ${mode}`, () => {
   const r = run(mode); assert.notEqual(r.status, 0);
   if (mode === "pull-fails") {
     assert.equal(r.calls.filter(args => args[0] === "--config").length, 5);
