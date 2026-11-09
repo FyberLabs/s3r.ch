@@ -25,6 +25,10 @@ const nextConfig = {
   experimental: {
     useTypeScriptCli: true,
   },
+  async rewrites() {
+    // Filesystem routes, including the development picker preview, take priority.
+    return [{ source: "/views/:id", destination: "/saved-view" }];
+  },
   async redirects() {
     return [
       { source: "/design", destination: "/", permanent: false },
