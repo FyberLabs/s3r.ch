@@ -13,6 +13,12 @@ Signed-in browsers still use same-origin `POST /api/ingest` as a CORS proxy. Dir
 - No secrets on Gun or `NEXT_PUBLIC_*`.
 - Do not turn off CORS on source hosts. This path exists because CORS is still there.
 
+## Server feed response limits
+
+The server accepts up to 1,000,000 decoded bytes per ActivityPub, ATProto, Farcaster, RSS3 or RSS/Atom response, including custom RSS URLs and the Farcaster and RSS3 claim lookups. The JSON feeds request small pages and share the existing RSS budget. The reader counts bytes after HTTP decompression regardless of Content-Length. An oversized or failed upstream response is discarded before feed parsing.
+
+Each server module instance admits up to 20 concurrent HTTP feed pulls. The configured seed can start 18 at once. Additional pulls fail immediately through the existing source error path. Nostr uses a separate WebSocket transport.
+
 ## Channel
 
 `channel: "s3rch-pull"`, `v: 1`. Unknown `v` / channel / `via` is ignored or denied.

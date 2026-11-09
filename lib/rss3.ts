@@ -11,7 +11,7 @@
  * Account overlay: GET /decentralized/{account}
  */
 
-import { fetchPublic, PUBLIC_USER_AGENT } from "./public-fetch";
+import { fetchPublicJson, PUBLIC_USER_AGENT } from "./public-fetch";
 
 export const GI_BASE = process.env.RSS3_GI_BASE ?? "https://gi.rss3.io";
 export const GI_USER_AGENT = PUBLIC_USER_AGENT;
@@ -115,13 +115,7 @@ async function fetchActivities(path: string, tag: string): Promise<RawActivity[]
   url.searchParams.set("action_limit", "10");
   if (tag) url.searchParams.set("tag", tag);
 
-  const response = await fetchPublic(url);
-
-  if (!response.ok) {
-    throw new Error(`${path} HTTP ${response.status}`);
-  }
-
-  const body: unknown = await response.json();
+  const body = await fetchPublicJson(url, { httpLabel: path });
   const data =
     body &&
     typeof body === "object" &&

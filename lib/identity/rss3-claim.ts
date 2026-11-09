@@ -17,7 +17,7 @@
  */
 
 import { getAddress, type Address } from "viem";
-import { fetchPublic } from "../public-fetch";
+import { fetchPublicJson } from "../public-fetch";
 import { GI_BASE } from "../rss3";
 
 export type Rss3HeldClaim = {
@@ -47,11 +47,7 @@ export function createRss3GiClient(giBase: string = GI_BASE): Rss3GiClient {
       const url = new URL(`/decentralized/${encodeURIComponent(account)}`, giBase);
       url.searchParams.set("limit", String(OVERLAY_LIMIT));
       url.searchParams.set("action_limit", "1");
-      const response = await fetchPublic(url);
-      if (!response.ok) {
-        throw new Error(`rss3 gi HTTP ${response.status}`);
-      }
-      const body: unknown = await response.json();
+      const body = await fetchPublicJson(url, { httpLabel: "rss3 gi" });
       if (!isRecord(body) || !Array.isArray(body.data)) {
         throw new Error("rss3 gi unexpected payload");
       }

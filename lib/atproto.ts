@@ -6,7 +6,7 @@
 import type { FeedItem, SourcePull } from "./feed-types";
 import { normalizeTags } from "./feed-types";
 import { canonicalKey } from "./merge";
-import { fetchPublic } from "./public-fetch";
+import { fetchPublicJson } from "./public-fetch";
 import { asString, isRecord } from "./rss3";
 
 export const ATPROTO_APPVIEW_BASE =
@@ -169,11 +169,7 @@ export async function fetchPublicAtproto(): Promise<SourcePull> {
 
 async function pullSource(source: AtprotoSource): Promise<FeedItem[]> {
   const url = sourceUrl(source);
-  const response = await fetchPublic(url);
-  if (!response.ok) {
-    throw new Error(`${url} HTTP ${response.status}`);
-  }
-  const body: unknown = await response.json();
+  const body = await fetchPublicJson(url);
   if (!isRecord(body) || !Array.isArray(body.feed)) {
     throw new Error(`${url} unexpected payload`);
   }

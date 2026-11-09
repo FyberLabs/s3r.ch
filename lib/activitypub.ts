@@ -11,7 +11,7 @@
 import type { FeedItem, SourcePull } from "./feed-types";
 import { normalizeTags } from "./feed-types";
 import { canonicalKey } from "./merge";
-import { fetchPublic } from "./public-fetch";
+import { fetchPublicJson } from "./public-fetch";
 import { asString, isRecord } from "./rss3";
 import { assertPublicHttpUrl } from "./url-guard";
 
@@ -176,11 +176,7 @@ async function pullActor(actorUrl: string): Promise<FeedItem[]> {
 
 async function fetchActivityJson(rawUrl: string): Promise<Record<string, unknown>> {
   const url = assertPublicHttpUrl(rawUrl);
-  const response = await fetchPublic(url, { accept: ACTIVITYPUB_ACCEPT });
-  if (!response.ok) {
-    throw new Error(`${url} HTTP ${response.status}`);
-  }
-  const body: unknown = await response.json();
+  const body = await fetchPublicJson(url, { accept: ACTIVITYPUB_ACCEPT });
   if (!isRecord(body)) {
     throw new Error(`${url} unexpected payload`);
   }
