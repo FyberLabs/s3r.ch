@@ -177,6 +177,7 @@ export function FeedStream() {
   const [gunReady, setGunReady] = useState(false);
   const [seedWsUp, setSeedWsUp] = useState(false);
   const seedWsUpRef = useRef(false);
+  const pendingSnapshotChanges = useRef<Set<string> | null>(null);
   const heardItemsRef = useRef<FeedItem[]>([]);
   const heardRoomsRef = useRef<Room[]>([]);
 
@@ -186,6 +187,8 @@ export function FeedStream() {
   useEffect(() => {
     if (new URLSearchParams(location.search).has("oauth")) setAccountOpen(true);
     const controller = new AbortController();
+    const changes = new Set<string>();
+    pendingSnapshotChanges.current = changes;
     async function load() {
       try {
         const response = await fetch("/feed-cache/snapshot.json", { signal: controller.signal });
@@ -193,10 +196,14 @@ export function FeedStream() {
         const snapshot: FeedSnapshot = await response.json();
         if (!Array.isArray(snapshot.items)) throw new Error("Invalid snapshot");
         const rows = snapshot.items.map(item => fromGunNode(item)).filter(item => item !== null);
-        setSeed(prev => mergeItems(rows, prev));
+        if (controller.signal.aborted) return;
+        const untouched = rows.filter(item => !changes.has(item.id) && !changes.has(encodeKey(item.id)));
+        setSeed(prev => mergeItems(prev, untouched));
         setSnapshotError(snapshot.error);
       } catch {
         if (!controller.signal.aborted) setSnapshotError("Could not load the public feed.");
+      } finally {
+        if (pendingSnapshotChanges.current === changes) pendingSnapshotChanges.current = null;
       }
     }
     void load();
@@ -237,6 +244,8 @@ export function FeedStream() {
         if (cancelled) return;
         const unsharedId = readUnshareId(data, key);
         if (unsharedId) {
+          pendingSnapshotChanges.current?.add(unsharedId);
+          pendingSnapshotChanges.current?.add(key);
           setSeed((prev) => dropFeedItems(prev, unsharedId));
           heardItemsRef.current = dropFeedItems(heardItemsRef.current, unsharedId);
           if (acceptLiveMeshWrite(seedWsUpRef.current)) {
@@ -251,8 +260,9 @@ export function FeedStream() {
           data as Parameters<typeof fromGunNode>[0],
         );
         if (!item) return;
-        setSeed((prev) => mergeItems(prev, [item]));
-        heardItemsRef.current = mergeItems(heardItemsRef.current, [item]);
+        pendingSnapshotChanges.current?.add(item.id);
+        setSeed((prev) => mergeItems([item], dropFeedItems(prev, item.id)));
+        heardItemsRef.current = mergeItems([item], dropFeedItems(heardItemsRef.current, item.id));
         if (acceptLiveMeshWrite(seedWsUpRef.current)) {
           setMeshItems(heardItemsRef.current);
         }
@@ -682,6 +692,7 @@ export function FeedStream() {
     }
     gun.get("s3rch").get("items").get(prepared.key).put(prepared.tombstone);
     setSharedIds((prev) => prev.filter((id) => id !== item.id));
+    pendingSnapshotChanges.current?.add(item.id);
     setSeed((prev) => dropFeedItems(prev, item.id));
     heardItemsRef.current = dropFeedItems(heardItemsRef.current, item.id);
     setMeshItems(heardItemsRef.current);
