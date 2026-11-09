@@ -120,7 +120,7 @@ async function main() {
     const m = validateManifest({ schema: 1, repository, channel: 'test', tag, revision, image, digest,
       test_run_id: held?.test_run_id ?? process.env.GITHUB_RUN_ID }, repository, 'test', revision, tag);
     if (registryDigest(`${image}@${digest}`) !== digest) throw Error('Candidate unavailable');
-    alias(image, digest, 'test');
+    if (registryDigest(`${image}:test`) !== digest) throw Error('Verified TEST channel changed');
     writeFileSync(join(process.env.RUNNER_TEMP, 'tested-release-manifest.json'), JSON.stringify(m, null, 2) + '\n');
     publish(m); return;
   }
