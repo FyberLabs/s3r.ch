@@ -3,6 +3,8 @@
 import {
   createContext,
   useContext,
+  useCallback,
+  useRef,
   useMemo,
   useState,
   type ReactNode,
@@ -22,19 +24,30 @@ export type GunPeerContextValue = {
   register: (gun: FeedGun | null) => void;
 };
 
-const GunPeerContext = createContext<GunPeerContextValue | null>(null);
+const GunPeerContext = createContext<{
+  gun: FeedGun | null;
+  publish: (owner: symbol, gun: FeedGun | null) => void;
+} | null>(null);
 
 export function GunPeerProvider({ children }: { children: ReactNode }) {
   const [gun, setGun] = useState<FeedGun | null>(null);
-  const value = useMemo(
-    () => ({ gun, register: setGun }),
-    [gun],
-  );
+  const registrations = useRef(new Map<symbol, FeedGun>());
+  const publish = useCallback((owner: symbol, next: FeedGun | null) => {
+    const peers = registrations.current;
+    peers.delete(owner);
+    if (next) peers.set(owner, next);
+    setGun(Array.from(peers.values()).at(-1) ?? null);
+  }, []);
+  const value = useMemo(() => ({ gun, publish }), [gun, publish]);
   return (
     <GunPeerContext.Provider value={value}>{children}</GunPeerContext.Provider>
   );
 }
 
 export function useGunPeer(): GunPeerContextValue | null {
-  return useContext(GunPeerContext);
+  const context = useContext(GunPeerContext);
+  const owner = useRef(Symbol());
+  const publish = context?.publish;
+  const register = useCallback((gun: FeedGun | null) => publish?.(owner.current, gun), [publish]);
+  return context ? { gun: context.gun, register } : null;
 }
