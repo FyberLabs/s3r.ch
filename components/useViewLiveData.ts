@@ -53,8 +53,10 @@ import type { View } from "@/lib/views-window";
 import { useGunPeer, type FeedGun } from "./GunPeerProvider";
 import { useSeeAcl } from "./SeeAclProvider";
 
+import { useVisibleRead } from "./useVisibleRead";
+
 const FORUM_POLL_MS = 4000;
-const FEED_POLL_MS = 15_000;
+const FEED_POLL_MS = 60_000;
 const ACCESS_TICK_MS = 30_000;
 
 const IDLE = {
@@ -141,7 +143,7 @@ function subscribeRoomChat(gun: FeedGun, ref: SourceRef, onRows: (rows: ViewRow[
   };
 }
 
-export function useViewLiveData(view: View | null, owner: string, enabled: boolean) {
+export function useViewLiveData(view: View | null, owner: string, enabled: boolean, picking: boolean) {
   const see = useSeeAcl();
   const peer = useGunPeer();
   const registerRef = useRef(peer?.register);
@@ -177,6 +179,9 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
   const publicRoomIds = useRef(new Set<string>());
 
   const sources = useMemo(() => (enabled ? sourcesOfView(view) : []), [enabled, view]);
+  const needsRooms = enabled && (picking || sources.some(ref => ref.kind === "chat"));
+  const needsForum = enabled && (picking || sources.some(ref => ref.kind === "forum"));
+  const needsFeed = enabled && (picking || sources.some(ref => ref.kind === "feed"));
   const sourceKey = sources.map((ref) => formatCanonical(ref)).join("\n");
   sourcesRef.current = sources;
 
@@ -246,7 +251,7 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
   }, [enabled]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!needsRooms) return;
     let cancelled = false;
     let offRooms: (() => void) | undefined;
 
@@ -296,13 +301,14 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
       cancelled = true;
       offRooms?.();
       publicRoomIds.current = new Set();
+      setRooms([]);
       gunRef.current = null;
       connection.release();
       registerRef.current?.(null);
       setGunReady(false);
       setPublicEpoch((n) => n + 1);
     };
-  }, [enabled]);
+  }, [needsRooms]);
 
   useEffect(() => {
     if (!enabled || !gunReady || !owner || !see?.ready) return;
@@ -331,57 +337,37 @@ export function useViewLiveData(view: View | null, owner: string, enabled: boole
     };
   }, [enabled, gunReady, owner, see?.ready]);
 
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    async function load() {
-      try {
-        const response = await fetch("/api/forum", { cache: "no-store" });
-        if (cancelled) return;
-        if (response.status === 401) {
-          forumCache.current = [];
-          setChannels([]);
-          notify();
-          return;
-        }
-        if (!response.ok) return;
-        const parsed = readForumCatalog(await response.json());
-        if (cancelled || !parsed) return;
-        forumCache.current = parsed.messages;
-        setChannels(parsed.channels);
-        notify();
-      } catch {
-        // Keep the last read.
-      }
+  const readForum = useCallback(async (signal: AbortSignal) => {
+    const response = await fetch("/api/forum", { cache: "no-store", signal });
+    if (signal.aborted) return false;
+    if (response.status === 401 || response.status === 403) {
+      forumCache.current = [];
+      setChannels([]);
+      notify();
+      return false;
     }
-    void load();
-    const id = window.setInterval(() => void load(), FORUM_POLL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [enabled, notify]);
+    if (response.ok) {
+      const parsed = readForumCatalog(await response.json());
+      if (signal.aborted || !parsed) return false;
+      forumCache.current = parsed.messages;
+      setChannels(parsed.channels);
+      notify();
+    }
+    return true;
+  }, [notify]);
 
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    async function load() {
-      try {
-        const response = await fetch("/api/feed", { cache: "no-store" });
-        if (cancelled || !response.ok) return;
-        seedItems.current = readFeedItems(await response.json());
-        if (!cancelled) rememberItems();
-      } catch {
-        // Keep the last snapshot.
-      }
+  const readFeed = useCallback(async (signal: AbortSignal) => {
+    const response = await fetch("/feed-cache/snapshot.json", { signal });
+    if (response.ok) {
+      const items = readFeedItems(await response.json());
+      if (signal.aborted) return false;
+      seedItems.current = items;
+      rememberItems();
     }
-    void load();
-    const id = window.setInterval(() => void load(), FEED_POLL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [enabled, rememberItems]);
+    return true;
+  }, [rememberItems]);
+  useVisibleRead(needsForum, readForum, FORUM_POLL_MS);
+  useVisibleRead(needsFeed, readFeed, FEED_POLL_MS);
 
   useEffect(() => {
     if (!enabled || !view) {

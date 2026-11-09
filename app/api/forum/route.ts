@@ -5,11 +5,12 @@ import {
 } from "@/lib/forum";
 import {
   identitySecretOrThrow,
+  identityUnavailableResponse,
   readSessionFromRequest,
   secretFailureResponse,
 } from "@/lib/identity/http";
 import { readForumBotToken, signForumBotToken } from "@/lib/identity/forum-token";
-import { ownerForOAuth, ownerForWallet } from "@/lib/identity/link";
+import { ownerForOAuthResult, ownerForWallet } from "@/lib/identity/link";
 import { readBackupFromRequest } from "@/lib/identity/oauth";
 import { readSessionToken } from "@/lib/identity/session";
 
@@ -109,7 +110,7 @@ async function requireSession(
       if (!owner) {
         return {
           ok: false,
-          response: Response.json({ error: "unauthorized" }, { status: 401 }),
+          response: identityUnavailableResponse(),
         };
       }
       return { ok: true, address: owner, via: "wallet" };
@@ -121,10 +122,12 @@ async function requireSession(
     }
   }
 
+  let linkStoreUnavailable = false;
   try {
     const backup = await readBackupFromRequest(request);
-    const linked = backup ? ownerForOAuth(backup.sub) : null;
-    if (linked) return { ok: true, address: linked, via: "oauth" };
+    const linked = backup ? ownerForOAuthResult(backup.sub) : null;
+    linkStoreUnavailable = !!linked && typeof linked !== "string";
+    if (typeof linked === "string") return { ok: true, address: linked, via: "oauth" };
   } catch {
     return {
       ok: false,
@@ -147,6 +150,6 @@ async function requireSession(
 
   return {
     ok: false,
-    response: Response.json({ error: "unauthorized" }, { status: 401 }),
+    response: linkStoreUnavailable ? identityUnavailableResponse() : Response.json({ error: "unauthorized" }, { status: 401 }),
   };
 }

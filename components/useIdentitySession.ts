@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { QueryClient, useQuery } from "@tanstack/react-query";
 
 export type IdentitySession = {
   /** Wallet that signed. Gun mesh key stays here. */
@@ -14,58 +15,70 @@ export function objectOwner(session: IdentitySession): string {
   return session.owner || session.address;
 }
 
-export function useIdentitySessionState(enabled = true) {
-  const [session, setSession] = useState<IdentitySession | null>();
+const client = new QueryClient();
+const key = ["identity-session"] as const;
+const changeKey = "s3rch-session-changed";
+
+async function refresh({ signal }: { signal: AbortSignal }) {
+  const response = await fetch("/api/identity/session", { cache: "no-store", signal });
+  if (response.status === 401) return null;
+  if (!response.ok) throw new Error("Identity service unavailable.");
+  const payload = await response.json();
+  if (typeof payload.address !== "string" || !payload.address) return null;
+  return {
+    address: payload.address as string,
+    chainId: typeof payload.chainId === "number" ? payload.chainId : 1,
+    owner: typeof payload.owner === "string" && payload.owner ? payload.owner : payload.address as string,
+    expiresAt: typeof payload.expiresAt === "number" ? payload.expiresAt : Date.now() + 60_000,
+  };
+}
+
+function invalidate() {
+  void client.cancelQueries({ queryKey: key });
+  client.setQueryData(key, null);
+  window.dispatchEvent(new Event(changeKey));
+  void client.invalidateQueries({ queryKey: key });
+}
+
+export function identitySessionChanged() {
+  invalidate();
+  try {
+    localStorage.setItem(changeKey, crypto.randomUUID());
+  } catch { /* Storage can be disabled. Visibility also refreshes the session. */ }
+}
+
+let consumers = 0;
+function onStorage(event: StorageEvent) {
+  if (event.key === changeKey) invalidate();
+}
+
+export function useIdentitySessionState(enabled = true): IdentitySession | null | undefined {
   useEffect(() => {
-    if (!enabled) {
-      setSession(undefined);
-      return;
+    if (!enabled) return;
+    if (++consumers === 1) {
+      client.mount();
+      window.addEventListener("storage", onStorage);
     }
-    let request: AbortController;
-    async function refresh() {
-      request?.abort();
-      const controller = new AbortController();
-      request = controller;
-
-
-      try {
-        const response = await fetch("/api/identity/session", { cache: "no-store", signal: controller.signal });
-        if (controller.signal.aborted) return;
-        if (!response.ok) {
-          setSession(null);
-          return;
-        }
-        const payload = (await response.json()) as Partial<IdentitySession>;
-        if (controller.signal.aborted) return;
-        if (typeof payload.address === "string" && payload.address) {
-          const owner =
-            typeof payload.owner === "string" && payload.owner ? payload.owner : payload.address;
-          setSession({
-            address: payload.address,
-            owner,
-            chainId: typeof payload.chainId === "number" ? payload.chainId : 1,
-          });
-          return;
-        }
-        setSession(null);
-      } catch {
-        if (!controller.signal.aborted) setSession(null);
-      }
-    }
-    void refresh();
-    const onVis = () => {
-      if (document.visibilityState === "visible") void refresh();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    const timer = window.setInterval(() => void refresh(), 4000);
     return () => {
-      request?.abort();
-      document.removeEventListener("visibilitychange", onVis);
-      window.clearInterval(timer);
+      if (--consumers === 0) {
+        window.removeEventListener("storage", onStorage);
+        client.unmount();
+      }
     };
   }, [enabled]);
 
-  return enabled ? session : undefined;
+  const query = useQuery({
+    queryKey: key, queryFn: refresh, enabled,
+    retry: false, gcTime: 0, staleTime: 0,
+    refetchOnWindowFocus: "always",
+    refetchInterval: query => {
+      if (query.state.status === "error") return 30_000;
+      return query.state.data ? Math.max(1000, query.state.data.expiresAt - Date.now()) : false;
+    },
+  }, client);
+  if (!enabled || query.isPending) return undefined;
+  const session = query.data;
+  return enabled && !query.isError && session && session.expiresAt > Date.now() ? session : null;
 }
 
 export function useIdentitySession(enabled = true): IdentitySession | null {
