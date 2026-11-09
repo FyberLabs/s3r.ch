@@ -9,6 +9,7 @@ import {
 } from "@/lib/browser-pull";
 import type { FeedItem } from "@/lib/feed-types";
 import { btnPrimary, btnSecondary, field, panel } from "@/lib/brand-ui";
+import { pullPublicBluesky } from "@/lib/direct-bluesky";
 import { canUsePullRelay } from "@/lib/pull-relay";
 import { pullRelayStatusCopy, requestPullRelay, usePullRelay } from "@/lib/pull-relay-client";
 import { useSeeAcl } from "@/components/SeeAclProvider";
@@ -43,6 +44,10 @@ export function IngestForm({
       } catch {
         /* same-origin proxy stays valid */
       }
+    }
+    if (!via && body && typeof body === "object" && "allowedSource" in body && body.allowedSource === "atproto") {
+      const direct = await pullPublicBluesky();
+      if (direct) return direct;
     }
     const response = await fetch("/api/ingest", {
       method: "POST",
@@ -200,7 +205,7 @@ export function IngestForm({
                     ? `Pull ${ALLOWED_SOURCE_LABELS[kind]} via extension`
                     : via === "localhost"
                       ? `Pull ${ALLOWED_SOURCE_LABELS[kind]} via relay`
-                      : `Pull ${ALLOWED_SOURCE_LABELS[kind]}`}
+                      : kind === "atproto" ? "Pull Bluesky directly" : `Pull ${ALLOWED_SOURCE_LABELS[kind]}`}
                 </button>
               ))}
             </div>
