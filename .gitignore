@@ -35,3 +35,4 @@ yarn-error.log*
 
 # gun
 /data
+public/feed-cache/snapshot.json*

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FeedItem, FeedSnapshot, FeedTab } from "@/lib/feed-types";
-import { fromGunNode, toGunNode } from "@/lib/feed-types";
+import { fromGunNode } from "@/lib/feed-types";
 import { mergeItems } from "@/lib/merge";
 import {
   aggregateDiscoverTags,
@@ -56,6 +56,7 @@ import {
   type GrantInboxKind,
 } from "@/lib/grant-delivery";
 import { dropUsers, fromGunUserNode, mergeUsers, userProvenanceLine, type User } from "@/lib/users";
+import dynamic from "next/dynamic";
 import { ComposeForm } from "@/components/ComposeForm";
 import { DiscoverPanel } from "@/components/DiscoverPanel";
 import { useGunPeer, type FeedGun } from "@/components/GunPeerProvider";
@@ -83,7 +84,6 @@ import {
 import {
   applyRtcIceServers,
   fetchTurnAllocate,
-  iceHasTurn,
   startTurnIceRefresh,
   type IceRefreshHandle,
 } from "@/lib/turn-ice";
@@ -95,7 +95,14 @@ import {
   panel,
 } from "@/lib/brand-ui";
 
+const IdentityBar = dynamic(() => import("./IdentityBar").then(module => module.IdentityBar));
+
 type GunRef = SeedPeerEmitter & {
+  _?: { opt?: { peers?: Record<string, {
+    defer?: ReturnType<typeof setTimeout>;
+    wire?: { close: () => void };
+    close?: () => void;
+  }> } };
   get: (key: string) => GunRef;
   put: (data: unknown) => GunRef;
   map: () => { on: (cb: (data: unknown, key: string) => void) => { off?: () => void } };
@@ -122,7 +129,10 @@ function writeDiscoverTagQuery(tags: readonly string[]): void {
 }
 
 export function FeedStream() {
-  const session = useIdentitySession();
+  const [tab, setTab] = useState<FeedTab>("public");
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [sharePeers, setSharePeers] = useState(false);
+  const session = useIdentitySession(tab !== "public" || accountOpen);
   const see = useSeeAcl();
   const gunPeer = useGunPeer();
   const registerGun = gunPeer?.register;
@@ -139,8 +149,7 @@ export function FeedStream() {
   const [overlay, setOverlay] = useState<FeedItem[]>([]);
   const [meshItems, setMeshItems] = useState<FeedItem[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
-  const [tab, setTab] = useState<FeedTab>("public");
-  const [meta, setMeta] = useState<Omit<FeedSnapshot, "items"> | null>(null);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [sharedIds, setSharedIds] = useState<string[]>([]);
   const [confirmShareId, setConfirmShareId] = useState<string | null>(null);
   const [confirmUnshareId, setConfirmUnshareId] = useState<string | null>(null);
@@ -171,13 +180,31 @@ export function FeedStream() {
   const heardItemsRef = useRef<FeedItem[]>([]);
   const heardRoomsRef = useRef<Room[]>([]);
 
-  const hydrate = useCallback(async (gun: GunRef, items: FeedItem[]) => {
-    for (const item of items) {
-      gun.get("s3rch").get("items").get(encodeKey(item.id)).put(toGunNode(item));
+  const live = tab === "network" || (tab === "granted" && Boolean(session)) || sharePeers ||
+    (openRoomId !== null && publicRooms.some(room => room.id === openRoomId));
+
+  useEffect(() => {
+    if (new URLSearchParams(location.search).has("oauth")) setAccountOpen(true);
+    const controller = new AbortController();
+    async function load() {
+      try {
+        const response = await fetch("/feed-cache/snapshot.json", { signal: controller.signal });
+        if (!response.ok) throw new Error("Snapshot unavailable");
+        const snapshot: FeedSnapshot = await response.json();
+        if (!Array.isArray(snapshot.items)) throw new Error("Invalid snapshot");
+        const rows = snapshot.items.map(item => fromGunNode(item)).filter(item => item !== null);
+        setSeed(prev => mergeItems(rows, prev));
+        setSnapshotError(snapshot.error);
+      } catch {
+        if (!controller.signal.aborted) setSnapshotError("Could not load the public feed.");
+      }
     }
+    void load();
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
+    if (!live) return;
     let cancelled = false;
     let off: (() => void) | undefined;
     let offRooms: (() => void) | undefined;
@@ -194,54 +221,17 @@ export function FeedStream() {
       // with peers can fire hi before the listener. No user.recall.
       // See docs/ARCHITECTURE.md.
       const rtc = rtcRef.current;
-      const allocated = await fetchTurnAllocate();
-      if (allocated) applyRtcIceServers(rtc, allocated.iceServers);
-      iceRefreshRef.current?.stop();
-      iceRefreshRef.current = startTurnIceRefresh({
-        rtc,
-        expiresAt: allocated?.expiresAt ?? null,
-      });
       await attachGunWebrtcLib(Gun);
+      if (cancelled) return;
       const gun = Gun(browserGunOptions(undefined, rtc));
       gunRef.current = gun;
       registerGunRef.current?.(gun as unknown as FeedGun);
-      if (!cancelled) setGunReady(true);
-      let seedWsUp = false;
+      setGunReady(true);
       listenThenConnectSeedPeer(gun, window.location.origin, (up) => {
-        seedWsUp = up;
+        if (cancelled) return;
         seedWsUpRef.current = up;
-        if (!cancelled) {
-          setSeedWsUp(up);
-        }
+        setSeedWsUp(up);
       });
-
-      let snapshot: FeedSnapshot = {
-        items: [],
-        seededAt: null,
-        sourcesOk: 0,
-        sourcesTried: 0,
-        error: null,
-      };
-      try {
-        const response = await fetch("/api/feed", { cache: "no-store" });
-        snapshot = (await response.json()) as FeedSnapshot;
-      } catch {
-        snapshot.error = "Could not load the feed.";
-      }
-      if (cancelled) return;
-
-      setMeta({
-        seededAt: snapshot.seededAt,
-        sourcesOk: snapshot.sourcesOk,
-        sourcesTried: snapshot.sourcesTried,
-        error: snapshot.error,
-      });
-      // Snapshot paints Public even if /gun WS never comes up. Network
-      // does not take these rows — only Gun .map().on while the seed
-      // peer is up (keep last mesh rows after a brief bye).
-      const snapItems = snapshot.items ?? [];
-      setSeed((prev) => mergeItems(prev, snapItems));
-      await hydrate(gun, snapItems);
 
       const listener = gun.get("s3rch").get("items").map().on((data, key) => {
         if (cancelled) return;
@@ -318,12 +308,6 @@ export function FeedStream() {
           ? () => usersListener.off?.()
           : undefined;
 
-      // seedWsUp stays source of truth. A later hi must not be clobbered
-      // by this snapshot paint; an earlier hi already set it.
-      if (!cancelled) {
-        seedWsUpRef.current = seedWsUp;
-        setSeedWsUp(seedWsUp);
-      }
     })();
 
     return () => {
@@ -333,14 +317,24 @@ export function FeedStream() {
       off?.();
       offRooms?.();
       offUsers?.();
+      const peers = gunRef.current?._?.opt?.peers;
+      for (const [key, peer] of Object.entries(peers ?? {})) {
+        if (peers) delete peers[key];
+        clearTimeout(peer.defer);
+        peer.wire?.close();
+        peer.close?.();
+      }
       registerGunRef.current?.(null);
+      gunRef.current = null;
+      setGunReady(false);
+      seedWsUpRef.current = false;
+      setSeedWsUp(false);
     };
-  }, [hydrate]);
+  }, [live]);
 
   useEffect(() => {
-    if (!session?.address) return;
+    if (!gunReady || !session?.address) return;
     const rtc = rtcRef.current;
-    if (iceHasTurn(rtc.iceServers)) return;
     let cancelled = false;
     void fetchTurnAllocate().then((allocated) => {
       if (cancelled || !allocated) return;
@@ -353,8 +347,10 @@ export function FeedStream() {
     });
     return () => {
       cancelled = true;
+      iceRefreshRef.current?.stop();
+      applyRtcIceServers(rtc, stunOnlyRtcOptions().iceServers);
     };
-  }, [session?.address]);
+  }, [gunReady, session?.address]);
 
   useEffect(() => {
     seedWsUpRef.current = seedWsUp;
@@ -611,6 +607,8 @@ export function FeedStream() {
 
   function selectTab(next: FeedTab) {
     setTab(next);
+    setSharePeers(false);
+    if (next === "public") setAccountOpen(false);
     setSelected([]);
     writeDiscoverTagQuery([]);
     setShareMessage(null);
@@ -799,14 +797,20 @@ export function FeedStream() {
 
   return (
     <div>
-      {meta?.error ? (
+      {accountOpen || tab !== "public" ? <IdentityBar /> : (
+        <button type="button" className={btnSecondary} onClick={() => setAccountOpen(true)}>Account and posting</button>
+      )}
+      {(tab === "mine" || accountOpen) && session && !live ? (
+        <button type="button" className={btnSecondary} onClick={() => setSharePeers(true)}>Connect to peers for sharing</button>
+      ) : null}
+      {snapshotError ? (
         <div className={`mt-6 ${failPanel}`}>
           <p className="font-semibold">Feed is empty or failed</p>
-          <p className="mt-2">{meta.error}</p>
+          <p className="mt-2">{snapshotError}</p>
         </div>
       ) : null}
 
-      {tab !== "network" && tab !== "granted" && !composeRoomId ? (
+      {(tab === "mine" || (tab === "public" && accountOpen)) && !composeRoomId ? (
         <ComposeForm
           onItem={(next) => setOverlay((prev) => mergeItems(prev, [next]))}
         />

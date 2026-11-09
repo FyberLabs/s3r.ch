@@ -57,6 +57,11 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build
 
+      - name: Check static public feed in Chromium
+        run: |
+          npx playwright-core install --with-deps chromium
+          node scripts/test-static-feed.mjs
+
       - name: Start without optional integrations
         run: bash scripts/smoke-standalone.sh
 

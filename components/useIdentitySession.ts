@@ -14,7 +14,7 @@ export function objectOwner(session: IdentitySession): string {
   return session.owner || session.address;
 }
 
-export function useIdentitySession(): IdentitySession | null {
+export function useIdentitySession(enabled = true): IdentitySession | null {
   const [session, setSession] = useState<IdentitySession | null>(null);
 
   const refresh = useCallback(async () => {
@@ -42,6 +42,10 @@ export function useIdentitySession(): IdentitySession | null {
   }, []);
 
   useEffect(() => {
+    if (!enabled) {
+      setSession(null);
+      return;
+    }
     void refresh();
     const onVis = () => {
       if (document.visibilityState === "visible") void refresh();
@@ -52,7 +56,7 @@ export function useIdentitySession(): IdentitySession | null {
       document.removeEventListener("visibilitychange", onVis);
       window.clearInterval(timer);
     };
-  }, [refresh]);
+  }, [enabled, refresh]);
 
-  return session;
+  return enabled ? session : null;
 }
