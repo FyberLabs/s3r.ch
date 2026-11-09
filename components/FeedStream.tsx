@@ -132,7 +132,8 @@ export function FeedStream() {
   const [tab, setTab] = useState<FeedTab>("public");
   const [accountOpen, setAccountOpen] = useState(false);
   const [sharePeers, setSharePeers] = useState(false);
-  const session = useIdentitySession(tab !== "public" || accountOpen);
+  const [openRoomId, setOpenRoomId] = useState<string | null>(null);
+  const session = useIdentitySession(tab !== "public" || accountOpen || openRoomId !== null);
   const see = useSeeAcl();
   const gunPeer = useGunPeer();
   const registerGun = gunPeer?.register;
@@ -157,7 +158,6 @@ export function FeedStream() {
   const [mineRooms, setMineRooms] = useState<Room[]>([]);
   const [publicRooms, setPublicRooms] = useState<Room[]>([]);
   const [meshRooms, setMeshRooms] = useState<Room[]>([]);
-  const [openRoomId, setOpenRoomId] = useState<string | null>(null);
   const [sharedRoomIds, setSharedRoomIds] = useState<string[]>([]);
   const [confirmShareRoomId, setConfirmShareRoomId] = useState<string | null>(
     null,
@@ -225,10 +225,10 @@ export function FeedStream() {
       if (cancelled) return;
       const gun = Gun(browserGunOptions(undefined, rtc));
       gunRef.current = gun;
-      registerGunRef.current?.(gun as unknown as FeedGun);
       setGunReady(true);
       listenThenConnectSeedPeer(gun, window.location.origin, (up) => {
         if (cancelled) return;
+        registerGunRef.current?.(up ? gun as unknown as FeedGun : null);
         seedWsUpRef.current = up;
         setSeedWsUp(up);
       });
