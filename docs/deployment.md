@@ -4,9 +4,12 @@ Three ways to run this repository. Each one uses only components, settings, and 
 
 ## Which image to run
 
-A running test installation follows the moving channel `ghcr.io/fyberlabs/s3r.ch:test`. That name advances when a new build is published.
+A running service follows a version tag and picks up patches on that line. Services are patch-compatible within a minor version.
 
-An exact digest, `ghcr.io/fyberlabs/s3r.ch@sha256:<digest>`, records which image was built. Pin production with a digest. How production chooses its image stays as described in [release.md](release.md).
+- TEST uses `ghcr.io/fyberlabs/s3r.ch:test`. That name advances when a new build is published.
+- A production copy uses the minor line, for example `ghcr.io/fyberlabs/s3r.ch:1.4`. A new patch in that minor version moves the tag. Each code change is a new patch version. A downloadable package is named by that version.
+
+A digest may be recorded to verify which image a tag resolved to. It is not how you deploy. How those tags are published is [release.md](release.md).
 
 A Node checkout of the same `Dockerfile` is [install-minimal.md](install-minimal.md).
 
@@ -72,7 +75,7 @@ docker run --rm -p 8081:8080 \
   node /app/seed-peer.cjs
 ```
 
-Pin production by using `ghcr.io/fyberlabs/s3r.ch@sha256:<digest>` in place of `:test` on both commands. Do not leave a running test installation on a digest. That name would stay on the old build until someone changes it. How production chooses the digest stays in [release.md](release.md).
+For a production minor line, use `ghcr.io/fyberlabs/s3r.ch:1.4` in place of `:test` on both commands. The same tag on the web process and the peer picks up later patches together. Details are in [release.md](release.md).
 
 Set `IDENTITY_SESSION_SECRET` in the shell first. Then:
 
@@ -133,10 +136,10 @@ docker run --rm -p 8080:8080 \
   -e S3RCH_IDENTITY_BLOB_CONTAINER \
   -e AZURE_CLIENT_ID \
   -v s3rch-forum:/app/data \
-  ghcr.io/fyberlabs/s3r.ch@sha256:<digest>
+  ghcr.io/fyberlabs/s3r.ch:1.4
 ```
 
-That volume is the forum file on the web process. The Gun peer keeps the separate volume from the minimal section, and it is the process that receives `SEED_SECRET`. Use the same digest on the peer when you pin production. A running test installation uses `ghcr.io/fyberlabs/s3r.ch:test` on both. Pass `AZURE_CLIENT_ID` only for a user-assigned identity. Give the web process a managed identity that can write the container. Do not put secrets in the image.
+That volume is the forum file on the web process. The Gun peer keeps the separate volume from the minimal section, and it is the process that receives `SEED_SECRET`. Use the same minor tag on the peer. A running test installation uses `ghcr.io/fyberlabs/s3r.ch:test` on both. Pass `AZURE_CLIENT_ID` only for a user-assigned identity. Give the web process a managed identity that can write the container. Do not put secrets in the image.
 
 Check `GET /api/health` on the web process and on the peer. `dependencies.identity.status` is `ok` on the web process when the blob check passes. The web process reports Gun as `external`. The peer reports Gun as `ok`. A failed identity store does not take down the feed, the forum, or `/gun`.
 

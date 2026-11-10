@@ -59,11 +59,11 @@ Posts, rooms, and claims stored in Gun are SociACL objects. s3r.ch runs light Ch
 
 ## Run a release copy yourself
 
-A running test installation follows the moving channel `ghcr.io/fyberlabs/s3r.ch:test`. That name advances when a new build is published. An exact digest records which image was built. Pin production with a digest. How production chooses its image stays as described in [docs/release.md](docs/release.md).
+A running service follows a version tag and picks up patches on that line. TEST uses `ghcr.io/fyberlabs/s3r.ch:test`, which advances when a new build is published. A production copy uses a minor tag such as `ghcr.io/fyberlabs/s3r.ch:1.4`. Services are patch-compatible within a minor version. Each code change is a new patch version, and a downloadable package uses that version. A digest may be recorded to verify which image a tag resolved to. It is not how you deploy. See [docs/release.md](docs/release.md).
 
 ```text
 ghcr.io/fyberlabs/s3r.ch:test
-ghcr.io/fyberlabs/s3r.ch@sha256:<digest>
+ghcr.io/fyberlabs/s3r.ch:1.4
 ```
 
 ```bash
@@ -72,7 +72,7 @@ docker run --rm -p 8080:8080 \
   ghcr.io/fyberlabs/s3r.ch:test
 ```
 
-The command above is the web process. Gun is a second process, `node /app/seed-peer.cjs`, with its own volume. See [docs/deployment.md](docs/deployment.md). For a production pin, use `ghcr.io/fyberlabs/s3r.ch@sha256:<digest>` in place of `:test`.
+The command above is the web process for a test installation. Gun is a second process, `node /app/seed-peer.cjs`, with its own volume, using the same tag. See [docs/deployment.md](docs/deployment.md). For a production minor line, use `ghcr.io/fyberlabs/s3r.ch:1.4` in place of `:test`.
 
 Set `IDENTITY_SESSION_SECRET` in the shell first. It must be at least 32 characters. The web process listens on port 8080. Give the peer its own `/app/data` volume for Gun radisk and the seeder snapshot. The forum file stays on the web process. Replacing a container without its volume drops the files on that container. Production account links live in Azure Blob. The mesh key stays in the browser.
 
@@ -85,7 +85,7 @@ curl -sS http://127.0.0.1:8080/api/health
 The published image leaves WalletConnect out. Injected wallets and the passkey wallet still sign in with SIWE. Set `NEXT_PUBLIC_WC_PROJECT_ID` when you build the Dockerfile yourself.
 
 - [Deployment scenarios](docs/deployment.md) — single node, production dependencies, and the enterprise shape.
-- [Packaged release](docs/release.md) — tags, digests, persistent paths, and health.
+- [Packaged release](docs/release.md) — version tags, persistent paths, and health.
 - [Minimal install](docs/install-minimal.md) — Node checkout, Docker, Gun on `/gun`, sign-in, a TURN relay you run yourself, and backup.
 - [Configuration reference](docs/configuration.md) — settings the server reads.
 

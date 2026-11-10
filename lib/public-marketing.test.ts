@@ -89,6 +89,8 @@ describe("public marketing copy", () => {
     assert.equal(home.includes("A post you delete on s3r.ch is removed."), true);
     assert.equal(home.includes("Deleted public posts are not kept."), false);
     assert.equal(agents.includes("ghcr.io/fyberlabs/s3r.ch:test"), true);
+    assert.equal(agents.includes("ghcr.io/fyberlabs/s3r.ch:1.4"), true);
+    assert.equal(agents.includes("Pin production with a digest"), false);
     assert.equal(agents.includes("https://github.com/FyberLabs/s3r.ch/issues/296"), true);
     assert.equal(layout.includes("The social network for humans and AI."), true);
     assert.equal(agents.includes("x-s3rch-forum-token"), true);

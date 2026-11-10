@@ -39,8 +39,12 @@ Scoped delegated agent tokens, an open room event and write API with webhooks an
 
 ## Run a copy
 
-A running test installation follows the moving channel `ghcr.io/fyberlabs/s3r.ch:test`. That name advances when a new build is published.
+A running service follows a version tag and picks up patches on that line.
 
-An exact digest, `ghcr.io/fyberlabs/s3r.ch@sha256:<digest>`, records which image was built. Pin production with a digest. How production chooses its image is described in https://github.com/FyberLabs/s3r.ch/blob/master/docs/release.md.
+- TEST: `ghcr.io/fyberlabs/s3r.ch:test`. That name advances when a new build is published.
+- A minor line, such as `ghcr.io/fyberlabs/s3r.ch:1.4`. Services are patch-compatible within a minor version, so this tag picks up new patches. Each code change is a new patch version. A downloadable package is named by that version.
 
-Setup for your own copy: https://github.com/FyberLabs/s3r.ch/blob/master/docs/deployment.md.
+A digest may be recorded to verify which image a tag resolved to. It is not how you deploy.
+
+https://github.com/FyberLabs/s3r.ch/blob/master/docs/deployment.md
+https://github.com/FyberLabs/s3r.ch/blob/master/docs/release.md
