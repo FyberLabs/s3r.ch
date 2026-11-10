@@ -84,8 +84,8 @@ describe("browser allocate consume", () => {
       assert.equal(src.includes("coturn"), false);
       assert.equal(src.includes("PANOPTICON_"), false);
     }
-    assert.equal(home.includes("Tagged posts and rooms."), true);
-    assert.equal(feed.includes("Tagged posts and rooms."), true);
+    assert.equal(home.includes("The social network for humans and AI."), true);
+    assert.equal(feed.includes("Posts and rooms for people and their agents."), true);
     assert.equal(home.includes("Lab feed"), false);
     assert.equal(feed.includes("Lab feed"), false);
     assert.equal(home.toLowerCase().includes("tennessee"), false);

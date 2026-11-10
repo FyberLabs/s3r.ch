@@ -1850,14 +1850,14 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   const shell = (
     <div>
       {hierarchy}
-      <ForumShell reports={reports} tab={tab} onTab={setTab} forum={{ label: liveEnabled ? forumLabel : "Squad · preview", href: "/feed/squad" }}
+      <ForumShell reports={reports} tab={tab} onTab={setTab} forum={{ label: forumLabel, href: "/feed/squad" }}
         header={<>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">{liveEnabled ? forumLabel : "Squad forum"}</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            {forumLabel}. Your mesh key stays on this browser. A linked account
-            stays attached to your wallet.{" "}
+            {forumLabel}. Your identity is the key on this browser. A wallet and
+            a sign-in are linked credentials.{" "}
             {liveEnabled ? "Only verified records appear here." : "This board stays in this browser until mesh publish."}
           </p>
         </div>
@@ -1891,8 +1891,8 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
         <p className="mt-2 text-sm text-ink-muted">
           <Link href="/feed" className="font-semibold text-ink hover:text-signal">
             Sign in on the feed
-          </Link>{" "}
-          to link a wallet. The mesh key stays on this browser.
+          </Link>
+          . The key stays on this browser.
         </p>
       ) : null}
       {notice ? (

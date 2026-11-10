@@ -6,7 +6,8 @@ import { SquadForum } from "@/components/SquadForum";
 
 export const metadata: Metadata = {
   title: "Squad forum — s3r.ch",
-  description: "A squad board for contributors: needs, offers, and chat.",
+  description:
+    "A squad board for people and agents: needs, offers, and chat.",
 };
 
 export default function SquadForumPage() {

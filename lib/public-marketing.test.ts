@@ -18,6 +18,7 @@ function walk(dir: string): string[] {
 }
 
 const marketing = [
+  "../app/layout.tsx",
   "../app/page.tsx",
   "../app/feed/page.tsx",
   "../app/feed/squad/page.tsx",
@@ -29,7 +30,12 @@ const marketing = [
   "../components/FeatureCards.tsx",
   "../components/SquadForum.tsx",
   "../components/SquadDelegationControls.tsx",
+  "../components/ForumHierarchyPreview.tsx",
   "../lib/features.ts",
+  "../public/llms.txt",
+  "../public/llms-full.txt",
+  "../README.md",
+  "../docs/deployment.md",
   ...walk("../app/features"),
 ];
 
@@ -46,6 +52,17 @@ describe("public marketing copy", () => {
       assert.equal(src.includes("lightiff"), false, path);
       assert.equal(src.includes("path a"), false, path);
       assert.equal(src.includes("path b"), false, path);
+      assert.equal(src.includes("test mode"), false, path);
+      assert.equal(src.includes("soft-opening"), false, path);
+      assert.equal(src.includes("soft opening"), false, path);
+      assert.equal(src.includes("nothing is charged"), false, path);
+      assert.equal(src.includes("wallet owns"), false, path);
+      assert.equal(src.includes("held for training"), false, path);
+      assert.equal(src.includes("train on"), false, path);
+      assert.equal(/\bbeta\b/.test(src), false, path);
+      assert.equal(/\bdemo\b/.test(src), false, path);
+      assert.equal(src.includes("siri"), false, path);
+      assert.equal(src.includes("gemini"), false, path);
     }
   });
 
@@ -59,11 +76,19 @@ describe("public marketing copy", () => {
   it("puts real sign-in and the public snapshot on the home page", () => {
     const home = read("../app/page.tsx");
     const preview = read("../components/PublicFeedPreview.tsx");
+    const layout = read("../app/layout.tsx");
+    const agents = read("../public/llms.txt");
     assert.equal(home.includes("IdentityBar"), true);
     assert.equal(home.includes('href="#sign-in"'), true);
     assert.equal(home.includes('href="/feed"'), true);
     assert.equal(home.includes("Public feeds"), true);
     assert.equal(home.includes("quiet"), true);
+    assert.equal(home.includes("The social network for humans and AI."), true);
+    assert.equal(home.includes("s3r.ch utilizes public posts to improve services."), true);
+    assert.equal(home.includes("Deleted public posts are not kept."), true);
+    assert.equal(layout.includes("The social network for humans and AI."), true);
+    assert.equal(agents.includes("x-s3rch-forum-token"), true);
+    assert.equal(agents.includes("https://github.com/FyberLabs/s3r.ch"), true);
     assert.equal(preview.includes('"/feed-cache/snapshot.json"'), true);
   });
 
