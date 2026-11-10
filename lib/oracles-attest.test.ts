@@ -87,6 +87,23 @@ describe("readOraclesAttestEnv", () => {
     );
   });
 
+  it("refuses bases that cannot carry the fixed attest route", async () => {
+    for (const suffix of ["?region=test", "#relay", "?", "#"]) {
+      let calls = 0;
+      const result = await sessionGatedAttest({
+        sessionAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        body: { kind: "public_relay", subject: ATTEST_RELAY_SUBJECT },
+        env: { ...ATTEST_HOP_ENV, PANOPTICON_ORACLES_BASE: "https://api.test.hyperme.sh" + suffix },
+        fetchImpl: async () => {
+          calls++;
+          return jsonResponse(404, {});
+        },
+      });
+      assert.deepEqual(result, { status: 503, body: { error: "oracles-unconfigured" } });
+      assert.equal(calls, 0);
+    }
+  });
+
   it("accepts http(s) lab and product bases, including localhost", () => {
     const cfg = readOraclesAttestEnv(ATTEST_HOP_ENV);
     assert.deepEqual(cfg, {
