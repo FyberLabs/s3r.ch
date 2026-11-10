@@ -4,6 +4,8 @@ import { createForumAuthoritySnapshotStore } from "./forum-authority-store";
 import type { ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { squadView, isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
 
+export class LedgerEvaluationExpired extends Error {}
+
 type History = ForumAuthoritySnapshot["history"];
 type Document = { version: 1; journal: AssignmentJournalState; history: History };
 const CAP = 6 * 1024 * 1024;
@@ -21,7 +23,8 @@ export function createSquadCommitStore(store: InventoryStore, spec: LiveSquadSpe
   // snapshot must always retain its externally authenticated horizon.
   const ledger = sourceMode === "authoritative-ledger";
   function evaluation(history: History, at: number, readAt: number): History {
-    if (!Number.isSafeInteger(at) || at < 0 || (ledger && (at !== readAt || clock() !== readAt))) throw Error("ledger evaluation expired");
+    if (!Number.isSafeInteger(at) || at < 0) throw Error("invalid evaluation time");
+    if (ledger && (at !== readAt || clock() !== readAt)) throw new LedgerEvaluationExpired("ledger evaluation expired");
     if (!ledger && history.completeThrough < at) throw Error("combined history unavailable");
     return { ...structuredClone(history), completeThrough: ledger ? at : history.completeThrough };
   }

@@ -1,5 +1,4 @@
-import { getSquadPilotServer } from "@/lib/squad-pilot-server";
-import { createForumAuthority } from "@/lib/identity/forum-authority";
+import { getSquadPilotServer, squadPilotReady } from "@/lib/squad-pilot-server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request, context: { params: Promise<{ path: string[] }> }) {
@@ -9,9 +8,7 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
     if (path.length !== 1 || path[0] !== "health") return Response.json({ ready: false }, { status: 404, headers });
     const pilot = getSquadPilotServer();
     if (!pilot) return Response.json({ ready: false }, { status: 404, headers });
-    const at = Math.floor(Date.now() / 1000), authority = createForumAuthority(pilot.config.authority);
-    const result = await authority.refresh(await pilot.source.read(at, request.signal), at);
-    const ready = result.ok && !result.diagnostics.length && authority.graph.ownerOf(pilot.config.squad.forumId) === pilot.config.squad.owner;
+    const ready = await squadPilotReady(pilot, request.signal);
     return Response.json({ ready }, { status: ready ? 200 : 503, headers });
   } catch { return Response.json({ ready: false }, { status: 503, headers }); }
 }
