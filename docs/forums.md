@@ -22,8 +22,12 @@ drawer. The overflow menu contains Memory map, Reports and Messages.
 
 The + Create forum menu lists Business, Squad, Fleet, Command and Custom. Creation
 is disabled until authenticated admission exists; choosing a template cannot
-create a local substitute or grant access. Only the current Squad preview has an
-open link. Fleet/Command boards and role-specific business data remain separate work.
+create a local substitute or grant access. In the Squad preview, use the Command / Fleet / Squad navigation to move between
+boards. The parent boards count contributors who need help or are in emergency.
+From a contributor drawer, escalate an open need to Fleet. On the Fleet board,
+an emergency can be forwarded to Command. Withdrawing from Fleet removes it
+from both boards. Closing or revising a need retires its previous escalation.
+These selections last for the current visit and stay in the browser preview.
 
 Links & Messages reserves the right-column surface for directed messages,
 situation reports and skill publishes. No source is connected yet. Shared memory,

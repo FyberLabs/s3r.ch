@@ -241,6 +241,7 @@ function SquadForumView({ view }: { view: SquadView }) {
   const [seaPub, setSeaPub] = useState<string | null>(null);
   const [oauthLinked, setOauthLinked] = useState(false);
   const [vitals, setVitals] = useState<VitalsMode>("auto");
+  const [escalations, setEscalations] = useState<ReadonlyMap<string, { revision: number; command: boolean }>>(new Map());
   const [previewLevel, setPreviewLevel] = useState<PreviewLevel>("Squad");
   const [tab, setTab] = useState<ForumTab>("board");
   const [filters, setFilters] = useState<Set<ForumAgentState>>(() => new Set());
@@ -1783,8 +1784,24 @@ function SquadForumView({ view }: { view: SquadView }) {
     ? `${session.address.slice(0, 6)}…${session.address.slice(-4)}`
     : "not linked";
 
+  function toggleEscalation(need: ForumNeed, destination: "Fleet" | "Command") {
+    if (liveEnabled || need.stated !== 1) return;
+    setEscalations(previous => {
+      const next = new Map(previous);
+      const entry = previous.get(need.id);
+      if (destination === "Fleet") {
+        if (entry?.revision === need.hamState) next.delete(need.id);
+        else next.set(need.id, { revision: need.hamState, command: false });
+      } else if (entry?.revision === need.hamState && need.severity === "emergency") {
+        next.set(need.id, { ...entry, command: !entry.command });
+      }
+      return next;
+    });
+  }
+
   const hierarchy = liveEnabled ? null : <ForumHierarchyPreview level={previewLevel} onSelect={setPreviewLevel}
-    squadLabel={forumLabel} members={roster.length} needingHelp={needsCount} emergencies={emergencyCount} alarm={alarmOn} />;
+    squadLabel={forumLabel} members={roster.length} needingHelp={needsCount} emergencies={emergencyCount} alarm={alarmOn}
+    needs={needs} escalations={escalations} onToggleCommand={need => toggleEscalation(need, "Command")} />;
   if (!liveEnabled && previewLevel !== "Squad") return hierarchy;
   return (
     <div>
@@ -2052,6 +2069,10 @@ function SquadForumView({ view }: { view: SquadView }) {
                 <li key={id}>
                   {need.severity} · stated {need.stated} · {need.body}
                   {need.acceptedOffer ? ` · offer ${need.acceptedOffer.slice(0, 12)}` : ""}
+                  {!liveEnabled && need.stated === 1 && <button type="button" className={btnSecondary}
+                    onClick={() => toggleEscalation(need, "Fleet")}>
+                    {escalations.get(id)?.revision === need.hamState ? "Withdraw from Fleet" : "Escalate to Fleet"}
+                  </button>}
                 </li>
               );
             })}
