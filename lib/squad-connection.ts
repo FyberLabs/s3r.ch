@@ -13,11 +13,14 @@ export function createSquadConnection(input: Parameters<typeof createSquadBrowse
   const sessions = createSquadSessionClient({ ...input, base: input.sessionBase });
   let generation = 0, disposed = false, pending: AbortController | undefined;
   let expiry: ReturnType<typeof setTimeout> | undefined, tail: Promise<unknown> = Promise.resolve();
+  let authenticated: { key: string; until: number } | null = null;
   function invalidate() {
+    authenticated = null;
     generation++; pending?.abort(); pending = undefined; clearTimeout(expiry);
     browser.deactivate(); input.onState?.("disconnected");
   }
   return Object.freeze({ source: browser.source,
+    sessionKey: () => authenticated && Date.now() < authenticated.until ? authenticated.key : null,
     selectKey(pair: SeaPair | null): Promise<boolean> {
       if (disposed) return Promise.resolve(false);
       invalidate(); const epoch = generation, selected = pair ? { ...pair } : null;
@@ -36,6 +39,7 @@ export function createSquadConnection(input: Parameters<typeof createSquadBrowse
         pending = undefined;
         const remaining = 240_000 - (Date.now() - started);
         if (selected && ok && remaining > 0) {
+          authenticated = { key: selected.pub, until: started + 240_000 };
           browser.activate(); input.onState?.("connected");
           expiry = setTimeout(() => { if (!disposed && epoch === generation) invalidate(); }, remaining);
           return true;

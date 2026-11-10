@@ -33,7 +33,9 @@ test("connection gates transport before sign-in and withdraws synchronously on d
   await assert.rejects(c.source.assignments!.abort(h.scope, "a".repeat(32)));
   assert.equal(await c.selectKey(h.pair), true); assert.equal(states.at(-1), "connected");
   await c.source.assignments!.abort(h.scope, "a".repeat(32));
+  assert.equal(c.sessionKey(), h.pair.pub);
   const logout = c.selectKey(null); assert.equal(states.at(-1), "disconnected");
+  assert.equal(c.sessionKey(), null);
   await assert.rejects(c.source.assignments!.abort(h.scope, "a".repeat(32)));
   assert.equal(await logout, true); assert.equal(h.cookies.size, 0); c.dispose();
 });
@@ -52,7 +54,7 @@ test("connection expires before the five-minute server session", async t => {
   t.mock.timers.enable({ apis: ["Date", "setTimeout", "setInterval"], now: 1700000000000 });
   const states: string[] = [], c = createSquadConnection({ ...h.options, fetch: h.fetcher, onState: s => states.push(s) });
   assert.equal(await c.selectKey(h.pair), true);
-  t.mock.timers.tick(240000); assert.equal(states.at(-1), "disconnected");
+  t.mock.timers.tick(240000); assert.equal(c.sessionKey(), null); assert.equal(states.at(-1), "disconnected");
   await assert.rejects(c.source.assignments!.abort(h.scope, "a".repeat(32))); c.dispose();
 });
 test("live wrapper renders empty and disconnected before client authentication", async () => {

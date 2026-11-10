@@ -33,9 +33,16 @@ Fleet can forward a selected report to Command. Withdrawing from Fleet removes
 it from both boards. Replaced and retracted statements lose their forwarding
 selection. These selections last for the current visit in the browser preview.
 
+On a connected live Squad, Reports shows report-tagged statements from the
+readable transcript. The authenticated session key must resolve to a current
+reader with see access on both the Squad and the statement. The author must
+still have direct see and post rights on the signed statement. Live reports
+are read-only here; sending a report to a live parent requires separate
+destination authority.
+
 Links & Messages reserves the right-column surface for directed messages,
-situation reports and skill publishes. No source is connected yet. Outside the local report preview, shared memory,
-roadmap, ledger, report and message views show explicit unavailable states and
+situation reports and skill publishes. No source is connected yet. Shared memory,
+roadmap, ledger and directed-message views show explicit unavailable states and
 mount no data. Wiring a source requires current destination Check permission;
 navigation, labels and an empty panel do not supply that permission. This shell
 does not enable the live pilot or change the separate `/forum` page.

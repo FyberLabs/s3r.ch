@@ -41,6 +41,6 @@ function ConnectedSquad(props: Props) {
       <button type="button" disabled={!connection}
         onClick={() => { void connection?.selectKey(null); }}>Disconnect</button>
     </div>
-    <SquadForum key={props.pair?.pub ?? "locked"} live={props.squad} />
+    <SquadForum sessionKey={props.pair && connection?.sessionKey() === props.pair.pub ? props.pair.pub : null} key={props.pair?.pub ?? "locked"} live={props.squad} />
   </ForumAuthorityProvider>;
 }

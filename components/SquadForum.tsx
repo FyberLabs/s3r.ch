@@ -4,7 +4,8 @@ import { createForumReceiveRetry } from "@/lib/forum-receive-retry";
 import { createForumReceiveProofs } from "@/lib/forum-receive-proofs";
 import { BusinessRoleStrips } from "@/components/BusinessRoleStrips";
 import { businessTemplateRetryKey, createBusinessRoles, parseBusinessTemplate } from "@/lib/forum-business-roles";
-import { ForumPreviewReports } from "./ForumPreviewReports";
+import { readableForumChat } from "@/lib/forum-readable-chat";
+import { ReportList, ForumPreviewReports } from "./ForumPreviewReports";
 import { ForumHierarchyPreview, type PreviewLevel } from "@/components/ForumHierarchyPreview";
 import { ForumShell, type ForumTab } from "@/components/ForumShell";
 import { ForumDrawerRecords } from "@/components/ForumDrawerRecords";
@@ -214,11 +215,11 @@ function ChatBody({ body }: { body: string }) {
 }
 
 /** Namespace changes remount every subscription, cache floor and pending proof. */
-export function SquadForum({ live }: { live?: LiveSquadSpec }) {
+export function SquadForum({ live, sessionKey = null }: { live?: LiveSquadSpec; sessionKey?: string | null }) {
   const view = squadView(live);
-  return <SquadForumView key={view.key} view={view} />;
+  return <SquadForumView key={view.key} view={view} sessionKey={sessionKey} />;
 }
-function SquadForumView({ view }: { view: SquadView }) {
+function SquadForumView({ view, sessionKey }: { view: SquadView; sessionKey: string | null }) {
   const { forumId, label: forumLabel, live: liveEnabled, storage } = view;
   function authorLabel(pub: string): string {
     return liveEnabled ? shortSea(pub) : PILOT_LABELS.get(pub) ?? shortSea(pub);
@@ -1483,11 +1484,10 @@ function SquadForumView({ view }: { view: SquadView }) {
 
   const chat = useMemo(
     () => mergeForumChat({ pilot: liveEnabled ? [] : PILOT_CHAT,
-      mesh: meshChat.filter(row => !liveEnabled || (proofs.valid(row) &&
-        !!authority?.graph.checkDirectSee(row.id, row.author, Math.floor(Date.now() / 1000)).allowed &&
-        authority.graph.checkPost(row.id, row.author, Math.floor(Date.now() / 1000)).allowed)),
+      mesh: liveEnabled ? readableForumChat(meshChat, forumId, sessionKey, authority?.graph, proofs.valid,
+        Math.floor(Date.now() / 1000)) : meshChat,
       local: liveEnabled ? [] : localChat, hidden: hiddenChat }),
-    [hiddenChat, localChat, meshChat, aclRev, proofs, authority],
+    [hiddenChat, localChat, meshChat, aclRev, proofs, authority, liveEnabled, forumId, sessionKey],
   );
 
   function signingPrincipal() {
@@ -1803,7 +1803,7 @@ function SquadForumView({ view }: { view: SquadView }) {
     });
   }
 
-  const reports = liveEnabled ? undefined : <ForumPreviewReports level={previewLevel} chat={chat}
+  const reports = liveEnabled ? <ReportList reports={chat.filter(row => row.tags.includes("report"))} authorLabel={authorLabel} /> : <ForumPreviewReports level={previewLevel} chat={chat}
     shared={sharedReports} authorLabel={authorLabel} onToggle={row => {
       setSharedReports(previous => {
         // Bind forwarding to the exact row. Replaced or retracted statements lose their selection.
