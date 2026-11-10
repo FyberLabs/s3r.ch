@@ -1,7 +1,7 @@
 /**
  * Light SociACL Check — `CHECK(see, object, accessor)` at `now`.
  *
- * Reimplements the consume contract in `docs/s3rch-check.d.ts`.
+ * Legacy consumer; alignment with `docs/s3rch-check.d.ts` is tracked in #281.
  * Runs in the browser. Does not import FyberLabs/SociACL (crate, NAPI,
  * WASM, or npm). hopcap 1: do not walk friend edges. Hint never sets
  * `allowed`. Hop never sets `allowed`. Privilege-down (`cancelSee`) is

@@ -1,134 +1,61 @@
-# Light Check consume contract (s3r.ch)
+# SociACL consume contract
 
-This is the artifact the s3r.ch Next app reimplements against.
+[s3rch-check.d.ts](s3rch-check.d.ts) is an unmodified copy of the declaration
+published by [FyberLabs/SociACL](https://github.com/FyberLabs/SociACL).
+[The provenance file](sociacl-contract.json) records its source repository, full
+commit, source path and SHA-256. SociACL owns this contract; changes belong there
+first. s3r.ch runs its browser consumer without importing the Rust crate or adding
+a SociACL runtime package.
 
-**File:** [s3rch-check.d.ts](s3rch-check.d.ts)
+## Verification
 
-The Next app runs Check **in the browser** on the Gun mesh. It does **not** import this Rust crate, NAPI, or WASM. Do not `npm install sociacl`. Copy the `.d.ts` or re-type the same names. WASM later is optional and is **not** the lab-feed path.
+`npm test` checks the local bytes against the recorded SHA-256. The CI test job
+also runs:
 
-`crates/sociacl-gun` in FyberLabs/SociACL is the reference implementation. It is not a runtime this app loads.
-
-## What they implement
-
-`CHECK(see, object, accessor)` at `now`.
-
-| Name | Meaning |
-| --- | --- |
-| `object` | `GunFeedNode` at `s3rch/items/<encodeKey(id)>`, or a held claim id itself (`ens:…` / `unstoppable:…` / `fc:…` / `farcaster:…` / `lens:…` / `rss3:…` / `email:…` / `phone:…` / `kyc:<issuer>:…`) linked from `GunUserNode.indicators`, or a later opaque post/room `CheckObjectId` (s3r.ch rooms / chat / presence keep their existing souls) |
-| `accessor` | wallet / Gun peer (`s3rch/users/{wallet}`) |
-| `see` | dest Check `read` |
-| grant | jointly stated `IdentitySeeGrant` / mesh `MeshSeeGrant`; hopcap **1** (no friend-of-friend) |
-| revoke | immediate privilege-down on the dest object (`cancelSee`) |
-| hint | `HandoffHint` — untrusted; never a grant |
-| hop | optional Social Light `HopFactor`; never a grant; missing does not fail |
-| admit | dest re-authorizes **before** `put()` into `items`, `rooms`, that room `chat` set, that room `presence` set, or `users` |
-
-`s3rch/meta` is seed cache. It is not a Check object. A permalink / RSS3 / RSS / issuer URL is a `UrlLeaf`, not a node and not a grant.
-
-Grant **delivery** of a Gun-stored object the dest Check already allows is a holder-initiated put onto `s3rch/granted/<accessor>/{items|rooms|users}`. That path is the accessor inbox — not share-into-mesh and not a public row. Chat / presence / URL fetches are not grant-delivered. Privilege-down stays `cancelSee` on dest ACL (immediate). First delivery can wait on the mesh. Inbox rows die with the ephemeral seed today; dest ACL in IndexedDB does not. Durable-graph / TURN requirements: [durable-graph-and-turn.md](durable-graph-and-turn.md). Do not put SIWE signatures, mesh-key private material, or TURN secrets on a grant envelope.
-
-Later, on request: more verbs on the TS spec. Not this cut.
-
-## Fixed Gun paths (do not fork)
-
-```
-gun.get('s3rch').get('items').get(encodeKey(id))  → GunFeedNode
-gun.get('s3rch').get('rooms').get(encodeKey(id))  → GunRoomNode
-gun.get('s3rch').get('rooms').get(encodeKey(id)).get('chat').get(encodeKey(mid))  → GunChatNode
-gun.get('s3rch').get('rooms').get(encodeKey(id)).get('presence').get(encodeKey(address))  → GunPresenceNode
-gun.get('s3rch').get('meta')                     → seed meta (not a Check object)
-gun.get('s3rch').get('users').get(wallet)        → GunUserNode
-gun.get('s3rch').get('granted').get(accessor).get('items'|'rooms'|'users').get(encodeKey(id))
-                                                 → grant-delivery envelope (not a public row)
-gun.get('s3rch').get('acl').get(aclPrincipalKey(owner))
-     .get(aclKey(object)).get(aclPrincipalKey(accessor))  → MeshSeeGrant
-gun.get('s3rch').get('forums').get(forumId).get('agents').get(pubkey)
-                                                 → forum status
-gun.get('s3rch').get('forums').get(forumId).get('needs').get(needId)
-                                                 → forum need
-gun.get('s3rch').get('forums').get(forumId).get('needs').get(needId).get('offers').get(offerId)
-                                                 → offer, owned by the helper
-gun.get('s3rch').get('forums').get(forumId).get('alarm')
-                                                 → forum alarm
-gun.get('s3rch').get('forums').get(forumId).get('template')
-                                                 → distinct-principals | role-labels
-gun.get('s3rch').get('forums').get(forumId).get('roles').get(roleToken).get(pubkey)
-                                                 → role membership
-gun.get('s3rch').get('forums').get(forumId).get('agents').get(pubkey).get('subtasks').get(objectId)
-gun.get('s3rch').get('forums').get(forumId).get('agents').get(pubkey).get('updates').get(objectId)
+```sh
+node scripts/check-sociacl-contract.mjs --upstream
 ```
 
-The pubkey is one `.get()` segment, including a dot inside it. Forum chat is a `GunFeedNode` on `s3rch/items` whose tags include `forum:<forumId>`. There is no `s3rch/chat` soul and no `s3rch/forums/<id>/chat` soul for that stream. Names for these rows are in [forums.md](forums.md).
+That check downloads the declaration from the recorded immutable commit and
+compares bytes. Editing both the local declaration and its hash cannot make a
+modified copy pass. Unavailable upstream or a failed comparison fails the check.
+The `.gitattributes` rule prevents checkout line-ending conversion from changing
+the source bytes.
 
-`encodeKey`: `id.replace(/[.#$\[\]]/g, '_')`.
+This is source-contract provenance, not a deployed-service version requirement.
+TEST services continue to track their latest merged default branches. No service
+needs to run the same revision as this declaration.
 
-`aclKey`: `encodeKey` then `/` → `_` so dest-ACL souls stay five segments. Not a second `encodeKey` for items or users.
+## Updating the copy
 
-Held-claim object id is the **claim id itself** (`ens:name.eth`, `unstoppable:…`, `fc:…` / `farcaster:…`, `lens:…`, `rss3:0x…`, `email:…`, `phone:…`, `kyc:<issuer>:…`), linked from `GunUserNode.indicators` on `s3rch/users/<wallet>`. Mesh Check treats those ids the same as `GunFeedNode` ids. There is no `s3rch/users/<wallet>/claims/…` path. Overlay uses the same `GunUserNode` shape until s3r.ch `prepareShareUserIntoMesh` / `prepareShareClaimIntoMesh`. Posts / rooms stay opaque `CheckObjectId`s — s3r.ch owns those souls.
+1. Select and review a full SociACL commit containing the intended contract.
+2. Download `docs/s3rch-check.d.ts` from that commit and replace the local file
+   without editing or reformatting it.
+3. Update `revision` and the SHA-256 of those exact bytes in
+   `docs/sociacl-contract.json`.
+4. Run the upstream verification command and `npm test`. Review consumer changes
+   separately; updating the declaration does not establish implementation parity.
 
-The Rust crate remains the full plane. See [FyberLabs/SociACL docs/gun.md](https://github.com/FyberLabs/SociACL/blob/master/docs/gun.md) for that map. Social Light hop wire: [FyberLabs/SociACL docs/social-light.md](https://github.com/FyberLabs/SociACL/blob/master/docs/social-light.md).
+The initial synchronized source is
+[`779c4d752c1f0afadc6b1b93b7f1f2535f3b4ffd`](https://github.com/FyberLabs/SociACL/blob/779c4d752c1f0afadc6b1b93b7f1f2535f3b4ffd/docs/s3rch-check.d.ts).
+A later upstream commit does not silently change this copy. An explicit sync PR
+must review the new contract and its impact on consumers.
 
-## Mesh
+## Remaining consumer work
 
-This is the cut the s3r.ch Next app wires after held-claims land.
+This declaration is a reference artifact, excluded from the application compiler.
+The current runtime is **not yet conformant** to all of it. In particular,
+`lib/identity/check.ts` still contains wallet-based principal and soul helpers,
+and forum transitions still live in that module. The synchronization replaces
+old tests that required obsolete names and prohibited SEA/recovery concepts in
+the reference artifact; existing runtime behavior tests remain in place.
 
-**Copy / re-type:** [s3rch-check.d.ts](s3rch-check.d.ts) (one file; Mesh section is at the bottom). Do not `npm install sociacl`. Do not import the crate, NAPI, or WASM.
-
-### Dest ACL soul
-
-See grants are Gun nodes under the **object owner's dest ACL**, not under `items` or `users`:
-
-```
-s3rch/acl/<aclPrincipalKey(owner)>/<aclKey(object)>/<aclPrincipalKey(accessor)>
-```
-
-`s3rch/users/<wallet>` collapses to the wallet on dest ACL. Examples:
-
-```
-s3rch/acl/0xalice/rss3:act_1_x/0xbob          // feed item rss3:act/1#x
-s3rch/acl/0xalice/ens:alice_eth/0xbob         // held claim ens:alice.eth
-```
-
-Each field HAM-merges. `MeshSeeGrant.stated` is `1` (live) or `0` (cancelled). Cancel is owner-only and **must bump Gun HAM state** so privilege-down wins the next merge. Each peer runs `checkSee` on its locally HAM-merged graph at `now`. Do not cache an allow across a privilege-down merge.
-
-`s3rch/acl` itself is not a Check object (same as `meta`). Lab dest ACL in IndexedDB stays the immediate privilege-down store. Mesh rows on Gun let peers evaluate the same Check when the seed / WebRTC graph has the ACL row.
-
-Grant ≠ share ≠ delivery ≠ unshare.
-
-### Objects in scope
-
-| Object | Id | In-graph? |
-| --- | --- | --- |
-| Feed item | `s3rch/items/<encodeKey(id)>` | yes, after dest admit |
-| Held claim | claim id itself (`ens:…` / `unstoppable:…` / `fc:…` / `farcaster:…` / `lens:…` / `rss3:…`), linked from `GunUserNode.indicators` | yes, after dest admit / s3r.ch `prepareShareClaimIntoMesh` |
-| Post / room | opaque `CheckObjectId` (s3r.ch names the soul) | yes, after dest admit |
-| Mine overlay | same `GunUserNode` shape, local only | **no** until s3r.ch `prepareShare*` then `putObject` |
-| Permalink / RSS3 / issuer HTTP | `UrlLeaf` | never |
-
-### Hop factor
-
-`checkSee(graph, object, accessor, now, hint?, hop?)`.
-
-- hop missing does not fail.
-- hop alone never allows.
-- `hop` may only factor an already-named grant or owner path.
-- `acceptHop` / `decodeHop` do not verify and do not mint (mirror `acceptHint`).
-- URL handoffs stay untrusted `HandoffHint`. A hint plus a hop still fail closed without dest ACL.
-
-Reuse SociACL Social Light (`convention-badge` / `enrolled-station`, SLHP v1). Do not reimplement the hop frame beyond the consume types. No hop UI on public `/` or `/feed`.
-
-## Forums
-
-Squad forum souls are listed above. A hop, a hint, a status node, and a chat tag do not mint a grant. The destination runs Check again.
-
-Check see on a need lets the writer post a live offer. That does not set `stated` to `0`. The helper owns that row and may withdraw it until the need is resolved on that offer. The owner or the subject accepts only a live offer the graph already holds, and only while that helper still passes Check see. The subject may accept an offer they posted. That accept sets `stated` to `0` and records the offer id. A caller-supplied offer that was never posted is refused. Decline sets that offer to `stated` `0` and leaves the need open. Reopen is the owner only. It sets `stated` to `1` and clears the accepted offer. Earlier offers stay. Body and severity stay as posted. An optional spec id stays as posted. A missing admission does not accept the update. This page puts the signed offer and the signed need. It does not put an unsigned stand-in.
-
-Squad assignment and status records do not change Check see. Reassignment remains unavailable until signed destination cancellations and fresh grants are integrated; s3r.ch has no Squad execution-control requirement.
-
-A mesh status, need, alarm, offer, or chat row is kept only when its signature checks out for the allowed writer. An unsigned row is ignored. A self-signed status updates a pubkey already on the roster. A new pubkey is added only when the forum owner signed that status, or signed a role membership for that pubkey. Owning the status id does not add that pubkey. An unsigned null does not remove a verified status, need, or offer. A signed removal from the admitted writer does, and that record binds the action. A declined or withdrawn offer stays stated 0. A later live copy of that same offer id does not replace it. An admitted sample owner stays the owner when a mesh edge names another pubkey. A grant does not replace that owner. An unsigned mesh grant is not Check see on a sample need. A chat id names its author. A chat removal is checked on its own, and the author is read from that id, so it still hides the line when it arrives first. A signed removal stays, and an older live copy does not return. A signed need removal drops that id from the board, including the sample row. An offer removal uses the subscribed parent need. An unsigned need field that names another need is refused. A signed agent removal drops that pubkey from the board, including the sample tile. A mesh need that sets stated to 0 is installed only when the named offer is a live posted offer and that helper still passes Check see. A subject-signed close is kept when those gates pass and this browser already holds the admitted subject, or when the close carries the owner's signature of the open row naming that subject. A fresh close is kept when the owner signed it. A payload subject alone is not an admission. An older signed hamState does not replace a need this browser has already accepted. An offer removal verifies the helper from the offer id. Offer cancel and removal subscriptions open only after that offer is authorized. A live offer from the mesh is kept only when its signer passes Check see on the parent need. A live offer that arrives before that grant is loaded is checked again when the grant appears. A signed cancel of an offer is also stored on the offer cancel soul. A later live copy at the offer key does not replace that cancel. A cancel that arrives before the need owner is loaded is kept and checked again when that owner appears. After a need names that offer, the helper cannot remove it. An owner-signed need that arrives before ownership is loaded is kept inside a cap and a TTL, and checked again only when that need's owner appears. A chat line put on an existing statement id has to be the original author. The sending browser drops its local copy when the verified mesh row arrives. A removal watch is opened only after that row verifies. An alarm pin or unpin carries an owner-signed `rev`, and a replay at or below the last accepted `rev` does not clear the pin. A chat line stays up when a later put is an unsigned null, a malformed value, or a tag change without a signature. It drops when the author or the forum owner signed a tombstone for that forum and that Gun key. A signature read that finishes after a later put on the same key is ignored. An id inside an unsigned tombstone does not hide a different line. Signing uses the unlocked key on this browser. A wrapped key signs after unlock. The private half is not written to the mesh.
-
-Role membership is `distinct-principals` or `role-labels` on the template soul. A role token is not a Check predicate.
-
-An emergency alarm is on when a status tile has state `emergency`, or when the alarm soul pins a stated emergency need in the same forum (`pinned` is `1` and `alarm.need` is that need). Either input is enough. The alarm record is data, not a grant.
-
-The squad page is the board, the chat, and the agent drawer. Role strips, Fleet, and Command are not on that page. `/forum` is still the desktop channel. See [forums.md](forums.md).
+[#281](https://github.com/FyberLabs/s3r.ch/issues/281) tracks removal of the legacy
+`aclKey`, `aclPrincipalKey`, wallet user souls and wallet-keyed grant inboxes,
+separation of forum transitions from permission checks, and running shared
+SociACL vectors against the consumer.
+[#277](https://github.com/FyberLabs/s3r.ch/issues/277) owns the SEA identity migration.
+[Upstream #156](https://github.com/FyberLabs/SociACL/issues/156) tracks the missing
+consume surfaces and vectors needed to replace local recovery, rotation,
+witness and wallet-link copies with adapters. Synchronizing this file does not
+close those issues or establish live authorization acceptance.

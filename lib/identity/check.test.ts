@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
 import { fromGunNode, toGunNode, type FeedItem, type GunFeedNode } from "@/lib/feed-types";
 import {
   acceptHint,
@@ -42,7 +39,6 @@ const CAROL = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
 const CLAIM = "ens:vitalik.eth";
 const NOW = 1_000;
 
-const HERE = dirname(fileURLToPath(import.meta.url));
 
 function sampleItem(overrides: Partial<FeedItem> = {}): FeedItem {
   return {
@@ -108,82 +104,6 @@ function encodeSlhp(
   }
   return out;
 }
-
-describe("consume contract artifact", () => {
-  it("covers light Check names and stays off the other plane", () => {
-    const dts = readFileSync(join(HERE, "../../docs/s3rch-check.d.ts"), "utf8");
-    for (const needle of [
-      "CHECK(see, object, accessor)",
-      "GunFeedNode",
-      "GunChatNode",
-      "GunPresenceNode",
-      "GunUserNode",
-      "IdentitySeeGrant",
-      "HandoffHint",
-      "UrlLeaf",
-      "encodeKey",
-      "s3rch/items",
-      "s3rch/rooms",
-      "s3rch/users",
-      "s3rch/granted",
-      "s3rch/meta",
-      "checkSee",
-      "checkSeeGrant",
-      "acceptHint",
-      "admitFeedNode",
-      "admitRoomNode",
-      "admitChatNode",
-      "admitPresenceNode",
-      "admitUserNode",
-      "grantedSoul",
-      "cancelSee",
-      "hopcap",
-      "s3rch/acl",
-      "MeshSeeGrant",
-      "HopFactor",
-      "HeldClaimPrefix",
-      "aclKey",
-      "grantSoul",
-      "acceptHop",
-      "decodeHop",
-    ]) {
-      assert.match(dts, new RegExp(needle.replace(/[\\()]/g, "\\$&")));
-    }
-    const lower = dts.toLowerCase();
-    for (const banned of [
-      "elect",
-      "will",
-      "remint",
-      "discover",
-      "destroy",
-      "case c",
-      "napi",
-      "wasm",
-      "npm install",
-      "sea",
-      "encrypt",
-      "checkexecute",
-    ]) {
-      assert.equal(lower.includes(banned), false, `contract must not mention ${banned}`);
-    }
-  });
-
-  it("says the Next app runs Check in the browser, not a package", () => {
-    const md = readFileSync(join(HERE, "../../docs/s3rch-check.md"), "utf8");
-    const lower = md.toLowerCase();
-    assert.match(md, /s3rch-check\.d\.ts/);
-    assert.match(lower, /browser/);
-    assert.equal(
-      lower.includes("do not `npm install sociacl`") || lower.includes("do not npm install"),
-      true,
-    );
-    assert.match(lower, /wasm later is optional/);
-    assert.match(lower, /later, on request/);
-    for (const banned of ["remint", "discover", "elect", "destroy", "sea"]) {
-      assert.equal(lower.includes(banned), false, `consume doc must not name ${banned}`);
-    }
-  });
-});
 
 describe("locked Gun souls", () => {
   it("encodeKey and itemSoul match s3r.ch", () => {
