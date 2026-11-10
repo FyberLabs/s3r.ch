@@ -1,9 +1,8 @@
 import type { AllowedSourceClass } from "./browser-pull";
-import type { FeedItem, SeedReport, SourcePull } from "./feed-types";
+import type { FeedItem, SourcePull } from "./feed-types";
 import { fetchPublicActivityPub } from "./activitypub";
 import { fetchPublicAtproto } from "./atproto";
 import { fetchPublicCasts } from "./farcaster";
-import { putItems, setSeedMeta } from "./gun-server";
 import { canonicalKey } from "./merge";
 import { fetchPublicNostr } from "./nostr";
 import { normalizeRss3Activities } from "./normalize";
@@ -28,54 +27,6 @@ export async function pullAllowedSource(
     case "rss3-gi":
       return fetchOptionalGi();
   }
-}
-
-export async function seedPublicGraph(): Promise<SeedReport> {
-  const pulled = combinePulls(
-    await Promise.all([
-      fetchPublicCasts(),
-      fetchPublicAtproto(),
-      fetchPublicRss(),
-      fetchPublicActivityPub(),
-      fetchPublicNostr(),
-      fetchOptionalGi(),
-    ]),
-  );
-  const seededAt = new Date().toISOString();
-
-  if (pulled.sourcesOk === 0) {
-    setSeedMeta({
-      seededAt,
-      sourcesOk: 0,
-      sourcesTried: pulled.sourcesTried,
-      error: pulled.error,
-    });
-    return {
-      items: [],
-      seededAt,
-      sourcesOk: 0,
-      sourcesTried: pulled.sourcesTried,
-      written: 0,
-      error: pulled.error,
-    };
-  }
-
-  const written = putItems(pulled.items);
-  setSeedMeta({
-    seededAt,
-    sourcesOk: pulled.sourcesOk,
-    sourcesTried: pulled.sourcesTried,
-    error: null,
-  });
-
-  return {
-    items: pulled.items,
-    seededAt,
-    sourcesOk: pulled.sourcesOk,
-    sourcesTried: pulled.sourcesTried,
-    written,
-    error: null,
-  };
 }
 
 /** GI is optional. DNS/HTTP failure does not empty other sources. */

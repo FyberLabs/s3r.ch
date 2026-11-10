@@ -1,7 +1,7 @@
-// Identity storage health, shared by the preload and the route handlers.
+// Identity storage health, shared by Next instrumentation and route handlers.
 //
 // Account links live in one private blob. If that blob cannot be reached at
-// startup, the site still serves the feed, the forum and /gun. Only account
+// startup, the site still serves the feed and forum. Only account
 // linking and other identity writes are refused until storage comes back.
 // identity-monitor.cjs retries the check and flips the state when it passes.
 // This file holds state only, so route handlers can import it cheaply.
@@ -10,8 +10,7 @@ const STATE_KEY = Symbol.for("s3rch.identityHealth");
 function state() {
   if (!globalThis[STATE_KEY]) {
     globalThis[STATE_KEY] = {
-      // "unchecked" until a monitor starts. A server started without the
-      // preload behaves as before: each request reaches the blob directly.
+      // "unchecked" until a monitor starts. A server started without instrumentation behaves as before: each request reaches the blob directly.
       status: "unchecked",
       reason: null,
       checkedAt: null,

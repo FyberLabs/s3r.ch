@@ -252,7 +252,7 @@ describe("health", () => {
     assert.equal(body.status, "ok");
     assert.equal(body.dependencies.identity.status, "unavailable");
     assert.equal(body.dependencies.identity.writable, false);
-    assert.ok(["ok", "not-attached"].includes(body.dependencies.gun.status));
+    assert.equal(body.dependencies.gun.status, "external");
     assert.ok(["configured", "not-configured"].includes(body.dependencies.panopticon.status));
   });
 });

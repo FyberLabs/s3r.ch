@@ -1,4 +1,4 @@
-// Background identity storage check, started by gun-preload.cjs.
+// Background identity storage check, started by Next instrumentation.
 // It never throws and never exits the process. See identity-health.cjs.
 const fs = require("node:fs");
 const path = require("node:path");
@@ -8,7 +8,7 @@ const { setIdentityHealth, identityState, setIdentityClient, identityClient } = 
 const RETRY_MIN_MS = 5000;
 const RETRY_MAX_MS = 5 * 60 * 1000;
 // Worker start plus a reachability check, a read and possibly a create.
-// Parsed here, not imported, so the preload does not load the Azure SDK.
+// Parsed here, not imported, so web startup does not load the Azure SDK.
 function probeTimeoutMs(env = process.env) {
   const raw = Number(String(env.S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS || "").trim());
   const start = Number.isInteger(raw) && raw >= 1000 ? Math.min(raw, 200000) : 60000;
@@ -33,14 +33,14 @@ function probeWorkerFile() {
     path.join(__dirname, "identity-probe-worker.cjs"),
     path.join(process.cwd(), "identity-probe-worker.cjs"),
   ];
-  return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0];
+  return candidates.find((candidate) => fs.existsSync(/*turbopackIgnore: true*/ candidate)) || candidates[0];
 }
 
 /** Runs the blocking storage check on a worker thread so the event loop keeps serving. */
 function probeInWorker(options = {}, timeoutMs = PROBE_TIMEOUT_MS) {
   return new Promise((resolve) => {
     let settled = false;
-    const worker = new Worker(probeWorkerFile(), {
+    const worker = new Worker(/*turbopackIgnore: true*/ probeWorkerFile(), {
       execArgv: [],
       workerData: { create: options.create !== false },
     });

@@ -27,14 +27,14 @@ describe("identity storage configuration", () => {
     assert.equal(identityLinkPath({ NODE_ENV: "test", S3RCH_IDENTITY_LINKS: "/tmp/links.json" }), "/tmp/links.json");
   });
 
-  it("the production entrypoint starts without blob settings and reports identity as unavailable", () => {
+  it("the production identity monitor starts without blob settings and reports identity as unavailable", () => {
     const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: "production" };
     delete env.S3RCH_IDENTITY_BLOB_ACCOUNT;
     delete env.S3RCH_IDENTITY_BLOB_CONTAINER;
     delete env.S3RCH_IDENTITY_LINKS;
     delete env.S3RCH_IDENTITY_STORAGE_ROOT;
-    const program = "setTimeout(() => process.stdout.write('started ' + require('./identity-health.cjs').identityHealth().status), 3000)";
-    const result = spawnSync(process.execPath, ["-r", "./gun-preload.cjs", "-e", program], {
+    const program = "require('./identity-monitor.cjs').startIdentityMonitor(); setTimeout(() => process.stdout.write('started ' + require('./identity-health.cjs').identityHealth().status), 3000)";
+    const result = spawnSync(process.execPath, ["-e", program], {
       cwd: new URL("../../", import.meta.url), env, encoding: "utf8", timeout: 30000,
     });
     assert.equal(result.status, 0, result.stderr);

@@ -10,13 +10,12 @@ export const runtime = "nodejs";
  * feed, the forum or /gun offline.
  */
 export async function GET() {
-  const gun = Boolean((globalThis as { __s3rchGun?: unknown }).__s3rchGun);
   const identity = identityHealth();
   return Response.json(
     {
       status: "ok",
       dependencies: {
-        gun: { status: gun ? "ok" : process.env.GUN_EXTERNAL_PEER === "1" ? "external" : "not-attached" },
+        gun: { status: "external" },
         identity: {
           status: identity.status,
           writable: identity.status === "ok" || identity.status === "unchecked",

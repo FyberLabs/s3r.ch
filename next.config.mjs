@@ -15,7 +15,7 @@ const nextConfig = {
     "undici",
     "@azure/identity",
     "@azure/storage-blob",
-    // gun-preload.cjs loads identity-link-schema.cjs, which require()s viem
+    // Identity workers load identity-link-schema.cjs, which require()s viem
     // outside the Next bundle. Keep viem external so standalone tracing
     // copies its CommonJS build (node_modules/viem/_cjs).
     "viem",

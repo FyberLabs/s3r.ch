@@ -1,13 +1,12 @@
-// Optional standalone bootstrap origin. Use a single writer per Gun volume.
+// Standalone bootstrap origin. Use a single writer per Gun volume.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { GET as version } from "../app/api/version/route";
-import { POST as seed } from "../app/api/seed/route";
+import { handleSeed as seed } from "../lib/seed-request";
 import { attachGunWeb, snapshotPath } from "../lib/gun-server";
 import { restorePublicFeed } from "../public-feed-cache.cjs";
 
-if (process.env.GUN_EXTERNAL_PEER === "1") throw new Error("GUN_EXTERNAL_PEER is for the web process only.");
 const snapshot = "public/feed-cache/snapshot.json";
 restorePublicFeed(process.cwd(), snapshotPath());
 

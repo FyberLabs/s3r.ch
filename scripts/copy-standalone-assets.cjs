@@ -16,7 +16,6 @@ copy(path.join(__dirname, "..", ".next", "static"), path.join(standalone, ".next
 copy(path.join(__dirname, "..", "public"), path.join(standalone, "public"));
 copy(path.join(standalone, "public/feed-cache/empty.json"), path.join(standalone, "public/feed-cache/snapshot.json"));
 copy(path.join(__dirname, "..", "public-feed-cache.cjs"), path.join(standalone, "public-feed-cache.cjs"));
-copy(path.join(__dirname, "..", "gun-preload.cjs"), path.join(standalone, "gun-preload.cjs"));
 copy(path.join(__dirname, "..", "identity-storage.cjs"), path.join(standalone, "identity-storage.cjs"));
 copy(path.join(__dirname, "..", "identity-link-schema.cjs"), path.join(standalone, "identity-link-schema.cjs"));
 copy(path.join(__dirname, "..", "identity-blob.cjs"), path.join(standalone, "identity-blob.cjs"));
@@ -29,21 +28,23 @@ console.log("[s3r.ch] standalone assets copied");
 // The same image can run the bootstrap peer without loading Next or identity.
 require("esbuild").buildSync({
   entryPoints: [path.join(__dirname, "seed-peer.ts")],
-  outfile: path.join(standalone, "seed-peer.cjs"),
+  outfile: path.join(__dirname, "..", ".next", "seed-peer.cjs"),
   platform: "node", target: "node24", bundle: true, packages: "external",
 });
 
-// Gun loads its Node WebCrypto provider dynamically. Trace that entry and
-// its dependencies the same way Next traces statically imported packages.
-async function copySeaProvider() {
+// Gun SEA dynamically loads its text encoder and Node WebCrypto provider.
+// Trace both entries explicitly; the peer graph alone does not reveal them.
+async function copyPeerDependencies() {
   const { nodeFileTrace } = require("next/dist/compiled/@vercel/nft");
   const root = path.resolve(__dirname, "..");
-  const { fileList } = await nodeFileTrace([require.resolve("@peculiar/webcrypto")], { base: root });
+  const { fileList } = await nodeFileTrace([require.resolve("@peculiar/webcrypto"), require.resolve("gun/lib/text-encoding"), path.join(root, ".next", "seed-peer.cjs")], { base: root });
   for (const file of fileList) {
+    if (file === ".next/seed-peer.cjs") continue;
     if (!file.startsWith("node_modules/")) throw Error("Unexpected SEA dependency path: " + file);
     const dest = path.join(standalone, file);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.copyFileSync(path.join(root, file), dest);
   }
 }
-copySeaProvider().catch(error => { console.error(error); process.exitCode = 1; });
+copy(path.join(__dirname, "..", ".next", "seed-peer.cjs"), path.join(standalone, "seed-peer.cjs"));
+copyPeerDependencies().catch(error => { console.error(error); process.exitCode = 1; });

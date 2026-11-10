@@ -12,7 +12,7 @@ import { chromium } from "playwright-core";
 
 const build = path.resolve(".next/standalone");
 const root = await mkdtemp(path.join(tmpdir(), "s3rch-seed-handoff-"));
-// Select a free loopback port and reuse it across both relay implementations.
+// Select a free loopback port and reuse it across peer restarts.
 const probe = createServer();
 probe.listen(0, "127.0.0.1");
 await once(probe, "listening");
@@ -31,12 +31,12 @@ let child;
 let exit;
 let log;
 
-async function start(embedded) {
+async function start() {
   assert.equal(child, undefined, "the previous volume owner must exit first");
   // A replacement container gets a fresh public directory. Only GUN_SNAPSHOT survives.
   await rm(path.join(root, "public/feed-cache/snapshot.json"), { force: true });
   log = "";
-  child = spawn(process.execPath, embedded ? ["-r", "./gun-preload.cjs", "server.js"] : ["seed-peer.cjs"], {
+  child = spawn(process.execPath, ["seed-peer.cjs"], {
     cwd: root, env: {
       PATH: process.env.PATH, HOME: root, NODE_ENV: "production", HOSTNAME: "127.0.0.1", PORT: new URL(origin).port,
       APP_BUILD_REVISION: revision, GUN_FILE: path.join(root, "radata"), GUN_SNAPSHOT: path.join(root, "snapshot.json"),
@@ -113,21 +113,21 @@ try {
   }
   await writeFile(path.join(root, "snapshot.json"), JSON.stringify(snapshot));
   browser = await chromium.launch();
-  await start(true);
+  await start();
   const original = await client();
-  await write(original, "embedded");
+  await write(original, "initial");
   await original.close();
   await stop();
 
-  await start(false);
+  await start();
   const writer = await client(), reader = await client();
-  await read(reader, "embedded"); // Only the volume survived the handoff.
+  await read(reader, "initial"); // Only the volume survived the handoff.
   await write(writer, "standalone");
   await read(reader, "standalone");
   const clients = [reader, writer];
   const before = await Promise.all(clients.map(peer => peer.evaluate(() => window.connections)));
   await stop();
-  await start(false);
+  await start();
   // Both live clients must reconnect. A new value proves fresh remote delivery.
   await Promise.all(clients.map((peer, i) =>
     peer.waitForFunction(previous => window.connections > previous, before[i])));
@@ -137,10 +137,10 @@ try {
   await reader.close();
   await stop();
 
-  await start(true);
+  await start();
   const restored = await client();
   await read(restored, "reconnected");
-  console.log("Gun graph handoff, two-client seed fallback, reconnect and embedded rollback passed.");
+  console.log("Gun graph persistence, two-client seed fallback and reconnect passed.");
 } catch (error) {
   console.error(log);
   throw error;
