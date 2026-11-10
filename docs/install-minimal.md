@@ -4,7 +4,7 @@ Run s3r.ch with the core stack and no Panopticon settings. Gun, the public feed,
 
 Account-link storage is [identity-storage.md](identity-storage.md). Login behavior is [identity.md](identity.md). TURN background is [durable-graph-and-turn.md](durable-graph-and-turn.md).
 
-Published images and the digest pin are [release.md](release.md). The steps below are a Node checkout and `docker build` of the same `Dockerfile`.
+Published image tags are [release.md](release.md). The steps below are a Node checkout and `docker build` of the same `Dockerfile`.
 
 ## Clone, build, and run
 

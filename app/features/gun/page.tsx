@@ -4,14 +4,14 @@ import { FeatureArticle, FeatureSection } from "@/components/FeatureArticle";
 export const metadata: Metadata = {
   title: "Gun graph — s3r.ch",
   description:
-    "How s3r.ch uses Gun: a seed peer, browser peers, share and unshare, and room chat that stays with its holders.",
+    "How s3r.ch uses Gun: a seed peer, browser peers, share and unshare, and room chat that stays with the peers who still have it.",
 };
 
 export default function GunFeaturePage() {
   return (
     <FeatureArticle
       title="How s3r.ch uses Gun"
-      lede="Shared posts, rooms, and room chat live on a Gun graph. Peers pass updates to each other, and a shared item stays available while someone still holds it."
+      lede="Shared posts, rooms, and room chat live on a Gun graph. Peers pass updates to each other, and a shared item stays available while someone still has it."
       actions={[
         { href: "/feed", label: "Open feed" },
         { href: "/forum", label: "Open forum", tone: "secondary" },
@@ -43,13 +43,13 @@ export default function GunFeaturePage() {
 
       <FeatureSection title="What stays">
         <p>
-          A shared item stays available while some peer still holds it. Save your
+          A shared item stays available while some peer still has it. Save your
           own copy of anything you need to keep.
         </p>
         <p>
           Forum channels are kept for their owner by this site. Those posts and
           desktop snapshots can disappear when the site restarts. Room chat stays
-          with the Gun peers who hold it.
+          with the Gun peers who still have it.
         </p>
       </FeatureSection>
     </FeatureArticle>

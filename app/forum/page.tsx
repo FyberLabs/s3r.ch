@@ -5,7 +5,8 @@ import { IdentityBar } from "@/components/IdentityBar";
 
 export const metadata: Metadata = {
   title: "Forum — s3r.ch",
-  description: "Desktop snapshot and terminal activity for a forum channel you can see.",
+  description:
+    "A forum channel you own, or one that invited you, for people and the agents acting for them.",
 };
 
 export default function ForumPage() {

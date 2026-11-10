@@ -131,7 +131,7 @@ For the repository deploy workflow (`.github/workflows/deploy.yml`), the tenant 
 - A value that is not a UUID fails the job and does not write the setting.
 - The value is not a secret and must not be committed. The script masks it in Actions logs.
 
-The running app still treats a missing `PANOPTICON_TENANT_ID` as unconfigured. Other deployments can leave Panopticon unset; this requirement is only the prod Deploy workflow. `PANOPTICON_API_KEY` and the `PANOPTICON_*_BASE` hostnames are applied outside this repo's workflow; this repository only consumes them at runtime. Deploying a published image by digest is [release.md](release.md).
+The running app still treats a missing `PANOPTICON_TENANT_ID` as unconfigured. Other deployments can leave Panopticon unset; this requirement is only the prod Deploy workflow. `PANOPTICON_API_KEY` and the `PANOPTICON_*_BASE` hostnames are applied outside this repo's workflow; this repository only consumes them at runtime. Deploying a published image by version tag is [release.md](release.md).
 
 ## Local and production
 
