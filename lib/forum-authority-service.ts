@@ -1,3 +1,4 @@
+import { matchesBrowserOrigin } from "./request-origin";
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { squadView, isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
 
@@ -26,7 +27,7 @@ export function createForumAuthorityService(input: {
   return async (request: Request): Promise<Response> => {
     try {
       if (request.method !== "POST") return reply(405, { error: "method" });
-      if (new URL(request.url).origin !== origin.origin || request.headers.get("origin") !== origin.origin ||
+      if (!matchesBrowserOrigin(request, origin) ||
           request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") return reply(403, { error: "origin-or-type" });
       const session = await authenticate(request);
       if (!session || typeof session.key !== "string" || isPublicSquadPrincipal(session.key)) return reply(403, { error: "authentication" });
