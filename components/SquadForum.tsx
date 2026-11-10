@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  acceptForumOffer, declineForumOffer, continueForumOfferCancellation,
+  offerForumHelp, reopenForumNeed,
+} from "@/lib/identity/forum-transitions";
+
 import { createForumReceiveRetry } from "@/lib/forum-receive-retry";
 import { createForumReceiveProofs } from "@/lib/forum-receive-proofs";
 import { BusinessRoleStrips } from "@/components/BusinessRoleStrips";
@@ -126,9 +131,6 @@ import { readForumSignature, signForumRecord, signatureOf } from "@/lib/forum-si
 import { soulKeyMatches } from "@/lib/unshare";
 import { acquireBrowserGun } from "@/lib/browser-gun";
 import {
-  acceptForumOffer,
-  declineForumOffer,
-  continueForumOfferCancellation,
   forumAgentSoul,
   forumAlarmSoul,
   forumChatTag,
@@ -139,8 +141,6 @@ import {
   isForumObjectId,
   isRoleToken,
   isSeaPubkey,
-  offerForumHelp,
-  reopenForumNeed,
   validateForumStatus,
   type ForumAgentState,
   type ForumAgentStatus,

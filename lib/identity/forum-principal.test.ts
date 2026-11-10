@@ -4,7 +4,7 @@ import vectors from "./vectors/principal.json";
 import forum from "./vectors/forums.json";
 import { forumAgentSoul, isSeaPubkey, seaToPrincipalKey, seaFromPrincipalKey, sameEmbeddedPrincipal } from "./forum-check";
 
-// Copied from SociACL vectors/ids/principal.json at b7f9bc59.
+// Exact upstream vector; revision and hashes are in docs/sociacl-contract.json.
 // Boolean validation adopts the same accept/reject boundary, not reason strings.
 for (const row of vectors.accept) {
   test(`forum principal accepts ${row.name}`, () => {

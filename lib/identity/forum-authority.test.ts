@@ -1,10 +1,11 @@
+import { offerForumHelp, acceptForumOffer, declineForumOffer, continueForumOfferCancellation } from "./forum-transitions";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
 import { createForumAuthority, type ForumAuthoritySnapshot } from "./forum-authority";
 import { parseForumAuthority, type AuthorityKind } from "./forum-authority-records";
 import { seaToPrincipalKey, type ForumNeed } from "./forum-check";
-import { checkSee, checkForumSee, offerForumHelp, acceptForumOffer, declineForumOffer, continueForumOfferCancellation } from "./check";
+import { checkSee, checkForumSee } from "./check";
 import { publishForumAuthorized } from "../forum-authorized-publish";
 import { createMemorySeeAcl } from "./see-acl";
 import { readFileSync } from "node:fs";
