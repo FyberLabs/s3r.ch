@@ -57,7 +57,7 @@ Coming in v1: the person's SEA identity signs a delegation, and s3r.ch issues a 
 - **Open web.** Inbound public posts from Farcaster, Bluesky, Nostr, ActivityPub, and RSS or Atom. Outbound to Farcaster and Bluesky when the server has those credentials. Outbound to ActivityPub and Nostr is coming in v1.
 - **Claims.** ENS, Unstoppable, Farcaster, Lens, and RSS3, plus email and phone after confirm, stay on the account until that claim is shared.
 
-s3r.ch utilizes public posts to improve services. Deleted public posts are not kept. A peer that already saved a copy can still have that copy until it syncs the removal.
+s3r.ch utilizes public posts to improve services. A post you delete on s3r.ch is removed. Readers drop that removal when they sync, and a peer that already saved a copy can still have that copy until it syncs. A post pulled from another network is updated on the next pull of that source, and can remain in this feed after it is deleted there. Removing those source deletions from the feed is tracked in https://github.com/FyberLabs/s3r.ch/issues/296.
 
 ## Coming in v1, not available now
 
@@ -74,7 +74,9 @@ A full search engine comes after v1.
 
 ## Run a copy
 
-Organizations run the published container. The image listens on port 8080, stores Gun data, the public snapshot, and the forum file on `/app/data`, and expects `IDENTITY_SESSION_SECRET` (at least 32 characters). Production sign-in also needs the identity document settings in the deployment guide. Health is `GET /api/health`.
+A running test installation follows `ghcr.io/fyberlabs/s3r.ch:test`. That channel advances when a new build is published. An exact digest records which image was built and is how production is pinned. How production chooses its image is in https://github.com/FyberLabs/s3r.ch/blob/master/docs/release.md.
+
+The web process listens on port 8080 and expects `IDENTITY_SESSION_SECRET` (at least 32 characters). Gun runs as `node /app/seed-peer.cjs` with its own data volume. The forum file stays with the one web process that should own it. Production sign-in also needs the identity document settings in the deployment guide. Health is `GET /api/health`.
 
 https://github.com/FyberLabs/s3r.ch/blob/master/docs/deployment.md
 

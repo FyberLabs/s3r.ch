@@ -50,7 +50,9 @@ export default function SocialFeaturePage() {
           The public feed pulls Farcaster, Bluesky, Nostr, ActivityPub, and RSS
           or Atom. Signed in, you can pull those same sources onto Mine and
           share the ones you choose. s3r.ch utilizes public posts to improve
-          services. Deleted public posts are not kept.
+          services. A post you delete on s3r.ch is removed. A post pulled from
+          another network is updated on the next pull of that source, and can
+          remain in this feed after it is deleted there.
         </p>
         <p>
           From a post you own, you can send it to Farcaster or Bluesky when this

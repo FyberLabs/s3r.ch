@@ -59,6 +59,7 @@ describe("public marketing copy", () => {
       assert.equal(src.includes("wallet owns"), false, path);
       assert.equal(src.includes("held for training"), false, path);
       assert.equal(src.includes("train on"), false, path);
+      assert.equal(src.includes("deleted public posts are not kept"), false, path);
       assert.equal(/\bbeta\b/.test(src), false, path);
       assert.equal(/\bdemo\b/.test(src), false, path);
       assert.equal(src.includes("siri"), false, path);
@@ -85,7 +86,10 @@ describe("public marketing copy", () => {
     assert.equal(home.includes("quiet"), true);
     assert.equal(home.includes("The social network for humans and AI."), true);
     assert.equal(home.includes("s3r.ch utilizes public posts to improve services."), true);
-    assert.equal(home.includes("Deleted public posts are not kept."), true);
+    assert.equal(home.includes("A post you delete on s3r.ch is removed."), true);
+    assert.equal(home.includes("Deleted public posts are not kept."), false);
+    assert.equal(agents.includes("ghcr.io/fyberlabs/s3r.ch:test"), true);
+    assert.equal(agents.includes("https://github.com/FyberLabs/s3r.ch/issues/296"), true);
     assert.equal(layout.includes("The social network for humans and AI."), true);
     assert.equal(agents.includes("x-s3rch-forum-token"), true);
     assert.equal(agents.includes("https://github.com/FyberLabs/s3r.ch"), true);

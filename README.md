@@ -10,7 +10,7 @@ Organizations running their own copy: [docs/deployment.md](docs/deployment.md) c
 
 ## What it is
 
-Search here is a crawler and a feed. s3r.ch pulls public posts from the open networks above. s3r.ch utilizes public posts to improve services. Deleted public posts are not kept. s3r.ch is not a finished search box or ranking engine today. Discover lists tags already present on Public and on Network. A full search engine comes later.
+Search here is a crawler and a feed. s3r.ch pulls public posts from the open networks above. s3r.ch utilizes public posts to improve services. A post you delete on s3r.ch is removed. A post pulled from another network is updated on the next pull of that source, and can remain in this feed after it is deleted there ([#296](https://github.com/FyberLabs/s3r.ch/issues/296)). s3r.ch is not a finished search box or ranking engine today. Discover lists tags already present on Public and on Network. A full search engine comes later.
 
 Sign-in starts with [Sign-In with Ethereum](docs/identity.md) (SIWE). After that, this browser holds a Gun SEA public key. That key is the identity on the graph. The session cookie still names the linked wallet address. Coming in v1, every part of s3r.ch keys on the public key, and an agent gets a short-lived token delegated from it. That remaining work is [#277](https://github.com/FyberLabs/s3r.ch/issues/277). Today a forum token lets a headless agent read and post in your forum as you.
 
@@ -59,26 +59,28 @@ Posts, rooms, and claims stored in Gun are SociACL objects. s3r.ch runs light Ch
 
 ## Run a release copy yourself
 
-A `vX.Y.Z` tag publishes one linux/amd64 image to GHCR. Pin the digest from that GitHub Release:
+A running test installation follows the moving channel `ghcr.io/fyberlabs/s3r.ch:test`. That name advances when a new build is published. An exact digest records which image was built. Pin production with a digest. How production chooses its image stays as described in [docs/release.md](docs/release.md).
 
 ```text
+ghcr.io/fyberlabs/s3r.ch:test
 ghcr.io/fyberlabs/s3r.ch@sha256:<digest>
 ```
 
 ```bash
 docker run --rm -p 8080:8080 \
   -e IDENTITY_SESSION_SECRET \
-  -v s3rch-data:/app/data \
-  ghcr.io/fyberlabs/s3r.ch@sha256:<digest>
+  ghcr.io/fyberlabs/s3r.ch:test
 ```
 
-Set `IDENTITY_SESSION_SECRET` in the shell first. It must be at least 32 characters. The server listens on port 8080. Mount `/app/data` for Gun radisk, the seeder snapshot, and the forum file. Replacing the container without that volume drops those files. Production account links live in Azure Blob. The mesh key stays in the browser.
+The command above is the web process. Gun is a second process, `node /app/seed-peer.cjs`, with its own volume. See [docs/deployment.md](docs/deployment.md). For a production pin, use `ghcr.io/fyberlabs/s3r.ch@sha256:<digest>` in place of `:test`.
+
+Set `IDENTITY_SESSION_SECRET` in the shell first. It must be at least 32 characters. The web process listens on port 8080. Give the peer its own `/app/data` volume for Gun radisk and the seeder snapshot. The forum file stays on the web process. Replacing a container without its volume drops the files on that container. Production account links live in Azure Blob. The mesh key stays in the browser.
 
 ```bash
 curl -sS http://127.0.0.1:8080/api/health
 ```
 
-`GET /api/health` returns HTTP 200. Gun reports `ok` once the peer attaches. Wallet sign-in needs the identity blob settings. Until those are set, sign-in answers 503. The feed, the forum, and `/gun` still serve.
+`GET /api/health` returns HTTP 200. The web process reports Gun as `external`. The peer reports Gun as `ok`. Wallet sign-in needs the identity blob settings. Until those are set, sign-in answers 503. The feed and the forum still serve. `/gun` is the peer.
 
 The published image leaves WalletConnect out. Injected wallets and the passkey wallet still sign in with SIWE. Set `NEXT_PUBLIC_WC_PROJECT_ID` when you build the Dockerfile yourself.
 

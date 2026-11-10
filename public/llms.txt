@@ -31,7 +31,7 @@ Tagged posts and rooms. Views: Mine, Public, Network, and Granted. Discover list
 
 Public posts are pulled from Farcaster, Bluesky, Nostr, ActivityPub, and RSS or Atom. A note the person owns can go out to Farcaster or Bluesky when that connection is turned on.
 
-s3r.ch utilizes public posts to improve services. Deleted public posts are not kept.
+s3r.ch utilizes public posts to improve services. A post you delete on s3r.ch is removed. A post pulled from another network is updated on the next pull of that source, and can remain in this feed after it is deleted there. Removing those source deletions from the feed is tracked in https://github.com/FyberLabs/s3r.ch/issues/296.
 
 ## Coming in v1
 
@@ -39,4 +39,8 @@ Scoped delegated agent tokens, an open room event and write API with webhooks an
 
 ## Run a copy
 
-Pin the published image digest and follow https://github.com/FyberLabs/s3r.ch/blob/master/docs/deployment.md.
+A running test installation follows the moving channel `ghcr.io/fyberlabs/s3r.ch:test`. That name advances when a new build is published.
+
+An exact digest, `ghcr.io/fyberlabs/s3r.ch@sha256:<digest>`, records which image was built. Pin production with a digest. How production chooses its image is described in https://github.com/FyberLabs/s3r.ch/blob/master/docs/release.md.
+
+Setup for your own copy: https://github.com/FyberLabs/s3r.ch/blob/master/docs/deployment.md.

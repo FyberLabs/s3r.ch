@@ -2,9 +2,15 @@
 
 Three ways to run this repository. Each one uses only components, settings, and dependencies that the code, the `Dockerfile`, and [configuration.md](configuration.md) already define. Anything this process does not do is marked **planned** or **not supported**.
 
-The published image is `ghcr.io/fyberlabs/s3r.ch`, pinned by digest. How a tag becomes an image is [release.md](release.md). A Node checkout of the same `Dockerfile` is [install-minimal.md](install-minimal.md).
+## Which image to run
 
-The process is Next.js standalone plus one Gun peer. It listens on port 8080, runs as uid 1001 (`nextjs`), and declares `VOLUME /app/data`. `GET /api/health` returns HTTP 200 while the process is up. `GET /api/version` returns the build revision when `APP_BUILD_REVISION` is a 40-character commit id.
+A running test installation follows the moving channel `ghcr.io/fyberlabs/s3r.ch:test`. That name advances when a new build is published.
+
+An exact digest, `ghcr.io/fyberlabs/s3r.ch@sha256:<digest>`, records which image was built. Pin production with a digest. How production chooses its image stays as described in [release.md](release.md).
+
+A Node checkout of the same `Dockerfile` is [install-minimal.md](install-minimal.md).
+
+The image listens on port 8080, runs as uid 1001 (`nextjs`), and declares `VOLUME /app/data`. The default command is `node server.js`, the web process. Gun is a second process from the same image: `node /app/seed-peer.cjs`. `GET /api/health` returns HTTP 200 while the process is up. The web process reports `dependencies.gun.status` as `external`. The peer reports Gun as `ok`. `GET /api/version` returns the build revision when `APP_BUILD_REVISION` is a 40-character commit id.
 
 This repository does not publish CPU or memory sizes. The constraint that is in the code: one process writes a given `GUN_FILE` directory.
 
@@ -12,7 +18,8 @@ This repository does not publish CPU or memory sizes. The constraint that is in 
 
 | Piece | Where it comes from |
 | --- | --- |
-| Web app and `/gun` | This image. `gun-preload.cjs` attaches the peer unless `GUN_EXTERNAL_PEER=1`. |
+| Web app | This image, command `node server.js`. It does not attach Gun. Its `/api/seed` route answers 503 and tells the caller to use the peer. |
+| Gun peer | Same image, command `node /app/seed-peer.cjs`. Serves `/gun`, `/feed-cache/snapshot.json`, `GET /api/feed`, and `POST /api/seed`. One writer for its Gun volume. |
 | Gun data | `GUN_FILE`, default `/app/data/radata` in the image. |
 | Public snapshot | `GUN_SNAPSHOT`, default `/app/data/snapshot.json`. Served at `/feed-cache/snapshot.json`. |
 | Forum ledger | `S3RCH_FORUM`, default `/app/data/forum.json`. |
@@ -28,65 +35,82 @@ Related repositories:
 - Gun: [amark/gun](https://github.com/amark/gun)
 - Production hosting for s3r.ch itself is described in [FyberLabs/infra `terraform/s3rch`](https://github.com/FyberLabs/infra/blob/main/terraform/s3rch/README.md). That tree is how this project is hosted. It is not required to run your own copy.
 
-## Minimal: one node
+## Minimal: one web process and one Gun peer
 
-One container. The feed, the forum, and `/gun` serve. Wallet sign-in on the production image answers 503 until the identity document settings in the next section are set. A Node process with `NODE_ENV` unset stores that document in a local file instead (`S3RCH_IDENTITY_LINKS`, default `data/identity-links.json`).
+The web process serves the site and the forum. The Gun peer is a second container from the same image, with its own volume. Wallet sign-in on the production image answers 503 until the identity document settings in the next section are set. A Node process with `NODE_ENV` unset stores that document in a local file instead (`S3RCH_IDENTITY_LINKS`, default `data/identity-links.json`).
 
 ```mermaid
 flowchart LR
   browser[Browsers]
-  app["s3r.ch container<br/>web + Gun peer"]
-  disk["Volume /app/data"]
-  browser -->|"HTTPS and /gun"| app
-  app --> disk
-  browser -.->|"STUN"| stun[Public STUN]
+  web["Web process<br/>node server.js"]
+  peer["Gun peer<br/>seed-peer.cjs"]
+  disk["Peer volume /app/data"]
+  browser -->|HTTPS| web
+  browser -->|"/gun and public snapshot"| peer
+  peer --> disk
+  browser -.->|STUN| stun[Public STUN]
 ```
 
 Components:
 
-- The s3r.ch container.
-- A volume mounted at `/app/data`, writable by uid 1001.
+- The s3r.ch web container.
+- The s3r.ch peer container, volume at `/app/data`, writable by uid 1001.
+- A proxy that sends `/gun`, `/feed-cache/snapshot.json`, `/api/feed`, and `/api/seed` to the peer, and the rest of the site to the web process.
 - Public STUN from the browser. No relay.
+
+A running test installation:
 
 ```bash
 docker run --rm -p 8080:8080 \
   -e IDENTITY_SESSION_SECRET \
+  ghcr.io/fyberlabs/s3r.ch:test
+
+docker run --rm -p 8081:8080 \
+  -e SEED_SECRET \
   -v s3rch-data:/app/data \
-  ghcr.io/fyberlabs/s3r.ch@sha256:<digest>
+  ghcr.io/fyberlabs/s3r.ch:test \
+  node /app/seed-peer.cjs
 ```
+
+Pin production by using `ghcr.io/fyberlabs/s3r.ch@sha256:<digest>` in place of `:test` on both commands. Do not leave a running test installation on a digest. That name would stay on the old build until someone changes it. How production chooses the digest stays in [release.md](release.md).
 
 Set `IDENTITY_SESSION_SECRET` in the shell first. Then:
 
 ```bash
 curl -sS http://127.0.0.1:8080/api/health
+curl -sS http://127.0.0.1:8081/api/health
 ```
 
-`dependencies.gun.status` becomes `ok` once the peer attaches. With the identity document unset, `dependencies.identity.status` becomes `unavailable` and sign-in answers 503. Replacing the container without the volume drops Gun data, the snapshot, and the forum file.
+The web process on port 8080 reports Gun as `external`. The peer on port 8081 reports Gun as `ok`. With the identity document unset, `dependencies.identity.status` becomes `unavailable` and sign-in answers 503. Replacing the peer container without its volume drops Gun data and the public snapshot. The forum file is on the web process. In this minimal command that disk is inside the web container, so replacing that container drops the forum file too.
 
 `POST /api/seed` fills the public snapshot from Farcaster, Bluesky, Nostr, ActivityPub, and RSS or Atom. In production the call requires `Authorization: Bearer` matching `SEED_SECRET`. An empty source writes nothing.
 
-Not in this scenario: a second web process, a split Gun peer, account sign-in, a TURN relay, outbound Farcaster or Bluesky, or a shared identity document. Those are the next section, or **not supported** where the enterprise section says so.
+Not in this scenario: a second web process, account sign-in, a TURN relay, outbound Farcaster or Bluesky, or a shared identity document. Those are the next section, or **not supported** where the enterprise section says so.
 
 ## Typical: production with the dependencies the app actually calls
 
-One web process with its Gun peer, plus the stores and optional doors the server already implements.
+One web process, one Gun peer, plus the stores and optional doors the server already implements.
 
 ```mermaid
 flowchart LR
   browser[Browsers]
-  app["s3r.ch<br/>web + Gun peer"]
-  disk["Volume /app/data"]
+  web[Web process]
+  peer[Gun peer]
+  forumDisk[Forum file]
+  gunDisk[Gun volume]
   blob["Private blob<br/>identity-links.json"]
   idp[Optional OIDC provider]
   turn[Optional TURN relay]
   nets["Public sources<br/>Farcaster, Bluesky, Nostr,<br/>ActivityPub, RSS or Atom"]
-  browser --> app
-  app --> disk
-  app --> blob
+  browser --> web
+  browser --> peer
+  web --> forumDisk
+  web --> blob
+  peer --> gunDisk
+  peer --> nets
   browser --> idp
-  app --> idp
+  web --> idp
   browser -.-> turn
-  app --> nets
 ```
 
 Components:
@@ -105,17 +129,16 @@ Components:
 ```bash
 docker run --rm -p 8080:8080 \
   -e IDENTITY_SESSION_SECRET \
-  -e SEED_SECRET \
   -e S3RCH_IDENTITY_BLOB_ACCOUNT \
   -e S3RCH_IDENTITY_BLOB_CONTAINER \
   -e AZURE_CLIENT_ID \
-  -v s3rch-data:/app/data \
+  -v s3rch-forum:/app/data \
   ghcr.io/fyberlabs/s3r.ch@sha256:<digest>
 ```
 
-Pass `AZURE_CLIENT_ID` only for a user-assigned identity. Give the process a managed identity that can write the container. Do not put secrets in the image.
+That volume is the forum file on the web process. The Gun peer keeps the separate volume from the minimal section, and it is the process that receives `SEED_SECRET`. Use the same digest on the peer when you pin production. A running test installation uses `ghcr.io/fyberlabs/s3r.ch:test` on both. Pass `AZURE_CLIENT_ID` only for a user-assigned identity. Give the web process a managed identity that can write the container. Do not put secrets in the image.
 
-Check `GET /api/health`. `dependencies.identity.status` is `ok` when the blob check passes. `dependencies.gun.status` is `ok` when the peer is attached. A failed identity store does not take down the feed, the forum, or `/gun`.
+Check `GET /api/health` on the web process and on the peer. `dependencies.identity.status` is `ok` on the web process when the blob check passes. The web process reports Gun as `external`. The peer reports Gun as `ok`. A failed identity store does not take down the feed, the forum, or `/gun`.
 
 Backup, from [install-minimal.md](install-minimal.md#backup-and-restore). Stop writers first.
 
@@ -133,29 +156,32 @@ High availability, directory sign-in, an edge in front of the app, monitoring, a
 flowchart TB
   browser[Browsers]
   edge["Your proxy or the static-page worker in edge/"]
-  web["One or more web processes<br/>GUN_EXTERNAL_PEER=1"]
+  web[Other web processes]
+  forumweb[Forum owner process]
   peer["One seed peer<br/>seed-peer.cjs"]
   disk["One Gun volume<br/>single writer"]
   forum["Forum file<br/>one writer"]
-  blob["Identity blob"]
+  blob[Identity blob]
   idp[OIDC provider]
   turn[TURN relay you run]
   browser --> edge
-  edge -->|"pages"| web
-  edge -->|"/gun, /api/seed, snapshot"| peer
-  browser --> web
+  edge -->|pages and other API| web
+  edge -->|"/api/forum including snapshot"| forumweb
+  edge -->|"/gun, /api/seed, /api/feed, feed snapshot"| peer
   web --> blob
+  forumweb --> blob
   web --> idp
-  web --> forum
+  forumweb --> idp
+  forumweb --> forum
   peer --> disk
-  browser -.->|"WebRTC relay"| turn
+  browser -.->|WebRTC relay| turn
 ```
 
 ### Supported
 
-**Split the Gun peer from the web process.** The image includes `node seed-peer.cjs`. That process serves `/gun`, `/feed-cache/snapshot.json`, `GET /api/feed`, `POST /api/seed`, and `GET /api/health`. Give it `SEED_SECRET` and its own writable Gun volume. On each web process set `GUN_EXTERNAL_PEER=1` after your proxy sends `/gun`, `/feed-cache/snapshot.json`, and `/api/seed` to the seed peer. The web process then does not attach a second Gun writer. Its health reports `dependencies.gun.status` as `external`. Identity cookies stay on the web origin.
+**Gun peer.** The image includes `node /app/seed-peer.cjs`. That process serves `/gun`, `/feed-cache/snapshot.json`, `GET /api/feed`, `POST /api/seed`, and `GET /api/health`. Give it `SEED_SECRET` and its own writable Gun volume. The web process is `node server.js`. It does not attach Gun, and its health reports `dependencies.gun.status` as `external`. Route `/gun`, `/feed-cache/snapshot.json`, `/api/feed`, and `/api/seed` to the peer. Identity cookies stay on the web origin.
 
-**More than one web process**, behind a proxy you run, when Gun is external and every process uses the same identity blob and the same `IDENTITY_SESSION_SECRET`. The session is a signed cookie, so it does not stick to one process. This repository does not ship the proxy.
+**More than one web process**, behind a proxy you run, when every process uses the same identity blob and the same `IDENTITY_SESSION_SECRET`. The session is a signed cookie, so it does not stick to one process. This repository does not ship the proxy. `/api/forum` does not follow that spread. See the forum step below.
 
 **Directory sign-in.** `S3RCH_LOGIN_PROVIDERS` is the list. Include the wallet entry. Each OpenID Connect entry is public PKCE, issuer pinned on first success. Details: [install-minimal.md](install-minimal.md#login-providers) and [oauth-idp.md](oauth-idp.md).
 
@@ -170,7 +196,7 @@ flowchart TB
 ### Not supported
 
 - Two processes writing the same `GUN_FILE`. The second writer will corrupt that directory.
-- Sharing one `S3RCH_FORUM` file across web processes. The forum ledger is a local JSON file with one writer. A highly available forum is **planned**. Until then, run one forum writer.
+- Sharing one `S3RCH_FORUM` file across web processes, or sending `/api/forum` to more than one of them. The forum ledger is a local JSON file. A process that does not have that file opens an empty forum. A highly available forum is **planned**. Until then, one process owns the file and every forum request goes to that process.
 - Active-active Gun across regions, or a clustered Gun datastore. **Not supported.** One seed peer owns one volume.
 - Sign-in on a hostname that is not in `ALLOWED_SIWE_HOSTS` or `OAUTH_REDIRECT_URIS` (`lib/identity/config.ts`). **Not supported** until that code changes.
 - A packaged production edge, a metrics pipeline, or a backup scheduler. **Not included.** The health routes and the copy steps above are what this repository provides.
@@ -179,10 +205,11 @@ flowchart TB
 ### Config steps for this shape
 
 1. Run one `seed-peer.cjs` with `SEED_SECRET` and a volume for `GUN_FILE` and `GUN_SNAPSHOT`.
-2. Run the web image with `GUN_EXTERNAL_PEER=1`, `IDENTITY_SESSION_SECRET`, and the two identity blob settings. Point every web process at the same blob.
-3. Route `/gun`, `/feed-cache/snapshot.json`, and `/api/seed` to the seed peer. Route the rest of the site to the web processes. Keep identity cookies on the web origin.
-4. Put the forum file on the one web process that should own it. Do not mount that file on the others.
-5. Add `S3RCH_LOGIN_PROVIDERS` for directory sign-in, and `S3RCH_TURN_URLS` plus `S3RCH_TURN_SECRET` if you run a relay.
-6. Poll `/api/health` on the web processes and on the seed peer. Copy the volume and the identity blob on a schedule you run yourself.
+2. Run web processes with the image default `node server.js`, `IDENTITY_SESSION_SECRET`, and the two identity blob settings. Point every web process at the same blob.
+3. Route `/gun`, `/feed-cache/snapshot.json`, `/api/feed`, and `/api/seed` to the seed peer. Keep identity cookies on the web origin.
+4. Route every `/api/forum` request, including `GET /api/forum?snapshot=<handle>`, to the one web process that owns the forum file. Mount that file only on that process. Mounting the volume is not enough: `app/api/forum/route.ts` calls `getForum()` on whichever process receives the request, and a missing file is an empty forum. Posts, invites, and groups then differ between processes.
+5. Route the rest of the site across the web processes.
+6. Add `S3RCH_LOGIN_PROVIDERS` for directory sign-in, and `S3RCH_TURN_URLS` plus `S3RCH_TURN_SECRET` if you run a relay.
+7. Poll `/api/health` on the web processes and on the seed peer. Copy the Gun volume, the forum file, and the identity blob on a schedule you run yourself.
 
 Leave optional integration settings unset unless you run those services. The site still serves.

@@ -38,10 +38,12 @@ export default function SociaclFeaturePage() {
       <FeatureSection title="Mine until you share">
         <p>
           New posts, rooms, and claims start on Mine. Share a post or a room
-          when you want it on the public feed. Unshare takes it off the public
-          graph. s3r.ch utilizes public posts to improve services. Deleted
-          public posts are not kept. Readers drop a removal when they sync.
-          Someone who already saved a copy can still have that copy.
+          when you want it on the public feed. Unshare takes a post you
+          published here off the public graph. Readers drop that removal when
+          they sync. Someone who already saved a copy can still have that copy.
+          s3r.ch utilizes public posts to improve services. A post pulled from
+          another network is updated on the next pull of that source, and can
+          remain in this feed after it is deleted there.
         </p>
       </FeatureSection>
 
