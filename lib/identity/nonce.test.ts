@@ -1,3 +1,4 @@
+import { requestHost, requestIsSecure } from "../request-origin";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { LOCAL_SESSION_SECRET } from "./config";
@@ -6,8 +7,6 @@ import {
   nonceCookieName,
   nonceCookieNames,
   readCookie,
-  requestHost,
-  requestIsSecure,
   serializeCookie,
   sessionCookieName,
 } from "./cookies";

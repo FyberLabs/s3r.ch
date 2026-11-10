@@ -17,6 +17,7 @@
     "@faker-js/faker": "^10.6.0",
     "@farcaster/core": "^0.21.0",
     "@noble/curves": "2.4.0",
+    "@peculiar/webcrypto": "^1.7.1",
     "@tanstack/react-query": "^5.105.0",
     "@walletconnect/ethereum-provider": "^2.26.0",
     "gun": "^0.2020.1241",

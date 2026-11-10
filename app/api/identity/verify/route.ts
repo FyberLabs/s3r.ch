@@ -1,9 +1,8 @@
+import { requestHost, requestIsSecure } from "@/lib/request-origin";
 import { completeWalletSignIn } from "@/lib/identity/age";
 import { SESSION_TTL_SECONDS } from "@/lib/identity/config";
 import {
   nonceCookieName,
-  requestHost,
-  requestIsSecure,
   sessionCookieName,
 } from "@/lib/identity/cookies";
 import {
