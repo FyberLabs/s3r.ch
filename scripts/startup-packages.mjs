@@ -1,5 +1,5 @@
 /**
- * Packages require()'d from the preload and identity workers, outside the
+ * Packages require()'d from the seed peer and identity workers, outside the
  * Next.js server bundle. Prints one package name per line.
  */
 import fs from "node:fs";
@@ -36,7 +36,7 @@ function walk(file, seen, packages) {
 }
 
 function seeds() {
-  const files = [path.join(ROOT, "gun-preload.cjs")];
+  const files = [path.join(ROOT, "lib/gun-server.ts")];
   for (const name of fs.readdirSync(ROOT)) {
     if (name.startsWith("identity-") && name.endsWith(".cjs")) files.push(path.join(ROOT, name));
   }

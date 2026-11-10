@@ -29,7 +29,7 @@ function run(mode = "ok", override = {}) {
   `);
   executable("curl", `
     const path = new URL(process.argv.at(-1)).pathname;
-    if (path === "/api/health") console.log(JSON.stringify({status:"ok",dependencies:{panopticon:{status:"not-configured"},gun:{status:"ok"}}}));
+    if (path === "/api/health") console.log(JSON.stringify({status:"ok",dependencies:{panopticon:{status:"not-configured"},gun:{status:"external"}}}));
     else if (path === "/api/version") console.log(JSON.stringify({revision:(process.env.TEST_MODE === "wrong-revision" ? "b" : "a").repeat(40)}));
     else process.exit(1);
   `);

@@ -24,12 +24,12 @@ try {
     else await symlink(src, dest);
   }
   await mkdir(path.join(root, "data"));
-  await writeFile(path.join(root, "data/snapshot.json"), JSON.stringify({
+  await writeFile(path.join(root, "public/feed-cache/snapshot.json"), JSON.stringify({
     items: [{ id: "rss:cached", source: "rss", kind: "post", author: "Reader", body,
       ts: 1, tags: ["cached"], provenance: "RSS", permalink: "https://example.org/post" }],
     seededAt: null, sourcesOk: 1, sourcesTried: 1, error: null,
   }));
-  server = spawn(process.execPath, ["-r", "./gun-preload.cjs", "server.js"], {
+  server = spawn(process.execPath, ["server.js"], {
     cwd: root, env: { PATH: process.env.PATH, HOME: root, NODE_ENV: "production",
       PORT: port, HOSTNAME: "127.0.0.1" }, stdio: ["ignore", "pipe", "pipe"],
   });
@@ -45,10 +45,18 @@ try {
   }
   browser = await chromium.launch();
   const page = await browser.newPage();
+  // This test covers opt-in and cleanup; the peer restart test exercises Gun.
   const requests = [];
   const sockets = [];
+  let connectSocket, closeSocket;
+  const connected = new Promise(resolve => { connectSocket = resolve; });
+  const closed = new Promise(resolve => { closeSocket = resolve; });
+  await page.routeWebSocket("**/gun", socket => {
+    sockets.push(socket);
+    socket.onClose(closeSocket);
+    connectSocket();
+  });
   page.on("request", req => requests.push(new URL(req.url()).pathname));
-  page.on("websocket", socket => sockets.push(socket));
   const snapshot = page.waitForResponse(res => res.url() === origin + "/feed-cache/snapshot.json");
   await page.goto(origin + "/feed");
   assert.match((await snapshot).headers()["cache-control"], /public.*max-age=[1-9]/);
@@ -61,12 +69,10 @@ try {
   assert.equal(requests.filter(url => url === "/feed-cache/snapshot.json").length, 1);
   assert.deepEqual(sockets, []);
 
-  const connected = page.waitForEvent("websocket", ws => new URL(ws.url()).pathname === "/gun");
   await page.getByRole("button", { name: "Network", exact: true }).click();
-  const socket = await connected;
-  const closed = socket.waitForEvent("close");
+  await Promise.race([connected, delay(10000).then(() => { throw Error("Gun did not connect"); })]);
   await page.getByRole("button", { name: "Public", exact: true }).click();
-  await closed;
+  await Promise.race([closed, delay(10000).then(() => { throw Error("Gun did not disconnect"); })]);
   await page.getByText(body, { exact: true }).waitFor();
   await delay(500);
   const returned = requests.length;

@@ -221,7 +221,7 @@ Check (this Next app, consume contract; full plane stays in SociACL) applies onl
 Gun is already the graph. This slice uses a bootstrap path so Azure does not have to serve every subscription.
 
 - Server process holds a Gun instance (radisk on the App Service container disk, plus an in-memory index and a JSON snapshot for restarts).
-- `gun-preload.cjs` attaches Gun to the Node HTTP server (`listen` patch, radisk under `/app/data/radata`, WebSocket path `/gun`). That is the **seed peer**, not a finished mesh.
+- The standalone `seed-peer.cjs` process owns Gun replication, radisk under `/app/data/radata`, and the `/gun` WebSocket.
 - Within one browser tab, the live feed, saved views and live Squad borrow a Gun root for the current origin. Signed-in feed connections have a separate scope per TURN account. Each consumer owns its subscriptions. Releasing the last consumer cancels TURN refresh and closes the seed socket and RTC connections. Opening a missing saved view or browsing the public snapshot does not acquire a root.
 - On demand for live features, `/feed` constructs browser Gun with `localStorage: false` and no peers, after a guarded side-effect import of `gun/lib/webrtc` (`opt.rtc.iceServers` is STUN, plus short-lived TURN when `/api/turn/allocate` succeeds). It subscribes to mesh hi/bye on `gun._.on`, then `opt({ peers: [same-origin /gun] })` (`lib/gun-peer.ts`) so a live `hi` is not missed. WebRTC `mesh.hi` does not flip **seed peer (ws)** — only a `/gun` URL does. The public snapshot loads into React state on mount. Live updates arrive through `gun.get(...).map().on(...)`. **Network** is a separate live set filled only from those Gun listeners while the seed peer is up (last-seen rows stay after a brief bye). Status says **seed peer (ws)** vs **snapshot only**, plus a quiet **WebRTC attempted (STUN ≠ TURN)** hint when the adapter loaded. That is not a finished P2P mesh. If ICE fails, behavior matches today's seed / snapshot path. Public still has the snapshot; Network does not.
 - Shared native posts / rooms / admitted pulled items `put` still go to `gun.get('s3rch')…` after admit. Once the socket is up those puts can reach the seed. Mine until share. A browser pull is not that put.
@@ -438,13 +438,9 @@ Cadence:
 
 ## Azure / process shape
 
-The site is a Next.js standalone container on Azure App Service (port 8080). There is no second Azure service and no Terraform in this repo. App Service is a **seed peer + bootstrap cache**, not the chat or presence server.
+The web app and Gun peer are separate processes with independent storage. The same image supplies both entrypoints. FyberLabs/infra owns the deployments and same-origin routing.
 
-The container runs Next's standalone `server.js` with `node -r ./gun-preload.cjs`:
-
-1. Preload patches `http.Server.prototype.listen` and attaches Gun (`web: server`, radisk under `/app/data/radata`, WS path `/gun`).
-2. The process listens on `PORT` / `HOSTNAME` (8080).
-3. `/feed` still paints from `GET /api/feed` if the `/gun` WebSocket is down. The client tries the seed peer and attempts `gun/lib/webrtc` (STUN, plus allocate TURN when the hop succeeds); snapshot if the socket is down or ICE fails.
+The web process starts with `node server.js`. Next instrumentation starts the background identity monitor. The peer starts with `node seed-peer.cjs` and explicitly attaches Gun to its own HTTP server. Both listen on their configured `PORT` / `HOSTNAME`. The edge routes bootstrap traffic to the peer; the browser paints the public snapshot before opting into live Gun.
 
 `/api/health` stays `{ "status": "ok" }` for the existing Deploy smoke test.
 

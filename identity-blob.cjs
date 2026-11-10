@@ -84,8 +84,7 @@ function workerStartTimeoutMs(env = process.env) {
 function openBridge(workerPath, initMessage, timeoutMs) {
   const { port1, port2 } = new MessageChannel();
   const shared = new Int32Array(new SharedArrayBuffer(4));
-  // execArgv: [] keeps `node -r ./gun-preload.cjs` from running the preload,
-  // and with it another storage check, inside this worker.
+  // Workers start without inheriting parent process loaders or instrumentation.
   const worker = new Worker(workerPath, { env: workerEnv(), execArgv: [] });
   let failed = null;
   worker.on("error", (error) => {

@@ -11,7 +11,7 @@ cd .next/standalone
 env -i PATH="$PATH" HOME="$data" NODE_ENV=production PORT="$port" HOSTNAME=127.0.0.1 \
   IDENTITY_SESSION_SECRET=smoke-only-identity-session-secret-0123456789 \
   GUN_FILE="$data/radata" GUN_SNAPSHOT="$data/snapshot.json" \
-  node -r ./gun-preload.cjs server.js >"$log" 2>&1 &
+  node server.js >"$log" 2>&1 &
 pid=$!
 trap 'kill "$pid" 2>/dev/null || true; rm -rf "$data"' EXIT
 
@@ -34,7 +34,8 @@ check() {
   fi
 }
 check /api/health 200
-check /api/feed 200
+check /api/feed 307
+check /gun 404
 check /feed 200
 check /feed/squad 200
 check /forum 200
@@ -49,8 +50,18 @@ fi
 health="$(curl --max-time 5 -fsS "http://127.0.0.1:$port/api/health")"
 echo "$health"
 echo "$health" | grep -Fq '"panopticon":{"status":"not-configured"' || { echo "panopticon should be not-configured" >&2; fail=1; }
-echo "$health" | grep -Fq '"gun":{"status":"ok"}' || { echo "gun peer should be attached" >&2; fail=1; }
+echo "$health" | grep -Fq '"gun":{"status":"external"}' || { echo "web should use the external peer" >&2; fail=1; }
+for _ in $(seq 1 20); do
+  echo "$health" | grep -Fq '"identity":{"status":"unavailable"' && break
+  sleep 0.25
+  health="$(curl --max-time 5 -fsS "http://127.0.0.1:$port/api/health")"
+done
+echo "$health" | grep -Fq '"identity":{"status":"unavailable"' || { echo "identity monitor did not check the missing production storage settings" >&2; fail=1; }
 
+# No request on the web listener may become a graph writer.
+seed_status="$(curl --max-time 10 -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$port/api/seed")"
+[[ "$seed_status" == 503 ]] || { echo "web seed endpoint accepted a write" >&2; exit 1; }
+[[ ! -e "$data/radata" && ! -e "$data/snapshot.json" ]] || { echo "web created Gun storage" >&2; exit 1; }
 if [ "$fail" -ne 0 ]; then cat "$log"; exit 1; fi
 
 # Run the independent peer with its own data and a real Gun websocket.

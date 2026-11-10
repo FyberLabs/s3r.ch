@@ -62,7 +62,7 @@ jobs:
           npx playwright-core install --with-deps chromium
           node scripts/test-static-feed.mjs
 
-      - name: Verify Gun seed handoff and rollback
+      - name: Verify Gun peer persistence and reconnect
         run: node scripts/test-seed-handoff.mjs
 
       - name: Verify wallet sign-in and Squad challenge through the public proxy contract

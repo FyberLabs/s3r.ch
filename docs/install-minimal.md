@@ -31,7 +31,7 @@ curl -sS http://localhost:3000/api/health
 
 The process answers HTTP 200. With no `PANOPTICON_*` variables, `dependencies.panopticon.status` is `not-configured`. See [Health](#health).
 
-A production-shaped process (standalone Next and the Gun preload on one HTTP server):
+A production-shaped web process (standalone Next):
 
 ```bash
 npm run build
@@ -39,12 +39,14 @@ IDENTITY_SESSION_SECRET='replace-with-32-or-more-characters' \
   PORT=8080 HOSTNAME=0.0.0.0 npm start
 ```
 
-`npm start` runs `node -r ./gun-preload.cjs .next/standalone/server.js`. It does not set `NODE_ENV`. Leave `NODE_ENV` unset on a workstation and the identity document stays the local file, same as `npm run dev`. The image sets `NODE_ENV=production`. Match that on a shared host with `NODE_ENV=production`; identity storage is then Azure Blob, under [Identity storage](#identity-storage), and `IDENTITY_SESSION_SECRET` is required.
+`npm start` runs `node .next/standalone/server.js`. It does not set `NODE_ENV`. Leave `NODE_ENV` unset on a workstation and the identity document stays the local file, same as `npm run dev`. The image sets `NODE_ENV=production`. Match that on a shared host with `NODE_ENV=production`; identity storage is then Azure Blob, under [Identity storage](#identity-storage), and `IDENTITY_SESSION_SECRET` is required.
 
-Seed the public cache (live public sources only; an empty source writes nothing):
+Start the peer in a separate terminal, then seed its public cache (live public sources only; an empty source writes nothing):
 
 ```bash
-curl -sS -X POST http://localhost:3000/api/seed \
+PORT=8081 HOSTNAME=127.0.0.1 node .next/standalone/seed-peer.cjs
+# In another terminal:
+curl -sS -X POST http://localhost:8081/api/seed \
   -H "Authorization: Bearer dev-seed"
 ```
 
@@ -56,50 +58,37 @@ Build from this repo. The image listens on 8080, sets `NODE_ENV=production`, `GU
 
 ```bash
 docker build -t s3rch:local .
-mkdir -p data && sudo chown 1001:1001 data
 docker run --rm -p 8080:8080 \
   -e IDENTITY_SESSION_SECRET \
-  -e SEED_SECRET \
-  -u 1001:1001 \
-  -v "$PWD/data:/app/data" \
   s3rch:local
+# In another terminal, run the peer with its own storage:
+mkdir -p data && sudo chown 1001:1001 data
+docker run --rm -p 8081:8080 \
+  -e SEED_SECRET \
+  -v "$PWD/data:/app/data" \
+  s3rch:local node /app/seed-peer.cjs
 ```
 
-Pass the secrets in the environment. Do not write them into the image. A bind mount must be writable by uid 1001. A named volume is the same Gun directory:
-
-```yaml
-services:
-  s3rch:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      IDENTITY_SESSION_SECRET: ${IDENTITY_SESSION_SECRET}
-      SEED_SECRET: ${SEED_SECRET}
-    volumes:
-      - s3rch-data:/app/data
-volumes:
-  s3rch-data:
-```
+Pass the secrets in the environment. Do not write them into the image. The peer's bind mount must be writable by uid 1001. Configure the reverse proxy routes described below before using live browser Gun features.
 
 ```bash
 curl -sS http://127.0.0.1:8080/api/health
 ```
 
-The volume keeps Gun radisk and `snapshot.json` when the container is replaced. In this image the identity document is the Azure Blob named below, so the volume does not hold account links. `GET /api/health` is still 200. `dependencies.gun.status` is `ok` once the peer attaches. `dependencies.panopticon.status` is `not-configured`. `dependencies.identity.status` becomes `unavailable` until `S3RCH_IDENTITY_BLOB_ACCOUNT`, `S3RCH_IDENTITY_BLOB_CONTAINER`, and a managed identity that can write that container are set. Wallet sign-in then answers 503 until that check passes.
+The volume keeps Gun radisk and `snapshot.json` when the container is replaced. In this image the identity document is the Azure Blob named below, so the volume does not hold account links. `GET /api/health` is still 200. `dependencies.gun.status` is `external` in the web process. `dependencies.panopticon.status` is `not-configured`. `dependencies.identity.status` becomes `unavailable` until `S3RCH_IDENTITY_BLOB_ACCOUNT`, `S3RCH_IDENTITY_BLOB_CONTAINER`, and a managed identity that can write that container are set. Wallet sign-in then answers 503 until that check passes.
 
-SIWE accepts the hostnames `s3r.ch`, `localhost`, and `127.0.0.1` (a port on those names is fine). OAuth callbacks are accepted only for `http://localhost:3000`, `http://127.0.0.1:3000`, `https://s3r.ch`, and `https://www.s3r.ch`, path `/api/identity/oauth/callback`. A docker publish on port 8080 can serve the site and `/gun` on `localhost`. Wallet sign-in on that port still needs a working identity store. OIDC on `localhost` uses port 3000.
+SIWE accepts the hostnames `s3r.ch`, `localhost`, and `127.0.0.1` (a port on those names is fine). OAuth callbacks are accepted only for `http://localhost:3000`, `http://127.0.0.1:3000`, `https://s3r.ch`, and `https://www.s3r.ch`, path `/api/identity/oauth/callback`. The reverse proxy serves the web app and routes `/gun` to the peer. Wallet sign-in on that port still needs a working identity store. OIDC on `localhost` uses port 3000.
 
 ## Gun relay
 
-`gun-preload.cjs` attaches one Gun peer to the HTTP server before `listen`. The WebSocket path is `/gun` on the same origin and port as the site. `multicast` and `axe` are off. The peer list in the server process is empty: this process does not dial another relay. Browsers on this origin connect to `/gun`. Browser WebRTC (`gun/lib/webrtc`) can connect those browsers to each other. STUN is `stun:stun.l.google.com:19302`. STUN is not TURN.
+Run a separate container from the same image with `node /app/seed-peer.cjs` and its own volume. Route `/gun`, `/feed-cache/snapshot.json`, `/api/feed`, and `/api/seed` to that container at the reverse proxy. The WebSocket path is `/gun` on the same origin and port as the site. `multicast` and `axe` are off. The peer list in the server process is empty: this process does not dial another relay. Browsers on this origin connect to `/gun`. Browser WebRTC (`gun/lib/webrtc`) can connect those browsers to each other. STUN is `stun:stun.l.google.com:19302`. STUN is not TURN.
 
 | Setting | Default | What it is |
 | --- | --- | --- |
 | `GUN_FILE` | `./data/radata`, or `/app/data/radata` in the image | Directory. Gun creates it. Radisk for this process. |
 | `GUN_SNAPSHOT` | `./data/snapshot.json`, or `/app/data/snapshot.json` in the image | JSON cache of seeder public items. |
 
-Point another s3r.ch browser at this site and it uses this `/gun` peer. There is no setting that adds a remote Gun URL to the server process. Two processes must not write the same `GUN_FILE` directory.
+Point another s3r.ch browser at the public proxy origin and it uses this `/gun` peer. There is no setting that adds a remote Gun URL to the server process. Two processes must not write the same `GUN_FILE` directory.
 
 The forum file (`S3RCH_FORUM`, default `data/forum.json`) and the snapshot are caches on that disk. An App Service recycle that drops container disk drops them. The volume above is how a Docker host keeps the Gun directory.
 
@@ -132,7 +121,7 @@ Production reads two application settings and no storage connection string:
 
 The blob name is `identity-links.json`. Auth is `DefaultAzureCredential` limited to the app's managed identity. A system-assigned identity needs no extra setting. A user-assigned identity also needs `AZURE_CLIENT_ID` (the identity's client id, not a secret). That identity needs **Storage Blob Data Contributor** on the account or the container. A missing blob is created as `{"v":1,"people":[]}`.
 
-`S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS` is how long the preload waits for the blob worker to start. Default `60000`. An integer from `1000` through `120000` is honored. Anything else stays `60000`. The background check then has additional time for the blob call. The site keeps serving during that wait.
+`S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS` is how long the identity monitor waits for the blob worker to start. Default `60000`. An integer from `1000` through `120000` is honored. Anything else stays `60000`. The background check then has additional time for the blob call. The site keeps serving during that wait.
 
 ### When storage is down
 
@@ -248,7 +237,7 @@ A working relay returns HTTP 200 and `iceServers` whose `turn:` or `turns:` URL 
 {
   "status": "ok",
   "dependencies": {
-    "gun": { "status": "ok" },
+    "gun": { "status": "external" },
     "identity": {
       "status": "ok",
       "writable": true,
@@ -269,7 +258,7 @@ A working relay returns HTTP 200 and `iceServers` whose `turn:` or `turns:` URL 
 }
 ```
 
-`gun.status` is `ok` when the preload attached the peer, and `not-attached` otherwise. Identity statuses include `ok`, `unavailable`, `invalid`, `checking`, and `unchecked`. Panopticon service statuses are `not-configured`, `configured` (settings present, no hop yet), `ok` (last hop succeeded), and `unreachable` (last hop failed). The parent `panopticon.status` is `not-configured` when payments, oracles, and the Panopticon turn hop are all `not-configured`. It is `degraded` when any of those is `unreachable`.
+`gun.status` is `external` in the web process. The peer has its own health endpoint. Identity statuses include `ok`, `unavailable`, `invalid`, `checking`, and `unchecked`. Panopticon service statuses are `not-configured`, `configured` (settings present, no hop yet), `ok` (last hop succeeded), and `unreachable` (last hop failed). The parent `panopticon.status` is `not-configured` when payments, oracles, and the Panopticon turn hop are all `not-configured`. It is `degraded` when any of those is `unreachable`.
 
 ## Settings
 

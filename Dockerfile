@@ -42,7 +42,6 @@ COPY --from=builder /app/.next/public-pages /app/edge-assets
 COPY --from=builder /app/edge/public-pages.mjs /app/edge-entry.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/gun-preload.cjs ./gun-preload.cjs
 COPY --from=builder --chown=nextjs:nodejs /app/identity-storage.cjs ./identity-storage.cjs
 COPY --from=builder --chown=nextjs:nodejs /app/identity-link-schema.cjs ./identity-link-schema.cjs
 COPY --from=builder --chown=nextjs:nodejs /app/identity-blob.cjs ./identity-blob.cjs
@@ -62,4 +61,4 @@ USER nextjs
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||8080)+'/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-CMD ["node", "-r", "./gun-preload.cjs", "server.js"]
+CMD ["node", "server.js"]

@@ -73,7 +73,7 @@ for _ in $(seq 1 40); do
     printf '%s\n' "$body"
     printf '%s\n' "$body" | grep -Fq '"status":"ok"'
     printf '%s\n' "$body" | grep -Fq '"panopticon":{"status":"not-configured"'
-    printf '%s\n' "$body" | grep -Fq '"gun":{"status":"ok"'
+    printf '%s\n' "$body" | grep -Fq '"gun":{"status":"external"'
     web_ready=true
     break
   fi
@@ -85,6 +85,8 @@ if [[ "$web_ready" != true ]]; then
   docker logs "$name" || true
   exit 1
 fi
+
+docker exec "$name" node -e 'const fs = require("node:fs"); if (fs.existsSync(process.env.GUN_FILE) || fs.existsSync(process.env.GUN_SNAPSHOT)) throw Error("web process created peer storage")'
 
 # TEST starts this same image with a command override and its baked-in revision.
 cleanup

@@ -69,7 +69,7 @@ Honest inventory. Do not treat `/app/data` as the archive ([ARCHITECTURE.md — 
 
 | Store | Where | Survives recycle? | What it holds |
 | --- | --- | --- | --- |
-| radisk | Container disk (`GUN_FILE`, default `/app/data/radata` via `gun-preload.cjs`) | **No.** New container = empty directory | Whatever the process HAM-merged while it was up: seeder items, plus any client puts that reached `/gun` (shared items / rooms / users / granted / public chat / presence) |
+| radisk | Container disk (`GUN_FILE`, default `/app/data/radata` in the standalone peer) | **No.** New container = empty directory | Whatever the process HAM-merged while it was up: seeder items, plus any client puts that reached `/gun` (shared items / rooms / users / granted / public chat / presence) |
 | JSON snapshot | Container disk (`GUN_SNAPSHOT`, default `/app/data/snapshot.json`) | **No.** `loadSnapshot` fails closed to empty | **Seeder Public items only** (`putItems` / `setSeedMeta` in `lib/gun-server.ts`). Not rooms, chat, presence, users, or the grant inbox |
 | In-memory index | Process (`__s3rchStore`) | **No** | Same as the snapshot |
 | Browser Gun | `/feed` constructs Gun with `localStorage: false` | **No** across tab close / refresh | Live `.map().on` rows only while the page is up |
@@ -316,6 +316,8 @@ feed read at `/api/feed`, and the bearer-authenticated seeder at `POST /api/seed
 Its health endpoint is `/api/health`. Set `SEED_SECRET` to enable seeding. Give this
 process its own writable Gun volume and configure the scheduled seed URL to target
 it. Keep exactly one seed writer per volume. Route the bootstrap paths to the
-peer at the edge when cutting over, preserving the origin of identity cookies. Set `GUN_EXTERNAL_PEER=1` on the web process
-after routing `/gun`, `/feed-cache/snapshot.json` and `/api/seed` to the peer. This disables
-the embedded Gun server and prevents a second seed writer. Health reports `external`.
+peer at the edge, preserving the origin of identity cookies. The web process starts
+with `node server.js` and always reports Gun as `external`. Its seed route returns
+503 and its feed route redirects to the public snapshot. TEST already routes these
+paths to the peer. Production promotion requires the topology in FyberLabs/infra#693
+to be configured before promoting this image.
