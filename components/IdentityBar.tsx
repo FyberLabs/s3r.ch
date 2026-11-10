@@ -44,6 +44,7 @@ import {
   lookupIndicatorsForSession,
   type PublicIndicators,
 } from "@/lib/identity/indicators";
+import { walletAgeAttempt } from "@/lib/identity/wallet-age-attempt";
 import { buildSiweMessage } from "@/lib/identity/siwe";
 import {
   HYPERMESH_WALLET_DECLINE_KEY,
@@ -107,6 +108,8 @@ function IdentityBarInner() {
 
   const session = useIdentitySession();
   const hadSession = useRef(false);
+  const walletAttempt = useRef(walletAgeAttempt());
+  useEffect(() => { walletAttempt.current.clear(); }, [address, chainId]);
   const [backup, setBackup] = useState<BackupState | undefined>(undefined);
   const [hypermeshDeclined, setHypermeshDeclined] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -406,39 +409,37 @@ function IdentityBarInner() {
     setBusy(true);
     setMessage(null);
     try {
-      const nonceRes = await fetch("/api/identity/nonce", { cache: "no-store" });
-      const nonceBody = (await nonceRes.json()) as { nonce?: string; error?: string };
-      if (!nonceRes.ok || !nonceBody.nonce) {
-        throw new Error(nonceBody.error || "Could not issue a nonce.");
-      }
-
       const walletChainId = chainId ?? (await readInjectedChainId()) ?? 1;
-
-      const prepared = buildSiweMessage({
-        domain: window.location.host,
-        address: wallet,
-        uri: window.location.origin,
-        chainId: walletChainId,
-        nonce: nonceBody.nonce,
-        expirationTime: new Date(Date.now() + SIWE_MESSAGE_TTL_MS),
+      let verifyOk = false;
+      const verifyBody = await walletAttempt.current.submit<SessionPayload & { error?: string }>({
+        key: `${window.location.origin}:${wallet.toLowerCase()}:${walletChainId}`,
+        ageConfirmed: ageChecked,
+        sign: async () => {
+          const nonceRes = await fetch("/api/identity/nonce", { cache: "no-store" });
+          const nonceBody = (await nonceRes.json()) as { nonce?: string; error?: string };
+          if (!nonceRes.ok || !nonceBody.nonce) throw new Error(nonceBody.error || "Could not issue a nonce.");
+          const message = buildSiweMessage({
+            domain: window.location.host, address: wallet, uri: window.location.origin,
+            chainId: walletChainId, nonce: nonceBody.nonce,
+            expirationTime: new Date(Date.now() + SIWE_MESSAGE_TTL_MS),
+          });
+          return { message, signature: await signMessageAsync({ message }) };
+        },
+        verify: async (proof, ageConfirmed) => {
+          const response = await fetch("/api/identity/verify", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ ...proof, ageConfirmed }),
+          });
+          verifyOk = response.ok;
+          return await response.json();
+        },
       });
-
-      const signature = await signMessageAsync({ message: prepared });
-      const verifyRes = await fetch("/api/identity/verify", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: prepared, signature, ageConfirmed: ageChecked }),
-      });
-      const verifyBody = (await verifyRes.json()) as SessionPayload & {
-        error?: string;
-        owner?: string;
-      };
       if (verifyBody.error === "age-confirmation-required") {
         setNeedsAge(true);
         setMessage(null);
         return;
       }
-      if (!verifyRes.ok) {
+      if (!verifyOk) {
         throw new Error(verifyBody.error || "Verify failed.");
       }
       setNeedsAge(false);
@@ -822,12 +823,12 @@ function IdentityBarInner() {
       {needsAge ? (
         <div>
           <AgeConfirmation checked={ageChecked} disabled={busy} onChange={setAgeChecked} />
-          {oauthAgePending ? (
+          {needsAge ? (
             <button
               type="button"
               className={`${btnPrimary} mt-3`}
               disabled={busy || !ageChecked}
-              onClick={() => void onConfirmAge()}
+              onClick={() => void (oauthAgePending ? onConfirmAge() : onSignIn())}
             >
               Continue
             </button>
