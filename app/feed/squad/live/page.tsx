@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { GunPeerProvider } from "@/components/GunPeerProvider";
+import { IdentityBar } from "@/components/IdentityBar";
 import { SquadPilot } from "@/components/SquadPilot";
 import { parseSquadPilotConfig, publicSquadPilotConfig } from "@/lib/squad-pilot-config";
 export const dynamic = "force-dynamic";
@@ -8,5 +9,10 @@ export default function SquadPilotPage() {
   if (!config) notFound();
   // Deliberate public projection: never serialize the deployment secret or
   // owner signing key into the RSC payload or client props.
-  return <GunPeerProvider><SquadPilot {...publicSquadPilotConfig(config)} /></GunPeerProvider>;
+  return (
+    <>
+      <IdentityBar />
+      <GunPeerProvider><SquadPilot {...publicSquadPilotConfig(config)} /></GunPeerProvider>
+    </>
+  );
 }
