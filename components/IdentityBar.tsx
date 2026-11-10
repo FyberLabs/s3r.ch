@@ -12,6 +12,7 @@ import { AgeConfirmation } from "@/components/AgeConfirmation";
 import { SignInOptions } from "@/components/SignInOptions";
 import { IdentityProviders } from "@/components/IdentityProviders";
 import { HeldConfirmControls } from "@/components/HeldConfirmControls";
+import { identitySessionChanged, useIdentitySession } from "./useIdentitySession";
 import { SeeGrantControls } from "@/components/SeeGrantControls";
 import { UserNodeControls } from "@/components/UserNodeControls";
 import { useHeldConfirms } from "@/components/useHeldConfirms";
@@ -104,7 +105,7 @@ function IdentityBarInner() {
   const { mutate: disconnect } = useDisconnect();
   const { mutateAsync: signMessageAsync } = useSignMessage();
 
-  const [session, setSession] = useState<SessionPayload | null>(null);
+  const session = useIdentitySession();
   const hadSession = useRef(false);
   const [backup, setBackup] = useState<BackupState | undefined>(undefined);
   const [hypermeshDeclined, setHypermeshDeclined] = useState(false);
@@ -128,27 +129,6 @@ function IdentityBarInner() {
   const [needsAge, setNeedsAge] = useState(false);
   const [ageChecked, setAgeChecked] = useState(false);
   const [oauthAgePending, setOauthAgePending] = useState(false);
-
-  const refreshSession = useCallback(async () => {
-    try {
-      const response = await fetch("/api/identity/session", { cache: "no-store" });
-      if (!response.ok) {
-        setSession(null);
-        return;
-      }
-      const payload = (await response.json()) as SessionPayload;
-      if (payload.address) {
-        setSession({
-          address: payload.address,
-          chainId: payload.chainId,
-          owner: payload.owner || payload.address,
-        });
-      }
-      else setSession(null);
-    } catch {
-      setSession(null);
-    }
-  }, []);
 
   const refreshBackup = useCallback(async () => {
     try {
@@ -177,9 +157,8 @@ function IdentityBarInner() {
   }, []);
 
   useEffect(() => {
-    void refreshSession();
     void refreshBackup();
-  }, [refreshSession, refreshBackup]);
+  }, [refreshBackup]);
 
   useEffect(() => {
     setHypermeshDeclined(sessionStorage.getItem(HYPERMESH_WALLET_DECLINE_KEY) === "no");
@@ -464,11 +443,7 @@ function IdentityBarInner() {
       }
       setNeedsAge(false);
       setAgeChecked(false);
-      setSession({
-        address: verifyBody.address,
-        chainId: verifyBody.chainId,
-        owner: verifyBody.owner || verifyBody.address,
-      });
+      identitySessionChanged();
       setMessage(null);
       try {
         const linkRes = await fetch("/api/identity/oauth/link", { method: "POST" });
@@ -803,7 +778,7 @@ function IdentityBarInner() {
     try {
       await fetch("/api/identity/logout", { method: "POST" });
       if (session?.address) forgetUnlockedMeshPair(session.address);
-      setSession(null);
+      identitySessionChanged();
       await refreshBackup();
       setMeshLine(null);
       setMeshKind(null);

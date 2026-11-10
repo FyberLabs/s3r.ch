@@ -97,6 +97,9 @@ jobs:
             VERSION=ci
             SOURCE_REVISION=${{ github.sha }}
 
+      - name: Check the static frontend inside the image
+        run: docker run --rm -i --network none --entrypoint node s3rch:ci --input-type=module < scripts/check-edge-payload.mjs
+
       - name: Boot image without Panopticon
         run: bash scripts/smoke-image.sh s3rch:ci
 

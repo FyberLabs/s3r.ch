@@ -78,3 +78,40 @@ test("test image is anonymously checked before deployment and publication; promo
   assert.match(releaseWorkflow, /release-channels.mjs promote/);
   assert.ok(TRUSTED_RELEASE_FILES.includes("scripts/release-channels.mjs"));
 });
+
+test("TEST waits for storage after the target revision appears, within a fixed deadline", () => {
+  const sha = "a".repeat(40);
+  const fixture = `
+    import timers from "node:timers/promises";
+    import { syncBuiltinESMExports } from "node:module";
+    let now = 0;
+    Date.now = () => now;
+    timers.setTimeout = async (ms) => { now += ms; };
+    syncBuiltinESMExports();
+    globalThis.fetch = async (url) => {
+      if (now > 600000) throw Error("unbounded verification");
+      const revision = now >= 240000 ? "${sha}" : "b".repeat(40);
+      const writable = now >= Number(process.env.READY_AT);
+      const body = url.endsWith("/api/version") ? { revision } : {
+        status: "ok", dependencies: { identity: { status: writable ? "ok" : "checking", writable }, gun: { status: "ok" } }
+      };
+      return Response.json(body);
+    };
+    process.on("exit", () => console.log("elapsed", now));
+  `;
+  function verify(origin, readyAt) {
+    return spawnSync(process.execPath, [
+      "--import", "data:text/javascript," + encodeURIComponent(fixture),
+      "scripts/verify-deployed-release.mjs", origin, sha,
+    ], { encoding: "utf8", timeout: 5000, env: { ...process.env, READY_AT: String(readyAt) } });
+  }
+  const cold = verify("https://test.s3r.ch", 360000);
+  assert.equal(cold.status, 0, cold.stderr);
+  const unavailable = verify("https://test.s3r.ch", Infinity);
+  assert.equal(unavailable.status, 1, unavailable.stderr);
+  assert.match(unavailable.stderr, /"writable":false/);
+  assert.match(unavailable.stdout, /elapsed 540000/);
+  const prod = verify("https://s3r.ch", 360000);
+  assert.equal(prod.status, 1, prod.stderr);
+  assert.match(prod.stdout, /elapsed 300000/);
+});
