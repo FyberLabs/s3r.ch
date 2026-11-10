@@ -5,7 +5,7 @@ import { createForumReceiveProofs } from "@/lib/forum-receive-proofs";
 import { BusinessRoleStrips } from "@/components/BusinessRoleStrips";
 import { businessTemplateRetryKey, createBusinessRoles, parseBusinessTemplate } from "@/lib/forum-business-roles";
 import { LiveForumReports } from "./LiveForumReports";
-import { forwardFields, type ReportParents } from "@/lib/forum-report-forward";
+import { forwardFields, isNeed, type BoardSource, type ReportParents } from "@/lib/forum-report-forward";
 import { readableForumChat } from "@/lib/forum-readable-chat";
 import { ReportList, ForumPreviewReports } from "./ForumPreviewReports";
 import { ForumHierarchyPreview, type PreviewLevel } from "@/components/ForumHierarchyPreview";
@@ -247,6 +247,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   const [vitals, setVitals] = useState<VitalsMode>("auto");
   const [escalations, setEscalations] = useState<ReadonlyMap<string, { revision: number; command: boolean }>>(new Map());
   const [sharedReports, setSharedReports] = useState<ReadonlyMap<FeedItem, "Fleet" | "Command">>(new Map());
+  const [readReports, setReadReports] = useState(new Set<string>());
   const [previewLevel, setPreviewLevel] = useState<PreviewLevel>("Squad");
   const [tab, setTab] = useState<ForumTab>("board");
   const [filters, setFilters] = useState<Set<ForumAgentState>>(() => new Set());
@@ -311,7 +312,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   chatTombsRef.current = chatTombs;
   const [aclRev, setAclRev] = useState(0);
   const chatIdsRef = useRef<string[]>([]);
-  const forwards = useRef(new WeakMap<FeedItem, ReturnType<typeof forwardFields>>());
+  const forwards = useRef(new WeakMap<BoardSource, ReturnType<typeof forwardFields>>());
   const chatRowsRef = useRef<FeedItem[]>([]);
   const admittedRef = useRef(admitted);
   const pendingStatusRef = useRef<Map<string, PendingStatus>>(new Map());
@@ -1014,6 +1015,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
         versions.bump("need-pending", key);
         const cached = cacheForumNeed(needsRef.current, need, highWaterRef.current.get(need.id));
         if (!cached) return;
+        forwards.current.set(need, forwardFields(data));
         needsRef.current = cached;
         noteNeedHighWater(need);
         if (signer === owner && need.stated === 1) needAdmitRef.current.set(need.id, sig);
@@ -1424,7 +1426,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   chatRowsRef.current = liveEnabled ? meshChat.filter(row => proofs.valid(row)) : [...PILOT_CHAT, ...meshChat, ...localChat];
   chatIdsRef.current = chatRowsRef.current.map((item) => item.id);
 
-  const needs = useMemo(
+  const receivedNeeds = useMemo(
     () =>
       composeForumNeeds({
         pilot: liveEnabled ? [] : PILOT_NEEDS,
@@ -1434,7 +1436,12 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
       }),
     [localNeeds, meshNeeds, authenticatedNeeds, removedNeeds, aclRev, proofs, graph],
   );
-  needsRef.current = needs;
+  needsRef.current = receivedNeeds;
+  const readAt = Math.floor(Date.now() / 1000);
+  const reader = sessionKey && authority?.graph.principalForKey(sessionKey, readAt);
+  const mayReadSquad = reader && authority?.graph.checkForumSee(forumId, reader, readAt).allowed;
+  const needs = liveEnabled ? new Map([...receivedNeeds].filter(([id]) =>
+    mayReadSquad && authority?.graph.checkForumSee(id, reader, readAt).allowed)) : receivedNeeds;
 
   const offers = useMemo(() => {
     const map = new Map([...meshOffers].filter(([, row]) => !liveEnabled || (proofs.valid(row) &&
@@ -1808,14 +1815,19 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   }
 
   const liveReports = chat.filter(row => row.tags.includes("report"));
-  const liveReportPanel = liveEnabled && reportParents && authority && sessionKey && gunPeer?.gun
-    ? <LiveForumReports path={{ squad: view, ...reportParents }} graph={authority.graph} gun={gunPeer.gun}
-        sessionKey={sessionKey} reports={liveReports} evidence={row => forwards.current.get(row)} pair={() => pairRef.current}
-        valid={row => {
-          const now = Math.floor(Date.now() / 1000);
-          return chatRowsRef.current.includes(row) && proofs.valid(row) &&
-            authority.graph.checkDirectSee(row.id, row.author, now).allowed && authority.graph.checkPost(row.id, row.author, now).allowed;
-        }} />
+  const boardProps = liveEnabled && reportParents && authority && sessionKey && gunPeer?.gun ? {
+    path: { squad: view, ...reportParents }, graph: authority.graph, gun: gunPeer.gun, sessionKey, read: readReports,
+    markRead: (key: string) => setReadReports(prev => new Set(prev).add(key)),
+    evidence: (row: BoardSource) => forwards.current.get(row), pair: () => pairRef.current,
+    valid: (row: BoardSource) => {
+      if (!proofs.valid(row)) return false;
+      if (isNeed(row)) return needsRef.current.get(row.id) === row;
+      const now = Math.floor(Date.now() / 1000);
+      return chatRowsRef.current.includes(row) && authority.graph.checkDirectSee(row.id, row.author, now).allowed &&
+        authority.graph.checkPost(row.id, row.author, now).allowed;
+    },
+  } : null;
+  const liveReportPanel = boardProps ? <LiveForumReports key={sessionKey} {...boardProps} reportsOnly rows={liveReports} />
     : <ReportList reports={liveReports} authorLabel={authorLabel} />;
   const reports = liveEnabled ? liveReportPanel : <ForumPreviewReports level={previewLevel} chat={chat}
     shared={sharedReports} authorLabel={authorLabel} onToggle={row => {
@@ -1835,7 +1847,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
     squadLabel={forumLabel} members={roster.length} needingHelp={needsCount} emergencies={emergencyCount} alarm={alarmOn}
     reports={reports} needs={needs} escalations={escalations} onToggleCommand={need => toggleEscalation(need, "Command")} />;
   if (!liveEnabled && previewLevel !== "Squad") return hierarchy;
-  return (
+  const shell = (
     <div>
       {hierarchy}
       <ForumShell reports={reports} tab={tab} onTab={setTab} forum={{ label: liveEnabled ? forumLabel : "Squad · preview", href: "/feed/squad" }}
@@ -2173,6 +2185,9 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
       ) : null}
     </div>
   );
+  return boardProps && tab === "board"
+    ? <LiveForumReports key={sessionKey} {...boardProps} reportsOnly={false} rows={[...liveReports, ...needs.values()]}>{shell}</LiveForumReports>
+    : shell;
 }
 
 function ChatColumn({

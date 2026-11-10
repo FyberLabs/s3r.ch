@@ -55,6 +55,14 @@ statement. The report body stays on its source row. A changed report requires
 a new Fleet signature, and a changed Fleet signature requires a new Command
 signature.
 
+On the live Board, choose Command, Fleet or Squad to see the signed updates for
+that destination. An open need can be escalated to Fleet. Only emergencies can
+continue to Command. The forwarding writer can withdraw a reference. Replacing
+a source revision or withdrawing the Fleet hop also removes its Command entry.
+Needs and emergency counts use the entries visible at that destination. The
+unread count tracks visible report revisions, with Mark read scoped to the
+viewer and destination in this board session.
+
 Links & Messages reserves the right-column surface for directed messages,
 situation reports and skill publishes. No source is connected yet. Shared memory,
 roadmap, ledger and directed-message views show explicit unavailable states and

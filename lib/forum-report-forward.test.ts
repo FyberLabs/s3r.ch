@@ -35,3 +35,31 @@ test("destination checks and SEA signatures bind both hops to the report revisio
   assert.notEqual(command, signedForward(forwardStatement(path, "command", row, first), a.pub));
   assert.throws(() => forwardStatement(path, "command", row, null));
 });
+
+test("need escalation binds open source, severity, parent signature and current path access", async () => {
+  const { isNeed, sourceRevision, withdrawalStatement } = await import("./forum-report-forward");
+  const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
+  const [owner, reader] = await Promise.all([sea.pair(), sea.pair()]);
+  const forum = (name: string) => ({ forumId: name, owner: owner.pub, label: name });
+  const path = { squad: forum("s"), fleet: forum("f"), command: forum("c") };
+  const need = { id: "need", forumId: "s", subject: owner.pub, severity: "emergency" as const,
+    stated: 1 as const, body: "Radio down", hamState: 1, ts: 123 };
+  const allowed = new Set(["s", "f", "c", need.id]);
+  const graph = { ownerOf: () => owner.pub, checkForumSee: (id: string) => ({ allowed: allowed.has(id), reason: "fixture" }) };
+  assert.ok(isNeed(need));
+  assert.ok(canReadHop(graph, path, "command", need, reader.pub, 1));
+  assert.ok(!canReadHop(graph, path, "command", { ...need, severity: "need" }, reader.pub, 1));
+  assert.ok(!canReadHop(graph, path, "fleet", { ...need, stated: 0 }, reader.pub, 1));
+  for (const id of ["s", "f", "c", need.id]) {
+    allowed.delete(id);
+    assert.ok(!canReadHop(graph, path, "command", need, reader.pub, 1));
+    allowed.add(id);
+  }
+  allowed.delete("f");
+  assert.ok(canReadHop(graph, path, "squad", need, reader.pub, 1));
+  const statement = forwardStatement(path, "command", need, "fleet-sig");
+  assert.notEqual(statement, forwardStatement(path, "command", need, "replacement"));
+  assert.notEqual(statement, forwardStatement(path, "command", { ...need, hamState: 2 }, "fleet-sig"));
+  assert.notEqual(sourceRevision(need), sourceRevision({ ...need, body: "New situation" }));
+  assert.notEqual(withdrawalStatement(statement, "first"), withdrawalStatement(statement, "second"));
+});
