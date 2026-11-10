@@ -9,7 +9,7 @@ A stable `vX.Y.Z` tag names one patch. Every code change gets a new patch versio
 Running services follow a tag and pick up later patches on that line. They are patch-compatible within a minor version.
 
 - TEST runs `ghcr.io/fyberlabs/s3r.ch:test`.
-- A production service runs the minor line, for example `ghcr.io/fyberlabs/s3r.ch:1.4`. A new patch in `1.4` moves that tag. A new minor line is an explicit choice.
+- A production service runs the minor line, for example `ghcr.io/fyberlabs/s3r.ch:1.4`. Promoting `v1.4.2` moves `:1.4` to that patch when no newer `1.4` patch is already published. A new minor line is an explicit choice.
 - `:prod` and `:latest` name the current production line. An older minor line is not replaced by a newer one on its own.
 
 ```text
