@@ -3,8 +3,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 pattern='Research Bot|Developer Bot|Dev Bot|Product Developer|Product review|Greenlight|Steering locks|Do not invent|Soft Soft|Fast-Grok|Ready-to-Paste|Cursor Composer|If you are an AI|chris@192\.168\.6\.50'
+# The upstream declaration is verified byte-for-byte by check-sociacl-contract.mjs;
+# its comments are owned by SociACL, not this app's editorial policy.
 matches="$(git grep -nE "$pattern" -- \
   ':!scripts/check-public-voice.sh' \
+  ':!docs/s3rch-check.d.ts' \
   ':!**/node_modules/**' \
   || true)"
 if [ -n "$matches" ]; then
