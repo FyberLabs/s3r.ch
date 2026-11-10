@@ -1,10 +1,10 @@
+import { legacyGrantSoul } from "./legacy-acl-souls";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   applySeeGrant,
   cancelSee,
   checkSee,
-  grantSoul,
   itemSoul,
   userSoul,
 } from "./check";
@@ -57,7 +57,7 @@ describe("MeshSeeGrant HAM", () => {
     const stated = stateSeeGrantOnMesh(holder, holderMesh, ALICE, grant);
     assert.ok(stated);
     assert.equal(stated.grant.stated, 1);
-    assert.equal(stated.soul, grantSoul(ALICE, CLAIM, BOB));
+    assert.equal(stated.soul, legacyGrantSoul(ALICE, CLAIM, BOB));
     assert.equal(checkSee(holder, CLAIM, BOB, 10).allowed, true);
 
     const merged = ingestGunAclEdge(peer, peerMesh, gunAclWireNode(stated));
@@ -185,7 +185,7 @@ describe("mesh Check objects", () => {
       hamState: 1,
     });
     assert.ok(clean);
-    assert.equal(clean.soul, grantSoul(ALICE, CLAIM, BOB));
+    assert.equal(clean.soul, legacyGrantSoul(ALICE, CLAIM, BOB));
   });
 
   it("puts MeshSeeGrant on the locked Gun path", () => {

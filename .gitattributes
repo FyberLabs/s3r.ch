@@ -2,3 +2,4 @@
 docs/s3rch-check.d.ts -text
 lib/identity/vectors/forums.json -text
 lib/identity/vectors/principal.json -text
+lib/identity/vectors/object.json -text
