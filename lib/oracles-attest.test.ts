@@ -303,6 +303,8 @@ describe("sessionGatedAttest", () => {
         throw new Error("network down");
       },
       async () => jsonResponse(200, { ...ATTEST_OK_BODY, observedAt: "not-a-date" }),
+      async () => jsonResponse(200, { ...ATTEST_OK_BODY, subject: ATTEST_MISSING_SUBJECT }),
+      async () => jsonResponse(200, { ...ATTEST_OK_BODY, kind: "public_relay" }),
     ];
     for (const fetchImpl of cases) {
       const result = await sessionGatedAttest({

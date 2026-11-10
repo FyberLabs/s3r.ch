@@ -265,7 +265,11 @@ export async function hopPanopticonAttest(input: {
       redirect: "error",
     });
     if (!response.ok) return null;
-    return parseAttestResponse(await response.json());
+    const observed = parseAttestResponse(await response.json());
+    if (!observed || observed.kind !== input.request.kind || observed.subject !== input.request.subject) {
+      return null;
+    }
+    return observed;
   } catch {
     return null;
   }
