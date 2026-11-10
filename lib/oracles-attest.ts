@@ -96,6 +96,7 @@ export function normalizeOraclesBase(raw: string): string | null {
   try {
     const url = new URL(raw);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.href.includes("?") || url.href.includes("#")) return null;
     return url.toString().replace(/\/+$/, "");
   } catch {
     return null;
