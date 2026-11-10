@@ -32,12 +32,12 @@ require("esbuild").buildSync({
   platform: "node", target: "node24", bundle: true, packages: "external",
 });
 
-// Gun loads its Node WebCrypto provider dynamically. Trace that entry and
-// its dependencies the same way Next traces statically imported packages.
+// Gun SEA dynamically loads its text encoder and Node WebCrypto provider.
+// Trace both entries explicitly; the peer graph alone does not reveal them.
 async function copyPeerDependencies() {
   const { nodeFileTrace } = require("next/dist/compiled/@vercel/nft");
   const root = path.resolve(__dirname, "..");
-  const { fileList } = await nodeFileTrace([require.resolve("@peculiar/webcrypto"), path.join(root, ".next", "seed-peer.cjs")], { base: root });
+  const { fileList } = await nodeFileTrace([require.resolve("@peculiar/webcrypto"), require.resolve("gun/lib/text-encoding"), path.join(root, ".next", "seed-peer.cjs")], { base: root });
   for (const file of fileList) {
     if (file === ".next/seed-peer.cjs") continue;
     if (!file.startsWith("node_modules/")) throw Error("Unexpected SEA dependency path: " + file);
