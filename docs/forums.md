@@ -36,9 +36,24 @@ selection. These selections last for the current visit in the browser preview.
 On a connected live Squad, Reports shows report-tagged statements from the
 readable transcript. The authenticated session key must resolve to a current
 reader with see access on both the Squad and the statement. The author must
-still have direct see and post rights on the signed statement. Live reports
-are read-only here; sending a report to a live parent requires separate
-destination authority.
+still have direct see and post rights on the signed statement. With no configured parent forums, live Reports is read-only.
+
+To enable forwarding, add an optional `reportParents` object to the existing
+pilot deployment JSON. Its `fleet` and `command` entries each contain a
+`forumId`, stable `owner`, and display `label`, in the same format as `squad`.
+All three must be distinct admitted forums in the pilot authority ledger.
+Configure signed ownership and the desired see/post grants in that ledger.
+Setting a forum ID grants no access.
+
+Use Reports on the live Squad to send an admitted report to Fleet, then open
+Fleet to send it to Command. The sender needs see on the report and every
+forum along that path, plus post on the destination. The reader needs current
+see on the same path. The original author's rights and each forwarder's
+rights and signing key are rechecked when displaying the report.
+`fleetForward` and `commandForward` are signed references on the existing Gun
+statement. The report body stays on its source row. A changed report requires
+a new Fleet signature, and a changed Fleet signature requires a new Command
+signature.
 
 Links & Messages reserves the right-column surface for directed messages,
 situation reports and skill publishes. No source is connected yet. Shared memory,

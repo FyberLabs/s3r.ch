@@ -4,6 +4,8 @@ import { createForumReceiveRetry } from "@/lib/forum-receive-retry";
 import { createForumReceiveProofs } from "@/lib/forum-receive-proofs";
 import { BusinessRoleStrips } from "@/components/BusinessRoleStrips";
 import { businessTemplateRetryKey, createBusinessRoles, parseBusinessTemplate } from "@/lib/forum-business-roles";
+import { LiveForumReports } from "./LiveForumReports";
+import { forwardFields, type ReportParents } from "@/lib/forum-report-forward";
 import { readableForumChat } from "@/lib/forum-readable-chat";
 import { ReportList, ForumPreviewReports } from "./ForumPreviewReports";
 import { ForumHierarchyPreview, type PreviewLevel } from "@/components/ForumHierarchyPreview";
@@ -215,11 +217,11 @@ function ChatBody({ body }: { body: string }) {
 }
 
 /** Namespace changes remount every subscription, cache floor and pending proof. */
-export function SquadForum({ live, sessionKey = null }: { live?: LiveSquadSpec; sessionKey?: string | null }) {
+export function SquadForum({ live, reportParents, sessionKey = null }: { live?: LiveSquadSpec; reportParents?: ReportParents; sessionKey?: string | null }) {
   const view = squadView(live);
-  return <SquadForumView key={view.key} view={view} sessionKey={sessionKey} />;
+  return <SquadForumView key={view.key} view={view} reportParents={reportParents} sessionKey={sessionKey} />;
 }
-function SquadForumView({ view, sessionKey }: { view: SquadView; sessionKey: string | null }) {
+function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; reportParents?: ReportParents; sessionKey: string | null }) {
   const { forumId, label: forumLabel, live: liveEnabled, storage } = view;
   function authorLabel(pub: string): string {
     return liveEnabled ? shortSea(pub) : PILOT_LABELS.get(pub) ?? shortSea(pub);
@@ -309,6 +311,7 @@ function SquadForumView({ view, sessionKey }: { view: SquadView; sessionKey: str
   chatTombsRef.current = chatTombs;
   const [aclRev, setAclRev] = useState(0);
   const chatIdsRef = useRef<string[]>([]);
+  const forwards = useRef(new WeakMap<FeedItem, ReturnType<typeof forwardFields>>());
   const chatRowsRef = useRef<FeedItem[]>([]);
   const admittedRef = useRef(admitted);
   const pendingStatusRef = useRef<Map<string, PendingStatus>>(new Map());
@@ -1155,6 +1158,7 @@ function SquadForumView({ view, sessionKey }: { view: SquadView; sessionKey: str
           const graph = authority?.graph, now = Math.floor(Date.now() / 1000);
           if (!proofs.ready() || !graph?.checkDirectSee(item.id, author, now).allowed || !graph.checkPost(item.id, author, now).allowed || !proof.retain(item)) return false;
           retries.forget(retryId);
+          if (item.tags.includes("report")) forwards.current.set(item, forwardFields(data));
           setMeshChat((prev) => retainForumChat(prev, item));
           setLocalChat((prev) => retireLocalChat(prev, item.id));
           watchChatRemoval(key);
@@ -1803,7 +1807,17 @@ function SquadForumView({ view, sessionKey }: { view: SquadView; sessionKey: str
     });
   }
 
-  const reports = liveEnabled ? <ReportList reports={chat.filter(row => row.tags.includes("report"))} authorLabel={authorLabel} /> : <ForumPreviewReports level={previewLevel} chat={chat}
+  const liveReports = chat.filter(row => row.tags.includes("report"));
+  const liveReportPanel = liveEnabled && reportParents && authority && sessionKey && gunPeer?.gun
+    ? <LiveForumReports path={{ squad: view, ...reportParents }} graph={authority.graph} gun={gunPeer.gun}
+        sessionKey={sessionKey} reports={liveReports} evidence={row => forwards.current.get(row)} pair={() => pairRef.current}
+        valid={row => {
+          const now = Math.floor(Date.now() / 1000);
+          return chatRowsRef.current.includes(row) && proofs.valid(row) &&
+            authority.graph.checkDirectSee(row.id, row.author, now).allowed && authority.graph.checkPost(row.id, row.author, now).allowed;
+        }} />
+    : <ReportList reports={liveReports} authorLabel={authorLabel} />;
+  const reports = liveEnabled ? liveReportPanel : <ForumPreviewReports level={previewLevel} chat={chat}
     shared={sharedReports} authorLabel={authorLabel} onToggle={row => {
       setSharedReports(previous => {
         // Bind forwarding to the exact row. Replaced or retracted statements lose their selection.

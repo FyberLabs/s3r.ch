@@ -22,3 +22,13 @@ test("pilot is explicitly disabled or requires complete secret-backed scope and 
   Object.assign(browser.config.keys[0], { kid: "changed" });
   assert.equal(c.authority.keys[0].kid, "witness");
 });
+
+test("report destinations must be explicit distinct live forums", () => {
+  const c = config();
+  const fleet = { ...c.squad, forumId: c.squad.forumId.slice(0, -32) + "b".repeat(32), label: "Fleet" };
+  const command = { ...fleet, forumId: fleet.forumId.slice(0, -32) + "c".repeat(32), label: "Command" };
+  const parse = (reportParents: unknown) => parseSquadPilotConfig(JSON.stringify({ ...c, reportParents }))!;
+  assert.deepEqual(publicSquadPilotConfig(parse({ fleet, command })).reportParents, { fleet, command });
+  for (const invalid of [null, { fleet }, { fleet, command: fleet }, { fleet: c.squad, command }, { fleet, command: {} }])
+    assert.throws(() => parse(invalid));
+});
