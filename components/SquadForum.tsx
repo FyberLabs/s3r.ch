@@ -4,6 +4,7 @@ import { createForumReceiveRetry } from "@/lib/forum-receive-retry";
 import { createForumReceiveProofs } from "@/lib/forum-receive-proofs";
 import { BusinessRoleStrips } from "@/components/BusinessRoleStrips";
 import { businessTemplateRetryKey, createBusinessRoles, parseBusinessTemplate } from "@/lib/forum-business-roles";
+import { ForumHierarchyPreview, type PreviewLevel } from "@/components/ForumHierarchyPreview";
 import { ForumShell, type ForumTab } from "@/components/ForumShell";
 import { ForumDrawerRecords } from "@/components/ForumDrawerRecords";
 import { SquadDelegationControls } from "@/components/SquadDelegationControls";
@@ -240,6 +241,7 @@ function SquadForumView({ view }: { view: SquadView }) {
   const [seaPub, setSeaPub] = useState<string | null>(null);
   const [oauthLinked, setOauthLinked] = useState(false);
   const [vitals, setVitals] = useState<VitalsMode>("auto");
+  const [previewLevel, setPreviewLevel] = useState<PreviewLevel>("Squad");
   const [tab, setTab] = useState<ForumTab>("board");
   const [filters, setFilters] = useState<Set<ForumAgentState>>(() => new Set());
   const [query, setQuery] = useState("");
@@ -1781,8 +1783,12 @@ function SquadForumView({ view }: { view: SquadView }) {
     ? `${session.address.slice(0, 6)}…${session.address.slice(-4)}`
     : "not linked";
 
+  const hierarchy = liveEnabled ? null : <ForumHierarchyPreview level={previewLevel} onSelect={setPreviewLevel}
+    squadLabel={forumLabel} members={roster.length} needingHelp={needsCount} emergencies={emergencyCount} alarm={alarmOn} />;
+  if (!liveEnabled && previewLevel !== "Squad") return hierarchy;
   return (
     <div>
+      {hierarchy}
       <ForumShell tab={tab} onTab={setTab} forum={{ label: liveEnabled ? forumLabel : "Squad · preview", href: "/feed/squad" }}
         header={<>
       <div className="flex flex-wrap items-end justify-between gap-3">
