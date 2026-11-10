@@ -4,6 +4,11 @@ import { createForumReceiveRetry } from "@/lib/forum-receive-retry";
 import { createForumReceiveProofs } from "@/lib/forum-receive-proofs";
 import { BusinessRoleStrips } from "@/components/BusinessRoleStrips";
 import { businessTemplateRetryKey, createBusinessRoles, parseBusinessTemplate } from "@/lib/forum-business-roles";
+import { LiveForumReports } from "./LiveForumReports";
+import { forwardFields, type ReportParents } from "@/lib/forum-report-forward";
+import { readableForumChat } from "@/lib/forum-readable-chat";
+import { ReportList, ForumPreviewReports } from "./ForumPreviewReports";
+import { ForumHierarchyPreview, type PreviewLevel } from "@/components/ForumHierarchyPreview";
 import { ForumShell, type ForumTab } from "@/components/ForumShell";
 import { ForumDrawerRecords } from "@/components/ForumDrawerRecords";
 import { SquadDelegationControls } from "@/components/SquadDelegationControls";
@@ -212,11 +217,11 @@ function ChatBody({ body }: { body: string }) {
 }
 
 /** Namespace changes remount every subscription, cache floor and pending proof. */
-export function SquadForum({ live }: { live?: LiveSquadSpec }) {
+export function SquadForum({ live, reportParents, sessionKey = null }: { live?: LiveSquadSpec; reportParents?: ReportParents; sessionKey?: string | null }) {
   const view = squadView(live);
-  return <SquadForumView key={view.key} view={view} />;
+  return <SquadForumView key={view.key} view={view} reportParents={reportParents} sessionKey={sessionKey} />;
 }
-function SquadForumView({ view }: { view: SquadView }) {
+function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; reportParents?: ReportParents; sessionKey: string | null }) {
   const { forumId, label: forumLabel, live: liveEnabled, storage } = view;
   function authorLabel(pub: string): string {
     return liveEnabled ? shortSea(pub) : PILOT_LABELS.get(pub) ?? shortSea(pub);
@@ -240,6 +245,9 @@ function SquadForumView({ view }: { view: SquadView }) {
   const [seaPub, setSeaPub] = useState<string | null>(null);
   const [oauthLinked, setOauthLinked] = useState(false);
   const [vitals, setVitals] = useState<VitalsMode>("auto");
+  const [escalations, setEscalations] = useState<ReadonlyMap<string, { revision: number; command: boolean }>>(new Map());
+  const [sharedReports, setSharedReports] = useState<ReadonlyMap<FeedItem, "Fleet" | "Command">>(new Map());
+  const [previewLevel, setPreviewLevel] = useState<PreviewLevel>("Squad");
   const [tab, setTab] = useState<ForumTab>("board");
   const [filters, setFilters] = useState<Set<ForumAgentState>>(() => new Set());
   const [query, setQuery] = useState("");
@@ -303,6 +311,7 @@ function SquadForumView({ view }: { view: SquadView }) {
   chatTombsRef.current = chatTombs;
   const [aclRev, setAclRev] = useState(0);
   const chatIdsRef = useRef<string[]>([]);
+  const forwards = useRef(new WeakMap<FeedItem, ReturnType<typeof forwardFields>>());
   const chatRowsRef = useRef<FeedItem[]>([]);
   const admittedRef = useRef(admitted);
   const pendingStatusRef = useRef<Map<string, PendingStatus>>(new Map());
@@ -1149,6 +1158,7 @@ function SquadForumView({ view }: { view: SquadView }) {
           const graph = authority?.graph, now = Math.floor(Date.now() / 1000);
           if (!proofs.ready() || !graph?.checkDirectSee(item.id, author, now).allowed || !graph.checkPost(item.id, author, now).allowed || !proof.retain(item)) return false;
           retries.forget(retryId);
+          if (item.tags.includes("report")) forwards.current.set(item, forwardFields(data));
           setMeshChat((prev) => retainForumChat(prev, item));
           setLocalChat((prev) => retireLocalChat(prev, item.id));
           watchChatRemoval(key);
@@ -1478,11 +1488,10 @@ function SquadForumView({ view }: { view: SquadView }) {
 
   const chat = useMemo(
     () => mergeForumChat({ pilot: liveEnabled ? [] : PILOT_CHAT,
-      mesh: meshChat.filter(row => !liveEnabled || (proofs.valid(row) &&
-        !!authority?.graph.checkDirectSee(row.id, row.author, Math.floor(Date.now() / 1000)).allowed &&
-        authority.graph.checkPost(row.id, row.author, Math.floor(Date.now() / 1000)).allowed)),
+      mesh: liveEnabled ? readableForumChat(meshChat, forumId, sessionKey, authority?.graph, proofs.valid,
+        Math.floor(Date.now() / 1000)) : meshChat,
       local: liveEnabled ? [] : localChat, hidden: hiddenChat }),
-    [hiddenChat, localChat, meshChat, aclRev, proofs, authority],
+    [hiddenChat, localChat, meshChat, aclRev, proofs, authority, liveEnabled, forumId, sessionKey],
   );
 
   function signingPrincipal() {
@@ -1728,7 +1737,8 @@ function SquadForumView({ view }: { view: SquadView }) {
       put: value => putSoul(gunRef.current, soul, value, liveEnabled) });
   }
 
-  async function onSend() {
+  async function onSend(report = false) {
+    if (report && liveEnabled) return;
     const writer = signingPrincipal();
     if (!writer) {
       setNotice("A mesh key on this browser is required.");
@@ -1739,6 +1749,7 @@ function SquadForumView({ view }: { view: SquadView }) {
       forumId: forumId,
       author: writer,
       body: draft,
+      extras: report ? ["report"] : [],
       now,
       entropy: entropy(),
     });
@@ -1781,9 +1792,53 @@ function SquadForumView({ view }: { view: SquadView }) {
     ? `${session.address.slice(0, 6)}…${session.address.slice(-4)}`
     : "not linked";
 
+  function toggleEscalation(need: ForumNeed, destination: "Fleet" | "Command") {
+    if (liveEnabled || need.stated !== 1) return;
+    setEscalations(previous => {
+      const next = new Map(previous);
+      const entry = previous.get(need.id);
+      if (destination === "Fleet") {
+        if (entry?.revision === need.hamState) next.delete(need.id);
+        else next.set(need.id, { revision: need.hamState, command: false });
+      } else if (entry?.revision === need.hamState && need.severity === "emergency") {
+        next.set(need.id, { ...entry, command: !entry.command });
+      }
+      return next;
+    });
+  }
+
+  const liveReports = chat.filter(row => row.tags.includes("report"));
+  const liveReportPanel = liveEnabled && reportParents && authority && sessionKey && gunPeer?.gun
+    ? <LiveForumReports path={{ squad: view, ...reportParents }} graph={authority.graph} gun={gunPeer.gun}
+        sessionKey={sessionKey} reports={liveReports} evidence={row => forwards.current.get(row)} pair={() => pairRef.current}
+        valid={row => {
+          const now = Math.floor(Date.now() / 1000);
+          return chatRowsRef.current.includes(row) && proofs.valid(row) &&
+            authority.graph.checkDirectSee(row.id, row.author, now).allowed && authority.graph.checkPost(row.id, row.author, now).allowed;
+        }} />
+    : <ReportList reports={liveReports} authorLabel={authorLabel} />;
+  const reports = liveEnabled ? liveReportPanel : <ForumPreviewReports level={previewLevel} chat={chat}
+    shared={sharedReports} authorLabel={authorLabel} onToggle={row => {
+      setSharedReports(previous => {
+        // Bind forwarding to the exact row. Replaced or retracted statements lose their selection.
+        const next = new Map([...previous].filter(([item]) => chat.includes(item)));
+        if (previewLevel === "Squad") {
+          if (next.has(row)) next.delete(row);
+          else next.set(row, "Fleet");
+        } else if (previewLevel === "Fleet" && next.has(row)) {
+          next.set(row, next.get(row) === "Command" ? "Fleet" : "Command");
+        }
+        return next;
+      });
+    }} />;
+  const hierarchy = liveEnabled ? null : <ForumHierarchyPreview level={previewLevel} onSelect={setPreviewLevel}
+    squadLabel={forumLabel} members={roster.length} needingHelp={needsCount} emergencies={emergencyCount} alarm={alarmOn}
+    reports={reports} needs={needs} escalations={escalations} onToggleCommand={need => toggleEscalation(need, "Command")} />;
+  if (!liveEnabled && previewLevel !== "Squad") return hierarchy;
   return (
     <div>
-      <ForumShell tab={tab} onTab={setTab} forum={{ label: liveEnabled ? forumLabel : "Squad · preview", href: "/feed/squad" }}
+      {hierarchy}
+      <ForumShell reports={reports} tab={tab} onTab={setTab} forum={{ label: liveEnabled ? forumLabel : "Squad · preview", href: "/feed/squad" }}
         header={<>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -1955,6 +2010,7 @@ function SquadForumView({ view }: { view: SquadView }) {
             draft={draft}
             setDraft={setDraft}
             onSend={onSend}
+            onReport={liveEnabled ? undefined : () => onSend(true)}
             composerRef={composerRef}
             seaLabel={seaPub ? shortSea(seaPub) : "no mesh key"}
           />
@@ -2046,6 +2102,10 @@ function SquadForumView({ view }: { view: SquadView }) {
                 <li key={id}>
                   {need.severity} · stated {need.stated} · {need.body}
                   {need.acceptedOffer ? ` · offer ${need.acceptedOffer.slice(0, 12)}` : ""}
+                  {!liveEnabled && need.stated === 1 && <button type="button" className={btnSecondary}
+                    onClick={() => toggleEscalation(need, "Fleet")}>
+                    {escalations.get(id)?.revision === need.hamState ? "Withdraw from Fleet" : "Escalate to Fleet"}
+                  </button>}
                 </li>
               );
             })}
@@ -2121,6 +2181,7 @@ function ChatColumn({
   draft,
   setDraft,
   onSend,
+  onReport,
   composerRef,
   seaLabel,
 }: {
@@ -2129,6 +2190,7 @@ function ChatColumn({
   draft: string;
   setDraft: (value: string) => void;
   onSend: () => void | Promise<void>;
+  onReport?: () => Promise<void>;
   composerRef?: { current: HTMLTextAreaElement | null };
   seaLabel: string;
 }) {
@@ -2179,6 +2241,7 @@ function ChatColumn({
         <button type="submit" className={`${btnPrimary} mt-2`}>
           Send
         </button>
+        {onReport && <button type="button" className={btnSecondary} onClick={() => void onReport()}>Post report</button>}
       </form>
     </section>
   );

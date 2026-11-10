@@ -34,7 +34,8 @@ test("actual live component starts empty without fixture content or authority", 
   assert.match(html, /Isolated acceptance Squad/);
   assert.ok(!html.includes(PILOT_FORUM_LABEL));
   for (const agent of PILOT_AGENTS) assert.ok(!html.includes(agent.status.task));
-  assert.doesNotMatch(html, /Squad · preview/);
+  assert.doesNotMatch(html, /Squad · preview|aria-label="Forum hierarchy"/);
   const demo = renderToStaticMarkup(createElement(SquadForum));
   assert.ok(demo.includes(PILOT_FORUM_LABEL));
+  assert.match(demo, /aria-label="Forum hierarchy"/);
 });

@@ -17,6 +17,7 @@ const unavailable: Record<"memory" | "reports" | "messages", { title: string; te
 /** Presentation only: unavailable sources never mount shared data or create a forum. */
 export function ForumShell(props: {
   forum: { label: string; href: string };
+  reports?: ReactNode;
   header: ReactNode; sidebar: ReactNode; controls: ReactNode;
   board: ReactNode; list: ReactNode; chat: ReactNode;
   tab: ForumTab; onTab: (tab: ForumTab) => void;
@@ -63,7 +64,7 @@ export function ForumShell(props: {
           </details>
         </nav>
         <div className={`mt-3 min-w-0 ${props.tab === "chat" ? "hidden lg:block" : ""}`}>
-          {locked ? <section aria-label={locked.title} className="border border-rule bg-panel p-4">
+          {props.tab === "reports" && props.reports ? props.reports : locked ? <section aria-label={locked.title} className="border border-rule bg-panel p-4">
             <h2 className="font-semibold text-ink">{locked.title}</h2>
             <p role="status" className="mt-2 text-sm text-ink-muted">{locked.text}</p>
           </section> : <>{props.controls}{props.tab === "list" ? props.list : props.board}</>}

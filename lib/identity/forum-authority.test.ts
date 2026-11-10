@@ -8,6 +8,8 @@ import { checkSee, checkForumSee, offerForumHelp, acceptForumOffer, declineForum
 import { publishForumAuthorized } from "../forum-authorized-publish";
 import { createMemorySeeAcl } from "./see-acl";
 import { readFileSync } from "node:fs";
+import { canForward } from "../forum-report-forward";
+import { buildForumStatement } from "../forum-squad";
 import vectors from "./vectors/forum-authority.json";
 import type { ForumWitnessKey } from "./forum-witness-verification";
 const b64 = (x: Uint8Array | string) => Buffer.from(x).toString("base64url");
@@ -423,4 +425,29 @@ test("retained retired ownership is excluded while reissued current ownership re
   assert.equal(a.graph.writerKey(owner, time, time), helper);
   const onlyRetired = await a.refresh(rotatedSnapshot([oldObject]), time);
   assert.ok(onlyRetired.ok); assert.equal(a.graph.ownerOf(object), undefined);
+});
+
+test("report hops require separate destination admission and lose access on signed cancellation", async () => {
+  const reader = pub(55), ownerId = pub(54);
+  const destination = (tail: string) => ({ owner: ownerId, forumId: id("forum", 54, tail), label: tail });
+  const path = { squad: destination("a"), fleet: destination("b"), command: destination("c") };
+  const report = buildForumStatement({ forumId: path.squad.forumId, author: ownerId, now: time,
+    entropy: "e".repeat(32), extras: ["report"], body: "Status" })!;
+  const grant = (kind: "see" | "post", object: string, stated = 1) => sign(kind, { owner: ownerId, object, accessor: reader,
+    from: time - 1, until: time + 100, issuedAt: time - 1, hamState: stated ? 1 : 2, stated }, 54);
+  const rows = [report.id, ...Object.values(path).map(f => f.forumId)].flatMap(id => [owned(id, 54), grant("see", id)]);
+  const authority = createForumAuthority(config, () => time);
+  async function refresh() {
+    const input = snapshot(rows);
+    const accounts = [ownerId, reader].map(principal => ({ principal, rotations: [], revocations: [], genesisEpubBindings: [] }));
+    const result = await authority.refresh({ ...input, history: { ...input.history, accounts } }, time);
+    assert.ok(result.ok); assert.deepEqual(result.diagnostics, []);
+  }
+  rows.push(grant("post", path.fleet.forumId)); await refresh();
+  assert.ok(canForward(authority.graph, path, "fleet", report, reader, time));
+  assert.equal(canForward(authority.graph, path, "command", report, reader, time), false);
+  rows.push(grant("post", path.command.forumId)); await refresh();
+  assert.ok(canForward(authority.graph, path, "command", report, reader, time));
+  rows.push(grant("see", path.fleet.forumId, 0)); await refresh();
+  assert.equal(canForward(authority.graph, path, "command", report, reader, time), false);
 });

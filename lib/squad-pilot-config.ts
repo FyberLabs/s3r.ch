@@ -2,8 +2,11 @@ import { p256 } from "@noble/curves/nist.js";
 import { squadView, type LiveSquadSpec } from "./squad-view";
 import type { ForumAuthorityConfig } from "./identity/forum-authority";
 
+import type { ReportParents } from "./forum-report-forward";
+
 export type SquadPilotConfig = Readonly<{
   version: 1; origin: string; squad: LiveSquadSpec; authority: ForumAuthorityConfig;
+  reportParents?: ReportParents;
   sessionSecret: string; ownerSigningKey: string;
 }>;
 const exact = (x: unknown, keys: string): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).sort().join() === keys;
@@ -17,7 +20,8 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
   if (raw === undefined || raw === "") return null;
   if (Buffer.byteLength(raw) > 24576) throw Error("invalid Squad pilot configuration");
   const c: unknown = JSON.parse(raw);
-  if (!exact(c, "authority,origin,ownerSigningKey,sessionSecret,squad,version") || c.version !== 1 ||
+  if ((!exact(c, "authority,origin,ownerSigningKey,sessionSecret,squad,version") &&
+      !exact(c, "authority,origin,ownerSigningKey,reportParents,sessionSecret,squad,version")) || c.version !== 1 ||
       typeof c.origin !== "string" || new URL(c.origin).origin !== c.origin || !c.origin.startsWith("https://") ||
       !exact(c.squad, "forumId,label,owner") || !exact(c.authority, "keys,pinnedIssuers,policy") ||
       !exact(c.authority.policy, "allowedChainIds,allowedDomains,allowedUris") ||
@@ -38,6 +42,16 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
   }
   const typed = c as unknown as SquadPilotConfig;
   squadView(typed.squad);
+  if ("reportParents" in typed) {
+    const parents = typed.reportParents;
+    if (!exact(parents, "command,fleet")) throw Error("invalid report destinations");
+    const ids = new Set([typed.squad.forumId]);
+    for (const parent of [parents.fleet, parents.command]) {
+      if (!parent || !squadView(parent).live || ids.has(parent.forumId) || material.has(parent.owner))
+        throw Error("invalid report destination");
+      ids.add(parent.forumId);
+    }
+  }
   // Validate scalar encoding here. The runtime resolves the owner's current
   // key from the ledger before admitting signed ACL mutations, so a rotated
   // owner can replace this secret without changing its stable principal.
@@ -45,6 +59,6 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
   return structuredClone(typed);
 }
 export function publicSquadPilotConfig(c: SquadPilotConfig) {
-  return structuredClone({ origin: c.origin, squad: c.squad, config: c.authority,
+  return structuredClone({ ...(c.reportParents ? { reportParents: c.reportParents } : {}), origin: c.origin, squad: c.squad, config: c.authority,
     sessionBase: "/api/squad/pilot/session", authorityEndpoint: "/api/squad/pilot/authority", assignmentBase: "/api/squad/pilot/assignment" });
 }
