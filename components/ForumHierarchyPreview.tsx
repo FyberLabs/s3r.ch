@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { btnSecondary } from "@/lib/brand-ui";
 
 import type { ForumNeed } from "@/lib/identity/forum-check";
@@ -5,7 +6,7 @@ import type { ForumNeed } from "@/lib/identity/forum-check";
 export type PreviewLevel = "Command" | "Fleet" | "Squad";
 
 /** Aggregate only the current browser preview. Live forums need their own destination checks. */
-export function ForumHierarchyPreview({ level, onSelect, squadLabel, members, needingHelp, emergencies, alarm, needs, escalations, onToggleCommand }: {
+export function ForumHierarchyPreview({ level, onSelect, squadLabel, members, needingHelp, emergencies, alarm, reports, needs, escalations, onToggleCommand }: {
   level: PreviewLevel;
   onSelect: (level: PreviewLevel) => void;
   squadLabel: string;
@@ -13,6 +14,7 @@ export function ForumHierarchyPreview({ level, onSelect, squadLabel, members, ne
   needingHelp: number;
   emergencies: number;
   alarm: boolean;
+  reports?: ReactNode;
   needs: ReadonlyMap<string, ForumNeed>;
   escalations: ReadonlyMap<string, { revision: number; command: boolean }>;
   onToggleCommand: (need: ForumNeed) => void;
@@ -57,6 +59,7 @@ export function ForumHierarchyPreview({ level, onSelect, squadLabel, members, ne
           </li>)}
         </ul>}
       </section>
+      {reports}
     </section>}
   </>;
 }

@@ -27,10 +27,14 @@ boards. The parent boards count contributors who need help or are in emergency.
 From a contributor drawer, escalate an open need to Fleet. On the Fleet board,
 an emergency can be forwarded to Command. Withdrawing from Fleet removes it
 from both boards. Closing or revising a need retires its previous escalation.
-These selections last for the current visit and stay in the browser preview.
+In the Squad preview, a contributor with a mesh key can use Post report in chat.
+Open Reports to see report-tagged statements and choose which to send to Fleet.
+Fleet can forward a selected report to Command. Withdrawing from Fleet removes
+it from both boards. Replaced and retracted statements lose their forwarding
+selection. These selections last for the current visit in the browser preview.
 
 Links & Messages reserves the right-column surface for directed messages,
-situation reports and skill publishes. No source is connected yet. Shared memory,
+situation reports and skill publishes. No source is connected yet. Outside the local report preview, shared memory,
 roadmap, ledger, report and message views show explicit unavailable states and
 mount no data. Wiring a source requires current destination Check permission;
 navigation, labels and an empty panel do not supply that permission. This shell
