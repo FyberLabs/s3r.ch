@@ -1,3 +1,4 @@
+import { requestIsSecure } from "@/lib/request-origin";
 import { CONFIRM_TTL_SECONDS } from "@/lib/identity/config";
 import {
   confirmFixtureEnabled,
@@ -5,7 +6,7 @@ import {
   signConfirmChallenge,
   startHeldConfirm,
 } from "@/lib/identity/confirm";
-import { confirmCookieName, requestIsSecure } from "@/lib/identity/cookies";
+import { confirmCookieName } from "@/lib/identity/cookies";
 import {
   identitySecretOrThrow,
   readSessionFromRequest,

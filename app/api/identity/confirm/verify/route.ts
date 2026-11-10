@@ -1,8 +1,9 @@
+import { requestIsSecure } from "@/lib/request-origin";
 import {
   readConfirmChallenge,
   verifyHeldConfirm,
 } from "@/lib/identity/confirm";
-import { confirmCookieName, requestIsSecure } from "@/lib/identity/cookies";
+import { confirmCookieName } from "@/lib/identity/cookies";
 import {
   identitySecretOrThrow,
   readConfirmFromRequest,

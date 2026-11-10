@@ -8,24 +8,6 @@ export type CookieOpts = {
   maxAge: number;
 };
 
-export function requestIsSecure(request: Request): boolean {
-  const forwarded = request.headers.get("x-forwarded-proto");
-  if (forwarded) {
-    return forwarded.split(",")[0]?.trim() === "https";
-  }
-  try {
-    return new URL(request.url).protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-export function requestHost(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-host");
-  if (forwarded) return forwarded.split(",")[0]?.trim() ?? "";
-  return request.headers.get("host") ?? new URL(request.url).host;
-}
-
 /**
  * Strongest prefix that works: `__Host-` on HTTPS (s3r.ch).
  * HTTP localhost cannot set `__Host-` (Secure is required), so `Host-`.

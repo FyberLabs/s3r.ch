@@ -45,6 +45,16 @@ for pkg in "${packages[@]}"; do
   echo "present ${pkg}"
 done
 
+# Exercise the verifier in the final image, using a disposable identity.
+docker run --rm --network none --entrypoint node "$image" -e '
+  (async () => {
+    const sea = require("gun/sea");
+    const pair = await sea.pair();
+    if (!pair) throw Error("SEA runtime cannot generate a key");
+    const proof = await sea.sign("image-smoke", pair);
+    if (!proof || await sea.verify(proof, pair.pub) !== "image-smoke") throw Error("SEA signature round trip failed");
+  })().catch(error => { console.error(error); process.exitCode = 1; });'
+
 docker run -d --name "$name" -p "127.0.0.1:${port}:8080" \
   -e "IDENTITY_SESSION_SECRET=${secret}" \
   "$image" >/dev/null

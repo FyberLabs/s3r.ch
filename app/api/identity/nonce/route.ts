@@ -1,7 +1,7 @@
+import { requestIsSecure } from "@/lib/request-origin";
 import { NONCE_TTL_SECONDS } from "@/lib/identity/config";
 import {
   nonceCookieName,
-  requestIsSecure,
 } from "@/lib/identity/cookies";
 import {
   identitySecretOrThrow,
