@@ -71,7 +71,8 @@ export function createForumAuthority(config: ForumAuthorityConfig, clock: () => 
     if (!s) return denied();
     if (!owner || !objectPrincipal(object)) return denied("missing-object");
     if (accessor === owner) return { allowed: true, reason: "owner" };
-    const p = s.rows.get(directGrantSoul(kind, owner, object, accessor));
+    const soul = directGrantSoul(kind, owner, object, accessor);
+    const p = soul ? s.rows.get(soul) : undefined;
     if (!p || (p.kind !== "see" && p.kind !== "post") || p.row.owner !== owner || p.row.accessor !== accessor || p.row.object !== object ||
       p.row.stated !== 1) return denied(p ? "denied" : "missing-grant");
     if (now < p.row.from) return denied("future-from");

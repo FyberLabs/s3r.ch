@@ -6,6 +6,7 @@ import { verifyContract, validateLock } from "./check-sociacl-contract.mjs";
 const bytes = Buffer.from("upstream bytes\n");
 const sha256 = createHash("sha256").update(bytes).digest("hex");
 const files = [
+  { source: "vectors/ids/object.json", path: "lib/identity/vectors/object.json", sha256 },
   { source: "docs/s3rch-check.d.ts", path: "docs/s3rch-check.d.ts", sha256 },
   { source: "vectors/mesh/forums.json", path: "lib/identity/vectors/forums.json", sha256 },
   { source: "vectors/ids/principal.json", path: "lib/identity/vectors/principal.json", sha256 },
@@ -27,7 +28,7 @@ for (const file of files) {
 }
 test("requires every expected artifact exactly once", () => {
   assert.equal(validateLock(lock), lock);
-  for (const changed of [files.slice(0, 2), [files[0], files[1], files[1]], [...files, files[0]]]) {
+  for (const changed of [files.slice(0, 2), [files[0], files[1], files[2], files[2]], [...files, files[0]]]) {
     assert.throws(() => validateLock({ ...lock, files: changed }), /Invalid/);
   }
 });
