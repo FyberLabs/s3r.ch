@@ -39,6 +39,7 @@ RUN addgroup --system --gid 1001 nodejs \
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/public-pages /app/edge-assets
+COPY --from=builder /app/edge/public-pages.mjs /app/edge-entry.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/gun-preload.cjs ./gun-preload.cjs
