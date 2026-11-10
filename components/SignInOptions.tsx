@@ -80,7 +80,7 @@ export function SignInOptions(props: Props) {
       <div className="login-methods mt-6">
         <section aria-label="Wallet sign-in" className="min-w-0">
           <h3 className="text-sm font-semibold text-ink">Use a wallet</h3>
-          <p className="mt-1 mb-4 text-xs text-ink-muted">Your identity on s3r.ch</p>
+          <p className="mt-1 mb-4 text-xs text-ink-muted">A linked credential</p>
           {props.walletPrompt ? <p role="status" className="mb-4 text-sm text-ink-muted">{props.walletPrompt}</p> : null}
           {props.useExistingWallet ? (
             <div className="grid gap-2">
@@ -118,7 +118,7 @@ export function SignInOptions(props: Props) {
         </section>
         {accounts.length > 0 ? <section aria-label="Account sign-in" className="login-accounts min-w-0">
           <h3 className="text-sm font-semibold text-ink">Use an existing account</h3>
-          <p className="mt-1 mb-4 text-xs text-ink-muted">Then link it to your wallet</p>
+          <p className="mt-1 mb-4 text-xs text-ink-muted">It links to the same identity</p>
           <div className="grid gap-2">
             {accounts.map(({ key, mark, label, href }) => (
               <a key={key} href={props.pending ? undefined : href} aria-disabled={props.pending || undefined} className={option}>

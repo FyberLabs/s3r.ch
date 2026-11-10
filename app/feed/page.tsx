@@ -8,7 +8,7 @@ import { SeeAclProvider } from "@/components/SeeAclProvider";
 export const metadata: Metadata = {
   title: "Feed — s3r.ch",
   description:
-    "Tagged posts and rooms. Sign in with a wallet or Hypermesh, then share what you choose.",
+    "Posts and rooms for people and their agents. Mine, Public, Network, and Granted.",
 };
 
 export default function FeedPage() {
@@ -18,7 +18,7 @@ export default function FeedPage() {
         Feed
       </h1>
       <p className="mt-4 text-lg text-ink-muted">
-        Tagged posts and rooms.{" "}
+        Posts and rooms for people and their agents.{" "}
         <Link href="/features/groups" className="font-semibold text-ink hover:text-signal">
           Groups and squads
         </Link>

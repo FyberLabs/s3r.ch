@@ -2,18 +2,25 @@
 
 Every merge to `master` (this repository's default branch) builds one linux/amd64 image, anonymously pulls and smoke-tests its digest, and advances the public `:test` channel. The web app and Gun peer restart on that channel. The job checks each running revision and its own dependencies before publishing the `test-<full SHA>` prerelease. A failed rollout restores the previous channel image.
 
-The successful test job signs its deployment manifest with GitHub artifact attestation. Promotion and infra verify that signature against the exact source, workflow and successful run before accepting the image digest. Evidence persists independently of expiring CI artifacts.
+The successful test job signs its deployment manifest with GitHub artifact attestation. Promotion and infra verify that signature against the exact source, workflow and successful run before accepting the image. The manifest may include a digest so that image can be verified. Evidence persists independently of expiring CI artifacts.
 
-A stable `vX.Y.Z` tag on that tested default-branch commit promotes **the same digest**, without rebuilding. The release job waits for that commit's successful test deployment, publishes `release-manifest.json`, and assigns `:X.Y.Z`, `:prod`, and `:latest`. Older versions cannot replace newer production aliases; an existing version cannot change digest. Test and production are channels of the existing public `ghcr.io/fyberlabs/s3r.ch` package.
+A stable `vX.Y.Z` tag names one patch. Every code change gets a new patch version. The release job waits for that commit's successful test deployment, publishes `release-manifest.json`, and labels the patch `:X.Y.Z`. A downloadable package uses that version, not a hash.
+
+Running services follow a tag and pick up later patches on that line. They are patch-compatible within a minor version.
+
+- TEST runs `ghcr.io/fyberlabs/s3r.ch:test`.
+- A production service runs the minor line, for example `ghcr.io/fyberlabs/s3r.ch:1.4`. Promoting `v1.4.2` moves `:1.4` to that patch when no newer `1.4` patch is already published. A new minor line is an explicit choice.
+- `:prod` and `:latest` name the current production line. An older minor line is not replaced by a newer one on its own.
 
 ```text
 ghcr.io/fyberlabs/s3r.ch:test
-ghcr.io/fyberlabs/s3r.ch:1.2.3
-ghcr.io/fyberlabs/s3r.ch:prod
-ghcr.io/fyberlabs/s3r.ch@sha256:<digest>
+ghcr.io/fyberlabs/s3r.ch:1.4
+ghcr.io/fyberlabs/s3r.ch:1.4.2
 ```
 
-Infra reconciles **https://s3r.ch** to the highest stable semantic-version release after a successful Terraform apply and every 15 minutes. It verifies the manifest, tag commit and successful test run, imports the exact digest into ACR, and verifies the deployed revision and dependencies. There is no per-release credential setup, rebuild, or manual deploy step. Infra preserves production app settings, including the existing Panopticon tenant. Failed deployment remains a failure until a subsequent reconciliation succeeds; it is never recorded as accepted production.
+A digest may be stored on the release record so someone can verify which image a tag resolved to. It is not the image reference a running service uses.
+
+Infra reconciles **https://s3r.ch** to the minor line of the highest stable release after a successful Terraform apply and every 15 minutes. It verifies the manifest, tag commit and successful test run, and verifies the deployed revision and dependencies. There is no per-release credential setup, rebuild, or manual digest pin. Infra preserves production app settings, including the existing Panopticon tenant. Failed deployment remains a failure until a subsequent reconciliation succeeds; it is never recorded as accepted production.
 
 The GitHub `release` environment has no required reviewer. Publication does not require branch protection. Default-branch ancestry and trusted release scripts remain enforced. Configure package visibility as Public once; the merge pipeline checks anonymous pulling. WalletConnect's build setting is taken from `NEXT_PUBLIC_WC_PROJECT_ID` on the test build and remains identical in production.
 
@@ -34,11 +41,12 @@ The process listens on 8080 as user `nextjs` (uid 1001, group `nodejs`). No `PAN
 ```bash
 docker run --rm -p 8080:8080 \
   -e IDENTITY_SESSION_SECRET \
-  -v s3rch-data:/app/data \
-  ghcr.io/fyberlabs/s3r.ch@sha256:<digest>
+  ghcr.io/fyberlabs/s3r.ch:1.4
 ```
 
-`GET /api/health` returns HTTP 200. `dependencies.panopticon.status` is `not-configured`. `dependencies.gun.status` is `ok` once the peer attaches. With the blob settings unset, `dependencies.identity.status` becomes `unavailable` and wallet sign-in answers 503. Feed, forum, and `/gun` still serve. See the install guide for Azure Blob, a local file when `NODE_ENV` is not production, TURN, and backup.
+Use `:test` instead of `:1.4` for a test installation. The Gun peer is a second process from the same tag. See [deployment.md](deployment.md).
+
+`GET /api/health` returns HTTP 200. `dependencies.panopticon.status` is `not-configured`. The web process reports Gun as `external`. The peer reports Gun as `ok`. With the blob settings unset, `dependencies.identity.status` becomes `unavailable` and wallet sign-in answers 503. The feed and the forum still serve. `/gun` is the peer. See the install guide for Azure Blob, a local file when `NODE_ENV` is not production, TURN, and backup.
 
 ## Persistent paths
 
