@@ -36,7 +36,7 @@ export function ForumHierarchyPreview({ level, onSelect, squadLabel, members, ne
       </span>)}
     </nav>
     {level !== "Squad" && <section className="space-y-4 border border-rule bg-panel p-4">
-      <h1 className="text-2xl font-semibold">{level} board · preview</h1>
+      <h1 className="text-2xl font-semibold">{level} board</h1>
       <article className="space-y-3 border-t border-rule pt-3">
         <h2 className="font-semibold">{level === "Fleet" ? squadLabel : "Fleet"}</h2>
         <p>{level === "Command" && "1 squad · "}{members} contributors</p>

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const sources = new Map([
+  ["lib/identity/vectors/object.json", "vectors/ids/object.json"],
   ["docs/s3rch-check.d.ts", "docs/s3rch-check.d.ts"],
   ["lib/identity/vectors/forums.json", "vectors/mesh/forums.json"],
   ["lib/identity/vectors/principal.json", "vectors/ids/principal.json"],

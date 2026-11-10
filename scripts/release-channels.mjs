@@ -58,6 +58,24 @@ export function compareTags(a, b) {
   for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i] ? 1 : -1;
   return 0;
 }
+export function minorLine(stableTag) {
+  if (!STABLE.test(stableTag)) throw Error('Stable release tags required');
+  const [, major, minor] = stableTag.match(/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+  return `${major}.${minor}`;
+}
+/** Tags a promotion of vX.Y.Z publishes. The patch tag is always included.
+ * X.Y moves when this patch is the newest on that line. prod and latest move
+ * only when no newer stable release exists. */
+export function promotionAliases(stableTag, releaseTags) {
+  if (!STABLE.test(stableTag)) throw Error('Stable release tags required');
+  const names = [stableTag.slice(1)];
+  const line = minorLine(stableTag);
+  const newerPatch = releaseTags.some((tag) => STABLE.test(tag) && minorLine(tag) === line && compareTags(tag, stableTag) > 0);
+  if (!newerPatch) names.push(line);
+  const newerRelease = releaseTags.some((tag) => STABLE.test(tag) && compareTags(tag, stableTag) > 0);
+  if (!newerRelease) names.push('prod', 'latest');
+  return names;
+}
 const run = (program, args) => execFileSync(program, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 4 * 1024 * 1024 });
 const gh = path => JSON.parse(run('gh', ['api', path]));
 function release(repository, tag) {
@@ -167,9 +185,12 @@ async function main() {
   alias(image, candidate.digest, stableTag.slice(1));
   publish({ ...candidate, channel: 'prod', tag: stableTag });
   const tags = run('gh', ['api', '--paginate', `repos/${repository}/releases?per_page=100`, '--jq', '.[] | select(.draft == false and .prerelease == false) | .tag_name']).trim().split('\n');
-  const newer = tags.some(tag => STABLE.test(tag) && compareTags(tag, stableTag) > 0);
-  if (!newer) {
-    alias(image, candidate.digest, 'prod'); alias(image, candidate.digest, 'latest');
+  const aliases = promotionAliases(stableTag, tags);
+  for (const name of aliases) {
+    if (name === stableTag.slice(1)) continue;
+    alias(image, candidate.digest, name);
+  }
+  if (aliases.includes('latest')) {
     run('gh', ['release', 'edit', stableTag, '--repo', repository, '--latest']);
   }
 }

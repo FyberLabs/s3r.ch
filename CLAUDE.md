@@ -2,6 +2,10 @@
 
 ## Service deployments and binary provenance
 
-Each TEST service automatically tracks the latest PR merged into its repository's default branch. Deploy the tested build through a moving TEST channel. Do not pin running services to versions, commit SHAs or image digests, require manual pin updates, or require peer services to run matching builds. Preserve patch compatibility, including during early development, and verify it through the service contract.
+Running services follow a version tag and pick up patches on that line. They are patch-compatible within a minor version. Deploy the minor line, for example `ghcr.io/fyberlabs/s3r.ch:1.4`, or a moving channel tag such as `ghcr.io/fyberlabs/s3r.ch:test` for TEST. Do not deploy a running service by image digest, commit SHA, or a frozen patch tag. Do not require a peer service to run one identical build. A running service may report its revision for diagnostics.
 
-Use exact versions and digests for downloadable bundles and to record or verify which binary was built, tested or released. A running service may report its revision for diagnostics. Production follows its existing promotion policy and explicit release authorization.
+Each code change gets a new patch version. A downloadable package is referenced by that version, not by a hash.
+
+A digest may be recorded to verify which image a tag resolved to. It is not the reference used to deploy.
+
+TEST follows `ghcr.io/fyberlabs/s3r.ch:test`, which advances when a build from the default branch is published. A new minor line for production is an explicit release choice. Patches inside the current minor line arrive through the minor tag.

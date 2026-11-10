@@ -2,7 +2,7 @@ export const FEATURES = [
   {
     href: "/features/social",
     title: "Socialize",
-    copy: "Posts, rooms, forum, agents, and the public networks already in the feed.",
+    copy: "Posts, rooms, forums, and agents, plus the public networks already in the feed.",
   },
   {
     href: "/features/groups",
@@ -12,11 +12,11 @@ export const FEATURES = [
   {
     href: "/features/sociacl",
     title: "SociACL",
-    copy: "Your wallet owns what you write. Mine until you share. Grant see, then revoke.",
+    copy: "Your identity is a public key you hold. A wallet or a sign-in is a linked credential. Share, grant see, then revoke.",
   },
   {
     href: "/features/gun",
     title: "Gun graph",
-    copy: "Shared posts, rooms, and chat live on a peer graph. Holders keep what they still need.",
+    copy: "Shared posts, rooms, and chat live on a peer graph. Peers keep what they still need.",
   },
 ] as const;

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateManifest, compareTags, validTestRun, signedByTestRun, requireStableTag, releaseTargetArgs } from './release-channels.mjs';
+import { readFileSync } from 'node:fs';
+import { validateManifest, compareTags, minorLine, promotionAliases, validTestRun, signedByTestRun, requireStableTag, releaseTargetArgs } from './release-channels.mjs';
 const revision = 'a'.repeat(40), repository = 'FyberLabs/s3r.ch', tag = `test-${revision}`;
 const candidate = { schema: 1, repository, channel: 'test', tag, revision, image: 'ghcr.io/fyberlabs/s3r.ch', digest: 'sha256:' + 'b'.repeat(64), test_run_id: '123' };
 test('promotion is bound to the exact repository, tested revision, image and channel', () => {
@@ -10,6 +11,17 @@ test('promotion is bound to the exact repository, tested revision, image and cha
   }
   assert.doesNotThrow(() => validateManifest({ ...candidate, channel: 'prod', tag: 'v1.2.3' }, repository, 'prod', revision, 'v1.2.3'));
   assert.throws(() => validateManifest({ ...candidate, channel: 'prod', tag: 'v1.2.3-rc.1' }, repository, 'prod', revision, 'v1.2.3-rc.1'));
+});
+test('promoting vX.Y.Z also moves X.Y to that patch', () => {
+  assert.equal(minorLine('v1.4.2'), '1.4');
+  assert.equal(minorLine('v1.10.0'), '1.10');
+  assert.deepEqual(promotionAliases('v1.4.2', ['v1.4.2']), ['1.4.2', '1.4', 'prod', 'latest']);
+  assert.deepEqual(promotionAliases('v1.4.2', ['v1.4.2', 'v1.5.0']), ['1.4.2', '1.4']);
+  assert.deepEqual(promotionAliases('v1.4.2', ['v1.4.2', 'v1.4.3']), ['1.4.2']);
+  const promote = readFileSync(new URL('./release-channels.mjs', import.meta.url), 'utf8');
+  const body = promote.slice(promote.indexOf("action !== 'promote'"));
+  assert.match(body, /const aliases = promotionAliases\(stableTag, tags\)/);
+  assert.match(body, /alias\(image, candidate\.digest, name\)/);
 });
 test('backports cannot replace a newer production alias', () => {
   assert.equal(compareTags('v2.0.0', 'v1.99.99'), 1);
