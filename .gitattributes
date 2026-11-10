@@ -1,2 +1,4 @@
 # Preserve the upstream contract byte-for-byte, including on Windows checkouts.
 docs/s3rch-check.d.ts -text
+lib/identity/vectors/forums.json -text
+lib/identity/vectors/principal.json -text
