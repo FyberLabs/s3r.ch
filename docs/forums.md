@@ -411,3 +411,17 @@ validated live owner/forum binding with empty initial data and namespace-specifi
 replay caches. It never enables the public fixture for live use. See
 [Squad live rollout](squad-live-rollout.md) for the consumer boundary and remaining
 production source, configuration and deployment gates in #190.
+
+## Permission and transition boundaries
+
+`lib/identity/check.ts` answers permission questions. Need/offer operations live
+in `lib/identity/forum-transitions.ts`: offering help, accepting or declining an
+offer, withdrawal, cancellation continuation, and reopening a need. Squad calls
+those operations explicitly before signing and publishing. A successful read
+check alone does not close a need or accept an offer.
+
+The transition module consumes Check results and the record validators in
+`forum-check.ts`. It retains the existing owner/subject/helper restrictions,
+posted-offer checks and cancellation rules. These remain local consumer logic
+until SociACL #156 supplies the transition consume surface and shared vectors;
+separating the module does not establish upstream conformance.
