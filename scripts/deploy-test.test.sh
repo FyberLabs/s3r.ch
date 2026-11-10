@@ -19,7 +19,7 @@ case "$(basename "$0"):$*" in
   'docker:buildx imagetools create '*) value=${!#}; echo "${value##*@}" > "$STATE"; echo "set ${value##*@}" >> "$TRACE"; [[ "$CASE:${value##*@}" != "lost-response:$IMAGE_DIGEST" ]] ;;
   gh:*) if [[ "$CASE" == stale ]]; then echo "$PRIOR"; else echo "$GITHUB_SHA"; fi ;;
   node:*) echo "verify $2 $3" >> "$TRACE"; if [[ "$3" == "$GITHUB_SHA" ]]; then
-      [[ "$(cat "$STATE")" == "$IMAGE_DIGEST" && "$CASE:$2" != "unhealthy:https://s3rch-fyberlabs-peer-test.azurewebsites.net" ]]
+      [[ "$(cat "$STATE")" == "$IMAGE_DIGEST" && "$CASE:$2" != "unhealthy:https://test.s3r.ch/_peer" ]]
     else [[ "$3" == "$PRIOR" && "$(cat "$STATE")" == "$OLD" ]]; fi ;;
   *) exit 2 ;;
 esac
@@ -36,11 +36,11 @@ for CASE in healthy unhealthy restart lost-response stale repeat; do
   case "$CASE" in
     healthy|repeat) [[ "$rc" == 0 && "$(cat "$STATE")" == "$IMAGE_DIGEST" ]]
       grep -Fxq "verify https://test.s3r.ch $GITHUB_SHA" "$TRACE"
-      grep -Fxq "verify https://s3rch-fyberlabs-peer-test.azurewebsites.net $GITHUB_SHA" "$TRACE" ;;
+      grep -Fxq "verify https://test.s3r.ch/_peer $GITHUB_SHA" "$TRACE" ;;
     stale) [[ "$rc" != 0 && ! -s "$TRACE" && "$(cat "$STATE")" == "$OLD" ]] ;;
     *) [[ "$rc" != 0 && "$(cat "$STATE")" == "$OLD" ]]
       grep -Fxq "set $OLD" "$TRACE"
       grep -Fxq "verify https://test.s3r.ch $PRIOR" "$TRACE"
-      grep -Fxq "verify https://s3rch-fyberlabs-peer-test.azurewebsites.net $PRIOR" "$TRACE" ;;
+      grep -Fxq "verify https://test.s3r.ch/_peer $PRIOR" "$TRACE" ;;
   esac
 done
