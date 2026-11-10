@@ -3,7 +3,8 @@ import { ManagedIdentityCredential } from "@azure/identity";
 import { BlobServiceClient, type ContainerClient } from "@azure/storage-blob";
 import { p256 } from "@noble/curves/nist.js";
 import { parseSquadPilotConfig, type SquadPilotConfig } from "./squad-pilot-config";
-import { createSquadCommitStore } from "./squad-commit-store";
+import { createForumAuthority } from "./identity/forum-authority";
+import { createSquadCommitStore, LedgerEvaluationExpired } from "./squad-commit-store";
 import { createBlobSquadCommitStore, createBlobSquadSessionReplayStore, createBlobInventoryStore } from "./delegation-blob-inventory";
 import { createBlobCancellationOutboxStore, createBlobReplacementGrantStore } from "./delegation-blob-outbox";
 import { createSquadSessionReplayStore } from "./identity/squad-session-replay";
@@ -50,4 +51,30 @@ export function getSquadPilotServer() {
   if (!config) return null;
   const server = createSquadPilotServer(config, pilotContainer());
   cached = { identity, server }; return server;
+}
+
+// Health requests arrive at arbitrary offsets within the evaluation second.
+// If a read expires, discard it and verify a new primary read once.
+export async function squadPilotReady(pilot: {
+  config: Pick<SquadPilotConfig, "authority" | "squad">;
+  source: Pick<ReturnType<typeof createSquadCommitStore>, "read">;
+},
+  signal: AbortSignal, clock = () => Math.floor(Date.now() / 1000)) {
+  const authority = createForumAuthority(pilot.config.authority, clock);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    signal.throwIfAborted();
+    const at = clock();
+    try {
+      const snapshot = await pilot.source.read(at, signal);
+      const result = await authority.refresh(snapshot, at);
+      signal.throwIfAborted();
+      if (result.diagnostics.length) return false;
+      if (clock() === at) return result.ok && authority.graph.ownerOf(pilot.config.squad.forumId) === pilot.config.squad.owner;
+      if (!result.ok && result.reason !== "superseded" && result.reason !== "incomplete-authority") return false;
+    } catch (error) {
+      if (!(error instanceof LedgerEvaluationExpired)) throw error;
+    }
+    if (clock() <= at) return false;
+  }
+  return false;
 }

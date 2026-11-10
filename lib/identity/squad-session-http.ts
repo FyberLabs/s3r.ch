@@ -1,3 +1,4 @@
+import { matchesSquadOrigin } from "../squad-request-origin";
 import type { createSquadSessions } from "./squad-session";
 
 const sessionCookie = "__Host-s3rch-squad-session";
@@ -25,7 +26,7 @@ export function createSquadSessionHandlers(input: { origin: string; sessions: Re
   async function handle(request: Request, action: "challenge" | "exchange" | "logout") {
     try {
       if (request.method !== "POST") return response(405, { error: "method" });
-      if (new URL(request.url).origin !== origin.origin || request.headers.get("origin") !== origin.origin ||
+      if (!matchesSquadOrigin(request, origin) ||
           request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") return response(403, { error: "origin-or-type" });
       if (!request.body) return response(400, { error: "request" });
       const reader = request.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
