@@ -1,5 +1,6 @@
 /** P-256 wire contracts copied/retyped from SociACL b7f9bc59
  * typescript/ids/src/records.js and typescript/src/group.js. No admission here. */
+import { grantSoul } from "./acl-souls";
 import { seaToPrincipalKey, seaFromPrincipalKey } from "./forum-check";
 import { parseForumObjectRecord } from "./forum-object-record";
 import { recoveryObject, recoveryList, recoveryInteger, recoveryBytes } from "./forum-recovery-records";
@@ -25,8 +26,15 @@ export function objectPrincipal(object: unknown): string | null {
 // Object admission is addressed by the canonical object ID, not a new Gun root.
 // The transport adapter must extract this target from its subscribed location.
 export const objectRecordSoul = (object: string) => object;
-export const directGrantSoul = (kind: "see" | "post", owner: string, object: string, accessor: string) =>
-  `s3rch/acl/${seaToPrincipalKey(owner)}/${kind === "post" ? "post/" : ""}${object}/${seaToPrincipalKey(accessor)}`;
+export function directGrantSoul(kind: "see" | "post", owner: string, object: string, accessor: string): string | null {
+  const see = grantSoul(owner, object, accessor);
+  if (!see) return null;
+  if (kind === "see") return see;
+  if (kind !== "post") return null;
+  const parts = see.split("/");
+  parts.splice(3, 0, "post");
+  return parts.join("/");
+}
 export const membershipRecordSoul = (r: Pick<Membership, "setOwner" | "predicate" | "set" | "member">) =>
   `s3rch/acl/${seaToPrincipalKey(r.setOwner)}/member/${r.predicate}/${r.set}/${seaToPrincipalKey(r.member)}`;
 export const objectSetRecordSoul = (r: Pick<ObjectSet, "owner" | "object" | "predicate" | "set">) =>
@@ -52,7 +60,9 @@ export function parseForumAuthority(kind: AuthorityKind, input: unknown): Parsed
     if ((r.domain !== undefined && r.domain !== domain) || !principal(r.owner) || objectPrincipal(r.object) !== r.owner || !principal(r.accessor) ||
       !stated(r.stated) || !recoveryInteger(r.from) || !recoveryInteger(r.until) || r.until < r.from || !recoveryInteger(r.hamState)) return null;
     const row: Readonly<DirectGrant> = Object.freeze({ ...proof, owner: r.owner, object: r.object as string, accessor: r.accessor, stated: r.stated, from: r.from, until: r.until, hamState: r.hamState });
-    return { kind, row, signer: row.owner, cancellation: !row.stated, soul: directGrantSoul(kind, row.owner, row.object, row.accessor),
+    const soul = directGrantSoul(kind, row.owner, row.object, row.accessor);
+    if (!soul) return null;
+    return { kind, row, signer: row.owner, cancellation: !row.stated, soul,
       bytes: recoveryBytes([domain, row.owner, row.object, row.accessor, String(row.stated), String(row.from), String(row.until), String(row.hamState), String(row.issuedAt)]) };
   }
   if (!predicate(r.predicate) || typeof r.set !== "string" || !r.set.startsWith("set_") || !objectPrincipal(r.set)) return null;
