@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateManifest, compareTags, validTestRun, signedByTestRun } from './release-channels.mjs';
+import { validateManifest, compareTags, validTestRun, signedByTestRun, requireStableTag, releaseTargetArgs } from './release-channels.mjs';
 const revision = 'a'.repeat(40), repository = 'FyberLabs/s3r.ch', tag = `test-${revision}`;
 const candidate = { schema: 1, repository, channel: 'test', tag, revision, image: 'ghcr.io/fyberlabs/s3r.ch', digest: 'sha256:' + 'b'.repeat(64), test_run_id: '123' };
 test('promotion is bound to the exact repository, tested revision, image and channel', () => {
@@ -28,4 +28,24 @@ test('verified provenance must identify the exact successful test invocation', (
   assert.equal(signedByTestRun(proof('123'), candidate), true);
   assert.equal(signedByTestRun(proof('124'), candidate), false);
   assert.equal(signedByTestRun([], candidate), false);
+});
+
+const stable = { ...candidate, channel: 'prod', tag: 'v1.2.3' };
+test('stable publication uses only an existing tag while automatic TEST targets its candidate', () => {
+  assert.deepEqual(releaseTargetArgs(stable), ['--verify-tag', '--latest=false']);
+  assert.deepEqual(releaseTargetArgs(candidate), ['--target', revision, '--prerelease']);
+});
+test('stable tag must resolve remotely to the tested revision, including annotated tags', () => {
+  assert.doesNotThrow(() => requireStableTag(stable, () => ({ object: { type: 'commit', sha: revision } })));
+  const annotation = 'd'.repeat(40), calls = [];
+  requireStableTag(stable, path => {
+    calls.push(path);
+    return { object: path.endsWith('/v1.2.3') ? { type: 'tag', sha: annotation } : { type: 'commit', sha: revision } };
+  });
+  assert.deepEqual(calls, [`repos/${repository}/git/ref/tags/v1.2.3`, `repos/${repository}/git/tags/${annotation}`]);
+  for (const object of [{ type: 'commit', sha: 'c'.repeat(40) }, { type: 'tree', sha: revision }, null, { type: 'tag', sha: annotation }]) {
+    assert.throws(() => requireStableTag(stable, () => ({ object })));
+  }
+  assert.throws(() => requireStableTag(stable, () => { throw Error('HTTP 404'); }), /HTTP 404/);
+  assert.throws(() => requireStableTag(candidate, () => { throw Error('must not query'); }), /Stable manifest required/);
 });

@@ -85,6 +85,22 @@ function alias(image, digest, tag) {
   run('docker', ['buildx', 'imagetools', 'create', '--prefer-index=false', '--tag', `${image}:${tag}`, `${image}@${digest}`]);
   if (registryDigest(`${image}:${tag}`) !== digest) throw Error('Promotion changed artifact digest');
 }
+// Stable tags are authorized separately. Never create or retarget one here.
+export function requireStableTag(m, read = gh) {
+  if (m.channel !== 'prod' || !STABLE.test(m.tag) || !SHA.test(m.revision)) throw Error('Stable manifest required');
+  let object = read(`repos/${m.repository}/git/ref/tags/${m.tag}`).object;
+  for (let depth = 0; object?.type === 'tag' && depth < 10; depth++) {
+    if (!SHA.test(object.sha)) throw Error('Invalid annotated tag');
+    object = read(`repos/${m.repository}/git/tags/${object.sha}`).object;
+  }
+  if (object?.type !== 'commit' || object.sha !== m.revision) throw Error('Stable tag does not identify the tested revision');
+}
+export function releaseTargetArgs(m) {
+  // Supplying an old --target can require workflow-write permission even when
+  // the tag already exists. Verify the existing tag instead; TEST creates its
+  // automatic tag at the exact candidate revision as before.
+  return m.channel === 'prod' ? ['--verify-tag', '--latest=false'] : ['--target', m.revision, '--prerelease'];
+}
 function publish(m) {
   const existing = release(m.repository, m.tag);
   if (existing) {
@@ -97,8 +113,9 @@ function publish(m) {
     const file = join(dir, 'release-manifest.json'), notes = join(dir, 'notes.md');
     writeFileSync(file, JSON.stringify(m, null, 2) + '\n');
     writeFileSync(notes, `Image: \`${m.image}@${m.digest}\`\n\nRevision: \`${m.revision}\`\n\nTest run: https://github.com/${m.repository}/actions/runs/${m.test_run_id}\n\n## Config changes\nSee the merged configuration reference and companion infra changes.\n\n## Migration\nProduction is promoted from the tested digest; no rebuild.\n`);
-    run('gh', ['release', 'create', m.tag, '--repo', m.repository, '--target', m.revision, '--title', m.tag, '--notes-file', notes,
-      ...(m.channel === 'test' ? ['--prerelease'] : ['--latest=false']), file]);
+    if (m.channel === 'prod') requireStableTag(m);
+    run('gh', ['release', 'create', m.tag, '--repo', m.repository, '--title', m.tag, '--notes-file', notes,
+      ...releaseTargetArgs(m), file]);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 function output(key, value) {
@@ -126,6 +143,7 @@ async function main() {
   }
   if (action !== 'promote' || !STABLE.test(process.env.GITHUB_REF_NAME ?? '') || process.env.GITHUB_REF !== `refs/tags/${process.env.GITHUB_REF_NAME}`) throw Error('Stable tag required');
   const stableTag = process.env.GITHUB_REF_NAME;
+  requireStableTag({ repository, channel: 'prod', tag: stableTag, revision });
   // A tag can arrive while merge-to-test is still running. Wait for its exact
   // successful deployment manifest, never fall back to a newer :test alias.
   const deadline = Date.now() + 35 * 60 * 1000;
