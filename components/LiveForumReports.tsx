@@ -82,7 +82,7 @@ export function LiveForumReports(props: Props) {
     return { fleet, command: fleet && accepted(row, "command", fleet.sig, at) };
   }
   const boards = levels.filter(id => viewer && canReadBoard(graph, path, id, viewer, now));
-  const level = boards.includes(selected) ? selected : "squad";
+  const level = boards.length && !boards.includes(selected) ? "squad" : selected;
   const projected = sources.map(row => ({ row, ...hops(row, now), revision: sourceRevision(row) }));
   const visibleAt = (id: BoardLevel) => projected.filter(entry => viewer && canReadHop(graph, path, id, entry.row, viewer, now) &&
     (id === "squad" || entry[id]));
@@ -112,8 +112,7 @@ export function LiveForumReports(props: Props) {
       setNotice("Waiting for the signed update.");
     } catch { setNotice("Could not send the signed update."); }
   }
-  if (!boards.length) return null;
-  return <><section aria-label={props.reportsOnly ? "Reports" : "Forum hierarchy"} className="space-y-3 border border-rule p-4">
+  return <>{boards.length > 0 && <section aria-label={props.reportsOnly ? "Reports" : "Forum hierarchy"} className="space-y-3 border border-rule p-4">
     <nav aria-label="Report destination" className="flex flex-wrap gap-2">
       {boards.map(id => {
         const entries = visibleAt(id), needs = entries.filter(e => isNeed(e.row));
@@ -143,5 +142,5 @@ export function LiveForumReports(props: Props) {
     })}</ul>
     {!visible.length && <p>{props.reportsOnly ? "No readable reports here yet." : "No readable updates here yet."}</p>}
     {notice && <p role="status">{notice}</p>}
-  </section>{level === "squad" && props.children}</>;
+  </section>}{level === "squad" && props.children}</>;
 }

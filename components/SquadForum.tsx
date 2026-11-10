@@ -1466,7 +1466,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   const roster = useMemo(() => {
     const merged = composeForumRoster({
       sample: liveEnabled ? [] : PILOT_AGENTS,
-      mesh: [...meshStatus.values()].filter(row => !liveEnabled || (proofs.valid(row) && proofs.enrolled(row.seaPubkey))),
+      mesh: [...meshStatus.values()].filter(row => !liveEnabled || (mayReadSquad && proofs.valid(row) && proofs.enrolled(row.seaPubkey))),
       admitted,
       removed: new Set(removedAgents.keys()),
     });
@@ -1475,14 +1475,14 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
       const status = pickDisplayedStatus(agent.status, over);
       return status === agent.status ? agent : { ...agent, status };
     });
-  }, [admitted, localStatus, meshStatus, removedAgents, aclRev, proofs]);
+  }, [admitted, localStatus, meshStatus, removedAgents, aclRev, proofs, mayReadSquad]);
 
   const visible = useMemo(
     () => filterAgents(roster, filters, query),
     [filters, query, roster],
   );
 
-  const alarm = liveEnabled ? (proofs.valid(meshAlarm) ? meshAlarm : null) : meshAlarm ?? (alarmHeard ? null : PILOT_ALARM);
+  const alarm = liveEnabled ? (mayReadSquad && proofs.valid(meshAlarm) ? meshAlarm : null) : meshAlarm ?? (alarmHeard ? null : PILOT_ALARM);
   const pinnedNeed = alarm ? (needs.get(alarm.need) ?? null) : null;
   const alarmOn = forumEmergencyAlarm(
     roster.map((agent) => agent.status.state),
