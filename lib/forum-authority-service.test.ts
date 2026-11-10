@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
+import { squadPilotReady } from "./squad-pilot-server";
+import { LedgerEvaluationExpired } from "./squad-commit-store";
 import { createForumAuthorityService } from "./forum-authority-service";
 import { createHttpForumAuthorityReader } from "./forum-authority-http";
 import { seaToPrincipalKey } from "./identity/forum-check";
@@ -78,4 +80,35 @@ test("aborting a stalled request body cancels it without reading storage", async
   const result = h.handle(req);
   await Promise.resolve(); controller.abort();
   assert.equal((await result).status, 503); assert.equal(cancelled, true); assert.equal(h.reads(), 0);
+});
+
+test("pilot health rereads the primary ledger after rollover and requires current ownership", async () => {
+  const signal = new AbortController().signal;
+  for (const outcome of ["valid", "stale", "missing-owner", "expired-again"]) {
+    let now = at - 1;
+    const reads: number[] = [];
+    const ready = await squadPilotReady({ config: { squad, authority: config }, source: {
+      async read(second) {
+        reads.push(second);
+        if (reads.length === 1 || outcome === "expired-again") {
+          now++;
+          throw new LedgerEvaluationExpired();
+        }
+        const data = snapshot();
+        if (outcome === "stale") return { ...data, completeThrough: at - 1 };
+        if (outcome === "missing-owner") return { ...data, rows: [] };
+        return data;
+      },
+    } }, signal, () => now);
+    assert.deepEqual(reads, [at - 1, at]);
+    assert.equal(ready, outcome === "valid");
+  }
+});
+
+test("a previously verified signature cannot authorize different row bytes on a fresh read", async () => {
+  const data = snapshot();
+  assert.equal((await setup(member, data).handle(request())).status, 200);
+  const rows = data.rows.map(entry => entry.kind === "see"
+    ? { ...entry, record: { ...(entry.record as object), until: at + 999 } } : entry);
+  assert.equal((await setup(member, { ...data, rows }).handle(request())).status, 503);
 });

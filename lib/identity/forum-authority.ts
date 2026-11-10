@@ -28,6 +28,20 @@ export type ForumAuthorityGraph = SeeGraph & {
   checkForumSee(object: string, accessor: string, now: number): CheckResult;
   checkPost(object: string, accessor: string, now: number): CheckResult;
 };
+// Only the elliptic-curve proof is immutable. Every refresh still reads the
+// ledger and resolves the current signer, cancellations and grants.
+const verifiedRows = new Map<string, Uint8Array>();
+function validRowSignature(key: string, signature: string, bytes: Uint8Array): boolean {
+  const id = key + ":" + signature;
+  const previous = verifiedRows.get(id);
+  if (previous && previous.length === bytes.length && previous.every((byte, i) => byte === bytes[i])) return true;
+  if (!verifyForumKeySignature(key, signature, bytes)) return false;
+  if (bytes.length <= 4096) {
+    if (verifiedRows.size >= 256) verifiedRows.delete(verifiedRows.keys().next().value!);
+    verifiedRows.set(id, new Uint8Array(bytes));
+  }
+  return true;
+}
 type Diagnostic = Readonly<{ index: number; reason: string }>;
 const denied = (reason = "missing-authority"): CheckResult => ({ allowed: false, reason });
 /** Deterministic signed HAM merge: higher state, cancellation, smaller bytes. */
@@ -159,7 +173,7 @@ export function createForumAuthority(config: ForumAuthorityConfig, clock: () => 
           if (!entry) continue;
           const { p, index } = entry, r = p.row;
           const key = resolver(p.signer, r.issuedAt, at);
-          if (!key || !verifyForumKeySignature(key.keyAtIssuedAt, r.sig, p.bytes)) { diagnostics.push({ index, reason: "bad-proof" }); continue; }
+          if (!key || !validRowSignature(key.keyAtIssuedAt, r.sig, p.bytes)) { diagnostics.push({ index, reason: "bad-proof" }); continue; }
           if (key.keyAtIssuedAt !== key.currentKey) {
             const claims = p.cancellation && "attest" in r ? verifyForumWitness(r.attest, keys, r.issuedAt) : null;
             if (!claims || Object.keys(claims).some(k => !["typ", "principal", "recordId", "iat", "exp"].includes(k)) || claims.typ !== "sociacl-acl-attest-v1" ||
