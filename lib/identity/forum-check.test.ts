@@ -1,3 +1,4 @@
+import { acceptForumNeedTransition, acceptForumOffer, declineForumOffer, offerForumHelp, reopenForumNeed, withdrawForumOffer, resolveForumNeed } from "./forum-transitions";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -5,7 +6,6 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { itemSoul } from "./check";
 import {
-  acceptForumNeedTransition,
   acceptForumRoles,
   checkSee,
   forumAgentSoul,
@@ -23,14 +23,8 @@ import {
   forumUpdateSoul,
   isSeaPubkey,
   isSeparateChatSoul,
-  acceptForumOffer,
-  declineForumOffer,
   forumOfferSoul,
   mintForumOfferId,
-  offerForumHelp,
-  reopenForumNeed,
-  withdrawForumOffer,
-  resolveForumNeed,
   sameEmbeddedPrincipal,
   seaToPrincipalKey,
   type ForumNeed,

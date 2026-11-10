@@ -1,3 +1,4 @@
+import { reopenForumNeed } from "./identity/forum-transitions";
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PILOT_AGENTS, PILOT_NEEDS, PILOT_OWNER, PILOT_FORUM_ID } from './forum-squad-fixture';
@@ -108,7 +109,10 @@ test('bounded callback generations never revive an evicted verification', () => 
 });
 
 import * as squad from './forum-squad';
-import { validateForumNeed, validateForumStatus, reopenForumNeed } from './identity/check';
+import {
+  validateForumNeed,
+  validateForumStatus,
+} from "./identity/check";
 
 test('pending need removal keeps its own scope when live and removal delivery reorder', () => {
   const versions = createMeshEventVersions();

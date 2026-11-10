@@ -45,15 +45,17 @@ must review the new contract and its impact on consumers.
 
 This declaration is a reference artifact, excluded from the application compiler.
 The current runtime is **not yet conformant** to all of it. In particular,
-`lib/identity/check.ts` still contains wallet-based principal and soul helpers,
-and forum transitions still live in that module. The synchronization replaces
+`lib/identity/check.ts` still contains wallet-based principal and soul helpers.
+Forum need/offer transitions live in `lib/identity/forum-transitions.ts`; Squad
+calls them explicitly, and they consume permission answers from Check. Check
+does not import or re-export these state-changing operations. The synchronization replaces
 old tests that required obsolete names and prohibited SEA/recovery concepts in
 the reference artifact; existing runtime behavior tests remain in place.
 
 [#281](https://github.com/FyberLabs/s3r.ch/issues/281) tracks removal of the legacy
 `aclKey`, `aclPrincipalKey`, wallet user souls and wallet-keyed grant inboxes,
-separation of forum transitions from permission checks, and running shared
-SociACL vectors against the consumer.
+running shared SociACL vectors against the consumer, and replacing the local
+transition implementation once the upstream consume surface is available.
 [#277](https://github.com/FyberLabs/s3r.ch/issues/277) owns the SEA identity migration.
 [Upstream #156](https://github.com/FyberLabs/SociACL/issues/156) tracks the missing
 consume surfaces and vectors needed to replace local recovery, rotation,

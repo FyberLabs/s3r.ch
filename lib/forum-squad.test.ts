@@ -1,3 +1,4 @@
+import { offerForumHelp, resolveForumNeed } from "@/lib/identity/forum-transitions";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { toGunNode } from "@/lib/feed-types";
@@ -8,8 +9,6 @@ import {
   forumChatTag,
   forumOfferSoul,
   isSeparateChatSoul,
-  offerForumHelp,
-  resolveForumNeed,
   seaToPrincipalKey,
 } from "@/lib/identity/check";
 import { createMemorySeeAcl } from "@/lib/identity/see-acl";
