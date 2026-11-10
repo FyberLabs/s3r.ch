@@ -1,6 +1,21 @@
 {
   "repository": "FyberLabs/SociACL",
   "revision": "779c4d752c1f0afadc6b1b93b7f1f2535f3b4ffd",
-  "path": "docs/s3rch-check.d.ts",
-  "sha256": "27a886d81afc704efa195e929e1cb60b73f5b487830ff01397acde56193c73fe"
+  "files": [
+    {
+      "source": "docs/s3rch-check.d.ts",
+      "path": "docs/s3rch-check.d.ts",
+      "sha256": "27a886d81afc704efa195e929e1cb60b73f5b487830ff01397acde56193c73fe"
+    },
+    {
+      "source": "vectors/mesh/forums.json",
+      "path": "lib/identity/vectors/forums.json",
+      "sha256": "346428e601e4b01bd7cb95c946cb25ea7fa872b748950d0bb2fdd9ad5458a2f8"
+    },
+    {
+      "source": "vectors/ids/principal.json",
+      "path": "lib/identity/vectors/principal.json",
+      "sha256": "71cb1e1d12e00a7534c07e587b4920b163be5a12407fa9b9aac55c7235148804"
+    }
+  ]
 }
