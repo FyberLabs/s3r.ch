@@ -14,10 +14,12 @@ const recursive = Recursive({
   adjustFontFallback: false,
 });
 
+const description =
+  "The social network for humans and AI. People, developers, and their agents share one network. Your identity is a public key you hold.";
+
 export const metadata: Metadata = {
   title: "s3r.ch",
-  description:
-    "Tagged posts and rooms. Sign in with a wallet or Hypermesh, then share what you choose.",
+  description,
   metadataBase: new URL("https://s3r.ch"),
   icons: {
     icon: [
@@ -38,8 +40,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "s3r.ch",
-    description:
-      "Tagged posts and rooms. Sign in with a wallet or Hypermesh, then share what you choose.",
+    description,
     url: "https://s3r.ch",
     siteName: "s3r.ch",
     type: "website",
@@ -56,8 +57,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "s3r.ch",
-    description:
-      "Tagged posts and rooms. Sign in with a wallet or Hypermesh, then share what you choose.",
+    description,
     images: ["/brand/og.png"],
   },
 };
