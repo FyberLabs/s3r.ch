@@ -57,16 +57,6 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build
 
-      - name: Package public page documents and assets
-        run: node scripts/export-public-pages.mjs
-
-      - name: Retain static frontend for hosting qualification
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: public-pages
-          path: .next/public-pages/
-          if-no-files-found: error
-
       - name: Check static public feed in Chromium
         run: |
           npx playwright-core install --with-deps chromium
@@ -106,6 +96,9 @@ jobs:
           build-args: |
             VERSION=ci
             SOURCE_REVISION=${{ github.sha }}
+
+      - name: Check the static frontend inside the image
+        run: docker run --rm -i --network none --entrypoint node s3rch:ci --input-type=module < scripts/check-edge-payload.mjs
 
       - name: Boot image without Panopticon
         run: bash scripts/smoke-image.sh s3rch:ci
