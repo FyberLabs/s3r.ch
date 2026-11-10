@@ -78,3 +78,20 @@ consumer, which currently accepts structured hints. These families do not cover
 all SociACL Check, recovery, rotation or wallet-link semantics. Adding a family
 requires adding its source/local mapping to the verifier and its hash to the
 manifest, then running its cases against the appropriate consumer.
+
+## Canonical forum identity boundary
+
+For canonical minted forum object IDs, `checkSee` and `checkForumSee` require
+canonical SEA public keys for the accessor and any known owner before consulting
+an authority callback. Wallet credentials, `s3rch/users/...` paths, path-key
+spellings and malformed principal inputs cannot authorize those objects.
+Fallback grants must name the exact object ID and SEA accessor; alias matching
+cannot grant canonical forum access. Presented grants follow the same rule.
+Owner-authorized grant creation/cancellation also requires the exact SEA owner.
+
+SEA keys are never equivalent to legacy user-path aliases in `sameAccessor`.
+The older wallet-based feed/user objects still use their existing identity path;
+removing those paths and migrating their login/session consumers remains #277
+and #281 work. These checks do not infer the current owner from the principal
+embedded in an object ID; the graph remains responsible for verified ownership
+and rotation history.
