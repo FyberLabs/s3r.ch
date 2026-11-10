@@ -20,7 +20,10 @@ async function gunReady(status) {
     socket.close();
   }
 }
-const deadline = Date.now() + 5 * 60 * 1000;
+const windowMs = 5 * 60 * 1000;
+let deadline = Date.now() + windowMs;
+let sawTarget = false;
+let observation = 'No successful version and health responses';
 let ready = false;
 while (Date.now() < deadline) {
   try {
@@ -28,9 +31,17 @@ while (Date.now() < deadline) {
       const r = await fetch(origin + path, { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10000) });
       if (r.status !== 200) throw Error('Not ready'); return r.json();
     }));
+    if (!sawTarget && version.revision === sha) {
+      sawTarget = true;
+      // Allow TEST dependencies to initialize after Azure switches to the new container.
+      if (origin === 'https://test.s3r.ch') deadline = Date.now() + windowMs;
+    }
+    observation = JSON.stringify({ revision: version.revision, health: health.status,
+      identity: health.dependencies?.identity?.status, writable: health.dependencies?.identity?.writable,
+      gun: health.dependencies?.gun?.status });
     if (version.revision === sha && health.status === 'ok' && (peer || (health.dependencies?.identity?.writable === true && health.dependencies?.identity?.status === 'ok')) && await gunReady(health.dependencies?.gun?.status)) { ready = true; break; }
   } catch { /* Deployment or dependency startup is not ready yet. */ }
   await delay(3000);
 }
-if (!ready) throw Error('Deployment revision or durable dependency checks did not pass');
+if (!ready) throw Error('Deployment revision or durable dependency checks did not pass: ' + observation);
 console.log(`Verified ${origin} at ${sha}`);
