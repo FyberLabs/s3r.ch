@@ -57,6 +57,16 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build
 
+      - name: Package public page documents and assets
+        run: node scripts/export-public-pages.mjs
+
+      - name: Retain static frontend for hosting qualification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: public-pages
+          path: .next/public-pages/
+          if-no-files-found: error
+
       - name: Check static public feed in Chromium
         run: |
           npx playwright-core install --with-deps chromium
