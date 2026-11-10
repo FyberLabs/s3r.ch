@@ -1,3 +1,4 @@
+import { requestHost, requestIsSecure } from "../request-origin";
 /**
  * Backup OAuth door. Any configured OIDC provider (see providers.ts); the
  * default is a Keycloak realm with the public PKCE client `s3rch-web`.
@@ -34,8 +35,6 @@ import {
   oauthSessionCookieName,
   oauthSessionCookieNames,
   readCookie,
-  requestHost,
-  requestIsSecure,
   serializeCookie,
   sessionCookieNames,
 } from "./cookies";

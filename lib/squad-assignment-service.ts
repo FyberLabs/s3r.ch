@@ -1,4 +1,4 @@
-import { matchesSquadOrigin } from "./squad-request-origin";
+import { matchesBrowserOrigin } from "./request-origin";
 import { createDelegationRuntime } from "./delegation-runtime";
 import type { createSquadCommitStore } from "./squad-commit-store";
 import { createForumAuthority } from "./identity/forum-authority";
@@ -27,7 +27,7 @@ export function createSquadAssignmentService(input: {
     try {
       if (!Object.hasOwn(fields, action)) return reply(404, { error: "action" });
       if (request.method !== "POST") return reply(405, { error: "method" });
-      if (!matchesSquadOrigin(request, origin) ||
+      if (!matchesBrowserOrigin(request, origin) ||
           request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") return reply(403, { error: "origin-or-type" });
       const session = await authenticate(request);
       if (!session || !isSeaPubkey(session.key) || isPublicSquadPrincipal(session.key)) return reply(403, { error: "authentication" });

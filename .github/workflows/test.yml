@@ -65,6 +65,9 @@ jobs:
       - name: Verify Gun seed handoff and rollback
         run: node scripts/test-seed-handoff.mjs
 
+      - name: Verify wallet sign-in and Squad challenge through the public proxy contract
+        run: bash scripts/test-proxied-sign-in.sh
+
       - name: Start without optional integrations
         run: bash scripts/smoke-standalone.sh
 
