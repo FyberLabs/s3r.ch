@@ -1,0 +1,366 @@
+{
+  "v": 1,
+  "family": "object",
+  "accept": [
+    {
+      "name": "claim",
+      "input": "ens:alice.eth",
+      "canonical": "claim_4440d12c2e6483c67aeb6e474e1c787923e0720c1e3c2b355b709b4f16da6a65",
+      "operation": "claim",
+      "pathKey": "claim_4440d12c2e6483c67aeb6e474e1c787923e0720c1e3c2b355b709b4f16da6a65"
+    },
+    {
+      "name": "external",
+      "input": {
+        "source": "sr1:s3rch%3Ahttps%3A%2F%2Fs3r.ch%3A443%3Bkey%3D1212121212121212121212121212121212121212121212121212121212121212/axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU/room_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_01010101010101010101010101010101/chat",
+        "providerItemId": "rss3:act/1#x"
+      },
+      "canonical": "ext_7029733fbd790ea20fbe12ea1a718f9508053511e8db0fa50ba31ef8526009e3",
+      "operation": "external"
+    },
+    {
+      "name": "deterministic-mint",
+      "input": {
+        "kind": "room",
+        "creator": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+        "bytes": [
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7
+        ]
+      },
+      "canonical": "room_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_07070707070707070707070707070707",
+      "operation": "mint",
+      "pathKey": "room_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_07070707070707070707070707070707"
+    },
+    {
+      "name": "bound-creator",
+      "input": "room_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_07070707070707070707070707070707",
+      "canonical": "room_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_07070707070707070707070707070707",
+      "pathKey": "room_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_07070707070707070707070707070707"
+    },
+    {
+      "name": "bound-principal",
+      "input": "room_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_07070707070707070707070707070707",
+      "canonical": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "operation": "object-principal"
+    },
+    {
+      "name": "bound-max-length",
+      "input": "abcdefghijklmnop_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_22222222222222222222222222222222",
+      "canonical": "abcdefghijklmnop_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_22222222222222222222222222222222",
+      "pathKey": "abcdefghijklmnop_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_22222222222222222222222222222222"
+    }
+  ],
+  "reject": [
+    {
+      "name": "gun-chain-1",
+      "input": "0xattacker.get('s3rch').get('users').get('0xvictim')",
+      "reason": "gun-chain"
+    },
+    {
+      "name": "gun-chain-2",
+      "input": "gun.get('s3rch').get('users').get('0xbob')",
+      "reason": "gun-chain"
+    },
+    {
+      "name": "gun-chain-space",
+      "input": "0xattacker.get ('s3rch')",
+      "reason": "gun-chain"
+    },
+    {
+      "name": "gun-chain-bracket",
+      "input": "0xattacker['get']('s3rch')",
+      "reason": "gun-chain"
+    },
+    {
+      "name": "gun-chain-double",
+      "input": "attacker[\"get\"](\"s3rch\")",
+      "reason": "gun-chain"
+    },
+    {
+      "name": "gun-chain-literal-escape",
+      "input": "x\\u002eget(",
+      "reason": "gun-chain"
+    },
+    {
+      "name": "gun-chain-decoded-escape",
+      "input": "x.get(",
+      "reason": "gun-chain"
+    },
+    {
+      "name": "nul",
+      "input": "a\u0000b",
+      "reason": "control-char"
+    },
+    {
+      "name": "c1",
+      "input": "x",
+      "reason": "control-char"
+    },
+    {
+      "name": "bom",
+      "input": "﻿x",
+      "reason": "invisible-char"
+    },
+    {
+      "name": "zero-width",
+      "input": "x​",
+      "reason": "invisible-char"
+    },
+    {
+      "name": "line-separator",
+      "input": " ",
+      "reason": "invisible-char"
+    },
+    {
+      "name": "unpaired",
+      "input": "\ud800",
+      "reason": "unpaired-surrogate"
+    },
+    {
+      "name": "leading-space",
+      "input": " axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "reason": "whitespace"
+    },
+    {
+      "name": "trailing-tab",
+      "input": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU\t",
+      "reason": "control-char"
+    },
+    {
+      "name": "nbsp",
+      "input": " ",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "fullwidth-dot",
+      "input": "room．alpha",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "division-slash",
+      "input": "room∕alpha",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "fullwidth-slash",
+      "input": "room／alpha",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "cyrillic-hex",
+      "input": "room_0000000000000000000000000000000а",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "invalid-room.alpha",
+      "input": "room.alpha",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "invalid-room/alpha",
+      "input": "room/alpha",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "invalid-room_alpha",
+      "input": "room_alpha",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "invalid-room~1alpha",
+      "input": "room~1alpha",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "invalid-~0",
+      "input": "~0",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "invalid-%2F",
+      "input": "%2F",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "invalid-a%2Eb",
+      "input": "a%2Eb",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "invalid-0xalice",
+      "input": "0xalice",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "invalid-doc",
+      "input": "doc",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "invalid-0xbob/x",
+      "input": "0xbob/x",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "invalid-0xalice/doc",
+      "input": "0xalice/doc",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "invalid-0xbob",
+      "input": "0xbob",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "invalid-x",
+      "input": "x",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "null",
+      "input": null,
+      "reason": "not-string"
+    },
+    {
+      "name": "number",
+      "input": 42,
+      "reason": "not-string"
+    },
+    {
+      "name": "object",
+      "input": {
+        "toString": "no coercion"
+      },
+      "reason": "not-string"
+    },
+    {
+      "name": "array",
+      "input": [],
+      "reason": "not-string"
+    },
+    {
+      "name": "boolean",
+      "input": true,
+      "reason": "not-string"
+    },
+    {
+      "name": "native",
+      "input": "room_01010101010101010101010101010101",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "uppercase-hex",
+      "input": "room_ABABABABABABABABABABABABABABABAB",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "reserved-kind",
+      "input": "claim_01010101010101010101010101010101",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "reserved-kind-post",
+      "input": "post_01010101010101010101010101010101",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "reserved-kind-member",
+      "input": "member_01010101010101010101010101010101",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "reserved-kind-objset",
+      "input": "objset_01010101010101010101010101010101",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "mint-kind-post",
+      "input": {
+        "kind": "post",
+        "creator": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+        "bytes": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "reason": "reserved-kind",
+      "operation": "mint"
+    },
+    {
+      "name": "unbound-principal",
+      "input": "room_01010101010101010101010101010101",
+      "reason": "bad-alphabet",
+      "operation": "object-principal"
+    },
+    {
+      "name": "bound-off-curve",
+      "input": "room_p_00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000_11111111111111111111111111111111",
+      "reason": "not-on-curve"
+    },
+    {
+      "name": "bound-uppercase",
+      "input": "room_p_6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C2964FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5_07070707070707070707070707070707",
+      "reason": "non-canonical"
+    },
+    {
+      "name": "bound-uppercase-p-tag",
+      "input": "room_P_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_07070707070707070707070707070707",
+      "reason": "non-canonical"
+    },
+    {
+      "name": "s3rch-room",
+      "input": "s3rch:room:0x52908400098527886E0F7030069857D2E4169EE7:1:abababababababab",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "s3rch-forum",
+      "input": "s3rch:forum:0x52908400098527886E0F7030069857D2E4169EE7",
+      "reason": "bad-alphabet"
+    },
+    {
+      "name": "bound-too-long",
+      "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "reason": "too-long"
+    },
+    {
+      "name": "bound-reserved-kind",
+      "input": "post_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_11111111111111111111111111111111",
+      "reason": "reserved-kind"
+    },
+    {
+      "name": "claim-leading-nbsp",
+      "input": " ens:alice.eth",
+      "reason": "bad-alphabet",
+      "operation": "claim"
+    }
+  ]
+}

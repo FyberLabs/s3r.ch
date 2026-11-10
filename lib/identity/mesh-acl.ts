@@ -10,13 +10,11 @@
  * the next merge. Do not cache an allow.
  */
 
+import { legacyAclKey, legacyAclPrincipalKey, legacyGrantSoul } from "./legacy-acl-souls";
 import type { IdentitySeeGrant } from "@/lib/feed-types";
 import {
-  aclKey,
-  aclPrincipalKey,
   applySeeGrant,
   cancelSee,
-  grantSoul,
   isAclId,
   isMetaId,
   isUrlLeafId,
@@ -155,7 +153,7 @@ export function prepareMeshSeeGrant(
   if (!dest || isUrlLeafId(dest) || isMetaId(dest) || isAclId(dest)) return null;
   const mesh = toMeshSeeGrant(grant, 1);
   return {
-    soul: grantSoul(dest, mesh.object, mesh.accessor),
+    soul: legacyGrantSoul(dest, mesh.object, mesh.accessor),
     owner: dest,
     grant: mesh,
     hamState: nextHamState(previousHam, now),
@@ -184,7 +182,7 @@ export function prepareMeshSeeCancel(
     stated: 0,
   };
   return {
-    soul: grantSoul(dest, target, who),
+    soul: legacyGrantSoul(dest, target, who),
     owner: dest,
     grant: mesh,
     hamState: nextHamState(previousHam, now),
@@ -230,15 +228,15 @@ export function fromGunAclNode(
       ? recordedOwner.trim()
       : ownerKey?.trim();
   if (!owner) return null;
-  if (ownerKey && aclPrincipalKey(owner) !== aclPrincipalKey(ownerKey)) {
+  if (ownerKey && legacyAclPrincipalKey(owner) !== legacyAclPrincipalKey(ownerKey)) {
     return null;
   }
-  if (objectKey && aclKey(grant.object) !== objectKey) return null;
-  if (accessorKey && aclPrincipalKey(grant.accessor) !== aclPrincipalKey(accessorKey)) {
+  if (objectKey && legacyAclKey(grant.object) !== objectKey) return null;
+  if (accessorKey && legacyAclPrincipalKey(grant.accessor) !== legacyAclPrincipalKey(accessorKey)) {
     return null;
   }
   return {
-    soul: grantSoul(owner, grant.object, grant.accessor),
+    soul: legacyGrantSoul(owner, grant.object, grant.accessor),
     owner,
     grant,
     hamState,
@@ -284,9 +282,9 @@ export function putMeshSeeGrant(gun: MeshAclGunRef, edge: GunAclEdge): void {
   gun
     .get(S3RCH_ROOT)
     .get(S3RCH_ACL)
-    .get(aclPrincipalKey(edge.owner))
-    .get(aclKey(edge.grant.object))
-    .get(aclPrincipalKey(edge.grant.accessor))
+    .get(legacyAclPrincipalKey(edge.owner))
+    .get(legacyAclKey(edge.grant.object))
+    .get(legacyAclPrincipalKey(edge.grant.accessor))
     .put(gunAclWireNode(edge));
 }
 
@@ -312,7 +310,7 @@ export function stateSeeGrantOnMesh(
       return null;
     }
   }
-  const soul = grantSoul(owner, grant.claimId, grant.accessor);
+  const soul = legacyGrantSoul(owner, grant.claimId, grant.accessor);
   const edge = prepareMeshSeeGrant(owner, grant, mesh.get(soul)?.hamState);
   if (!edge) return null;
   mesh.merge(edge);
@@ -334,7 +332,7 @@ export function cancelSeeOnMesh(
 ): GunAclEdge | null {
   if (!ownerOwnsObject(acl, owner, object)) return null;
   cancelSee(acl, owner, accessor, object);
-  const soul = grantSoul(owner, object, accessor);
+  const soul = legacyGrantSoul(owner, object, accessor);
   const edge = prepareMeshSeeCancel(owner, accessor, object, mesh.get(soul)?.hamState);
   if (!edge) return null;
   mesh.merge(edge);

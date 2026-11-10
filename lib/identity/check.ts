@@ -140,7 +140,7 @@ export type FeedMeta = {
 /** Feed item soul or claim id linked from the user node. */
 export type CheckObjectId = string;
 
-/** Wallet or s3rch/users/{wallet}. */
+/** SEA pubkey for canonical objects; legacy feed still accepts wallet/user paths. */
 export type AccessorId = string;
 
 export type CheckResult = {
@@ -284,54 +284,7 @@ export function metaSoul(): string {
   return `${S3RCH_ROOT}/${S3RCH_META}`;
 }
 
-/**
- * Dest-ACL path key. encodeKey, then `/` → `_`, so a grant soul stays
- * five segments when the object id still contains slashes.
- */
-export function aclKey(id: string): string {
-  return encodeKey(id).replace(/\//g, "_");
-}
-
-/**
- * Owner / accessor key on dest ACL. `s3rch/users/<wallet>` collapses
- * to the wallet. Anything else is aclKey.
- */
-export function aclPrincipalKey(id: string): string {
-  const trimmed = id.trim();
-  if (!trimmed) return "";
-  let key = trimmed;
-  if (trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)) {
-    key = trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length);
-  }
-  try {
-    return getAddress(key);
-  } catch {
-    return aclKey(key);
-  }
-}
-
-/**
- * Owner dest-ACL root. Not a Check object.
- * gun.get('s3rch').get('acl').get(aclPrincipalKey(owner))
- */
-export function aclSoul(owner: AccessorId): string {
-  return `${S3RCH_ROOT}/${S3RCH_ACL}/${aclPrincipalKey(owner)}`;
-}
-
-/**
- * Jointly stated see grant under the object owner's dest ACL.
- * gun.get('s3rch').get('acl')
- *   .get(aclPrincipalKey(owner))
- *   .get(aclKey(object))
- *   .get(aclPrincipalKey(accessor))
- */
-export function grantSoul(
-  owner: AccessorId,
-  object: CheckObjectId,
-  accessor: AccessorId,
-): string {
-  return `${aclSoul(owner)}/${aclKey(object)}/${aclPrincipalKey(accessor)}`;
-}
+export { aclSoul, grantSoul } from "./acl-souls";
 
 /** Does not verify. Does not mint. */
 export function acceptHint(hint: HandoffHint): HandoffHint {
