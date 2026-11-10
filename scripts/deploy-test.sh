@@ -25,7 +25,7 @@ refresh() {
   az webapp restart -g "$group" -n "$web" &&
     az webapp restart -g "$group" -n "$peer" &&
     node scripts/verify-deployed-release.mjs https://test.s3r.ch "$1" &&
-    node scripts/verify-deployed-release.mjs https://s3rch-fyberlabs-peer-test.azurewebsites.net "$1"
+    node scripts/verify-deployed-release.mjs https://test.s3r.ch/_peer "$1"
 }
 for app in "$web" "$peer"; do
   configured=$(az webapp config show -g "$group" -n "$app" --query linuxFxVersion -o tsv)

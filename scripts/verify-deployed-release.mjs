@@ -1,6 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 const [origin, sha] = process.argv.slice(2);
-const peer = origin === 'https://s3rch-fyberlabs-peer-test.azurewebsites.net';
+const peer = origin === 'https://test.s3r.ch/_peer';
 if (!(peer || ['https://test.s3r.ch', 'https://s3r.ch'].includes(origin)) || !/^[0-9a-f]{40}$/.test(sha ?? '')) throw Error('Fixed deployment origin and revision required');
 async function gunReady(status) {
   if (status === 'ok') return true;
