@@ -23,7 +23,7 @@ try {
     await cp(path.join("public", asset), path.join(staging, asset), { recursive: true });
   }
   await writeFile(path.join(staging, "_redirects"),
-    "/design / 307\n/views/picker-preview /views/picker-preview.html 200\n/views/:id /saved-view.html 200\n");
+    "/design / 307\n/views/picker-preview /views/picker-preview 200\n/views/:id /saved-view 200\n");
   await rm(output, { recursive: true, force: true });
   await rename(staging, output);
 } finally {
