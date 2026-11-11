@@ -1,3 +1,9 @@
+/** Trust boundary: deployed requests must arrive through the authenticated
+ * Cloudflare-to-origin path, which overwrites forwarded host/protocol and blocks
+ * direct origin access. These helpers consume that normalized metadata; they do
+ * not authenticate a proxy or make client-supplied forwarding headers safe.
+ * See docs/request-origin-trust.md before adding another ingress path.
+ */
 export function requestIsSecure(request: Request): boolean {
   const forwarded = request.headers.get("x-forwarded-proto");
   if (forwarded) {
