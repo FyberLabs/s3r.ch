@@ -17,7 +17,7 @@ export function createSquadSessions(input: {
   const view = squadView(input.squad);
   if (!view.live || typeof input.secret !== "string" || new TextEncoder().encode(input.secret).length < 32) throw Error("Explicit Squad session configuration required");
   const origin = new URL(input.origin);
-  if (origin.origin !== input.origin || !["https:", "http:"].includes(origin.protocol)) throw Error("Canonical origin required");
+  if (origin.origin !== input.origin || origin.protocol !== "https:") throw Error("Canonical HTTPS origin required");
   const secret = new TextEncoder().encode(input.secret), issuer = origin.origin, audience = view.forumId;
   const consume = input.consume, clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   const challengeType = "s3rch-squad-challenge-v1", sessionType = "s3rch-squad-session-v1";

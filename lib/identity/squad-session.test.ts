@@ -45,3 +45,19 @@ test("tokens cannot cross origin, Squad, signing secret or trust lifetime", asyn
   assert.equal(await slow.exchange(challenge, sig), null);
   assert.throws(() => createSquadSessions({ ...h.options, secret: "short" }));
 });
+
+test("session issuance requires an exact HTTPS origin, including local configuration", async () => {
+  const h = await setup();
+  for (const origin of ["http://s3r.ch", "http://localhost:8080", "http://127.0.0.1:8080",
+    "https://s3r.ch/", "https://s3r.ch/path", "https://user:pass@s3r.ch", "https://s3r.ch?x=1",
+    "https://s3r.ch#fragment", "https://S3R.CH", "ftp://s3r.ch"]) {
+    assert.throws(() => createSquadSessions({ ...h.options, origin }), /Canonical HTTPS origin required/, origin);
+  }
+  const sessions = createSquadSessions({ ...h.options, origin: "https://localhost:8443" });
+  const challenge = await sessions.challenge(h.owner.pub);
+  const signature = await signForumRecord(challenge, h.owner);
+  assert.ok(signature);
+  const token = await sessions.exchange(challenge, signature);
+  assert.ok(token);
+  assert.deepEqual(await sessions.authenticate(token), { key: h.owner.pub });
+});
