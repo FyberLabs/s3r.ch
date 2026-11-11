@@ -30,12 +30,14 @@ const ETH_CALL_FALSE =
 describe("SIWE domain allowlist", () => {
   it("allows s3r.ch and localhost with ports", () => {
     assert.equal(isAllowedSiweDomain("s3r.ch"), true);
+    assert.equal(isAllowedSiweDomain("www.s3r.ch"), true);
     assert.equal(isAllowedSiweDomain("localhost:3000"), true);
     assert.equal(isAllowedSiweDomain("127.0.0.1:8080"), true);
   });
 
   it("rejects lookalikes", () => {
     assert.equal(isAllowedSiweDomain("s3r.ch.evil.com"), false);
+    assert.equal(isAllowedSiweDomain("www.s3r.ch.evil.com"), false);
     assert.equal(isAllowedSiweDomain("evil.com"), false);
     assert.equal(isAllowedSiweDomain("not-s3r.ch"), false);
   });
@@ -86,6 +88,17 @@ describe("SIWE parse/verify", () => {
       now: new Date("2026-09-01T17:01:00.000Z"),
     });
     assert.deepEqual(result, { ok: true, address: ANVIL_ADDRESS, chainId: 1 });
+  });
+
+  it("accepts a signed www login only on the matching request host", async () => {
+    const { message, signature } = await signedFixture({ domain: "www.s3r.ch", chainId: 31337 });
+    const input = { message, signature, expectedNonce: nonce,
+      now: new Date("2026-09-01T17:01:00.000Z") };
+    assert.deepEqual(await verifySiweLogin({ ...input, requestHost: "www.s3r.ch" }),
+      { ok: true, address: ANVIL_ADDRESS, chainId: 31337 });
+    const mismatch = await verifySiweLogin({ ...input, requestHost: "s3r.ch" });
+    assert.equal(mismatch.ok, false);
+    if (!mismatch.ok) assert.equal(mismatch.error, "SIWE domain does not match this host.");
   });
 
   it("rejects a domain mismatch against the request host", async () => {
