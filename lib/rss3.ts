@@ -56,6 +56,7 @@ export type RawActivity = {
 };
 
 export type GiFetchResult = {
+  windows?: { key: string; activities: RawActivity[] }[];
   activities: RawActivity[];
   sourcesOk: number;
   sourcesTried: number;
@@ -76,13 +77,15 @@ async function fetchSources(sources: Rss3Source[]): Promise<GiFetchResult> {
   );
 
   const activities: RawActivity[] = [];
+  const windows: { key: string; activities: RawActivity[] }[] = [];
   let sourcesOk = 0;
   const failures: string[] = [];
 
-  for (const result of results) {
+  for (const [index, result] of results.entries()) {
     if (result.status === "fulfilled") {
       sourcesOk += 1;
       activities.push(...result.value);
+      windows.push({ key: JSON.stringify([GI_BASE, sources[index].path, sources[index].tag]), activities: result.value });
     } else {
       failures.push(
         result.reason instanceof Error ? result.reason.message : String(result.reason),
@@ -103,6 +106,7 @@ async function fetchSources(sources: Rss3Source[]): Promise<GiFetchResult> {
 
   return {
     activities,
+    windows,
     sourcesOk,
     sourcesTried: sources.length,
     error: null,
