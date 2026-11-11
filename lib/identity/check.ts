@@ -10,7 +10,8 @@
  */
 
 import { getAddress } from "viem";
-import { isForumObjectId, isSeaPubkey } from "./forum-check";
+import { isCanonicalObjectId, usesCanonicalObjectNamespace } from "./object-id";
+import { isSeaPubkey } from "./forum-check";
 import {
   fromGunNode,
   isUnsharePut,
@@ -438,7 +439,7 @@ export function grantNamesObject(
   grant: IdentitySeeGrant,
   object: CheckObjectId,
 ): boolean {
-  if (isForumObjectId(object)) return grant.claimId === object;
+  if (usesCanonicalObjectNamespace(object)) return isCanonicalObjectId(object) && grant.claimId === object;
   const claimId = grant.claimId.trim();
   if (!claimId) return false;
   if (claimId === object) return true;
@@ -479,7 +480,7 @@ export function ownerOwnsObject(
   owner: AccessorId,
   object: CheckObjectId,
 ): boolean {
-  if (isForumObjectId(object)) return isSeaPubkey(owner) && acl.ownerOf(object) === owner;
+  if (usesCanonicalObjectNamespace(object)) return isCanonicalObjectId(object) && isSeaPubkey(owner) && acl.ownerOf(object) === owner;
   if (sameAccessor(acl.ownerOf(object), owner)) return true;
   if (sameAccessor(acl.ownerOf(itemSoul(object)), owner)) return true;
   if (sameAccessor(acl.ownerOf(roomSoul(object)), owner)) return true;
@@ -498,17 +499,20 @@ export function grantLiveAt(grant: IdentitySeeGrant, now: number): boolean {
   return validCheckTime(now) && now >= grant.from && now < grant.until;
 }
 
-/** Canonical forum objects never inherit legacy wallet/user-soul aliases. */
-function canonicalForumPrincipals(graph: SeeGraph, object: string, accessor: string): boolean {
-  if (!isForumObjectId(object)) return true;
+/** Canonical minted and derived IDs never inherit wallet-era aliases. */
+function canonicalCheckBoundary(graph: SeeGraph, object: string, accessor: string): CheckResult | null {
+  if (!usesCanonicalObjectNamespace(object)) return null;
+  if (!isCanonicalObjectId(object)) return { allowed: false, reason: "bad-object" };
+  if (!isSeaPubkey(accessor)) return { allowed: false, reason: "bad-principal" };
   const owner = graph.ownerOf(object);
-  return isSeaPubkey(accessor) && (owner === undefined || isSeaPubkey(owner));
+  return owner === undefined || isSeaPubkey(owner) ? null : { allowed: false, reason: "bad-principal" };
 }
 
 /** Forum-specific read gate. Legacy/sample graphs remain direct-only. */
 export function checkForumSee(graph: SeeGraph, object: string, accessor: string, now: number): CheckResult {
   if (!validCheckTime(now)) return { allowed: false, reason: "unknown" };
-  if (!canonicalForumPrincipals(graph, object, accessor)) return { allowed: false, reason: "bad-principal" };
+  const boundary = canonicalCheckBoundary(graph, object, accessor);
+  if (boundary) return boundary;
   return graph.checkForumSee ? graph.checkForumSee(object, accessor, now) : checkSee(graph, object, accessor, now);
 }
 
@@ -532,7 +536,8 @@ export function checkSee(
   void hint;
   void hop;
   if (!validCheckTime(now)) return { allowed: false, reason: "unknown" };
-  if (!canonicalForumPrincipals(graph, object, accessor)) return { allowed: false, reason: "bad-principal" };
+  const boundary = canonicalCheckBoundary(graph, object, accessor);
+  if (boundary) return boundary;
   if (graph.checkDirectSee) return graph.checkDirectSee(object, accessor, now);
   if (isMetaId(object)) {
     return { allowed: false, reason: "meta" };
