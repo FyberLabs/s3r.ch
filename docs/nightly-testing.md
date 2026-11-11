@@ -7,8 +7,13 @@ the full suite manually, or run it against shared resources from a workstation.
 
 | Adapter | Coverage |
 | --- | --- |
-| s3rch-browser | Chromium static feed, Gun persistence/reconnect, proxied sign-in, Squad challenge, multi-client assignment/revocation/restart, standalone startup |
+| s3rch-browser | Chromium static feed and standalone startup |
+| s3rch-peer | Gun persistence, two-client reconnect and peer restart |
+| s3rch-sign-in | Proxied wallet sign-in and Squad challenge |
+| s3rch-assignment | Multi-client assignment, revocation and restart recovery |
 | s3rch-storage | Blob conditional writes and emulator restart recovery |
+
+Each adapter runs independently so a failed suite does not suppress the others.
 
 PR CI keeps unit/contract tests, upstream SociACL contract verification, builds,
 and the existing image smoke. Each issue fix needs regression coverage for its
