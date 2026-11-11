@@ -10,4 +10,3 @@ export function legacyUserSoul(wallet: string): string {
     return `s3rch/users/${trimmed}`;
   }
 }
-
