@@ -4,11 +4,12 @@
 identify a trusted proxy from the presence of `X-Forwarded-*` headers.
 
 For deployed TEST and production, the owning Infra configuration authenticates
-the Cloudflare-to-App-Service path, denies direct site and SCM ingress, and
+the Cloudflare-to-App-Service path, denies direct application ingress, and
 replaces caller-supplied forwarded host and protocol with the canonical public
 host and HTTPS scheme. This is the boundary tracked in
 [FyberLabs/infra#741](https://github.com/FyberLabs/infra/issues/741) and
-[#759](https://github.com/FyberLabs/infra/pull/759).
+[#759](https://github.com/FyberLabs/infra/pull/759). Production SCM keeps its
+separate Entra-authenticated operator path; it does not inherit site restrictions.
 
 `requestHost` supplies SIWE's request-domain comparison. `requestIsSecure`
 selects Secure `__Host-` identity cookies after TLS termination. Neither helper
@@ -33,4 +34,13 @@ a Secure nonce cookie and reach invalid-signature rejection for the canonical
 SIWE domain. It creates no authenticated session. Any shared TEST execution
 belongs in the scheduled central batch with its declared fixture/readiness;
 do not run the probe by hand. Unit tests do not establish deployed ingress
-acceptance. Issue #291 remains open until its deployment evidence is recorded.
+acceptance.
+
+The existing November 10 ingress receipt records this negative probe passing
+on TEST and production after enforcement, including Secure cookies and canonical
+host rejection under spoofed headers. See the
+[Infra receipt](https://github.com/FyberLabs/infra/blob/0758ceb60bacf4c3b8beee94ac1bd58789b34376/docs/s3rch-origin-access.md).
+This is historical acceptance of the unchanged runtime behavior; the contract
+and documentation change does not constitute a new deployment or probe run.
+The receipt does not establish a successful production user sign-in or a fresh
+production redeployment.
