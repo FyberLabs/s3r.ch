@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
-import { createSquadSessions } from "./squad-session";
+import { createIdentitySessions } from "./sea-session";
 import { createSquadSessionHandlers } from "./squad-session-http";
 import { signForumRecord } from "../forum-sign";
 import { seaToPrincipalKey } from "./forum-check";
@@ -11,8 +11,7 @@ const req = (body: unknown, cookie = "", origin = "https://s3r.ch") => new Reque
   method: "POST", headers: { "Content-Type": "application/json", Origin: origin, Cookie: cookie }, body: JSON.stringify(body) });
 async function setup() {
   const pair = await sea.pair(); const used = new Set<string>();
-  const sessions = createSquadSessions({ origin: "https://s3r.ch", secret: "s".repeat(32),
-    squad: { owner: pair.pub, forumId: `forum_${seaToPrincipalKey(pair.pub)}_${"a".repeat(32)}`, label: "Test" },
+  const sessions = createIdentitySessions({ origin: "https://s3r.ch", secret: "s".repeat(32),
     consume: async id => { if (used.has(id)) return false; used.add(id); return true; } });
   return { pair, handlers: createSquadSessionHandlers({ origin: "https://s3r.ch", sessions }) };
 }

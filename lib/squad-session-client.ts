@@ -44,8 +44,8 @@ export function createSquadSessionClient(input: { base: string; origin: string; 
         const header = decodeProtectedHeader(reply.challenge), claims = decodeJwt(reply.challenge), now = clock();
         // Decoding is a signing-intent check, not server-token verification.
         // The server verifies its MAC, single-use cookie binding and SEA proof.
-        if (Object.keys(header).sort().join() !== "alg,typ" || Object.keys(claims).sort().join() !== "aud,exp,iat,iss,jti,key,owner" || header.typ !== "s3rch-squad-challenge-v1" || header.alg !== "HS256" || claims.iss !== origin.origin || claims.aud !== view.forumId ||
-            claims.owner !== view.owner || claims.key !== signingPair.pub || !Number.isSafeInteger(claims.iat) || !Number.isSafeInteger(claims.exp) ||
+        if (Object.keys(header).sort().join() !== "alg,typ" || Object.keys(claims).sort().join() !== "aud,exp,iat,iss,jti,sub" || header.typ !== "s3rch-identity-challenge-v1" || header.alg !== "HS256" || claims.iss !== origin.origin || claims.aud !== origin.origin ||
+            claims.sub !== signingPair.pub || !Number.isSafeInteger(claims.iat) || !Number.isSafeInteger(claims.exp) ||
             claims.iat! > now || claims.exp! <= now || claims.exp! - claims.iat! !== 60 || typeof claims.jti !== "string" || !/^[0-9a-f]{64}$/.test(claims.jti)) return false;
         signal?.throwIfAborted();
         const signature = await signForumRecord(reply.challenge, signingPair); if (!signature) return false;

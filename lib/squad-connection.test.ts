@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LiveSquadForum } from "../components/LiveSquadForum";
 import { createSquadConnection } from "./squad-connection";
-import { createSquadSessions } from "./identity/squad-session";
+import { createIdentitySessions } from "./identity/sea-session";
 import { createSquadSessionHandlers } from "./identity/squad-session-http";
 import { seaToPrincipalKey } from "./identity/forum-check";
 import type { SeaPair } from "./identity/sea";
@@ -14,7 +14,7 @@ async function setup() {
   const pair = await sea.pair(), squad = { owner: pair.pub, forumId: `forum_${seaToPrincipalKey(pair.pub)}_${"a".repeat(32)}`, label: "Connected test Squad" };
   const options = { squad, origin: "https://s3r.ch", sessionBase: "/api/squad/session", authorityEndpoint: "/api/squad/authority", assignmentBase: "/api/squad/assignment",
     config: { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] } };
-  const sessions = createSquadSessions({ ...options, secret: "s".repeat(32), consume: async () => true });
+  const sessions = createIdentitySessions({ ...options, secret: "s".repeat(32), consume: async () => true });
   const handlers = createSquadSessionHandlers({ ...options, sessions });
   const cookies = new Map<string, string>(), actions: string[] = [];
   const fetcher: typeof fetch = async (url, init) => {

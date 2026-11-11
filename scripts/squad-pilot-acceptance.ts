@@ -17,10 +17,10 @@ export async function testSquadPilot(container: ContainerClient, phase: "write" 
     return { pub, priv: secret.toString("base64url"), epub: pub, epriv: secret.toString("base64url") }; };
   const owner = pair(53), previous = pair(54), replacement = pair(55), witness = pair(56);
   const squad = { owner: owner.pub, forumId: `forum_${seaToPrincipalKey(owner.pub)}_${"f".repeat(32)}`, label: "Full pilot acceptance" };
-  const config = parseSquadPilotConfig(JSON.stringify({ version: 1, origin, squad, sessionSecret: "e".repeat(64), ownerSigningKey: Buffer.alloc(32, 53).toString("hex"),
+  const config = parseSquadPilotConfig(JSON.stringify({ version: 1, origin, squad, ownerSigningKey: Buffer.alloc(32, 53).toString("hex"),
     authority: { keys: [{ kid: "synthetic", kty: "EC", crv: "P-256", x: witness.pub.split(".")[0], y: witness.pub.split(".")[1], notBefore: at - 100, notAfter: at + 1000 }],
       policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] } }))!;
-  const server = () => createSquadPilotServer(config, container, () => at);
+  const server = () => createSquadPilotServer(config, container, () => at, "e".repeat(64));
   const pilot = server(), scope = { forum: squad.forumId, owner: squad.owner }, id = "e".repeat(32);
   const sign = (kind: AuthorityKind, fields: Record<string, unknown>) => {
     const record = { ...fields, sig: "pending" }, p = parseForumAuthority(kind, record)!;

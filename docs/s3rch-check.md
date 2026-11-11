@@ -162,3 +162,20 @@ carry their own curve-point or reserved-kind grammar. The transitional
 namespace discriminator remains local so malformed canonical IDs still deny
 rather than falling back to wallet-era matching. Shared principal/object vectors
 and derived-object Check regressions cover this boundary.
+
+### Shared SEA session service
+
+SEA proof-of-possession tokens are minted by `identity/sea-session.ts`, with
+`sub` set to the proven SEA key and issuer/audience set to the configured HTTPS
+origin. Squad consumes this identity and still evaluates its own current ACLs.
+The pilot uses `IDENTITY_SESSION_SECRET`; its configuration no longer uses a
+separate `sessionSecret`. An existing valid obsolete property is discarded so
+moving-channel deployments remain compatible; new documents omit it.
+Replay storage is namespaced by the site origin, independent of the Squad owner
+or forum, and must be shared by every instance of this issuer.
+
+This is one step of #278: the legacy wallet/OIDC issuer and cookie handlers still
+need conversion to signed SEA links (#277). The Squad transport cookie keeps its
+existing name until that conversion, so a SEA sign-in cannot overwrite a legacy
+wallet cookie with an incompatible claim shape. Agent JWTs and the final single
+cookie family remain unfinished. No new wallet-to-SEA identity mapping is inferred.

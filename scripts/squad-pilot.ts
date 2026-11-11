@@ -34,7 +34,7 @@ async function main() {
     const config = { version: 1, origin: args[0], squad: { forumId: `forum_${seaToPrincipalKey(owner.pub)}_${randomBytes(16).toString("hex")}`, owner: owner.pub, label: "Synthetic agent pilot" },
       authority: { keys: [{ kid: `pilot-${randomBytes(8).toString("hex")}`, kty: "EC", crv: "P-256", x: witness.pub.split(".")[0], y: witness.pub.split(".")[1], notBefore: now, notAfter: now + 86400 * 90 }],
         policy: { allowedDomains: [new URL(args[0]).host], allowedUris: [args[0]], allowedChainIds: ["84532"] }, pinnedIssuers: [] },
-      ownerSigningKey: Buffer.from(owner.priv, "base64url").toString("hex"), sessionSecret: randomBytes(32).toString("hex") };
+      ownerSigningKey: Buffer.from(owner.priv, "base64url").toString("hex") };
     parseSquadPilotConfig(JSON.stringify(config));
     writeFileSync(file("deployment.json"), JSON.stringify(config), { mode: 0o600, flag: "wx" });
     writeFileSync(file("operator.json"), JSON.stringify({ identities, witness }), { mode: 0o600, flag: "wx" });
