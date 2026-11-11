@@ -179,3 +179,21 @@ need conversion to signed SEA links (#277). The Squad transport cookie keeps its
 existing name until that conversion, so a SEA sign-in cannot overwrite a legacy
 wallet cookie with an incompatible claim shape. Agent JWTs and the final single
 cookie family remain unfinished. No new wallet-to-SEA identity mapping is inferred.
+
+### Scoped agent sessions
+
+The same `createIdentitySessions` issuer now supports `agentChallenge`,
+`exchangeAgent`, and `authenticateAgent`. It consumes SociACL 0.11.0's signed
+agent-delegation contract from the verified automatic TEST artifact recorded in
+`docs/sociacl-runtime.json`. Agent possession is mandatory; the owner's delegation
+signature alone cannot exchange a challenge. JWTs have a separate type, the SEA
+owner as subject, the bound agent, exact narrowed scopes, and a lifetime capped
+at five minutes or the delegation expiry, whichever comes first.
+
+A configured trusted `delegationSource` must provide the current signed record,
+complete owner history and all revocations for each exchange and token use.
+Absent, stale, malformed or unavailable evidence denies. Source data must not be
+accepted directly from request bodies. An agent JWT never grants object access:
+consumers must require the relevant scope and current SociACL object permission.
+The source adapter and application routes are still pending; this does not enable
+legacy wallet bot tokens to act as SEA identities or close #277/#278.
