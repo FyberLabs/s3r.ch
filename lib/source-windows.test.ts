@@ -79,7 +79,9 @@ test("overlapping source IDs preserve first-source precedence", () => {
     ["first", [item("same")]], ["second", [{ ...item("same"), body: "other source" }]],
   ]));
   assert.equal(after.items.get("same")?.body, "body-same");
-  assert.deepEqual(after.windows.get("second"), ["same"]);
+  assert.deepEqual(after.windows.get("second")?.map(row => row.id), ["same"]);
+  const fallback = reconcileSourceWindows(after, pull([["first", []]]));
+  assert.equal(fallback.items.get("same")?.body, "other source", "a failed duplicate source retains its own content");
 });
 
 
@@ -94,4 +96,11 @@ test("ActivityPub only replaces a window after a readable collection page", asyn
   await assert.rejects(pullActivityPubActor(actor, read({ type: "OrderedCollection", first: page },
     { type: "OrderedCollectionPage", first: "https://example.org/another" })), /Incomplete/);
   await assert.rejects(pullActivityPubActor(actor, read({ error: "rate limited" })), /Incomplete/);
+});
+
+
+test("a previously failed preferred source regains precedence on success", () => {
+  const before = reconcileSourceWindows(empty(), pull([["second", [{ ...item("same"), body: "fallback" }]]]));
+  const after = reconcileSourceWindows(before, pull([["first", [item("same")]], ["second", [{ ...item("same"), body: "fallback" }]]]));
+  assert.equal(after.items.get("same")?.body, "body-same");
 });

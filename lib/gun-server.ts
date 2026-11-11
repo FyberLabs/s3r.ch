@@ -178,8 +178,9 @@ function loadSnapshot(store: MemoryStore): void {
     if (Array.isArray(parsed.sourceWindows)) {
       for (const entry of parsed.sourceWindows) {
         if (Array.isArray(entry) && entry.length === 2 && typeof entry[0] === "string" &&
-            Array.isArray(entry[1]) && entry[1].every((id: unknown) => typeof id === "string")) {
-          store.windows.set(entry[0], entry[1]);
+            Array.isArray(entry[1])) {
+          const rows = entry[1].map((row: unknown) => asFeedItem(row));
+          if (rows.every((row: FeedItem | null) => row !== null)) store.windows.set(entry[0], rows);
         }
       }
     }

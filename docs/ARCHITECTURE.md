@@ -501,7 +501,9 @@ retained window includes it. This is window retention, not a claim that absence
 proves the author deleted a post upstream. Native Mine/Granted content is not
 reconciled by the seeder.
 
-The durable snapshot stores window-to-ID membership and content-free retired IDs.
+The durable snapshot stores each source window and content-free retired IDs.
+Duplicate IDs retain each source’s own last successful row, so dropping one
+source selects the remaining source’s content and provenance.
 Expired bodies leave the in-memory cache and both snapshot files. Gun receives
 content-nulling unshare tombstones; startup replays them before publishing live
 rows. A returning source item clears its prior tombstone. Other peers observe
@@ -509,9 +511,9 @@ removals when they merge; this does not promise immediate deletion everywhere.
 Overlapping seed requests share one pull so an older response cannot overwrite a
 newer window.
 
-Existing snapshots without membership metadata converge per source class after
+Existing snapshots without source windows converge per source class after
 all its configured feeds complete successfully. Until that first complete pull,
 unattributed old rows are preserved rather than guessing which failed feed owns
-them. No deployed fixture or manual migration is required. Membership and retired
+them. No deployed fixture or manual migration is required. Source windows and retired
 IDs are not included in the static public snapshot. Retired IDs contain no body
 and are retained to replay removal if a graph write is interrupted.

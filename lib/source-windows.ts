@@ -26,38 +26,37 @@ export async function collectSourceWindows(
 
 export type SourceCache = {
   items: Map<string, FeedItem>;
-  windows: Map<string, string[]>;
+  windows: Map<string, FeedItem[]>;
   retired: Set<string>;
 };
 
 /** Compute a new cache before touching durable state or the shared graph. */
 export function reconcileSourceWindows(previous: SourceCache, pull: SourcePull): SourceCache {
-  const items = new Map(previous.items);
-  const windows = new Map(previous.windows);
+  const windows = new Map<string, FeedItem[]>();
   const retired = new Set(previous.retired);
-  const incoming = new Map<string, FeedItem>();
-  const previouslyOwned = new Set([...previous.windows.values()].flat());
+  const previouslyOwned = new Set([...previous.windows.values()].flat().map(canonicalKey));
   for (const window of pull.windows ?? []) {
-    const keys = new Set<string>();
+    const rows = new Map<string, FeedItem>();
     for (const item of window.items) {
       const key = canonicalKey(item);
-      if (!key) continue;
-      keys.add(key);
-      if (!incoming.has(key)) incoming.set(key, { ...item, id: key });
+      if (key && !rows.has(key)) rows.set(key, { ...item, id: key });
     }
-    windows.set(window.key, [...keys]);
+    windows.set(window.key, [...rows.values()]);
   }
-  for (const [key, item] of incoming) items.set(key, item);
-  const retained = new Set([...windows.values()].flat());
+  for (const [key, rows] of previous.windows) if (!windows.has(key)) windows.set(key, rows);
+  // Retain each source's own row, not only its ID. When the preferred source
+  // drops a duplicate, a failed source must keep its own last successful value.
+  const items = new Map<string, FeedItem>();
+  for (const rows of windows.values()) for (const item of rows) {
+    if (!items.has(item.id)) items.set(item.id, item);
+  }
   const complete = new Set(pull.completeSources ?? []);
-  for (const [id, item] of items) {
+  for (const [id, item] of previous.items) {
     // Pre-window snapshots migrate only after all feeds in a source class succeed.
     // Unknown/unmanaged items, including native posts, are never pruned here.
-    if (!retained.has(id) && (previouslyOwned.has(id) || complete.has(item.source))) {
-      items.delete(id);
-      retired.add(id);
-    }
+    if (!items.has(id) && !previouslyOwned.has(id) && !complete.has(item.source)) items.set(id, item);
   }
+  for (const id of previous.items.keys()) if (!items.has(id)) retired.add(id);
   for (const id of items.keys()) retired.delete(id);
   return { items, windows, retired };
 }
