@@ -1,0 +1,12 @@
+{
+  "channel": "test",
+  "file": "sociacl-ids-0.10.0.tgz",
+  "package": "sociacl-ids",
+  "repository": "FyberLabs/SociACL",
+  "revision": "876d048f154cb65cdc7e1c1fdd97964a94aa13cf",
+  "schema": 1,
+  "sha256": "510dcc583d1ce49692764561b1c2058a2b773f9c40f99a454b2906e5f05cc223",
+  "test_run_id": "42958718295",
+  "version": "0.10.0",
+  "assetUrl": "https://github.com/FyberLabs/SociACL/releases/download/ids-test-876d048f154cb65cdc7e1c1fdd97964a94aa13cf/sociacl-ids-0.10.0.tgz"
+}
