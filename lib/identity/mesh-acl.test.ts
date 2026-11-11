@@ -1,3 +1,4 @@
+import { legacyUserSoul } from "./legacy-user-soul";
 import { legacyGrantSoul } from "./legacy-acl-souls";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
@@ -6,7 +7,6 @@ import {
   cancelSee,
   checkSee,
   itemSoul,
-  userSoul,
 } from "./check";
 import {
   applyGunAclEdge,
@@ -126,7 +126,7 @@ describe("mesh Check objects", () => {
   it("feed item souls stay five-segment dest ACL paths", () => {
     const object = itemSoul("rss3:act/1#x");
     const grant = { claimId: object, accessor: BOB, from: 0, until: 80 };
-    const edge = prepareMeshSeeGrant(userSoul(ALICE), grant);
+    const edge = prepareMeshSeeGrant(legacyUserSoul(ALICE), grant);
     assert.ok(edge);
     assert.equal(edge.soul.split("/").length, 5);
     assert.equal(edge.soul.startsWith(`s3rch/acl/${ALICE}/`), true);

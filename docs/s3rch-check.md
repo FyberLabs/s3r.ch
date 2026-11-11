@@ -125,3 +125,17 @@ minted kinds, uppercase encodings and invalid curve points) are denied before
 any graph or authority callback. They do not fall through to legacy wallet
 matching. The namespace discriminator is only a transitional routing rule, not
 an object validator. Legacy feed/user object migration remains open.
+
+## Legacy user storage and delivery inboxes
+
+Check no longer exports `userSoul`, `grantedSoul` or `GrantInboxKind`.
+The wallet-keyed feed/user consumers explicitly use `legacyUserSoul` from
+`lib/identity/legacy-user-soul.ts`; existing persisted paths and checksum
+normalization are unchanged. Check uses that helper internally only for its
+remaining legacy admission and alias handling.
+
+`grantedSoul` and `GrantInboxKind` belong to `lib/grant-delivery.ts`, alongside
+the application inbox reader and writer. A delivery inbox is transport storage,
+not a canonical ACL grant. New canonical records use `aclSoul`/`grantSoul`.
+This extraction does not migrate wallet-keyed data or sessions to SEA identities;
+that consumer migration remains tracked by #277 and #281.

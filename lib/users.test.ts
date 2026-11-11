@@ -1,9 +1,9 @@
+import { legacyUserSoul } from "./identity/legacy-user-soul";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   applySeeGrant,
   checkSee,
-  userSoul,
 } from "./identity/check";
 import { createMemorySeeAcl } from "./identity/see-acl";
 import {
@@ -236,7 +236,7 @@ describe("assemble / link Mine overlay", () => {
     assert.ok(overlay);
     const registered = registerMineUserOverlay(acl, overlay, ALICE);
     assert.ok(!("denied" in registered));
-    assert.equal(registered.object, userSoul(ALICE));
+    assert.equal(registered.object, legacyUserSoul(ALICE));
     assert.equal(registered.node.indicators, "ens:vitalik.eth,farcaster:dwr");
     assert.equal(acl.hasObject("ens:vitalik.eth"), true);
     assert.equal(acl.hasObject("farcaster:dwr"), true);
@@ -296,12 +296,12 @@ describe("admit before overlay / share", () => {
     const built = user();
     const garbage = admitComposedUser(acl, { ...built, id: "" }, ALICE);
     assert.deepEqual(garbage, { denied: true });
-    assert.equal(acl.hasObject(userSoul(built.id)), false);
+    assert.equal(acl.hasObject(legacyUserSoul(built.id)), false);
 
     const registered = admitComposedUser(acl, built, ALICE);
     assert.ok(!("denied" in registered));
-    assert.equal(registered.object, userSoul(built.id));
-    assert.equal(acl.hasObject(userSoul(built.id)), true);
+    assert.equal(registered.object, legacyUserSoul(built.id));
+    assert.equal(acl.hasObject(legacyUserSoul(built.id)), true);
     assert.equal(acl.hasObject("ens:vitalik.eth"), true);
 
     const deniedShare = prepareShareUserIntoMesh(
@@ -382,7 +382,7 @@ describe("Mine-until-share held claims", () => {
       until: NOW + 1,
     });
     assert.equal(checkSee(acl, "ens:vitalik.eth", BOB, NOW).allowed, true);
-    assert.equal(checkSee(acl, userSoul(built.id), BOB, NOW).allowed, true);
+    assert.equal(checkSee(acl, legacyUserSoul(built.id), BOB, NOW).allowed, true);
 
     const publicPut = prepareShareUserIntoMesh(acl, built, ALICE, []);
     assert.ok(!("denied" in publicPut));
@@ -455,7 +455,7 @@ describe("merge and provenance", () => {
     assert.equal(userProvenanceLine({ id: ALICE, indicators: [] }), "0xf39F…2266");
   });
 
-  it("userSoul checksums a lowercase wallet", () => {
-    assert.equal(userSoul(ALICE.toLowerCase()), `s3rch/users/${ALICE}`);
+  it("legacyUserSoul checksums a lowercase wallet", () => {
+    assert.equal(legacyUserSoul(ALICE.toLowerCase()), `s3rch/users/${ALICE}`);
   });
 });

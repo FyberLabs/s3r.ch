@@ -15,6 +15,7 @@
  * Writes `v: 1`. Unknown `v` fails closed. No SIWE / SEA secrets.
  */
 
+import { legacyUserSoul } from "./identity/legacy-user-soul";
 import { getAddress } from "viem";
 import { isNativePost } from "./compose";
 import {
@@ -33,7 +34,6 @@ import {
   checkSee,
   encodeKey,
   grantLiveAt,
-  grantedSoul,
   isMetaId,
   isUrlLeafId,
   itemSoul,
@@ -45,10 +45,8 @@ import {
   S3RCH_ROOT,
   S3RCH_USERS,
   userObjectId,
-  userSoul,
   type AccessorId,
   type CheckObjectId,
-  type GrantInboxKind,
   type SeeAcl,
 } from "./identity/check";
 import {
@@ -66,8 +64,31 @@ import {
   type User,
 } from "./users";
 
-export { grantedSoul, S3RCH_GRANTED };
-export type { GrantInboxKind };
+export { S3RCH_GRANTED };
+
+export type GrantInboxKind = "items" | "rooms" | "users";
+
+/**
+ * Grant-delivery inbox. Not share-into-mesh.
+ * gun.get('s3rch').get('granted').get(accessor).get(kind).get(encodeKey(id))
+ */
+export function grantedSoul(
+  accessor: AccessorId,
+  kind: GrantInboxKind,
+  objectId: string,
+): string {
+  const trimmed = accessor.trim();
+  let wallet = trimmed;
+  if (trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)) {
+    wallet = trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length);
+  }
+  try {
+    wallet = getAddress(wallet);
+  } catch {
+    wallet = wallet.trim();
+  }
+  return `${S3RCH_ROOT}/${S3RCH_GRANTED}/${wallet}/${kind}/${encodeKey(objectId)}`;
+}
 
 export const GRANT_DELIVERED_COPY =
   "Granted. It can take a moment to arrive.";
@@ -602,7 +623,7 @@ export function acceptGrantDelivery(
 
   const user = decodeUserPayload(node.payload);
   if (!user) return { denied: true, reason: "payload" };
-  const object = userSoul(user.id);
+  const object = legacyUserSoul(user.id);
   acl.putObject(object, node.owner);
   acl.putObject(user.id, node.owner);
   acl.putObject(node.objectId, node.owner);
