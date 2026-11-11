@@ -69,3 +69,27 @@ test("composed service admits the proven cookie key and still denies missing for
   assert.equal((await services.authority(req(body, cookie))).status, 200);
   present = false; assert.equal((await services.authority(req(body, cookie))).status, 503);
 });
+
+
+test("Squad challenge requires normalized TLS host and rejects forwarded-header spoofing", async () => {
+  const { pair, handlers } = await setup();
+  const canonical = { host: "s3r.ch", origin: "https://s3r.ch",
+    "x-forwarded-host": "s3r.ch", "x-forwarded-proto": "https", "content-type": "application/json" };
+  const request = (headers: Record<string, string>) => new Request("http://internal:8080/api/squad/session", {
+    method: "POST", headers, body: JSON.stringify({ key: pair.pub }),
+  });
+  const accepted = await handlers.challenge(request(canonical));
+  assert.equal(accepted.status, 200);
+  assert.match(accepted.headers.getSetCookie()[0], /^__Host-s3rch-squad-challenge=.*; Secure;/);
+  for (const overrides of [
+    { "x-forwarded-host": "attacker.invalid" },
+    { host: "attacker.invalid" },
+    { "x-forwarded-proto": "http" },
+    { "x-forwarded-proto": "https,http" },
+    { origin: "http://localhost:3000" },
+  ]) {
+    const denied = await handlers.challenge(request({ ...canonical, ...overrides }));
+    assert.equal(denied.status, 403, JSON.stringify(overrides));
+    assert.deepEqual(denied.headers.getSetCookie(), []);
+  }
+});
