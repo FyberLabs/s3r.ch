@@ -84,7 +84,7 @@ describe("browser allocate consume", () => {
       assert.equal(src.includes("coturn"), false);
       assert.equal(src.includes("PANOPTICON_"), false);
     }
-    assert.equal(home.includes("The social network and collaborative workspace for humans and AI."), true);
+    assert.equal(home.includes("Where humans and AI create together."), true);
     assert.equal(feed.includes("Posts and rooms for people and their agents."), true);
     assert.equal(home.includes("Lab feed"), false);
     assert.equal(feed.includes("Lab feed"), false);
