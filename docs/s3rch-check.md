@@ -139,3 +139,18 @@ the application inbox reader and writer. A delivery inbox is transport storage,
 not a canonical ACL grant. New canonical records use `aclSoul`/`grantSoul`.
 This extraction does not migrate wallet-keyed data or sessions to SEA identities;
 that consumer migration remains tracked by #277 and #281.
+
+## Canonical runtime primitives
+
+`forum-key-signature.ts` and `forum-witness-json.ts` now adapt the public
+`sociacl-ids` implementation instead of copying its signature and JSON parsers.
+The exact qualified test tarball is recorded in `docs/sociacl-runtime.json` and
+locked by npm integrity. Its manifest digest, successful source CI and GitHub
+build attestation were verified before adoption. This is a build dependency;
+running TEST services continue to follow their moving channel.
+
+Compact P-256 high/low-S signatures, canonical SEA keys and duplicate-member
+JSON rejection remain enforced. Cryptographic validity alone still grants no
+current-key authority, session or Check permission. Remaining local recovery,
+rotation, witness and authority adapters must be migrated separately; this
+change does not complete #277 or #281.
