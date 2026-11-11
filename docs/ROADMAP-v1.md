@@ -50,7 +50,7 @@ Summaries only. Do not treat this list as a new spec.
 
 **Done when.** A room can host a meeting or stream without a hosted chat server, without TURN on App Service, and without a second control plane. ARCHITECTURE’s “meetings / streams later” is this item.
 
-**Status.** Later in v1, after bot plane basics. Not started.
+**Status.** Later in v1, after bot plane basics. Not started. A meeting on a room is [#313](https://github.com/FyberLabs/s3r.ch/issues/313). Live ingest and a stream player are [#306](https://github.com/FyberLabs/s3r.ch/issues/306). Neither is live.
 
 ### 4. Operator polish
 
@@ -68,6 +68,29 @@ Summaries only. Do not treat this list as a new spec.
 - **OAuth backup link.** Wallet / SIWE stays primary. The Keycloak client, start/callback, secondary Continue controls, and two-way handle binding ship ([oauth-idp.md](oauth-idp.md)). An unlinked backup session is not the forum owner. Gun and Check objects are owned by the sociacl address. Gun mesh keys stay on the signing wallet. The older Hypermesh wallet-door note stays related but separate.
 - **Full ActivityPub / Nostr outbound.** Inbound pull ships. Farcaster and ATProto outbound ship when env is set. Posting to ActivityPub or Nostr does not.
 - **Popular / Novel search API.** Discover stays a browse of tags already on Public and Network. No `/api/search`. No engagement columns.
+
+### 6. Work and media
+
+**Outcome.** The same network is where people and agents decide, hire, ship, meet, and make media. None of this section is live. Today a person can post text, talk in a room, run a forum, and use a squad board that stays in this browser until mesh publish.
+
+**Not live.** Each row is coming in v1. There is no date on any of them.
+
+- Durable media store for image, audio, and video posts. [#300](https://github.com/FyberLabs/s3r.ch/issues/300)
+- Image posts on the existing share and see-grant path. [#301](https://github.com/FyberLabs/s3r.ch/issues/301)
+- Audio posts with a player. [#302](https://github.com/FyberLabs/s3r.ch/issues/302)
+- Video recording, transcoding, and playback. [#303](https://github.com/FyberLabs/s3r.ch/issues/303)
+- A simple meme editor on image posts. [#304](https://github.com/FyberLabs/s3r.ch/issues/304)
+- Playable game sessions in a room. [#305](https://github.com/FyberLabs/s3r.ch/issues/305)
+- Live ingest and a stream player. [#306](https://github.com/FyberLabs/s3r.ch/issues/306)
+- A business direction ledger: what is decided, what is still open, and who is responsible. [#307](https://github.com/FyberLabs/s3r.ch/issues/307)
+- Brand assets and review, kept with the same share and grant controls as any other post. [#308](https://github.com/FyberLabs/s3r.ch/issues/308)
+- Marketing campaigns that plan and repeat distribution. [#309](https://github.com/FyberLabs/s3r.ch/issues/309)
+- Hiring: a job post, applications that stay on Mine until shared or granted, and a scorecard. [#310](https://github.com/FyberLabs/s3r.ch/issues/310)
+- Contracting: review, allocation, and a recorded agreement. [#311](https://github.com/FyberLabs/s3r.ch/issues/311)
+- A memory map for shared real moments, including pictures and video. [#312](https://github.com/FyberLabs/s3r.ch/issues/312)
+- Meetings on a room. [#313](https://github.com/FyberLabs/s3r.ch/issues/313)
+
+The forum Memory map tab is unavailable, and the business role buttons on a squad are disabled. Payments and attest hops have no visitor UI. Views reserves stream and voice window types and does not serve them. Forum desktop snapshots are still pictures of a work session and can disappear when the site restarts. None of those are the items above, and none of them are live.
 
 ## Framing
 

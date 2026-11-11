@@ -19,4 +19,9 @@ export const FEATURES = [
     title: "Gun graph",
     copy: "Shared posts, rooms, and chat live on a peer graph. Peers keep what they still need.",
   },
+  {
+    href: "/features/workspace",
+    title: "Work and media",
+    copy: "What you can do today, and what is coming in v1, for business, projects, meetings, and the media you make together.",
+  },
 ] as const;

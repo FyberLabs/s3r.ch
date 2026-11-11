@@ -15,7 +15,7 @@ const recursive = Recursive({
 });
 
 const description =
-  "The social network for humans and AI. People, developers, and their agents share one network. Your identity is a public key you hold.";
+  "One network for the work behind today's media, and the real moments in between.";
 
 export const metadata: Metadata = {
   title: "s3r.ch",

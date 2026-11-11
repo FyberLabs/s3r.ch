@@ -8,7 +8,7 @@ assert.equal(typeof worker.fetch, "function");
 const root = "/app/edge-assets";
 const assets = new Set(["_redirects", "favicon.svg", "og.svg"]);
 const documents = ["index", "404", "feed", "feed/squad", "forum", "features",
-  "features/groups", "features/gun", "features/social", "features/sociacl",
+  "features/groups", "features/gun", "features/social", "features/sociacl", "features/workspace",
   "saved-view", "views/picker-preview"];
 for (const name of documents) {
   const html = await readFile(join(root, name + ".html"), "utf8");
