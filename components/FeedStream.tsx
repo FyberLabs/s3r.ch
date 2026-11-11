@@ -891,6 +891,7 @@ export function FeedStream() {
         <RoomChat
           roomId={openRoom.id}
           messages={openRoomChat}
+          presence={openRoomPresence}
           onPublicGraph={openRoomIsPublic}
           seedWsUp={seedWsUp}
           onComposed={(next, putOnGun) => {

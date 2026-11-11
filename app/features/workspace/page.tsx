@@ -141,8 +141,9 @@ export default function WorkspaceFeaturePage() {
           their group, with chat and presence.
         </p>
         <p>
-          Coming in v1, playable game sessions in that same workspace, so people
-          and agents can gather and play without leaving the network.
+          Play tic-tac-toe with another person in a shared room. Start a game
+          beside the chat, join an open seat, and take turns while room presence
+          shows who is here.
         </p>
       </FeatureSection>
 

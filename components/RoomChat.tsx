@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { RoomGame } from "./RoomGame";
+import { roomGameChatText } from "@/lib/room-game";
+import type { PresenceEntry } from "@/lib/presence";
 import {
   admitComposedChat,
   CHAT_BODY_MAX,
@@ -16,12 +19,14 @@ import { btnPrimary, field, panel } from "@/lib/brand-ui";
 export function RoomChat({
   roomId,
   messages,
+  presence = [],
   onPublicGraph,
   seedWsUp,
   onComposed,
 }: {
   roomId: string;
   messages: ChatMessage[];
+  presence?: PresenceEntry[];
   onPublicGraph: boolean;
   seedWsUp: boolean;
   onComposed: (message: ChatMessage, putOnGun: boolean) => void;
@@ -51,7 +56,7 @@ export function RoomChat({
                 {listed.map((row) => (
                   <tr key={row.id}>
                     <td className="font-data">{shortAuthor(row.author)}</td>
-                    <td className="whitespace-normal">{row.body}</td>
+                    <td className="whitespace-normal">{roomGameChatText(row.body)}</td>
                     <td className="font-data">
                       {row.ts
                         ? new Date(row.ts * 1000).toISOString().replace(".000Z", "Z")
@@ -66,7 +71,7 @@ export function RoomChat({
           <ul className="mt-3 space-y-2">
             {listed.map((row) => (
               <li key={row.id} className="border border-rule bg-ground px-3 py-2">
-                <p className="text-sm text-ink">{row.body}</p>
+                <p className="text-sm text-ink">{roomGameChatText(row.body)}</p>
                 <p className="mt-1 text-xs text-ink-muted">
                   {shortAuthor(row.author)}
                   {row.ts
@@ -78,6 +83,7 @@ export function RoomChat({
           </ul>
         )
       )}
+      <RoomGame roomId={roomId} messages={messages} presence={presence} onPublicGraph={onPublicGraph} seedWsUp={seedWsUp} onComposed={onComposed} />
       <ChatCompose roomId={roomId} onPublicGraph={onPublicGraph} onComposed={onComposed} />
     </div>
   );
