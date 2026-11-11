@@ -1,3 +1,4 @@
+import { collectSourceWindows } from "./source-windows";
 import type { FeedItem, FeedSource, SourcePull } from "./feed-types";
 import { normalizeTags } from "./feed-types";
 import { canonicalKey } from "./merge";
@@ -26,14 +27,20 @@ export type ParsedFeed = {
 };
 
 export function parseRssAtom(xml: string, feedUrl: string): ParsedFeed {
-  const kind: FeedSource = /<feed[\s>]/i.test(xml) && /<entry[\s>]/i.test(xml)
-    ? "atom"
-    : "rss";
+  const kind: FeedSource = /<feed[\s/>]/i.test(xml) ? "atom" : "rss";
+  const root = kind === "atom" ? "feed" : "rss";
+  if (!new RegExp(`<${root}\\b[^>]*(?:/>|>[\\s\\S]*</${root}\\s*>)`, "i").test(xml)) {
+    throw new Error("Incomplete or unrecognized RSS/Atom document");
+  }
   const blocks =
     kind === "atom"
       ? matchBlocks(xml, "entry")
       : matchBlocks(xml, "item");
 
+  const tag = kind === "atom" ? "entry" : "item";
+  if ((xml.match(new RegExp(`<${tag}\\b`, "gi")) ?? []).length !== blocks.length) {
+    throw new Error("Incomplete RSS/Atom entries");
+  }
   const items: FeedItem[] = [];
   const seen = new Set<string>();
 
@@ -159,46 +166,11 @@ function hostnameOf(url: string): string {
 }
 
 export async function fetchPublicRss(): Promise<SourcePull> {
-  const results = await Promise.allSettled(PUBLIC_RSS_FEEDS.map((feed) => pullRss(feed)));
-
-  const items: FeedItem[] = [];
-  const seen = new Set<string>();
-  let sourcesOk = 0;
-  const failures: string[] = [];
-
-  for (const result of results) {
-    if (result.status === "fulfilled") {
-      sourcesOk += 1;
-      for (const item of result.value) {
-        const key = canonicalKey(item);
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        items.push(item);
-      }
-    } else {
-      failures.push(
-        result.reason instanceof Error ? result.reason.message : String(result.reason),
-      );
-    }
-  }
-
-  if (sourcesOk === 0) {
-    return {
-      items: [],
-      sourcesOk: 0,
-      sourcesTried: PUBLIC_RSS_FEEDS.length,
-      error:
-        "RSS/Atom feeds did not return entries. This feed does not invent rows. " +
-        (failures[0] ?? "All feed requests failed."),
-    };
-  }
-
-  return {
-    items,
-    sourcesOk,
-    sourcesTried: PUBLIC_RSS_FEEDS.length,
-    error: null,
-  };
+  return collectSourceWindows(
+    PUBLIC_RSS_FEEDS.map(feed => ({ key: `rss:${feed.url}`, pull: () => pullRss(feed) })),
+    ["rss", "atom"],
+    "RSS/Atom feeds did not return entries.",
+  );
 }
 
 async function pullRss(feed: PublicRssFeed): Promise<FeedItem[]> {

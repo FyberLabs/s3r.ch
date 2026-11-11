@@ -1,3 +1,4 @@
+import { collectSourceWindows } from "./source-windows";
 /**
  * Farcaster Hubble HTTP (no API key).
  * Default hub: https://hub.pinata.cloud
@@ -91,46 +92,11 @@ export function normalizeHubCast(
 }
 
 export async function fetchPublicCasts(): Promise<SourcePull> {
-  const results = await Promise.allSettled(PUBLIC_FIDS.map((fid) => pullFid(fid)));
-
-  const items: FeedItem[] = [];
-  const seen = new Set<string>();
-  let sourcesOk = 0;
-  const failures: string[] = [];
-
-  for (const result of results) {
-    if (result.status === "fulfilled") {
-      sourcesOk += 1;
-      for (const item of result.value) {
-        const key = canonicalKey(item);
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        items.push(item);
-      }
-    } else {
-      failures.push(
-        result.reason instanceof Error ? result.reason.message : String(result.reason),
-      );
-    }
-  }
-
-  if (sourcesOk === 0) {
-    return {
-      items: [],
-      sourcesOk: 0,
-      sourcesTried: PUBLIC_FIDS.length,
-      error:
-        "Farcaster hub did not return casts. This feed does not invent rows. " +
-        (failures[0] ?? "All hub requests failed."),
-    };
-  }
-
-  return {
-    items,
-    sourcesOk,
-    sourcesTried: PUBLIC_FIDS.length,
-    error: null,
-  };
+  return collectSourceWindows(
+    PUBLIC_FIDS.map(fid => ({ key: `farcaster:${castsByFidUrl(fid)}`, pull: () => pullFid(fid) })),
+    ["farcaster"],
+    "Farcaster hub did not return casts.",
+  );
 }
 
 async function pullFid(fid: number): Promise<FeedItem[]> {

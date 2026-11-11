@@ -45,8 +45,14 @@ export type FeedItem = {
   v?: number;
 };
 
+/** A successfully completed bounded source response, including an empty one. */
+export type SourceWindow = { key: string; items: FeedItem[] };
+
 /** One public seed pull (hub FID, AppView, RSS, ActivityPub, Nostr, or GI). */
 export type SourcePull = {
+  windows?: SourceWindow[];
+  /** Legacy cache migration only: every configured window for these classes succeeded. */
+  completeSources?: FeedSource[];
   items: FeedItem[];
   sourcesOk: number;
   sourcesTried: number;

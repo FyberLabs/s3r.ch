@@ -1,3 +1,4 @@
+import { collectSourceWindows } from "./source-windows";
 /**
  * ActivityPub inbound (no outbound). Pull a documented public actor,
  * then the outbox OrderedCollection first page (subset). Embedded
@@ -107,48 +108,11 @@ export function collectOutboxItems(
 }
 
 export async function fetchPublicActivityPub(): Promise<SourcePull> {
-  const results = await Promise.allSettled(
-    PUBLIC_ACTIVITYPUB_ACTORS.map((actor) => pullActor(actor)),
+  return collectSourceWindows(
+    PUBLIC_ACTIVITYPUB_ACTORS.map(actor => ({ key: `activitypub:${actor}`, pull: () => pullActor(actor) })),
+    ["activitypub"],
+    "ActivityPub outbox did not return notes.",
   );
-
-  const items: FeedItem[] = [];
-  const seen = new Set<string>();
-  let sourcesOk = 0;
-  const failures: string[] = [];
-
-  for (const result of results) {
-    if (result.status === "fulfilled") {
-      sourcesOk += 1;
-      for (const item of result.value) {
-        const key = canonicalKey(item);
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        items.push(item);
-      }
-    } else {
-      failures.push(
-        result.reason instanceof Error ? result.reason.message : String(result.reason),
-      );
-    }
-  }
-
-  if (sourcesOk === 0) {
-    return {
-      items: [],
-      sourcesOk: 0,
-      sourcesTried: PUBLIC_ACTIVITYPUB_ACTORS.length,
-      error:
-        "ActivityPub outbox did not return notes. This feed does not invent rows. " +
-        (failures[0] ?? "All actor requests failed."),
-    };
-  }
-
-  return {
-    items,
-    sourcesOk,
-    sourcesTried: PUBLIC_ACTIVITYPUB_ACTORS.length,
-    error: null,
-  };
 }
 
 async function pullActor(actorUrl: string): Promise<FeedItem[]> {
@@ -161,6 +125,7 @@ async function pullActor(actorUrl: string): Promise<FeedItem[]> {
   }
 
   const outbox = await fetchActivityJson(outboxUrl);
+  assertCollection(outbox);
   const provenance = `activitypub:${outboxUrl}`;
   if (collectionItems(outbox).length > 0) {
     return collectOutboxItems(outbox, provenance, actorName);
@@ -171,7 +136,15 @@ async function pullActor(actorUrl: string): Promise<FeedItem[]> {
     return [];
   }
   const page = await fetchActivityJson(firstUrl);
+  assertCollection(page);
   return collectOutboxItems(page, provenance, actorName);
+}
+
+function assertCollection(value: Record<string, unknown>): void {
+  if (!["Collection", "OrderedCollection", "CollectionPage", "OrderedCollectionPage"].includes(String(value.type)) ||
+      (!(Array.isArray(value.orderedItems) || Array.isArray(value.items)) && value.totalItems !== 0 && !value.first)) {
+    throw new Error("Incomplete ActivityPub collection");
+  }
 }
 
 async function fetchActivityJson(rawUrl: string): Promise<Record<string, unknown>> {

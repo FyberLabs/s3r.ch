@@ -77,6 +77,7 @@ async function client() {
   await page.addScriptTag({ path: clientScript });
   await page.evaluate(key => {
     const gun = window.Gun({ peers: [], localStorage: false, RTCPeerConnection: false });
+    window.seedGun = gun;
     window.connections = 0;
     gun._.on("hi", function (peer) {
       if (peer.url === location.origin + "/gun") window.connections++;
@@ -140,7 +141,29 @@ try {
   await start();
   const restored = await client();
   await read(restored, "reconnected");
-  console.log("Gun graph persistence, two-client seed fallback and reconnect passed.");
+  // Persist a source row in Gun, then model its successful-window retirement in
+  // the durable snapshot while the peer is stopped. Restart must replay removal.
+  await restored.evaluate(() => new Promise((resolve, reject) => {
+    window.seedGun.get("s3rch").get("items").get("retired-source-post").put({
+      id: "retired-source-post", source: "rss", body: "Retired source content", v: 1,
+    }, ack => ack.err ? reject(Error(ack.err)) : resolve());
+  }));
+  await restored.close();
+  await stop();
+  snapshot.items = [];
+  await writeFile(path.join(root, "snapshot.json"), JSON.stringify({
+    ...snapshot, sourceWindows: [["retired-source", []]], retiredIds: ["retired-source-post"],
+  }));
+  await start();
+  const afterRetirement = await client();
+  await afterRetirement.evaluate(() => {
+    window.seedGun.get("s3rch").get("items").get("retired-source-post").on(value => {
+      window.retiredSource = value;
+    });
+  });
+  await afterRetirement.waitForFunction(() => window.retiredSource?.unshared === 1 && window.retiredSource?.body === null);
+  await afterRetirement.close();
+  console.log("Gun persistence, reconnect and source-window retirement replay passed.");
 } catch (error) {
   console.error(log);
   throw error;

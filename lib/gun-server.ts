@@ -1,10 +1,12 @@
-import { mkdirSync, renameSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { publishPublicFeed } from "../public-feed-cache.cjs";
 import { dirname } from "node:path";
 import type { Server } from "node:http";
-import type { FeedItem, FeedSnapshot, GunFeedNode } from "./feed-types";
+import type { FeedItem, FeedSnapshot, GunFeedNode, SourcePull } from "./feed-types";
 import { fromGunNode, toGunNode } from "./feed-types";
 import { canonicalKey } from "./merge";
+import { reconcileSourceWindows, type SourceCache } from "./source-windows";
+import { itemUnshareTombstone } from "./unshare";
 
 type GunAck = { err?: string };
 type GunCb = (data: unknown, key: string) => void;
@@ -28,8 +30,7 @@ const GUN_ROOT = "s3rch";
 const ITEMS_KEY = "items";
 const META_KEY = "meta";
 
-export type MemoryStore = {
-  items: Map<string, FeedItem>;
+export type MemoryStore = SourceCache & {
   seededAt: string | null;
   sourcesOk: number;
   sourcesTried: number;
@@ -53,6 +54,8 @@ export function getMemoryStore(): MemoryStore {
   if (!g.__s3rchStore) {
     g.__s3rchStore = {
       items: new Map(),
+      windows: new Map(),
+      retired: new Set(),
       seededAt: null,
       sourcesOk: 0,
       sourcesTried: 0,
@@ -92,20 +95,18 @@ export function attachGunWeb(server: Server): GunRoot {
   return getServerGun(server);
 }
 
-export function putItems(items: FeedItem[]): number {
+/** Persist removals before publishing them, so a restart replays body-free tombstones. */
+export function applySourcePull(pull: SourcePull, seededAt: string): number {
   const store = getMemoryStore();
+  const next: MemoryStore = { ...store, ...reconcileSourceWindows(store, pull),
+    seededAt, sourcesOk: pull.sourcesOk, sourcesTried: pull.sourcesTried, error: pull.error };
+  persistSnapshot(next);
+  Object.assign(store, next);
   const gun = getServerGun();
-  let written = 0;
-  for (const item of items) {
-    const key = canonicalKey(item);
-    if (!key) continue;
-    store.items.set(key, { ...item, id: key });
-    gun.get(GUN_ROOT).get(ITEMS_KEY).get(encodeKey(key)).put(toGunNode({ ...item, id: key }));
-    written += 1;
-  }
+  publishStoreItems(gun, store);
   persistMeta(store);
-  persistSnapshot(store);
-  return written;
+  publishPublicFeed(process.cwd(), listSnapshot());
+  return new Set((pull.windows ?? []).flatMap(window => window.items.map(canonicalKey)).filter(Boolean)).size;
 }
 
 export function setSeedMeta(meta: {
@@ -152,7 +153,9 @@ function persistMeta(store: MemoryStore): void {
 function persistSnapshot(store: MemoryStore): void {
   const path = snapshotPath();
   ensureDir(path);
-  const body: FeedSnapshot = {
+  const body = {
+    sourceWindows: [...store.windows],
+    retiredIds: [...store.retired],
     items: Array.from(store.items.values()),
     seededAt: store.seededAt,
     sourcesOk: store.sourcesOk,
@@ -160,18 +163,33 @@ function persistSnapshot(store: MemoryStore): void {
     error: store.error,
   };
   const temporary = path + "." + process.pid + ".tmp";
-  writeFileSync(/*turbopackIgnore: true*/ temporary, JSON.stringify(body), "utf8");
-  renameSync(/*turbopackIgnore: true*/ temporary, /*turbopackIgnore: true*/ path);
+  try {
+    writeFileSync(/*turbopackIgnore: true*/ temporary, JSON.stringify(body), "utf8");
+    renameSync(/*turbopackIgnore: true*/ temporary, /*turbopackIgnore: true*/ path);
+  } finally {
+    rmSync(/*turbopackIgnore: true*/ temporary, { force: true });
+  }
 }
 
 function loadSnapshot(store: MemoryStore): void {
   try {
     const raw = readFileSync(/*turbopackIgnore: true*/ snapshotPath(), "utf8");
-    const parsed = JSON.parse(raw) as Partial<FeedSnapshot>;
+    const parsed = JSON.parse(raw) as Partial<FeedSnapshot> & { sourceWindows?: unknown; retiredIds?: unknown };
+    if (Array.isArray(parsed.sourceWindows)) {
+      for (const entry of parsed.sourceWindows) {
+        if (Array.isArray(entry) && entry.length === 2 && typeof entry[0] === "string" &&
+            Array.isArray(entry[1]) && entry[1].every((id: unknown) => typeof id === "string")) {
+          store.windows.set(entry[0], entry[1]);
+        }
+      }
+    }
+    if (Array.isArray(parsed.retiredIds)) {
+      for (const id of parsed.retiredIds) if (typeof id === "string") store.retired.add(id);
+    }
     if (Array.isArray(parsed.items)) {
       for (const item of parsed.items) {
         const recovered = fromGunNode(item as unknown as GunFeedNode) ?? asFeedItem(item);
-        if (recovered) store.items.set(recovered.id, recovered);
+        if (recovered && !store.retired.has(recovered.id)) store.items.set(recovered.id, recovered);
       }
     }
     store.seededAt = typeof parsed.seededAt === "string" ? parsed.seededAt : null;
@@ -183,10 +201,19 @@ function loadSnapshot(store: MemoryStore): void {
   }
 }
 
-function hydrateGunFromStore(gun: GunRoot, store: MemoryStore): void {
-  for (const item of store.items.values()) {
-    gun.get(GUN_ROOT).get(ITEMS_KEY).get(encodeKey(item.id)).put(toGunNode(item));
+function publishStoreItems(gun: GunRoot, store: MemoryStore): void {
+  // Existing mesh keys use lossy encoding. Publish surviving rows last so an
+  // expired colliding ID cannot hide a retained row at the same key.
+  for (const id of store.retired) {
+    gun.get(GUN_ROOT).get(ITEMS_KEY).get(encodeKey(id)).put(itemUnshareTombstone(id));
   }
+  for (const item of store.items.values()) {
+    gun.get(GUN_ROOT).get(ITEMS_KEY).get(encodeKey(item.id)).put({ ...toGunNode(item), unshared: null });
+  }
+}
+
+function hydrateGunFromStore(gun: GunRoot, store: MemoryStore): void {
+  publishStoreItems(gun, store);
   persistMeta(store);
 }
 

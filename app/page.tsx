@@ -87,7 +87,7 @@ export default function Home() {
           <p className="mt-3 max-w-2xl text-base text-ink-muted">
             Posts already pulled into s3r.ch from Farcaster, Bluesky, Nostr,
             ActivityPub, and RSS or Atom. s3r.ch utilizes public posts to improve services.
-            A post you delete on s3r.ch is removed. A post pulled from another network is updated on the next pull of that source, and can remain in this feed after it is deleted there.
+            A post you delete on s3r.ch is removed. Public posts mirror each source’s latest successful feed window. Posts that leave that window leave this cache; an unavailable source keeps its last successful window.
           </p>
           <PublicFeedPreview />
         </div>
