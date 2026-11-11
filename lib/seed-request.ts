@@ -1,6 +1,6 @@
 import { authorizeSeed } from "@/lib/auth";
 import { combinePulls, pullAllowedSource } from "./seed";
-import { putItems, setSeedMeta } from "./gun-server";
+import { applySourcePull, setSeedMeta } from "./gun-server";
 import type { SeedReport } from "./feed-types";
 
 export async function handleSeed(request: Request) {
@@ -32,7 +32,15 @@ export async function handleSeed(request: Request) {
   }
 }
 
-export async function seedPublicGraph(): Promise<SeedReport> {
+let activeSeed: Promise<SeedReport> | undefined;
+
+/** Coalesce overlapping requests; an older fetch cannot overwrite newer windows. */
+export function seedPublicGraph(): Promise<SeedReport> {
+  if (!activeSeed) activeSeed = runSeedPull().finally(() => { activeSeed = undefined; });
+  return activeSeed;
+}
+
+async function runSeedPull(): Promise<SeedReport> {
   const pulled = combinePulls(
     await Promise.all([
       pullAllowedSource("farcaster"),
@@ -62,13 +70,7 @@ export async function seedPublicGraph(): Promise<SeedReport> {
     };
   }
 
-  const written = putItems(pulled.items);
-  setSeedMeta({
-    seededAt,
-    sourcesOk: pulled.sourcesOk,
-    sourcesTried: pulled.sourcesTried,
-    error: null,
-  });
+  const written = applySourcePull(pulled, seededAt);
 
   return {
     items: pulled.items,

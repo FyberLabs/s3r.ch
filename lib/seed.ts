@@ -39,6 +39,9 @@ export async function fetchOptionalGi(): Promise<SourcePull> {
     );
     return {
       items,
+      windows: pulled.windows?.map(window => ({ key: `rss3:${window.key}`,
+        items: normalizeRss3Activities(window.activities, `rss3:gi:${GI_BASE}/decentralized`) })),
+      completeSources: pulled.sourcesOk === pulled.sourcesTried ? ["rss3"] : [],
       sourcesOk: pulled.sourcesOk,
       sourcesTried: pulled.sourcesTried,
       error: pulled.error,
@@ -77,6 +80,8 @@ export function combinePulls(pulls: SourcePull[]): SourcePull {
 
   return {
     items,
+    windows: pulls.flatMap(pull => pull.windows ?? []),
+    completeSources: [...new Set(pulls.flatMap(pull => pull.completeSources ?? []))],
     sourcesOk,
     sourcesTried,
     error:

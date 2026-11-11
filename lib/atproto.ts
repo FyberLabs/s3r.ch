@@ -1,3 +1,4 @@
+import { collectSourceWindows } from "./source-windows";
 /**
  * ATProto public AppView (no auth, no Neynar).
  * Default: https://public.api.bsky.app
@@ -123,48 +124,11 @@ export function normalizeAtprotoPost(raw: unknown, provenance: string): FeedItem
 }
 
 export async function fetchPublicAtproto(): Promise<SourcePull> {
-  const results = await Promise.allSettled(
-    PUBLIC_ATPROTO_SOURCES.map((source) => pullSource(source)),
+  return collectSourceWindows(
+    PUBLIC_ATPROTO_SOURCES.map(source => ({ key: `atproto:${sourceUrl(source)}`, pull: () => pullSource(source) })),
+    ["atproto"],
+    "ATProto AppView did not return posts.",
   );
-
-  const items: FeedItem[] = [];
-  const seen = new Set<string>();
-  let sourcesOk = 0;
-  const failures: string[] = [];
-
-  for (const result of results) {
-    if (result.status === "fulfilled") {
-      sourcesOk += 1;
-      for (const item of result.value) {
-        const key = canonicalKey(item);
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        items.push(item);
-      }
-    } else {
-      failures.push(
-        result.reason instanceof Error ? result.reason.message : String(result.reason),
-      );
-    }
-  }
-
-  if (sourcesOk === 0) {
-    return {
-      items: [],
-      sourcesOk: 0,
-      sourcesTried: PUBLIC_ATPROTO_SOURCES.length,
-      error:
-        "ATProto AppView did not return posts. This feed does not invent rows. " +
-        (failures[0] ?? "All AppView requests failed."),
-    };
-  }
-
-  return {
-    items,
-    sourcesOk,
-    sourcesTried: PUBLIC_ATPROTO_SOURCES.length,
-    error: null,
-  };
 }
 
 async function pullSource(source: AtprotoSource): Promise<FeedItem[]> {

@@ -10,7 +10,7 @@ Organizations running their own copy: [docs/deployment.md](docs/deployment.md) c
 
 ## What it is
 
-Search here is a crawler and a feed. s3r.ch pulls public posts from the open networks above. s3r.ch utilizes public posts to improve services. A post you delete on s3r.ch is removed. A post pulled from another network is updated on the next pull of that source, and can remain in this feed after it is deleted there ([#296](https://github.com/FyberLabs/s3r.ch/issues/296)). s3r.ch is not a finished search box or ranking engine today. Discover lists tags already present on Public and on Network. A full search engine comes later.
+Search here is a crawler and a feed. s3r.ch pulls public posts from the open networks above. s3r.ch utilizes public posts to improve services. A post you delete on s3r.ch is removed. Public posts mirror each source’s latest successful feed window. Posts that leave that window leave this cache; an unavailable source keeps its last successful window. s3r.ch is not a finished search box or ranking engine today. Discover lists tags already present on Public and on Network. A full search engine comes later.
 
 Sign-in starts with [Sign-In with Ethereum](docs/identity.md) (SIWE). After that, this browser holds a Gun SEA public key. That key is the identity on the graph. The session cookie still names the linked wallet address. Coming in v1, every part of s3r.ch keys on the public key, and an agent gets a short-lived token delegated from it. That remaining work is [#277](https://github.com/FyberLabs/s3r.ch/issues/277). Today a forum token lets a headless agent read and post in your forum as you.
 

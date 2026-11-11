@@ -1,3 +1,4 @@
+import { collectSourceWindows } from "./source-windows";
 /**
  * Nostr inbound (no outbound). NIP-01 REQ on a documented public relay
  * for kind 1 notes from documented pubkeys. Server-side WebSocket on
@@ -86,48 +87,11 @@ export function normalizeNostrEvent(
 }
 
 export async function fetchPublicNostr(): Promise<SourcePull> {
-  const results = await Promise.allSettled(
-    PUBLIC_NOSTR_PUBKEYS.map((pubkey) => pullPubkey(pubkey)),
+  return collectSourceWindows(
+    PUBLIC_NOSTR_PUBKEYS.map(pubkey => ({ key: nostrProvenance(NOSTR_RELAY_URL, pubkey), pull: () => pullPubkey(pubkey) })),
+    ["nostr"],
+    "Nostr relay did not return kind 1 notes.",
   );
-
-  const items: FeedItem[] = [];
-  const seen = new Set<string>();
-  let sourcesOk = 0;
-  const failures: string[] = [];
-
-  for (const result of results) {
-    if (result.status === "fulfilled") {
-      sourcesOk += 1;
-      for (const item of result.value) {
-        const key = canonicalKey(item);
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        items.push(item);
-      }
-    } else {
-      failures.push(
-        result.reason instanceof Error ? result.reason.message : String(result.reason),
-      );
-    }
-  }
-
-  if (sourcesOk === 0) {
-    return {
-      items: [],
-      sourcesOk: 0,
-      sourcesTried: PUBLIC_NOSTR_PUBKEYS.length,
-      error:
-        "Nostr relay did not return kind 1 notes. This feed does not invent rows. " +
-        (failures[0] ?? "All relay requests failed."),
-    };
-  }
-
-  return {
-    items,
-    sourcesOk,
-    sourcesTried: PUBLIC_NOSTR_PUBKEYS.length,
-    error: null,
-  };
 }
 
 export function nostrProvenance(relay: string, pubkey: string): string {
@@ -165,10 +129,6 @@ async function queryRelay(relay: string, filter: NostrFilter): Promise<unknown[]
     let settled = false;
 
     const timer = setTimeout(() => {
-      if (events.length > 0) {
-        finish(() => resolve(events));
-        return;
-      }
       finish(() => reject(new Error(`${relay} timed out`)));
     }, PUBLIC_FETCH_MS);
 
@@ -215,19 +175,11 @@ async function queryRelay(relay: string, filter: NostrFilter): Promise<unknown[]
     });
 
     ws.addEventListener("error", () => {
-      if (events.length > 0) {
-        finish(() => resolve(events));
-        return;
-      }
       finish(() => reject(new Error(`${relay} WebSocket error`)));
     });
 
     ws.addEventListener("close", () => {
       if (settled) return;
-      if (events.length > 0) {
-        finish(() => resolve(events));
-        return;
-      }
       finish(() => reject(new Error(`${relay} closed before EOSE`)));
     });
   });
