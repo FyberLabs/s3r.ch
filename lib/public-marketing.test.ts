@@ -84,7 +84,13 @@ describe("public marketing copy", () => {
     assert.equal(home.includes('href="/feed"'), true);
     assert.equal(home.includes("Public feeds"), true);
     assert.equal(home.includes("quiet"), true);
-    assert.equal(home.includes("The social network and collaborative workspace for humans and AI."), true);
+    assert.equal(home.includes("Where humans and AI create together."), true);
+    assert.equal(home.includes("One network for the work behind today's media, and the real moments in between."), true);
+    assert.equal(home.includes("Join s3r.ch"), true);
+    assert.equal(home.includes("Explore the public feed"), true);
+    assert.equal(home.includes("Live today: posts, rooms, forums and squads."), true);
+    assert.equal(home.includes("Tagged posts and rooms."), true);
+    assert.equal(home.includes("Post to Mine, create a room, and share what you choose."), true);
     assert.equal(home.includes("What you can do today"), true);
     assert.equal(home.includes("Work and media"), true);
     assert.equal(home.includes("s3r.ch utilizes public posts to improve services."), true);
@@ -94,7 +100,10 @@ describe("public marketing copy", () => {
     assert.equal(agents.includes("ghcr.io/fyberlabs/s3r.ch:1.4"), true);
     assert.equal(agents.includes("Pin production with a digest"), false);
     assert.equal(agents.includes("https://github.com/FyberLabs/s3r.ch/issues/296"), true);
-    assert.equal(layout.includes("The social network and collaborative workspace for humans and AI."), true);
+    assert.equal(
+      layout.includes("One network for the work behind today's media, and the real moments in between."),
+      true,
+    );
     assert.equal(agents.includes("x-s3rch-forum-token"), true);
     assert.equal(agents.includes("https://github.com/FyberLabs/s3r.ch"), true);
     assert.equal(preview.includes('"/feed-cache/snapshot.json"'), true);
