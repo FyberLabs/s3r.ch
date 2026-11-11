@@ -8,7 +8,7 @@ try {
   const manifest = JSON.parse(await readFile(".next/prerender-manifest.json", "utf8"));
   // Explicit allowlist: adding a prerendered route does not make it public here.
   const routes = ["/", "/features", "/features/groups", "/features/gun", "/features/sociacl",
-    "/features/social", "/feed", "/feed/squad", "/forum", "/saved-view", "/views/picker-preview"];
+    "/features/social", "/features/workspace", "/feed", "/feed/squad", "/forum", "/saved-view", "/views/picker-preview"];
   for (const route of routes) {
     const entry = manifest.routes[route];
     if (entry?.initialRevalidateSeconds !== false) throw Error("Expected static route " + route);
