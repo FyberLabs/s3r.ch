@@ -16,6 +16,11 @@
       "source": "vectors/ids/principal.json",
       "path": "lib/identity/vectors/principal.json",
       "sha256": "71cb1e1d12e00a7534c07e587b4920b163be5a12407fa9b9aac55c7235148804"
+    },
+    {
+      "source": "vectors/ids/object.json",
+      "path": "lib/identity/vectors/object.json",
+      "sha256": "9646c6738725b9438b8ebbf2d41437923b87ec3ff3bbd0ab910abe27ce429640"
     }
   ]
 }

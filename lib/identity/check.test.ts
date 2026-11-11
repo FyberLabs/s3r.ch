@@ -1,3 +1,4 @@
+import { legacyAclKey, legacyAclPrincipalKey, legacyAclSoul, legacyGrantSoul } from "./legacy-acl-souls";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { fromGunNode, toGunNode, type FeedItem, type GunFeedNode } from "@/lib/feed-types";
@@ -10,16 +11,12 @@ import {
   admitRoomNode,
   admitUserNode,
   applySeeGrant,
-  aclKey,
-  aclPrincipalKey,
-  aclSoul,
   cancelSee,
   checkSee,
   checkSeeGrant,
   chatSoul,
   decodeHop,
   encodeKey,
-  grantSoul,
   presenceSoul,
   grantLiveAt,
   grantedSoul,
@@ -125,22 +122,22 @@ describe("locked Gun souls", () => {
       `s3rch/granted/${BOB}/items/s3rch:post:1`,
     );
     assert.equal(metaSoul(), "s3rch/meta");
-    assert.equal(aclKey("rss3:act/1#x"), "rss3:act_1_x");
-    assert.equal(aclKey("ens:alice.eth"), "ens:alice_eth");
-    assert.equal(aclKey(itemSoul("rss3:act/1#x")), "s3rch_items_rss3:act_1_x");
-    assert.equal(aclPrincipalKey(userSoul(ALICE)), ALICE);
-    assert.equal(aclPrincipalKey(ALICE.toLowerCase()), ALICE);
-    assert.equal(aclSoul(ALICE), `s3rch/acl/${ALICE}`);
+    assert.equal(legacyAclKey("rss3:act/1#x"), "rss3:act_1_x");
+    assert.equal(legacyAclKey("ens:alice.eth"), "ens:alice_eth");
+    assert.equal(legacyAclKey(itemSoul("rss3:act/1#x")), "s3rch_items_rss3:act_1_x");
+    assert.equal(legacyAclPrincipalKey(userSoul(ALICE)), ALICE);
+    assert.equal(legacyAclPrincipalKey(ALICE.toLowerCase()), ALICE);
+    assert.equal(legacyAclSoul(ALICE), `s3rch/acl/${ALICE}`);
     assert.equal(
-      grantSoul(ALICE, "rss3:act/1#x", BOB),
+      legacyGrantSoul(ALICE, "rss3:act/1#x", BOB),
       `s3rch/acl/${ALICE}/rss3:act_1_x/${BOB}`,
     );
     assert.equal(
-      grantSoul(ALICE, "ens:alice.eth", userSoul(BOB)),
+      legacyGrantSoul(ALICE, "ens:alice.eth", userSoul(BOB)),
       `s3rch/acl/${ALICE}/ens:alice_eth/${BOB}`,
     );
     assert.equal(
-      grantSoul(ALICE, itemSoul("rss3:act/1#x"), BOB).split("/").length,
+      legacyGrantSoul(ALICE, itemSoul("rss3:act/1#x"), BOB).split("/").length,
       5,
     );
   });
@@ -267,10 +264,10 @@ describe("CHECK(see, object, accessor) consume laws", () => {
   it("dest ACL souls and claim-id objects fail closed without dest ACL", () => {
     const acl = createMemorySeeAcl();
     const hop: HopFactor = { channel: "enrolled-station" };
-    assert.equal(checkSee(acl, aclSoul(ALICE), ALICE, NOW).allowed, false);
-    assert.equal(checkSee(acl, aclSoul(ALICE), ALICE, NOW).reason, "acl");
+    assert.equal(checkSee(acl, legacyAclSoul(ALICE), ALICE, NOW).allowed, false);
+    assert.equal(checkSee(acl, legacyAclSoul(ALICE), ALICE, NOW).reason, "acl");
     assert.equal(
-      checkSee(acl, grantSoul(ALICE, CLAIM, BOB), BOB, NOW, hint(), hop).allowed,
+      checkSee(acl, legacyGrantSoul(ALICE, CLAIM, BOB), BOB, NOW, hint(), hop).allowed,
       false,
     );
     assert.equal(checkSee(acl, "s3rch/acl", ALICE, NOW).reason, "acl");

@@ -9,7 +9,7 @@ a SociACL runtime package.
 
 ## Verification
 
-`npm test` checks the declaration and both shared vector files against their
+`npm test` checks the declaration and the shared vector files against their
 recorded SHA-256 values. The CI test job
 also runs:
 
@@ -55,7 +55,7 @@ the reference artifact; existing runtime behavior tests remain in place.
 
 [#281](https://github.com/FyberLabs/s3r.ch/issues/281) tracks removal of the legacy
 `aclKey`, `aclPrincipalKey`, wallet user souls and wallet-keyed grant inboxes,
-expanding shared-vector coverage beyond the two families below, and replacing
+expanding shared-vector coverage beyond the families below, and replacing
 the local transition implementation once the upstream consume surface is available.
 [#277](https://github.com/FyberLabs/s3r.ch/issues/277) owns the SEA identity migration.
 [Upstream #156](https://github.com/FyberLabs/SociACL/issues/156) tracks the missing
@@ -69,6 +69,7 @@ The same provenance check covers these upstream files:
 
 | Upstream source | Local consumer and coverage |
 | --- | --- |
+| `vectors/ids/object.json` | `acl-souls.test.ts`: canonical object outputs and all parse-rejection cases at the grant-soul boundary; not minting or hash derivation. |
 | `vectors/ids/principal.json` | `forum-principal.test.ts`: all accepted/rejected principal inputs, canonical path keys and inverse conversions. Other authority tests reuse these identities. |
 | `vectors/mesh/forums.json` | `forum-check.test.ts`: forum souls, roles, tags, permission rejection, revocation, need/offer restrictions and cancellation. Squad/authority tests reuse the same fixture. `forum-shared-hint.test.ts` checks that the upstream hint fields cannot grant access. |
 
@@ -95,3 +96,32 @@ removing those paths and migrating their login/session consumers remains #277
 and #281 work. These checks do not infer the current owner from the principal
 embedded in an object ID; the graph remains responsible for verified ownership
 and rotation history.
+
+## Canonical ACL paths
+
+The public `aclSoul` and `grantSoul` exports now follow the synchronized contract:
+SEA principals become `p_` path keys and object IDs remain canonical, unchanged
+segments. Invalid principals or object IDs return `null`; wallet credentials,
+legacy user paths, raw claim strings and escaped object aliases are not encoded
+into canonical ACL paths. Signed forum see/post records use the same constructor.
+Path construction does not verify a signature or establish ownership.
+
+The wallet-based feed mesh still uses explicitly named `legacyAclKey`,
+`legacyAclPrincipalKey`, `legacyAclSoul` and `legacyGrantSoul` in
+`legacy-acl-souls.ts`. These are not exported by Check. They preserve the current
+feed transport until its identity/session migration in #277/#281; they must not
+be used for new canonical records. Removing that legacy consumer remains open.
+
+## Derived objects use the canonical Check boundary
+
+The exact SEA-principal rules also apply to derived `claim_<hash>` and
+`ext_<hash>` object IDs. They cannot acquire access through wallet identities,
+user-path aliases or whitespace-normalized grant targets. Their owner still
+comes from the admitted graph; the hash is not an ownership proof.
+
+Check and ACL path construction share `object-id.ts` validation. Inputs in the
+canonical minted/derived namespaces that fail validation (including reserved
+minted kinds, uppercase encodings and invalid curve points) are denied before
+any graph or authority callback. They do not fall through to legacy wallet
+matching. The namespace discriminator is only a transitional routing rule, not
+an object validator. Legacy feed/user object migration remains open.

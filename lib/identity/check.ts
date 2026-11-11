@@ -10,7 +10,8 @@
  */
 
 import { getAddress } from "viem";
-import { isForumObjectId, isSeaPubkey } from "./forum-check";
+import { isCanonicalObjectId, usesCanonicalObjectNamespace } from "./object-id";
+import { isSeaPubkey } from "./forum-check";
 import {
   fromGunNode,
   isUnsharePut,
@@ -140,7 +141,7 @@ export type FeedMeta = {
 /** Feed item soul or claim id linked from the user node. */
 export type CheckObjectId = string;
 
-/** Wallet or s3rch/users/{wallet}. */
+/** SEA pubkey for canonical objects; legacy feed still accepts wallet/user paths. */
 export type AccessorId = string;
 
 export type CheckResult = {
@@ -284,54 +285,7 @@ export function metaSoul(): string {
   return `${S3RCH_ROOT}/${S3RCH_META}`;
 }
 
-/**
- * Dest-ACL path key. encodeKey, then `/` → `_`, so a grant soul stays
- * five segments when the object id still contains slashes.
- */
-export function aclKey(id: string): string {
-  return encodeKey(id).replace(/\//g, "_");
-}
-
-/**
- * Owner / accessor key on dest ACL. `s3rch/users/<wallet>` collapses
- * to the wallet. Anything else is aclKey.
- */
-export function aclPrincipalKey(id: string): string {
-  const trimmed = id.trim();
-  if (!trimmed) return "";
-  let key = trimmed;
-  if (trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)) {
-    key = trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length);
-  }
-  try {
-    return getAddress(key);
-  } catch {
-    return aclKey(key);
-  }
-}
-
-/**
- * Owner dest-ACL root. Not a Check object.
- * gun.get('s3rch').get('acl').get(aclPrincipalKey(owner))
- */
-export function aclSoul(owner: AccessorId): string {
-  return `${S3RCH_ROOT}/${S3RCH_ACL}/${aclPrincipalKey(owner)}`;
-}
-
-/**
- * Jointly stated see grant under the object owner's dest ACL.
- * gun.get('s3rch').get('acl')
- *   .get(aclPrincipalKey(owner))
- *   .get(aclKey(object))
- *   .get(aclPrincipalKey(accessor))
- */
-export function grantSoul(
-  owner: AccessorId,
-  object: CheckObjectId,
-  accessor: AccessorId,
-): string {
-  return `${aclSoul(owner)}/${aclKey(object)}/${aclPrincipalKey(accessor)}`;
-}
+export { aclSoul, grantSoul } from "./acl-souls";
 
 /** Does not verify. Does not mint. */
 export function acceptHint(hint: HandoffHint): HandoffHint {
@@ -485,7 +439,7 @@ export function grantNamesObject(
   grant: IdentitySeeGrant,
   object: CheckObjectId,
 ): boolean {
-  if (isForumObjectId(object)) return grant.claimId === object;
+  if (usesCanonicalObjectNamespace(object)) return isCanonicalObjectId(object) && grant.claimId === object;
   const claimId = grant.claimId.trim();
   if (!claimId) return false;
   if (claimId === object) return true;
@@ -526,7 +480,7 @@ export function ownerOwnsObject(
   owner: AccessorId,
   object: CheckObjectId,
 ): boolean {
-  if (isForumObjectId(object)) return isSeaPubkey(owner) && acl.ownerOf(object) === owner;
+  if (usesCanonicalObjectNamespace(object)) return isCanonicalObjectId(object) && isSeaPubkey(owner) && acl.ownerOf(object) === owner;
   if (sameAccessor(acl.ownerOf(object), owner)) return true;
   if (sameAccessor(acl.ownerOf(itemSoul(object)), owner)) return true;
   if (sameAccessor(acl.ownerOf(roomSoul(object)), owner)) return true;
@@ -545,17 +499,20 @@ export function grantLiveAt(grant: IdentitySeeGrant, now: number): boolean {
   return validCheckTime(now) && now >= grant.from && now < grant.until;
 }
 
-/** Canonical forum objects never inherit legacy wallet/user-soul aliases. */
-function canonicalForumPrincipals(graph: SeeGraph, object: string, accessor: string): boolean {
-  if (!isForumObjectId(object)) return true;
+/** Canonical minted and derived IDs never inherit wallet-era aliases. */
+function canonicalCheckBoundary(graph: SeeGraph, object: string, accessor: string): CheckResult | null {
+  if (!usesCanonicalObjectNamespace(object)) return null;
+  if (!isCanonicalObjectId(object)) return { allowed: false, reason: "bad-object" };
+  if (!isSeaPubkey(accessor)) return { allowed: false, reason: "bad-principal" };
   const owner = graph.ownerOf(object);
-  return isSeaPubkey(accessor) && (owner === undefined || isSeaPubkey(owner));
+  return owner === undefined || isSeaPubkey(owner) ? null : { allowed: false, reason: "bad-principal" };
 }
 
 /** Forum-specific read gate. Legacy/sample graphs remain direct-only. */
 export function checkForumSee(graph: SeeGraph, object: string, accessor: string, now: number): CheckResult {
   if (!validCheckTime(now)) return { allowed: false, reason: "unknown" };
-  if (!canonicalForumPrincipals(graph, object, accessor)) return { allowed: false, reason: "bad-principal" };
+  const boundary = canonicalCheckBoundary(graph, object, accessor);
+  if (boundary) return boundary;
   return graph.checkForumSee ? graph.checkForumSee(object, accessor, now) : checkSee(graph, object, accessor, now);
 }
 
@@ -579,7 +536,8 @@ export function checkSee(
   void hint;
   void hop;
   if (!validCheckTime(now)) return { allowed: false, reason: "unknown" };
-  if (!canonicalForumPrincipals(graph, object, accessor)) return { allowed: false, reason: "bad-principal" };
+  const boundary = canonicalCheckBoundary(graph, object, accessor);
+  if (boundary) return boundary;
   if (graph.checkDirectSee) return graph.checkDirectSee(object, accessor, now);
   if (isMetaId(object)) {
     return { allowed: false, reason: "meta" };
