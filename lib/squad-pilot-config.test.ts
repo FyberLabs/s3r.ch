@@ -39,3 +39,22 @@ test("old deployment documents cannot select a Squad signing secret", () => {
   assert.deepEqual(old, current);
   assert.ok(old && !("sessionSecret" in old));
 });
+
+test("ledger-only operator access needs no identity secret while the HTTP server does", async () => {
+  const { createSquadPilotSource, createSquadPilotServer } = await import("./squad-pilot-server");
+  const { BlobServiceClient } = await import("@azure/storage-blob");
+  const container = new BlobServiceClient("https://fixture.blob.core.windows.net").getContainerClient("fixture");
+  const client = container.getBlockBlobClient("unused");
+  client.download = async () => { throw Object.assign(Error("missing"), { statusCode: 404, code: "BlobNotFound" }); };
+  const fake = { getBlockBlobClient: () => client };
+  const saved = process.env.IDENTITY_SESSION_SECRET;
+  try {
+    delete process.env.IDENTITY_SESSION_SECRET;
+    const c = parseSquadPilotConfig(JSON.stringify(config()))!;
+    const source = createSquadPilotSource(c, fake);
+    await assert.rejects(source.load(), /missing/);
+    assert.throws(() => createSquadPilotServer(c, fake), /IDENTITY_SESSION_SECRET is required/);
+  } finally {
+    if (saved === undefined) delete process.env.IDENTITY_SESSION_SECRET; else process.env.IDENTITY_SESSION_SECRET = saved;
+  }
+});

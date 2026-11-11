@@ -12,7 +12,7 @@ import { parseForumAuthority, type AuthorityKind } from "../lib/identity/forum-a
 import { createForumAuthority } from "../lib/identity/forum-authority";
 import { seaToPrincipalKey } from "../lib/identity/forum-check";
 import { parseSquadPilotConfig } from "../lib/squad-pilot-config";
-import { createSquadPilotServer } from "../lib/squad-pilot-server";
+import { createSquadPilotSource } from "../lib/squad-pilot-server";
 import type { InventoryStore } from "../lib/delegation-inventory";
 
 async function main() {
@@ -45,7 +45,7 @@ async function main() {
   if (!/^[a-z0-9]{3,24}$/.test(account) || !/^[a-z0-9](?:[a-z0-9]|-(?!-)){1,61}[a-z0-9]$/.test(containerName)) throw Error("Invalid primary account/container");
   const c = parseSquadPilotConfig(readFileSync(file("deployment.json"), "utf8")); if (!c) throw Error("Missing deployment contract");
   const container = new BlobServiceClient(`https://${account}.blob.core.windows.net`, new AzureCliCredential({ subscription: process.env.AZURE_SUBSCRIPTION_ID })).getContainerClient(containerName);
-  const pilot = createSquadPilotServer(c, container);
+  const source = createSquadPilotSource(c, container);
   if (action === "provision") {
     const { identities } = JSON.parse(readFileSync(file("operator.json"), "utf8"));
     if (identities.length !== 4 || identities[0].pub !== c.squad.owner) throw Error("Pilot identities do not match configuration");
@@ -62,18 +62,18 @@ async function main() {
       sign("object", { owner, object, issuedAt: now }),
       ...identities.slice(1, 2).flatMap((p: { pub: string }) => (["see", "post"] as const).map(kind => sign(kind, { owner, object, accessor: p.pub, stated: 1, hamState: 1, from: now, until: now + 86400 * 30, issuedAt: now }))),
     ]) });
-    await pilot.source.initialize(journal, { completeThrough: now, links: [], accounts: identities.map((p: { pub: string }) => ({ principal: p.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) });
+    await source.initialize(journal, { completeThrough: now, links: [], accounts: identities.map((p: { pub: string }) => ({ principal: p.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) });
     console.log("Created primary pilot ledger with absent-only CAS. No app setting changed.");
   } else if (action === "admit-history") {
-    const current = await pilot.source.load();
+    const current = await source.load();
     const history = JSON.parse(readFileSync(args[2], "utf8"));
-    if (!await pilot.source.updateHistory(current.etag, history)) throw Error("Concurrent change; reload and reconcile operator intent");
+    if (!await source.updateHistory(current.etag, history)) throw Error("Concurrent change; reload and reconcile operator intent");
     console.log("Admitted operator history through shared CAS. Runtime verification still controls access.");
   }
   // Verification opens a new primary snapshot; never calls a successful write
   // or a storage response alone proof of current authority.
   const now = Math.floor(Date.now() / 1000), authority = createForumAuthority(c.authority);
-  const result = await authority.refresh(await pilot.source.read(now, new AbortController().signal), now);
+  const result = await authority.refresh(await source.read(now, new AbortController().signal), now);
   if (!result.ok || result.diagnostics.length || authority.graph.ownerOf(c.squad.forumId) !== c.squad.owner) throw Error("Pilot authority verification failed");
   console.log("Primary ledger and signed owner authority verified. Deployment/client acceptance is separate.");
 }
