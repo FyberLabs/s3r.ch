@@ -1,13 +1,9 @@
 /** Canonical object-ID validation shared by Check and ACL path construction.
  * Source contract and vectors are pinned in docs/sociacl-contract.json. */
-import { seaFromPrincipalKey } from "./forum-check";
+import { parseObjectId } from "sociacl-ids";
 
-const RESERVED = new Set(["claim", "ext", "post", "member", "objset"]);
 export function isCanonicalObjectId(object: unknown): boolean {
-  if (typeof object !== "string") return false;
-  if (/^(claim|ext)_[0-9a-f]{64}$/.test(object)) return true;
-  const parts = /^([a-z][a-z0-9]{1,15})_(p_[0-9a-f]{128})_[0-9a-f]{32}$/.exec(object);
-  return !!parts && !RESERVED.has(parts[1]) && seaFromPrincipalKey(parts[2]) !== null;
+  return parseObjectId(object).ok;
 }
 
 /** Transitional namespace discriminator, not validation. A malformed ID in a

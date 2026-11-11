@@ -154,3 +154,11 @@ JSON rejection remain enforced. Cryptographic validity alone still grants no
 current-key authority, session or Check permission. Remaining local recovery,
 rotation, witness and authority adapters must be migrated separately; this
 change does not complete #277 or #281.
+
+SEA principal validation, `p_` path encoding/decoding and canonical object-ID
+validation also delegate to the qualified `sociacl-ids` runtime. The local
+helpers keep their string/null/boolean interfaces for callers; they no longer
+carry their own curve-point or reserved-kind grammar. The transitional
+namespace discriminator remains local so malformed canonical IDs still deny
+rather than falling back to wallet-era matching. Shared principal/object vectors
+and derived-object Check regressions cover this boundary.

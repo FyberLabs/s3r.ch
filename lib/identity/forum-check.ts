@@ -10,7 +10,7 @@
  * need id. There is no second owner-or-delegate test in this file.
  */
 
-import { p256 } from "@noble/curves/nist.js";
+import { parsePrincipalId, parsePrincipalKey, principalFromSec1, formatPrincipalKey } from "sociacl-ids";
 import type { GunFeedNode } from "@/lib/feed-types";
 
 export type ForumAgentState = "idle" | "working" | "needs" | "emergency";
@@ -110,7 +110,6 @@ export type ForumNeedDecision =
   | { ok: false; reason: string; elect: false };
 
 const MINTED = /^([a-z][a-z0-9]*)_p_[0-9a-f]{128}_[0-9a-f]{32}$/;
-const SEA_SHAPE = /^[A-Za-z0-9_-]{8,128}\.[A-Za-z0-9_-]{8,128}$/;
 const RESERVED_ROLE = new Set([
   "acl",
   "agents",
@@ -161,69 +160,24 @@ function badSegment(value: string): boolean {
   return false;
 }
 
-function b64urlBytes(segment: string): Uint8Array | null {
-  if (!/^[A-Za-z0-9_-]+$/.test(segment)) return null;
-  const pad = "=".repeat((4 - (segment.length % 4)) % 4);
-  const b64 = segment.replace(/-/g, "+").replace(/_/g, "/") + pad;
-  try {
-    const bin = atob(b64);
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
-    return out;
-  } catch {
-    return null;
-  }
-}
-
-function hexBytes(bytes: Uint8Array): string {
-  let out = "";
-  for (const byte of bytes) out += byte.toString(16).padStart(2, "0");
-  return out;
-}
-
-/** `p_` plus the 64-byte uncompressed point, lowercase hex. */
+/** Canonical SEA identity grammar and path encoding are owned by SociACL. */
 export function seaToPrincipalKey(pub: string): string | null {
-  if (typeof pub !== "string" || !SEA_SHAPE.test(pub) || badSegment(pub)) return null;
-  const [x, y] = pub.split(".");
-  const xb = b64urlBytes(x);
-  const yb = b64urlBytes(y);
-  if (!xb || !yb || xb.length !== 32 || yb.length !== 32) return null;
-  // Base64 decoders accept unused trailing bits; an identity must have one spelling.
-  if (bytesToB64url(xb) !== x || bytesToB64url(yb) !== y) return null;
-  try {
-    p256.Point.fromBytes(new Uint8Array([4, ...xb, ...yb])).assertValidity();
-  } catch {
-    return null;
-  }
-  return `p_${hexBytes(xb)}${hexBytes(yb)}`;
+  const parsed = parsePrincipalId(pub);
+  return parsed.ok ? formatPrincipalKey(parsed.value) : null;
 }
 
-function bytesFromHex(hex: string): Uint8Array | null {
-  if (!/^[0-9a-f]{64}$/.test(hex)) return null;
-  const out = new Uint8Array(32);
-  for (let i = 0; i < 32; i += 1) out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  return out;
-}
-
-function bytesToB64url(bytes: Uint8Array): string {
-  let bin = "";
-  for (const byte of bytes) bin += String.fromCharCode(byte);
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-/** Inverse of `seaToPrincipalKey`. A bad key is null. */
+/** Inverse path adapter. Validation and point decoding stay in SociACL. */
 export function seaFromPrincipalKey(key: string): string | null {
-  if (!/^p_[0-9a-f]{128}$/.test(key)) return null;
-  const hex = key.slice(2);
-  const x = bytesFromHex(hex.slice(0, 64));
-  const y = bytesFromHex(hex.slice(64));
-  if (!x || !y) return null;
-  const pub = `${bytesToB64url(x)}.${bytesToB64url(y)}`;
-  return seaToPrincipalKey(pub) === key ? pub : null;
+  const parsed = parsePrincipalKey(key);
+  if (!parsed.ok) return null;
+  const hex = parsed.value.slice(2);
+  const bytes = Uint8Array.from([4, ...Array.from({ length: 64 }, (_, i) => Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16))]);
+  const principal = principalFromSec1(bytes);
+  return principal.ok ? principal.value : null;
 }
 
 export function isSeaPubkey(value: string): boolean {
-  return seaToPrincipalKey(value) !== null;
+  return parsePrincipalId(value).ok;
 }
 
 export function isForumObjectId(value: string, kind?: string): boolean {
