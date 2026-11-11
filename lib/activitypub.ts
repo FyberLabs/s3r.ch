@@ -109,14 +109,16 @@ export function collectOutboxItems(
 
 export async function fetchPublicActivityPub(): Promise<SourcePull> {
   return collectSourceWindows(
-    PUBLIC_ACTIVITYPUB_ACTORS.map(actor => ({ key: `activitypub:${actor}`, pull: () => pullActor(actor) })),
+    PUBLIC_ACTIVITYPUB_ACTORS.map(actor => ({ key: `activitypub:${actor}`, pull: () => pullActivityPubActor(actor) })),
     ["activitypub"],
     "ActivityPub outbox did not return notes.",
   );
 }
 
-async function pullActor(actorUrl: string): Promise<FeedItem[]> {
-  const actor = await fetchActivityJson(actorUrl);
+export async function pullActivityPubActor(
+  actorUrl: string, read = fetchActivityJson,
+): Promise<FeedItem[]> {
+  const actor = await read(actorUrl);
   const actorName =
     asString(actor.preferredUsername) ?? asString(actor.name) ?? "";
   const outboxUrl = resolvePublicActivityUrl(actor.outbox, actorUrl);
@@ -124,7 +126,7 @@ async function pullActor(actorUrl: string): Promise<FeedItem[]> {
     throw new Error(`${actorUrl} has no outbox`);
   }
 
-  const outbox = await fetchActivityJson(outboxUrl);
+  const outbox = await read(outboxUrl);
   assertCollection(outbox);
   const provenance = `activitypub:${outboxUrl}`;
   if (collectionItems(outbox).length > 0) {
@@ -133,16 +135,17 @@ async function pullActor(actorUrl: string): Promise<FeedItem[]> {
 
   const firstUrl = resolvePublicActivityUrl(outbox.first, outboxUrl);
   if (!firstUrl) {
+    if (outbox.first !== undefined) throw new Error("Unusable ActivityPub first page");
     return [];
   }
-  const page = await fetchActivityJson(firstUrl);
-  assertCollection(page);
+  const page = await read(firstUrl);
+  assertCollection(page, false);
   return collectOutboxItems(page, provenance, actorName);
 }
 
-function assertCollection(value: Record<string, unknown>): void {
+function assertCollection(value: Record<string, unknown>, allowFirst = true): void {
   if (!["Collection", "OrderedCollection", "CollectionPage", "OrderedCollectionPage"].includes(String(value.type)) ||
-      (!(Array.isArray(value.orderedItems) || Array.isArray(value.items)) && value.totalItems !== 0 && !value.first)) {
+      (!(Array.isArray(value.orderedItems) || Array.isArray(value.items)) && value.totalItems !== 0 && !(allowFirst && value.first))) {
     throw new Error("Incomplete ActivityPub collection");
   }
 }

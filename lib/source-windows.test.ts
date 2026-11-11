@@ -3,6 +3,7 @@ import test from "node:test";
 import type { FeedItem, SourcePull } from "./feed-types";
 import { collectSourceWindows, reconcileSourceWindows, type SourceCache } from "./source-windows";
 import { combinePulls } from "./seed";
+import { pullActivityPubActor } from "./activitypub";
 import { parseRssAtom } from "./rss-atom";
 
 const item = (id: string, source: FeedItem["source"] = "rss"): FeedItem => ({
@@ -79,4 +80,18 @@ test("overlapping source IDs preserve first-source precedence", () => {
   ]));
   assert.equal(after.items.get("same")?.body, "body-same");
   assert.deepEqual(after.windows.get("second"), ["same"]);
+});
+
+
+test("ActivityPub only replaces a window after a readable collection page", async () => {
+  const actor = "https://example.org/actor", outbox = "https://example.org/outbox", page = "https://example.org/page";
+  const read = (collection: Record<string, unknown>, first: Record<string, unknown> = {}) => async (url: string) =>
+    url === actor ? { outbox } : url === outbox ? collection : first;
+  assert.deepEqual(await pullActivityPubActor(actor, read({ type: "OrderedCollection", totalItems: 0 })), []);
+  assert.deepEqual(await pullActivityPubActor(actor, read({ type: "OrderedCollection", first: page },
+    { type: "OrderedCollectionPage", orderedItems: [] })), []);
+  await assert.rejects(pullActivityPubActor(actor, read({ type: "OrderedCollection", first: {} })), /Unusable/);
+  await assert.rejects(pullActivityPubActor(actor, read({ type: "OrderedCollection", first: page },
+    { type: "OrderedCollectionPage", first: "https://example.org/another" })), /Incomplete/);
+  await assert.rejects(pullActivityPubActor(actor, read({ error: "rate limited" })), /Incomplete/);
 });
