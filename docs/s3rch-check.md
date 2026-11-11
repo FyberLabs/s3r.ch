@@ -111,3 +111,17 @@ The wallet-based feed mesh still uses explicitly named `legacyAclKey`,
 `legacy-acl-souls.ts`. These are not exported by Check. They preserve the current
 feed transport until its identity/session migration in #277/#281; they must not
 be used for new canonical records. Removing that legacy consumer remains open.
+
+## Derived objects use the canonical Check boundary
+
+The exact SEA-principal rules also apply to derived `claim_<hash>` and
+`ext_<hash>` object IDs. They cannot acquire access through wallet identities,
+user-path aliases or whitespace-normalized grant targets. Their owner still
+comes from the admitted graph; the hash is not an ownership proof.
+
+Check and ACL path construction share `object-id.ts` validation. Inputs in the
+canonical minted/derived namespaces that fail validation (including reserved
+minted kinds, uppercase encodings and invalid curve points) are denied before
+any graph or authority callback. They do not fall through to legacy wallet
+matching. The namespace discriminator is only a transitional routing rule, not
+an object validator. Legacy feed/user object migration remains open.
