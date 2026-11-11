@@ -6,6 +6,7 @@
  * Unshare retracts the user node (tombstone) or republishes without one claim.
  */
 
+import { legacyUserSoul } from "./identity/legacy-user-soul";
 import { getAddress } from "viem";
 import {
   GUN_PROTOCOL_V,
@@ -35,7 +36,7 @@ import {
   walletClaimId,
   type HeldLookupState,
 } from "./identity/held-claims";
-import { admitUserNode, userSoul, type SeeAcl } from "./identity/check";
+import { admitUserNode, type SeeAcl } from "./identity/check";
 
 export type { GunUserNode };
 
@@ -495,7 +496,7 @@ export function shortenWallet(address: string): string {
 }
 
 export function userObjectSoul(wallet: string): string {
-  return userSoul(wallet);
+  return legacyUserSoul(wallet);
 }
 
 export { walletClaimId };

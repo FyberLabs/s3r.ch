@@ -9,6 +9,7 @@
  * wins the next merge.
  */
 
+import { legacyUserSoul } from "./legacy-user-soul";
 import { getAddress } from "viem";
 import { isCanonicalObjectId, usesCanonicalObjectNamespace } from "./object-id";
 import { isSeaPubkey } from "./forum-check";
@@ -246,40 +247,6 @@ export function presenceSoul(roomId: string, address: string): string {
   return `${roomSoul(roomId)}/${S3RCH_PRESENCE}/${encodeKey(address)}`;
 }
 
-/** s3rch/users/<wallet> — checksum when the key is an address. */
-export function userSoul(wallet: string): string {
-  const trimmed = wallet.trim();
-  try {
-    return `${S3RCH_ROOT}/${S3RCH_USERS}/${getAddress(trimmed)}`;
-  } catch {
-    return `${S3RCH_ROOT}/${S3RCH_USERS}/${trimmed}`;
-  }
-}
-
-export type GrantInboxKind = "items" | "rooms" | "users";
-
-/**
- * Grant-delivery inbox. Not share-into-mesh.
- * gun.get('s3rch').get('granted').get(accessor).get(kind).get(encodeKey(id))
- */
-export function grantedSoul(
-  accessor: AccessorId,
-  kind: GrantInboxKind,
-  objectId: string,
-): string {
-  const trimmed = accessor.trim();
-  let wallet = trimmed;
-  if (trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)) {
-    wallet = trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length);
-  }
-  try {
-    wallet = getAddress(wallet);
-  } catch {
-    wallet = wallet.trim();
-  }
-  return `${S3RCH_ROOT}/${S3RCH_GRANTED}/${wallet}/${kind}/${encodeKey(objectId)}`;
-}
-
 /** s3rch/meta — not a Check object. */
 export function metaSoul(): string {
   return `${S3RCH_ROOT}/${S3RCH_META}`;
@@ -415,12 +382,12 @@ export function accessorAliases(id: AccessorId): string[] {
     const wallet = trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length);
     if (wallet) {
       aliases.add(wallet);
-      aliases.add(userSoul(wallet));
+      aliases.add(legacyUserSoul(wallet));
     }
     return [...aliases];
   }
   if (!trimmed.includes("/") && !trimmed.includes(".get(") && !isUrlLeafId(trimmed)) {
-    aliases.add(userSoul(trimmed));
+    aliases.add(legacyUserSoul(trimmed));
   }
   return [...aliases];
 }
@@ -457,11 +424,11 @@ export function grantNamesObject(
 export function userObjectId(claimId: string): CheckObjectId | undefined {
   const trimmed = claimId.trim();
   if (!trimmed) return undefined;
-  if (trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)) return userSoul(
+  if (trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)) return legacyUserSoul(
     trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length),
   );
   try {
-    return userSoul(getAddress(trimmed));
+    return legacyUserSoul(getAddress(trimmed));
   } catch {
     return undefined;
   }
@@ -829,7 +796,7 @@ export function admitUserNode(
   if (!samePresenceOwner(dest, admitted)) {
     return { denied: true };
   }
-  const object = userSoul(admitted);
+  const object = legacyUserSoul(admitted);
   if (isMetaId(object) || isUrlLeafId(object)) {
     return { denied: true };
   }

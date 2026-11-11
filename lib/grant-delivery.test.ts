@@ -1,7 +1,9 @@
+import { legacyUserSoul } from "./identity/legacy-user-soul";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { admitNativePost, composeNativePost } from "./compose";
 import {
+  grantedSoul,
   acceptGrantDelivery,
   fromGrantDeliveryNode,
   isGrantDeliverableItem,
@@ -18,10 +20,8 @@ import {
   applySeeGrant,
   cancelSee,
   checkSee,
-  grantedSoul,
   itemSoul,
   roomSoul,
-  userSoul,
 } from "./identity/check";
 import { createMemorySeeAcl } from "./identity/see-acl";
 import {
@@ -94,13 +94,17 @@ describe("grant-deliverable objects", () => {
 
 describe("locked grant inbox souls", () => {
   it("lives under s3rch/granted and is not a public graph soul", () => {
+    assert.equal(
+      grantedSoul(BOB, "items", "s3rch:post:1"),
+      `s3rch/granted/${BOB}/items/s3rch:post:1`,
+    );
     const item = nativePost();
     const soul = grantedSoul(BOB, "items", item.id);
     assert.equal(soul.startsWith(`s3rch/granted/${BOB}/items/`), true);
     assert.equal(isPublicGraphSoul(soul), false);
     assert.equal(isPublicGraphSoul(itemSoul(item.id)), true);
     assert.equal(isPublicGraphSoul(roomSoul("s3rch:room:x")), true);
-    assert.equal(isPublicGraphSoul(userSoul(ALICE)), true);
+    assert.equal(isPublicGraphSoul(legacyUserSoul(ALICE)), true);
   });
 });
 

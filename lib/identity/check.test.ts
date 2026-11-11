@@ -1,3 +1,4 @@
+import { legacyUserSoul } from "./legacy-user-soul";
 import { legacyAclKey, legacyAclPrincipalKey, legacyAclSoul, legacyGrantSoul } from "./legacy-acl-souls";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
@@ -19,11 +20,9 @@ import {
   encodeKey,
   presenceSoul,
   grantLiveAt,
-  grantedSoul,
   itemSoul,
   metaSoul,
   roomSoul,
-  userSoul,
   type HandoffHint,
   type HopFactor,
   type SeeGraph,
@@ -116,16 +115,11 @@ describe("locked Gun souls", () => {
       presenceSoul("s3rch:room:0xabc:1:aa", ALICE),
       `s3rch/rooms/s3rch:room:0xabc:1:aa/presence/${ALICE}`,
     );
-    assert.equal(userSoul(ALICE), `s3rch/users/${ALICE}`);
-    assert.equal(
-      grantedSoul(BOB, "items", "s3rch:post:1"),
-      `s3rch/granted/${BOB}/items/s3rch:post:1`,
-    );
     assert.equal(metaSoul(), "s3rch/meta");
     assert.equal(legacyAclKey("rss3:act/1#x"), "rss3:act_1_x");
     assert.equal(legacyAclKey("ens:alice.eth"), "ens:alice_eth");
     assert.equal(legacyAclKey(itemSoul("rss3:act/1#x")), "s3rch_items_rss3:act_1_x");
-    assert.equal(legacyAclPrincipalKey(userSoul(ALICE)), ALICE);
+    assert.equal(legacyAclPrincipalKey(legacyUserSoul(ALICE)), ALICE);
     assert.equal(legacyAclPrincipalKey(ALICE.toLowerCase()), ALICE);
     assert.equal(legacyAclSoul(ALICE), `s3rch/acl/${ALICE}`);
     assert.equal(
@@ -133,7 +127,7 @@ describe("locked Gun souls", () => {
       `s3rch/acl/${ALICE}/rss3:act_1_x/${BOB}`,
     );
     assert.equal(
-      legacyGrantSoul(ALICE, "ens:alice.eth", userSoul(BOB)),
+      legacyGrantSoul(ALICE, "ens:alice.eth", legacyUserSoul(BOB)),
       `s3rch/acl/${ALICE}/ens:alice_eth/${BOB}`,
     );
     assert.equal(
@@ -158,7 +152,7 @@ describe("CHECK(see, object, accessor) consume laws", () => {
     const result = checkSee(acl, CLAIM, ALICE, NOW);
     assert.equal(result.allowed, true);
     assert.equal(result.reason, "owner");
-    assert.equal(checkSee(acl, CLAIM, userSoul(ALICE), NOW).allowed, true);
+    assert.equal(checkSee(acl, CLAIM, legacyUserSoul(ALICE), NOW).allowed, true);
   });
 
   it("invalid clocks deny owners and delegates before graph access", () => {
@@ -461,11 +455,11 @@ describe("CHECK(see, object, accessor) consume laws", () => {
     };
     const urlHint = hint({
       context: "https://example.com/user",
-      target: userSoul(ALICE),
+      target: legacyUserSoul(ALICE),
     });
     const garbage = admitUserNode(acl, { ...node, id: "" }, ALICE, urlHint);
     assert.deepEqual(garbage, { denied: true });
-    assert.equal(acl.hasObject(userSoul(ALICE)), false);
+    assert.equal(acl.hasObject(legacyUserSoul(ALICE)), false);
 
     const future = admitUserNode(acl, { ...node, v: 2 }, ALICE, urlHint);
     assert.deepEqual(future, { denied: true });
@@ -485,10 +479,10 @@ describe("CHECK(see, object, accessor) consume laws", () => {
     assert.deepEqual(other, { denied: true });
 
     const admitted = admitUserNode(acl, node, ALICE, urlHint);
-    assert.deepEqual(admitted, { object: userSoul(ALICE) });
-    assert.equal(checkSee(acl, userSoul(ALICE), ALICE, NOW).allowed, true);
+    assert.deepEqual(admitted, { object: legacyUserSoul(ALICE) });
+    assert.equal(checkSee(acl, legacyUserSoul(ALICE), ALICE, NOW).allowed, true);
     assert.equal(checkSee(acl, CLAIM, ALICE, NOW).allowed, true);
-    assert.equal(checkSee(acl, userSoul(ALICE), BOB, NOW, urlHint).allowed, false);
+    assert.equal(checkSee(acl, legacyUserSoul(ALICE), BOB, NOW, urlHint).allowed, false);
     assert.equal(checkSee(acl, CLAIM, BOB, NOW, urlHint).allowed, false);
 
     const privateClaims = admitUserNode(
@@ -521,7 +515,7 @@ describe("CHECK(see, object, accessor) consume laws", () => {
     assert.equal(grantLiveAt(grant, 0), true);
     assert.equal(grantLiveAt(grant, 80), false);
     assert.equal(checkSee(acl, CLAIM, BOB, 0).allowed, true);
-    assert.equal(checkSeeGrant(acl, grant, CLAIM, userSoul(BOB), 0).allowed, true);
+    assert.equal(checkSeeGrant(acl, grant, CLAIM, legacyUserSoul(BOB), 0).allowed, true);
     assert.equal(checkSee(acl, CLAIM, BOB, 80).allowed, false);
   });
 });
