@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
 import { createSquadSessionClient } from "./squad-session-client";
-import { createSquadSessions } from "./identity/squad-session";
+import { createIdentitySessions } from "./identity/sea-session";
 import { createSquadSessionHandlers } from "./identity/squad-session-http";
 import { seaToPrincipalKey } from "./identity/forum-check";
 import type { SeaPair } from "./identity/sea";
 const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
 async function setup() {
   const pair = await sea.pair(), squad = { owner: pair.pub, forumId: `forum_${seaToPrincipalKey(pair.pub)}_${"a".repeat(32)}`, label: "Client test" };
-  const sessions = createSquadSessions({ squad, origin: "https://s3r.ch", secret: "s".repeat(32), consume: async () => true });
+  const sessions = createIdentitySessions({ origin: "https://s3r.ch", secret: "s".repeat(32), consume: async () => true });
   const handlers = createSquadSessionHandlers({ origin: "https://s3r.ch", sessions });
   const cookies = new Map<string, string>(); const actions: string[] = [];
   const fetcher: typeof fetch = async (url, init) => {
@@ -29,9 +29,9 @@ test("browser client signs in with real SEA proof and clears cookies on logout",
   assert.equal(await client.logout(), true); assert.equal(h.cookies.size, 0);
   assert.deepEqual(h.actions, ["challenge", "exchange", "logout"]);
 });
-test("wrong-scope challenges and aborted sign-in never reach exchange", async () => {
+test("foreign-origin challenges and aborted sign-in never reach exchange", async () => {
   const h = await setup(); let exchanges = 0;
-  const foreign = createSquadSessions({ squad: { ...h.squad, forumId: h.squad.forumId.replace(/a{32}$/, "b".repeat(32)) }, origin: "https://s3r.ch", secret: "s".repeat(32), consume: async () => true });
+  const foreign = createIdentitySessions({ origin: "https://other.example", secret: "s".repeat(32), consume: async () => true });
   const client = createSquadSessionClient({ base: "/api/squad/session", origin: "https://s3r.ch", squad: h.squad,
     fetch: async url => { if (String(url).endsWith("exchange")) exchanges++; return Response.json({ challenge: await foreign.challenge(h.pair.pub) }); } });
   assert.equal(await client.signIn(h.pair), false); assert.equal(exchanges, 0);

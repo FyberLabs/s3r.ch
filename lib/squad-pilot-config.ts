@@ -7,7 +7,7 @@ import type { ReportParents } from "./forum-report-forward";
 export type SquadPilotConfig = Readonly<{
   version: 1; origin: string; squad: LiveSquadSpec; authority: ForumAuthorityConfig;
   reportParents?: ReportParents;
-  sessionSecret: string; ownerSigningKey: string;
+  ownerSigningKey: string;
 }>;
 const exact = (x: unknown, keys: string): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).sort().join() === keys;
 const strings = (x: unknown): x is string[] => Array.isArray(x) && x.length <= 32 && x.every(s => typeof s === "string" && s.length > 0 && s.length <= 2048) && new Set(x).size === x.length;
@@ -20,14 +20,19 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
   if (raw === undefined || raw === "") return null;
   if (Buffer.byteLength(raw) > 24576) throw Error("invalid Squad pilot configuration");
   const c: unknown = JSON.parse(raw);
-  if ((!exact(c, "authority,origin,ownerSigningKey,sessionSecret,squad,version") &&
-      !exact(c, "authority,origin,ownerSigningKey,reportParents,sessionSecret,squad,version")) || c.version !== 1 ||
+  // Older moving-channel deployment documents may still carry this obsolete
+  // field. Validate and discard it; it never selects a signing secret.
+  if (c && typeof c === "object" && !Array.isArray(c) && "sessionSecret" in c) {
+    if (typeof c.sessionSecret !== "string" || !/^[0-9a-f]{64}$/.test(c.sessionSecret)) throw Error("invalid obsolete session secret");
+    delete (c as { sessionSecret?: unknown }).sessionSecret;
+  }
+  if ((!exact(c, "authority,origin,ownerSigningKey,squad,version") &&
+      !exact(c, "authority,origin,ownerSigningKey,reportParents,squad,version")) || c.version !== 1 ||
       typeof c.origin !== "string" || new URL(c.origin).origin !== c.origin || !c.origin.startsWith("https://") ||
       !exact(c.squad, "forumId,label,owner") || !exact(c.authority, "keys,pinnedIssuers,policy") ||
       !exact(c.authority.policy, "allowedChainIds,allowedDomains,allowedUris") ||
       !strings(c.authority.policy.allowedChainIds) || !strings(c.authority.policy.allowedDomains) || !strings(c.authority.policy.allowedUris) ||
       !strings(c.authority.pinnedIssuers) || !Array.isArray(c.authority.keys) || c.authority.keys.length < 1 || c.authority.keys.length > 16 ||
-      typeof c.sessionSecret !== "string" || !/^[0-9a-f]{64}$/.test(c.sessionSecret) ||
       typeof c.ownerSigningKey !== "string" || !/^[0-9a-f]{64}$/.test(c.ownerSigningKey)) throw Error("invalid Squad pilot configuration");
   const keys = new Set<string>(), material = new Set<string>();
   for (const k of c.authority.keys) {

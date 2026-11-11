@@ -1,5 +1,5 @@
 import { matchesBrowserOrigin } from "../request-origin";
-import type { createSquadSessions } from "./squad-session";
+import type { createIdentitySessions } from "./sea-session";
 
 const sessionCookie = "__Host-s3rch-squad-session";
 const challengeCookie = "__Host-s3rch-squad-challenge";
@@ -14,7 +14,7 @@ function readCookie(request: Request, name: string): string | null {
 }
 /** Deployment supplies the already configured session engine. Nothing here
  * registers routes or defaults an authentication secret or storage backend. */
-export function createSquadSessionHandlers(input: { origin: string; sessions: ReturnType<typeof createSquadSessions> }) {
+export function createSquadSessionHandlers(input: { origin: string; sessions: ReturnType<typeof createIdentitySessions> }) {
   const origin = new URL(input.origin);
   if (origin.origin !== input.origin || origin.protocol !== "https:") throw Error("Canonical HTTPS origin required");
   const { sessions } = input;

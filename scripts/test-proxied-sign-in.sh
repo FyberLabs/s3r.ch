@@ -11,6 +11,7 @@ trap cleanup EXIT
 node --import tsx scripts/squad-pilot.ts prepare "$data/pilot" https://test.s3r.ch
 # A fresh development identity store keeps this smoke independent of Azure.
 env -i PATH="$PATH" HOME="$data" NEXT_TELEMETRY_DISABLED=1 \
+  IDENTITY_SESSION_SECRET="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')" \
   S3RCH_IDENTITY_LINKS="$data/identity.json" \
   S3RCH_SQUAD_PILOT="$(cat "$data/pilot/deployment.json")" \
   S3RCH_SQUAD_BLOB_ACCOUNT=fixture S3RCH_SQUAD_BLOB_CONTAINER=fixture \

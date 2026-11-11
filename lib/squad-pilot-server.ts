@@ -1,3 +1,4 @@
+import { getIdentitySecret } from "./identity/secret";
 import { createHash } from "node:crypto";
 import { ManagedIdentityCredential } from "@azure/identity";
 import { BlobServiceClient, type ContainerClient } from "@azure/storage-blob";
@@ -11,13 +12,20 @@ import { createSquadSessionReplayStore } from "./identity/squad-session-replay";
 import { createSquadHttpServices } from "./squad-http-services";
 import { parseForumAuthority } from "./identity/forum-authority-records";
 
+export const identitySessionNamespace = (origin: string) => createHash("sha256").update(JSON.stringify(["s3rch-identity-session-v1", origin])).digest("hex");
 export const squadPilotNamespace = (c: SquadPilotConfig) => createHash("sha256").update(JSON.stringify(["s3rch-pilot-ledger-v1", c.origin, c.squad.forumId, c.squad.owner])).digest("hex");
+/** Storage-only operator entrypoint. It neither reads an identity secret nor
+ * constructs an issuer; callers retain the existing ledger verification rules. */
+export function createSquadPilotSource(c: SquadPilotConfig, container: Pick<ContainerClient, "getBlockBlobClient">, clock = () => Math.floor(Date.now() / 1000)) {
+  const config = structuredClone(c);
+  return createSquadCommitStore(createBlobSquadCommitStore(container, squadPilotNamespace(config)), config.squad, clock, "authoritative-ledger");
+}
 /** Never accepts browser-selected accounts, paths, policies or signing keys. */
-export function createSquadPilotServer(c: SquadPilotConfig, container: Pick<ContainerClient, "getBlockBlobClient">, clock = () => Math.floor(Date.now() / 1000)) {
+export function createSquadPilotServer(c: SquadPilotConfig, container: Pick<ContainerClient, "getBlockBlobClient">, clock = () => Math.floor(Date.now() / 1000), identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" })) {
   const config = structuredClone(c), namespace = squadPilotNamespace(config);
-  const source = createSquadCommitStore(createBlobSquadCommitStore(container, namespace), config.squad, clock, "authoritative-ledger");
-  const consume = createSquadSessionReplayStore(createBlobSquadSessionReplayStore(container, namespace), clock);
-  const services = createSquadHttpServices({ squad: config.squad, origin: config.origin, config: config.authority, secret: config.sessionSecret,
+  const source = createSquadPilotSource(config, container, clock);
+  const consume = createSquadSessionReplayStore(createBlobSquadSessionReplayStore(container, identitySessionNamespace(config.origin)), clock);
+  const services = createSquadHttpServices({ squad: config.squad, origin: config.origin, config: config.authority, secret: identitySecret,
     clock, consume, read: source.read, assignments: { source, runtime: {
       config: config.authority, clock,
       async sign(kind, fields) {
@@ -44,7 +52,7 @@ export function pilotContainer(env = process.env) {
 // resolved by App Service. Invalid/missing material never initializes state.
 let cached: { identity: string; server: ReturnType<typeof createSquadPilotServer> } | undefined;
 export function getSquadPilotServer() {
-  const identity = JSON.stringify([process.env.S3RCH_SQUAD_PILOT, process.env.S3RCH_SQUAD_BLOB_ACCOUNT, process.env.S3RCH_SQUAD_BLOB_CONTAINER]);
+  const identity = JSON.stringify([process.env.IDENTITY_SESSION_SECRET, process.env.S3RCH_SQUAD_PILOT, process.env.S3RCH_SQUAD_BLOB_ACCOUNT, process.env.S3RCH_SQUAD_BLOB_CONTAINER]);
   if (cached?.identity === identity) return cached.server;
   cached = undefined;
   const config = parseSquadPilotConfig(process.env.S3RCH_SQUAD_PILOT);

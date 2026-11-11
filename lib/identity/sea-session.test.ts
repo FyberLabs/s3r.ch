@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
-import { createSquadSessions } from "./squad-session";
+import { createIdentitySessions } from "./sea-session";
 import { signForumRecord } from "../forum-sign";
 import { seaToPrincipalKey } from "./forum-check";
 import type { SeaPair } from "./sea";
@@ -10,9 +10,9 @@ async function setup() {
   const owner = await sea.pair(), other = await sea.pair();
   const squad = { owner: owner.pub, forumId: `forum_${seaToPrincipalKey(owner.pub)}_${"a".repeat(32)}`, label: "Session test" };
   const used = new Set<string>(); let now = 1700000060;
-  const options = { squad, origin: "https://s3r.ch", secret: "s".repeat(32), clock: () => now,
+  const options = { origin: "https://s3r.ch", secret: "s".repeat(32), clock: () => now,
     consume: async (id: string) => { if (used.has(id)) return false; used.add(id); return true; } };
-  return { owner, other, options, sessions: createSquadSessions(options), advance: (seconds: number) => { now += seconds; } };
+  return { owner, other, options, sessions: createIdentitySessions(options), advance: (seconds: number) => { now += seconds; } };
 }
 test("real SEA possession issues a scoped session and concurrent replay loses", async () => {
   const h = await setup(), challenge = await h.sessions.challenge(h.owner.pub);
@@ -30,20 +30,19 @@ test("wrong signer, altered challenge, expired proof and unavailable replay stor
   assert.equal(await h.sessions.exchange(challenge, (await signForumRecord(challenge, h.other))!), null);
   const sig = (await signForumRecord(challenge, h.owner))!;
   assert.equal(await h.sessions.exchange(challenge + "x", sig), null);
-  const unavailable = createSquadSessions({ ...h.options, consume: async () => { throw Error("offline"); } });
+  const unavailable = createIdentitySessions({ ...h.options, consume: async () => { throw Error("offline"); } });
   assert.equal(await unavailable.exchange(challenge, sig), null);
   h.advance(60); assert.equal(await h.sessions.exchange(challenge, sig), null);
 });
-test("tokens cannot cross origin, Squad, signing secret or trust lifetime", async () => {
+test("tokens cannot cross origin, signing secret or trust lifetime", async () => {
   const h = await setup(), challenge = await h.sessions.challenge(h.owner.pub);
   const sig = (await signForumRecord(challenge, h.owner))!;
-  for (const override of [{ origin: "https://other.example" }, { secret: "x".repeat(32) },
-    { squad: { ...h.options.squad, forumId: h.options.squad.forumId.replace(/a{32}$/, "b".repeat(32)) } }]) {
-    assert.equal(await createSquadSessions({ ...h.options, ...override }).exchange(challenge, sig), null);
+  for (const override of [{ origin: "https://other.example" }, { secret: "x".repeat(32) }]) {
+    assert.equal(await createIdentitySessions({ ...h.options, ...override }).exchange(challenge, sig), null);
   }
-  const slow = createSquadSessions({ ...h.options, consume: async () => { h.advance(60); return true; } });
+  const slow = createIdentitySessions({ ...h.options, consume: async () => { h.advance(60); return true; } });
   assert.equal(await slow.exchange(challenge, sig), null);
-  assert.throws(() => createSquadSessions({ ...h.options, secret: "short" }));
+  assert.throws(() => createIdentitySessions({ ...h.options, secret: "short" }));
 });
 
 test("session issuance requires an exact HTTPS origin, including local configuration", async () => {
@@ -51,13 +50,24 @@ test("session issuance requires an exact HTTPS origin, including local configura
   for (const origin of ["http://s3r.ch", "http://localhost:8080", "http://127.0.0.1:8080",
     "https://s3r.ch/", "https://s3r.ch/path", "https://user:pass@s3r.ch", "https://s3r.ch?x=1",
     "https://s3r.ch#fragment", "https://S3R.CH", "ftp://s3r.ch"]) {
-    assert.throws(() => createSquadSessions({ ...h.options, origin }), /Canonical HTTPS origin required/, origin);
+    assert.throws(() => createIdentitySessions({ ...h.options, origin }), /Canonical HTTPS origin required/, origin);
   }
-  const sessions = createSquadSessions({ ...h.options, origin: "https://localhost:8443" });
+  const sessions = createIdentitySessions({ ...h.options, origin: "https://localhost:8443" });
   const challenge = await sessions.challenge(h.owner.pub);
   const signature = await signForumRecord(challenge, h.owner);
   assert.ok(signature);
   const token = await sessions.exchange(challenge, signature);
   assert.ok(token);
   assert.deepEqual(await sessions.authenticate(token), { key: h.owner.pub });
+});
+
+test("site sessions share identity across apps while challenge replay is global", async () => {
+  const h = await setup();
+  const secondApp = createIdentitySessions(h.options);
+  const challenge = await h.sessions.challenge(h.owner.pub);
+  const signature = (await signForumRecord(challenge, h.owner))!;
+  const token = await secondApp.exchange(challenge, signature);
+  assert.ok(token);
+  assert.deepEqual(await h.sessions.authenticate(token), { key: h.owner.pub });
+  assert.equal(await h.sessions.exchange(challenge, signature), null);
 });

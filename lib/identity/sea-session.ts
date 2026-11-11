@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { readForumSignature } from "../forum-sign";
-import { squadView, isPublicSquadPrincipal, type LiveSquadSpec } from "../squad-view";
+import { isPublicSquadPrincipal } from "../squad-view";
 import { isSeaPubkey } from "./forum-check";
 
 /** Server-side proof-of-possession sessions. consume must atomically record a
@@ -9,21 +9,20 @@ import { isSeaPubkey } from "./forum-check";
  * Failure or unavailable storage must return false or throw, never grant reuse.
  * This proves key possession only; current principal/ACL checks remain mandatory.
  */
-export function createSquadSessions(input: {
-  squad: LiveSquadSpec; origin: string; secret: string;
+export function createIdentitySessions(input: {
+  origin: string; secret: string;
   consume(id: string, expiresAt: number): Promise<boolean>;
   clock?: () => number;
 }) {
-  const view = squadView(input.squad);
-  if (!view.live || typeof input.secret !== "string" || new TextEncoder().encode(input.secret).length < 32) throw Error("Explicit Squad session configuration required");
+  if (typeof input.secret !== "string" || new TextEncoder().encode(input.secret).length < 32) throw Error("Explicit identity session configuration required");
   const origin = new URL(input.origin);
   if (origin.origin !== input.origin || origin.protocol !== "https:") throw Error("Canonical HTTPS origin required");
-  const secret = new TextEncoder().encode(input.secret), issuer = origin.origin, audience = view.forumId;
+  const secret = new TextEncoder().encode(input.secret), issuer = origin.origin, audience = issuer;
   const consume = input.consume, clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
-  const challengeType = "s3rch-squad-challenge-v1", sessionType = "s3rch-squad-session-v1";
+  const challengeType = "s3rch-identity-challenge-v1", sessionType = "s3rch-identity-session-v1";
   async function token(type: string, key: string, ttl: number, id?: string) {
     const now = clock();
-    return new SignJWT({ key, owner: view.owner }).setProtectedHeader({ alg: "HS256", typ: type })
+    return new SignJWT({}).setSubject(key).setProtectedHeader({ alg: "HS256", typ: type })
       .setIssuer(issuer).setAudience(audience).setIssuedAt(now).setExpirationTime(now + ttl)
       .setJti(id ?? randomBytes(32).toString("hex")).sign(secret);
   }
@@ -32,10 +31,10 @@ export function createSquadSessions(input: {
     const now = clock();
     const { payload } = await jwtVerify(value, secret, { algorithms: ["HS256"], typ: type,
       issuer, audience, currentDate: new Date(now * 1000), requiredClaims: ["iat", "exp", "jti"] });
-    if (typeof payload.key !== "string" || !isSeaPubkey(payload.key) || isPublicSquadPrincipal(payload.key) || payload.owner !== view.owner ||
+    if (typeof payload.sub !== "string" || !isSeaPubkey(payload.sub) || isPublicSquadPrincipal(payload.sub) ||
         !Number.isSafeInteger(payload.iat) || !Number.isSafeInteger(payload.exp) || payload.iat! > now ||
         payload.exp! - payload.iat! !== ttl || typeof payload.jti !== "string" || !/^[0-9a-f]{64}$/.test(payload.jti)) throw Error("Invalid session");
-    return { key: payload.key, id: payload.jti, expiresAt: payload.exp! };
+    return { key: payload.sub, id: payload.jti, expiresAt: payload.exp! };
   }
   return Object.freeze({
     async challenge(key: string) {

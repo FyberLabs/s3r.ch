@@ -8,7 +8,7 @@ const witness = p256.getPublicKey(Buffer.alloc(32, 56), false), wx = Buffer.from
 const config = () => ({ version: 1, origin: "https://s3r.ch", squad: { forumId: `forum_${seaToPrincipalKey(owner)}_${"a".repeat(32)}`, owner, label: "Pilot" },
   authority: { keys: [{ kid: "witness", kty: "EC", crv: "P-256", x: wx, y: wy, notBefore: 100, notAfter: 200 }],
     policy: { allowedDomains: ["s3r.ch"], allowedUris: ["https://s3r.ch"], allowedChainIds: ["84532"] }, pinnedIssuers: [] },
-  ownerSigningKey: secret.toString("hex"), sessionSecret: "a".repeat(64) });
+  ownerSigningKey: secret.toString("hex") });
 test("pilot is explicitly disabled or requires complete secret-backed scope and witness policy", () => {
   assert.equal(parseSquadPilotConfig(undefined), null); assert.equal(parseSquadPilotConfig(""), null);
   for (const changes of [{ origin: "http://s3r.ch" }, { ownerSigningKey: "0".repeat(64) }, { sessionSecret: "short" }, { unexpected: true },
@@ -17,7 +17,7 @@ test("pilot is explicitly disabled or requires complete secret-backed scope and 
   }
   const c = parseSquadPilotConfig(JSON.stringify(config())); assert.ok(c);
   const browser = publicSquadPilotConfig(c), serialized = JSON.stringify(browser);
-  assert.ok(!serialized.includes(c.ownerSigningKey)); assert.ok(!serialized.includes(c.sessionSecret));
+  assert.ok(!serialized.includes(c.ownerSigningKey));
   assert.deepEqual(Object.keys(browser).sort(), ["assignmentBase", "authorityEndpoint", "config", "origin", "sessionBase", "squad"]);
   Object.assign(browser.config.keys[0], { kid: "changed" });
   assert.equal(c.authority.keys[0].kid, "witness");
@@ -31,4 +31,30 @@ test("report destinations must be explicit distinct live forums", () => {
   assert.deepEqual(publicSquadPilotConfig(parse({ fleet, command })).reportParents, { fleet, command });
   for (const invalid of [null, { fleet }, { fleet, command: fleet }, { fleet: c.squad, command }, { fleet, command: {} }])
     assert.throws(() => parse(invalid));
+});
+
+test("old deployment documents cannot select a Squad signing secret", () => {
+  const current = parseSquadPilotConfig(JSON.stringify(config()));
+  const old = parseSquadPilotConfig(JSON.stringify({ ...config(), sessionSecret: "f".repeat(64) }));
+  assert.deepEqual(old, current);
+  assert.ok(old && !("sessionSecret" in old));
+});
+
+test("ledger-only operator access needs no identity secret while the HTTP server does", async () => {
+  const { createSquadPilotSource, createSquadPilotServer } = await import("./squad-pilot-server");
+  const { BlobServiceClient } = await import("@azure/storage-blob");
+  const container = new BlobServiceClient("https://fixture.blob.core.windows.net").getContainerClient("fixture");
+  const client = container.getBlockBlobClient("unused");
+  client.download = async () => { throw Object.assign(Error("missing"), { statusCode: 404, code: "BlobNotFound" }); };
+  const fake = { getBlockBlobClient: () => client };
+  const saved = process.env.IDENTITY_SESSION_SECRET;
+  try {
+    delete process.env.IDENTITY_SESSION_SECRET;
+    const c = parseSquadPilotConfig(JSON.stringify(config()))!;
+    const source = createSquadPilotSource(c, fake);
+    await assert.rejects(source.load(), /missing/);
+    assert.throws(() => createSquadPilotServer(c, fake), /IDENTITY_SESSION_SECRET is required/);
+  } finally {
+    if (saved === undefined) delete process.env.IDENTITY_SESSION_SECRET; else process.env.IDENTITY_SESSION_SECRET = saved;
+  }
 });
