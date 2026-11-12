@@ -31,3 +31,30 @@ UUID, cookies, request headers and raw errors never enter event payloads.
 This adapter is not yet registered on application routes. OpenFeature/GrowthBook
 payload handling, verified-session wiring, first-party transport and shared
 metric-driven guardrail disabling remain part of #337.
+
+## OpenFeature and GrowthBook provider
+
+`createExperimentProvider` evaluates through the OpenFeature server SDK and its
+GrowthBook provider. Give the adapter one dedicated OpenFeature domain and an
+operator-configured public Ed25519 key. The signer belongs to the control plane;
+the web process receives only its public key. No key is accepted from a request.
+
+`refresh(raw, signature)` verifies a detached base64url Ed25519 signature over the
+exact UTF-8 JSON bytes before parsing. The bounded payload has exactly these
+fields: `version: 1`, `audience: "s3r.ch"`, positive monotonic `sequence`, epoch-second
+`issuedAt` and `expiresAt`, and `experiments`. Validity is at most seven days.
+Each experiment has `key`, `control`, `variants`, `weights` (summing to one), and
+`disabled`. Extra targeting attributes and demographic conditions are refused.
+
+A bad signature, malformed payload, stale sequence or failed refresh retains the
+last valid configuration until its expiry. Before the first payload or after
+expiry, definitions are empty and evaluation falls back to the caller's compiled
+control. A signed disable supplies the shared guardrail override to the state
+adapter. The provider itself does not collect or aggregate metrics.
+
+Only a keyed assignment hash enters GrowthBook's targeting context. The SDK uses
+an in-memory payload with networking, streaming and analytics callbacks absent.
+The application controls first-party exposure/conversion emission separately.
+
+Payload signing/delivery, the shared guardrail controller and route registration
+are still needed before this provider enables experiments in the application.
