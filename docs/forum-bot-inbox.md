@@ -39,10 +39,14 @@ authorization throughout execution.
 The default capacity is 4096 retained task IDs, configurable up to 16384. A full
 inbox refuses new tasks instead of discarding its replay protection. Do not
 remove or rotate the database while the same message stream can be replayed.
-Transport cursor advancement must follow successful `receive`, and reconnection
-may replay messages through the exact-duplicate path.
+An optional opaque transport checkpoint can be committed atomically with
+`receive(task, {before, after})`. Its compare-and-swap prevents a stale worker
+from advancing another worker's cursor. `cursor()` survives reconnects; exact
+retries of an already committed task/checkpoint are idempotent. The transport
+must authenticate and scope its cursor, then supply every message through this
+path. A checkpoint is not itself an access grant. A denied or conflicting task
+never advances it.
 
 Remaining #31 work includes signed transport wiring, complete current authority,
-bot enrollment, bounded delegation, artifact expiry/revocation, persistent stream
-cursors, worker execution, and forum status/approval/cancellation UI. Unit
+bot enrollment, bounded delegation, artifact expiry/revocation, transport checkpoint wiring, worker execution, and forum status/approval/cancellation UI. Unit
 contracts for this component do not establish those features.

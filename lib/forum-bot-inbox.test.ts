@@ -71,3 +71,17 @@ test("authorization time cannot extend the stored task deadline", t => {
   const task = f.task(); a.receive(task);
   assert.equal(a.claim(task.id), null); assert.equal(a.status(task.id), "expired");
 });
+
+test("cursor and task commit together and stale writers cannot skip messages", t => {
+  const f = fixture(t), a = f.open(), first = f.task(), next = f.task();
+  assert.equal(a.cursor(), null);
+  assert.equal(a.receive(first, { before: null, after: "page-1" }), "stored");
+  assert.equal(a.receive(first, { before: null, after: "page-1" }), "duplicate");
+  assert.throws(() => a.receive(next, { before: null, after: "page-2" }), /checkpoint changed/);
+  assert.equal(a.status(next.id), null); assert.equal(a.cursor(), "page-1");
+  a.close(); const b = f.open(); assert.equal(b.cursor(), "page-1");
+  assert.equal(b.receive(next, { before: "page-1", after: "page-2" }), "stored");
+  assert.equal(b.cursor(), "page-2");
+  assert.throws(() => b.receive({ ...first, handle: randomUUID() }, { before: "page-2", after: "page-3" }), /Conflicting/);
+  assert.equal(b.cursor(), "page-2");
+});

@@ -12,6 +12,7 @@ export type BotInboxScope = Readonly<{ tenant: string; forum: string; bot: strin
 export type BotInboxTask = Readonly<{
   id: string; message: string; sender: string; handle: string; expires: number;
 }>;
+export type BotInboxCursor = Readonly<{ before: string | null; after: string }>;
 export type BotInboxStatus = "pending" | "claimed" | "unknown" | "completed" | "failed" | "cancelled" | "expired";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const text = (v: unknown, max: number): v is string => typeof v === "string" && v.length > 0 && v.length <= max && !/[\x00-\x1f\x7f]/.test(v);
@@ -66,7 +67,7 @@ export function openForumBotInbox(input: {
   try {
     db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
     transaction(() => {
-      db.exec("CREATE TABLE IF NOT EXISTS binding (id INTEGER PRIMARY KEY CHECK(id=1), scope TEXT NOT NULL); CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, message TEXT UNIQUE NOT NULL, body TEXT NOT NULL, expires INTEGER NOT NULL, state TEXT NOT NULL, instance TEXT)");
+      db.exec("CREATE TABLE IF NOT EXISTS binding (id INTEGER PRIMARY KEY CHECK(id=1), scope TEXT NOT NULL); CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, message TEXT UNIQUE NOT NULL, body TEXT NOT NULL, expires INTEGER NOT NULL, state TEXT NOT NULL, instance TEXT); CREATE TABLE IF NOT EXISTS checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)");
       db.prepare("INSERT OR IGNORE INTO binding VALUES (1, ?)").run(binding);
       if (db.prepare("SELECT scope FROM binding WHERE id=1").get()?.scope !== binding) throw Error("Bot inbox scope differs");
     });
@@ -81,19 +82,35 @@ export function openForumBotInbox(input: {
   }
   return {
     close() { db.close(); },
-    receive(value: BotInboxTask): "stored" | "duplicate" {
+    cursor(): string | null {
+      const row = db.prepare("SELECT value FROM checkpoint WHERE id=1").get();
+      return row ? String(row.value) : null;
+    },
+    receive(value: BotInboxTask, checkpoint?: BotInboxCursor): "stored" | "duplicate" {
       const task = taskValue(value), body = JSON.stringify(task);
+      const cursor = checkpoint === undefined ? null : Object.freeze({ ...checkpoint });
+      if (cursor && (Object.keys(cursor).sort().join() !== "after,before" ||
+          (cursor.before !== null && !text(cursor.before, 2048)) || !text(cursor.after, 2048) || cursor.before === cursor.after))
+        throw Error("Invalid bot inbox checkpoint");
+      const advance = (duplicate: boolean) => {
+        if (!cursor) return;
+        const current = db.prepare("SELECT value FROM checkpoint WHERE id=1").get()?.value ?? null;
+        if (duplicate && current === cursor.after) return;
+        if (current !== cursor.before) throw Error("Bot inbox checkpoint changed");
+        db.prepare("INSERT INTO checkpoint VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET value=excluded.value").run(cursor.after);
+      };
       return transaction(() => {
         allowed(task, "receive");
         const held = db.prepare("SELECT body FROM tasks WHERE id=? OR message=?").all(task.id, task.message);
         if (held.length) {
-          if (held.length === 1 && held[0].body === body) return "duplicate";
+          if (held.length === 1 && held[0].body === body) { advance(true); return "duplicate"; }
           throw Error("Conflicting bot inbox task");
         }
         const at = now();
         if (task.expires <= at || task.expires > at + 3600) throw Error("Bot task deadline is invalid");
         if (Number(db.prepare("SELECT count(*) AS n FROM tasks").get()?.n) >= capacity) throw Error("Bot inbox is full");
         db.prepare("INSERT INTO tasks VALUES (?, ?, ?, ?, 'pending', NULL)").run(task.id, task.message, body, task.expires);
+        advance(false);
         return "stored";
       });
     },
@@ -109,7 +126,7 @@ export function openForumBotInbox(input: {
         if (task.expires <= now()) {
           db.prepare("UPDATE tasks SET state='expired' WHERE id=?").run(id); return null;
         }
-        // No await or user code occurs between the final authority gate and commit.
+        // No asynchronous work occurs before the claim commit.
         db.prepare("UPDATE tasks SET state='claimed', instance=? WHERE id=? AND state='pending'").run(instance, id);
         return task;
       });
