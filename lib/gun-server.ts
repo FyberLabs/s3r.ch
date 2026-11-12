@@ -31,6 +31,7 @@ const ITEMS_KEY = "items";
 const META_KEY = "meta";
 
 export type MemoryStore = SourceCache & {
+  tenantRecordInitialized?: boolean;
   seededAt: string | null;
   sourcesOk: number;
   sourcesTried: number;
@@ -109,6 +110,21 @@ export function applySourcePull(pull: SourcePull, seededAt: string): number {
   return new Set((pull.windows ?? []).flatMap(window => window.items.map(canonicalKey)).filter(Boolean)).size;
 }
 
+/** Publish only a committed tenant snapshot; disk and Gun remain derived caches. */
+export function publishAuthoritativeFeed(next: MemoryStore): void {
+  const store = getMemoryStore();
+  // A stale local graph may contain rows removed by another writer.
+  const retired = new Set(next.retired);
+  for (const id of store.items.keys()) if (!next.items.has(id)) retired.add(id);
+  const installed = { ...next, retired, tenantRecordInitialized: true };
+  persistSnapshot(installed);
+  Object.assign(store, installed);
+  const gun = getServerGun();
+  publishStoreItems(gun, store);
+  persistMeta(store);
+  publishPublicFeed(process.cwd(), listSnapshot());
+}
+
 export function setSeedMeta(meta: {
   seededAt: string | null;
   sourcesOk: number;
@@ -154,6 +170,7 @@ function persistSnapshot(store: MemoryStore): void {
   const path = snapshotPath();
   ensureDir(path);
   const body = {
+    tenantRecordInitialized: store.tenantRecordInitialized === true,
     sourceWindows: [...store.windows],
     retiredIds: [...store.retired],
     items: Array.from(store.items.values()),
@@ -174,7 +191,8 @@ function persistSnapshot(store: MemoryStore): void {
 function loadSnapshot(store: MemoryStore): void {
   try {
     const raw = readFileSync(/*turbopackIgnore: true*/ snapshotPath(), "utf8");
-    const parsed = JSON.parse(raw) as Partial<FeedSnapshot> & { sourceWindows?: unknown; retiredIds?: unknown };
+    const parsed = JSON.parse(raw) as Partial<FeedSnapshot> & { sourceWindows?: unknown; retiredIds?: unknown; tenantRecordInitialized?: unknown };
+    store.tenantRecordInitialized = parsed.tenantRecordInitialized === true;
     if (Array.isArray(parsed.sourceWindows)) {
       for (const entry of parsed.sourceWindows) {
         if (Array.isArray(entry) && entry.length === 2 && typeof entry[0] === "string" &&

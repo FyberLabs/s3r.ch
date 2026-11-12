@@ -5,6 +5,7 @@ import { pipeline } from "node:stream/promises";
 import { GET as version } from "../app/api/version/route";
 import { handleSeed as seed } from "../lib/seed-request";
 import { attachGunWeb, snapshotPath } from "../lib/gun-server";
+import { restoreTenantFeedCache } from "../lib/tenant-feed-cache-server";
 import { restorePublicFeed } from "../public-feed-cache.cjs";
 
 const snapshot = "public/feed-cache/snapshot.json";
@@ -53,4 +54,8 @@ const server = createServer((request, response) => {
   });
 });
 attachGunWeb(server);
-server.listen(Number(process.env.PORT || 8080), process.env.HOSTNAME || "0.0.0.0");
+void restoreTenantFeedCache().catch(() => {
+  console.error("[s3r.ch] Tenant feed cache unavailable; serving the last local snapshot");
+}).finally(() => {
+  server.listen(Number(process.env.PORT || 8080), process.env.HOSTNAME || "0.0.0.0");
+});
