@@ -26,3 +26,33 @@ Those steps belong to #340. Recovery and fixture namespaces do not define an
 end-user secret store, access grant or encryption-key wrapping policy; those
 remain SociACL responsibilities. Additional providers can implement this same
 conditional contract without changing consumers.
+
+## Optional self-hosted provider
+
+`createAzureRecordStore` implements the same interface against an existing private
+Azure container. Names remain tenant-scoped. The adapter uses Azure ETags for
+atomic conditions and exposes a SHA-256 encoding of each ETag as an opaque
+revision. Identical payload writes still advance the revision, and a deleted then
+recreated record cannot accept an older revision. Container anonymity, malformed
+metadata, incomplete downloads and unexpected provider errors fail closed.
+
+The feed's explicit `azure` backend uses the server's Azure identity and primary
+account endpoint. It requires no Spanopticon service or API key. The default
+remote implementation remains Spanopticon; hosted Fyber configuration does not
+select this optional provider. Custom deployments can supply another RecordStore
+implementation with the same conditional create/replace/delete and size contract.
+Copy and verify current records before changing an already adopted provider; a
+missing destination must not silently resurrect stale local data.
+
+An IPFS provider is deferred. Immutable content addressing alone does not satisfy
+named conditional replacement. It must also supply a tenant-bound name index
+with atomic revision checks and durable deletion state; blind last-writer-wins
+IPNS publication cannot substitute for that contract. S3 can be added behind the
+same interface (and is already a Spanopticon provider), without changing callers.
+
+Recovery/fixture callers can pass a selected RecordStore directly. The future
+SociACL secret-store adapter may depend on this byte-storage boundary, but must
+implement its own encrypted metadata, owner/grantee DEK wrapping, current Check
+and epoch-proof verification, revocation rotation, device keys and recovery as
+specified in SociACL #155. This interface grants no access and defines no competing
+key-custody scheme; the current namespaces are not a deployed secret store.
