@@ -1,3 +1,4 @@
+import { parseAssignmentSignedMaterial, verifyAssignmentSignedMaterial } from "./assignment-signed-material";
 import { assignmentCancellationIntents, assignmentReplacementIntents } from "./assignment-signing-plan";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -283,4 +284,84 @@ test("membership intents deduplicate shared groups and snapshot sorted predecess
   assert.equal(cancellations[0].fields.setOwner, owner);
   assert.ok(Object.isFrozen(cancellations[0].fields.prior));
   await assert.rejects(assignmentCancellationIntents(state, id, old, at, { groupMembership: () => group }), /external group/);
+});
+
+async function signedPlan(h: Awaited<ReturnType<typeof setup>>) {
+  const plan = await h.runtime.plan(owner, id, replacement, 0);
+  return { issuedAt: plan.issuedAt, cancellations: plan.cancellations.map(i => sign(i.kind, { ...i.fields })),
+    grants: plan.grants.map(i => sign(i.kind, { ...i.fields })) };
+}
+test("client-signed assignment completes without any runtime signer", async () => {
+  const h = await setup(), material = await signedPlan(h);
+  const runtime = createDelegationRuntime({ ...h.dependencies, sign: undefined });
+  await assert.rejects(runtime.start(owner, id, replacement, 0), /signatures required/);
+  assert.equal((await h.journal.load()).revision, 0); assert.equal(h.stores.size, 0);
+  h.tick(2);
+  const result = await runtime.startSigned(owner, id, replacement, 0, material);
+  assert.equal(result.status, "complete", JSON.stringify(result)); assert.equal(h.signed, 0);
+  assert.equal((await h.journal.load()).assignee, replacement);
+  assert.deepEqual(await runtime.startSigned(owner, id, replacement, 0, material), result);
+});
+for (const fault of ["signature", "target", "missing", "expired", "future"] as const)
+  test(`invalid client material ${fault} is rejected before claim or outbox writes`, async () => {
+    const h = await setup(), material = await signedPlan(h);
+    if (fault === "signature") material.grants[0].record.sig = "invalid";
+    if (fault === "target") material.grants[0] = sign("post", { ...material.grants[0].record, accessor: other });
+    if (fault === "missing") material.grants.pop();
+    if (fault === "expired") h.tick(301);
+    if (fault === "future") h.tick(-1);
+    const before = await h.journal.load(), runtime = createDelegationRuntime({ ...h.dependencies, sign: undefined });
+    await assert.rejects(runtime.startSigned(owner, id, replacement, 0, material));
+    assert.deepEqual(await h.journal.load(), before); assert.equal(h.stores.size, 0); assert.equal(h.signed, 0);
+  });
+for (const write of [2, 3, 4, 5, 6, 7, 8, 9]) test(`client-signed material survives restart at write ${write}`, async () => {
+  const h = await setup(), material = await signedPlan(h), dependencies = { ...h.dependencies, sign: undefined };
+  h.failAfter(write, true);
+  try { await createDelegationRuntime(dependencies).startSigned(owner, id, replacement, 0, material); } catch { /* lost response */ }
+  h.tick(2);
+  const restart = createDelegationRuntime(dependencies);
+  let done = false;
+  for (let n = 0; n < 5; n++) if ((await restart.resume(owner, id, replacement)).status === "complete") { done = true; break; }
+  assert.ok(done); assert.equal(h.signed, 0);
+  assert.equal((await h.journal.load()).assignee, replacement);
+});
+
+test("delayed client signatures still cancel current group membership", async () => {
+  const h = await setup(), set = `set_${seaToPrincipalKey(owner)}_${"4".repeat(32)}`;
+  await h.runtime.admit(owner, 0, destination, [
+    ...(["member", "set"] as const).map(role => sign("membership", { role, predicate: "same-group", set, member: old, setOwner: owner, stated: 1, hamState: 1, cancels: [], issuedAt: at })),
+    sign("object-set", { owner, object: destination, predicate: "same-group", set, stated: 1, hamState: 1, cancels: [], issuedAt: at }),
+  ]);
+  const revision = (await h.journal.load()).revision, plan = await h.runtime.plan(owner, id, replacement, revision);
+  const material = { issuedAt: plan.issuedAt, cancellations: plan.cancellations.map(i => sign(i.kind, { ...i.fields })), grants: plan.grants.map(i => sign(i.kind, { ...i.fields })) };
+  assert.equal(material.cancellations.length, 3); h.tick(2);
+  const result = await createDelegationRuntime({ ...h.dependencies, sign: undefined }).startSigned(owner, id, replacement, revision, material);
+  assert.equal(result.status, "complete"); assert.equal(h.signed, 0);
+});
+test("signed material parser and verifier reject malformed, extra and mismatched records", async () => {
+  const h = await setup(), material = await signedPlan(h), plan = await h.runtime.plan(owner, id, replacement, 0), graph = await h.graph();
+  for (const bad of [null, [], {}, { ...material, extra: true }, { ...material, issuedAt: -1 },
+    { ...material, grants: [] }, { ...material, grants: Array(129).fill(material.grants[0]) },
+    { ...material, cancellations: Array(193).fill(material.cancellations[0]) },
+    { ...material, grants: [null, material.grants[1]] },
+    { ...material, grants: [{ ...material.grants[0], extra: true }, material.grants[1]] },
+    { ...material, grants: [{ ...material.grants[0], soul: "wrong" }, material.grants[1]] },
+    { ...material, grants: [{ ...material.grants[0], record: { ...material.grants[0].record, issuedAt: at + 1 } }, material.grants[1]] },
+    { ...material, grants: [{ ...material.grants[0], record: { ...material.grants[0].record, attest: "untrusted" } }, material.grants[1]] }])
+    assert.throws(() => parseAssignmentSignedMaterial(bad));
+  assert.throws(() => verifyAssignmentSignedMaterial(material, { ...plan, grants: [] }, graph, at), /changed/);
+  assert.throws(() => verifyAssignmentSignedMaterial(material, { ...plan, grants: [...plan.grants].reverse() }, graph, at), /changed/);
+  assert.throws(() => verifyAssignmentSignedMaterial(material, plan, { writerKey: () => other }, at), /signature/);
+  assert.throws(() => verifyAssignmentSignedMaterial(material, plan, { writerKey: () => null }, at), /signature/);
+  for (const time of [NaN, at - 1, at + 301]) assert.throws(() => verifyAssignmentSignedMaterial(material, plan, graph, time), /expired/);
+  assert.throws(() => verifyAssignmentSignedMaterial(material, { ...plan, issuedAt: at - 1 }, graph, at), /expired/);
+});
+
+test("signed start preserves completed receipts after a later assignment", async () => {
+  const h = await setup(), material = await signedPlan(h);
+  const runtime = createDelegationRuntime({ ...h.dependencies, sign: undefined });
+  const first = await runtime.startSigned(owner, id, replacement, 0, material);
+  await h.runtime.start(owner, "b".repeat(32), other, (await h.journal.load()).revision);
+  assert.deepEqual(await runtime.startSigned(owner, id, replacement, 0, material), first);
+  await assert.rejects(runtime.startSigned(owner, id, other, 0, material), /receipt replacement/);
 });

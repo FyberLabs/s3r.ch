@@ -23,13 +23,13 @@ function direct(state: State, kind: "see" | "post", object: string, accessor: st
 /** Pure plan construction from an already admitted, fixed authority snapshot.
  * This is not an admission function and never calls a signer or any store. */
 export async function assignmentCancellationIntents(input: State, operationId: string, previous: string, at: number,
-  graph: Pick<ForumAuthorityGraph, "groupMembership">): Promise<readonly AssignmentSigningIntent[]> {
+  graph: Pick<ForumAuthorityGraph, "groupMembership">, evaluationAt = at): Promise<readonly AssignmentSigningIntent[]> {
   if (!/^[0-9a-f]{32}$/.test(operationId)) throw Error("Invalid assignment operation");
   const state = structuredClone(input), rows: AssignmentSigningIntent[] = [];
   for (const destination of state.destinations) for (const kind of ["post", "see"] as const) rows.push(direct(state, kind, destination, previous, 0, at));
   const groups = new Map<string, NonNullable<ReturnType<ForumAuthorityGraph["groupMembership"]>>>();
   for (const destination of state.destinations) {
-    const membership = graph.groupMembership(destination, previous, at);
+    const membership = graph.groupMembership(destination, previous, evaluationAt);
     if (membership) groups.set(membership.soul, { ...membership });
   }
   for (const group of groups.values()) {
