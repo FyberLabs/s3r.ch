@@ -116,3 +116,18 @@ test("process adapter stays lazy and isolates missing configuration", async () =
     else process.env.APPLICATIONINSIGHTS_CONNECTION_STRING = previous;
   }
 });
+
+test("named telemetry carries the caller's stable ID on both attempts without private context", async () => {
+  const sent: Array<Record<string, any>> = [];
+  const telemetry = createExperimentTelemetry(connection, async value => createManualExperimentClient(value, async (_url, init) => {
+    sent.push(JSON.parse(init.body as string));
+    return new Response(null, { status: 200 });
+  }), { supportedEventTypes: ["experiment.conversion.v2"], metrics: { layout: ["sign_in_completed"] } });
+  const named = { ...payload, conversion_key: "sign_in_completed" };
+  for (let attempt = 0; attempt < 2; attempt++) assert.equal(await telemetry.emit("experiment.conversion.v2", named, key), true);
+  assert.equal(sent.length, 2);
+  for (const event of sent) {
+    assert.deepEqual(event.data.baseData.properties, { ...named, event_id: key });
+    assert.deepEqual(event.tags, { "ai.cloud.role": "s3rch" });
+  }
+});

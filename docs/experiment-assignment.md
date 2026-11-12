@@ -9,6 +9,13 @@ The adapter emits a random UUID in `__Host-s3rch-experiment-id` and authenticate
 cohort state in `__Host-s3rch-experiments`. Both cookies use Secure, HttpOnly,
 SameSite=Lax and Path=/ with no Domain. The signing/hash secret must be random,
 at least 32 bytes and shared across web instances for the assignment window.
+For a planned secret rotation, supply up to three `previousSecrets` shared by all
+instances. Existing signed state is verified against those keys and rewritten
+with the current key. Active assignment hashes stay unchanged, while new
+experiments use the current key. Account binding is checked with the key that
+verified the old state, so rotation never transfers another account's cohort.
+Keep prior verification keys for the required assignment retention window;
+removing a key invalidates cookies that have not yet been rewritten.
 Cookie state expires after one year. The application must append both returned
 Set-Cookie values to the response after awaiting its evaluations.
 
@@ -26,7 +33,7 @@ guardrail result. This library does not collect metrics or change a deployment.
 Evaluation does not emit events. Use the first-party event adapter only when a
 response actually shows a variant or the configured conversion occurs. Experiment
 and variant names are configuration slugs, never customer content. The SEA key,
-UUID, cookies, request headers and raw errors never enter event payloads.
+assignment UUID, cookies, request headers and raw errors never enter event payloads.
 
 This adapter is not yet registered on application routes. OpenFeature/GrowthBook
 payload handling, verified-session wiring, first-party transport and shared
@@ -58,3 +65,22 @@ The application controls first-party exposure/conversion emission separately.
 
 Payload signing/delivery, the shared guardrail controller and route registration
 are still needed before this provider enables experiments in the application.
+
+## Named conversions
+
+`createExperimentEmitter` and `createExperimentTelemetry` accept a trusted
+`ExperimentEmissionPolicy`: destination `supportedEventTypes` and a `metrics`
+map from experiment key to allowed metric slugs. Configuration is copied when
+the adapter is created. Recreate it when trusted configuration changes; never
+construct the policy from browser event fields.
+
+A named conversion uses `experiment.conversion.v2`, a required `conversion_key`,
+and a separately supplied action UUID. Persist that UUID with the action and
+reuse it across retries and sinks. The Application Insights adapter adds it as
+`event_id` in custom properties. Downstream queries must deduplicate by that ID;
+ingestion itself is not exactly-once. The assignment UUID is never emitted.
+
+An absent v2 advertisement, missing action ID or unconfigured metric prevents
+emission. Legacy exposure and conversion v1 retain their strict payload shape;
+never downgrade v2 by dropping its metric. Route wiring and a durable action
+outbox remain application responsibilities before this adapter is activated.
