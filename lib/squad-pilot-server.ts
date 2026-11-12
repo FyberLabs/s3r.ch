@@ -11,7 +11,8 @@ import { createBlobCancellationOutboxStore, createBlobReplacementGrantStore } fr
 import { createSquadSessionReplayStore } from "./identity/squad-session-replay";
 import { createSquadHttpServices } from "./squad-http-services";
 
-export const identitySessionNamespace = (origin: string) => createHash("sha256").update(JSON.stringify(["s3rch-identity-session-v1", origin])).digest("hex");
+import { identitySessionNamespace } from "./identity/replay-namespace";
+export { identitySessionNamespace } from "./identity/replay-namespace";
 export const squadPilotNamespace = (c: SquadPilotConfig) => createHash("sha256").update(JSON.stringify(["s3rch-pilot-ledger-v1", c.origin, c.squad.forumId, c.squad.owner])).digest("hex");
 /** Storage-only operator entrypoint. It neither reads an identity secret nor
  * constructs an issuer; callers retain the existing ledger verification rules. */
