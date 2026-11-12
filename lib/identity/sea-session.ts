@@ -1,3 +1,4 @@
+import { createIdentityTokenVerifier } from "./sea-session-verifier";
 import { parseAgentDelegation, parsePrincipalId, verifyAgentDelegation, type ResolutionContext } from "sociacl-ids";
 import { randomBytes } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
@@ -44,16 +45,7 @@ export function createIdentitySessions(input: {
       .setIssuer(issuer).setAudience(audience).setIssuedAt(now).setExpirationTime(expiresAt)
       .setJti(randomBytes(32).toString("hex")).sign(secret);
   }
-  async function claims(value: string, type: string, ttl: number) {
-    if (typeof value !== "string" || value.length > 4096) throw Error("Invalid session");
-    const now = clock();
-    const { payload } = await jwtVerify(value, secret, { algorithms: ["HS256"], typ: type,
-      issuer, audience, currentDate: new Date(now * 1000), requiredClaims: ["iat", "exp", "jti"] });
-    if (typeof payload.sub !== "string" || !isSeaPubkey(payload.sub) || isPublicSquadPrincipal(payload.sub) ||
-        !Number.isSafeInteger(payload.iat) || !Number.isSafeInteger(payload.exp) || payload.iat! > now ||
-        payload.exp! - payload.iat! !== ttl || typeof payload.jti !== "string" || !/^[0-9a-f]{64}$/.test(payload.jti)) throw Error("Invalid session");
-    return { key: payload.sub, id: payload.jti, expiresAt: payload.exp! };
-  }
+  const claims = createIdentityTokenVerifier({ origin: issuer, secret: input.secret, clock }).claims;
   const agentChallengeType = "s3rch-agent-challenge-v1", agentSessionType = "s3rch-agent-session-v1";
   const delegationSource = input.delegationSource;
   async function delegation(id: string, scopes: readonly string[]) {

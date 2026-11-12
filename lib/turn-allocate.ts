@@ -1,5 +1,5 @@
 /**
- * Server hop: s3r.ch SIWE session → Panopticon TURN allocate.
+ * Server hop: s3r.ch SEA proof session → Panopticon TURN allocate.
  *
  * Contract: FyberLabs/panopticon `products/turn/docs/turn-allocate-v0.md`.
  * `POST /api/v1/turn/allocate` → `{ iceServers, expiresAt }`.
@@ -30,6 +30,8 @@
  * Fail soft: nothing configured / 401 / 503 / network / bad JSON → caller keeps STUN.
  */
 
+import { isSeaPubkey } from "./identity/forum-check";
+import { isPublicSquadPrincipal } from "./squad-view";
 import { createHmac, randomBytes } from "node:crypto";
 import { iceServerUrls } from "./gun-webrtc";
 import { recordIntegrationHop } from "./dependency-health";
@@ -376,12 +378,12 @@ function staticAllocation(env: EnvLike | undefined, now: number): TurnAllocateOk
  * Never returns the product API key.
  */
 export async function sessionGatedAllocate(input: {
-  sessionAddress: string | null;
+  sessionPrincipal: string | null;
   env?: EnvLike;
   fetchImpl?: typeof fetch;
   now?: number;
 }): Promise<AllocateRouteResult> {
-  if (!input.sessionAddress) {
+  if (!input.sessionPrincipal || !isSeaPubkey(input.sessionPrincipal) || isPublicSquadPrincipal(input.sessionPrincipal)) {
     return { status: 401, body: { error: "unauthorized" } };
   }
   const env = input.env ?? process.env;
@@ -394,7 +396,7 @@ export async function sessionGatedAllocate(input: {
   }
   const allocated = await hopPanopticonAllocate({
     cfg,
-    clientHint: input.sessionAddress,
+    clientHint: DEFAULT_CLIENT_HINT,
     fetchImpl: input.fetchImpl,
   });
   recordIntegrationHop("turn", allocated !== null);
