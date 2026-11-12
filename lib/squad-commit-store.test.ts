@@ -122,3 +122,13 @@ test("ledger read crossing a second and concurrent identity admission cannot aut
   await ledger.updateHistory(current.etag, { ...current.history, completeThrough: now });
   await assert.rejects(pinned.journal.claim(owner, "f".repeat(32), replacement, 0), /changed/);
 });
+
+test("primary authority forwards cancellation to the atomic backing read", async () => {
+  const controller = new AbortController(); let received: AbortSignal | undefined;
+  const source = createSquadCommitStore({ async read(signal) {
+    received = signal;
+    return new Promise((_, reject) => signal!.addEventListener("abort", () => reject(Error("cancelled")), { once: true }));
+  }, async compareAndSwap() { return false; } }, spec, () => 100);
+  const pending = source.read(100, controller.signal); controller.abort();
+  await assert.rejects(pending, /cancelled/); assert.equal(received, controller.signal);
+});

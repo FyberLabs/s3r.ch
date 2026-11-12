@@ -52,3 +52,12 @@ test("missing, forged, expired and incomplete authority never authorize media", 
   const abort = new AbortController(); abort.abort();
   await assert.rejects(setup()(request, squad.forumId, "read", abort.signal));
 });
+
+test("authentication crossing the evaluation second cannot use an expired session", async () => {
+  let now = at, reads = 0;
+  const authorize = createMediaAuthority({ config, clock: () => now,
+    authenticate: async () => { now++; return { key: owner }; },
+    read: async () => { reads++; return { ...snapshot(), completeThrough: now }; } });
+  assert.equal(await authorize(request, squad.forumId, "read", signal), false);
+  assert.equal(reads, 0);
+});

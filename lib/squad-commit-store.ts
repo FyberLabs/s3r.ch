@@ -40,8 +40,9 @@ export function createSquadCommitStore(store: InventoryStore, spec: LiveSquadSpe
     if (ledger && doc.history.accounts.some(account => isPublicSquadPrincipal(account.principal))) throw Error("public fixture account in pilot ledger");
     return doc;
   }
-  async function load() {
-    const held = await store.read();
+  async function load(signal?: AbortSignal) {
+    const held = await store.read(signal);
+    signal?.throwIfAborted();
     if (!held || !held.etag || held.etag === "*") throw Error("missing combined authority");
     return { ...held, doc: await validate(held.text) };
   }
@@ -51,7 +52,7 @@ export function createSquadCommitStore(store: InventoryStore, spec: LiveSquadSpe
       if (!await store.compareAndSwap(null, text)) throw Error("combined authority already provisioned");
     },
     async read(at: number, signal: AbortSignal) {
-      signal.throwIfAborted(); const readAt = clock(), held = await load(); signal.throwIfAborted();
+      signal.throwIfAborted(); const readAt = clock(), held = await load(signal); signal.throwIfAborted();
       const doc = ledger ? { ...held.doc, history: evaluation(held.doc.history, at, readAt) } : held.doc;
       return createForumAuthoritySnapshotStore(fixed(sourceText(doc)), spec).read(at, signal);
     },

@@ -3,7 +3,7 @@ import { recoveryObject, recoveryList } from "./identity/forum-recovery-records"
 
 export type InventoryState = Readonly<{ version: 1; operation: string | null; destinations: readonly string[] }>;
 export type InventoryStore = {
-  read(): Promise<{ text: string; etag: string } | null>;
+  read(signal?: AbortSignal): Promise<{ text: string; etag: string } | null>;
   /** Atomic conditional write. null expects absence; false means conflict only. */
   compareAndSwap(etag: string | null, text: string): Promise<boolean>;
 };
