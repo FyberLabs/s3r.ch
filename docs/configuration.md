@@ -98,3 +98,14 @@ closed. Fyber's hosted tenant continues to use the `spanopticon` backend.
 These labels do not select a release, route traffic, or change session keys.
 
 | `S3RCH_GUN_HEALTH_URL` | Operator-configured HTTPS peer `/api/health` or public `/_peer/api/health` probe. No credentials, query or fragment. |
+
+
+### First-party experiment events
+
+`APPLICATIONINSIGHTS_CONNECTION_STRING` selects the existing App Service Azure
+Monitor Application Insights resource for manual experiment events. The adapter
+accepts its instrumentation key and public Azure ingestion/live endpoint fields.
+It sends explicit event envelopes with a two-second timeout, no redirects, and
+at most eight concurrent requests. No SDK background diagnostics or request
+metadata are collected. Invalid or missing configuration drops telemetry without
+failing the application request. Accepted ingestion does not guarantee query visibility.
