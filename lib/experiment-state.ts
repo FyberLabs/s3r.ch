@@ -1,3 +1,4 @@
+import { isSeaPubkey } from "./identity/forum-check";
 import { randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { hashExperimentAssignment, type ExperimentPayload } from "./experiment-contract";
@@ -44,8 +45,9 @@ export function createExperimentState(input: { secret: Uint8Array; clock?: () =>
     const now = clock();
     if (!Number.isSafeInteger(now) || now < 0 || active.length > maximum) throw Error("Invalid experiment configuration");
     active.forEach(definition);
+    active = active.map(value => Object.freeze({ ...value, variants: Object.freeze([...value.variants]) }));
     if (new Set(active.map(value => value.key)).size !== active.length) throw Error("Duplicate experiment");
-    if (verifiedPrincipal !== null && (typeof verifiedPrincipal !== "string" || !verifiedPrincipal || verifiedPrincipal.length > 4096)) throw Error("Invalid verified principal");
+    if (verifiedPrincipal !== null && (typeof verifiedPrincipal !== "string" || !isSeaPubkey(verifiedPrincipal))) throw Error("Invalid verified principal");
     const subject = verifiedPrincipal === null ? null : hashExperimentAssignment(verifiedPrincipal, secret);
     let anonymous = readCookie(cookieHeader, anonymousExperimentCookie);
     if (!anonymous || !uuid.test(anonymous)) anonymous = randomUUID();

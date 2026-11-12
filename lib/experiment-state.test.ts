@@ -1,8 +1,12 @@
-import test from "node:test";
+import test, { before } from "node:test";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { SignJWT } from "jose";
 import { createExperimentState, anonymousExperimentCookie, experimentStateCookie } from "./experiment-state";
 import { hashExperimentAssignment } from "./experiment-contract";
+const sea = createRequire(import.meta.url)("gun/sea");
+let firstPrincipal: string, secondPrincipal: string;
+before(async () => { firstPrincipal = (await sea.pair()).pub; secondPrincipal = (await sea.pair()).pub; });
 const secret = new Uint8Array(32).fill(97);
 const experiments = [{ key: "layout", control: "control", variants: ["control", "treatment"] }, { key: "next", control: "control", variants: ["control", "treatment"] }];
 const header = (values: readonly string[]) => values.map(value => value.split(";")[0]).join("; ");
@@ -20,26 +24,26 @@ test("anonymous cookies are host-only and retain assignments across server insta
 test("sign-in preserves the anonymous cohort and uses the verified stable key for new experiments", async () => {
   const open = createExperimentState({ secret, clock: () => 100 });
   const anonymous = await open("", null, experiments), before = await anonymous.evaluate("layout", choose);
-  const signedIn = await open(header(await anonymous.cookies()), "verified-sea-fixture", experiments);
+  const signedIn = await open(header(await anonymous.cookies()), firstPrincipal, experiments);
   assert.deepEqual(await signedIn.evaluate("layout", async () => "control"), before);
   let target = "";
   const next = await signedIn.evaluate("next", async key => { target = key; return "treatment"; });
-  assert.equal(target, hashExperimentAssignment("verified-sea-fixture", secret));
+  assert.equal(target, hashExperimentAssignment(firstPrincipal, secret));
   assert.equal(next.assignment_hash, target);
-  assert.ok(!(await signedIn.cookies()).join().includes("verified-sea-fixture"));
-  const persisted = await open(header(await signedIn.cookies()), "verified-sea-fixture", experiments);
+  assert.ok(!(await signedIn.cookies()).join().includes(firstPrincipal));
+  const persisted = await open(header(await signedIn.cookies()), firstPrincipal, experiments);
   assert.deepEqual(await persisted.evaluate("layout", choose), before);
 });
 
 test("logout and account switches clear the prior user's assignments", async () => {
   const open = createExperimentState({ secret, clock: () => 100 });
-  const first = await open("", "first", experiments); await first.evaluate("layout", choose);
+  const first = await open("", firstPrincipal, experiments); await first.evaluate("layout", choose);
   const cookies = header(await first.cookies());
-  for (const principal of [null, "second"]) {
+  for (const principal of [null, secondPrincipal]) {
     const next = await open(cookies, principal, experiments);
     const assigned = await next.evaluate("layout", async () => "control");
     assert.equal(assigned.variant, "control");
-    assert.notEqual(assigned.assignment_hash, hashExperimentAssignment("first", secret));
+    assert.notEqual(assigned.assignment_hash, hashExperimentAssignment(firstPrincipal, secret));
   }
 });
 
@@ -95,4 +99,13 @@ test("retired experiments are pruned and concurrent evaluation preserves one ass
   const next = await open(header(await first.cookies()), null, [experiments[1]]);
   await assert.rejects(() => next.evaluate("layout", choose));
   assert.equal((await next.evaluate("next", choose)).variant, "treatment");
+});
+
+test("maximum-size cohorts fit browser cookies and definitions cannot change during evaluation", async () => {
+  const active = Array.from({ length: 8 }, (_, i) => ({ key: `x${i}${"a".repeat(62)}`, control: "c".repeat(64), variants: ["c".repeat(64), "t".repeat(64)] }));
+  const state = await createExperimentState({ secret })("", firstPrincipal, active);
+  const keys = active.map(value => value.key);
+  active[0].variants[1] = "changed";
+  for (const key of keys) assert.equal((await state.evaluate(key, async () => "t".repeat(64))).variant, "t".repeat(64));
+  assert.ok((await state.cookies()).every(cookie => cookie.length < 4096));
 });
