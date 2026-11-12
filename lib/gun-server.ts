@@ -32,6 +32,7 @@ const META_KEY = "meta";
 
 export type MemoryStore = SourceCache & {
   tenantRecordInitialized?: boolean;
+  localSnapshotInvalid?: boolean;
   seededAt: string | null;
   sourcesOk: number;
   sourcesTried: number;
@@ -201,31 +202,40 @@ function loadSnapshot(store: MemoryStore): void {
   try {
     const raw = readFileSync(/*turbopackIgnore: true*/ snapshotPath(), "utf8");
     const parsed = JSON.parse(raw) as Partial<FeedSnapshot> & { sourceWindows?: unknown; retiredIds?: unknown; tenantRecordInitialized?: unknown };
+    if (!Array.isArray(parsed.items) ||
+        (parsed.sourceWindows !== undefined && !Array.isArray(parsed.sourceWindows)) ||
+        (parsed.retiredIds !== undefined && !Array.isArray(parsed.retiredIds))) throw new Error("Invalid snapshot");
     store.tenantRecordInitialized = parsed.tenantRecordInitialized === true;
     if (Array.isArray(parsed.sourceWindows)) {
       for (const entry of parsed.sourceWindows) {
         if (Array.isArray(entry) && entry.length === 2 && typeof entry[0] === "string" &&
             Array.isArray(entry[1])) {
           const rows = entry[1].map((row: unknown) => asFeedItem(row));
-          if (rows.every((row: FeedItem | null) => row !== null)) store.windows.set(entry[0], rows);
-        }
+          if (!rows.every((row: FeedItem | null) => row !== null)) throw new Error("Invalid snapshot window");
+          store.windows.set(entry[0], rows);
+        } else throw new Error("Invalid snapshot window");
       }
     }
     if (Array.isArray(parsed.retiredIds)) {
-      for (const id of parsed.retiredIds) if (typeof id === "string") store.retired.add(id);
+      for (const id of parsed.retiredIds) {
+        if (typeof id !== "string") throw new Error("Invalid snapshot tombstone");
+        store.retired.add(id);
+      }
     }
     if (Array.isArray(parsed.items)) {
       for (const item of parsed.items) {
         const recovered = fromGunNode(item as unknown as GunFeedNode) ?? asFeedItem(item);
-        if (recovered && !store.retired.has(recovered.id)) store.items.set(recovered.id, recovered);
+        if (!recovered) throw new Error("Invalid snapshot item");
+        if (!store.retired.has(recovered.id)) store.items.set(recovered.id, recovered);
       }
     }
     store.seededAt = typeof parsed.seededAt === "string" ? parsed.seededAt : null;
     store.sourcesOk = typeof parsed.sourcesOk === "number" ? parsed.sourcesOk : 0;
     store.sourcesTried = typeof parsed.sourcesTried === "number" ? parsed.sourcesTried : 0;
     store.error = typeof parsed.error === "string" ? parsed.error : null;
-  } catch {
-    // first boot or empty disk — honest empty graph
+  } catch (error) {
+    // A missing first-boot file is distinct from unreadable/corrupt data.
+    store.localSnapshotInvalid = (error as NodeJS.ErrnoException)?.code !== "ENOENT";
   }
 }
 
