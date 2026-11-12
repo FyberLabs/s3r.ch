@@ -57,3 +57,11 @@ export function subscribeUnlockedMeshPair(listener: Listener): () => void {
     listeners.delete(listener);
   };
 }
+
+/** A site proof requires one unambiguous unlocked SEA identity, independent of
+ * which linked credential was used to locate it. */
+export function readSingleUnlockedIdentity(): { pair: SeaPair; revision: number } | null {
+  const selected = new Map([...pairs.values()].map(pair => [pair.pub, pair]));
+  if (selected.size !== 1) return null;
+  return { pair: { ...selected.values().next().value! }, revision };
+}
