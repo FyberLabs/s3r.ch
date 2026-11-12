@@ -86,3 +86,13 @@ and the tenant ID. They use server-side DefaultAzureCredential (for example a
 managed identity with access limited to that container). Spanopticon origin and
 API-key settings must be absent. Mixed or incomplete provider settings fail
 closed. Fyber's hosted tenant continues to use the `spanopticon` backend.
+
+## Release diagnostics
+
+| Setting | Purpose |
+| --- | --- |
+| `S3RCH_RELEASE_COLOR` | Optional `blue`, `green`, `test`, or `production` label for error records. |
+| `S3RCH_UPSTREAM_VERSION` | Optional semantic version of the configured canary plane, for browser crash attribution. |
+| `S3RCH_UPSTREAM_COLOR` | Optional upstream `blue`, `green`, `test`, or `production` label. |
+
+These labels do not select a release, route traffic, or change session keys.

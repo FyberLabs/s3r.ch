@@ -5,3 +5,8 @@ export async function register() {
     startIdentityMonitor();
   }
 }
+
+export async function onRequestError() {
+  const { recordError } = await import("./lib/release-telemetry-server");
+  recordError("server-error");
+}
