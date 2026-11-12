@@ -1,5 +1,5 @@
 import { context, ROOT_CONTEXT } from "@opentelemetry/api";
-import { createExperimentEmitter, type ExperimentEventType, type ExperimentPayload, type ExperimentEmissionPolicy } from "./experiment-contract";
+import { createExperimentPermission, createExperimentEmitter, type ExperimentEventType, type ExperimentPayload, type ExperimentEmissionPolicy } from "./experiment-contract";
 
 type ManualClient = { trackEvent(event: { name: ExperimentEventType; properties: ExperimentPayload; eventId?: string }): void | Promise<void>; flush(): Promise<void> };
 type Factory = (connectionString: string) => Promise<ManualClient>;
@@ -65,12 +65,14 @@ export async function createManualExperimentClient(connectionString: string, tra
 /** true means the ingestion endpoint accepted the event, not that it is queryable.
  * The injected factory supports offline contract tests. */
 export function createExperimentTelemetry(connectionString: unknown, factory: Factory = createManualExperimentClient, policy: ExperimentEmissionPolicy = {}) {
+  const permitted = createExperimentPermission(policy);
   let pending: Promise<ManualClient> | undefined;
   const configured = validExperimentConnection(connectionString);
   const emit = createExperimentEmitter(async (name, payload, eventId) => {
     if (!configured) throw Error("Experiment telemetry unavailable");
     pending ??= Promise.resolve().then(() => factory(connectionString));
     const client = await pending;
+    if (!permitted(payload)) throw Error("Experiment telemetry unavailable");
     await context.with(ROOT_CONTEXT, () => client.trackEvent({ name, properties: payload, ...(eventId ? { eventId } : {}) }));
   }, policy);
   return Object.freeze({ emit,
