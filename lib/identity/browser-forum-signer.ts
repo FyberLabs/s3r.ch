@@ -1,7 +1,7 @@
 import { getMeshKey, isPlaintextMeshKeyRecord, type MeshKeyRecord } from "./idb";
 import { isSeaPubkey } from "./forum-check";
 import type { SeaPair } from "./sea";
-import { readUnlockedMeshPair, rememberUnlockedMeshPair, subscribeUnlockedMeshPair } from "./unlocked-mesh";
+import { readSingleUnlockedIdentity, readUnlockedMeshPair, rememberUnlockedMeshPair, subscribeUnlockedMeshPair } from "./unlocked-mesh";
 import { signForumRecord } from "../forum-sign";
 import { publishForumAuthorized } from "../forum-authorized-publish";
 
@@ -72,4 +72,24 @@ export async function publishBrowserForumRecord<T extends object>(input: {
     authorized: () => input.authorized() && input.pair() === pair &&
       input.writerKey(input.writer, Math.floor(Date.now() / 1000)) === pair.pub,
     sign: value => (input.sign ?? signForumRecord)(value, pair), put: input.put });
+}
+
+/** Select an already unlocked SEA identity, never a wallet or a disk record.
+ * Recheck memory synchronously before each signing step, including after awaits. */
+export function observeUnlockedForumSigner(permitted: (pub: string) => boolean,
+  changed: (pub: string | null) => void) {
+  let stopped = false, revision = -1, pair: SeaPair | null = null;
+  function current() {
+    if (stopped) return null;
+    const selected = readSingleUnlockedIdentity();
+    if (!selected || !permitted(selected.pair.pub)) { pair = null; revision = -1; return null; }
+    if (revision !== selected.revision) { pair = selected.pair; revision = selected.revision; }
+    return pair;
+  }
+  const notify = () => changed(current()?.pub ?? null);
+  const unsubscribe = subscribeUnlockedMeshPair(notify);
+  notify();
+  return Object.freeze({ current,
+    stop() { if (stopped) return; stopped = true; pair = null; unsubscribe(); },
+  });
 }

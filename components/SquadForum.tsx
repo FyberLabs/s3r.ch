@@ -20,9 +20,9 @@ import { SquadDelegationControls } from "@/components/SquadDelegationControls";
 import Link from "next/link";
 import { putForumSoul } from "@/lib/forum-transport";
 import { createForumSubscriptions } from "@/lib/forum-subscriptions";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGunPeer, type FeedGun } from "@/components/GunPeerProvider";
-import { observeBrowserForumSigner, publishBrowserForumRecord } from "@/lib/identity/browser-forum-signer";
+import { observeUnlockedForumSigner, publishBrowserForumRecord } from "@/lib/identity/browser-forum-signer";
 import { useForumAuthority } from "@/components/ForumAuthorityProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
 import {
@@ -212,6 +212,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   function authorLabel(pub: string): string {
     return liveEnabled ? shortSea(pub) : PILOT_LABELS.get(pub) ?? shortSea(pub);
   }
+  // Linked wallet metadata is display-only; signing uses the unlocked SEA key.
   const session = useIdentitySession();
   const authority = useForumAuthority();
   const gunPeer = useGunPeer();
@@ -263,7 +264,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   );
   const gunRef = useRef<FeedGun | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  const signerRef = useRef<ReturnType<typeof observeBrowserForumSigner> | null>(null);
+  const signerRef = useRef<ReturnType<typeof observeUnlockedForumSigner> | null>(null);
   const graphRef = useRef<SeeGraph | null>(null);
   const needsRef = useRef<Map<string, ForumNeed>>(new Map());
   const offersRef = useRef<Map<string, ForumOffer>>(new Map());
@@ -310,12 +311,12 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
     return acl;
   }, []);
 
-  useEffect(() => {
-    const signer = observeBrowserForumSigner(session?.address ?? null,
-      pub => !liveEnabled || !isPublicSquadPrincipal(pub), setSeaPub);
+  useLayoutEffect(() => {
+    const signer = observeUnlockedForumSigner(
+      pub => !liveEnabled || (pub === sessionKey && !isPublicSquadPrincipal(pub)), setSeaPub);
     signerRef.current = signer;
     return () => { signer.stop(); if (signerRef.current === signer) signerRef.current = null; };
-  }, [session?.address, liveEnabled]);
+  }, [sessionKey, liveEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1812,7 +1813,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
       <dl className="mt-4 grid gap-2 text-xs text-ink-muted sm:grid-cols-3">
         <div className="border border-rule bg-panel px-3 py-2">
           <dt>Identity</dt>
-          <dd className="mt-1 font-data text-ink">{seaPub ? shortSea(seaPub) : "no mesh key on this browser"}</dd>
+          <dd className="mt-1 font-data text-ink">{seaPub ? shortSea(seaPub) : "no active identity"}</dd>
         </div>
         <div className="border border-rule bg-panel px-3 py-2">
           <dt>Wallet</dt>
@@ -1825,10 +1826,10 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
           <dd className="mt-1 text-ink">{oauthLinked ? "linked" : "not linked"}</dd>
         </div>
       </dl>
-      {!session ? (
+      {!seaPub ? (
         <p className="mt-2 text-sm text-ink-muted">
           <Link href="/feed" className="font-semibold text-ink hover:text-signal">
-            Sign in on the feed
+            Unlock an identity on the feed
           </Link>
           . The key stays on this browser.
         </p>

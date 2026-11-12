@@ -561,3 +561,15 @@ control attempts to clear the stale exchange and never reports that attempt as
 successful authentication. Failed cleanup is reported as unavailable. The
 identity session can be refreshed or signed out independently; normal account
 sign-out also retains its existing cookie clearing behavior.
+
+
+### Squad key selection
+
+The provisioned Squad selects the one unambiguous SEA identity already unlocked
+in page memory. A wallet session is not required to select or sign with it; wallet
+and linked-account labels are display metadata. Multiple different unlocked keys
+refuse selection until the user leaves one active. No disk read unlocks a key.
+Live publication also requires that key to match the connected proof session and
+pass current SociACL permission checks. Locking, replacement, or re-unlocking
+invalidates an in-flight signature before publication. The existing pilot session
+transport and trusted-history dependency remain tracked in #277 and #279.
