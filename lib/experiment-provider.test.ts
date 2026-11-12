@@ -75,3 +75,37 @@ test("trust configuration must be an explicit public Ed25519 key and named domai
   await assert.rejects(() => createExperimentProvider({ publicKey: keys.privateKey, domain: "provider-key" }));
   await assert.rejects(() => createExperimentProvider({ publicKey: keys.publicKey, domain: "" }));
 });
+
+for (const change of ["expiry", "replace", "disable", "close"] as const) {
+  test(`pending evaluation refuses a treatment after ${change}`, async t => {
+    const { OpenFeature } = await import("@openfeature/server-sdk");
+    let now = 101, release!: () => void, entered!: () => void;
+    const waiting = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const domain = `provider-race-${change}`;
+    const client = OpenFeature.getClient(domain);
+    const evaluate = client.getStringDetails.bind(client);
+    t.mock.method(OpenFeature, "getClient", () => client);
+    t.mock.method(client, "getStringDetails", async (...args: Parameters<typeof evaluate>) => {
+      const value = await evaluate(...args);
+      entered(); await waiting; return value;
+    });
+    const p = await createExperimentProvider({ publicKey: keys.publicKey, domain, clock: () => now });
+    try {
+      await p.refresh(...signed(config()));
+      const state = await createExperimentState({ secret: new Uint8Array(32).fill(97) })("", null, p.definitions());
+      const choice = state.evaluate("layout", key => p.choose("layout", key));
+      await started;
+      if (change === "expiry") now = 200;
+      else if (change === "close") await p.close();
+      else {
+        const next = config(2);
+        if (change === "disable") next.experiments[0].disabled = true;
+        assert.equal(await p.refresh(...signed(next)), true);
+      }
+      release();
+      assert.equal((await choice).variant, "control");
+      assert.equal(state.assignmentKeyVersion("layout"), null);
+    } finally { release(); await p.close(); }
+  });
+}

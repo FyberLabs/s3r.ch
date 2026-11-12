@@ -72,10 +72,13 @@ export async function createExperimentProvider(input: { publicKey: KeyObject; do
     guardrailHealthy(key: string): boolean { return active()?.experiments.some(row => row.key === key && !row.disabled) ?? false; },
     async choose(key: string, targetingKey: string): Promise<string> {
       await pending;
-      const config = active()?.experiments.find(row => row.key === key);
+      const snapshot = active();
+      const config = snapshot?.experiments.find(row => row.key === key);
       if (!config || !/^[a-f0-9]{64}$/.test(targetingKey)) throw Error("Experiment unavailable");
       const result = await client.getStringDetails(key, config.control, { targetingKey });
-      if (result.errorCode || !config.variants.includes(result.value)) throw Error("Experiment unavailable");
+      // A refresh, expiry or close during evaluation invalidates this choice.
+      await pending;
+      if (active() !== snapshot || result.errorCode || !config.variants.includes(result.value)) throw Error("Experiment unavailable");
       return result.value;
     },
     async close() {
