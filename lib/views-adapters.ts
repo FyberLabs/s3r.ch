@@ -3,6 +3,7 @@
  * channel or pulled feed, and map that source's messages to one row shape.
  * See docs/views.md §2 and §10 (PR 1).
  */
+import { isRoomTaskBody } from "./room-tasks";
 import type { ChatMessage } from "./chat";
 import type { FeedItem } from "./feed-types";
 import type { ForumChannel, ForumMessage } from "./forum";
@@ -63,7 +64,8 @@ function row(ref: SourceRef, id: string, author: string, body: string, ts: numbe
 
 /** Chat message → row. Returns null if the message is not from this room or is malformed. */
 export function chatRow(ref: SourceRef, message: ChatMessage): ViewRow | null {
-  if (ref.kind !== "chat" || message.room !== ref.source) return null;
+  if (ref.kind !== "chat" || message.room !== ref.source ||
+      (typeof message.body === "string" && isRoomTaskBody(message.body))) return null;
   return row(ref, message.id, message.author, message.body, message.ts);
 }
 

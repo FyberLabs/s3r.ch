@@ -60,7 +60,7 @@ requires the planned secret-store integration.
 The legacy `FeedStream` subscription applies `fromGunChatNode` shape validation,
 not authenticated author admission. Author and message-ID comparisons cannot
 prevent same-author forgery. Production therefore does not import or mount
-`RoomTasks`, hides every reserved work payload from the chat projection, and
+`RoomTasks`, hides every reserved work payload from RoomChat and the Views chat adapter, and
 refuses work payloads on both composition and room-copy publication paths.
 The isolated fixture and projection are preparation for #152, not a shipped editor.
 

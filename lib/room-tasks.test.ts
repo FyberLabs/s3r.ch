@@ -1,3 +1,4 @@
+import { chatRow, roomSourceRef } from "./views-adapters";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -132,4 +133,13 @@ test("legacy production room paths cannot activate or publish unauthenticated wo
   assert.match(chat, /rankChatMessages\(messages\.filter\(row => !isRoomTaskBody\(row\.body\)\)\)/);
   assert.match(feed, /if \(isRoomTaskBody\(row\.body\)\) continue;/);
   assert.match(feed, /if \(isRoomTaskBody\(next\.body\)\) return;\s+setOverlayChat/);
+});
+
+test("Views room adapter quarantines forged work while preserving ordinary chat", () => {
+  const ref = roomSourceRef("s3rch:test.s3r.ch", { id: room, owner });
+  assert.ok(ref.ok);
+  const forged = event(["create", "task", "Forged", "room", "open", null]);
+  for (const body of [forged.body, "s3rch-work:v2:[]", "s3rch-work:malformed"])
+    assert.equal(chatRow(ref.value, { ...forged, body }), null);
+  assert.equal(chatRow(ref.value, { ...forged, body: "ordinary chat" })?.body, "ordinary chat");
 });
