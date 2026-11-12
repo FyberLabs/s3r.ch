@@ -7,7 +7,20 @@ Names contain 1–128 ASCII letters, digits, underscores or hyphens. Values cont
 The server-only `createSpanopticonRecordStore` adapter binds a deployment-owned
 HTTPS origin, tenant UUID and service key. Record keys have their own
 `storage:records:read`, `storage:records:write` and `storage:records:delete`
-permissions. No Azure credential or provider URL reaches the consumer.
+permissions. Account credentials remain inside Spanopticon. For Azure cache
+reads, Spanopticon returns a Blob-specific read-only HTTPS URL lasting at most
+60 seconds. The server-side consumer downloads the bounded record directly,
+using the supplied provider ETag, validates the SPANREC1 envelope and computes
+its revision. Spanopticon API keys are never sent to Azure. Delegated URLs are
+not included in public feeds or logs. An issued URL can remain usable until
+expiry after the service key is revoked.
+
+The additive `cache/{name}/access` endpoint returns the storage path and
+authorization. Older services (404) and unsupported providers (501) use the
+existing proxied read endpoint; other failures fail closed. Once a direct
+read is authorized, a failed or stale provider response is never treated as
+an absent record or retried through the proxy. Recovery and fixture reads,
+and all conditional writes/deletes, retain their existing API.
 
 Reads return bytes and an opaque revision, or null when absent. A write with
 `expected: null` creates only if absent. Replacements and deletions require the
