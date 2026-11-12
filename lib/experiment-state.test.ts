@@ -1,8 +1,9 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { SignJWT } from "jose";
+import { SignJWT, jwtVerify } from "jose";
 import { createExperimentState, anonymousExperimentCookie, experimentStateCookie } from "./experiment-state";
+import { experimentKeyVersionsCookie, experimentKeyVersion } from "./experiment-key-versions";
 import { hashExperimentAssignment } from "./experiment-contract";
 const sea = createRequire(import.meta.url)("gun/sea");
 let firstPrincipal: string, secondPrincipal: string;
@@ -168,4 +169,59 @@ test("previous signing keys are bounded, copied and explicitly configured", asyn
   old.fill(0);
   const restored = await open(header(await original.cookies()), null, experiments);
   assert.deepEqual(await restored.evaluate("layout", choose), assigned);
+});
+
+
+test("hash-key versions survive sign-in, rotation, restart and legacy state rewrites", async () => {
+  const rotated = new Uint8Array(32).fill(98);
+  const first = await createExperimentState({ secret, clock: () => 100 })("", null, experiments);
+  await first.evaluate("layout", choose);
+  assert.equal(first.assignmentKeyVersion("layout"), experimentKeyVersion(secret));
+  const second = await createExperimentState({ secret: rotated, previousSecrets: [secret], clock: () => 101 })(
+    header(await first.cookies()), firstPrincipal, experiments);
+  await second.evaluate("next", choose);
+  assert.equal(second.assignmentKeyVersion("layout"), experimentKeyVersion(secret));
+  assert.equal(second.assignmentKeyVersion("next"), experimentKeyVersion(rotated));
+  const cookies = await second.cookies();
+  // Old instances rewrite only the original two cookies. Browsers keep this
+  // independently signed companion until it is updated or expires.
+  const raw = cookies[1].split(";")[0].slice(experimentStateCookie.length + 1);
+  const { payload } = await jwtVerify(raw, rotated, { currentDate: new Date(102_000) });
+  const oldRewrite = await new SignJWT({ state: payload.state })
+    .setProtectedHeader({ alg: "HS256", typ: "s3rch-experiment-state-v1" })
+    .setIssuer("s3rch").setAudience("s3rch-experiment-state-v1").setIssuedAt(102).setExpirationTime(31536102).sign(rotated);
+  const rewrittenCookies = [cookies[0], `${experimentStateCookie}=${oldRewrite}`, cookies[2]];
+  const restarted = await createExperimentState({ secret: rotated, clock: () => 103 })(header(rewrittenCookies), firstPrincipal, experiments);
+  assert.equal(restarted.assignmentKeyVersion("layout"), experimentKeyVersion(secret));
+  assert.equal(restarted.assignmentKeyVersion("next"), experimentKeyVersion(rotated));
+  assert.equal(restarted.assignmentKeyVersion("absent"), null);
+  assert.deepEqual(Object.keys(await restarted.evaluate("layout", choose)).sort(), ["assignment_hash", "experiment_key", "surface", "variant"]);
+});
+
+test("legacy or missing metadata remains unknown without resetting a valid cohort", async () => {
+  const first = await createExperimentState({ secret })("", null, experiments);
+  const assigned = await first.evaluate("layout", choose);
+  const oldCookies = header((await first.cookies()).slice(0, 2));
+  const restored = await createExperimentState({ secret })(oldCookies, null, experiments);
+  assert.deepEqual(await restored.evaluate("layout", async () => "control"), assigned);
+  assert.equal(restored.assignmentKeyVersion("layout"), null);
+  const next = await createExperimentState({ secret })(header(await restored.cookies()), null, experiments);
+  assert.equal(next.assignmentKeyVersion("layout"), null);
+});
+
+test("metadata is bound to the anonymous cookie and exact retained assignment", async () => {
+  const open = createExperimentState({ secret });
+  const one = await open("", firstPrincipal, experiments); await one.evaluate("layout", choose);
+  const two = await open("", secondPrincipal, experiments); await two.evaluate("layout", choose);
+  const firstCookies = await one.cookies(), secondCookies = await two.cookies();
+  const mixed = await open(header([...firstCookies.slice(0, 2), secondCookies[2]]), firstPrincipal, experiments);
+  assert.equal(mixed.assignmentKeyVersion("layout"), null);
+  for (const principal of [null, secondPrincipal]) {
+    const switched = await open(header(firstCookies), principal, experiments);
+    assert.equal(switched.assignmentKeyVersion("layout"), null);
+  }
+  const pruned = await open(header(firstCookies), firstPrincipal, [experiments[1]]);
+  assert.equal(pruned.assignmentKeyVersion("layout"), null);
+  const tampered = await open(header(firstCookies).replace(`${experimentKeyVersionsCookie}=`, `${experimentKeyVersionsCookie}=x`), firstPrincipal, experiments);
+  assert.equal(tampered.assignmentKeyVersion("layout"), null);
 });
