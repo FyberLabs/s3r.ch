@@ -32,3 +32,16 @@ test("version probe reports only the configured immutable build revision",async(
     }
   }finally{if(saved===undefined)delete process.env.APP_BUILD_REVISION;else process.env.APP_BUILD_REVISION=saved;}
 });
+
+test("standalone smoke accepts additive Gun health fields and refuses missing or malformed status", async () => {
+  const { spawnSync } = await import("node:child_process");
+  for (const gun of [{ status: "external" }, { status: "external", health: "not-configured", checkedAt: null },
+    { status: "external", health: "ok", checkedAt: 123 }]) {
+    const result = spawnSync(process.execPath, ["scripts/smoke-gun-health.cjs"], { input: JSON.stringify({ dependencies: { gun } }) });
+    assert.equal(result.status, 0);
+  }
+  for (const input of ["", "broken", "null", "{}", JSON.stringify({ dependencies: { gun: { status: "ok" } } })]) {
+    const result = spawnSync(process.execPath, ["scripts/smoke-gun-health.cjs"], { input });
+    assert.equal(result.status, 1);
+  }
+});

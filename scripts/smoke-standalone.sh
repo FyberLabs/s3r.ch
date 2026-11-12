@@ -50,7 +50,7 @@ fi
 health="$(curl --max-time 5 -fsS "http://127.0.0.1:$port/api/health")"
 echo "$health"
 echo "$health" | grep -Fq '"panopticon":{"status":"not-configured"' || { echo "panopticon should be not-configured" >&2; fail=1; }
-echo "$health" | grep -Fq '"gun":{"status":"external"}' || { echo "web should use the external peer" >&2; fail=1; }
+printf '%s' "$health" | node scripts/smoke-gun-health.cjs || { echo "web should use the external peer" >&2; fail=1; }
 for _ in $(seq 1 20); do
   echo "$health" | grep -Fq '"identity":{"status":"unavailable"' && break
   sleep 0.25
