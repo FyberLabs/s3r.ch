@@ -66,6 +66,12 @@ try {
   await page.getByRole("button", { name: "Switch back to owner" }).click();
   await page.getByLabel("Title", { exact: true }).waitFor();
   assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), "");
+  const beforeCapacity = await page.getByLabel("Published events").textContent();
+  await page.getByRole("button", { name: "Simulate full raw history" }).click();
+  await page.getByText("This room’s work history is at capacity. New work and updates are unavailable here.", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Add work", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Set assignee", exact: true }).count(), 0);
+  assert.equal(await page.getByLabel("Published events").textContent(), beforeCapacity);
   assert.deepEqual(errors, []);
   console.log("PASS room tasks: creation, status, assignment, private scope after room share, shared publication, reload, access loss, shared copy and draft isolation; Chromium " + browser.version());
 } finally {

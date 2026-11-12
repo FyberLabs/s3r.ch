@@ -7,14 +7,14 @@ import { useSeeAcl, type SeeAclContextValue } from "./SeeAclProvider";
 import { objectOwner, useIdentitySession } from "./useIdentitySession";
 import { btnPrimary, field } from "@/lib/brand-ui";
 
-type Props = { roomId: string; messages: ChatMessage[]; onPublicGraph: boolean;
+type Props = { roomId: string; messages: ChatMessage[]; historySize: number; onPublicGraph: boolean;
   onComposed: (message: ChatMessage, putOnGun: boolean) => void };
 export function RoomTasks(props: Props) {
   const session = useIdentitySession(), see = useSeeAcl(), actor = session ? objectOwner(session) : null;
   // Private drafts and pending submissions cannot cross room or identity changes.
   return <RoomWork key={JSON.stringify([props.roomId, actor])} {...props} actor={actor} see={see} />;
 }
-function RoomWork({ roomId, messages, onPublicGraph, onComposed, actor, see }: Props & {
+function RoomWork({ roomId, messages, historySize, onPublicGraph, onComposed, actor, see }: Props & {
   actor: string | null; see: SeeAclContextValue | null;
 }) {
   const [title, setTitle] = useState(""), [kind, setKind] = useState<"task" | "issue">("task");
@@ -23,15 +23,17 @@ function RoomWork({ roomId, messages, onPublicGraph, onComposed, actor, see }: P
   const [, setNow] = useState(() => Math.floor(Date.now() / 1000));
   useEffect(() => { mounted.current = true; const timer = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 10_000);
     return () => { mounted.current = false; clearInterval(timer); }; }, []);
-  const current = useRef({ actor, roomId, see, onPublicGraph, messages, onComposed });
-  current.current = { actor, roomId, see, onPublicGraph, messages, onComposed };
+  const current = useRef({ actor, roomId, see, onPublicGraph, messages, historySize, onComposed });
+  current.current = { actor, roomId, see, onPublicGraph, messages, historySize, onComposed };
   const allowed = !!actor && !!see?.ready && canUseRoomTasks(see.acl, roomId, actor, Math.floor(Date.now() / 1000));
   const tasks = allowed ? roomTasks(messages, roomId).filter(task => task.visibility === "room" || task.owner === actor) : [];
+  const full = !Number.isSafeInteger(historySize) || historySize < messages.length || historySize >= 8192;
   async function send(action: TaskAction) {
-    if (!actor || !see?.ready || pending.current || !canUseRoomTasks(see.acl, roomId, actor, Math.floor(Date.now() / 1000))) return;
+    if (full || !actor || !see?.ready || pending.current || !canUseRoomTasks(see.acl, roomId, actor, Math.floor(Date.now() / 1000))) return;
     const stillCurrent = () => {
       const held = current.current;
-      if (!mounted.current || held.actor !== actor || held.roomId !== roomId || held.see !== see || held.onPublicGraph !== onPublicGraph ||
+      if (!Number.isSafeInteger(held.historySize) || held.historySize < held.messages.length || held.historySize >= 8192 ||
+          !mounted.current || held.actor !== actor || held.roomId !== roomId || held.see !== see || held.onPublicGraph !== onPublicGraph ||
           !canUseRoomTasks(see.acl, roomId, actor, Math.floor(Date.now() / 1000))) return false;
       if (action[0] === "create") return true;
       return roomTasks(held.messages, roomId).some(task => task.id === action[1] && task.head === action[2] && task.owner === actor && (task.visibility === "mine" || onPublicGraph));
@@ -56,7 +58,7 @@ function RoomWork({ roomId, messages, onPublicGraph, onComposed, actor, see }: P
     {!allowed ? <p className="mt-2 text-xs text-ink-muted">{actor ? "Room access is required to view or change work." : "Sign in to work in this room."}</p> : <>
       <p className="mt-2 text-xs text-ink-muted">Private work stays in this page and clears on reload.</p>
       <p className="mt-2 text-xs text-ink-muted">{onPublicGraph ? "Updates appear in this room’s timeline." : "Work stays in Mine. Sharing a room does not publish earlier private work."}</p>
-      {messages.length > 8192 ? <p className="mt-2 text-xs text-ink-muted">This room’s work history is too large to display here.</p> : <>
+      {full ? <p className="mt-2 text-xs text-ink-muted">This room’s work history is at capacity. New work and updates are unavailable here.</p> : <>
         <div className="mt-3 flex flex-wrap gap-2">
           <label className="text-xs text-ink-muted">Kind<select aria-label="Work kind" className={`ml-2 ${field}`} value={kind} disabled={busy} onChange={e => setKind(e.target.value as "task" | "issue")}>
             <option value="task">Task</option><option value="issue">Issue</option></select></label>

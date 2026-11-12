@@ -13,6 +13,7 @@ function Fixture() {
   const see = useSeeAcl();
   const [shared, setShared] = useState(false), [ready, setReady] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(() => JSON.parse(localStorage.getItem("fixture-work") ?? "[]"));
+  const [overflow, setOverflow] = useState(false);
   const [, refresh] = useState(0);
   const [published, setPublished] = useState(0);
   useEffect(() => { if (see?.ready) { see.acl.putObject(roomSoul(room), owner); setReady(true); } }, [see]);
@@ -21,8 +22,9 @@ function Fixture() {
     <button onClick={async () => { await fetch("/fixture/other", { method: "POST" }); identitySessionChanged(); }}>Switch to reader without access</button>
     <button onClick={async () => { await fetch("/fixture/owner", { method: "POST" }); identitySessionChanged(); }}>Switch back to owner</button>
     <button onClick={() => { if (see) { applySeeGrant(see.acl, owner, { claimId: roomSoul(room), accessor: other, from: 0, until: Math.floor(Date.now() / 1000) + 300 }); refresh(value => value + 1); } }}>Grant other room access</button>
+    <button onClick={() => setOverflow(true)}>Simulate full raw history</button>
     <output aria-label="Published events">{published}</output>
-    {ready && see ? <RoomTasks roomId={room} messages={messages} onPublicGraph={shared} onComposed={(message, put) => {
+    {ready && see ? <RoomTasks roomId={room} messages={messages} historySize={overflow ? 8193 : messages.length} onPublicGraph={shared} onComposed={(message, put) => {
       if (put) {
         if ("denied" in preparePublishRoomChat(see.acl, message, owner, shared ? [room] : [])) throw Error("Fixture publication refused");
         setPublished(value => value + 1);

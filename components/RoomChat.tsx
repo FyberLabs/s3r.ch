@@ -89,7 +89,7 @@ export function RoomChat({
           </ul>
         )
       )}
-      <RoomTasks roomId={roomId} messages={visible} onPublicGraph={onPublicGraph} onComposed={onComposed} />
+      <RoomTasks roomId={roomId} messages={visible} historySize={messages.length} onPublicGraph={onPublicGraph} onComposed={onComposed} />
       <RoomGame roomId={roomId} messages={messages} presence={presence} onPublicGraph={onPublicGraph} seedWsUp={seedWsUp} onComposed={onComposed} />
       <ChatCompose roomId={roomId} onPublicGraph={onPublicGraph} onComposed={onComposed} />
     </div>
