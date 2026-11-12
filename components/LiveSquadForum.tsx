@@ -9,7 +9,7 @@ import type { SeaPair } from "@/lib/identity/sea";
 
 import type { ReportParents } from "@/lib/forum-report-forward";
 
-type Props = Omit<Parameters<typeof createSquadConnection>[0], "fetch" | "onState"> & { pair: SeaPair | null; reportParents?: ReportParents };
+type Props = Omit<Parameters<typeof createSquadConnection>[0], "fetch" | "onState" | "approveAssignment"> & { pair: SeaPair | null; reportParents?: ReportParents };
 /** Client-only provisioned wrapper. The pair must come from the existing local
  * unlock flow, never serialized as a server prop or embedded in deployment config. */
 export function LiveSquadForum(props: Props) {
@@ -24,7 +24,9 @@ function ConnectedSquad(props: Props) {
   const [state, setState] = useState<SquadConnectionState>("disconnected");
   useLayoutEffect(() => {
     let active = true;
-    const current = createSquadConnection({ squad: props.squad, config: props.config, origin: props.origin, sessionBase: props.sessionBase, authorityEndpoint: props.authorityEndpoint, assignmentBase: props.assignmentBase, onState: value => { if (active) setState(value); } });
+    const current = createSquadConnection({ squad: props.squad, config: props.config, origin: props.origin, sessionBase: props.sessionBase, authorityEndpoint: props.authorityEndpoint, assignmentBase: props.assignmentBase,
+      approveAssignment: async preview => window.confirm(`Sign access changes for ${preview.destinations.length} objects?\n\nRemove access from: ${preview.previous}\nGrant access to: ${preview.replacement}\n\nObjects:\n${preview.destinations.join("\n")}\n\nExisting cancellations remain in effect if this change is later canceled.`),
+      onState: value => { if (active) setState(value); } });
     setConnection(current);
     // Construct inside the effect so Strict Mode cleanup never reuses a disposed
     // connection. Parent identity remounts on namespace or policy changes.

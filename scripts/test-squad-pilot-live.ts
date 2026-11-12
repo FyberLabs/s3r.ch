@@ -1,3 +1,5 @@
+import { signBrowserAssignment } from "../lib/assignment-browser-sign";
+import { createHttpForumAuthorityReader } from "../lib/forum-authority-http";
 /** Explicit operator acceptance against the configured HTTPS deployment. Reads
  * private operator material locally; never emits cookies, keys or proof bodies. */
 import assert from "node:assert/strict";
@@ -30,7 +32,9 @@ async function main() {
     };
     const session = createSquadSessionClient({ squad: c!.squad, origin: c!.origin, base: base + "/session", fetch: transport });
     assert.equal(await session.signIn(pair), true, "SEA challenge/exchange");
-    return { transport, session, assignments: createHttpAssignmentClient({ base: base + "/assignment", fetch: transport }) };
+    return { transport, session, assignments: createHttpAssignmentClient({ base: base + "/assignment", fetch: transport,
+      signPlan: (plan, requested) => signBrowserAssignment({ plan, requested, pair, config: c!.authority,
+        read: createHttpForumAuthorityReader({ endpoint: base + "/authority", squad: c!.squad, fetch: transport }), signal: new AbortController().signal, approve: async () => true }) }) };
   }
   const owner = await client(identities[0]), previous = await client(identities[1]);
   const planPath = resolve(directory, "live-assignment.json");

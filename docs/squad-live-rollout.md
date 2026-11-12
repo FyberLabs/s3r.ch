@@ -367,7 +367,7 @@ namespace. Public fixture accounts are refused in ledger mode.
 mounted separately from `/feed/squad` and `/forum`. The session key comes from the
 existing locally unlocked identity, not a server prop. The deployment JSON's
 public projection includes only scope, origin, trust policy and endpoint paths.
-The private owner signer and session secret stay on the server. The readiness
+The session secret stays on the server. The owner SEA signing pair stays in the browser or operator client; assignment records are signed there and verified by the server. The readiness
 endpoint `/api/squad/pilot/health` verifies a fresh primary read and signed owner
 authority; 404 means disabled and 503 means unavailable. It returns no history or
 credentials. Readiness is not deployed multi-client acceptance.

@@ -5,8 +5,8 @@ import { createForumAuthority } from "./identity/forum-authority";
 import { isSeaPubkey, isForumObjectId } from "./identity/forum-check";
 import { squadView, isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
 
-type Action = "read" | "start" | "resume" | "abort" | "read-child" | "child";
-const fields = { read: "forum,owner", start: "forum,operationId,owner,replacement,revision", resume: "forum,operationId,owner,replacement",
+type Action = "plan" | "start-signed" | "read" | "start" | "resume" | "abort" | "read-child" | "child";
+const fields = { plan: "forum,operationId,owner,replacement,revision", "start-signed": "forum,material,operationId,owner,replacement,revision", read: "forum,owner", start: "forum,operationId,owner,replacement,revision", resume: "forum,operationId,owner,replacement",
   abort: "forum,operationId,owner", "read-child": "forum,id,owner", child: "forum,owner,record,signature" };
 /** Fixed deployment scope; authenticate is the SEA cookie authenticator, never
  * a wallet address or an actor supplied by the request. Each call opens its own
@@ -41,7 +41,7 @@ export function createSquadAssignmentService(input: {
           request.signal.throwIfAborted(); const part = await reader.read(); request.signal.throwIfAborted();
           if (part.done) break;
           size += part.value.byteLength;
-          if (size > 131072) { await reader.cancel(); return reply(413, { error: "request-size" }); }
+          if (size > (action === "start-signed" ? 524288 : 131072)) { await reader.cancel(); return reply(413, { error: "request-size" }); }
           chunks.push(part.value);
         }
       } finally { request.signal.removeEventListener("abort", abort); reader.releaseLock(); }
@@ -50,9 +50,9 @@ export function createSquadAssignmentService(input: {
       let body;
       try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { return reply(400, { error: "request" }); }
       if (!body || Object.keys(body).sort().join() !== fields[action] || body.forum !== view.forumId || body.owner !== view.owner) return reply(400, { error: "scope-or-fields" });
-      if (["start", "resume", "abort"].includes(action) && (typeof body.operationId !== "string" || !/^[0-9a-f]{32}$/.test(body.operationId))) return reply(400, { error: "operation" });
-      if (["start", "resume"].includes(action) && (!isSeaPubkey(body.replacement) || isPublicSquadPrincipal(body.replacement))) return reply(400, { error: "replacement" });
-      if (action === "start" && (!Number.isSafeInteger(body.revision) || body.revision < 0)) return reply(400, { error: "revision" });
+      if (["plan", "start-signed", "start", "resume", "abort"].includes(action) && (typeof body.operationId !== "string" || !/^[0-9a-f]{32}$/.test(body.operationId))) return reply(400, { error: "operation" });
+      if (["plan", "start-signed", "start", "resume"].includes(action) && (!isSeaPubkey(body.replacement) || isPublicSquadPrincipal(body.replacement))) return reply(400, { error: "replacement" });
+      if (["plan", "start-signed", "start"].includes(action) && (!Number.isSafeInteger(body.revision) || body.revision < 0)) return reply(400, { error: "revision" });
       if (action === "read-child" && !isForumObjectId(body.id)) return reply(400, { error: "child" });
       if (action === "child" && (typeof body.signature !== "string" || body.signature.length > 32768)) return reply(400, { error: "signature" });
       const at = clock();
@@ -71,8 +71,11 @@ export function createSquadAssignmentService(input: {
       const runtime = createDelegationRuntime({ ...options, ...pinned, clock: evaluationClock });
       if (action === "read") {
         const s = await runtime.read(actor);
-        return reply(200, { forum: s.forum, owner: s.owner, assignee: s.assignee, revision: s.revision, operation: s.operation, receipts: s.receipts });
+        const operation = s.operation ? (({ signedMaterial: _material, ...visible }) => visible)(s.operation) : null;
+        return reply(200, { forum: s.forum, owner: s.owner, assignee: s.assignee, revision: s.revision, operation, receipts: s.receipts });
       }
+      if (action === "plan") return reply(200, await runtime.plan(actor, body.operationId, body.replacement, body.revision));
+      if (action === "start-signed") return reply(200, await runtime.startSigned(actor, body.operationId, body.replacement, body.revision, body.material));
       if (action === "start") return reply(200, await runtime.start(actor, body.operationId, body.replacement, body.revision));
       if (action === "resume") return reply(200, await runtime.resume(actor, body.operationId, body.replacement));
       if (action === "abort") { await runtime.abort(actor, body.operationId); return reply(200, { ok: true }); }

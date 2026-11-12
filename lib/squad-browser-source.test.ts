@@ -41,3 +41,16 @@ test("active source forwards fresh snapshots and disabling synchronously withdra
   await flush(); assert.deepEqual(events.at(-1), snapshot);
   h.deactivate(); assert.equal(events.at(-1), null); h.dispose();
 });
+
+test("disconnect during signature confirmation prevents signed submission", async () => {
+  let release!: (value: unknown) => void, entered!: () => void;
+  const signing = new Promise<unknown>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
+  const requests: string[] = [];
+  const browser = createSquadBrowserSource({ ...options, fetch: async url => { requests.push(String(url)); return Response.json({}); },
+    signPlan: async (_plan, _requested, context) => { entered(); await signing; assert.equal(context.signal.aborted, true); return {}; } });
+  browser.activate();
+  const operation = browser.source.assignments!.start({ forum: squad.forumId, owner: squad.owner }, "a".repeat(32), squad.owner, 0);
+  await started; browser.deactivate(); release({});
+  await assert.rejects(operation, /session changed/);
+  assert.deepEqual(requests, [options.assignmentBase + "/plan"]); browser.dispose();
+});

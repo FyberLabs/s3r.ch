@@ -7,7 +7,6 @@ import type { ReportParents } from "./forum-report-forward";
 export type SquadPilotConfig = Readonly<{
   version: 1; origin: string; squad: LiveSquadSpec; authority: ForumAuthorityConfig;
   reportParents?: ReportParents;
-  ownerSigningKey: string;
 }>;
 const exact = (x: unknown, keys: string): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).sort().join() === keys;
 const strings = (x: unknown): x is string[] => Array.isArray(x) && x.length <= 32 && x.every(s => typeof s === "string" && s.length > 0 && s.length <= 2048) && new Set(x).size === x.length;
@@ -26,14 +25,19 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
     if (typeof c.sessionSecret !== "string" || !/^[0-9a-f]{64}$/.test(c.sessionSecret)) throw Error("invalid obsolete session secret");
     delete (c as { sessionSecret?: unknown }).sessionSecret;
   }
-  if ((!exact(c, "authority,origin,ownerSigningKey,squad,version") &&
-      !exact(c, "authority,origin,ownerSigningKey,reportParents,squad,version")) || c.version !== 1 ||
+  // Moving-channel documents may still contain the retired field. Discard it
+  // without importing a private key; provisioning must remove it from the vault.
+  if (c && typeof c === "object" && !Array.isArray(c) && "ownerSigningKey" in c) {
+    if (typeof c.ownerSigningKey !== "string" || !/^[0-9a-f]{64}$/.test(c.ownerSigningKey)) throw Error("invalid obsolete owner key");
+    delete (c as { ownerSigningKey?: unknown }).ownerSigningKey;
+  }
+  if ((!exact(c, "authority,origin,squad,version") &&
+      !exact(c, "authority,origin,reportParents,squad,version")) || c.version !== 1 ||
       typeof c.origin !== "string" || new URL(c.origin).origin !== c.origin || !c.origin.startsWith("https://") ||
       !exact(c.squad, "forumId,label,owner") || !exact(c.authority, "keys,pinnedIssuers,policy") ||
       !exact(c.authority.policy, "allowedChainIds,allowedDomains,allowedUris") ||
       !strings(c.authority.policy.allowedChainIds) || !strings(c.authority.policy.allowedDomains) || !strings(c.authority.policy.allowedUris) ||
-      !strings(c.authority.pinnedIssuers) || !Array.isArray(c.authority.keys) || c.authority.keys.length < 1 || c.authority.keys.length > 16 ||
-      typeof c.ownerSigningKey !== "string" || !/^[0-9a-f]{64}$/.test(c.ownerSigningKey)) throw Error("invalid Squad pilot configuration");
+      !strings(c.authority.pinnedIssuers) || !Array.isArray(c.authority.keys) || c.authority.keys.length < 1 || c.authority.keys.length > 16) throw Error("invalid Squad pilot configuration");
   const keys = new Set<string>(), material = new Set<string>();
   for (const k of c.authority.keys) {
     if (!exact(k, "crv,kid,kty,notAfter,notBefore,x,y") || k.kty !== "EC" || k.crv !== "P-256" ||
@@ -57,10 +61,6 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
       ids.add(parent.forumId);
     }
   }
-  // Validate scalar encoding here. The runtime resolves the owner's current
-  // key from the ledger before admitting signed ACL mutations, so a rotated
-  // owner can replace this secret without changing its stable principal.
-  p256.getPublicKey(Buffer.from(typed.ownerSigningKey, "hex"), false);
   return structuredClone(typed);
 }
 export function publicSquadPilotConfig(c: SquadPilotConfig) {

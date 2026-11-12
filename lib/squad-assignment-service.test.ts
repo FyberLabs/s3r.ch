@@ -1,3 +1,4 @@
+import { signBrowserAssignment } from "./assignment-browser-sign";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
@@ -25,7 +26,7 @@ const sign = async (kind: AuthorityKind, fields: Record<string, unknown>) => {
   return { kind, soul: parsed.soul, record };
 };
 const request = (body: unknown, origin = "https://s3r.ch") => new Request("https://s3r.ch/api/squad/assignment", { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body) });
-async function setup() {
+async function setup(clientSigned = false) {
   const seed = createAssignmentJournal(memory(), () => at);
   const state = await seed.initialize({ forum, owner, assignee: old, destinations: [forum], rows: [
     await sign("object", { owner, object: forum, issuedAt: at - 1 }),
@@ -43,9 +44,13 @@ async function setup() {
     } } };
   } };
   const service = createSquadAssignmentService({ squad, source: guardedSource, origin: "https://s3r.ch", authenticate: async () => key ? { key } : null,
-    runtime: { clock: () => now, config: { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] }, sign,
+    runtime: { clock: () => now, config: { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] }, sign: clientSigned ? undefined : sign,
       operationStores(id) { let s = stores.get(id); if (!s) { s = { inventory: memory(), cancellations: outbox(), grants: outbox() }; stores.set(id, s); } return s; } } });
-  const client = createHttpAssignmentClient({ base: "/api/squad/assignment", fetch: async (url, init) => {
+  const client = createHttpAssignmentClient({ base: "/api/squad/assignment",
+    ...(clientSigned ? { signPlan: (plan: unknown, requested: Parameters<typeof signBrowserAssignment>[0]["requested"]) => signBrowserAssignment({ plan, requested,
+      pair: { pub: owner, priv: Buffer.from(secret(53)).toString("base64url"), epub: owner, epriv: "unused" },
+      config: { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] },
+      read: source.read, signal: new AbortController().signal, clock: () => now, approve: async () => true }) } : {}), fetch: async (url, init) => {
     const headers = new Headers(init?.headers); headers.set("Origin", "https://s3r.ch");
     return service(String(url).split("/").at(-1) as Parameters<typeof service>[0], new Request(`https://s3r.ch${url}`, { ...init, headers }));
   } });
@@ -86,4 +91,27 @@ test("abort crossing the evaluation deadline cannot commit through the pinned jo
   const res = await h.service("abort", request({ ...scope, operationId: id }));
   assert.equal(res.status, 409);
   assert.equal((await h.source.load()).journal.operation?.phase, "cancellations");
+});
+
+test("browser WebCrypto signs through authenticated HTTP while the server has no signer", async () => {
+  const h = await setup(true), operationId = "f".repeat(32);
+  const command = { ...scope, operationId, replacement, revision: 0 };
+  assert.equal((await h.service("start", request(command))).status, 409);
+  assert.equal((await h.source.load()).journal.operation, null);
+  const result = await h.client.start(scope, operationId, replacement, 0);
+  assert.equal(result.status, "complete");
+  const state = await h.client.read(scope);
+  assert.equal(state.assignee, replacement); assert.equal("signedMaterial" in state.operation!, false);
+  assert.ok((await h.source.load()).journal.operation?.signedMaterial);
+  assert.deepEqual(await h.client.resume(scope, operationId, replacement), result);
+});
+test("planning and signed submission enforce owner, origin and exact request fields", async () => {
+  const h = await setup(true), command = { ...scope, operationId: "a".repeat(32), replacement, revision: 0 };
+  for (const action of ["plan", "start-signed"] as const) {
+    const body = action === "plan" ? command : { ...command, material: {} };
+    assert.equal((await h.service(action, request({ ...body, actor: owner }))).status, 400);
+    assert.equal((await h.service(action, request(body, "https://evil.example"))).status, 403);
+    h.as(old); assert.equal((await h.service(action, request(body))).status, 403); h.as(owner);
+  }
+  assert.equal((await h.source.load()).journal.operation, null);
 });
