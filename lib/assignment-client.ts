@@ -14,14 +14,30 @@ export type AssignmentClient = Readonly<{
 }>;
 /** Same-origin session-authenticated transport supplied by the provisioned Squad
  * source. No endpoint, token, fixture identity or live authority is defaulted. */
-export function createHttpAssignmentClient(input: { base: string; fetch?: typeof fetch; headers?: () => HeadersInit }): AssignmentClient {
+export function createHttpAssignmentClient(input: { base: string; fetch?: typeof fetch; headers?: () => HeadersInit;
+  signPlan?: (plan: unknown, requested: AssignmentScope & { operationId: string; replacement: string; revision: number }) => Promise<unknown>;
+}): AssignmentClient {
   const fetcher = input.fetch ?? fetch;
   async function request<T>(action: string, scope: AssignmentScope, fields: object = {}): Promise<T> {
     const response = await fetcher(`${input.base}/${action}`, { method: "POST", credentials: "same-origin", cache: "no-store",
       headers: { "Content-Type": "application/json", ...Object.fromEntries(new Headers(input.headers?.()).entries()) },
       body: JSON.stringify({ ...scope, ...fields }) });
     if (!response.ok) throw Error(response.status === 403 ? "Assignment owner access is required." : "Assignment changed or evidence is unavailable. Reload and retry the saved operation.");
-    return response.json() as Promise<T>;
+    const length = response.headers.get("content-length");
+    if (length !== null && (!/^\d+$/.test(length) || Number(length) > 524288)) { await response.body?.cancel(); throw Error("Assignment response too large"); }
+    if (!response.body) throw Error("Missing assignment response");
+    const reader = response.body.getReader(), chunks: Uint8Array[] = []; let size = 0;
+    try {
+      for (;;) {
+        const part = await reader.read(); if (part.done) break;
+        size += part.value.byteLength;
+        if (size > 524288) { await reader.cancel(); throw Error("Assignment response too large"); }
+        chunks.push(part.value);
+      }
+    } finally { reader.releaseLock(); }
+    const bytes = new Uint8Array(size); let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as T;
   }
   const operationIdOK = (id: unknown) => typeof id === "string" && /^[0-9a-f]{32}$/.test(id);
   const receiptOK = (r: AssignmentView["receipts"][string] | undefined) => !!r && operationIdOK(r.operationId) &&
@@ -47,7 +63,13 @@ export function createHttpAssignmentClient(input: { base: string; fetch?: typeof
         throw Error("Invalid assignment scope or evidence.");
       return view;
     },
-    start: (scope, operationId, replacement, revision) => result("start", scope, operationId, replacement, { revision }),
+    async start(scope, operationId, replacement, revision) {
+      if (!input.signPlan) return result("start", scope, operationId, replacement, { revision });
+      const requested = { ...scope, operationId, replacement, revision };
+      const plan = await request<unknown>("plan", scope, { operationId, replacement, revision });
+      const material = await input.signPlan(plan, requested);
+      return result("start-signed", scope, operationId, replacement, { revision, material });
+    },
     resume: (scope, operationId, replacement) => result("resume", scope, operationId, replacement),
     async readChild(scope, id) {
       const value = await request<{ record: DrawerRecord; signature: string } | null>("read-child", scope, { id });

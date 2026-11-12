@@ -33,8 +33,7 @@ async function main() {
     }), owner = identities[0], witness = pair(), now = Math.floor(Date.now() / 1000);
     const config = { version: 1, origin: args[0], squad: { forumId: `forum_${seaToPrincipalKey(owner.pub)}_${randomBytes(16).toString("hex")}`, owner: owner.pub, label: "Synthetic agent pilot" },
       authority: { keys: [{ kid: `pilot-${randomBytes(8).toString("hex")}`, kty: "EC", crv: "P-256", x: witness.pub.split(".")[0], y: witness.pub.split(".")[1], notBefore: now, notAfter: now + 86400 * 90 }],
-        policy: { allowedDomains: [new URL(args[0]).host], allowedUris: [args[0]], allowedChainIds: ["84532"] }, pinnedIssuers: [] },
-      ownerSigningKey: Buffer.from(owner.priv, "base64url").toString("hex") };
+        policy: { allowedDomains: [new URL(args[0]).host], allowedUris: [args[0]], allowedChainIds: ["84532"] }, pinnedIssuers: [] } };
     parseSquadPilotConfig(JSON.stringify(config));
     writeFileSync(file("deployment.json"), JSON.stringify(config), { mode: 0o600, flag: "wx" });
     writeFileSync(file("operator.json"), JSON.stringify({ identities, witness }), { mode: 0o600, flag: "wx" });
@@ -53,7 +52,7 @@ async function main() {
     const destinations = [forum, ...["subtask", "update", "prompt", "artifact", "need"].map(kind => `${kind}_${seaToPrincipalKey(owner)}_${randomBytes(16).toString("hex")}`)];
     const sign = (kind: AuthorityKind, fields: Record<string, unknown>) => {
       const record = { ...fields, sig: "pending" }, p = parseForumAuthority(kind, record); if (!p) throw Error("Invalid provisioning record");
-      record.sig = Buffer.from(p256.sign(p.bytes, Buffer.from(c.ownerSigningKey, "hex"), { prehash: true, format: "compact" })).toString("base64url");
+      record.sig = Buffer.from(p256.sign(p.bytes, Buffer.from(identities[0].priv, "base64url"), { prehash: true, format: "compact" })).toString("base64url");
       return { kind, soul: p.soul, record };
     };
     let held: { text: string; etag: string } | null = null;

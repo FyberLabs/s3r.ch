@@ -2,7 +2,6 @@ import { getIdentitySecret } from "./identity/secret";
 import { createHash } from "node:crypto";
 import { ManagedIdentityCredential } from "@azure/identity";
 import { BlobServiceClient, type ContainerClient } from "@azure/storage-blob";
-import { p256 } from "@noble/curves/nist.js";
 import { parseSquadPilotConfig, type SquadPilotConfig } from "./squad-pilot-config";
 import { createForumAuthority } from "./identity/forum-authority";
 import { createSquadCommitStore, LedgerEvaluationExpired } from "./squad-commit-store";
@@ -10,7 +9,6 @@ import { createBlobSquadCommitStore, createBlobSquadSessionReplayStore, createBl
 import { createBlobCancellationOutboxStore, createBlobReplacementGrantStore } from "./delegation-blob-outbox";
 import { createSquadSessionReplayStore } from "./identity/squad-session-replay";
 import { createSquadHttpServices } from "./squad-http-services";
-import { parseForumAuthority } from "./identity/forum-authority-records";
 
 export const identitySessionNamespace = (origin: string) => createHash("sha256").update(JSON.stringify(["s3rch-identity-session-v1", origin])).digest("hex");
 export const squadPilotNamespace = (c: SquadPilotConfig) => createHash("sha256").update(JSON.stringify(["s3rch-pilot-ledger-v1", c.origin, c.squad.forumId, c.squad.owner])).digest("hex");
@@ -28,12 +26,6 @@ export function createSquadPilotServer(c: SquadPilotConfig, container: Pick<Cont
   const services = createSquadHttpServices({ squad: config.squad, origin: config.origin, config: config.authority, secret: identitySecret,
     clock, consume, read: source.read, assignments: { source, runtime: {
       config: config.authority, clock,
-      async sign(kind, fields) {
-        const record = { ...fields, sig: "pending" }, parsed = parseForumAuthority(kind, record);
-        if (!parsed) throw Error("invalid authority signing intent");
-        record.sig = Buffer.from(p256.sign(parsed.bytes, Buffer.from(config.ownerSigningKey, "hex"), { prehash: true, format: "compact" })).toString("base64url");
-        return { kind, soul: parsed.soul, record };
-      },
       operationStores(id) {
         if (!/^[0-9a-f]{32}$/.test(id)) throw Error("invalid operation ID");
         const operationNamespace = createHash("sha256").update(JSON.stringify([namespace, id])).digest("hex");

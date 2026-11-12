@@ -1,3 +1,5 @@
+import { signBrowserAssignment } from "../lib/assignment-browser-sign";
+import { createHttpForumAuthorityReader } from "../lib/forum-authority-http";
 import assert from "node:assert/strict";
 import { p256 } from "@noble/curves/nist.js";
 import type { ContainerClient } from "@azure/storage-blob";
@@ -17,7 +19,7 @@ export async function testSquadPilot(container: ContainerClient, phase: "write" 
     return { pub, priv: secret.toString("base64url"), epub: pub, epriv: secret.toString("base64url") }; };
   const owner = pair(53), previous = pair(54), replacement = pair(55), witness = pair(56);
   const squad = { owner: owner.pub, forumId: `forum_${seaToPrincipalKey(owner.pub)}_${"f".repeat(32)}`, label: "Full pilot acceptance" };
-  const config = parseSquadPilotConfig(JSON.stringify({ version: 1, origin, squad, ownerSigningKey: Buffer.alloc(32, 53).toString("hex"),
+  const config = parseSquadPilotConfig(JSON.stringify({ version: 1, origin, squad,
     authority: { keys: [{ kid: "synthetic", kty: "EC", crv: "P-256", x: witness.pub.split(".")[0], y: witness.pub.split(".")[1], notBefore: at - 100, notAfter: at + 1000 }],
       policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] } }))!;
   const server = () => createSquadPilotServer(config, container, () => at, "e".repeat(64));
@@ -38,13 +40,15 @@ export async function testSquadPilot(container: ContainerClient, phase: "write" 
       const headers = new Headers(init?.headers); headers.set("origin", origin); headers.set("cookie", [...cookies].map(([k, v]) => `${k}=${v}`).join("; "));
       const request = new Request(origin + url, { ...init, headers });
       const response = action === "challenge" || action === "exchange" || action === "logout" ? await independent.services[action](request)
-        : await independent.services.assignments!(action as Parameters<NonNullable<typeof independent.services.assignments>>[0], request);
+        : action === "authority" ? await independent.services.authority(request) : await independent.services.assignments!(action as Parameters<NonNullable<typeof independent.services.assignments>>[0], request);
       for (const cookie of response.headers.getSetCookie()) { const [name, value] = cookie.split(";")[0].split("="); if (value) cookies.set(name, value); else cookies.delete(name); }
       return response;
     };
     const session = createSquadSessionClient({ base: "/session", origin, squad, fetch: fetcher, clock: () => at });
     assert.equal(await session.signIn(key), true);
-    return { session, assignment: createHttpAssignmentClient({ base: "/assignment", fetch: fetcher }) };
+    return { session, assignment: createHttpAssignmentClient({ base: "/assignment", fetch: fetcher,
+      signPlan: (plan, requested) => signBrowserAssignment({ plan, requested, pair: key, config: config.authority, clock: () => at,
+        read: createHttpForumAuthorityReader({ endpoint: "/authority", squad, fetch: fetcher }), signal: new AbortController().signal, approve: async () => true }) }) };
   }
   const ownerClient = await client(owner), oldClient = await client(previous), newClient = await client(replacement);
   if (phase === "write") {

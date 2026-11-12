@@ -15,3 +15,10 @@ test("foreign or malformed state and failed child admission never become success
   await assert.rejects(client({ ...scope, assignee: key, revision: 1, operation: false, receipts: {} }).read(scope));
   await assert.rejects(client({}, 403).read(scope), /owner/);
 });
+
+test("assignment response parsing bounds declared and streamed JSON", async () => {
+  for (const response of [new Response("{}", { headers: { "content-length": "524289" } }), new Response("x".repeat(524289))]) {
+    const bounded = createHttpAssignmentClient({ base: "/test", fetch: async () => response });
+    await assert.rejects(bounded.read({ forum: "unused", owner: "unused" }), /too large/);
+  }
+});

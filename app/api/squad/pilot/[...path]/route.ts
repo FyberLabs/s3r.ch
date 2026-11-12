@@ -24,7 +24,7 @@ export async function POST(request: Request, context: { params: Promise<{ path: 
     }
     if (path.length === 2 && path[0] === "assignment") {
       const action = path[1];
-      if (action === "read" || action === "start" || action === "resume" || action === "abort" || action === "read-child" || action === "child") return pilot.services.assignments!(action, request);
+      if (action === "plan" || action === "start-signed" || action === "read" || action === "start" || action === "resume" || action === "abort" || action === "read-child" || action === "child") return pilot.services.assignments!(action, request);
     }
     return reply(404);
   } catch { return reply(503); }
