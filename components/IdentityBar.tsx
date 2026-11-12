@@ -9,6 +9,7 @@ import {
   useSignMessage,
 } from "wagmi";
 import { AgeConfirmation } from "@/components/AgeConfirmation";
+import { SeaIdentitySession } from "@/components/SeaIdentitySession";
 import { StartupLinkedLogin } from "@/components/StartupLinkedLogin";
 import { SignInOptions } from "@/components/SignInOptions";
 import { IdentityProviders } from "@/components/IdentityProviders";
@@ -911,6 +912,7 @@ function IdentityBarInner() {
           />
         )}
       </div>
+      <SeaIdentitySession />
       <StartupLinkedLogin address={session === undefined ? undefined : session?.address ?? null} />
       {showWrap ? (
         <label className="mt-3 flex items-center gap-2 text-xs text-ink-muted">

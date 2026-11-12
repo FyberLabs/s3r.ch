@@ -5,6 +5,7 @@ import vector from "@/lib/identity/vectors/forums.json";
 import {
   forgetUnlockedMeshPair,
   readUnlockedMeshPair,
+  readSingleUnlockedIdentity,
   rememberUnlockedMeshPair,
   subscribeUnlockedMeshPair,
 } from "@/lib/identity/unlocked-mesh";
@@ -36,4 +37,21 @@ describe("unlocked mesh pair", () => {
     forgetUnlockedMeshPair();
     assert.equal(readUnlockedMeshPair("0xdef"), null);
   });
+});
+
+
+it("site identity selection requires one unique unlocked SEA key and returns a snapshot", () => {
+  forgetUnlockedMeshPair();
+  assert.equal(readSingleUnlockedIdentity(), null);
+  rememberUnlockedMeshPair("first", pair);
+  const first = readSingleUnlockedIdentity(); assert.ok(first);
+  assert.deepEqual(first.pair, pair); assert.notEqual(first.pair, pair);
+  rememberUnlockedMeshPair("linked", pair);
+  const linked = readSingleUnlockedIdentity(); assert.ok(linked);
+  assert.equal(linked.pair.pub, pair.pub); assert.ok(linked.revision > first.revision);
+  rememberUnlockedMeshPair("other", { ...pair, pub: vector.secondPubkey });
+  assert.equal(readSingleUnlockedIdentity(), null);
+  forgetUnlockedMeshPair("other");
+  assert.equal(readSingleUnlockedIdentity()?.pair.pub, pair.pub);
+  forgetUnlockedMeshPair(); assert.equal(readSingleUnlockedIdentity(), null);
 });

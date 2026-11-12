@@ -550,3 +550,14 @@ The existing Squad client/handler exports remain compatibility adapters.
 This provides the shared issuer boundary; wallet-derived legacy app admission
 and automatic UI migration remain tracked in #277. Current Check and object
 grants are still required after authentication.
+
+When the shared issuer is enabled, the identity bar offers **Use saved identity**
+for one unambiguous unlocked SEA key. It shows the selected public key, requires
+an explicit click, and signs only the existing server challenge. Multiple distinct
+unlocked identities require the user to resolve their selection first. It never
+creates a replacement key or treats a linked wallet/OIDC credential as the proof.
+If the selected key or its unlock revision changes during the operation, the
+control attempts to clear the stale exchange and never reports that attempt as
+successful authentication. Failed cleanup is reported as unavailable. The
+identity session can be refreshed or signed out independently; normal account
+sign-out also retains its existing cookie clearing behavior.
