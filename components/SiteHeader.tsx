@@ -15,6 +15,7 @@ export function SiteHeader() {
           <Link href="/feed" className="hover:text-ink">
             Feed
           </Link>
+          <Link href="/tools" className="hover:text-ink">Tools</Link>
           <Link href="/features" className="hover:text-ink">
             Features
           </Link>
