@@ -4,7 +4,7 @@ import { createSpanopticonRecordStore } from "./spanopticon-record-store-server"
 import { RECORD_BYTES_MAX, RecordConflict, type RecordNamespace } from "./record-store";
 const config = { origin: "https://storage.example", tenant: "11111111-1111-4111-8111-111111111111", apiKey: "private.key" };
 const revision = "a".repeat(64), etag = `"${revision}"`, bytes = new Uint8Array([0, 255]);
-const client = (f: (url: string, init: RequestInit) => Promise<Response>) => createSpanopticonRecordStore(config, f as typeof fetch);
+const client = (f: (url: string, init: RequestInit) => Promise<Response>) => createSpanopticonRecordStore(config, ((url: string, init: RequestInit) => url.endsWith("/access") ? Promise.resolve(new Response(null, { status: 404 })) : f(url, init)) as typeof fetch);
 
 test("records bind authority and preserve binary bytes, conditions and revisions", async () => {
   const calls: RequestInit[] = [];

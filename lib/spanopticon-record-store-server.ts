@@ -1,3 +1,4 @@
+import { readCacheAccess } from "./spanopticon-cache-access-server";
 import { RECORD_BYTES_MAX, RecordConflict, type RecordNamespace, type RecordStore } from "./record-store";
 
 function recordPath(namespace: RecordNamespace, name: string) {
@@ -23,7 +24,7 @@ export function createSpanopticonRecordStore(config: Readonly<{ origin: string; 
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(tenant) || tenant === "00000000-0000-0000-0000-000000000000" ||
       typeof apiKey !== "string" || !/^[\x21-\x7e]{1,4096}$/.test(apiKey)) throw new Error("Invalid storage configuration");
   const base = origin.origin + "/api/v1/storage/records/";
-  async function request<T>(method: string, path: string, bytes: Uint8Array<ArrayBuffer> | undefined, conditions: Record<string, string>, signal: AbortSignal | undefined, consume: (response: Response) => Promise<T>): Promise<T> {
+  async function request<T>(method: string, path: string, bytes: Uint8Array<ArrayBuffer> | undefined, conditions: Record<string, string>, signal: AbortSignal | undefined, consume: (response: Response, signal: AbortSignal) => Promise<T>): Promise<T> {
     const timeout = AbortSignal.timeout(120_000);
     const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
     let response: Response | undefined;
@@ -34,7 +35,7 @@ export function createSpanopticonRecordStore(config: Readonly<{ origin: string; 
           ...(bytes ? { "Content-Type": "application/octet-stream", "Content-Length": String(bytes.length) } : {}) }, body: bytes });
       combined.throwIfAborted();
       if (method !== "GET" && response.status === 412) throw new RecordConflict();
-      const result = await consume(response);
+      const result = await consume(response, combined);
       combined.throwIfAborted();
       return result;
     } catch (error) {
@@ -46,7 +47,13 @@ export function createSpanopticonRecordStore(config: Readonly<{ origin: string; 
   }
   return Object.freeze({
     async get(namespace: RecordNamespace, name: string, signal?: AbortSignal) {
-      return request("GET", recordPath(namespace, name), undefined, {}, signal, async response => {
+      const path = recordPath(namespace, name);
+      if (namespace === "cache") {
+        const direct = await request("GET", path + "/access", undefined, {}, signal,
+          (response, deadline) => readCacheAccess(response, tenant, name, fetcher, deadline));
+        if (direct !== undefined) return direct;
+      }
+      return request("GET", path, undefined, {}, signal, async response => {
         if (response.status === 404) return null;
         if (response.status !== 200 || !response.body || ![null, "identity"].includes(response.headers.get("content-encoding"))) throw new Error();
         const tag = returnedRevision(response), length = response.headers.get("content-length");
