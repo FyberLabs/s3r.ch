@@ -14,7 +14,7 @@ const forum = `forum_${seaToPrincipalKey(owner.pub)}_${"a".repeat(32)}`;
 const config = { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] };
 async function fixture() {
   const sign = (kind: AuthorityKind, fields: object) => { const record = { ...fields, sig: "pending" }, parsed = parseForumAuthority(kind, record)!;
-    record.sig = Buffer.from(p256.sign(parsed.bytes, secret(53), { prehash: true, format: "compact" })).toString("base64url"); return { kind, soul: parsed.soul, record }; };
+    record.sig = Buffer.from(p256.sign(parsed.bytes, secret(parsed.signer === old.pub ? 54 : 53), { prehash: true, format: "compact" })).toString("base64url"); return { kind, soul: parsed.soul, record }; };
   const snapshot = { completeThrough: at, history: { completeThrough: at, links: [], accounts: [owner, old, replacement].map(p => ({ principal: p.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) }, rows: [
     sign("object", { owner: owner.pub, object: forum, issuedAt: at - 1 }),
     ...(["post", "see"] as const).map(kind => sign(kind, { owner: owner.pub, object: forum, accessor: old.pub, stated: 1, hamState: 1, issuedAt: at - 1, from: at - 1, until: at + 1000 })),
@@ -27,7 +27,7 @@ async function fixture() {
   let reads = 0, approvals = 0; const controller = new AbortController();
   const input = { plan, requested, pair: owner, config, signal: controller.signal, clock: () => at,
     read: async () => { reads++; return snapshot; }, approve: async () => { approvals++; return true; } };
-  return { input, authority, controller, snapshot, get reads() { return reads; }, get approvals() { return approvals; } };
+  return { input, authority, controller, snapshot, sign, get reads() { return reads; }, get approvals() { return approvals; } };
 }
 test("WebCrypto signs only the recomputed approved plan and exports no private key", async () => {
   const h = await fixture(); let preview: unknown;
@@ -74,4 +74,30 @@ test("changed intent counts and evaluation deadlines cannot produce a bundle", a
   await assert.rejects(signBrowserAssignment({ ...h.input, clock: () => now, read: async () => { now++; return h.snapshot; } }), /authority changed/);
   const aborted = await fixture();
   await assert.rejects(signBrowserAssignment({ ...aborted.input, read: async () => { aborted.controller.abort(); return aborted.snapshot; } }));
+});
+
+test("browser default clock and a deadline crossed during signing are enforced", async t => {
+  const h = await fixture(); t.mock.method(Date, "now", () => at * 1000);
+  const { clock: _clock, ...input } = h.input;
+  await signBrowserAssignment(input);
+  let now = at; const original = crypto.subtle.sign.bind(crypto.subtle);
+  t.mock.method(crypto.subtle, "sign", async (...args: Parameters<typeof original>) => { const result = await original(...args); now++; return result; });
+  await assert.rejects(signBrowserAssignment({ ...h.input, clock: () => now }), /authority expired/);
+});
+
+test("confirmation includes group memberships whose revocation affects other objects", async () => {
+  const h = await fixture(), set = `set_${seaToPrincipalKey(owner.pub)}_${"b".repeat(32)}`;
+  h.snapshot.rows.push(...(["member", "set"] as const).map(role => h.sign("membership", { role, predicate: "same-group", set,
+    member: old.pub, setOwner: owner.pub, stated: 1, hamState: 1, cancels: [], issuedAt: at })),
+    h.sign("object-set", { owner: owner.pub, object: forum, predicate: "same-group", set, stated: 1, hamState: 1, cancels: [], issuedAt: at }));
+  assert.ok((await h.authority.refresh(h.snapshot, at)).ok);
+  h.input.plan.cancellations = await assignmentCancellationIntents({ owner: owner.pub, destinations: [forum], rows: h.snapshot.rows },
+    h.input.plan.operationId, old.pub, at, h.authority.graph);
+  const material = await signBrowserAssignment({ ...h.input, approve: async preview => {
+    assert.deepEqual(preview.groupMemberships, [`same-group: ${set}`]); return true;
+  } });
+  assert.equal(material.cancellations.length, 3);
+  const plan = structuredClone(h.input.plan), index = plan.cancellations.length - 1;
+  const invalid = { ...plan, cancellations: plan.cancellations.map((row, i) => i === index ? { ...row, fields: { ...row.fields, member: replacement.pub } } : row) };
+  await assert.rejects(signBrowserAssignment({ ...h.input, plan: invalid }), /group cancellation/);
 });

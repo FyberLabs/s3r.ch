@@ -11,7 +11,7 @@ import type { createDelegationRuntime } from "./delegation-runtime";
 import type { AssignmentScope } from "./assignment-client";
 type Plan = Awaited<ReturnType<ReturnType<typeof createDelegationRuntime>["plan"]>>;
 export type AssignmentSigningRequest = AssignmentScope & { operationId: string; replacement: string; revision: number };
-export type AssignmentSigningApproval = Readonly<AssignmentSigningRequest & { previous: string; destinations: readonly string[] }>;
+export type AssignmentSigningApproval = Readonly<AssignmentSigningRequest & { previous: string; destinations: readonly string[]; groupMemberships: readonly string[] }>;
 const b64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 export async function signBrowserAssignment(input: {
   plan: unknown; requested: AssignmentSigningRequest; pair: SeaPair; config: ForumAuthorityConfig;
@@ -25,14 +25,20 @@ export async function signBrowserAssignment(input: {
       plan.version !== 1 || plan.forum !== requested.forum || plan.owner !== requested.owner || plan.operationId !== requested.operationId ||
       plan.replacement !== requested.replacement || plan.revision !== requested.revision || !isForumObjectId(plan.forum, "forum") ||
       !isSeaPubkey(plan.owner) || !isSeaPubkey(plan.previous) || !isSeaPubkey(plan.replacement) || !isSeaPubkey(pair.pub) ||
-      plan.previous === plan.replacement || plan.owner === plan.replacement || !/^[0-9a-f]{32}$/.test(plan.operationId) ||
+      plan.previous === plan.replacement || plan.previous === plan.owner || plan.owner === plan.replacement || !/^[0-9a-f]{32}$/.test(plan.operationId) ||
       !Number.isSafeInteger(plan.revision) || plan.revision < 0 || !Number.isSafeInteger(plan.issuedAt) || plan.issuedAt < 0 ||
       !Array.isArray(plan.cancellations) || plan.cancellations.length < 2 || plan.cancellations.length > 192 ||
       !Array.isArray(plan.grants) || plan.grants.length < 2 || plan.grants.length > 128 || JSON.stringify(plan).length > 524288)
     throw Error("Invalid assignment signing plan");
   const destinations = [...new Set(plan.cancellations.filter(i => i?.kind === "post").map(i => i.fields?.object))];
   if (!destinations.length || destinations.length > 64 || destinations.some(object => !isForumObjectId(object))) throw Error("Invalid assignment signing targets");
-  const preview = Object.freeze({ ...requested, previous: plan.previous, destinations: Object.freeze(destinations as string[]) });
+  const groupMemberships = plan.cancellations.filter(i => i?.kind === "cancel").map(intent => {
+    const parsed = parseForumAuthority("cancel", { ...intent.fields, sig: "pending" });
+    if (!parsed || parsed.kind !== "cancel" || parsed.row.kind !== "membership" || parsed.row.member !== plan.previous || parsed.signer !== plan.owner)
+      throw Error("Invalid assignment group cancellation");
+    return `${parsed.row.predicate}: ${parsed.row.set}`;
+  });
+  const preview = Object.freeze({ ...requested, previous: plan.previous, destinations: Object.freeze(destinations as string[]), groupMemberships: Object.freeze(groupMemberships) });
   if (!await input.approve(preview)) throw Error("Assignment signing canceled");
   input.signal.throwIfAborted();
   const at = clock();
