@@ -126,3 +126,46 @@ test("overlapping provider failures and unknown variants share one cohort decisi
     assert.equal((await state.evaluate("layout", choose)).variant, "treatment");
   }
 });
+
+test("key rotation preserves active anonymous and signed-in hashes while new experiments use the current key", async () => {
+  const rotated = new Uint8Array(32).fill(98);
+  for (const principal of [null, firstPrincipal]) {
+    const original = await createExperimentState({ secret, clock: () => 100 })("", principal, experiments);
+    const assigned = await original.evaluate("layout", choose);
+    const open = createExperimentState({ secret: rotated, previousSecrets: [secret], clock: () => 101 });
+    const next = await open(header(await original.cookies()), principal, experiments);
+    assert.deepEqual(await next.evaluate("layout", async () => "control"), assigned);
+    const added = await next.evaluate("next", choose);
+    assert.notEqual(added.assignment_hash, assigned.assignment_hash);
+    if (principal) assert.equal(added.assignment_hash, hashExperimentAssignment(principal, rotated));
+    const rewritten = await createExperimentState({ secret: rotated, clock: () => 102 })(header(await next.cookies()), principal, experiments);
+    assert.deepEqual(await rewritten.evaluate("layout", async () => "control"), assigned);
+  }
+});
+
+test("rotation during sign-in preserves anonymous attribution and rejects cross-account reuse", async () => {
+  const rotated = new Uint8Array(32).fill(98);
+  const first = await createExperimentState({ secret })("", null, experiments);
+  const assigned = await first.evaluate("layout", choose);
+  const open = createExperimentState({ secret: rotated, previousSecrets: [secret] });
+  const signedIn = await open(header(await first.cookies()), firstPrincipal, experiments);
+  assert.deepEqual(await signedIn.evaluate("layout", choose), assigned);
+  const priorAccount = await createExperimentState({ secret })("", firstPrincipal, experiments);
+  await priorAccount.evaluate("layout", choose);
+  for (const principal of [null, secondPrincipal]) {
+    const other = await open(header(await priorAccount.cookies()), principal, experiments);
+    assert.equal((await other.evaluate("layout", async () => "control")).variant, "control");
+  }
+});
+
+test("previous signing keys are bounded, copied and explicitly configured", async () => {
+  assert.throws(() => createExperimentState({ secret, previousSecrets: [new Uint8Array(31)] }));
+  assert.throws(() => createExperimentState({ secret, previousSecrets: [secret, secret, secret, secret] }));
+  const old = new Uint8Array(secret);
+  const original = await createExperimentState({ secret: old })("", null, experiments);
+  const assigned = await original.evaluate("layout", choose);
+  const open = createExperimentState({ secret: new Uint8Array(32).fill(98), previousSecrets: [old] });
+  old.fill(0);
+  const restored = await open(header(await original.cookies()), null, experiments);
+  assert.deepEqual(await restored.evaluate("layout", choose), assigned);
+});
