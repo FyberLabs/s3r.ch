@@ -9,6 +9,7 @@ import {
   useSignMessage,
 } from "wagmi";
 import { AgeConfirmation } from "@/components/AgeConfirmation";
+import { StartupLinkedLogin } from "@/components/StartupLinkedLogin";
 import { SignInOptions } from "@/components/SignInOptions";
 import { IdentityProviders } from "@/components/IdentityProviders";
 import { HeldConfirmControls } from "@/components/HeldConfirmControls";
@@ -910,6 +911,7 @@ function IdentityBarInner() {
           />
         )}
       </div>
+      <StartupLinkedLogin address={session === undefined ? undefined : session?.address ?? null} />
       {showWrap ? (
         <label className="mt-3 flex items-center gap-2 text-xs text-ink-muted">
           <input

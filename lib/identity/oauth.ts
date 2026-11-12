@@ -1,3 +1,5 @@
+import { readBoundedIdentityJson } from "./bounded-json";
+import { startupCookieNames } from "./startup-login-cookies";
 import { requestHost, requestIsSecure } from "../request-origin";
 /**
  * Backup OAuth door. Any configured OIDC provider (see providers.ts); the
@@ -339,7 +341,7 @@ export async function lookupProviderWallet(input: {
   }
 }
 
-async function exchangeCode(
+export async function exchangeCode(
   input: {
     issuer: string;
     code: string;
@@ -357,21 +359,22 @@ async function exchangeCode(
     client_id: input.clientId ?? OAUTH_CLIENT_ID,
     code_verifier: input.verifier,
   });
+  const signal = AbortSignal.timeout(10_000);
   let response: Response;
   try {
     response = await fetchImpl(input.tokenEndpoint ?? `${input.issuer}/protocol/openid-connect/token`, {
-      method: "POST",
+      method: "POST", redirect: "error", cache: "no-store", credentials: "omit",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body,
-      signal: AbortSignal.timeout(10_000),
+      signal,
     });
   } catch {
     throw new OAuthFlowError("Token exchange failed.");
   }
-  if (!response.ok) throw new OAuthFlowError("Token exchange failed.");
+  if (!response.ok || response.redirected) { await response.body?.cancel(); throw new OAuthFlowError("Token exchange failed."); }
   let json: { id_token?: unknown; access_token?: unknown };
   try {
-    json = (await response.json()) as { id_token?: unknown; access_token?: unknown };
+    json = (await readBoundedIdentityJson(response, 65536, signal)) as { id_token?: unknown; access_token?: unknown };
   } catch {
     throw new OAuthFlowError("Token exchange failed.");
   }
@@ -503,6 +506,7 @@ export async function beginOAuth(
     authorizationEndpoint: provider.authorizationEndpoint,
   });
   return appRedirect(location, [
+    ...startupCookieNames().map(name => clearCookie(name, name.startsWith("__Host-"))),
     serializeCookie(
       oauthPkceCookieName(secure),
       pkce,

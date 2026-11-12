@@ -1,3 +1,4 @@
+import { readBoundedIdentityJson } from "./bounded-json";
 import { resolveStartupLinkedIdentity, snapshotStartupLoginBinding,
   type StartupLinkedIdentity, type StartupLoginBinding } from "./startup-linked-login";
 
@@ -28,25 +29,8 @@ export function createStartupIdentityClient(input: {
             response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
           await response.body?.cancel(); return null;
         }
-        const reader = response.body.getReader(), chunks: Uint8Array[] = [];
-        let size = 0;
-        const cancel = () => { void reader.cancel().catch(() => {}); };
-        signal.addEventListener("abort", cancel, { once: true });
-        try {
-          for (;;) {
-            signal.throwIfAborted();
-            const part = await reader.read();
-            signal.throwIfAborted();
-            if (part.done) break;
-            size += part.value.byteLength;
-            if (size > 16384) { await reader.cancel(); return null; }
-            chunks.push(part.value);
-          }
-          const bytes = new Uint8Array(size); let offset = 0;
-          for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-          const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-          return resolveStartupLinkedIdentity(value, expected, verifiedSubject, account);
-        } finally { signal.removeEventListener("abort", cancel); reader.releaseLock(); }
+        const value = await readBoundedIdentityJson(response, 16384, signal);
+        return resolveStartupLinkedIdentity(value, expected, verifiedSubject, account);
       } catch { return null; }
     },
   });

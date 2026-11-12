@@ -1,4 +1,5 @@
 import { getAddress } from "viem";
+import { isSeaPubkey } from "./forum-check";
 import { isSeaPair, type SeaPair } from "./sea";
 import { isPrfWrapEnvelope, type PrfWrapEnvelope } from "./wrap";
 
@@ -250,4 +251,17 @@ function idbRequest<T>(
       };
     });
   });
+}
+
+/** Read an existing key by its primary SEA identity. Never creates or rewrites a key. */
+export function selectMeshKeyBySea(records: readonly unknown[], pub: string): MeshKeyRecord | null {
+  if (!isSeaPubkey(pub) || records.length > 64) return null;
+  const matches = records.filter((row): row is MeshKeyRecord => isMeshKeyRecord(row) && row.seaPub === pub);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+export async function findMeshKeyBySea(pub: string, factory: IDBFactory | undefined = globalThis.indexedDB): Promise<MeshKeyRecord | null> {
+  if (!isSeaPubkey(pub)) return null;
+  const rows = await idbRequest(factory, "readonly", store => store.getAll(null, 65));
+  return selectMeshKeyBySea(rows, pub);
 }
