@@ -573,3 +573,19 @@ Live publication also requires that key to match the connected proof session and
 pass current SociACL permission checks. Locking, replacement, or re-unlocking
 invalidates an in-flight signature before publication. The existing pilot session
 transport and trusted-history dependency remain tracked in #277 and #279.
+
+## SIWE deployment policy
+
+Infra may set `S3RCH_SIWE_POLICY` to a JSON object with `allowed_hosts`,
+`allowed_origins`, `contract_chain_id: 1` and optional `rpc_url`. For production,
+use hosts `s3r.ch` and `www.s3r.ch` and their corresponding HTTPS origins. TEST
+may additionally declare `test.s3r.ch`. Every host must have an exact origin.
+The policy narrows the built-in allowlist and never changes the signed message's
+required match to the request host. URI paths, credentials and foreign origins
+are refused. The setting is read on the server at request time, not at build time.
+
+Only mainnet contract verification is supported. A configured HTTPS RPC must
+report chain 1 before any ERC-1271/EIP-6492 verification. Local chains remain
+EOA recovery only; invalid policy or RPC responses fail closed without leaking
+configuration values. Omitting the setting preserves existing deployment
+behavior. Payment's AUTH_SIWE settings are a separate owner contract.
