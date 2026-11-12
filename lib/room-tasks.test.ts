@@ -136,7 +136,7 @@ test("legacy production room paths cannot activate or publish unauthenticated wo
 });
 
 test("Views room adapter quarantines forged work while preserving ordinary chat", () => {
-  const ref = roomSourceRef("s3rch:test.s3r.ch", { id: room, owner });
+  const ref = roomSourceRef(`s3rch:https://s3r.ch:443;key=${"a".repeat(64)}`, { id: room, owner });
   assert.ok(ref.ok);
   const forged = event(["create", "task", "Forged", "room", "open", null]);
   for (const body of [forged.body, "s3rch-work:v2:[]", "s3rch-work:malformed"])
