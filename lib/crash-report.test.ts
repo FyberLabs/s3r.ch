@@ -41,7 +41,7 @@ test("idle browser reporting makes no requests and shares context across errors"
     return url.endsWith("context") ? Response.json({color:"green"}) : new Response(null,{status:204});
   }) as typeof fetch);
   await new Promise(resolve=>setTimeout(resolve,0));
-  assert.deepEqual(urls,[]);
+  assert.equal(urls.length,0);
   emit("browser-error");emit("render-error");
   await new Promise(resolve=>setTimeout(resolve,0));
   assert.equal(urls.filter(url=>url.endsWith("context")).length,1);
