@@ -61,7 +61,9 @@ describe("hyperme.sh wallet handoff prompt", () => {
       const hop = readFileSync(fileURLToPath(new URL(route, import.meta.url)), "utf8");
       assert.equal(hop.includes("readBackupFromRequest"), false);
       assert.equal(hop.includes("ownerForOAuth"), false);
-      assert.equal(hop.includes("readSessionToken"), true);
+      const seaTurn = route.includes("/turn/");
+      assert.equal(hop.includes(seaTurn ? "readSeaRequestSession" : "readSessionToken"), true);
+      if (seaTurn) assert.equal(hop.includes("readSessionToken"), false);
     }
   });
 });
