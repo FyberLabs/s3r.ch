@@ -20,3 +20,13 @@ describe("session cookie", () => {
     await assert.rejects(() => readSessionToken(token, `${SECRET}-other-secret-value-32chars!!`));
   });
 });
+
+// Both release colors receive the same setting; color is not part of a cookie.
+it("accepts cookies bidirectionally across release instances sharing the secret", async () => {
+  const blue = { secret: SECRET }, green = { secret: SECRET };
+  for (const [writer, reader] of [[blue, green], [green, blue]]) {
+    const cookie = await signSessionToken({ address: ADDRESS, chainId: 1 }, writer.secret);
+    assert.equal((await readSessionToken(cookie, reader.secret)).address, ADDRESS);
+    await assert.rejects(readSessionToken(cookie, reader.secret + "rotated"));
+  }
+});

@@ -96,3 +96,5 @@ closed. Fyber's hosted tenant continues to use the `spanopticon` backend.
 | `S3RCH_UPSTREAM_COLOR` | Optional upstream `blue`, `green`, `test`, or `production` label. |
 
 These labels do not select a release, route traffic, or change session keys.
+
+| `S3RCH_GUN_HEALTH_URL` | Operator-configured HTTPS peer `/api/health` or public `/_peer/api/health` probe. No credentials, query or fragment. |

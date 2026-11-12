@@ -1,3 +1,4 @@
+import { gunHealth } from "@/lib/gun-health";
 import { identityHealth } from "../../../identity-health.cjs";
 import { panopticonHealth } from "@/lib/dependency-health";
 
@@ -15,7 +16,7 @@ export async function GET() {
     {
       status: "ok",
       dependencies: {
-        gun: { status: "external" },
+        gun: await gunHealth(process.env.S3RCH_GUN_HEALTH_URL),
         identity: {
           status: identity.status,
           writable: identity.status === "ok" || identity.status === "unchecked",
