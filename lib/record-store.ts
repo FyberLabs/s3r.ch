@@ -1,6 +1,6 @@
 /** Conditional named bytes; providers never decide end-user access grants. */
 export const RECORD_BYTES_MAX = 8 * 1024 * 1024;
-export type RecordNamespace = "cache" | "recovery" | "fixtures";
+export type RecordNamespace = "cache" | "recovery" | "fixtures" | "media";
 export type StoredRecord = Readonly<{ bytes: Uint8Array; revision: string }>;
 export class RecordConflict extends Error {
   constructor() { super("Tenant record changed"); this.name = "RecordConflict"; }

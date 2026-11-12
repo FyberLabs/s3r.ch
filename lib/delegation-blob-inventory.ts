@@ -34,23 +34,31 @@ function createBlobCasStore(container: Pick<ContainerClient, "getBlockBlobClient
   if (typeof namespace !== "string" || !/^[0-9a-f]{64}$/.test(namespace)) throw Error("invalid inventory namespace");
   const blob = container.getBlockBlobClient(`${prefix}/${namespace}.json`);
   return Object.freeze({
-    async read() {
+    async read(requestSignal?: AbortSignal) {
+      const timeout = AbortSignal.timeout(15000), signal = requestSignal ? AbortSignal.any([requestSignal, timeout]) : timeout;
       try {
-        const response = await blob.download(0, CAP + 1, { abortSignal: AbortSignal.timeout(15000) });
+        signal.throwIfAborted();
+        const response = await blob.download(0, CAP + 1, { abortSignal: signal });
         const stream = response.readableStreamBody as Readable | undefined;
         if (!stream) throw Error("missing inventory body");
+        const abort = () => { stream.destroy(); };
+        signal.addEventListener("abort", abort, { once: true });
         try {
+          signal.throwIfAborted();
           if (!response.etag || response.contentLength === undefined || response.contentLength > CAP) throw Error("invalid inventory response");
           const parts: Buffer[] = []; let size = 0;
           for await (const chunk of stream) {
+            signal.throwIfAborted();
             const part = Buffer.from(chunk); size += part.length;
             if (size > CAP) throw Error("inventory capacity");
             parts.push(part);
           }
+          signal.throwIfAborted();
           if (!size || size !== response.contentLength) throw Error("truncated inventory");
           return { text: new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(Buffer.concat(parts)), etag: response.etag };
-        } finally { stream.destroy(); }
+        } finally { signal.removeEventListener("abort", abort); stream.destroy(); }
       } catch (error) {
+        signal.throwIfAborted();
         if (matches(error, 404, "BlobNotFound")) return null;
         throw error;
       }

@@ -53,3 +53,20 @@ test("session replay uses a distinct bounded blob and rejects oversize writes", 
   await assert.rejects(store.compareAndSwap(null, "x".repeat(400001)), /capacity/);
   assert.equal(writes, 0);
 });
+
+test("request cancellation reaches the Blob download and stalled body", async () => {
+  const before = new AbortController(); before.abort(); let calls = 0;
+  await assert.rejects(setup({ async download() { calls++; } }).read(before.signal));
+  assert.equal(calls, 0);
+  const pending = new AbortController(); let downloadSignal: AbortSignal | undefined;
+  const store = setup({ async download(_offset: number, _count: number, options: { abortSignal: AbortSignal }) {
+    downloadSignal = options.abortSignal;
+    return new Promise((_, reject) => options.abortSignal.addEventListener("abort", () => reject(Error("aborted")), { once: true }));
+  } });
+  const read = store.read(pending.signal); pending.abort(); await assert.rejects(read);
+  assert.equal(downloadSignal?.aborted, true);
+  const body = new AbortController(), stream = new Readable({ read() {} });
+  const reading = setup({ async download() { return { etag: "e", contentLength: 2, readableStreamBody: stream }; } }).read(body.signal);
+  await new Promise(resolve => setImmediate(resolve)); body.abort(); await assert.rejects(reading);
+  assert.equal(stream.destroyed, true);
+});
