@@ -1,6 +1,6 @@
 {
   "name": "s3rch-website",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -46,7 +46,8 @@
     "postcss": "^8.5.32",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "fake-indexeddb": "6.2.4"
   },
   "engines": {
     "node": ">=24"

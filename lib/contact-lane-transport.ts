@@ -39,26 +39,26 @@ function createCiphertextTransport(spanopticonOrigin: string, fetcher: typeof fe
     if (!opaqueId(laneId)) throw new Error('Invalid opaque lane ID');
     return `${base.origin}/api/v1/acl/sociacl/${namespace}/${laneId}/messages`;
   }
-  function options(): RequestInit {
-    return { credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(15000) };
+  function options(signal?: AbortSignal): RequestInit {
+    return { credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000) };
   }
   return {
-    async append(laneId: string, ciphertext: Uint8Array): Promise<string> {
+    async append(laneId: string, ciphertext: Uint8Array, signal?: AbortSignal): Promise<string> {
       const url = endpoint(laneId);
       if (!(ciphertext instanceof Uint8Array) || ciphertext.length < minimum || ciphertext.length > maximum) {
         throw new Error('Invalid ciphertext size');
       }
       const body = new Uint8Array(ciphertext); // Snapshot caller-owned mutable bytes.
       const expected = await digest(body);
-      const result = await boundedJson(await fetcher(url, { ...options(), method: 'POST',
+      const result = await boundedJson(await fetcher(url, { ...options(signal), method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream' }, body }));
       if (!result || typeof result !== 'object' || !('id' in result) || result.id !== expected) {
         throw new Error('Ciphertext digest mismatch');
       }
       return expected;
     },
-    async read(laneId: string): Promise<readonly LaneCiphertext[]> {
-      const result = await boundedJson(await fetcher(endpoint(laneId), { ...options(), method: 'GET' }));
+    async read(laneId: string, signal?: AbortSignal): Promise<readonly LaneCiphertext[]> {
+      const result = await boundedJson(await fetcher(endpoint(laneId), { ...options(signal), method: 'GET' }));
       if (!result || typeof result !== 'object' || !('messages' in result) || !Array.isArray(result.messages) || result.messages.length > 128) {
         throw new Error('Invalid contact lane response');
       }
