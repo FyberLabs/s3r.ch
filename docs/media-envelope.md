@@ -2,7 +2,7 @@
 
 `lib/media-crypto.ts` prepares opaque bytes for the s3r.ch tenant's Spanopticon
 object store. This is a client encryption prerequisite for #300. Upload routes, confidential grant persistence and Check-authorized retrieval
-are still to be connected; these modules do not enable media uploads.
+require deployment configuration and registered signed media ownership; no upload UI is enabled.
 
 Each encryption generates a fresh AES-256-GCM key and 96-bit nonce. Associated
 data binds the envelope version, canonical tenant UUID and canonical SociACL
@@ -67,3 +67,33 @@ parsing the description. The returned body is a separate buffer; temporary packe
 plaintext is cleared on success and failure where JavaScript permits. The helpers
 still require independently verified enrollment, current Check and fresh epochs.
 They do not install upload routes, grant persistence, quotas or a player.
+
+## Authenticated object transport
+
+`PUT /api/media/{media_object_id}` accepts only the opaque encrypted envelope,
+with `Content-Type: application/octet-stream`, bounded `Content-Length`, and
+`X-Media-SHA256`. The canonical media object must already have signed ownership
+in the deployment-provisioned complete authority source. The route cannot enroll
+an object or accept a client-supplied history. Only its current SEA owner may
+upload. The private `media/object-index-v1` record binds the object to exactly
+one ciphertext digest and length; replacing it requires a new media object.
+
+`GET` requires the current owner's access or a current direct See grant. It
+returns only ciphertext as an attachment, never file names, MIME descriptions,
+reader wraps, storage credentials or provider URLs. Each operation authenticates
+again and reads fresh authority before returning bytes or upload success. Read
+fetches use same-origin browser metadata or an explicit matching Origin.
+
+The primary index uses conditional writes to reserve at most 128 objects and
+256 MiB per tenant before an object upload. Each file is at most 64 MiB, including
+the encrypted envelope; two requests may be active per configured worker. A
+failed upload retains its reservation so an identical retry is safe; there is
+no automatic deletion or quota reclamation. This is a bounded initial transport,
+not a billing quota system. The media key needs object read/write and media
+record read/write scopes, with no cache or delete permission.
+
+Routes return 503 until dedicated media settings and the trusted authority source
+are configured. They currently use the existing primary Squad source and do not
+claim the broader trusted-history migration is complete. Browser upload/playback,
+confidential reader-wrap delivery, object admission, quota management UI, and
+scheduled browser qualification remain in #300 and its dependent issues.

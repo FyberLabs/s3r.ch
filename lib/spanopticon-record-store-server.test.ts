@@ -89,3 +89,16 @@ test("configuration is server-owned and uploads snapshot mutable inputs", async 
   }) as typeof fetch);
   const upload = store.put("fixtures","feed",input,null); input.fill(0); mutable.apiKey="changed"; finish(); await upload;
 });
+
+
+test("private media records never use delegated cache access", async () => {
+  let calls = 0;
+  const store = createSpanopticonRecordStore(config, (async (url, init) => {
+    calls++;
+    assert.equal(String(url), config.origin + "/api/v1/storage/records/media/object-index-v1");
+    assert.equal(new Headers(init?.headers).get("x-api-key"), config.apiKey);
+    return new Response(bytes, { headers: { etag, "content-length": "2" } });
+  }) as typeof fetch);
+  assert.deepEqual(await store.get("media", "object-index-v1"), { bytes, revision });
+  assert.equal(calls, 1);
+});

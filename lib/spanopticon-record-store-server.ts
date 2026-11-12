@@ -2,7 +2,7 @@ import { readCacheAccess } from "./spanopticon-cache-access-server";
 import { RECORD_BYTES_MAX, RecordConflict, type RecordNamespace, type RecordStore } from "./record-store";
 
 function recordPath(namespace: RecordNamespace, name: string) {
-  if (!["cache", "recovery", "fixtures"].includes(namespace) || !/^[A-Za-z0-9_-]{1,128}$/.test(name)) throw new Error("Invalid record name");
+  if (!["cache", "recovery", "fixtures", "media"].includes(namespace) || !/^[A-Za-z0-9_-]{1,128}$/.test(name)) throw new Error("Invalid record name");
   return namespace + "/" + name;
 }
 function revision(value: string) {
