@@ -37,13 +37,20 @@ export function SeaIdentitySession() {
         const response = await fetch("/api/identity/sea/session", { cache: "no-store", credentials: "same-origin", redirect: "error", signal });
         if (!response.ok) throw Error();
         const value = await readBoundedIdentityJson(response, 4096, signal) as Partial<Status> | null;
-        if (attempt !== generation.current || !value || typeof value.enabled !== "boolean") return;
+        if (attempt !== generation.current) return;
+        if (!value || typeof value.enabled !== "boolean") throw Error();
         if (!value.enabled) { setStatus(null); return; }
         if (value.principal !== null && (typeof value.principal !== "string" || !isSeaPubkey(value.principal) ||
             !Number.isSafeInteger(value.expiresAt) || value.expiresAt! <= Date.now() || value.expiresAt! > Date.now() + 300000)) throw Error();
         setStatus({ enabled: true, principal: value.principal, expiresAt: value.principal ? value.expiresAt! : null });
         if (value.principal) expiry = setTimeout(() => setRevision(number => number + 1), Math.max(0, value.expiresAt! - Date.now()));
-      } catch { if (attempt === generation.current) setStatus(null); }
+      } catch {
+        if (attempt === generation.current && !abort.signal.aborted) {
+          setStatus(null);
+          // Retry status only; never reuse a stale principal or initiate a proof.
+          expiry = setTimeout(() => setRevision(number => number + 1), 5_000);
+        }
+      }
     })();
     return () => { abort.abort(); if (expiry) clearTimeout(expiry); };
   }, [revision]);
