@@ -1,0 +1,20 @@
+{
+  "request": {
+    "v": 1,
+    "channelId": "1212121212121212121212121212121212121212121212121212121212121212",
+    "descriptorRevision": 1,
+    "sender": "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+    "replyEpub": "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+    "nonce": "3434343434343434343434343434343434343434343434343434343434343434",
+    "issuedAt": 1700000000,
+    "expiresAt": 1700000300,
+    "message": " Hello e\u0301 \ud83c\udf31 "
+  },
+  "descriptor": {
+    "channelId": "1212121212121212121212121212121212121212121212121212121212121212",
+    "revision": 1,
+    "expiresAt": 1700000600,
+    "maxLifetimeSeconds": 300,
+    "maxMessageBytes": 1024
+  }
+}
