@@ -37,8 +37,11 @@ function validState(value: unknown): value is State {
 /** Server-only adapter. verifiedPrincipal must come from the SEA session
  * authenticator, never a body, cookie, wallet claim or browser-supplied key.
  * State affects experiments only; it never grants authorization. */
-export function createExperimentState(input: { secret: Uint8Array; clock?: () => number }) {
+export function createExperimentState(input: { secret: Uint8Array; previousSecrets?: readonly Uint8Array[]; clock?: () => number }) {
   if (!(input.secret instanceof Uint8Array) || input.secret.byteLength < 32) throw Error("Experiment secret required");
+  if (input.previousSecrets !== undefined && (!Array.isArray(input.previousSecrets) || input.previousSecrets.length > 3 ||
+      input.previousSecrets.some(key => !(key instanceof Uint8Array) || key.byteLength < 32))) throw Error("Invalid previous experiment secrets");
+  const previousSecrets = (input.previousSecrets ?? []).map(key => new Uint8Array(key));
   const secret = new Uint8Array(input.secret), clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   const type = "s3rch-experiment-state-v1";
   return async (cookieHeader: string, verifiedPrincipal: string | null, active: readonly ExperimentDefinition[]) => {
@@ -53,17 +56,25 @@ export function createExperimentState(input: { secret: Uint8Array; clock?: () =>
     if (!anonymous || !uuid.test(anonymous)) anonymous = randomUUID();
     let state: State = { anonymous, subject, assignments: [] };
     const token = readCookie(cookieHeader, experimentStateCookie);
+    let stateSecret = secret;
     if (token && token.length <= 3800) {
-      try {
-        const { payload } = await jwtVerify(token, secret, { algorithms: ["HS256"], typ: type,
-          issuer: "s3rch", audience: type, currentDate: new Date(now * 1000), requiredClaims: ["iat", "exp"] });
-        if (validState(payload.state) && payload.state.anonymous === anonymous &&
-            Number.isSafeInteger(payload.iat) && Number.isSafeInteger(payload.exp) && payload.iat! <= now && payload.exp! - payload.iat! === ttl) state = payload.state;
-      } catch { /* Invalid private state starts a fresh assignment set. */ }
+      for (const candidate of [secret, ...previousSecrets]) {
+        try {
+          const { payload } = await jwtVerify(token, candidate, { algorithms: ["HS256"], typ: type,
+            issuer: "s3rch", audience: type, currentDate: new Date(now * 1000), requiredClaims: ["iat", "exp"] });
+          if (validState(payload.state) && payload.state.anonymous === anonymous &&
+              Number.isSafeInteger(payload.iat) && Number.isSafeInteger(payload.exp) && payload.iat! <= now && payload.exp! - payload.iat! === ttl) {
+            state = payload.state;
+            stateSecret = candidate;
+            break;
+          }
+        } catch { /* Try only explicitly configured prior signing keys. */ }
+      }
     }
     // Carry the anonymous cohort into the first authenticated session. A
     // logout or account switch must not carry another person's cohort forward.
-    if (state.subject !== null && state.subject !== subject) {
+    const previousSubject = verifiedPrincipal === null ? null : hashExperimentAssignment(verifiedPrincipal, stateSecret);
+    if (state.subject !== null && state.subject !== previousSubject) {
       state = { anonymous: randomUUID(), subject, assignments: [] };
     }
     state.subject = subject;
