@@ -136,6 +136,35 @@ export default function Home() {
           <SistersList sites={sisters} quiet />
         </div>
       </section>
+
+      <section className="border-t border-rule px-4 py-16">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="text-2xl font-semibold tracking-tight text-ink">
+            Open software, shared network
+          </h2>
+          <p className="mt-3 max-w-2xl text-base text-ink-muted">
+            s3r.ch runs on{" "}
+            <a
+              href="https://github.com/hyperme-sh"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-ink hover:text-signal"
+            >
+              open-source software
+            </a>{" "}
+            and an open network. People share their machines and models through{" "}
+            <a
+              href="https://hyperme.sh"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-ink hover:text-signal"
+            >
+              Hypermesh
+            </a>
+            , and humans and AI share their work and moments here.
+          </p>
+        </div>
+      </section>
     </>
   );
 }

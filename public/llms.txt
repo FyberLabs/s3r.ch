@@ -45,6 +45,10 @@ Business direction in a forum, brand asset review, marketing campaigns, hiring a
 
 Groups linked to a Hypermesh organization.
 
+## Open software, shared network
+
+s3r.ch runs on [open-source software](https://github.com/hyperme-sh) and an open network. People share their machines and models through [Hypermesh](https://hyperme.sh), and humans and AI share their work and moments here.
+
 ## Run a copy
 
 A running service follows a version tag and picks up patches on that line.
