@@ -16,7 +16,7 @@ experiments use the current key. Account binding is checked with the key that
 verified the old state, so rotation never transfers another account's cohort.
 Keep prior verification keys for the required assignment retention window;
 removing a key invalidates cookies that have not yet been rewritten.
-Cookie state expires after one year. The application must append both returned
+Cookie state expires after one year. The application must append all returned
 Set-Cookie values to the response after awaiting its evaluations.
 
 An anonymous cohort survives the first sign-in. Later experiments use the verified
@@ -101,6 +101,24 @@ signed expiry; missing/expired definitions require compiled control. Closing the
 adapter aborts pending transport and prevents late activation. No background timer
 or route is installed by constructing it; route/session and event wiring remain
 part of #337.
+
+
+## Assignment hash-key versions
+
+Each new assignment retains an opaque, domain-separated identifier of its hashing
+key. `assignmentKeyVersion(key)` returns that identifier for server-side attribution,
+or `null` for older assignments whose key version was never recorded. It is not
+added to the strict exposure/conversion schemas.
+
+The independently signed `__Host-s3rch-experiment-key-versions` companion cookie
+binds versions to the anonymous identifier and each exact experiment/hash pair.
+The existing cohort cookie format is unchanged, so older instances still accept
+and preserve cohorts during rolling updates. Browsers retain the companion when
+an older instance rewrites the original two cookies. New instances re-sign all
+cookies with the current secret while keeping each assignment's original version.
+Missing, malformed or expired metadata stays unknown rather than guessing the
+original key from the cookie's current signer. Logout/account switch and pruning
+remove associated metadata. All cookies are host-only, Secure and HttpOnly.
 
 
 ## Per-event privacy permission

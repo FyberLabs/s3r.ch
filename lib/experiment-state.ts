@@ -1,3 +1,4 @@
+import { experimentKeyVersionsCookie, experimentKeyVersion, readExperimentKeyVersions, signExperimentKeyVersions } from "./experiment-key-versions";
 import { isSeaPubkey } from "./identity/forum-check";
 import { randomUUID } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
@@ -44,6 +45,7 @@ export function createExperimentState(input: { secret: Uint8Array; previousSecre
   const previousSecrets = (input.previousSecrets ?? []).map(key => new Uint8Array(key));
   const secret = new Uint8Array(input.secret), clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   const type = "s3rch-experiment-state-v1";
+  const keyVersion = experimentKeyVersion(secret);
   return async (cookieHeader: string, verifiedPrincipal: string | null, active: readonly ExperimentDefinition[]) => {
     const now = clock();
     if (!Number.isSafeInteger(now) || now < 0 || active.length > maximum) throw Error("Invalid experiment configuration");
@@ -79,6 +81,10 @@ export function createExperimentState(input: { secret: Uint8Array; previousSecre
     }
     state.subject = subject;
     state.assignments = state.assignments.filter(item => active.some(value => value.key === item.key && value.variants.includes(item.variant)));
+    const keyVersions = new Map((await readExperimentKeyVersions(
+      readCookie(cookieHeader, experimentKeyVersionsCookie), state.anonymous, [secret, ...previousSecrets], now,
+    )).filter(row => state.assignments.some(item => item.key === row.key && item.hash === row.hash))
+      .map(row => [row.key, row]));
     const targetingKey = subject ?? hashExperimentAssignment(state.anonymous, secret);
     const inFlight = new Map<string, Promise<Assignment | undefined>>();
     return Object.freeze({
@@ -95,6 +101,7 @@ export function createExperimentState(input: { secret: Uint8Array; previousSecre
                 if (config.variants.includes(variant)) {
                   const value = { key, variant, hash: targetingKey };
                   state.assignments.push(value);
+                  keyVersions.set(key, { key, hash: targetingKey, version: keyVersion });
                   return value;
                 }
               } catch { /* Provider absence uses control without saving a false assignment. */ }
@@ -107,12 +114,15 @@ export function createExperimentState(input: { secret: Uint8Array; previousSecre
         return Object.freeze({ experiment_key: key, variant: guardrailHealthy ? assigned?.variant ?? config.control : config.control,
           assignment_hash: assigned?.hash ?? targetingKey, surface: "s3r.ch" });
       },
+      /** Server-side attribution metadata, deliberately absent from v1/v2 events. */
+      assignmentKeyVersion(key: string): string | null { return keyVersions.get(key)?.version ?? null; },
       async cookies(): Promise<readonly string[]> {
         const token = await new SignJWT({ state }).setProtectedHeader({ alg: "HS256", typ: type })
           .setIssuer("s3rch").setAudience(type).setIssuedAt(now).setExpirationTime(now + ttl).sign(secret);
         if (token.length > 3800) throw Error("Experiment state exceeds cookie limit");
         const attributes = `; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${ttl}`;
-        return Object.freeze([`${anonymousExperimentCookie}=${state.anonymous}${attributes}`, `${experimentStateCookie}=${token}${attributes}`]);
+        return Object.freeze([`${anonymousExperimentCookie}=${state.anonymous}${attributes}`, `${experimentStateCookie}=${token}${attributes}`,
+          await signExperimentKeyVersions([...keyVersions.values()], state.anonymous, secret, now)]);
       },
     });
   };
