@@ -110,11 +110,20 @@ export function applySourcePull(pull: SourcePull, seededAt: string): number {
   return new Set((pull.windows ?? []).flatMap(window => window.items.map(canonicalKey)).filter(Boolean)).size;
 }
 
+/** Persist adoption before any remote mutation; leave cached content unchanged. */
+export function markTenantFeedAdopted(): void {
+  const store = getMemoryStore();
+  if (store.tenantRecordInitialized) return;
+  persistSnapshot({ ...store, tenantRecordInitialized: true });
+  store.tenantRecordInitialized = true;
+}
+
 /** Publish only a committed tenant snapshot; disk and Gun remain derived caches. */
 export function publishAuthoritativeFeed(next: MemoryStore): void {
   const store = getMemoryStore();
   // A stale local graph may contain rows removed by another writer.
-  const retired = new Set(next.retired);
+  const retired = new Set([...store.retired, ...next.retired]);
+  for (const id of next.items.keys()) retired.delete(id);
   for (const id of store.items.keys()) if (!next.items.has(id)) retired.add(id);
   const installed = { ...next, retired, tenantRecordInitialized: true };
   persistSnapshot(installed);

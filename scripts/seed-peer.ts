@@ -56,6 +56,5 @@ const server = createServer((request, response) => {
 attachGunWeb(server);
 void restoreTenantFeedCache().catch(() => {
   console.error("[s3r.ch] Tenant feed cache unavailable; serving the last local snapshot");
-}).finally(() => {
-  server.listen(Number(process.env.PORT || 8080), process.env.HOSTNAME || "0.0.0.0");
 });
+server.listen(Number(process.env.PORT || 8080), process.env.HOSTNAME || "0.0.0.0");

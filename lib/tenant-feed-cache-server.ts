@@ -1,6 +1,6 @@
 import { createSpanopticonRecordStore } from "./spanopticon-record-store-server";
 import { tenantFeedCache } from "./tenant-feed-cache";
-import { getMemoryStore, publishAuthoritativeFeed } from "./gun-server";
+import { getMemoryStore, publishAuthoritativeFeed, markTenantFeedAdopted } from "./gun-server";
 
 /** Legacy disk mode remains until deployment installs the dedicated record key. */
 export function feedCacheSettings(env: Record<string, string | undefined> = process.env) {
@@ -15,8 +15,13 @@ let cache: ReturnType<typeof tenantFeedCache> | undefined;
 export function configuredTenantFeedCache() {
   const config = feedCacheSettings();
   if (!config) return null;
-  return cache ??= tenantFeedCache(createSpanopticonRecordStore(config), getMemoryStore, publishAuthoritativeFeed);
+  return cache ??= tenantFeedCache(createSpanopticonRecordStore(config), getMemoryStore, publishAuthoritativeFeed, markTenantFeedAdopted);
 }
-export async function restoreTenantFeedCache() {
-  await configuredTenantFeedCache()?.restore();
+let restoration: Promise<void> | undefined;
+export function restoreTenantFeedCache(): Promise<void> {
+  return restoration ??= Promise.resolve().then(async () => { await configuredTenantFeedCache()?.restore(); });
+}
+export async function waitForTenantFeedRestore(): Promise<void> {
+  // Refreshes wait for startup restore, while public reads remain available.
+  await restoration?.catch(() => {});
 }

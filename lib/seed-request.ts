@@ -1,7 +1,7 @@
 import { authorizeSeed } from "@/lib/auth";
 import { combinePulls, pullAllowedSource } from "./seed";
 import { applySourcePull, setSeedMeta } from "./gun-server";
-import { configuredTenantFeedCache } from "./tenant-feed-cache-server";
+import { configuredTenantFeedCache, waitForTenantFeedRestore } from "./tenant-feed-cache-server";
 import type { SeedReport } from "./feed-types";
 
 export async function handleSeed(request: Request) {
@@ -55,6 +55,7 @@ async function fetchSourceWindows() {
 }
 
 async function runSeedPull(): Promise<SeedReport> {
+  await waitForTenantFeedRestore();
   const cache = configuredTenantFeedCache();
   if (cache) {
     const { pulled, seededAt, written } = await cache.refresh(fetchSourceWindows);

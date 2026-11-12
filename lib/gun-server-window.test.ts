@@ -54,6 +54,9 @@ test("removed bodies disappear from snapshots and Gun, including after reopening
     delete globals.__s3rchStore;
     assert.equal(getMemoryStore().tenantRecordInitialized, true);
     assert.equal(getMemoryStore().items.size, 0);
+    publishAuthoritativeFeed({ items: new Map(), windows: new Map(), retired: new Set(),
+      seededAt: null, sourcesOk: 1, sourcesTried: 1, error: null });
+    assert.equal(getMemoryStore().retired.has(row.id), true, "subsequent compact snapshots retain local deletion replay");
     applySourcePull(pull([row]), "2026-11-11T02:30:00Z");
     // A failed durable commit must not publish or mutate the current cache.
     process.env.GUN_SNAPSHOT = directory;

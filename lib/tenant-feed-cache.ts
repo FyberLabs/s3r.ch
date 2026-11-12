@@ -7,7 +7,7 @@ import { RECORD_BYTES_MAX, RecordConflict, type RecordStore } from "./record-sto
 const fail = () => new Error("Public feed cache unavailable");
 export function encodeFeedCache(store: MemoryStore): Uint8Array {
   const bytes = new TextEncoder().encode(JSON.stringify({ version: 1, items: [...store.items.values()],
-    sourceWindows: [...store.windows], retiredIds: [...store.retired], seededAt: store.seededAt,
+    sourceWindows: [...store.windows], retiredIds: [], seededAt: store.seededAt,
     sourcesOk: store.sourcesOk, sourcesTried: store.sourcesTried,
     error: store.error ? "The last public feed refresh failed." : null }));
   if (bytes.length > RECORD_BYTES_MAX) throw fail();
@@ -24,6 +24,10 @@ export function decodeFeedCache(bytes: Uint8Array): MemoryStore {
     function rows(input: unknown[]): FeedItem[] {
       return input.map(row => {
         if (!row || typeof row !== "object" || Array.isArray(row)) throw fail();
+        const fields = row as Record<string, unknown>;
+        if (["id", "kind", "author", "body", "permalink", "provenance"].some(key => typeof fields[key] !== "string") ||
+            typeof fields.ts !== "number" || !Number.isFinite(fields.ts) || !Array.isArray(fields.tags) ||
+            fields.tags.some(tag => typeof tag !== "string")) throw fail();
         const item = fromGunNode(row);
         if (!item || canonicalKey(item) !== item.id) throw fail();
         return item;
@@ -45,7 +49,7 @@ export function decodeFeedCache(bytes: Uint8Array): MemoryStore {
 }
 
 /** A conflict starts a fresh source fetch against the new authoritative record. */
-export function tenantFeedCache(records: RecordStore, local: () => MemoryStore, publish: (store: MemoryStore) => void) {
+export function tenantFeedCache(records: RecordStore, local: () => MemoryStore, publish: (store: MemoryStore) => void, markAdopted: () => void) {
   let observed = false;
   async function current() {
     const record = await records.get("cache", "public-feed");
@@ -57,8 +61,9 @@ export function tenantFeedCache(records: RecordStore, local: () => MemoryStore, 
     async restore() {
       for (let attempt = 0; attempt < 3; attempt++) {
         const stored = await current();
-        if (stored.revision !== null) { publish(stored.state); return; }
+        if (stored.revision !== null) { markAdopted(); publish(stored.state); return; }
         try {
+          markAdopted();
           await records.put("cache", "public-feed", encodeFeedCache(stored.state), null);
           observed = true; publish(stored.state); return;
         } catch (error) { if (!(error instanceof RecordConflict)) throw fail(); }
@@ -72,6 +77,7 @@ export function tenantFeedCache(records: RecordStore, local: () => MemoryStore, 
         const next: MemoryStore = { ...reconcileSourceWindows(stored.state, pulled), seededAt,
           sourcesOk: pulled.sourcesOk, sourcesTried: pulled.sourcesTried, error: pulled.error };
         try {
+          markAdopted();
           await records.put("cache", "public-feed", encodeFeedCache(next), stored.revision);
         } catch (error) {
           if (error instanceof RecordConflict) continue;

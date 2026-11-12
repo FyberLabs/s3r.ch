@@ -31,14 +31,19 @@ let child;
 let exit;
 let log;
 
-async function start() {
+async function start(stalledStorage = false) {
   assert.equal(child, undefined, "the previous volume owner must exit first");
   // A replacement container gets a fresh public directory. Only GUN_SNAPSHOT survives.
   await rm(path.join(root, "public/feed-cache/snapshot.json"), { force: true });
   log = "";
-  child = spawn(process.execPath, ["seed-peer.cjs"], {
+  child = spawn(process.execPath, [...(stalledStorage ? ["--require", path.join(root, "stalled-storage.cjs")] : []), "seed-peer.cjs"], {
     cwd: root, env: {
       PATH: process.env.PATH, HOME: root, NODE_ENV: "production", HOSTNAME: "127.0.0.1", PORT: new URL(origin).port,
+      ...(stalledStorage ? {
+        S3RCH_FEED_STORAGE_ORIGIN: "https://storage.example",
+        S3RCH_FEED_STORAGE_TENANT_ID: "11111111-1111-4111-8111-111111111111",
+        S3RCH_FEED_STORAGE_API_KEY: "synthetic.unit.key",
+      } : {}),
       APP_BUILD_REVISION: revision, GUN_FILE: path.join(root, "radata"), GUN_SNAPSHOT: path.join(root, "snapshot.json"),
     }, stdio: ["ignore", "pipe", "pipe"],
   });
@@ -163,7 +168,14 @@ try {
   });
   await afterRetirement.waitForFunction(() => window.retiredSource?.unshared === 1 && window.retiredSource?.body === null);
   await afterRetirement.close();
-  console.log("Gun persistence, reconnect and source-window retirement replay passed.");
+  await stop();
+  // A stalled storage provider must not delay health, public cache or Gun access.
+  // This child-only mock makes no provider call; the nightly batch runs the case.
+  await writeFile(path.join(root, "stalled-storage.cjs"), "globalThis.fetch = () => new Promise(() => {});\n");
+  await start(true);
+  const fallback = await client();
+  await fallback.close();
+  console.log("Gun persistence, retirement replay and storage-outage startup passed.");
 } catch (error) {
   console.error(log);
   throw error;

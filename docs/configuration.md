@@ -66,3 +66,10 @@ state leaves the last local public snapshot available and blocks replacement.
 Successful remote commits precede updates to the derived local file and Gun graph.
 A conflict reloads remote state and fetches fresh source windows before retrying.
 The migration does not delete legacy data or remove existing Azure grants.
+
+The peer listens immediately from its local snapshot while remote restoration
+runs. Refreshes wait for that restore to finish. Adoption intent is saved before
+any first remote write, so a crash cannot cause a later deleted record to be
+reimported from old disk. Authoritative records carry active windows, not an
+unbounded history of retired IDs; each peer durably retains its own body-free
+retirement set and also retires local rows absent from the authoritative snapshot.
