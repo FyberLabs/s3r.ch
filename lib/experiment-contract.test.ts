@@ -43,3 +43,16 @@ test("the first-party sink receives explicit exposure/conversion only and cannot
   assert.equal(calls.length, 2);
   assert.equal(await createExperimentEmitter(async () => { throw Error("private failure"); })("experiment.conversion.v1", payload), false);
 });
+
+
+test("accessors and hostile objects cannot change validated values before emission", async () => {
+  let reads = 0, writes = 0;
+  const accessor = { ...payload, get variant() { reads++; return reads < 3 ? "control" : { email: "private", message: "private" }; } };
+  const emit = createExperimentEmitter(async () => { writes++; });
+  assert.equal(await emit("experiment.exposure.v1", accessor), false);
+  assert.equal(reads, 0);
+  assert.equal(writes, 0);
+  assert.equal(parseExperimentPayload(new Proxy({}, { ownKeys() { throw Error("private"); } })), null);
+  assert.equal(parseExperimentPayload({ ...payload, [Symbol("private")]: "private" }), null);
+  assert.equal(parseExperimentPayload(Object.defineProperty({ ...payload }, "email", { value: "private" })), null);
+});

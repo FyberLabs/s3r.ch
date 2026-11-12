@@ -19,7 +19,13 @@ export function hashExperimentAssignment(identifier: string, secret: Uint8Array)
 /** Validate the entire object, rather than silently dropping private fields. */
 export function parseExperimentPayload(input: unknown): ExperimentPayload | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
-  const row = input as Record<string, unknown>;
+  let row: Record<string, unknown>;
+  try {
+    const descriptors = Object.getOwnPropertyDescriptors(input);
+    if (Reflect.ownKeys(descriptors).some(key => typeof key !== "string")) return null;
+    if (Object.values(descriptors).some(field => !field.enumerable || !("value" in field))) return null;
+    row = Object.fromEntries(Object.entries(descriptors).map(([key, field]) => [key, field.value]));
+  } catch { return null; }
   const fields = Object.keys(row).sort().join(",");
   if (fields !== "assignment_hash,experiment_key,surface,variant" &&
       fields !== "assignment_hash,experiment_key,release_tag,surface,variant") return null;
