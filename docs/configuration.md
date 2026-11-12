@@ -105,6 +105,7 @@ These labels do not select a release, route traffic, or change session keys.
 `APPLICATIONINSIGHTS_CONNECTION_STRING` selects the existing App Service Azure
 Monitor Application Insights resource for manual experiment events. The adapter
 accepts its instrumentation key and public Azure ingestion/live endpoint fields.
-It uses an isolated SDK client with automatic request, dependency, exception,
-console, performance and user-context collection disabled. Invalid or missing
-configuration drops telemetry without failing the application request.
+It sends explicit event envelopes with a two-second timeout, no redirects, and
+at most eight concurrent requests. No SDK background diagnostics or request
+metadata are collected. Invalid or missing configuration drops telemetry without
+failing the application request. Accepted ingestion does not guarantee query visibility.
