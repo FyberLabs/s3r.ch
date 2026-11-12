@@ -1,6 +1,6 @@
 # Room tasks and issues
 
-The room chat panel includes Tasks and issues. A room reader can create a task
+The isolated fixture includes Tasks and issues; the production room panel does not mount the editor. A room reader can create a task
 or issue; its creator can change the status (open, doing, done) and assignee.
 Assignment is a label and grants neither room access nor editing authority.
 Room Check see is required to display or submit work. The editor rechecks access,
@@ -55,13 +55,16 @@ not establish production durability of the Mine overlay: private in-memory chat
 work is lost on page reload, as with existing private chat. Durable private chat
 requires the planned secret-store integration.
 
-## Merge blocker: authenticated room admission
+## Production admission gate
 
-The legacy `FeedStream` subscription currently applies `fromGunChatNode` shape
-validation, not signature verification or authenticated author admission. An
-attacker can construct a matching author/message ID and forge a task update.
-The projection's creator comparison therefore cannot establish writer authority
-on that input. This draft must not merge with that reader path. It needs verified
-SEA identities and signed room records through the existing forum authority
-contract (#277), with a regression that rejects a forged same-author update.
-UI Check gates and the loopback fixture do not satisfy that requirement.
+The legacy `FeedStream` subscription applies `fromGunChatNode` shape validation,
+not authenticated author admission. Author and message-ID comparisons cannot
+prevent same-author forgery. Production therefore does not import or mount
+`RoomTasks`, hides every reserved work payload from the chat projection, and
+refuses work payloads on both composition and room-copy publication paths.
+The isolated fixture and projection are preparation for #152, not a shipped editor.
+
+Enabling the editor requires verified SEA identities and signed room records
+through the current forum authority contract (#277), including a regression
+rejecting a forged same-author update. Check gates alone do not meet that gate.
+#152 remains open until that integration and scheduled browser coverage land.

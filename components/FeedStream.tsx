@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FeedItem, FeedSnapshot, FeedTab } from "@/lib/feed-types";
 import { fromGunNode } from "@/lib/feed-types";
-import { isRoomTaskBody, roomTaskPublicationIds } from "@/lib/room-tasks";
+import { isRoomTaskBody } from "@/lib/room-tasks";
 import { mergeItems } from "@/lib/merge";
 import {
   aggregateDiscoverTags,
@@ -663,9 +663,8 @@ export function FeedStream() {
     );
     const publicIds = new Set(publishedRooms);
     publicIds.add(room.id);
-    const taskPublications = roomTaskPublicationIds(overlayChat, room.id, objectOwner(session), see.acl, Math.floor(Date.now() / 1000));
     for (const row of overlayChat) {
-      if (isRoomTaskBody(row.body) && !taskPublications.has(row.id)) continue;
+      if (isRoomTaskBody(row.body)) continue;
       if (row.room !== room.id) continue;
       const preparedChat = preparePublishRoomChat(
         see.acl,
@@ -898,10 +897,9 @@ export function FeedStream() {
           onPublicGraph={openRoomIsPublic}
           seedWsUp={seedWsUp}
           onComposed={(next, putOnGun) => {
+            if (isRoomTaskBody(next.body)) return;
             setOverlayChat((prev) => mergeChat(prev, [next]));
             if (!putOnGun || !see?.acl || !session) return;
-            if (isRoomTaskBody(next.body) && !roomTaskPublicationIds(mergeChat(openRoomChat, [next]), openRoom.id,
-              objectOwner(session), see.acl, Math.floor(Date.now() / 1000)).has(next.id)) return;
             const gun = gunRef.current;
             if (!gun) return;
             const prepared = preparePublishRoomChat(

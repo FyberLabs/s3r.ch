@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { canUseRoomTasks, visibleRoomTaskChat, roomTaskPublicationIds, composeRoomTask, parseTaskAction, roomTaskChatText, roomTasks, type TaskAction } from "./room-tasks";
@@ -121,4 +122,14 @@ test("room-share replay and chat summaries enforce the same task privacy boundar
   assert.deepEqual(visibleRoomTaskChat(rows, room, other, acl, 150), [publicRow, ordinary]);
   assert.deepEqual(visibleRoomTaskChat(rows, room, other, acl, 200), [ordinary]);
   assert.deepEqual([...roomTaskPublicationIds(rows, room, other, acl, 150)], []);
+});
+
+// Pin the fail-closed production boundary until authenticated admission replaces it.
+test("legacy production room paths cannot activate or publish unauthenticated work", () => {
+  const chat = readFileSync(new URL("../components/RoomChat.tsx", import.meta.url), "utf8");
+  const feed = readFileSync(new URL("../components/FeedStream.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(chat, /(?:import.*RoomTasks|<RoomTasks|visibleRoomTaskChat|roomTaskChatText)/);
+  assert.match(chat, /rankChatMessages\(messages\.filter\(row => !isRoomTaskBody\(row\.body\)\)\)/);
+  assert.match(feed, /if \(isRoomTaskBody\(row\.body\)\) continue;/);
+  assert.match(feed, /if \(isRoomTaskBody\(next\.body\)\) return;\s+setOverlayChat/);
 });
