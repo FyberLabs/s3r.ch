@@ -1,7 +1,7 @@
 import { context, ROOT_CONTEXT } from "@opentelemetry/api";
-import { createExperimentEmitter, type ExperimentEventType, type ExperimentPayload } from "./experiment-contract";
+import { createExperimentEmitter, type ExperimentEventType, type ExperimentPayload, type ExperimentEmissionPolicy } from "./experiment-contract";
 
-type ManualClient = { trackEvent(event: { name: ExperimentEventType; properties: ExperimentPayload }): void | Promise<void>; flush(): Promise<void> };
+type ManualClient = { trackEvent(event: { name: ExperimentEventType; properties: ExperimentPayload; eventId?: string }): void | Promise<void>; flush(): Promise<void> };
 type Factory = (connectionString: string) => Promise<ManualClient>;
 
 /** App Service supplies the existing first-party connection string. Only public
@@ -42,7 +42,7 @@ export async function createManualExperimentClient(connectionString: string, tra
   const endpoint = new URL("v2/track", fields.get("ingestionendpoint") ?? "https://dc.applicationinsights.azure.com/").href;
   let active = 0;
   return {
-    async trackEvent(event: { name: ExperimentEventType; properties: ExperimentPayload }) {
+    async trackEvent(event: { name: ExperimentEventType; properties: ExperimentPayload; eventId?: string }) {
       if (active >= 8) throw Error("Experiment telemetry busy");
       active++;
       try {
@@ -51,7 +51,7 @@ export async function createManualExperimentClient(connectionString: string, tra
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ ver: 1, name: "Microsoft.ApplicationInsights.Event", time: new Date().toISOString(),
             sampleRate: 100, iKey: fields.get("instrumentationkey"), tags: { "ai.cloud.role": "s3rch" },
-            data: { baseType: "EventData", baseData: { ver: 2, name: event.name, properties: event.properties } } }),
+            data: { baseType: "EventData", baseData: { ver: 2, name: event.name, properties: { ...event.properties, ...(event.eventId ? { event_id: event.eventId } : {}) } } } }),
         }));
         // A single-event request must be fully accepted; partial acceptance is failure.
         await response.body?.cancel();
@@ -64,15 +64,15 @@ export async function createManualExperimentClient(connectionString: string, tra
 
 /** true means the ingestion endpoint accepted the event, not that it is queryable.
  * The injected factory supports offline contract tests. */
-export function createExperimentTelemetry(connectionString: unknown, factory: Factory = createManualExperimentClient) {
+export function createExperimentTelemetry(connectionString: unknown, factory: Factory = createManualExperimentClient, policy: ExperimentEmissionPolicy = {}) {
   let pending: Promise<ManualClient> | undefined;
   const configured = validExperimentConnection(connectionString);
-  const emit = createExperimentEmitter(async (name, payload) => {
+  const emit = createExperimentEmitter(async (name, payload, eventId) => {
     if (!configured) throw Error("Experiment telemetry unavailable");
     pending ??= Promise.resolve().then(() => factory(connectionString));
     const client = await pending;
-    await context.with(ROOT_CONTEXT, () => client.trackEvent({ name, properties: payload }));
-  });
+    await context.with(ROOT_CONTEXT, () => client.trackEvent({ name, properties: payload, ...(eventId ? { eventId } : {}) }));
+  }, policy);
   return Object.freeze({ emit,
     async flush(): Promise<boolean> {
       if (!pending) return false;

@@ -63,3 +63,26 @@ test("revoked proxies are isolated before array inspection", async () => {
   assert.equal(parseExperimentPayload(proxy.proxy), null);
   assert.equal(await createExperimentEmitter(async () => { assert.fail("sink must not run"); })("experiment.exposure.v1", proxy.proxy), false);
 });
+
+test("named conversion metrics require trusted per-experiment policy and a stable action ID", async () => {
+  const named = { ...payload, conversion_key: "sign_in_completed" };
+  const eventId = "11111111-1111-4111-8111-111111111111";
+  const events: unknown[] = [];
+  const metrics = { feed_layout: ["sign_in_completed"] };
+  const emit = createExperimentEmitter(async (...args) => { events.push(args); }, {
+    supportedEventTypes: ["experiment.conversion.v1", "experiment.conversion.v2"], metrics,
+  });
+  metrics.feed_layout.push("unconfigured");
+  assert.equal(await createExperimentEmitter(async () => { throw Error("must not send"); })("experiment.conversion.v2", named, eventId), false);
+  for (const id of [undefined, "bad", eventId + "\n"]) assert.equal(await emit("experiment.conversion.v2", named, id), false);
+  for (const conversion_key of [undefined, "", "sign_in_completed\n", "private@example.invalid", "unconfigured", 1]) {
+    assert.equal(await emit("experiment.conversion.v2", { ...payload, conversion_key }, eventId), false);
+  }
+  assert.equal(await emit("experiment.conversion.v2", { ...named, experiment_key: "other" }, eventId), false);
+  assert.equal(await emit("experiment.conversion.v2", { ...named, email: "private" }, eventId), false);
+  assert.equal(await emit("experiment.conversion.v1", named, eventId), false);
+  assert.equal(await emit("experiment.exposure.v1", named, eventId), false);
+  assert.equal(await emit("experiment.conversion.v2", named, eventId), true);
+  assert.equal(await emit("experiment.conversion.v2", named, eventId), true);
+  assert.deepEqual(events, [["experiment.conversion.v2", named, eventId], ["experiment.conversion.v2", named, eventId]]);
+});
