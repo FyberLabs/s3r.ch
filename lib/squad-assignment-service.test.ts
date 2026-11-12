@@ -35,15 +35,15 @@ async function setup(clientSigned = false) {
   const squad = { owner, forumId: forum, label: "Assignment HTTP" }, source = createSquadCommitStore(memory(), squad, () => at);
   await source.initialize(state, { completeThrough: at, links: [], accounts: [owner, old, replacement].map(principal => ({ principal, rotations: [], revocations: [], genesisEpubBindings: [] })) });
   const stores = new Map<string, { inventory: InventoryStore; cancellations: ReturnType<typeof outbox>; grants: ReturnType<typeof outbox> }>();
-  let key: string | null = owner, now = at, expireOnAbort = false;
+  let key: string | null = owner, now = at, expireOnAbort = false, expireOnAuthentication = false, opens = 0;
   const guardedSource = { ...source, async open(guard?: () => void) {
-    const pinned = await source.open(guard);
+    opens++; const pinned = await source.open(guard);
     return { ...pinned, journal: { ...pinned.journal, async abort(...args: Parameters<typeof pinned.journal.abort>) {
       if (expireOnAbort) now++;
       return pinned.journal.abort(...args);
     } } };
   } };
-  const service = createSquadAssignmentService({ squad, source: guardedSource, origin: "https://s3r.ch", authenticate: async () => key ? { key } : null,
+  const service = createSquadAssignmentService({ squad, source: guardedSource, origin: "https://s3r.ch", authenticate: async () => { if (expireOnAuthentication) now++; return key ? { key } : null; },
     runtime: { clock: () => now, config: { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] }, sign: clientSigned ? undefined : sign,
       operationStores(id) { let s = stores.get(id); if (!s) { s = { inventory: memory(), cancellations: outbox(), grants: outbox() }; stores.set(id, s); } return s; } } });
   const client = createHttpAssignmentClient({ base: "/api/squad/assignment",
@@ -54,7 +54,7 @@ async function setup(clientSigned = false) {
     const headers = new Headers(init?.headers); headers.set("Origin", "https://s3r.ch");
     return service(String(url).split("/").at(-1) as Parameters<typeof service>[0], new Request(`https://s3r.ch${url}`, { ...init, headers }));
   } });
-  return { service, client, source, expireAbort: () => { expireOnAbort = true; }, as: (next: string | null) => { key = next; } };
+  return { service, client, source, opens: () => opens, advance: () => { now++; }, expireAuthentication: () => { expireOnAuthentication = true; }, expireAbort: () => { expireOnAbort = true; }, as: (next: string | null) => { key = next; } };
 }
 test("HTTP client completes signed reassignment through the shared runtime and replays receipt", async () => {
   const h = await setup(); assert.equal((await h.client.read(scope)).assignee, old);
@@ -113,5 +113,20 @@ test("planning and signed submission enforce owner, origin and exact request fie
     assert.equal((await h.service(action, request(body, "https://evil.example"))).status, 403);
     h.as(old); assert.equal((await h.service(action, request(body))).status, 403); h.as(owner);
   }
+  assert.equal((await h.source.load()).journal.operation, null);
+});
+
+for (const boundary of ["authentication", "body"] as const) test(`assignment rejects a session delayed during ${boundary} before storage`, async () => {
+  const h = await setup();
+  if (boundary === "authentication") h.expireAuthentication();
+  const bytes = new TextEncoder().encode(JSON.stringify(scope));
+  const stream = new ReadableStream<Uint8Array>({ pull(controller) {
+    if (boundary === "body") h.advance();
+    controller.enqueue(bytes); controller.close();
+  } }, { highWaterMark: 0 });
+  const req = new Request("https://s3r.ch/api/squad/assignment", { method: "POST", body: stream,
+    headers: { origin: "https://s3r.ch", "content-type": "application/json" }, duplex: "half" } as RequestInit);
+  assert.notEqual((await h.service("read", req)).status, 200);
+  assert.equal(h.opens(), 0);
   assert.equal((await h.source.load()).journal.operation, null);
 });

@@ -112,3 +112,21 @@ test("a previously verified signature cannot authorize different row bytes on a 
     ? { ...entry, record: { ...(entry.record as object), until: at + 999 } } : entry);
   assert.equal((await setup(member, { ...data, rows }).handle(request())).status, 503);
 });
+
+for (const boundary of ["authentication", "body"] as const) test(`session evaluation cannot advance during ${boundary}`, async () => {
+  let now = at, reads = 0;
+  const original = snapshot();
+  const data = { ...original, completeThrough: at + 1, history: { ...original.history, completeThrough: at + 1 } };
+  const handle = createForumAuthorityService({ squad, origin: "https://s3r.ch", config, clock: () => now,
+    authenticate: async () => { if (boundary === "authentication") now++; return { key: member }; },
+    read: async () => { reads++; return data; } });
+  const bytes = new TextEncoder().encode(JSON.stringify({ ...body, evaluatedAt: at + 1 }));
+  const stream = new ReadableStream<Uint8Array>({ pull(controller) {
+    if (boundary === "body") now++;
+    controller.enqueue(bytes); controller.close();
+  } }, { highWaterMark: 0 });
+  const req = new Request("https://s3r.ch/api/squad/authority", { method: "POST", body: stream,
+    headers: { origin: "https://s3r.ch", "content-type": "application/json" }, duplex: "half" } as RequestInit);
+  assert.notEqual((await handle(req)).status, 200);
+  assert.equal(reads, 0);
+});
