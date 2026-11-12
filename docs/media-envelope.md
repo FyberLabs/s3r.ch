@@ -97,3 +97,29 @@ are configured. They currently use the existing primary Squad source and do not
 claim the broader trusted-history migration is complete. Browser upload/playback,
 confidential reader-wrap delivery, object admission, quota management UI, and
 scheduled browser qualification remain in #300 and its dependent issues.
+
+## Private ownership registration
+
+When media storage is configured, `POST /api/media/{object}` accepts a bounded
+JSON object with exactly `object`, `owner`, `issuedAt`, and `sig`. The ID must be
+a canonical `media_` object and match the URL. The signature is the existing
+SociACL `sociacl-object-v2` P-256 ownership record, signed by the owner's current
+SEA signing key. A same-origin human session must resolve to that owner through
+the deployment's complete, fresh key history. A supplied public key or an
+unenrolled principal cannot create its own history through this route.
+
+The signed record is held in the private Spanopticon `media/ownership-index-v1`
+record. It is reverified on each upload and download; storing it never caches an
+allow decision. There are at most 128 registrations per tenant, with conditional
+updates and three bounded conflict attempts. Exact retries succeed without a new
+write. A replacement needs a strictly later issuance time and a currently valid
+owner signature. This permits re-signing after key rotation without changing the
+object's identity or immutable ciphertext mapping.
+
+Registration returns an empty 201 response. It does not upload ciphertext, publish
+a post, add an assignment destination, share with a forum, distribute a key wrap,
+or grant a reader. The ciphertext route's separate byte and object quotas still
+apply. Registration and upload failures retain their records for reconciliation;
+there is no deletion or capacity reclamation API yet. Reader grant and confidential
+wrap delivery, client upload/playback controls, and replacing the primary Squad
+history source remain separate unfinished work.

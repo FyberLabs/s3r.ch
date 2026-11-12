@@ -61,3 +61,30 @@ test("authentication crossing the evaluation second cannot use an expired sessio
   assert.equal(await authorize(request, squad.forumId, "read", signal), false);
   assert.equal(reads, 0);
 });
+
+test("registered ownership is verified with fresh history and confers no reader grant", async () => {
+  const registration = sign("object", { object: squad.forumId, owner }).record as unknown as import("./identity/forum-object-record").UnverifiedObjectRecord;
+  const data = { ...snapshot(), rows: [] };
+  for (const key of [owner, member, outsider]) {
+    const authorize = createMediaAuthority({ config, clock: () => at, authenticate: async () => ({ key }),
+      read: async () => data, registration: async () => registration });
+    assert.equal(await authorize(request, squad.forumId, "read", signal), key === owner);
+    assert.equal(await authorize(request, squad.forumId, "write", signal), key === owner);
+  }
+  const authorize = createMediaAuthority({ config, clock: () => at, authenticate: async () => ({ key: owner }), read: async () => data });
+  assert.equal(await authorize(request, squad.forumId, "write", signal, registration), true);
+  assert.equal(await authorize(request, squad.forumId, "read", signal, registration), false);
+  assert.equal(await authorize(request, squad.forumId, "write", signal, { ...registration, sig: "forged" }), false);
+  assert.equal(await authorize(request, squad.forumId.replace(/a$/, "b"), "write", signal, registration), false);
+  const unknown = createMediaAuthority({ config, clock: () => at, authenticate: async () => ({ key: owner }),
+    read: async () => ({ ...data, history: { ...data.history, accounts: [] } }) });
+  assert.equal(await unknown(request, squad.forumId, "write", signal, registration), false);
+});
+
+test("a registration read cannot extend the authority evaluation second", async () => {
+  let now = at;
+  const registration = sign("object", { object: squad.forumId, owner }).record as unknown as import("./identity/forum-object-record").UnverifiedObjectRecord;
+  const authorize = createMediaAuthority({ config, clock: () => now, authenticate: async () => ({ key: owner }), read: async () => snapshot(),
+    registration: async () => { now++; return registration; } });
+  assert.equal(await authorize(request, squad.forumId, "read", signal), false);
+});
