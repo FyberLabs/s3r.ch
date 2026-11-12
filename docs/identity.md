@@ -530,3 +530,23 @@ Do not keep a live identity as a fixture unless the public API still confirms it
 | `FARCASTER_HUB_BASE` `https://hub.pinata.cloud` | HTTP `/v1/info` | Live (hub `0.14.2`). |
 | `https://api.lens.xyz/graphql` | GraphQL | Live. |
 | `GI_BASE` `https://gi.rss3.io` | DNS | Still no A/AAAA/CNAME. Keep optional / quiet empty. Do not pretend it is up. |
+
+### Shared SEA proof endpoint
+
+`/api/identity/sea/{challenge,exchange,logout}` exposes the existing proof flow
+without loading Squad configuration, an authority snapshot or a Blob ledger.
+It uses the same cookie, issuer, session secret, replay namespace and five-minute
+session format as the pilot alias. `GET /api/identity/sea/session` reports the
+verified SEA principal and expiry; it does not treat linked-login metadata or a
+wallet cookie as a principal. All responses are private and uncached.
+
+The endpoint is disabled unless all dedicated Spanopticon replay settings are
+configured. Missing/partial settings or storage failures never fall back to an
+in-memory or mutable cache replay store. The general browser client is
+`createSeaSessionClient`; it needs only a same-origin endpoint and the caller's
+already-unlocked SEA pair. It neither creates a key nor requires a Squad object.
+The existing Squad client/handler exports remain compatibility adapters.
+
+This provides the shared issuer boundary; wallet-derived legacy app admission
+and automatic UI migration remain tracked in #277. Current Check and object
+grants are still required after authentication.
