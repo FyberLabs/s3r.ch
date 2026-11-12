@@ -1,6 +1,6 @@
 {
   "name": "s3rch-website",
-  "version": "0.1.46",
+  "version": "0.1.47",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -30,7 +30,7 @@
     "react": "^19",
     "react-dom": "^19",
     "siwe": "^3.0.0",
-    "sociacl-ids": "https://github.com/FyberLabs/SociACL/releases/download/ids-test-10067c979dfbd6c269818ae134e378c44d92884b/sociacl-ids-0.11.1.tgz",
+    "sociacl-ids": "https://github.com/FyberLabs/SociACL/releases/download/ids-test-145cbb693556eab4a023fdfcaedc6641e35bc4ed/sociacl-ids-0.11.1.tgz",
     "undici": "7.30.2",
     "viem": "^2.57.16",
     "wagmi": "^3.7.11"
