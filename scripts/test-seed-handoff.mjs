@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { cp, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
+import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
@@ -31,15 +32,15 @@ let child;
 let exit;
 let log;
 
-async function start(stalledStorage = false) {
+async function start(storage = "") {
   assert.equal(child, undefined, "the previous volume owner must exit first");
   // A replacement container gets a fresh public directory. Only GUN_SNAPSHOT survives.
   await rm(path.join(root, "public/feed-cache/snapshot.json"), { force: true });
   log = "";
-  child = spawn(process.execPath, [...(stalledStorage ? ["--require", path.join(root, "stalled-storage.cjs")] : []), "seed-peer.cjs"], {
+  child = spawn(process.execPath, [...(storage ? ["--require", path.join(root, storage + "-storage.cjs")] : []), "seed-peer.cjs"], {
     cwd: root, env: {
       PATH: process.env.PATH, HOME: root, NODE_ENV: "production", HOSTNAME: "127.0.0.1", PORT: new URL(origin).port,
-      ...(stalledStorage ? {
+      ...(storage ? {
         S3RCH_FEED_STORAGE_ORIGIN: "https://storage.example",
         S3RCH_FEED_STORAGE_TENANT_ID: "11111111-1111-4111-8111-111111111111",
         S3RCH_FEED_STORAGE_API_KEY: "synthetic.unit.key",
@@ -59,7 +60,10 @@ async function start(stalledStorage = false) {
       assert.deepEqual(await identity.json(), { revision });
       const published = await fetch(origin + "/feed-cache/snapshot.json");
       assert.equal(published.status, 200);
-      assert.deepEqual(await published.json(), snapshot);
+      const observed = await published.json();
+      // Restoration is asynchronous so local public reads remain available.
+      if (!isDeepStrictEqual(observed, snapshot)) { await delay(100); continue; }
+      assert.deepEqual(observed, snapshot);
       return;
     }
     await delay(100);
@@ -172,10 +176,68 @@ try {
   // A stalled storage provider must not delay health, public cache or Gun access.
   // This child-only mock makes no provider call; the nightly batch runs the case.
   await writeFile(path.join(root, "stalled-storage.cjs"), "globalThis.fetch = () => new Promise(() => {});\n");
-  await start(true);
+  await start("stalled");
   const fallback = await client();
   await fallback.close();
-  console.log("Gun persistence, retirement replay and storage-outage startup passed.");
+  await stop();
+
+  // This fixture replaces only outbound record HTTP in the child. The packaged
+  // peer, record client, cache codec, disk publication and Gun are real.
+  await cp(path.resolve("scripts/fixtures/record-storage.cjs"), path.join(root, "record-storage.cjs"));
+  await start("record");
+  for (let i = 0; i < 100; i++) {
+    const imported = await readFile(path.join(root, "tenant-record.json"), "utf8").catch(() => null);
+    if (imported) { assert.equal(JSON.parse(imported).version, 1); break; }
+    if (i === 99) throw Error("Legacy cache import did not complete");
+    await delay(100);
+  }
+  await stop();
+  const adopted = JSON.parse(await readFile(path.join(root, "snapshot.json"), "utf8"));
+  assert.equal(adopted.tenantRecordInitialized, true);
+
+  // A new remote window wins over the persisted empty local cache after restart.
+  snapshot.items = [{ id: "tenant-post", source: "rss", kind: "post", author: "Reader",
+    body: "Tenant cache fixture", v: 1, ts: 2, tags: [], provenance: "RSS", permalink: "https://example.org/tenant-post" }];
+  await writeFile(path.join(root, "tenant-record.json"), JSON.stringify({
+    ...snapshot, version: 1, sourceWindows: [["tenant-source", snapshot.items]], retiredIds: [],
+  }));
+  await start("record");
+  const remoteReader = await client();
+  await remoteReader.evaluate(() => {
+    window.seedGun.get("s3rch").get("items").get("tenant-post").on(value => { window.tenantPost = value; });
+  });
+  await remoteReader.waitForFunction(() => window.tenantPost?.body === "Tenant cache fixture");
+  await remoteReader.close();
+  await stop();
+
+  // Successful-empty remote windows remove the previous public row and replay
+  // its tombstone into the same surviving Gun volume.
+  snapshot.items = [];
+  await writeFile(path.join(root, "tenant-record.json"), JSON.stringify({
+    ...snapshot, version: 1, sourceWindows: [["tenant-source", []]], retiredIds: [],
+  }));
+  await start("record");
+  const removedReader = await client();
+  await removedReader.evaluate(() => {
+    window.seedGun.get("s3rch").get("items").get("tenant-post").on(value => { window.tenantPost = value; });
+  });
+  await removedReader.waitForFunction(() => window.tenantPost?.unshared === 1 && window.tenantPost?.body === null);
+  await removedReader.close();
+  await stop();
+
+  // Once adopted, missing or malformed remote data keeps the local fallback
+  // available and must never create a replacement from stale disk content.
+  for (const corrupt of [false, true]) {
+    if (corrupt) await writeFile(path.join(root, "tenant-record.json"), '{"version":999}');
+    else await rm(path.join(root, "tenant-record.json"));
+    await start("record");
+    for (let i = 0; i < 100 && !log.includes("Tenant feed cache unavailable"); i++) await delay(100);
+    assert.match(log, /Tenant feed cache unavailable/);
+    const record = await readFile(path.join(root, "tenant-record.json"), "utf8").catch(() => null);
+    assert.equal(record, corrupt ? '{"version":999}' : null);
+    await stop();
+  }
+  console.log("Gun handoff, tenant cache restoration, retirement and failure preservation passed.");
 } catch (error) {
   console.error(log);
   throw error;
