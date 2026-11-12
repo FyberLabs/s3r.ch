@@ -34,6 +34,29 @@ test("error records carry deployment tags and throttle without identifiers", () 
   assert.match(event.release.version,/^\d+\.\d+\.\d+$/);assert.deepEqual(Object.keys(event).sort(),["event","kind","release","severity"]);
   assert.equal(createErrorRecorder(()=>{throw Error("private");})("server-error"),false);
 });
+test("idle browser reporting makes no requests and shares context across errors", async () => {
+  const urls:string[]=[];
+  const emit=createBrowserReporter((async(url:string)=>{
+    urls.push(url);
+    return url.endsWith("context") ? Response.json({color:"green"}) : new Response(null,{status:204});
+  }) as typeof fetch);
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(urls.length,0);
+  emit("browser-error");emit("render-error");
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(urls.filter(url=>url.endsWith("context")).length,1);
+  assert.equal(urls.filter(url=>url.endsWith("error")).length,2);
+});
+test("synchronous context transport failures stay inside the reporter", async () => {
+  let sent=0;
+  const emit=createBrowserReporter(((url:string)=>{
+    if(url.endsWith("context"))throw Error("private");
+    sent++;return Promise.resolve(new Response(null,{status:204}));
+  }) as typeof fetch);
+  assert.doesNotThrow(()=>emit("browser-error"));
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(sent,1);
+});
 test("browser reporter sends only allowed fields and swallows transport errors", async () => {
   const sent:unknown[]=[];
   const fetcher=(async (url:string,init?:RequestInit)=>{
