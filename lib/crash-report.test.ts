@@ -62,3 +62,14 @@ test("unavailable browser context still emits a minimal bounded report", async (
   emit("render-error");await new Promise(resolve=>setTimeout(resolve,0));
   assert.equal(sent.length,1);assert.equal((sent[0] as {color:null}).color,null);assert.ok(parseCrashReport(sent[0]));
 });
+
+test("crash reports honor normalized ingress origin and reject forged forwarding metadata", async () => {
+  const headers={host:"test.s3r.ch",origin:"https://test.s3r.ch","x-forwarded-proto":"https","Content-Type":"application/json"};
+  const request=(extra:Record<string,string>)=>new Request("http://localhost:3000/api/telemetry/error",{method:"POST",headers:{...headers,...extra},body:JSON.stringify(report)});
+  let calls=0;const sink=()=>{calls++;return true;};
+  assert.equal((await ingestCrash(request({}),sink)).status,204);
+  for(const change of [{"x-forwarded-host":"other.example"},{"x-forwarded-proto":"https,http"},
+    {host:"other.example","x-forwarded-host":"test.s3r.ch"},{origin:"https://other.example"},{"x-forwarded-proto":"http"}])
+    assert.equal((await ingestCrash(request(change),sink)).status,403);
+  assert.equal(calls,1);
+});

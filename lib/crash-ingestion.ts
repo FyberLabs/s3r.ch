@@ -1,7 +1,10 @@
+import { matchesBrowserOrigin } from "./request-origin";
 import { parseCrashReport, type CrashReport } from "./crash-report";
 export async function ingestCrash(request: Request, record: (kind: "browser-crash", report: CrashReport) => boolean): Promise<Response> {
   const reply = (status: number) => new Response(null, {status,headers:{"Cache-Control":"no-store"}});
-  if (request.headers.get("origin") !== new URL(request.url).origin ||
+  let origin: URL;
+  try { origin = new URL(request.headers.get("origin") ?? ""); } catch { return reply(403); }
+  if (!matchesBrowserOrigin(request, origin) ||
       request.headers.get("content-type")?.split(";",1)[0].trim() !== "application/json") return reply(403);
   if (!request.body) return reply(400);
   const reader = request.body.getReader();
