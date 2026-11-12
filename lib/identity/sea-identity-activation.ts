@@ -7,17 +7,18 @@ export function createSeaIdentityActivation(input: {
   client: Pick<ReturnType<typeof createSeaSessionClient>, "signIn" | "logout">;
 }) {
   let busy = false;
-  return Object.freeze({ async activate(signal?: AbortSignal): Promise<"ready" | "locked" | "changed" | "unavailable"> {
+  return Object.freeze({ async activate(signal?: AbortSignal, expected?: { principal: string; revision: number }): Promise<"ready" | "locked" | "changed" | "unavailable"> {
     if (busy) return "unavailable";
     const selected = input.current();
     if (!selected) return "locked";
+    if (expected && (selected.pair.pub !== expected.principal || selected.revision !== expected.revision)) return "changed";
     const pair = { ...selected.pair }, revision = selected.revision;
     busy = true;
     try {
       const result = await input.client.signIn(pair, signal);
       const current = input.current();
       if (!current || current.revision !== revision || current.pair.pub !== pair.pub) {
-        // Finish clearing a stale exchange before another activation can start.
+        // Finish the stale-exchange cleanup attempt before another activation can start.
         return await input.client.logout(AbortSignal.timeout(10_000)) ? "changed" : "unavailable";
       }
       return result ? "ready" : "unavailable";

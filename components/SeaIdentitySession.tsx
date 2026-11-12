@@ -49,10 +49,10 @@ export function SeaIdentitySession() {
   }, [revision]);
 
   async function activate() {
-    if (!activation.current || busy) return;
+    if (!activation.current || busy || !selected) return;
     setBusy(true); setMessage("");
     try {
-      const result = await activation.current.activate(AbortSignal.timeout(10_000));
+      const result = await activation.current.activate(AbortSignal.timeout(10_000), { principal: selected.pair.pub, revision: selected.revision });
       setMessage(result === "ready" ? "Identity session ready." : result === "changed" ? "Your saved identity changed. Retry with the identity you want to use." :
         result === "locked" ? "Unlock one saved identity to continue." : "Identity sign-in is unavailable. Try again.");
       setRevision(value => value + 1);
@@ -70,6 +70,7 @@ export function SeaIdentitySession() {
   if (!status?.enabled) return null;
   return <div className="mt-3 space-y-2 text-sm" data-testid="sea-identity-session">
     {status.principal && <p>Identity <span className="font-mono">{status.principal.slice(0, 12)}…</span> is signed in.</p>}
+    {selected && <p>Saved identity <span className="font-mono">{selected.pair.pub.slice(0, 12)}…</span></p>}
     <button type="button" disabled={busy || !selected} onClick={() => void activate()} className="underline disabled:opacity-50">
       {status.principal === selected?.pair.pub ? "Refresh identity session" : "Use saved identity"}
     </button>

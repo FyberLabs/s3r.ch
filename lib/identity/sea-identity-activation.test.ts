@@ -36,3 +36,18 @@ test("failed proof and cleanup errors never report an active identity", async ()
   let changed=false;
   assert.equal(await createSeaIdentityActivation({current:()=>changed?null:current(),client:{signIn:async()=>{changed=true;return true;},logout:async()=>{throw Error("offline");}}}).activate(),"unavailable");
 });
+
+test("the clicked identity snapshot must still be current before signing", async () => {
+  let calls=0;
+  const activation=createSeaIdentityActivation({current:()=>({pair,revision:2}),client:{signIn:async()=>{calls++;return true;},logout:async()=>true}});
+  assert.equal(await activation.activate(undefined,{principal:pair.pub,revision:1}),"changed");
+  assert.equal(await activation.activate(undefined,{principal:"other",revision:2}),"changed");
+  assert.equal(calls,0);
+  assert.equal(await activation.activate(undefined,{principal:pair.pub,revision:2}),"ready");
+});
+
+test("a refused stale-session cleanup is reported as unavailable", async () => {
+  let changed=false;
+  const activation=createSeaIdentityActivation({current:()=>changed?null:{pair,revision:1},client:{signIn:async()=>{changed=true;return true;},logout:async()=>false}});
+  assert.equal(await activation.activate(),"unavailable");
+});
