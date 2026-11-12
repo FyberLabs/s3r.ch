@@ -1,3 +1,5 @@
+import { assignmentCancellationIntents, assignmentReplacementIntents } from "./assignment-signing-plan";
+import { isSeaPubkey } from "./identity/forum-check";
 import { parseDrawerRecord } from "./forum-drawer";
 import { readForumSignature } from "./forum-sign";
 import { checkForumChildWrite } from "./identity/forum-child-write";
@@ -9,7 +11,7 @@ import { createInventoryBoundOutbox } from "./delegation-bound-outbox";
 import { createReplacementGrantOutbox } from "./delegation-replacement-grants";
 import { createCancellationReconciler } from "./delegation-reconcile";
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
-import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
+import type { AuthorityKind } from "./identity/forum-authority-records";
 import { recoveryBytes, recoveryId } from "./identity/forum-recovery-records";
 
 type Row = ForumAuthoritySnapshot["rows"][number];
@@ -63,14 +65,6 @@ export function createDelegationRuntime(input: {
     return { state, op, inventory, outbox, plans };
   }
   const envelopes = (rows: readonly Row[]) => rows.map(r => ({ kind: r.kind, soul: r.soul, recordJson: JSON.stringify(r.record) }));
-  async function direct(kind: "post" | "see", object: string, accessor: string, stated: 0 | 1, rows: readonly Row[]) {
-    const at = clock(), state = await input.journal.load();
-    const matching = rows.flatMap(r => { const p = parseForumAuthority(r.kind, r.record);
-      return p && p.kind === kind && p.row.object === object && p.row.accessor === accessor ? [p.row.hamState] : []; });
-    const hamState = Math.max(0, ...matching) + 1;
-    if (!Number.isSafeInteger(hamState)) throw Error("grant revision exhausted");
-    return input.sign(kind, { owner: state.owner, object, accessor, stated, hamState, issuedAt: at, from: at, until: at + 86400 });
-  }
   async function prepareCancellations(actor: string, id: string, replacement: string) {
     const b = await bindings(id, replacement);
     const existing = await b.outbox.load(id);
@@ -79,39 +73,41 @@ export function createDelegationRuntime(input: {
       return b;
     }
     if (b.op.cancellationDigest) throw Error("missing prepared cancellations");
-    const rows: Row[] = [];
-    for (const destination of b.state.destinations) for (const kind of ["post", "see"] as const)
-      rows.push(await direct(kind, destination, b.op.previous, 0, b.state.rows));
-    // Cancel membership of the old assignee, preserving object owners/paths and
-    // other group members. Every relevant membership must be owner-signable.
-    const groups = new Map<string, { set: string; predicate: string; soul: string; setOwner: string }>();
-    let planned = false;
+    let intents: Awaited<ReturnType<typeof assignmentCancellationIntents>> | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       const at = clock(), authority = createForumAuthority(input.config, clock);
       const admitted = await authority.refresh({ completeThrough: at, rows: b.state.rows, history: await input.history(at) }, at);
       if (clock() !== at) continue;
       if (!admitted.ok || admitted.diagnostics.length) throw Error("unverified group cancellation authority");
-      for (const destination of b.state.destinations) {
-        const membership = authority.graph.groupMembership(destination, b.op.previous, at);
-        if (membership) groups.set(membership.soul, membership);
-      }
-      planned = true; break;
+      const planned = await assignmentCancellationIntents(b.state, id, b.op.previous, at, authority.graph);
+      if (clock() !== at) continue;
+      intents = planned; break;
     }
-    if (!planned) throw Error("group authority expired; retry");
-    for (const group of groups.values()) {
-      if (group.setOwner !== b.state.owner) throw Error("external group owner cancellation required");
-      const prior = b.state.rows.flatMap(r => { const p = parseForumAuthority(r.kind, r.record);
-        return p?.kind === "cancel" && p.soul === group.soul ? [p.row.cancelId] : []; }).sort();
-      const cancelId = await recoveryId(new TextEncoder().encode(JSON.stringify(["assignment-membership-cancel-v1", id, group.soul])));
-      rows.push(await input.sign("cancel", { kind: "membership", rowSoul: group.soul, cancelId, prior: [...new Set(prior)],
-        signer: b.state.owner, predicate: group.predicate, set: group.set, member: b.op.previous, setOwner: group.setOwner, issuedAt: clock() }));
-    }
+    if (!intents) throw Error("group authority expired; retry");
+    const rows: Row[] = [];
+    for (const intent of intents) rows.push(await input.sign(intent.kind, { ...intent.fields }));
     const prepared = await b.outbox.prepareReassignment(id, replacement, envelopes(rows));
     await input.journal.bindCancellations(actor, id, replacement, await recoveryId(recoveryBytes(["assignment-cancellation-plan-v1", JSON.stringify(prepared)])));
     return b;
   }
   return Object.freeze({
     async read(actor: string) { return owner(actor); },
+    /** Prepare a new operation without claiming it, creating outboxes or signing.
+     * The caller authenticates actor; this plan is not authority or a commit. */
+    async plan(actor: string, id: string, replacement: string, expectedRevision: number) {
+      const state = await owner(actor), at = clock();
+      if (!/^[0-9a-f]{32}$/.test(id) || !isSeaPubkey(replacement) || replacement === state.owner || replacement === state.assignee ||
+          state.usedOperations.includes(id) || state.revision !== expectedRevision ||
+          state.operation && ["cancellations", "replacement"].includes(state.operation.phase)) throw Error("assignment plan conflict");
+      const authority = createForumAuthority(input.config, clock);
+      const admitted = await authority.refresh({ completeThrough: at, rows: state.rows, history: await input.history(at) }, at);
+      if (!admitted.ok || admitted.diagnostics.length || authority.graph.ownerOf(state.forum) !== actor || clock() !== at) throw Error("assignment plan authority expired");
+      const cancellations = await assignmentCancellationIntents(state, id, state.assignee, at, authority.graph);
+      const grants = assignmentReplacementIntents(state, replacement, at);
+      if (clock() !== at || (await input.journal.load()).revision !== state.revision || clock() !== at) throw Error("assignment plan changed");
+      return Object.freeze({ version: 1 as const, forum: state.forum, owner: state.owner, previous: state.assignee,
+        operationId: id, replacement, revision: state.revision, issuedAt: at, cancellations, grants });
+    },
     async start(actor: string, id: string, replacement: string, expectedRevision: number) {
       const state = await owner(actor), receipt = state.receipts[id];
       if (receipt) {
@@ -137,8 +133,8 @@ export function createDelegationRuntime(input: {
         async prepareReplacement() {
           const state = await input.journal.load(), grants: Row[] = [];
           if (state.operation?.grantDigest) throw Error("missing prepared replacement plan");
-          for (const destination of state.destinations) for (const kind of ["post", "see"] as const)
-            grants.push(await direct(kind, destination, replacement, 1, state.rows));
+          for (const intent of assignmentReplacementIntents(state, replacement, clock()))
+            grants.push(await input.sign(intent.kind, { ...intent.fields }));
           await b.plans.prepare(id, replacement, envelopes(grants));
         } });
       return publisher.resume(id, replacement);

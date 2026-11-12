@@ -1,3 +1,4 @@
+import { assignmentCancellationIntents, assignmentReplacementIntents } from "./assignment-signing-plan";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { p256 } from "@noble/curves/nist.js";
@@ -216,4 +217,70 @@ test("claim reserves publication row capacity before freezing ordinary writes", 
   await h.backing.compareAndSwap(held.etag, JSON.stringify(state));
   await assert.rejects(h.journal.claim(owner, id, replacement, 0), /capacity/);
   assert.equal((await h.journal.load()).operation, null);
+});
+
+
+test("owner signing plan is read-only, deterministic and bound to the current journal", async () => {
+  const h=await setup(), before=await h.journal.load();
+  const plan=await h.runtime.plan(owner,id,replacement,before.revision);
+  assert.equal(plan.owner,owner);assert.equal(plan.previous,old);assert.equal(plan.replacement,replacement);
+  assert.equal(plan.revision,0);assert.equal(plan.issuedAt,at);assert.equal(plan.operationId,id);
+  assert.equal(plan.cancellations.length,2);assert.equal(plan.grants.length,2);
+  for(const intent of [...plan.cancellations,...plan.grants]) {
+    const parsed=parseForumAuthority(intent.kind,{...intent.fields,sig:"pending"});
+    assert.ok(parsed);assert.equal(parsed.soul,intent.soul);assert.equal(parsed.signer,owner);
+    assert.ok(Object.isFrozen(intent.fields));assert.equal("sig" in intent.fields,false);
+  }
+  assert.deepEqual(await h.runtime.plan(owner,id,replacement,0),plan);
+  assert.deepEqual(await h.journal.load(),before);assert.equal(h.signed,0);assert.equal(h.stores.size,0);
+  await assert.rejects(h.runtime.plan(other,id,replacement,0));
+  await assert.rejects(h.runtime.plan(owner,id,replacement,1));
+  await assert.rejects(h.runtime.plan(owner,id,owner,0));
+  await assert.rejects(h.runtime.plan(owner,id,old,0));
+  await assert.rejects(h.runtime.plan(owner,"bad",replacement,0));
+  await h.journal.claim(owner,id,replacement,0);
+  await assert.rejects(h.runtime.plan(owner,"b".repeat(32),other,1));
+});
+
+for (const race of ["clock", "journal"] as const) test(`signing plan rejects ${race} changes during authority refresh without signing`, async () => {
+  const h = await setup(); let calls = 0;
+  const runtime = createDelegationRuntime({ ...h.dependencies, async history(time) {
+    const history = await h.dependencies.history(time);
+    if (++calls === 2) {
+      if (race === "clock") h.tick(1);
+      else await h.journal.claim(owner, "b".repeat(32), other, 0);
+    }
+    return history;
+  } });
+  await assert.rejects(runtime.plan(owner, id, replacement, 0), /plan (authority expired|changed)/);
+  assert.equal(h.signed, 0); assert.equal(h.stores.size, 0);
+});
+
+test("intent constructors reject invalid operations, times and exhausted revisions", async () => {
+  const h = await setup(), loaded = await h.journal.load(), state = { ...loaded, rows: [...loaded.rows] }, graph = await h.graph();
+  await assert.rejects(assignmentCancellationIntents(state, "bad", old, at, graph), /operation/);
+  for (const time of [-1, 1.5, Number.MAX_SAFE_INTEGER])
+    assert.throws(() => assignmentReplacementIntents(state, replacement, time), /range/);
+  assert.throws(() => assignmentReplacementIntents(state, "invalid", at), /intent/);
+  state.rows.push(sign("post", { owner, object: destination, accessor: replacement, stated: 1,
+    hamState: Number.MAX_SAFE_INTEGER, issuedAt: at, from: at, until: at + 1000 }));
+  assert.throws(() => assignmentReplacementIntents(state, replacement, at), /range/);
+});
+test("membership intents deduplicate shared groups and snapshot sorted predecessor IDs", async () => {
+  const h = await setup(), loaded = await h.journal.load(), state = { ...loaded, rows: [...loaded.rows], destinations: [...loaded.destinations] }, set = `set_${seaToPrincipalKey(owner)}_${"4".repeat(32)}`;
+  const membership = sign("membership", { role: "set", predicate: "same-group", set, member: old, setOwner: owner,
+    stated: 1, hamState: 1, cancels: [], issuedAt: at });
+  const group = { soul: membership.soul, set, predicate: "same-group", setOwner: owner };
+  state.destinations.push(forum);
+  for (const cancelId of ["c".repeat(64), "b".repeat(64), "c".repeat(64)])
+    state.rows.push(sign("cancel", { kind: "membership", rowSoul: group.soul, cancelId, prior: [], signer: owner,
+      predicate: group.predicate, set, member: old, setOwner: owner, issuedAt: at }));
+  const pending = assignmentCancellationIntents(state, id, old, at, { groupMembership: () => group });
+  state.rows.length = 0; group.setOwner = other;
+  const intents = await pending, cancellations = intents.filter(i => i.kind === "cancel");
+  assert.equal(intents.length, 5); assert.equal(cancellations.length, 1);
+  assert.deepEqual(cancellations[0].fields.prior, ["b".repeat(64), "c".repeat(64)]);
+  assert.equal(cancellations[0].fields.setOwner, owner);
+  assert.ok(Object.isFrozen(cancellations[0].fields.prior));
+  await assert.rejects(assignmentCancellationIntents(state, id, old, at, { groupMembership: () => group }), /external group/);
 });
