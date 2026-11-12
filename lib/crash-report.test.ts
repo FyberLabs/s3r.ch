@@ -68,8 +68,9 @@ test("crash reports honor normalized ingress origin and reject forged forwarding
   const request=(extra:Record<string,string>)=>new Request("http://localhost:3000/api/telemetry/error",{method:"POST",headers:{...headers,...extra},body:JSON.stringify(report)});
   let calls=0;const sink=()=>{calls++;return true;};
   assert.equal((await ingestCrash(request({}),sink)).status,204);
-  for(const change of [{"x-forwarded-host":"other.example"},{"x-forwarded-proto":"https,http"},
-    {host:"other.example","x-forwarded-host":"test.s3r.ch"},{origin:"https://other.example"},{"x-forwarded-proto":"http"}])
+  const changes: Record<string,string>[] = [{"x-forwarded-host":"other.example"},{"x-forwarded-proto":"https,http"},
+    {host:"other.example","x-forwarded-host":"test.s3r.ch"},{origin:"https://other.example"},{"x-forwarded-proto":"http"}];
+  for(const change of changes)
     assert.equal((await ingestCrash(request(change),sink)).status,403);
   assert.equal(calls,1);
 });
