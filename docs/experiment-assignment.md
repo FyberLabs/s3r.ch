@@ -84,3 +84,20 @@ An absent v2 advertisement, missing action ID or unconfigured metric prevents
 emission. Legacy exposure and conversion v1 retain their strict payload shape;
 never downgrade v2 by dropping its metric. Route wiring and a durable action
 outbox remain application responsibilities before this adapter is activated.
+
+## Signed tenant-cache delivery
+
+`createCachedExperimentProvider` reads `cache/experiments-v1-s3rch` through an
+operator-configured `RecordStore` and pinned Ed25519 public key. Its envelope has
+only `payload` and `signature`; the exact payload bytes still pass the existing
+signature, audience, sequence and expiry checks. Cache credentials cannot authorize
+flags. The Spanopticon publisher uses a separate publication sequence so signature
+renewal does not change the private operator policy revision.
+
+Call `refresh()` before preparing an experiment response. Concurrent callers share
+one read, reads are throttled to 30 seconds, and each attempt has a three-second
+deadline. Failed or malformed reads keep the last valid payload only until its
+signed expiry; missing/expired definitions require compiled control. Closing the
+adapter aborts pending transport and prevents late activation. No background timer
+or route is installed by constructing it; route/session and event wiring remain
+part of #337.
