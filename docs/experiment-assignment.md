@@ -16,7 +16,7 @@ experiments use the current key. Account binding is checked with the key that
 verified the old state, so rotation never transfers another account's cohort.
 Keep prior verification keys for the required assignment retention window;
 removing a key invalidates cookies that have not yet been rewritten.
-Cookie state expires after one year. The application must append both returned
+Cookie state expires after one year. The application must append all returned
 Set-Cookie values to the response after awaiting its evaluations.
 
 An anonymous cohort survives the first sign-in. Later experiments use the verified
@@ -101,3 +101,39 @@ signed expiry; missing/expired definitions require compiled control. Closing the
 adapter aborts pending transport and prevents late activation. No background timer
 or route is installed by constructing it; route/session and event wiring remain
 part of #337.
+
+
+## Assignment hash-key versions
+
+Each new assignment retains an opaque, domain-separated identifier of its hashing
+key. `assignmentKeyVersion(key)` returns that identifier for server-side attribution,
+or `null` for older assignments whose key version was never recorded. It is not
+added to the strict exposure/conversion schemas.
+
+The independently signed `__Host-s3rch-experiment-key-versions` companion cookie
+binds versions to the anonymous identifier and each exact experiment/hash pair.
+The existing cohort cookie format is unchanged, so older instances still accept
+and preserve cohorts during rolling updates. Browsers retain the companion when
+an older instance rewrites the original two cookies. New instances re-sign all
+cookies with the current secret while keeping each assignment's original version.
+Missing, malformed or expired metadata stays unknown rather than guessing the
+original key from the cookie's current signer. Logout/account switch and pruning
+remove associated metadata. All cookies are host-only, Secure and HttpOnly.
+
+
+## Per-event privacy permission
+
+An assignment hash is pseudonymous data. Both emitters refuse all events unless
+`ExperimentEmissionPolicy.privacy` returns current server-held consent, a future
+`retentionUntil` timestamp in epoch milliseconds, and `deletionRequested: false`.
+The synchronous callback receives only the validated event payload and must read
+trusted current state for that assignment. Missing, expired, unavailable or
+malformed permission denies emission. Do not use a browser claim or a cached
+process-wide consent boolean. Capability and metric configuration is captured,
+but the privacy decision is read anew for every event. The Azure adapter rechecks
+it after asynchronous client initialization, immediately before dispatch.
+
+No privacy authority is installed by default, including the process adapter.
+This gate prevents new emissions; it does not delete previously ingested records.
+Tenant retention settings, deletion propagation to every sink, and verified
+session/consent wiring must be completed before enabling route telemetry.
