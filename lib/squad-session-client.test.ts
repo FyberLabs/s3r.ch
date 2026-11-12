@@ -7,9 +7,9 @@ import { createSquadSessionHandlers } from "./identity/squad-session-http";
 import { seaToPrincipalKey } from "./identity/forum-check";
 import type { SeaPair } from "./identity/sea";
 const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
-async function setup() {
+async function setup(challengeDomain?: string) {
   const pair = await sea.pair(), squad = { owner: pair.pub, forumId: `forum_${seaToPrincipalKey(pair.pub)}_${"a".repeat(32)}`, label: "Client test" };
-  const sessions = createIdentitySessions({ origin: "https://s3r.ch", secret: "s".repeat(32), consume: async () => true });
+  const sessions = createIdentitySessions({ origin: "https://s3r.ch", secret: "s".repeat(32), challengeDomain, consume: async () => true });
   const handlers = createSquadSessionHandlers({ origin: "https://s3r.ch", sessions });
   const cookies = new Map<string, string>(); const actions: string[] = [];
   const fetcher: typeof fetch = async (url, init) => {
@@ -37,4 +37,26 @@ test("foreign-origin challenges and aborted sign-in never reach exchange", async
   assert.equal(await client.signIn(h.pair), false); assert.equal(exchanges, 0);
   const controller = new AbortController(); controller.abort();
   assert.equal(await client.signIn(h.pair, controller.signal), false); assert.equal(exchanges, 0);
+});
+
+
+test("browser signing intent accepts a backend-bound challenge through the existing cookie exchange", async () => {
+  const h = await setup("a".repeat(64));
+  const client = createSquadSessionClient({ base: "/api/squad/session", origin: "https://s3r.ch", squad: h.squad, fetch: h.fetcher });
+  assert.equal(await client.signIn(h.pair), true);
+  assert.deepEqual(await h.sessions.authenticate(h.cookies.get("__Host-s3rch-squad-session")!), { key: h.pair.pub });
+  assert.deepEqual(h.actions, ["challenge", "exchange"]);
+});
+
+test("browser refuses malformed challenge domains and non-challenge token types before signing", async () => {
+  const { SignJWT, decodeJwt } = await import("jose");
+  const h = await setup(), payload = decodeJwt(await h.sessions.challenge(h.pair.pub));
+  for (const typ of ["s3rch-identity-session-v1", "s3rch-agent-challenge-v1", "s3rch-identity-challenge-v1:",
+    "s3rch-identity-challenge-v1:" + "A".repeat(64), "s3rch-identity-challenge-v1:" + "a".repeat(65)]) {
+    let exchanges = 0;
+    const challenge = await new SignJWT(payload).setProtectedHeader({ alg: "HS256", typ }).sign(new TextEncoder().encode("s".repeat(32)));
+    const client = createSquadSessionClient({ base: "/api/squad/session", origin: "https://s3r.ch", squad: h.squad,
+      fetch: async url => { if (String(url).endsWith("exchange")) exchanges++; return Response.json({ challenge }); } });
+    assert.equal(await client.signIn(h.pair), false, typ); assert.equal(exchanges, 0);
+  }
 });

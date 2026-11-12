@@ -132,3 +132,20 @@ rekeys it. Wrapped keys must be unlocked through the existing key controls.
 Organization metadata does not replace current SociACL Check or owner API checks.
 The ordinary wallet/OAuth path remains separate. Nothing enables this flow from
 public request parameters or from an email match.
+
+### Identity replay storage
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `S3RCH_IDENTITY_REPLAY_BACKEND` | Unset | `spanopticon` enables the dedicated consume-only replay API. All four settings are required together; partial/unknown values fail closed. Unset preserves the existing pilot store. |
+| `S3RCH_IDENTITY_REPLAY_ORIGIN` | Unset | Fixed HTTPS storage gateway origin, with no path or alternate port. |
+| `S3RCH_IDENTITY_REPLAY_TENANT_ID` | Unset | The s3r.ch storage tenant UUID. |
+| `S3RCH_IDENTITY_REPLAY_API_KEY` | Unset | Private server-only key with only `storage:replays:consume`. Never reuse the feed/media key. |
+
+Challenges bind to the backend origin, tenant and issuer namespace. Challenges
+issued for the old store cannot be exchanged against the new store, or vice
+versa, including mixed-version rollout. Existing session tokens keep their
+wire contract. Switching storage requires a fresh challenge; no live replay
+state is copied or reset. Do not delete/restore the active replay prefix.
+This moves only challenge replay state; Squad ledger/assignment storage remains
+a separate migration. Runtime activation waits for its dedicated credential.

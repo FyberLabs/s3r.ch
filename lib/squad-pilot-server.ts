@@ -1,3 +1,4 @@
+import { configuredIdentityReplay, type IdentityReplay } from "./identity/spanopticon-replay-server";
 import { getIdentitySecret } from "./identity/secret";
 import { createHash } from "node:crypto";
 import { ManagedIdentityCredential } from "@azure/identity";
@@ -19,12 +20,12 @@ export function createSquadPilotSource(c: SquadPilotConfig, container: Pick<Cont
   return createSquadCommitStore(createBlobSquadCommitStore(container, squadPilotNamespace(config)), config.squad, clock, "authoritative-ledger");
 }
 /** Never accepts browser-selected accounts, paths, policies or signing keys. */
-export function createSquadPilotServer(c: SquadPilotConfig, container: Pick<ContainerClient, "getBlockBlobClient">, clock = () => Math.floor(Date.now() / 1000), identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" })) {
+export function createSquadPilotServer(c: SquadPilotConfig, container: Pick<ContainerClient, "getBlockBlobClient">, clock = () => Math.floor(Date.now() / 1000), identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" }), replay?: IdentityReplay) {
   const config = structuredClone(c), namespace = squadPilotNamespace(config);
   const source = createSquadPilotSource(config, container, clock);
-  const consume = createSquadSessionReplayStore(createBlobSquadSessionReplayStore(container, identitySessionNamespace(config.origin)), clock);
+  const consume = replay?.consume ?? createSquadSessionReplayStore(createBlobSquadSessionReplayStore(container, identitySessionNamespace(config.origin)), clock);
   const services = createSquadHttpServices({ squad: config.squad, origin: config.origin, config: config.authority, secret: identitySecret,
-    clock, consume, read: source.read, assignments: { source, runtime: {
+    clock, consume, challengeDomain: replay?.challengeDomain, read: source.read, assignments: { source, runtime: {
       config: config.authority, clock,
       operationStores(id) {
         if (!/^[0-9a-f]{32}$/.test(id)) throw Error("invalid operation ID");
@@ -44,12 +45,13 @@ export function pilotContainer(env = process.env) {
 // resolved by App Service. Invalid/missing material never initializes state.
 let cached: { identity: string; server: ReturnType<typeof createSquadPilotServer> } | undefined;
 export function getSquadPilotServer() {
-  const identity = JSON.stringify([process.env.IDENTITY_SESSION_SECRET, process.env.S3RCH_SQUAD_PILOT, process.env.S3RCH_SQUAD_BLOB_ACCOUNT, process.env.S3RCH_SQUAD_BLOB_CONTAINER]);
+  const identity = JSON.stringify([process.env.IDENTITY_SESSION_SECRET, process.env.S3RCH_SQUAD_PILOT, process.env.S3RCH_SQUAD_BLOB_ACCOUNT, process.env.S3RCH_SQUAD_BLOB_CONTAINER, process.env.S3RCH_IDENTITY_REPLAY_BACKEND, process.env.S3RCH_IDENTITY_REPLAY_ORIGIN, process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID, process.env.S3RCH_IDENTITY_REPLAY_API_KEY]);
   if (cached?.identity === identity) return cached.server;
   cached = undefined;
   const config = parseSquadPilotConfig(process.env.S3RCH_SQUAD_PILOT);
   if (!config) return null;
-  const server = createSquadPilotServer(config, pilotContainer());
+  const replay = configuredIdentityReplay(identitySessionNamespace(config.origin));
+  const server = createSquadPilotServer(config, pilotContainer(), undefined, undefined, replay);
   cached = { identity, server }; return server;
 }
 
