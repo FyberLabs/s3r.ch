@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RoomGame } from "./RoomGame";
+import { RoomTasks } from "./RoomTasks";
+import { roomTaskChatText, visibleRoomTaskChat } from "@/lib/room-tasks";
 import { roomGameChatText } from "@/lib/room-game";
 import type { PresenceEntry } from "@/lib/presence";
 import {
@@ -31,7 +33,11 @@ export function RoomChat({
   seedWsUp: boolean;
   onComposed: (message: ChatMessage, putOnGun: boolean) => void;
 }) {
-  const listed = rankChatMessages(messages);
+  const session = useIdentitySession(), see = useSeeAcl();
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => { const timer = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000); return () => clearInterval(timer); }, []);
+  const visible = visibleRoomTaskChat(messages, roomId, session ? objectOwner(session) : null, see?.acl, now);
+  const listed = rankChatMessages(visible);
   const { reader } = useBrand();
 
   return (
@@ -56,7 +62,7 @@ export function RoomChat({
                 {listed.map((row) => (
                   <tr key={row.id}>
                     <td className="font-data">{shortAuthor(row.author)}</td>
-                    <td className="whitespace-normal">{roomGameChatText(row.body)}</td>
+                    <td className="whitespace-normal">{roomTaskChatText(roomGameChatText(row.body))}</td>
                     <td className="font-data">
                       {row.ts
                         ? new Date(row.ts * 1000).toISOString().replace(".000Z", "Z")
@@ -71,7 +77,7 @@ export function RoomChat({
           <ul className="mt-3 space-y-2">
             {listed.map((row) => (
               <li key={row.id} className="border border-rule bg-ground px-3 py-2">
-                <p className="text-sm text-ink">{roomGameChatText(row.body)}</p>
+                <p className="text-sm text-ink">{roomTaskChatText(roomGameChatText(row.body))}</p>
                 <p className="mt-1 text-xs text-ink-muted">
                   {shortAuthor(row.author)}
                   {row.ts
@@ -83,6 +89,7 @@ export function RoomChat({
           </ul>
         )
       )}
+      <RoomTasks roomId={roomId} messages={visible} onPublicGraph={onPublicGraph} onComposed={onComposed} />
       <RoomGame roomId={roomId} messages={messages} presence={presence} onPublicGraph={onPublicGraph} seedWsUp={seedWsUp} onComposed={onComposed} />
       <ChatCompose roomId={roomId} onPublicGraph={onPublicGraph} onComposed={onComposed} />
     </div>
