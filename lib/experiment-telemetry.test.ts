@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createExperimentTelemetry, createManualExperimentClient, validExperimentConnection, emitExperimentEvent } from "./experiment-telemetry";
 import { context, ROOT_CONTEXT, trace, type Context, type ContextManager } from "@opentelemetry/api";
+const allowed = { privacy: () => ({ consent: true, retentionUntil: Date.now() + 60_000, deletionRequested: false }) };
 const key = "11111111-1111-4111-8111-111111111111";
 const connection = `InstrumentationKey=${key};IngestionEndpoint=https://eastus-0.in.applicationinsights.azure.com/;LiveEndpoint=https://eastus.livediagnostics.monitor.azure.com/;ApplicationId=${key}`;
 const payload = { experiment_key: "layout", variant: "control", assignment_hash: "a".repeat(64), surface: "s3r.ch" };
@@ -32,7 +33,7 @@ test("concurrent emissions share one client and contain only the validated first
   const telemetry = createExperimentTelemetry(connection, async value => {
     assert.equal(value, connection); initialized++;
     return { trackEvent(event) { events.push(event); }, async flush() { flushed++; } };
-  });
+  }, allowed);
   assert.deepEqual(await Promise.all([telemetry.emit("experiment.exposure.v1", payload), telemetry.emit("experiment.conversion.v1", payload)]), [true, true]);
   assert.equal(initialized, 1);
   assert.deepEqual(events, [{ name: "experiment.exposure.v1", properties: payload }, { name: "experiment.conversion.v1", properties: payload }]);
@@ -44,7 +45,7 @@ test("client creation, queueing and flush failures are isolated from the request
     const telemetry = createExperimentTelemetry(connection, async () => {
       if (phase === "create") throw Error("private");
       return { trackEvent() { if (phase === "track") throw Error("private"); }, async flush() { throw Error("private"); } };
-    });
+    }, allowed);
     assert.equal(await telemetry.emit("experiment.exposure.v1", payload), phase === "flush");
     assert.equal(await telemetry.flush(), false);
   }
@@ -100,7 +101,7 @@ test("request span identifiers are absent during event tracking", async () => {
     active = trace.setSpanContext(ROOT_CONTEXT, { traceId: "a".repeat(32), spanId: "b".repeat(16), traceFlags: 1 });
     const telemetry = createExperimentTelemetry(connection, async () => ({
       trackEvent() { assert.equal(trace.getSpanContext(context.active()), undefined); }, async flush() {},
-    }));
+    }), allowed);
     assert.equal(await telemetry.emit("experiment.exposure.v1", payload), true);
     assert.equal(trace.getSpanContext(context.active())?.traceId, "a".repeat(32));
   } finally { context.disable(); }
@@ -122,12 +123,48 @@ test("named telemetry carries the caller's stable ID on both attempts without pr
   const telemetry = createExperimentTelemetry(connection, async value => createManualExperimentClient(value, async (_url, init) => {
     sent.push(JSON.parse(init.body as string));
     return new Response(null, { status: 200 });
-  }), { supportedEventTypes: ["experiment.conversion.v2"], metrics: { layout: ["sign_in_completed"] } });
+  }), { ...allowed, supportedEventTypes: ["experiment.conversion.v2"], metrics: { layout: ["sign_in_completed"] } });
   const named = { ...payload, conversion_key: "sign_in_completed" };
   for (let attempt = 0; attempt < 2; attempt++) assert.equal(await telemetry.emit("experiment.conversion.v2", named, key), true);
   assert.equal(sent.length, 2);
   for (const event of sent) {
     assert.deepEqual(event.data.baseData.properties, { ...named, event_id: key });
     assert.deepEqual(event.tags, { "ai.cloud.role": "s3rch" });
+  }
+});
+
+
+test("absent privacy policy never initializes a configured transport", async () => {
+  let initialized = 0;
+  const telemetry = createExperimentTelemetry(connection, async () => {
+    initialized++; return { trackEvent() {}, async flush() {} };
+  });
+  assert.equal(await telemetry.emit("experiment.exposure.v1", payload), false);
+  assert.equal(await telemetry.flush(), false);
+  assert.equal(initialized, 0);
+});
+
+test("withdrawal during client initialization prevents dispatch", async () => {
+  for (const reason of ["consent", "retention", "deletion", "unavailable"]) {
+    let decision = allowed.privacy();
+    let unavailable = false;
+    let release!: () => void;
+    const waiting = new Promise<void>(resolve => { release = resolve; });
+    let started!: () => void;
+    const ready = new Promise<void>(resolve => { started = resolve; });
+    let sent = 0;
+    const telemetry = createExperimentTelemetry(connection, async () => {
+      started(); await waiting;
+      return { trackEvent() { sent++; }, async flush() {} };
+    }, { privacy: () => { if (unavailable) throw Error("private"); return decision; } });
+    const event = telemetry.emit("experiment.exposure.v1", payload);
+    await ready;
+    if (reason === "consent") decision = { ...decision, consent: false };
+    if (reason === "retention") decision = { ...decision, retentionUntil: Date.now() - 1 };
+    if (reason === "deletion") decision = { ...decision, deletionRequested: true };
+    if (reason === "unavailable") unavailable = true;
+    release();
+    assert.equal(await event, false);
+    assert.equal(sent, 0);
   }
 });

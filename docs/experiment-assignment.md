@@ -119,3 +119,21 @@ cookies with the current secret while keeping each assignment's original version
 Missing, malformed or expired metadata stays unknown rather than guessing the
 original key from the cookie's current signer. Logout/account switch and pruning
 remove associated metadata. All cookies are host-only, Secure and HttpOnly.
+
+
+## Per-event privacy permission
+
+An assignment hash is pseudonymous data. Both emitters refuse all events unless
+`ExperimentEmissionPolicy.privacy` returns current server-held consent, a future
+`retentionUntil` timestamp in epoch milliseconds, and `deletionRequested: false`.
+The synchronous callback receives only the validated event payload and must read
+trusted current state for that assignment. Missing, expired, unavailable or
+malformed permission denies emission. Do not use a browser claim or a cached
+process-wide consent boolean. Capability and metric configuration is captured,
+but the privacy decision is read anew for every event. The Azure adapter rechecks
+it after asynchronous client initialization, immediately before dispatch.
+
+No privacy authority is installed by default, including the process adapter.
+This gate prevents new emissions; it does not delete previously ingested records.
+Tenant retention settings, deletion propagation to every sink, and verified
+session/consent wiring must be completed before enabling route telemetry.

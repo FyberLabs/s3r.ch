@@ -47,14 +47,31 @@ export function parseExperimentPayload(input: unknown, type: ExperimentEventType
 
 /** Call only after a response actually shows the variant or its configured
  * conversion occurs. Evaluation alone must not publish an exposure. */
+export type ExperimentPrivacy = Readonly<{
+  consent: boolean; retentionUntil: number; deletionRequested: boolean;
+}>;
 export type ExperimentEmissionPolicy = Readonly<{
+  /** Trusted current server policy; never populated from event/request fields. */
+  privacy?: (payload: ExperimentPayload) => ExperimentPrivacy | null;
   supportedEventTypes?: readonly ExperimentEventType[];
   metrics?: Readonly<Record<string, readonly string[]>>;
 }>;
+/** Capture the provider, not its decision. A missing or unavailable policy denies. */
+export function createExperimentPermission(policy: ExperimentEmissionPolicy) {
+  const privacy = policy.privacy;
+  return (payload: ExperimentPayload): boolean => {
+    try {
+      const decision = privacy?.(payload);
+      return decision?.consent === true && decision.deletionRequested === false &&
+        Number.isSafeInteger(decision.retentionUntil) && decision.retentionUntil > Date.now();
+    } catch { return false; }
+  };
+}
 export function createExperimentEmitter(
   sink: (type: ExperimentEventType, payload: ExperimentPayload, eventId?: string) => Promise<void>,
   policy: ExperimentEmissionPolicy = {},
 ) {
+  const permitted = createExperimentPermission(policy);
   const supported = new Set(policy.supportedEventTypes ?? []);
   const metrics = new Map(Object.entries(policy.metrics ?? {}).map(([key, values]) => [key, new Set(values)]));
   return async (type: ExperimentEventType, input: unknown, eventId?: string): Promise<boolean> => {
@@ -65,6 +82,7 @@ export function createExperimentEmitter(
         !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(eventId) || eventId.length !== 36)) return false;
     if (type === "experiment.conversion.v2" && (!eventId || !supported.has(type) ||
         !metrics.get(payload.experiment_key)?.has(payload.conversion_key!))) return false;
+    if (!permitted(payload)) return false;
     try { await sink(type, payload, eventId); return true; } catch { return false; }
   };
 }
