@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { RoomGame } from "./RoomGame";
+import { isRoomTaskBody } from "@/lib/room-tasks";
 import { roomGameChatText } from "@/lib/room-game";
 import type { PresenceEntry } from "@/lib/presence";
 import {
@@ -31,7 +32,8 @@ export function RoomChat({
   seedWsUp: boolean;
   onComposed: (message: ChatMessage, putOnGun: boolean) => void;
 }) {
-  const listed = rankChatMessages(messages);
+  // Legacy room rows have no authenticated author admission. Never project work.
+  const listed = rankChatMessages(messages.filter(row => !isRoomTaskBody(row.body)));
   const { reader } = useBrand();
 
   return (

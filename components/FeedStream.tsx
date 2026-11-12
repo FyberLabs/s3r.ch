@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FeedItem, FeedSnapshot, FeedTab } from "@/lib/feed-types";
 import { fromGunNode } from "@/lib/feed-types";
+import { isRoomTaskBody } from "@/lib/room-tasks";
 import { mergeItems } from "@/lib/merge";
 import {
   aggregateDiscoverTags,
@@ -663,6 +664,7 @@ export function FeedStream() {
     const publicIds = new Set(publishedRooms);
     publicIds.add(room.id);
     for (const row of overlayChat) {
+      if (isRoomTaskBody(row.body)) continue;
       if (row.room !== room.id) continue;
       const preparedChat = preparePublishRoomChat(
         see.acl,
@@ -895,6 +897,7 @@ export function FeedStream() {
           onPublicGraph={openRoomIsPublic}
           seedWsUp={seedWsUp}
           onComposed={(next, putOnGun) => {
+            if (isRoomTaskBody(next.body)) return;
             setOverlayChat((prev) => mergeChat(prev, [next]));
             if (!putOnGun || !see?.acl || !session) return;
             const gun = gunRef.current;
