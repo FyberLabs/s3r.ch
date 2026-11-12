@@ -11,6 +11,8 @@ import { signatureOf } from "./forum-sign";
 import { soulKeyMatches } from "./unshare";
 import { createForumReceiveProofs } from "./forum-receive-proofs";
 import { createForumReceiveRetry } from "./forum-receive-retry";
+import { createForumSubscriptions } from "./forum-subscriptions";
+import type { FeedGun } from "../components/GunPeerProvider";
 import { createMemorySeeAcl } from "./identity/see-acl";
 import { toGunNode, type FeedItem } from "./feed-types";
 
@@ -47,7 +49,10 @@ test("actual chat retry installs the removal listener and consumes an existing s
   const retries = createForumReceiveRetry(), watches = new Map(), offs = new Map();
   let rows: FeedItem[] = [], subscriptions = 0; const tombs = new Map<string, number>();
   const graph = createMemorySeeAcl(); graph.putObject(fixture.PILOT_FORUM_ID, owner);
-  const nodeAt = (path: string[] = []): object => ({ get: (key: string) => nodeAt([...path, key]), on: (callback: (data: unknown) => void) => {
+  const nodeAt = (path: string[] = []): FeedGun => ({
+    put() { throw new Error("Read-only fixture"); },
+    map() { throw new Error("Unexpected collection subscription"); },
+    get: (key: string) => nodeAt([...path, key]), on: (callback: (data: unknown) => void) => {
     assert.deepEqual(path, ["s3rch", "items", item.id, "remove"]); subscriptions++;
     callback(tail); return { off() {} };
   } });
@@ -56,7 +61,8 @@ test("actual chat retry installs the removal listener and consumes an existing s
     cancelled: false, proofs: h.proofs, retries, versions: squad.createMeshEventVersions(), graphRef,
     authority: { graph: { checkDirectSee: () => ({ allowed: true }), checkPost: () => ({ allowed: true }) } },
     chatRowsRef: { get current() { return rows; } }, chatTombsRef: { current: tombs },
-    chatRemovalWatches: watches, chatRemovalOffs: offs, gun: nodeAt(), expireChatRemovalWatches: () => {},
+    chatRemovalWatches: watches, chatRemovalOffs: offs,
+    transport: createForumSubscriptions(nodeAt(), fixture.PILOT_FORUM_ID), expireChatRemovalWatches: () => {},
     setMeshChat: (update: (prev: FeedItem[]) => FeedItem[]) => { rows = update(rows); }, setLocalChat: () => {},
     knownChatIds: () => rows.map(row => row.id),
     hideChat: (ids: string[]) => { for (const id of ids) tombs.set(id, Date.now()); rows = squad.withoutChatIds(rows, ids); },
