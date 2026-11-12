@@ -73,3 +73,16 @@ any first remote write, so a crash cannot cause a later deleted record to be
 reimported from old disk. Authoritative records carry active windows, not an
 unbounded history of retired IDs; each peer durably retains its own body-free
 retirement set and also retires local rows absent from the authoritative snapshot.
+
+### Optional self-hosted Blob records
+
+| Setting | Required | Default | Secret | Meaning |
+| --- | --- | --- | --- | --- |
+| `S3RCH_FEED_STORAGE_AZURE_ACCOUNT` | for explicit `azure` backend | unset | no | Self-hosted Azure account name, using the primary HTTPS endpoint. |
+| `S3RCH_FEED_STORAGE_AZURE_CONTAINER` | for explicit `azure` backend | unset | no | Existing private container; never created or made public by the adapter. |
+
+Self-hosted installations may set the backend to `azure`, the two values above,
+and the tenant ID. They use server-side DefaultAzureCredential (for example a
+managed identity with access limited to that container). Spanopticon origin and
+API-key settings must be absent. Mixed or incomplete provider settings fail
+closed. Fyber's hosted tenant continues to use the `spanopticon` backend.
