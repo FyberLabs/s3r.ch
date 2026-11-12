@@ -9,7 +9,8 @@ These are console records, not Application Insights custom-event rows.
 The fixed record contains event, severity, kind and the server release version,
 optional color and upstream version/color. Browser records additionally carry the
 version compiled into the browser bundle and the current deployment labels from
-`/api/telemetry/context`. Client labels are untrusted diagnostics, never routing
+`/api/telemetry/context`, fetched lazily on the first error and reused for that
+page. Healthy public browsing makes no telemetry API requests. Client labels are untrusted diagnostics, never routing
 or authorization inputs. An old cached browser bundle remains distinguishable
 from the server currently accepting its report. Configure the upstream labels
 when a browser canary uses a canary plane; leave them unset otherwise.
