@@ -18,7 +18,8 @@ import { ForumShell, type ForumTab } from "@/components/ForumShell";
 import { ForumDrawerRecords } from "@/components/ForumDrawerRecords";
 import { SquadDelegationControls } from "@/components/SquadDelegationControls";
 import Link from "next/link";
-import { forumSoulNode, putForumSoul } from "@/lib/forum-transport";
+import { putForumSoul } from "@/lib/forum-transport";
+import { createForumSubscriptions } from "@/lib/forum-subscriptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGunPeer, type FeedGun } from "@/components/GunPeerProvider";
 import { observeBrowserForumSigner, publishBrowserForumRecord } from "@/lib/identity/browser-forum-signer";
@@ -365,6 +366,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   useEffect(() => {
     if (!liveEnabled || !register) return;
     let cancelled = false;
+    let subscriptions: ReturnType<typeof createForumSubscriptions> | undefined;
     const retries = createForumReceiveRetry(); retryRef.current = retries;
     let offAgents: { off?: () => void } | undefined;
     let offNeeds: { off?: () => void } | undefined;
@@ -392,7 +394,8 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
         if (!up) proofs.interrupt();
         setAclRev(n => n + 1);
       });
-      const forum = gun.get("s3rch").get("forums").get(forumId);
+      const transport = createForumSubscriptions(gun, forumId);
+      subscriptions = transport;
       const versions = createMeshEventVersions();
       function knownChatIds(): string[] {
         return chatIdsRef.current;
@@ -1067,7 +1070,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
         if (!grantChatRemovalWatch({ watches: chatRemovalWatches, key, verified: true, now, onEvict(old) {
           chatRemovalOffs.get(old)?.off?.(); chatRemovalOffs.delete(old);
         } })) return;
-        const off = gun.get("s3rch").get("items").get(key).get("remove").on((row) => {
+        const off = transport.itemRemoval(key, (row) => {
           if (cancelled || row == null) return;
           void acceptChat(row, key, true);
         });
@@ -1153,7 +1156,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
         expireForumListeners();
         if (!grantForumWatch(forumWatches, "need", needId, true, Date.now())) return;
         forumOffs.set(`need:${needId}`,
-          forum.get("needs").get(needId).get("remove").on((row) => {
+          transport.needRemoval(needId, (row) => {
             if (cancelled || row == null) return;
             const removalGen = versions.bump("need-remove", needId);
             void acceptNeed(row, needId, removalGen, true);
@@ -1169,12 +1172,12 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
         }
         if (!grantOfferTailWatch({ watches: offerTailWatches, needId, offerId, verified: true, now })) return;
         const id = `${needId}:${offerId}`;
-        const cancelOff = forum.get("needs").get(needId).get("offers").get(offerId).get("cancel").on((cancel) => {
+        const cancelOff = transport.offerCancel(needId, offerId, (cancel) => {
           if (cancelled || cancel == null) return;
           const cancelGen = versions.bump("offer-cancel", `${needId}:${offerId}`);
           void acceptOffer(cancel, offerId, needId, cancelGen, true);
         });
-        const removeOff = forum.get("needs").get(needId).get("offers").get(offerId).get("remove").on((row) => {
+        const removeOff = transport.offerRemoval(needId, offerId, (row) => {
           if (cancelled || row == null) return;
           const removalGen = versions.bump("offer-remove", `${needId}:${offerId}`);
           void acceptOffer(row, offerId, needId, removalGen, false, true);
@@ -1190,7 +1193,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
         expireForumListeners();
         if (!grantForumWatch(forumWatches, "offers", needId, true, Date.now())) return;
         forumOffs.set(`offers:${needId}`,
-          forum.get("needs").get(needId).get("offers").map().on((data, key) => {
+          transport.offers(needId, (data, key) => {
             if (cancelled || typeof key !== "string" || data === undefined) return;
             if (!offerTailCandidate(needId, key, data)) return;
             const gen = versions.bump("offer", `${needId}:${key}`);
@@ -1222,13 +1225,12 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
       function watchStatusRemoval(pub: string) {
         expireStatuses();
         if (!grantStatusWatch(statusWatches, pub, true, Date.now())) return;
-        const base = forum.get("agents").get(pub);
-        const removalOff = base.get("remove").on((row) => {
+        const removalOff = transport.agentRemoval(pub, (row) => {
           if (cancelled || row == null) return;
           const gen = versions.bump("status-remove", pub);
           void acceptStatus(row, pub, gen, true);
         });
-        const admissionOff = base.get("admission").on((row) => {
+        const admissionOff = transport.agentAdmission(pub, (row) => {
           if (cancelled || row == null) return;
           const gen = versions.bump("status-admission", pub);
           void acceptStatus(row, pub, gen, false, true);
@@ -1237,21 +1239,21 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
       }
       for (const agent of (liveEnabled ? [] : PILOT_AGENTS)) watchStatusRemoval(agent.status.seaPubkey);
       statusTimer = setInterval(expireStatuses, 30_000);
-      offAgents = forum.get("agents").map().on((data, key) => {
+      offAgents = transport.agents((data, key) => {
         if (cancelled || typeof key !== "string" || !statusWatchCandidate(key, data)) return;
         const gen = versions.bump("status", key);
         void acceptStatus(data, key, gen);
       });
-      offTemplate = forum.get("template").on(data => {
+      offTemplate = transport.template(data => {
         if (cancelled || data == null) return;
         void acceptTemplate(data);
       });
-      offRoles = forum.get("roles").map().on((data, token) => {
+      offRoles = transport.roles((data, token) => {
         if (cancelled || typeof token !== "string" || !isRoleToken(token)) return;
         expireForumListeners();
         if (!grantForumWatch(forumWatches, "role", token, false, Date.now())) return;
         forumOffs.set(`role:${token}`,
-          forum.get("roles").get(token).map().on((row, pub) => {
+          transport.roleMembers(token, (row, pub) => {
             if (cancelled || typeof pub !== "string") return;
             const gen = versions.bump("role", `${token}:${pub}`);
             if (row == null) return;
@@ -1259,19 +1261,19 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
           }),
         );
       });
-      offNeeds = forum.get("needs").map().on((data, key) => {
+      offNeeds = transport.needs((data, key) => {
         if (cancelled || typeof key !== "string" || data === undefined) return;
         const gen = versions.bump("need", key);
         if (data === null) return;
         void acceptNeed(data, key, gen);
       });
-      offAlarm = forum.get("alarm").on((data) => {
+      offAlarm = transport.alarm((data) => {
         if (cancelled || data === undefined) return;
         const gen = versions.bump("alarm", "pin");
         if (data === null) return;
         void acceptAlarm(data, gen);
       });
-      offItems = gun.get("s3rch").get("items").map().on((data, key) => {
+      offItems = transport.items((data, key) => {
         if (cancelled || typeof key !== "string" || data === undefined) return;
         if (!chatRemovalCandidate(key, data, forumId)) return;
         void acceptChat(data, key);
@@ -1280,6 +1282,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
 
     return () => {
       cancelled = true;
+      subscriptions?.close();
       offAgents?.off?.();
       offNeeds?.off?.();
       offRoles?.off?.();
