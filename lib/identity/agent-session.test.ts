@@ -114,3 +114,16 @@ test("expiry or revocation during atomic challenge consumption prevents issuance
     assert.equal(await issuer.exchangeAgent(challenge, proof), null, mode);
   }
 });
+
+test("agent challenge replay domains are isolated while resulting sessions remain compatible", async () => {
+  const h = await setup(); let consumed = 0;
+  const remote = createIdentitySessions({ ...h.options, challengeDomain: "a".repeat(64), consume: async () => { consumed++; return true; } });
+  const challenge = await remote.agentChallenge(h.id, ["forum:read"]); assert.ok(challenge);
+  const proof = (await signForumRecord(challenge, h.agent))!;
+  assert.equal(await h.sessions.exchangeAgent(challenge, proof), null);
+  const oldChallenge = await h.sessions.agentChallenge(h.id, ["forum:read"]); assert.ok(oldChallenge);
+  assert.equal(await remote.exchangeAgent(oldChallenge, (await signForumRecord(oldChallenge, h.agent))!), null);
+  assert.equal(consumed, 0);
+  const token = await remote.exchangeAgent(challenge, proof); assert.ok(token);
+  assert.ok(await h.sessions.authenticateAgent(token, ["forum:read"]));
+});

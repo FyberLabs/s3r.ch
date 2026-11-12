@@ -71,3 +71,21 @@ test("site sessions share identity across apps while challenge replay is global"
   assert.deepEqual(await h.sessions.authenticate(token), { key: h.owner.pub });
   assert.equal(await h.sessions.exchange(challenge, signature), null);
 });
+
+test("backend-bound challenges cannot be exchanged across replay stores during migration", async () => {
+  const h = await setup(); let legacyCalls = 0, remoteCalls = 0;
+  const legacy = createIdentitySessions({ ...h.options, consume: async () => { legacyCalls++; return true; } });
+  const remote = createIdentitySessions({ ...h.options, challengeDomain: "a".repeat(64), consume: async () => { remoteCalls++; return true; } });
+  const other = createIdentitySessions({ ...h.options, challengeDomain: "b".repeat(64) });
+  const oldChallenge = await legacy.challenge(h.owner.pub), newChallenge = await remote.challenge(h.owner.pub);
+  const oldProof = (await signForumRecord(oldChallenge, h.owner))!, newProof = (await signForumRecord(newChallenge, h.owner))!;
+  assert.equal(await remote.exchange(oldChallenge, oldProof), null);
+  assert.equal(await legacy.exchange(newChallenge, newProof), null);
+  assert.equal(await other.exchange(newChallenge, newProof), null);
+  assert.equal(legacyCalls, 0); assert.equal(remoteCalls, 0);
+  const oldSession = await legacy.exchange(oldChallenge, oldProof), newSession = await remote.exchange(newChallenge, newProof);
+  assert.ok(oldSession); assert.ok(newSession);
+  assert.deepEqual(await remote.authenticate(oldSession), { key: h.owner.pub });
+  assert.deepEqual(await legacy.authenticate(newSession), { key: h.owner.pub });
+  assert.throws(() => createIdentitySessions({ ...h.options, challengeDomain: "not-a-domain" }));
+});
