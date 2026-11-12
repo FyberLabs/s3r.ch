@@ -1,3 +1,4 @@
+import { parseAssignmentSignedMaterial, verifyAssignmentSignedMaterial } from "./assignment-signed-material";
 import { assignmentCancellationIntents, assignmentReplacementIntents } from "./assignment-signing-plan";
 import { isSeaPubkey } from "./identity/forum-check";
 import { parseDrawerRecord } from "./forum-drawer";
@@ -25,7 +26,7 @@ export function createDelegationRuntime(input: {
   operationStores(id: string): { inventory: InventoryStore; cancellations: CancellationOutboxStore; grants: CancellationOutboxStore };
   history(at: number): Promise<ForumAuthoritySnapshot["history"]>;
   config: ForumAuthorityConfig;
-  sign(kind: AuthorityKind, fields: Record<string, unknown>): Promise<Row>;
+  sign?(kind: AuthorityKind, fields: Record<string, unknown>): Promise<Row>;
   clock?: () => number;
 }) {
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
@@ -73,6 +74,12 @@ export function createDelegationRuntime(input: {
       return b;
     }
     if (b.op.cancellationDigest) throw Error("missing prepared cancellations");
+    if (b.op.signedMaterial) {
+      const prepared = await b.outbox.prepareReassignment(id, replacement, envelopes(b.op.signedMaterial.cancellations));
+      await input.journal.bindCancellations(actor, id, replacement, await recoveryId(recoveryBytes(["assignment-cancellation-plan-v1", JSON.stringify(prepared)])));
+      return b;
+    }
+    if (!input.sign) throw Error("Owner signatures required");
     let intents: Awaited<ReturnType<typeof assignmentCancellationIntents>> | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       const at = clock(), authority = createForumAuthority(input.config, clock);
@@ -94,19 +101,42 @@ export function createDelegationRuntime(input: {
     async read(actor: string) { return owner(actor); },
     /** Prepare a new operation without claiming it, creating outboxes or signing.
      * The caller authenticates actor; this plan is not authority or a commit. */
-    async plan(actor: string, id: string, replacement: string, expectedRevision: number) {
+    async plan(actor: string, id: string, replacement: string, expectedRevision: number, issuedAt = clock()) {
       const state = await owner(actor), at = clock();
+      if (!Number.isSafeInteger(issuedAt) || issuedAt < 0 || issuedAt > at || at - issuedAt > 300) throw Error("assignment plan expired");
       if (!/^[0-9a-f]{32}$/.test(id) || !isSeaPubkey(replacement) || replacement === state.owner || replacement === state.assignee ||
           state.usedOperations.includes(id) || state.revision !== expectedRevision ||
           state.operation && ["cancellations", "replacement"].includes(state.operation.phase)) throw Error("assignment plan conflict");
       const authority = createForumAuthority(input.config, clock);
       const admitted = await authority.refresh({ completeThrough: at, rows: state.rows, history: await input.history(at) }, at);
       if (!admitted.ok || admitted.diagnostics.length || authority.graph.ownerOf(state.forum) !== actor || clock() !== at) throw Error("assignment plan authority expired");
-      const cancellations = await assignmentCancellationIntents(state, id, state.assignee, at, authority.graph);
-      const grants = assignmentReplacementIntents(state, replacement, at);
+      const cancellations = await assignmentCancellationIntents(state, id, state.assignee, issuedAt, authority.graph, at);
+      const grants = assignmentReplacementIntents(state, replacement, issuedAt);
       if (clock() !== at || (await input.journal.load()).revision !== state.revision || clock() !== at) throw Error("assignment plan changed");
       return Object.freeze({ version: 1 as const, forum: state.forum, owner: state.owner, previous: state.assignee,
-        operationId: id, replacement, revision: state.revision, issuedAt: at, cancellations, grants });
+        operationId: id, replacement, revision: state.revision, issuedAt, cancellations, grants });
+    },
+    /** Admit all client signatures before a single journal claim. Saved material
+     * belongs to that operation and survives retries without the client's key. */
+    async startSigned(actor: string, id: string, replacement: string, expectedRevision: number, supplied: unknown) {
+      const material = parseAssignmentSignedMaterial(structuredClone(supplied));
+      const state = await owner(actor), receipt = state.receipts[id];
+      if (receipt) {
+        if (receipt.replacement !== replacement) throw Error("receipt replacement mismatch");
+        return { status: "complete" as const, receipt };
+      }
+      if (state.operation?.id === id) {
+        if (state.operation.replacement !== replacement || !state.operation.signedMaterial) throw Error("Signed operation changed");
+        return this.resume(actor, id, replacement);
+      }
+      const plan = await this.plan(actor, id, replacement, expectedRevision, material.issuedAt), at = clock();
+      const authority = createForumAuthority(input.config, clock);
+      const admitted = await authority.refresh(await source(at), at);
+      if (!admitted.ok || admitted.diagnostics.length || clock() !== at) throw Error("Signed assignment authority expired");
+      const verified = verifyAssignmentSignedMaterial(material, plan, authority.graph, at);
+      if (clock() !== at) throw Error("Signed assignment authority expired");
+      await input.journal.claim(actor, id, replacement, expectedRevision, verified);
+      return this.resume(actor, id, replacement);
     },
     async start(actor: string, id: string, replacement: string, expectedRevision: number) {
       const state = await owner(actor), receipt = state.receipts[id];
@@ -114,6 +144,7 @@ export function createDelegationRuntime(input: {
         if (receipt.replacement !== replacement) throw Error("receipt replacement mismatch");
         return { status: "complete" as const, receipt };
       }
+      if (!input.sign) throw Error("Owner signatures required");
       await input.journal.claim(actor, id, replacement, expectedRevision);
       return this.resume(actor, id, replacement);
     },
@@ -133,8 +164,12 @@ export function createDelegationRuntime(input: {
         async prepareReplacement() {
           const state = await input.journal.load(), grants: Row[] = [];
           if (state.operation?.grantDigest) throw Error("missing prepared replacement plan");
-          for (const intent of assignmentReplacementIntents(state, replacement, clock()))
-            grants.push(await input.sign(intent.kind, { ...intent.fields }));
+          if (state.operation?.signedMaterial) grants.push(...state.operation.signedMaterial.grants);
+          else {
+            if (!input.sign) throw Error("Owner signatures required");
+            for (const intent of assignmentReplacementIntents(state, replacement, clock()))
+              grants.push(await input.sign(intent.kind, { ...intent.fields }));
+          }
           await b.plans.prepare(id, replacement, envelopes(grants));
         } });
       return publisher.resume(id, replacement);

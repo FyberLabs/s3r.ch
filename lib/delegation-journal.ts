@@ -1,3 +1,4 @@
+import { parseAssignmentSignedMaterial, type AssignmentSignedMaterial } from "./assignment-signed-material";
 import { parseDrawerRecord, type DrawerRecord } from "./forum-drawer";
 import type { InventoryStore } from "./delegation-inventory";
 import type { AssignmentMutationScope, AssignmentReceipt } from "./delegation-publish";
@@ -8,7 +9,7 @@ import { isForumObjectId, isSeaPubkey } from "./identity/forum-check";
 // Two direct cancellations plus at most one effective group cancellation per destination.
 export const MAX_ASSIGNMENT_DESTINATIONS = 64;
 type Row = ForumAuthoritySnapshot["rows"][number];
-type Operation = { cancellationDigest?: string; grantDigest?: string; id: string; previous: string; replacement: string; phase: "cancellations" | "replacement" | "complete" | "aborted" };
+type Operation = { signedMaterial?: AssignmentSignedMaterial; cancellationDigest?: string; grantDigest?: string; id: string; previous: string; replacement: string; phase: "cancellations" | "replacement" | "complete" | "aborted" };
 export type AssignmentJournalState = Readonly<{
   version: 1; revision: number; forum: string; owner: string; assignee: string;
   destinations: readonly string[]; rows: readonly Row[]; operation: Operation | null;
@@ -44,13 +45,14 @@ function parse(text: string): AssignmentJournalState {
   if (s.operation && (!idOK(s.operation.id) || !isSeaPubkey(s.operation.previous) || !isSeaPubkey(s.operation.replacement) ||
       s.operation.previous === s.operation.replacement || !["cancellations", "replacement", "complete", "aborted"].includes(s.operation.phase)))
     throw Error("invalid assignment operation");
-  if (s.operation && (!exactKeys(s.operation, ["id", "previous", "replacement", "phase", "cancellationDigest", "grantDigest"]) ||
+  if (s.operation && (!exactKeys(s.operation, ["id", "previous", "replacement", "phase", "cancellationDigest", "grantDigest", "signedMaterial"]) ||
       !s.usedOperations.includes(s.operation.id) ||
       s.assignee !== (s.operation.phase === "complete" ? s.operation.replacement : s.operation.previous) ||
       (s.operation.grantDigest && !s.operation.cancellationDigest) ||
       (["replacement", "complete"].includes(s.operation.phase) && (!s.operation.cancellationDigest || !s.operation.grantDigest)) ||
       (s.operation.phase === "complete" && s.receipts[s.operation.id]?.replacement !== s.operation.replacement) ||
       (s.operation.phase !== "complete" && s.receipts[s.operation.id]))) throw Error("inconsistent assignment operation");
+  if (s.operation?.signedMaterial !== undefined) parseAssignmentSignedMaterial(s.operation.signedMaterial);
   for (const digest of [s.operation?.cancellationDigest, s.operation?.grantDigest])
     if (digest !== undefined && !/^[0-9a-f]{64}$/.test(digest)) throw Error("invalid operation digest");
   for (const [id, receipt] of Object.entries(s.receipts)) if (!receipt || !exactKeys(receipt, ["operationId", "replacement", "revision", "evaluatedAt"]) || !s.usedOperations.includes(id) || !idOK(id) || receipt.operationId !== id || !isSeaPubkey(receipt.replacement) ||
@@ -85,7 +87,7 @@ export function createAssignmentJournal(store: InventoryStore, clock = () => Mat
       await write(null, state); return state;
     },
     async load() { return (await read()).state; },
-    async claim(actor: string, id: string, replacement: string, expectedRevision: number) {
+    async claim(actor: string, id: string, replacement: string, expectedRevision: number, signedMaterial?: AssignmentSignedMaterial) {
       if (!idOK(id) || !isSeaPubkey(replacement)) throw Error("invalid reassignment intent");
       const { state: s, etag } = await read(); owner(s, actor);
       if (s.operation?.id === id) { active(s, id, replacement); return s; }
@@ -93,7 +95,7 @@ export function createAssignmentJournal(store: InventoryStore, clock = () => Mat
       idle(s);
       if (s.rows.length + s.destinations.length * 5 > 1024) throw Error("insufficient assignment journal capacity");
       if (s.revision !== expectedRevision || s.assignee === replacement || s.owner === replacement) throw Error("assignment conflict");
-      const next = { ...s, revision: s.revision + 1, usedOperations: [...s.usedOperations, id], operation: { id, previous: s.assignee, replacement, phase: "cancellations" as const } };
+      const next = { ...s, revision: s.revision + 1, usedOperations: [...s.usedOperations, id], operation: { id, previous: s.assignee, replacement, phase: "cancellations" as const, ...(signedMaterial ? { signedMaterial: parseAssignmentSignedMaterial(signedMaterial) } : {}) } };
       await write(etag, next); return next;
     },
     async bindCancellations(actor: string, id: string, replacement: string, digest: string) {
