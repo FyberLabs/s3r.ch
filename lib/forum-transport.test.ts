@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { forumSoulNode } from "./forum-transport";
+import { forumSoulNode, putForumSoul } from "./forum-transport";
 import {
   forumAgentSoul, forumArtifactSoul, forumRoleSoul, forumSubtaskSoul, forumUpdateSoul,
 } from "./identity/check";
@@ -48,4 +48,18 @@ test("artifact builder refuses malformed identity and child paths", () => {
   for (const id of ["chat", "../escape", `${doc.specId}/nested`, "ext_" + "a".repeat(64)]) {
     assert.throws(() => forumArtifactSoul(doc.forumId, doc.seaPubkey, id), /bad-id/);
   }
+});
+
+
+test("signed write transport preserves the SEA path and refuses offline or separate chat paths", () => {
+  const { node, segments } = recorder();
+  const written: unknown[] = [];
+  const target = { get(key: string) { node.get(key); return target; }, put(data: unknown) { written.push(data); } };
+  const value = { sig: "SEA-fixture", state: "working" };
+  assert.equal(putForumSoul(target, doc.souls.agent, value, true), true);
+  assert.deepEqual(segments, ["s3rch", "forums", doc.forumId, "agents", doc.seaPubkey]);
+  for (const [gun, soul, live] of [[null, doc.souls.agent, true], [target, doc.souls.agent, false], [target, "s3rch/chat/a", true]] as const) {
+    assert.equal(putForumSoul(gun, soul, value, live), false);
+  }
+  assert.deepEqual(written, [value]);
 });

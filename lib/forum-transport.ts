@@ -11,3 +11,14 @@ export function forumSoulNode<T extends { get(key: string): T }>(gun: T, soul: s
   for (const part of parts) node = node.get(part);
   return node;
 }
+
+
+/** Publish transport only; caller supplies the already checked signed record. */
+export function putForumSoul<T extends { get(key: string): T; put(data: any): any }>(
+  gun: T | null, soul: string, data: unknown, live: boolean): boolean {
+  if (!live || !gun) return false;
+  const node = forumSoulNode(gun, soul);
+  if (!node) return false;
+  node.put(data);
+  return true;
+}

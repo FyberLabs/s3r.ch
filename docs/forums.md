@@ -425,3 +425,18 @@ The transition module consumes Check results and the record validators in
 posted-offer checks and cancellation rules. These remain local consumer logic
 until SociACL #156 supplies the transition consume surface and shared vectors;
 separating the module does not establish upstream conformance.
+
+
+### Browser signing boundary
+
+`SquadForum` delegates IndexedDB reads and unlocked-key observation to
+`lib/identity/browser-forum-signer.ts`. A lock, replacement or disposed session
+invalidates an earlier pending key read. The component receives a public-key hint
+and passes a current-signer accessor to coordination adapters; it does not load
+or sign with IndexedDB material directly. Publishing rechecks the current signer,
+writer key and destination permission after signing, immediately before transport.
+`putForumSoul` handles Gun path traversal only and grants no authority.
+
+This extraction is part of #279. The pilot's authoritative journal and server
+assignment path still require replacement with complete signed Gun history; this
+change does not claim that migration is complete.

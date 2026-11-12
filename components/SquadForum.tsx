@@ -18,10 +18,10 @@ import { ForumShell, type ForumTab } from "@/components/ForumShell";
 import { ForumDrawerRecords } from "@/components/ForumDrawerRecords";
 import { SquadDelegationControls } from "@/components/SquadDelegationControls";
 import Link from "next/link";
-import { forumSoulNode } from "@/lib/forum-transport";
+import { forumSoulNode, putForumSoul } from "@/lib/forum-transport";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGunPeer, type FeedGun } from "@/components/GunPeerProvider";
-import { publishForumAuthorized } from "@/lib/forum-authorized-publish";
+import { observeBrowserForumSigner, publishBrowserForumRecord } from "@/lib/identity/browser-forum-signer";
 import { useForumAuthority } from "@/components/ForumAuthorityProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
 import {
@@ -127,7 +127,7 @@ import {
   type SquadAgent,
   type VitalsMode,
 } from "@/lib/forum-squad";
-import { readForumSignature, signForumRecord, signatureOf } from "@/lib/forum-sign";
+import { readForumSignature, signatureOf } from "@/lib/forum-sign";
 import { soulKeyMatches } from "@/lib/unshare";
 import { acquireBrowserGun } from "@/lib/browser-gun";
 import {
@@ -149,13 +149,6 @@ import {
   type ForumOffer,
   type SeeGraph,
 } from "@/lib/identity/check";
-import { getMeshKey, isPlaintextMeshKeyRecord } from "@/lib/identity/idb";
-import type { SeaPair } from "@/lib/identity/sea";
-import {
-  readUnlockedMeshPair,
-  rememberUnlockedMeshPair,
-  subscribeUnlockedMeshPair,
-} from "@/lib/identity/unlocked-mesh";
 import { createMemorySeeAcl } from "@/lib/identity/see-acl";
 
 import { squadView, isPublicSquadPrincipal, type LiveSquadSpec, type SquadView } from "@/lib/squad-view";
@@ -174,14 +167,6 @@ function stateDot(state: ForumAgentState): string {
   if (state === "needs") return "bg-signal";
   if (state === "working") return "bg-status-pass";
   return "bg-ink-muted";
-}
-
-function putSoul(gun: FeedGun | null, soul: string, data: unknown, live: boolean): boolean {
-  if (!live || !gun) return false;
-  const node = forumSoulNode(gun, soul);
-  if (!node) return false;
-  node.put(data);
-  return true;
 }
 
 function forumStorage(): Storage | null {
@@ -277,7 +262,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   );
   const gunRef = useRef<FeedGun | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  const pairRef = useRef<SeaPair | null>(null);
+  const signerRef = useRef<ReturnType<typeof observeBrowserForumSigner> | null>(null);
   const graphRef = useRef<SeeGraph | null>(null);
   const needsRef = useRef<Map<string, ForumNeed>>(new Map());
   const offersRef = useRef<Map<string, ForumOffer>>(new Map());
@@ -325,60 +310,11 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    if (!session?.address) {
-      pairRef.current = null;
-      setSeaPub(null);
-      return;
-    }
-    const address = session.address;
-    const hold = (pair: SeaPair | null, pubHint: string | null) => {
-      if (cancelled) return;
-      if (liveEnabled && ((pair && isPublicSquadPrincipal(pair.pub)) || (pubHint && isPublicSquadPrincipal(pubHint)))) {
-        pairRef.current = null; setSeaPub(null); return;
-      }
-      if (pair && isSeaPubkey(pair.pub) && (!pubHint || pair.pub === pubHint)) {
-        pairRef.current = pair;
-        setSeaPub(pair.pub);
-        return;
-      }
-      const held = readUnlockedMeshPair(address);
-      if (pubHint && isSeaPubkey(pubHint)) {
-        pairRef.current = held && held.pub === pubHint ? held : null;
-        setSeaPub(pubHint);
-        return;
-      }
-      pairRef.current = null;
-      setSeaPub(null);
-    };
-    const stop = subscribeUnlockedMeshPair((heard, pair) => {
-      if (heard !== address.trim().toLowerCase()) return;
-      hold(pair, pair?.pub ?? null);
-    });
-    const remembered = readUnlockedMeshPair(address);
-    if (remembered) hold(remembered, remembered.pub);
-    void getMeshKey(address)
-      .then((record) => {
-        if (cancelled) return;
-        const pub = record?.seaPub;
-        const readable = pub && isSeaPubkey(pub) && (!liveEnabled || !isPublicSquadPrincipal(pub)) ? pub : null;
-        if (record && isPlaintextMeshKeyRecord(record) && record.seaPair.pub === readable) {
-          rememberUnlockedMeshPair(address, record.seaPair);
-          hold(record.seaPair, readable);
-          return;
-        }
-        hold(readUnlockedMeshPair(address), readable);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        pairRef.current = null;
-        setSeaPub(null);
-      });
-    return () => {
-      cancelled = true;
-      stop();
-    };
-  }, [session?.address]);
+    const signer = observeBrowserForumSigner(session?.address ?? null,
+      pub => !liveEnabled || !isPublicSquadPrincipal(pub), setSeaPub);
+    signerRef.current = signer;
+    return () => { signer.stop(); if (signerRef.current === signer) signerRef.current = null; };
+  }, [session?.address, liveEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -561,7 +497,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
       }
       function stickSigned(soul: string, data: unknown) {
         try {
-          putSoul(gunRef.current, soul, data, liveEnabled);
+          putForumSoul(gunRef.current, soul, data, liveEnabled);
         } catch {
           // A bad id has no removal soul.
         }
@@ -1736,12 +1672,11 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
     writer: string,
     authorized: () => boolean,
   ): Promise<"signed" | "offline" | "local" | "denied"> {
-    if (!liveEnabled) return "local";
-    const pair = pairRef.current;
-    if (!pair || authority?.graph.writerKey(writer, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)) !== pair.pub) return "local";
-    return publishForumAuthorized({ record, authorized: () => proofs.ready() && authorized() && pairRef.current === pair &&
-      authority?.graph.writerKey(writer, Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000)) === pair.pub, sign: value => signForumRecord(value, pair),
-      put: value => putSoul(gunRef.current, soul, value, liveEnabled) });
+    return publishBrowserForumRecord({ live: liveEnabled, record, writer,
+      pair: () => signerRef.current?.current() ?? null,
+      writerKey: (principal, now) => authority?.graph.writerKey(principal, now, now) ?? null,
+      authorized: () => proofs.ready() && authorized(),
+      put: value => putForumSoul(gunRef.current, soul, value, liveEnabled) });
   }
 
   async function onSend(report = false) {
@@ -1818,7 +1753,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   const boardProps = liveEnabled && reportParents && authority && sessionKey && gunPeer?.gun ? {
     path: { squad: view, ...reportParents }, graph: authority.graph, gun: gunPeer.gun, sessionKey, read: readReports,
     markRead: (key: string) => setReadReports(prev => new Set(prev).add(key)),
-    evidence: (row: BoardSource) => forwards.current.get(row), pair: () => pairRef.current,
+    evidence: (row: BoardSource) => forwards.current.get(row), pair: () => signerRef.current?.current() ?? null,
     valid: (row: BoardSource) => {
       if (!proofs.valid(row)) return false;
       if (isNeed(row)) return needsRef.current.get(row.id) === row;
@@ -2070,7 +2005,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
             <ForumDrawerRecords key={active.status.seaPubkey} forum={forumId}
               agent={active.status.seaPubkey} authority={authority} gun={gunPeer?.gun ?? null}
               viewerKey={signingPrincipal() ? seaPub : null} active={meshStatus.has(active.status.seaPubkey) && admitted.has(active.status.seaPubkey) && !removedAgents.has(active.status.seaPubkey)}
-              getPair={() => pairRef.current} />
+              getPair={() => signerRef.current?.current() ?? null} />
           ) : <p role="status">Waiting for current drawer authority.</p>) : (
             <>
           {active.drawerSource === "status-only" ? (
