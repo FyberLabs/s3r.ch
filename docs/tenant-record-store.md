@@ -2,7 +2,7 @@
 
 `RecordStore` provides bounded named bytes for `cache`, `recovery` and `fixtures`.
 Names contain 1–128 ASCII letters, digits, underscores or hyphens. Values contain
-1–8 MiB of opaque bytes. This is separate from immutable media `ObjectStore`.
+1 byte to 8 MiB of opaque data. This is separate from immutable media `ObjectStore`.
 
 The server-only `createSpanopticonRecordStore` adapter binds a deployment-owned
 HTTPS origin, tenant UUID and service key. Record keys have their own
