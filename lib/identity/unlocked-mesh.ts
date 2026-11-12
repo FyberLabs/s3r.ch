@@ -9,6 +9,9 @@ import { isSeaPair, type SeaPair } from "@/lib/identity/sea";
 
 type Listener = (address: string, pair: SeaPair | null) => void;
 
+let revision = 0;
+export function readUnlockedMeshRevision(): number { return revision; }
+
 const pairs = new Map<string, SeaPair>();
 const listeners = new Set<Listener>();
 
@@ -24,12 +27,14 @@ function emit(address: string, pair: SeaPair | null): void {
 export function rememberUnlockedMeshPair(address: string, pair: SeaPair): void {
   const key = addressKey(address);
   if (!key || !isSeaPair(pair) || !isSeaPubkey(pair.pub)) return;
+  revision++;
   pairs.set(key, pair);
   emit(key, pair);
 }
 
 /** Drop one address, or every address when sign-out clears the session. */
 export function forgetUnlockedMeshPair(address?: string): void {
+  revision++;
   if (address === undefined) {
     const keys = [...pairs.keys()];
     pairs.clear();

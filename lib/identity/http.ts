@@ -1,3 +1,4 @@
+import { startupCookieNames } from "./startup-login-cookies";
 import { cookies } from "next/headers";
 import {
   confirmCookieName,
@@ -69,6 +70,7 @@ export async function setIdentityCookie(
 export async function clearIdentityCookies(): Promise<void> {
   const jar = await cookies();
   const names = [
+    ...startupCookieNames(),
     nonceCookieName(true),
     nonceCookieName(false),
     sessionCookieName(true),

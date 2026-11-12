@@ -109,3 +109,26 @@ It sends explicit event envelopes with a two-second timeout, no redirects, and
 at most eight concurrent requests. No SDK background diagnostics or request
 metadata are collected. Invalid or missing configuration drops telemetry without
 failing the application request. Accepted ingestion does not guarantee query visibility.
+
+
+### Startup linked login
+
+This optional flow is disabled by default and consumes the private canonical
+startup deployment envelope shared with Spanopticon. `STARTUP_IDENTITY_CONFIG_FILE`
+points to an owner-private regular file containing canonical JSON (sorted keys,
+compact separators, ASCII escapes and trailing newline), produced by the shared
+`controlplane_identity.startup` validator. No private SEA key enters this file.
+
+| Setting | Meaning |
+| --- | --- |
+| `S3RCH_STARTUP_LOGIN_ENABLED` | Set to `1` only after the owner startup services are configured. |
+| `S3RCH_STARTUP_LOGIN_PROVIDER` | Existing configured OIDC provider ID; issuer and client ID must match the private owner broker settings. |
+| `S3RCH_STARTUP_AUTH_URL` | Explicit HTTPS Auth endpoint ending in `/auth/startup/identity`; redirects are refused. |
+
+The linked-credential cookie lasts five minutes and carries no access token.
+It confirms the configured broker account, not permission for a mesh action.
+The browser must already hold the matching SEA key; this flow never creates or
+rekeys it. Wrapped keys must be unlocked through the existing key controls.
+Organization metadata does not replace current SociACL Check or owner API checks.
+The ordinary wallet/OAuth path remains separate. Nothing enables this flow from
+public request parameters or from an email match.
