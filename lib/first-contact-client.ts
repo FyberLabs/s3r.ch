@@ -1,5 +1,5 @@
 /** Browser consumer composition. Discovery/history and user decisions remain explicit. */
-import { prepareFirstContactSubmission, pollFirstContact, type FirstContactSenderState } from 'sociacl-ids/first-contact';
+import { prepareFirstContactSubmission, pollFirstContact, restorePendingFirstContacts, type FirstContactSenderState } from 'sociacl-ids/first-contact';
 import type { PrincipalId } from 'sociacl-ids';
 import type { FirstContactFloor } from 'sociacl-ids/first-contact-floor';
 import type { FirstContactStore } from 'sociacl-ids/first-contact-store';
@@ -16,6 +16,10 @@ export function createFirstContactClient(spanopticonOrigin: string, fetcher: typ
       const prepared = await prepareFirstContactSubmission(request, descriptor, recipient, floor, recipientState, senderState);
       return Object.freeze({ ciphertextId: prepared.ciphertextId,
         submit: (timeoutMs?: number) => prepared.submit(transport.append, timeoutMs) });
+    },
+    /** Reauthenticate the retained inbox without a network read or a new admission. */
+    restorePending(store: FirstContactStore, recipientEpriv: string, senderState: FirstContactSenderState) {
+      return restorePendingFirstContacts(store, recipientEpriv, senderState);
     },
     poll(store: FirstContactStore, recipientEpriv: string, senderState: FirstContactSenderState, timeoutMs?: number) {
       return pollFirstContact(store, transport.read, recipientEpriv, senderState, timeoutMs);

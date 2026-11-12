@@ -18,7 +18,7 @@ test('installed SociACL sender and recipient compose through configured Spanopti
     policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [], clockSkewSeconds: 0 },
     history: (p, at, until) => ({ ok: true, value: historyState(p, [], at, until) }) };
   const state = () => ({ rotations: [], context });
-  const store = await openFirstContactStore({ name: 'consumer', owner, now: () => now, indexedDB, create: true });
+  let store = await openFirstContactStore({ name: 'consumer', owner, now: () => now, indexedDB, create: true });
   const descriptor = await store.activate({ ...fixture.descriptor, encryptionEpub: fixture.request.replyEpub });
   const key = new Uint8Array(32); key[31] = 1;
   const sign = (bytes: Uint8Array) => { const result = signWithKeyring(key, bytes, owner); if (!result.ok) throw Error(result.reason); return result.value; };
@@ -29,8 +29,9 @@ test('installed SociACL sender and recipient compose through configured Spanopti
   const request = { ...fixture.request, v: 1 as const, sender: owner, replyEpub: reply.value,
     channelId: descriptor.channelId, descriptorRevision: descriptor.revision, sig: '' };
   request.sig = sign(firstContactRequestBytes(request));
-  const stored = new Map<string, string>(); const writes: Uint8Array[] = []; let loseResponse = true;
+  const stored = new Map<string, string>(); const writes: Uint8Array[] = []; let loseResponse = true; let fetches = 0;
   const fetcher = (async (url, init) => {
+    fetches++;
     assert.equal(url, `https://plane.example/api/v1/acl/sociacl/first-contact/${descriptor.channelId}/messages`);
     assert.equal(init!.credentials, 'omit'); assert.equal(init!.redirect, 'error'); assert.equal(init!.referrerPolicy, 'no-referrer');
     assert.ok(init!.signal);
@@ -56,6 +57,14 @@ test('installed SociACL sender and recipient compose through configured Spanopti
     assert.equal((await client.poll(store, epriv.toString('base64url'), state)).length, 0);
     assert.equal((await store.outbox()).length, 0); // Receiving never accepts.
     assert.equal((await store.pending()).length, 1);
+    store.close();
+    store = await openFirstContactStore({ name: 'consumer', owner, now: () => now, indexedDB });
+    const beforeRestore = fetches;
+    assert.deepEqual(await client.restorePending(store, epriv.toString('base64url'), state), [received]);
+    assert.equal(fetches, beforeRestore);
+    await store.decide(descriptor, received.replayKey, received.requestId, { status: 'rejected' });
+    assert.deepEqual(await client.restorePending(store, epriv.toString('base64url'), state), []);
+    assert.equal(fetches, beforeRestore);
   } finally { floor.close(); store.close(); }
 });
 

@@ -33,3 +33,8 @@ is stored beside ciphertext, and access logs redact channel IDs and query string
 
 PR CI exercises mocked route/client contracts and quota boundaries. Database
 concurrency, retry, isolation and expiry checks belong only in scheduled CI.
+
+After reopening an existing inbox, call `client.restorePending(store, recipientEpriv, senderState)`
+to recover still-pending plaintext. The installed SociACL package reauthenticates sender
+history and checks the committed channel and decisions after decryption. Recovery
+makes no network request and does not accept a contact or acknowledge a grant.
