@@ -27,6 +27,7 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 | `S3RCH_IDENTITY_LINKS` | no | `data/identity-links.json` when `NODE_ENV` is not production | no | Development identity file. Production does not read this path. |
 | `S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS` | no | `60000` | no | How long the blob worker may take to start. An integer from 1000 through 120000 is used; anything else stays 60000. The background probe allows up to 200000 for that start, then adds 90 seconds for the blob call. |
 | `S3RCH_LOGIN_PROVIDERS` | no | SIWE, plus one provider id `panopticon` built from `S3RCH_OAUTH_*` when the issuer is set | no | JSON array that replaces the default provider list. Include the SIWE entry. |
+| `S3RCH_SIWE_POLICY` | Server-only JSON: `allowed_hosts`, `allowed_origins`, `contract_chain_id` (1 only), optional `rpc_url` (HTTPS). Omit to preserve the built-in host policy and public mainnet RPC. Invalid configured policy refuses login. See [SIWE deployment policy](identity.md#siwe-deployment-policy). |
 | `S3RCH_LOGIN_PROVIDER_ISSUER_MOVE` | no | unset | no | `<provider id>:<issuer>` pairs, comma-separated, approving a pinned issuer move. Remove it after the next successful login. |
 | `S3RCH_OAUTH_CLIENT_ID` | no | `s3rch-web` | no | Client id for the single default OIDC provider. Public PKCE. No client secret. |
 | `S3RCH_OAUTH_ISSUER` | no | unset | no | Issuer for that default provider. Unset, and with `S3RCH_LOGIN_PROVIDERS` unset, means SIWE only. |

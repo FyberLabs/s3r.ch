@@ -9,6 +9,7 @@ import {
 } from "viem";
 import { mainnet } from "viem/chains";
 import { ALLOWED_SIWE_HOSTS, SIWE_STATEMENT } from "./config";
+import { readSiwePolicy, policyAllowsMessage } from "./siwe-policy";
 
 export { SIWE_STATEMENT };
 
@@ -84,13 +85,16 @@ export function canVerifySiweContractOnChain(chainId: number): boolean {
  * `verifyMessage` here is ERC-1271 for deployed smart accounts and EIP-6492
  * for counterfactual / undeployed wrappers. Do not add a second verify path.
  */
-export function createMainnetSiweVerifyClient(): SiweSignatureVerifier {
+export function createMainnetSiweVerifyClient(rpcUrl?: string): SiweSignatureVerifier {
   const client = createPublicClient({
     chain: mainnet,
-    transport: http(),
+    transport: http(rpcUrl),
   });
   return {
-    verifyMessage: (args) => client.verifyMessage(args),
+    verifyMessage: async (args) => {
+      if (await client.getChainId() !== SIWE_CONTRACT_VERIFY_CHAIN_ID) return false;
+      return client.verifyMessage(args);
+    },
   };
 }
 
@@ -101,9 +105,10 @@ export function createMainnetSiweVerifyClient(): SiweSignatureVerifier {
  */
 export function defaultSiweVerifyClient(
   chainId: number,
+  rpcUrl?: string,
 ): SiweSignatureVerifier | null {
   if (!canVerifySiweContractOnChain(chainId)) return null;
-  return createMainnetSiweVerifyClient();
+  return createMainnetSiweVerifyClient(rpcUrl);
 }
 
 export function buildSiweMessage(input: {
@@ -140,7 +145,12 @@ export function buildSiweMessage(input: {
  */
 export async function verifySiweLogin(
   input: SiweVerifyInput,
+  env: Record<string, string | undefined> = process.env,
 ): Promise<SiweVerifyResult> {
+  let policy;
+  try { policy = readSiwePolicy(env); } catch {
+    return { ok: false, error: "SIWE deployment configuration is invalid." };
+  }
   let parsed: SiweMessage;
   try {
     parsed = parseSiweMessage(input.message);
@@ -150,6 +160,9 @@ export async function verifySiweLogin(
 
   if (!isAllowedSiweDomain(parsed.domain)) {
     return { ok: false, error: "SIWE domain is not allowed." };
+  }
+  if (!policyAllowsMessage(policy, parsed.domain, parsed.uri)) {
+    return { ok: false, error: "SIWE message is outside the deployment policy." };
   }
   if (parsed.domain.toLowerCase() !== input.requestHost.toLowerCase()) {
     return { ok: false, error: "SIWE domain does not match this host." };
@@ -195,7 +208,7 @@ export async function verifySiweLogin(
   const client =
     input.verifyClient !== undefined
       ? input.verifyClient
-      : defaultSiweVerifyClient(parsed.chainId);
+      : defaultSiweVerifyClient(parsed.chainId, policy.rpcUrl);
 
   if (!client) {
     return { ok: false, error: "SIWE signature is invalid." };
