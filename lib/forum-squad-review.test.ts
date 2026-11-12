@@ -371,9 +371,13 @@ test('public-vector squad fixture cannot connect, publish, or restore former mes
   const { readFileSync } = await import('node:fs');
   const source = readFileSync('components/SquadForum.tsx', 'utf8');
   assert.match(source, /if \(!liveEnabled \|\| !register\) return;/);
-  assert.match(source, /if \(!live \|\| !gun\) return false;/);
+  const transport = readFileSync('lib/forum-transport.ts', 'utf8');
+  const signer = readFileSync('lib/identity/browser-forum-signer.ts', 'utf8');
+  assert.match(source, /putForumSoul\(gunRef\.current, soul, (?:data|value), liveEnabled\)/);
+  assert.match(transport, /if \(!live \|\| !gun\) return false;/);
   assert.match(source, /if \(!liveEnabled\) return;\s+const loaded = restoreForumNeedCache/);
-  assert.match(source, /if \(!liveEnabled\) return "local";/);
+  assert.match(source, /publishBrowserForumRecord\(\{ live: liveEnabled/);
+  assert.match(signer, /if \(!input\.live\) return "local";/);
 });
 
 test('unsigned cached status cannot populate the live roster on reload', () => {

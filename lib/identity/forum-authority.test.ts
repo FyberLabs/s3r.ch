@@ -155,7 +155,10 @@ test("Squad uses the isolated provider, not legacy ACL hydration or implicit cha
   assert.match(page, /ForumAuthorityProvider/); assert.doesNotMatch(page, /SeeAclProvider|MeshAclSync/);
   assert.doesNotMatch(component, /admitFeedNode|see\.acl|see\.persist|overlaySeeGraph/);
   assert.match(component, /liveEnabled \? authority\?\.graph \?\? null : sampleAcl/);
-  assert.match(component, /publishForumAuthorized/);
+  assert.match(component, /publishBrowserForumRecord/);
+  const signer = readFileSync("lib/identity/browser-forum-signer.ts", "utf8");
+  assert.match(signer, /publishForumAuthorized/);
+  assert.doesNotMatch(component, /getMeshKey|signForumRecord|\.put\(/);
 });
 
 import { recoveryId } from "./forum-recovery-records";
