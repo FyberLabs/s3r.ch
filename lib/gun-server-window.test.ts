@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applySourcePull, publishAuthoritativeFeed, getMemoryStore, getServerGun, listSnapshot } from "./gun-server";
@@ -69,5 +69,31 @@ test("removed bodies disappear from snapshots and Gun, including after reopening
     [globals.__s3rchGun, globals.__s3rchStore, globals.__s3rchGunHydrated] = old;
     rmSync(directory, { recursive: true, force: true });
     rmSync(directory + "." + process.pid + ".tmp", { force: true });
+  }
+});
+
+
+test("snapshot loading distinguishes first boot from corrupt or unreadable migration data", () => {
+  const directory=mkdtempSync(join(tmpdir(),"s3rch-adoption-unit-"));
+  const oldSnapshot=process.env.GUN_SNAPSHOT;
+  const globals=globalThis as typeof globalThis & {__s3rchStore?: unknown};
+  const old=globals.__s3rchStore;
+  try {
+    const file=join(directory,"snapshot.json");process.env.GUN_SNAPSHOT=file;
+    delete globals.__s3rchStore;
+    assert.notEqual(getMemoryStore().localSnapshotInvalid,true,"missing first-boot file is allowed");
+    for(const raw of ["{broken", "null", "{}", '{"items":[{}]}', '{"items":[],"sourceWindows":[42]}', '{"items":[],"retiredIds":[42]}']) {
+      writeFileSync(file,raw);delete globals.__s3rchStore;
+      assert.equal(getMemoryStore().localSnapshotInvalid,true);
+      assert.equal(readFileSync(file,"utf8"),raw,"loading does not rewrite the damaged source");
+    }
+    process.env.GUN_SNAPSHOT=directory;delete globals.__s3rchStore;
+    assert.equal(getMemoryStore().localSnapshotInvalid,true,"unreadable file is not first boot");
+    process.env.GUN_SNAPSHOT=file;writeFileSync(file,JSON.stringify({items:[row]}));delete globals.__s3rchStore;
+    assert.notEqual(getMemoryStore().localSnapshotInvalid,true);
+    assert.equal(getMemoryStore().items.size,1,"legacy snapshots without source windows remain supported");
+  } finally {
+    if(oldSnapshot===undefined) delete process.env.GUN_SNAPSHOT;else process.env.GUN_SNAPSHOT=oldSnapshot;
+    globals.__s3rchStore=old;rmSync(directory,{recursive:true,force:true});
   }
 });

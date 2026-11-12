@@ -114,3 +114,23 @@ test("retirement history cannot exhaust the authoritative record budget",()=>{
   assert.deepEqual([...decodeFeedCache(bytes).retired],[]);
   assert.equal(previous.retired.size,64030,"local deletion replay retains its own history");
 });
+
+
+test("damaged local snapshots cannot initialize remote cache but valid remote data can restore them", async () => {
+  const local = {...state(), localSnapshotInvalid:true}, absent = backend(null);
+  let marked=0, published=0, pulled=0;
+  const cache=tenantFeedCache(absent.store,()=>local,()=>{published++;},()=>{marked++;});
+  await assert.rejects(cache.restore());
+  await assert.rejects(cache.refresh(async()=>{pulled++;return pull([]);}));
+  assert.equal(absent.writes(),0);assert.equal(marked,0);assert.equal(published,0);assert.equal(pulled,0);
+  const remote=backend(state());
+  await tenantFeedCache(remote.store,()=>local,()=>{published++;},()=>{marked++;}).restore();
+  assert.equal(published,1);assert.equal(marked,1);assert.equal(remote.writes(),0);
+});
+
+
+test("invalid local metadata fails before persisting adoption intent", async () => {
+  const b=backend(null);let marked=0;
+  const cache=tenantFeedCache(b.store,()=>({...state(),sourcesOk:-1}),()=>assert.fail("no publication"),()=>{marked++;});
+  await assert.rejects(cache.restore());assert.equal(marked,0);assert.equal(b.writes(),0);
+});

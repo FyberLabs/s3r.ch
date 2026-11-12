@@ -11,6 +11,7 @@ export function encodeFeedCache(store: MemoryStore): Uint8Array {
     sourcesOk: store.sourcesOk, sourcesTried: store.sourcesTried,
     error: store.error ? "The last public feed refresh failed." : null }));
   if (bytes.length > RECORD_BYTES_MAX) throw fail();
+  decodeFeedCache(bytes);
   return bytes;
 }
 export function decodeFeedCache(bytes: Uint8Array): MemoryStore {
@@ -53,7 +54,7 @@ export function tenantFeedCache(records: RecordStore, local: () => MemoryStore, 
   let observed = false;
   async function current() {
     const record = await records.get("cache", "public-feed");
-    if (!record && (observed || local().tenantRecordInitialized)) throw fail();
+    if (!record && (observed || local().tenantRecordInitialized || local().localSnapshotInvalid)) throw fail();
     if (record) observed = true;
     return { state: record ? decodeFeedCache(record.bytes) : local(), revision: record?.revision ?? null };
   }
@@ -63,8 +64,9 @@ export function tenantFeedCache(records: RecordStore, local: () => MemoryStore, 
         const stored = await current();
         if (stored.revision !== null) { markAdopted(); publish(stored.state); return; }
         try {
+          const bytes = encodeFeedCache(stored.state);
           markAdopted();
-          await records.put("cache", "public-feed", encodeFeedCache(stored.state), null);
+          await records.put("cache", "public-feed", bytes, null);
           observed = true; publish(stored.state); return;
         } catch (error) { if (!(error instanceof RecordConflict)) throw fail(); }
       }
@@ -77,8 +79,9 @@ export function tenantFeedCache(records: RecordStore, local: () => MemoryStore, 
         const next: MemoryStore = { ...reconcileSourceWindows(stored.state, pulled), seededAt,
           sourcesOk: pulled.sourcesOk, sourcesTried: pulled.sourcesTried, error: pulled.error };
         try {
+          const bytes = encodeFeedCache(next);
           markAdopted();
-          await records.put("cache", "public-feed", encodeFeedCache(next), stored.revision);
+          await records.put("cache", "public-feed", bytes, stored.revision);
         } catch (error) {
           if (error instanceof RecordConflict) continue;
           throw fail();
