@@ -1,3 +1,6 @@
+import { generateKeyPairSync } from "node:crypto";
+const unitPublicKey = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({ format: "jwk" });
+const identityPub = `${unitPublicKey.x}.${unitPublicKey.y}`;
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
@@ -158,9 +161,9 @@ describe("parseAllocateResponse fixtures", () => {
 });
 
 describe("sessionGatedAllocate", () => {
-  it("is 401 without a SIWE session", async () => {
+  it("is 401 without a SEA session", async () => {
     const result = await sessionGatedAllocate({
-      sessionAddress: null,
+      sessionPrincipal: null,
       env: HOP_ENV,
     });
     assert.equal(result.status, 401);
@@ -169,7 +172,7 @@ describe("sessionGatedAllocate", () => {
 
   it("is 503 when env is empty (STUN-only)", async () => {
     const result = await sessionGatedAllocate({
-      sessionAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      sessionPrincipal: identityPub,
       env: {},
     });
     assert.equal(result.status, 503);
@@ -179,7 +182,7 @@ describe("sessionGatedAllocate", () => {
   it("hops POST allocate and returns { iceServers, expiresAt }", async () => {
     const seen: { url: string; init?: RequestInit }[] = [];
     const result = await sessionGatedAllocate({
-      sessionAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      sessionPrincipal: identityPub,
       env: HOP_ENV,
       fetchImpl: async (url, init) => {
         seen.push({ url: String(url), init });
@@ -199,7 +202,7 @@ describe("sessionGatedAllocate", () => {
       clientHint: string;
     };
     assert.equal(body.ttlSec, 300);
-    assert.equal(body.clientHint, "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+    assert.equal(body.clientHint, "s3rch-peer");
   });
 
   it("fails soft on 401, 503, network, and unparseable JSON", async () => {
@@ -213,7 +216,7 @@ describe("sessionGatedAllocate", () => {
     ];
     for (const fetchImpl of cases) {
       const result = await sessionGatedAllocate({
-        sessionAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        sessionPrincipal: identityPub,
         env: HOP_ENV,
         fetchImpl,
       });
@@ -234,7 +237,7 @@ describe("sessionGatedAllocate", () => {
 });
 
 describe("product consume locks", () => {
-  it("keeps the API key on the Next hop and SIWE on this origin", () => {
+  it("keeps the API key on the Next hop and SEA session on this origin", () => {
     const hop = helperSource();
     const route = readFileSync(
       new URL("../app/api/turn/allocate/route.ts", import.meta.url),
@@ -243,7 +246,7 @@ describe("product consume locks", () => {
     const ice = readFileSync(new URL("./turn-ice.ts", import.meta.url), "utf8");
     const tests = readFileSync(new URL("./turn-allocate.test.ts", import.meta.url), "utf8");
     assert.equal(hop.includes("X-Api-Key"), true);
-    assert.equal(route.includes("readSessionToken"), true);
+    assert.equal(route.includes("readSeaRequestSession"), true);
     assert.equal(route.includes("sessionGatedAllocate"), true);
     assert.equal(route.includes("NEXT_PUBLIC_"), false);
     assert.equal(ice.includes("NEXT_PUBLIC_"), false);

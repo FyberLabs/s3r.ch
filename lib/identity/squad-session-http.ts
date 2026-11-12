@@ -3,6 +3,7 @@ import type { createIdentitySessions } from "./sea-session";
 
 const sessionCookie = "__Host-s3rch-squad-session";
 const challengeCookie = "__Host-s3rch-squad-challenge";
+export const seaSessionCookieNames = () => [sessionCookie, challengeCookie] as const;
 const cookie = (name: string, value: string, age: number) => `${name}=${value}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${age}`;
 function readCookie(request: Request, name: string): string | null {
   const header = request.headers.get("cookie") ?? "";
@@ -12,6 +13,8 @@ function readCookie(request: Request, name: string): string | null {
   const value = values[0].slice(name.length + 1);
   return value.length <= 4096 && /^[A-Za-z0-9_.-]+$/.test(value) ? value : null;
 }
+export const readSeaSessionCookie = (request: Request) => readCookie(request, sessionCookie);
+
 /** Deployment supplies the already configured session engine. Nothing here
  * registers routes or defaults an authentication secret or storage backend. */
 export function createSquadSessionHandlers(input: { origin: string; sessions: ReturnType<typeof createIdentitySessions> }) {
@@ -68,7 +71,7 @@ export function createSquadSessionHandlers(input: { origin: string; sessions: Re
     exchange: (request: Request) => handle(request, "exchange"),
     logout: (request: Request) => handle(request, "logout"),
     async authenticate(request: Request) {
-      const token = readCookie(request, sessionCookie);
+      const token = readSeaSessionCookie(request);
       return token ? sessions.authenticate(token) : null;
     },
   });

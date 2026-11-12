@@ -1,5 +1,25 @@
 # s3r.ch user identity (2026-09-08)
 
+## SEA transition status (#277)
+
+The root identity decision is SEA public key. Wallet and OIDC credentials are
+linked login/recovery proofs. The older wallet-based sections below describe
+remaining legacy implementation, not permission to derive new principals from
+wallet addresses.
+
+TURN allocation now accepts only the existing five-minute SEA proof session
+(`__Host-s3rch-squad-session`, type `s3rch-identity-session-v1`) from the shared
+site issuer. Its verification-only reader cannot issue tokens and does not
+initialize Squad storage or authority services. SIWE, OIDC backup, startup linked
+metadata, challenge tokens, public demo keys and foreign-origin sessions cannot
+allocate TURN. The normal site sign-out clears the SEA session and pending
+challenge cookies too. The provider receives the generic `s3rch-peer` client hint, not a
+wallet address or SEA key. Missing/expired proof leaves the client on STUN.
+This does not add another session issuer or migrate the remaining wallet-based
+forum, feed and linked-credential routes. Delegated agent TURN admission remains
+pending current delegation-source wiring; a human token is not an agent grant.
+
+
 Source of truth for login on this Next app.
 
 This kit is **s3r.ch login** (wallet first) and, later, a Hypermesh **wallet door**. The Hypermesh portal stays Keycloak. **Do not make OIDC primary login on s3r.ch.** Panopticon Keycloak OAuth is a **backup** door only, with the same brokers Hypermesh already uses (Microsoft, GitHub, Google). See [oauth-idp.md](oauth-idp.md).

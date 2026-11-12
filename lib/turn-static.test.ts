@@ -1,3 +1,6 @@
+import { generateKeyPairSync } from "node:crypto";
+const unitPublicKey = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({ format: "jwk" });
+const identityPub = `${unitPublicKey.x}.${unitPublicKey.y}`;
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { HOP_ENV } from "./turn-allocate.fixtures";
@@ -88,7 +91,7 @@ describe("static TURN fallback", () => {
   });
 
   it("serves the static relay when the allocate service is not configured", async () => {
-    const result = await sessionGatedAllocate({ sessionAddress: ADDRESS, env: STATIC_ENV, now: NOW });
+    const result = await sessionGatedAllocate({ sessionPrincipal: identityPub, env: STATIC_ENV, now: NOW });
     assert.equal(result.status, 200);
     assert.equal(result.body && "expiresAt" in result.body && result.body.expiresAt, "2026-10-12T13:00:00.000Z");
   });
@@ -96,7 +99,7 @@ describe("static TURN fallback", () => {
   it("serves the static relay when the allocate service fails", async () => {
     let calls = 0;
     const result = await sessionGatedAllocate({
-      sessionAddress: ADDRESS,
+      sessionPrincipal: identityPub,
       env: { ...HOP_ENV, ...STATIC_ENV },
       now: NOW,
       fetchImpl: async () => {
@@ -109,12 +112,12 @@ describe("static TURN fallback", () => {
   });
 
   it("stays STUN-only (503) with nothing configured", async () => {
-    const result = await sessionGatedAllocate({ sessionAddress: ADDRESS, env: {} });
+    const result = await sessionGatedAllocate({ sessionPrincipal: identityPub, env: {} });
     assert.deepEqual(result, { status: 503, body: { error: "turn-unconfigured" } });
   });
 
   it("still requires a session", async () => {
-    const result = await sessionGatedAllocate({ sessionAddress: null, env: STATIC_ENV });
+    const result = await sessionGatedAllocate({ sessionPrincipal: null, env: STATIC_ENV });
     assert.equal(result.status, 401);
   });
 });
