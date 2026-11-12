@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createExperimentEmitter, hashExperimentAssignment, parseExperimentPayload, type ExperimentEventType } from "./experiment-contract";
+const allowed = { privacy: () => ({ consent: true, retentionUntil: Date.now() + 60_000, deletionRequested: false }) };
 const secret = new Uint8Array(32).fill(97);
 const payload = { experiment_key: "feed_layout", variant: "control", assignment_hash: hashExperimentAssignment("anonymous-fixture", secret), surface: "s3r.ch" };
 
@@ -34,21 +35,21 @@ test("malformed labels, hashes and optional fields are refused", () => {
 
 test("the first-party sink receives explicit exposure/conversion only and cannot break a request", async () => {
   const calls: unknown[] = [];
-  const emit = createExperimentEmitter(async (...args) => { calls.push(args); });
+  const emit = createExperimentEmitter(async (...args) => { calls.push(args); }, allowed);
   assert.equal(calls.length, 0);
   for (const type of ["experiment.exposure.v1", "experiment.conversion.v1"] as const) assert.equal(await emit(type, payload), true);
   assert.equal(calls.length, 2);
   assert.equal(await emit("other" as ExperimentEventType, payload), false);
   assert.equal(await emit("experiment.exposure.v1", { ...payload, email: "private" }), false);
   assert.equal(calls.length, 2);
-  assert.equal(await createExperimentEmitter(async () => { throw Error("private failure"); })("experiment.conversion.v1", payload), false);
+  assert.equal(await createExperimentEmitter(async () => { throw Error("private failure"); }, allowed)("experiment.conversion.v1", payload), false);
 });
 
 
 test("accessors and hostile objects cannot change validated values before emission", async () => {
   let reads = 0, writes = 0;
   const accessor = { ...payload, get variant() { reads++; return reads < 3 ? "control" : { email: "private", message: "private" }; } };
-  const emit = createExperimentEmitter(async () => { writes++; });
+  const emit = createExperimentEmitter(async () => { writes++; }, allowed);
   assert.equal(await emit("experiment.exposure.v1", accessor), false);
   assert.equal(reads, 0);
   assert.equal(writes, 0);
@@ -70,7 +71,7 @@ test("named conversion metrics require trusted per-experiment policy and a stabl
   const events: unknown[] = [];
   const metrics = { feed_layout: ["sign_in_completed"] };
   const emit = createExperimentEmitter(async (...args) => { events.push(args); }, {
-    supportedEventTypes: ["experiment.conversion.v1", "experiment.conversion.v2"], metrics,
+    ...allowed, supportedEventTypes: ["experiment.conversion.v1", "experiment.conversion.v2"], metrics,
   });
   metrics.feed_layout.push("unconfigured");
   assert.equal(await createExperimentEmitter(async () => { throw Error("must not send"); })("experiment.conversion.v2", named, eventId), false);
@@ -85,4 +86,44 @@ test("named conversion metrics require trusted per-experiment policy and a stabl
   assert.equal(await emit("experiment.conversion.v2", named, eventId), true);
   assert.equal(await emit("experiment.conversion.v2", named, eventId), true);
   assert.deepEqual(events, [["experiment.conversion.v2", named, eventId], ["experiment.conversion.v2", named, eventId]]);
+});
+
+
+test("privacy policy denies by default and follows consent, expiry and deletion on every event", async () => {
+  let sent = 0;
+  const sink = async () => { sent++; };
+  assert.equal(await createExperimentEmitter(sink)("experiment.exposure.v1", payload), false);
+  let decision = { consent: true, retentionUntil: Date.now() + 60_000, deletionRequested: false };
+  const policy = { privacy: () => decision };
+  const emit = createExperimentEmitter(sink, policy);
+  assert.equal(await emit("experiment.exposure.v1", payload), true);
+  decision = { ...decision, consent: false };
+  assert.equal(await emit("experiment.exposure.v1", payload), false);
+  decision = { ...decision, consent: true, deletionRequested: true };
+  assert.equal(await emit("experiment.conversion.v1", payload), false);
+  decision = { ...decision, deletionRequested: false, retentionUntil: Date.now() - 1 };
+  assert.equal(await emit("experiment.conversion.v1", payload), false);
+  for (const retentionUntil of [NaN, Infinity, 1.5]) {
+    decision = { ...decision, retentionUntil };
+    assert.equal(await emit("experiment.exposure.v1", payload), false);
+  }
+  policy.privacy = () => ({ consent: true, retentionUntil: Date.now() + 60_000, deletionRequested: false });
+  assert.equal(await emit("experiment.exposure.v1", payload), false);
+  assert.equal(sent, 1);
+});
+
+test("missing, failed and malformed privacy decisions cannot publish or receive private payloads", async () => {
+  for (const privacy of [() => null, () => { throw Error("private"); }, () => ({ consent: 1 }), () => Promise.resolve({ consent: true })]) {
+    const emit = createExperimentEmitter(async () => assert.fail("must not publish"), { privacy: privacy as any });
+    assert.equal(await emit("experiment.exposure.v1", payload), false);
+  }
+  let consulted = 0;
+  const emit = createExperimentEmitter(async () => {}, { privacy: value => {
+    consulted++; assert.deepEqual(value, payload); assert.ok(Object.isFrozen(value));
+    return allowed.privacy();
+  } });
+  assert.equal(await emit("experiment.exposure.v1", { ...payload, cookie: "private" }), false);
+  assert.equal(consulted, 0);
+  assert.equal(await emit("experiment.exposure.v1", payload), true);
+  assert.equal(consulted, 1);
 });
