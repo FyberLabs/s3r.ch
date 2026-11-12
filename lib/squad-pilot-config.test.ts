@@ -59,3 +59,29 @@ test("ledger-only operator access needs no identity secret while the HTTP server
     if (saved === undefined) delete process.env.IDENTITY_SESSION_SECRET; else process.env.IDENTITY_SESSION_SECRET = saved;
   }
 });
+
+test("configured remote replay is passed into the existing issuer without constructing a Blob replay slot", async () => {
+  const { createSquadPilotServer } = await import("./squad-pilot-server");
+  const { createRequire } = await import("node:module");
+  const { signForumRecord } = await import("./forum-sign");
+  const { decodeProtectedHeader } = await import("jose");
+  const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<import("./identity/sea").SeaPair> };
+  const pair = await sea.pair(), paths: string[] = [];
+  const { BlobServiceClient } = await import("@azure/storage-blob");
+  const container = new BlobServiceClient("https://fixture.blob.core.windows.net").getContainerClient("fixture");
+  const fake = { getBlockBlobClient(path: string) { paths.push(path); return container.getBlockBlobClient(path); } };
+  let consumed = 0;
+  const replay = { challengeDomain: "a".repeat(64), consume: async () => { consumed++; return true; } };
+  const c = parseSquadPilotConfig(JSON.stringify(config()))!;
+  const server = createSquadPilotServer(c, fake, () => 100, "s".repeat(32), replay);
+  assert.ok(paths.length); assert.ok(paths.every(path => !path.includes("session-replay")));
+  const request = (body: unknown, cookie = "") => new Request("https://s3r.ch/api/squad/session", {
+    method: "POST", headers: { origin: "https://s3r.ch", "content-type": "application/json", cookie }, body: JSON.stringify(body) });
+  const challenged = await server.services.challenge(request({ key: pair.pub }));
+  assert.equal(challenged.status, 200);
+  const { challenge } = await challenged.json() as { challenge: string };
+  assert.equal(decodeProtectedHeader(challenge).typ, "s3rch-identity-challenge-v1:" + replay.challengeDomain);
+  const signature = await signForumRecord(challenge, pair); assert.ok(signature);
+  const exchanged = await server.services.exchange(request({ challenge, signature }, "__Host-s3rch-squad-challenge=" + challenge));
+  assert.equal(exchanged.status, 200); assert.equal(consumed, 1);
+});

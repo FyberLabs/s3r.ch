@@ -28,6 +28,7 @@ function agentScopes(value: unknown): readonly string[] {
  */
 export function createIdentitySessions(input: {
   origin: string; secret: string;
+  challengeDomain?: string;
   consume(id: string, expiresAt: number): Promise<boolean>;
   clock?: () => number;
   delegationSource?: AgentDelegationSource;
@@ -37,7 +38,9 @@ export function createIdentitySessions(input: {
   if (origin.origin !== input.origin || origin.protocol !== "https:") throw Error("Canonical HTTPS origin required");
   const secret = new TextEncoder().encode(input.secret), issuer = origin.origin, audience = issuer;
   const consume = input.consume, clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
-  const challengeType = "s3rch-identity-challenge-v1", sessionType = "s3rch-identity-session-v1";
+  if (input.challengeDomain !== undefined && !/^[0-9a-f]{64}$/.test(input.challengeDomain)) throw Error("Invalid challenge storage domain");
+  const domain = input.challengeDomain === undefined ? "" : ":" + input.challengeDomain;
+  const challengeType = "s3rch-identity-challenge-v1" + domain, sessionType = "s3rch-identity-session-v1";
   async function token(type: string, key: string, ttl: number, extra: Record<string, unknown> = {}, ceiling = Number.MAX_SAFE_INTEGER) {
     const now = clock(), expiresAt = Math.min(now + ttl, ceiling);
     if (!Number.isSafeInteger(now) || now < 0 || expiresAt <= now) throw Error("Invalid issuance time");
@@ -46,7 +49,7 @@ export function createIdentitySessions(input: {
       .setJti(randomBytes(32).toString("hex")).sign(secret);
   }
   const claims = createIdentityTokenVerifier({ origin: issuer, secret: input.secret, clock }).claims;
-  const agentChallengeType = "s3rch-agent-challenge-v1", agentSessionType = "s3rch-agent-session-v1";
+  const agentChallengeType = "s3rch-agent-challenge-v1" + domain, agentSessionType = "s3rch-agent-session-v1";
   const delegationSource = input.delegationSource;
   async function delegation(id: string, scopes: readonly string[]) {
     if (typeof id !== "string" || !idPattern.test(id) || !delegationSource) throw Error("Delegation unavailable");

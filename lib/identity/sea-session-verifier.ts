@@ -11,7 +11,7 @@ export function createIdentityTokenVerifier(input: { origin: string; secret: str
   const secret = new TextEncoder().encode(input.secret), clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   async function claims(value: string, type: string, ttl: number) {
     if (typeof value !== "string" || value.length > 4096 ||
-        !((type === "s3rch-identity-session-v1" && ttl === 300) || (type === "s3rch-identity-challenge-v1" && ttl === 60))) throw Error("Invalid session");
+        !((type === "s3rch-identity-session-v1" && ttl === 300) || (/^s3rch-identity-challenge-v1(?::[0-9a-f]{64})?$/.test(type) && ttl === 60))) throw Error("Invalid session");
     const now = clock();
     if (!Number.isSafeInteger(now) || now < 0) throw Error("Invalid session time");
     const { payload } = await jwtVerify(value, secret, { algorithms: ["HS256"], typ: type,

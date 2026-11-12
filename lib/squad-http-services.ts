@@ -8,6 +8,7 @@ import { createSquadSessionHandlers } from "./identity/squad-session-http";
 export function createSquadHttpServices(input: Omit<Parameters<typeof createForumAuthorityService>[0], "authenticate"> & {
   assignments?: Pick<Parameters<typeof createSquadAssignmentService>[0], "source" | "runtime">;
   secret: string;
+  challengeDomain?: string;
   consume: Parameters<typeof createIdentitySessions>[0]["consume"];
 }) {
   const sessions = createIdentitySessions(input);
