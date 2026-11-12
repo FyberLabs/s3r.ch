@@ -85,3 +85,17 @@ test("cursor and task commit together and stale writers cannot skip messages", t
   assert.throws(() => b.receive({ ...first, handle: randomUUID() }, { before: "page-2", after: "page-3" }), /Conflicting/);
   assert.equal(b.cursor(), "page-2");
 });
+
+test("authorization requires literal true and receives the immutable stored scope", t => {
+  const f = fixture(t);
+  for (const verdict of [Promise.resolve(true), 1, "allowed", null]) {
+    const denied = f.open({ authorize: () => verdict });
+    assert.throws(() => denied.receive(f.task()), /authority/);
+  }
+  const expected = { ...f.input.scope }; let observed: unknown;
+  const a = f.open({ authorize: (_task: BotInboxTask, _operation: string, scope: unknown) => {
+    observed = scope; return true;
+  } });
+  f.input.scope.forum = "changed-by-caller";
+  a.receive(f.task()); assert.deepEqual(observed, expected); assert.ok(Object.isFrozen(observed));
+});

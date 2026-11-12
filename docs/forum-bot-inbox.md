@@ -15,7 +15,9 @@ happen before a claimed reference is returned. This uses the existing Node
 runtime's [SQLite API](https://nodejs.org/download/release/latest-v24.x/docs/api/sqlite.html),
 without a new npm dependency.
 
-The caller must supply a synchronous, current authorization check. Before
+The caller must supply a synchronous, current authorization check. It receives
+the immutable database scope and must return literal `true`; promises and other
+truthy values are refused. Before
 receive, it must validate the signed statement, independent bot enrollment,
 tenant/forum binding, current sender and recipient access, and any delegation
 chain. Before dispatch it must recheck those permissions, local consent and the

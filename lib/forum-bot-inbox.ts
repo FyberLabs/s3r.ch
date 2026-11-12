@@ -43,7 +43,7 @@ function privateFile(path: string) {
  */
 export function openForumBotInbox(input: {
   path: string; scope: BotInboxScope;
-  authorize(task: BotInboxTask, operation: "receive" | "dispatch" | "cancel"): boolean;
+  authorize(task: BotInboxTask, operation: "receive" | "dispatch" | "cancel", scope: BotInboxScope): boolean;
   clock?: () => number; capacity?: number;
 }) {
   const { authorize } = input;
@@ -51,7 +51,7 @@ export function openForumBotInbox(input: {
   const capacity = input.capacity ?? 4096;
   if (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 16384 || typeof authorize !== "function")
     throw Error("Invalid bot inbox policy");
-  const scope = input.scope;
+  const scope = Object.freeze({ ...input.scope });
   if (!scope || Object.keys(scope).sort().join() !== "bot,forum,principal,tenant" ||
       !text(scope.bot, 36) || !uuid.test(scope.bot) || !text(scope.tenant, 36) || !uuid.test(scope.tenant) || !text(scope.forum, 256) || !text(scope.principal, 256))
     throw Error("Invalid bot inbox scope");
@@ -78,7 +78,7 @@ export function openForumBotInbox(input: {
     return at;
   }
   function allowed(task: BotInboxTask, operation: "receive" | "dispatch" | "cancel") {
-    if (!authorize(task, operation)) throw Error("Bot inbox authority unavailable");
+    if (authorize(task, operation, scope) !== true) throw Error("Bot inbox authority unavailable");
   }
   return {
     close() { db.close(); },
