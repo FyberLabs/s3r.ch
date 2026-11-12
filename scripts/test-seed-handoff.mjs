@@ -11,6 +11,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
 
+if (!process.argv[2]) throw Error("Infra-owned record fixture path required; run through the central nightly suite");
 const build = path.resolve(".next/standalone");
 const root = await mkdtemp(path.join(tmpdir(), "s3rch-seed-handoff-"));
 // Select a free loopback port and reuse it across peer restarts.
@@ -183,7 +184,7 @@ try {
 
   // This fixture replaces only outbound record HTTP in the child. The packaged
   // peer, record client, cache codec, disk publication and Gun are real.
-  await cp(path.resolve("scripts/fixtures/record-storage.cjs"), path.join(root, "record-storage.cjs"));
+  await cp(path.resolve(process.argv[2]), path.join(root, "record-storage.cjs"));
   await start("record");
   for (let i = 0; i < 100; i++) {
     const imported = await readFile(path.join(root, "tenant-record.json"), "utf8").catch(() => null);
