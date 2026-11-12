@@ -18,9 +18,10 @@ export function hashExperimentAssignment(identifier: string, secret: Uint8Array)
 
 /** Validate the entire object, rather than silently dropping private fields. */
 export function parseExperimentPayload(input: unknown): ExperimentPayload | null {
-  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  if (!input || typeof input !== "object") return null;
   let row: Record<string, unknown>;
   try {
+    if (Array.isArray(input)) return null;
     const descriptors = Object.getOwnPropertyDescriptors(input);
     if (Reflect.ownKeys(descriptors).some(key => typeof key !== "string")) return null;
     if (Object.values(descriptors).some(field => !field.enumerable || !("value" in field))) return null;

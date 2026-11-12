@@ -56,3 +56,10 @@ test("accessors and hostile objects cannot change validated values before emissi
   assert.equal(parseExperimentPayload({ ...payload, [Symbol("private")]: "private" }), null);
   assert.equal(parseExperimentPayload(Object.defineProperty({ ...payload }, "email", { value: "private" })), null);
 });
+
+
+test("revoked proxies are isolated before array inspection", async () => {
+  const proxy = Proxy.revocable({}, {}); proxy.revoke();
+  assert.equal(parseExperimentPayload(proxy.proxy), null);
+  assert.equal(await createExperimentEmitter(async () => { assert.fail("sink must not run"); })("experiment.exposure.v1", proxy.proxy), false);
+});
