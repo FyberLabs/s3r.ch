@@ -1,6 +1,7 @@
 /** Spanopticon ciphertext transport only. Callers still decrypt and authenticate. */
 export type LaneCiphertext = Readonly<{ id: string; ciphertext: Uint8Array }>;
 const HEX = /^[0-9a-f]{64}$/;
+const opaqueId = (value: unknown): value is string => typeof value === 'string' && value.length === 64 && HEX.test(value);
 const MAX_BYTES = 65536;
 const MAX_LANE_BYTES = 1024 * 1024;
 const MAX_RESPONSE = 1500000;
@@ -36,7 +37,7 @@ export function createContactLaneTransport(spanopticonOrigin: string, fetcher: t
     throw new Error('Expected a Spanopticon HTTPS origin');
   }
   function endpoint(laneId: string) {
-    if (!HEX.test(laneId)) throw new Error('Invalid opaque lane ID');
+    if (!opaqueId(laneId)) throw new Error('Invalid opaque lane ID');
     return `${base.origin}/api/v1/acl/sociacl/contact-lanes/${laneId}/messages`;
   }
   function options(): RequestInit {
@@ -64,7 +65,7 @@ export function createContactLaneTransport(spanopticonOrigin: string, fetcher: t
       }
       const rows: LaneCiphertext[] = []; const seen = new Set<string>(); let total = 0;
       for (const row of result.messages) {
-        if (!row || typeof row.id !== 'string' || !HEX.test(row.id) || seen.has(row.id) || typeof row.ciphertext !== 'string' ||
+        if (!row || !opaqueId(row.id) || seen.has(row.id) || typeof row.ciphertext !== 'string' ||
             row.ciphertext.length > 87384 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(row.ciphertext)) {
           throw new Error('Invalid contact lane ciphertext');
         }

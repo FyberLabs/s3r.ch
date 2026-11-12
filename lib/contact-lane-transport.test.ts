@@ -30,6 +30,7 @@ test('invalid routing and payload never reach the network', async () => {
   }
   const transport = createContactLaneTransport('https://plane.example', (() => { throw Error('network reached'); }) as typeof fetch);
   await assert.rejects(transport.append('~principal', bytes), /lane ID/);
+  await assert.rejects(transport.append(lane + '\n', bytes), /lane ID/);
   await assert.rejects(transport.append(lane, new Uint8Array(65537)), /size/);
 });
 
