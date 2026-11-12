@@ -29,7 +29,9 @@ export function createForumAuthorityService(input: {
       if (request.method !== "POST") return reply(405, { error: "method" });
       if (!matchesBrowserOrigin(request, origin) ||
           request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") return reply(403, { error: "origin-or-type" });
+      const at = clock();
       const session = await authenticate(request);
+      if (clock() !== at) return reply(409, { error: "scope-or-time" });
       if (!session || typeof session.key !== "string" || isPublicSquadPrincipal(session.key)) return reply(403, { error: "authentication" });
       const key = session.key;
       if (!request.body) return reply(400, { error: "request" });
@@ -53,7 +55,7 @@ export function createForumAuthorityService(input: {
       let body;
       try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); }
       catch { return reply(400, { error: "request" }); }
-      const at = clock();
+      if (clock() !== at) return reply(409, { error: "scope-or-time" });
       if (!body || Object.keys(body).sort().join() !== "evaluatedAt,forumId,owner,version" || body.version !== 1 ||
           body.forumId !== view.forumId || body.owner !== view.owner || !Number.isSafeInteger(body.evaluatedAt) ||
           body.evaluatedAt < 0 || Object.is(body.evaluatedAt, -0) || body.evaluatedAt !== at) return reply(409, { error: "scope-or-time" });

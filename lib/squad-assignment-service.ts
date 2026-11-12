@@ -29,7 +29,10 @@ export function createSquadAssignmentService(input: {
       if (request.method !== "POST") return reply(405, { error: "method" });
       if (!matchesBrowserOrigin(request, origin) ||
           request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") return reply(403, { error: "origin-or-type" });
+      const at = clock();
+      const evaluationClock = () => { request.signal.throwIfAborted(); if (clock() !== at) throw Error("evaluation expired"); return at; };
       const session = await authenticate(request);
+      evaluationClock();
       if (!session || !isSeaPubkey(session.key) || isPublicSquadPrincipal(session.key)) return reply(403, { error: "authentication" });
       const sessionKey = session.key;
       if (!request.body) return reply(400, { error: "request" });
@@ -55,8 +58,7 @@ export function createSquadAssignmentService(input: {
       if (["plan", "start-signed", "start"].includes(action) && (!Number.isSafeInteger(body.revision) || body.revision < 0)) return reply(400, { error: "revision" });
       if (action === "read-child" && !isForumObjectId(body.id)) return reply(400, { error: "child" });
       if (action === "child" && (typeof body.signature !== "string" || body.signature.length > 32768)) return reply(400, { error: "signature" });
-      const at = clock();
-      const evaluationClock = () => { request.signal.throwIfAborted(); if (clock() !== at) throw Error("evaluation expired"); return at; };
+      evaluationClock();
       const pinned = await source.open(evaluationClock), state = await pinned.journal.load();
       if (state.forum !== view.forumId || state.owner !== view.owner) return reply(503, { error: "source-scope" });
       const authority = createForumAuthority(options.config, clock);
