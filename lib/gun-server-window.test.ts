@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applySourcePull, getMemoryStore, getServerGun, listSnapshot } from "./gun-server";
+import { applySourcePull, publishAuthoritativeFeed, getMemoryStore, getServerGun, listSnapshot } from "./gun-server";
 import type { FeedItem, SourcePull } from "./feed-types";
 
 const row: FeedItem = { id: "source-post", source: "rss", kind: "post", author: "a",
@@ -46,6 +46,18 @@ test("removed bodies disappear from snapshots and Gun, including after reopening
     applySourcePull(pull([row]), "2026-11-11T02:00:00Z");
     assert.equal(graph.get("/s3rch/items/source-post")?.unshared, null, "returning item clears the tombstone");
     assert.equal(listSnapshot().items[0]?.body, row.body);
+    // An authoritative empty tenant record clears a stale local row and persists
+    // the adoption marker so a missing remote record cannot reimport this disk.
+    publishAuthoritativeFeed({ items: new Map(), windows: new Map(), retired: new Set(),
+      seededAt: null, sourcesOk: 1, sourcesTried: 1, error: null });
+    assert.equal(graph.get("/s3rch/items/source-post")?.body, null);
+    delete globals.__s3rchStore;
+    assert.equal(getMemoryStore().tenantRecordInitialized, true);
+    assert.equal(getMemoryStore().items.size, 0);
+    publishAuthoritativeFeed({ items: new Map(), windows: new Map(), retired: new Set(),
+      seededAt: null, sourcesOk: 1, sourcesTried: 1, error: null });
+    assert.equal(getMemoryStore().retired.has(row.id), true, "subsequent compact snapshots retain local deletion replay");
+    applySourcePull(pull([row]), "2026-11-11T02:30:00Z");
     // A failed durable commit must not publish or mutate the current cache.
     process.env.GUN_SNAPSHOT = directory;
     assert.throws(() => applySourcePull(pull([]), "2026-11-11T03:00:00Z"));

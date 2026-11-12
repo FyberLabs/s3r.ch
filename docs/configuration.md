@@ -49,3 +49,27 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 | `S3RCH_SQUAD_PILOT` | Empty (disabled) | Key Vault-backed JSON deployment contract for the separately provisioned synthetic Squad. Contains the fixed HTTPS origin, fresh namespace/owner, explicit witness and credential policy, random session secret and owner signing key. Never expose as NEXT_PUBLIC or print it. Infra owns the reference through `squad_pilot_secret_name`. Uses a dedicated private primary Blob container with scoped managed-identity access; missing state denies rather than initializes. See `docs/squad-live-rollout.md`. |
 | `S3RCH_SQUAD_BLOB_ACCOUNT` | Unset | Pilot storage account, supplied by infra from its managed storage resource. Required only when the pilot is enabled. Managed identity only; no account key or CLI fallback. |
 | `S3RCH_SQUAD_BLOB_CONTAINER` | Unset | Dedicated private pilot container, supplied by infra. Never point at identity-links storage, a secondary replica or an imported snapshot mirror. |
+
+### Public feed storage migration
+
+| Setting | Required | Default | Secret | Meaning |
+| --- | --- | --- | --- | --- |
+| `S3RCH_FEED_STORAGE_BACKEND` | no | legacy filesystem until configured | no | `spanopticon` selects tenant records. Explicit `filesystem` is allowed only without any remote settings. Unknown or partial configurations fail closed for refreshes. |
+| `S3RCH_FEED_STORAGE_ORIGIN` | for Spanopticon | unset | no | Fixed HTTPS gateway origin with no path, credentials or alternate port. |
+| `S3RCH_FEED_STORAGE_TENANT_ID` | for Spanopticon | unset | no | s3r.ch tenant UUID for public-feed records. |
+| `S3RCH_FEED_STORAGE_API_KEY` | for Spanopticon | unset | yes | Dedicated server-only `storage:records:read` and `storage:records:write` key. Never use the media or Oracles key. |
+
+Setting all three remote values selects Spanopticon even without an explicit
+backend. Startup restores its authoritative named record; when absent, it
+conditionally imports the existing local snapshot. Invalid or unavailable remote
+state leaves the last local public snapshot available and blocks replacement.
+Successful remote commits precede updates to the derived local file and Gun graph.
+A conflict reloads remote state and fetches fresh source windows before retrying.
+The migration does not delete legacy data or remove existing Azure grants.
+
+The peer listens immediately from its local snapshot while remote restoration
+runs. Refreshes wait for that restore to finish. Adoption intent is saved before
+any first remote write, so a crash cannot cause a later deleted record to be
+reimported from old disk. Authoritative records carry active windows, not an
+unbounded history of retired IDs; each peer durably retains its own body-free
+retirement set and also retires local rows absent from the authoritative snapshot.

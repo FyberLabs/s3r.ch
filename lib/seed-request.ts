@@ -1,6 +1,7 @@
 import { authorizeSeed } from "@/lib/auth";
 import { combinePulls, pullAllowedSource } from "./seed";
 import { applySourcePull, setSeedMeta } from "./gun-server";
+import { configuredTenantFeedCache, waitForTenantFeedRestore } from "./tenant-feed-cache-server";
 import type { SeedReport } from "./feed-types";
 
 export async function handleSeed(request: Request) {
@@ -40,8 +41,8 @@ export function seedPublicGraph(): Promise<SeedReport> {
   return activeSeed;
 }
 
-async function runSeedPull(): Promise<SeedReport> {
-  const pulled = combinePulls(
+async function fetchSourceWindows() {
+  return combinePulls(
     await Promise.all([
       pullAllowedSource("farcaster"),
       pullAllowedSource("atproto"),
@@ -51,6 +52,17 @@ async function runSeedPull(): Promise<SeedReport> {
       pullAllowedSource("rss3-gi"),
     ]),
   );
+}
+
+async function runSeedPull(): Promise<SeedReport> {
+  await waitForTenantFeedRestore();
+  const cache = configuredTenantFeedCache();
+  if (cache) {
+    const { pulled, seededAt, written } = await cache.refresh(fetchSourceWindows);
+    return { items: pulled.items, seededAt, written, sourcesOk: pulled.sourcesOk,
+      sourcesTried: pulled.sourcesTried, error: pulled.error };
+  }
+  const pulled = await fetchSourceWindows();
   const seededAt = new Date().toISOString();
 
   if (pulled.sourcesOk === 0) {
