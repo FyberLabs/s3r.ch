@@ -69,20 +69,29 @@ export function createExperimentState(input: { secret: Uint8Array; clock?: () =>
     state.subject = subject;
     state.assignments = state.assignments.filter(item => active.some(value => value.key === item.key && value.variants.includes(item.variant)));
     const targetingKey = subject ?? hashExperimentAssignment(state.anonymous, secret);
+    const inFlight = new Map<string, Promise<Assignment | undefined>>();
     return Object.freeze({
       async evaluate(key: string, choose: (targetingKey: string) => Promise<string>, guardrailHealthy = true): Promise<ExperimentPayload> {
         const config = active.find(value => value.key === key);
         if (!config) throw Error("Inactive experiment");
         let assigned = state.assignments.find(item => item.key === key);
         if (!assigned && guardrailHealthy) {
-          try {
-            const variant = await choose(targetingKey);
-            if (config.variants.includes(variant)) {
-              // Concurrent evaluation of one experiment preserves its first result.
-              assigned = state.assignments.find(item => item.key === key);
-              if (!assigned) { assigned = { key, variant, hash: targetingKey }; state.assignments.push(assigned); }
-            }
-          } catch { /* Provider absence uses control without saving a false assignment. */ }
+          let pending = inFlight.get(key);
+          if (!pending) {
+            pending = Promise.resolve().then(async () => {
+              try {
+                const variant = await choose(targetingKey);
+                if (config.variants.includes(variant)) {
+                  const value = { key, variant, hash: targetingKey };
+                  state.assignments.push(value);
+                  return value;
+                }
+              } catch { /* Provider absence uses control without saving a false assignment. */ }
+              return undefined;
+            }).finally(() => { inFlight.delete(key); });
+            inFlight.set(key, pending);
+          }
+          assigned = await pending;
         }
         return Object.freeze({ experiment_key: key, variant: guardrailHealthy ? assigned?.variant ?? config.control : config.control,
           assignment_hash: assigned?.hash ?? targetingKey, surface: "s3r.ch" });

@@ -109,3 +109,20 @@ test("maximum-size cohorts fit browser cookies and definitions cannot change dur
   for (const key of keys) assert.equal((await state.evaluate(key, async () => "t".repeat(64))).variant, "t".repeat(64));
   assert.ok((await state.cookies()).every(cookie => cookie.length < 4096));
 });
+
+
+test("overlapping provider failures and unknown variants share one cohort decision", async () => {
+  for (const result of ["treatment", "unknown", "failure"]) {
+    const state = await createExperimentState({ secret })("", null, experiments);
+    let finish!: () => void, calls = 0;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    const first = state.evaluate("layout", async () => { calls++; await gate; if (result === "failure") throw Error("offline"); return result; });
+    const second = state.evaluate("layout", async () => { calls++; return "control"; });
+    await Promise.resolve(); finish();
+    const values = await Promise.all([first, second]);
+    assert.deepEqual(values[0], values[1]);
+    assert.equal(calls, 1);
+    assert.equal(values[0].variant, result === "treatment" ? "treatment" : "control");
+    assert.equal((await state.evaluate("layout", choose)).variant, "treatment");
+  }
+});
