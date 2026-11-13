@@ -1,0 +1,26 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readMediaBytes, rewriteMediaPlaylist, servePublicMedia } from "./public-media-proxy";
+const request=(kind="image",url="https://example.com/a") => new Request(`https://s3r.ch/api/feed/media?${new URLSearchParams({kind,url})}`);
+test("proxy refuses private destinations before transport",async()=>{
+  let calls=0;
+  const response=await servePublicMedia(request("image","http://127.0.0.1/a"),async()=>{calls++;throw Error();});
+  assert.equal(response.status,400);assert.equal(calls,0);
+});
+test("proxy refuses wrong content type and strips upstream credentials",async()=>{
+  assert.equal((await servePublicMedia(request(),async()=>new Response("<html>",{headers:{"content-type":"text/html"}}))).status,415);
+  const response=await servePublicMedia(request(),async()=>new Response(new Uint8Array([1,2]),{headers:{"content-type":"image/png","set-cookie":"secret=1"}}));
+  assert.equal(response.status,200);assert.equal(response.headers.get("set-cookie"),null);assert.equal(response.headers.get("x-content-type-options"),"nosniff");
+});
+test("body bounds declared and streamed bytes",async()=>{
+  await assert.rejects(readMediaBytes(new Response("12345"),4),/large/);
+  await assert.rejects(readMediaBytes(new Response("1",{headers:{"content-length":"5"}}),4),/large/);
+  assert.deepEqual(await readMediaBytes(new Response("1234"),4),new TextEncoder().encode("1234"));
+});
+test("HLS child URLs stay on proxy and private keys/URLs refuse",()=>{
+  const output=rewriteMediaPlaylist('#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:1,\nsegment.ts',"https://example.com/video/master.m3u8",0);
+  assert.match(output,/URI="\/api\/feed\/media\?/);assert.match(output,/url=https%3A%2F%2Fexample.com%2Fvideo%2Fsegment.ts/);
+  assert.throws(()=>rewriteMediaPlaylist('#EXTM3U\nhttp://127.0.0.1/a',"https://example.com/a",0));
+  assert.throws(()=>rewriteMediaPlaylist('#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="key"',"https://example.com/a",0));
+  assert.throws(()=>rewriteMediaPlaylist('#EXTM3U\na.m3u8',"https://example.com/a",3));
+});

@@ -1,4 +1,5 @@
 "use client";
+import PublicFeedMedia from "./PublicFeedMedia";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -44,7 +45,7 @@ function isPreviewItem(value: unknown): value is FeedItem {
 }
 
 function previewItems(items: readonly FeedItem[]): FeedItem[] {
-  const live = items.filter((item) => item.body.trim().length > 0);
+  const live = items.filter((item) => item.body.trim().length > 0 || Boolean(item.media?.length));
   const picked: FeedItem[] = [];
   const seen = new Set<FeedSource>();
   for (const item of live) {
@@ -158,6 +159,7 @@ export function PublicFeedPreview() {
             <li key={item.id} className="border border-rule bg-panel p-4">
               <p className="text-xs font-semibold text-signal">{SOURCE_LABEL[item.source]}</p>
               <p className="mt-2 text-sm text-ink">{clip(item.body, 180)}</p>
+              <PublicFeedMedia media={item.media} />
               <p className="mt-2 text-xs text-ink-muted">
                 {clip(item.author, 48)}
                 {item.ts ? <span className="font-data"> · {when(item.ts)}</span> : null}

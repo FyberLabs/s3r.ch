@@ -1,4 +1,5 @@
 "use client";
+import PublicFeedMedia from "./PublicFeedMedia";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FeedItem, FeedSnapshot, FeedTab } from "@/lib/feed-types";
@@ -1281,6 +1282,7 @@ function FeedCard({
         </span>
       </div>
       <p className="mt-1 text-sm text-ink-muted">{item.body}</p>
+      <PublicFeedMedia media={item.media} />
       <p className="mt-2 text-xs text-ink-muted">
         {item.tags.join(" · ")}
         {when ? ` · ${when}` : ""}
@@ -1331,14 +1333,10 @@ function FeedCard({
 
   if (item.permalink) {
     return (
-      <a
-        href={item.permalink}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`${className} hover:border-signal`}
-      >
+      <div className={className}>
         {inner}
-      </a>
+        <a href={item.permalink} target="_blank" rel="noopener noreferrer" className="mt-2 block text-xs">Original</a>
+      </div>
     );
   }
   return <div className={className}>{inner}</div>;
