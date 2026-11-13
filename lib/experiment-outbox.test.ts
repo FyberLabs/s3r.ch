@@ -150,3 +150,14 @@ test("a pending exposure claim does not strand a newly retained conversion", asy
   } finally {release();await pending;}
   await second.flush();assert.equal(sent.length,2);
 });
+
+test("legacy sink rollback preserves queued v2 work without blocking v1 actions",async()=>{
+ const m=memory(),sent:string[]=[];
+ const conversion:ExperimentEvent={...event,event_id:"22345678-1234-4234-8234-123456789abc",event_type:"experiment.conversion.v2",payload:{...event.payload,conversion_key:"completed"}};
+ const sink:ExperimentSink={supportedEventTypes:["experiment.exposure.v1"],async send(value){sent.push(value.event_id);}};
+ const legacy=open(m.store,{primary:sink});await legacy.retain(conversion);await legacy.retain(event);
+ await legacy.flush(event.event_id);assert.deepEqual(sent,[event.event_id]);
+ await assert.rejects(legacy.flush(),/unsupported/);
+ const modern=open(m.store,{primary:{...sink,supportedEventTypes:["experiment.exposure.v1","experiment.conversion.v2"]}});
+ await modern.flush(conversion.event_id);assert.deepEqual(sent,[event.event_id,conversion.event_id]);
+});

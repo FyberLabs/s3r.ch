@@ -53,11 +53,13 @@ export function createExperimentOutbox(input: {
       if (!permitted()) throw Error("Experiment consent unavailable");
       const { ledger } = await load();
       if (ledger.revoked) throw Error("Experiment consent revoked");
-      let busy = false;
+      let busy = false, unsupported = false;
       for (const row of ledger.rows) {
         if (row.expires <= now()) continue;
         for (const [key, sink] of Object.entries(input.sinks)) {
           if (row.delivered.includes(key)) continue;
+          // A retained v2 action must not block v1 delivery after a sink rollback.
+          if (!sink.supportedEventTypes.includes(row.event.event_type)) { unsupported = true; continue; }
           // Claim through the same conditional record before the external send.
           // Reserved markers are additive to v1 string progress: older readers
           // ignore them, and the owning Storage contract remains unchanged.
@@ -106,7 +108,8 @@ export function createExperimentOutbox(input: {
         if (!permitted() || latest.revoked) throw Error("Experiment consent unavailable");
         const target = latest.rows.find(row => row.event.event_id === targetId);
         if (!target || !Object.keys(input.sinks).every(key => target.delivered.includes(key))) throw Error("Experiment delivery busy");
-      } else if (busy) throw Error("Experiment delivery busy");
+      } else if (unsupported) throw Error("Experiment event unsupported");
+      else if (busy) throw Error("Experiment delivery busy");
   }
   return Object.freeze({
     async active(): Promise<boolean> {
