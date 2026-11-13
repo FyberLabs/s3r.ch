@@ -19,6 +19,9 @@ try{
   assert.equal(await page.evaluate(()=>window.captured.flatMap(s=>s.getTracks()).every(t=>t.readyState==="ended")),true);
   await page.getByRole("button",{name:"Clear recording"}).click();assert.equal(await page.getByRole("link",{name:"Save recording"}).count(),0);
  }
+ const other=await page.context().newPage();await other.goto(origin);await page.bringToFront();
+ await page.getByRole("button",{name:"Start video recording"}).click();await page.getByRole("button",{name:"Stop recording"}).waitFor();
+ await other.evaluate(()=>localStorage.setItem("s3rch-session-changed",crypto.randomUUID()));await page.waitForFunction(()=>window.captured.flatMap(s=>s.getTracks()).every(t=>t.readyState==="ended"));await other.close();
  await page.getByRole("button",{name:"Start video recording"}).click();await page.getByRole("button",{name:"Stop recording"}).waitFor();
  await page.evaluate(()=>{Object.defineProperty(document,"visibilityState",{value:"hidden",configurable:true});document.dispatchEvent(new Event("visibilitychange"));});
  await page.getByRole("button",{name:"Start video recording"}).waitFor({state:"visible"});
