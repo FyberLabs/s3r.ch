@@ -165,3 +165,30 @@ wire contract. Switching storage requires a fresh challenge; no live replay
 state is copied or reset. Do not delete/restore the active replay prefix.
 This moves only challenge replay state; Squad ledger/assignment storage remains
 a separate migration. Runtime activation waits for its dedicated credential.
+
+### Trusted signed statement source
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `S3RCH_AUTHORITY_BACKEND` | Unset | `acl` selects the independently provisioned ACL owner source. Unset or `legacy` retains the existing pilot until an explicit cutover. Unknown values fail closed. |
+| `S3RCH_STATEMENT_SOURCE_ORIGIN` | Unset | Fixed HTTPS gateway origin, without path, credentials or alternate port. |
+| `S3RCH_STATEMENT_SOURCE_TENANT_ID` | Unset | The s3r.ch tenant UUID bound by the ACL owner. |
+| `S3RCH_STATEMENT_SOURCE_SCOPE` | Unset | Explicit operator-provisioned graph scope; never selected by a browser. |
+| `S3RCH_STATEMENT_SOURCE_API_KEY` | Unset | Dedicated private service key with `acl:statements:read` and `acl:statements:write`, bound to that graph's service subject. |
+
+All four source settings are required when the ACL backend is selected. Source
+errors never cause an append retry or a fallback to the legacy journal. A changed
+fence requires a fresh snapshot and authorization. The server preserves the
+original evaluation time and the ACL owner rechecks it at the atomic commit.
+
+The source requires independently admitted identity history, explicit new-graph
+provisioning and protected freshness storage. Neither importing Gun records nor
+setting these variables establishes completeness. Provisioning must not enroll
+existing peer histories as exclusively owned from genesis. No credential or
+source binding is created by s3r.ch configuration.
+
+ACL mode routes authority, statement admission, media checks and readiness reads
+through that one source. It requires the separately configured Spanopticon
+identity replay backend and does not construct a Blob ledger or replay store.
+Legacy assignment mutations return unavailable in this mode; they cannot write
+a second authority journal. Existing session wire formats remain unchanged.

@@ -40,6 +40,14 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Trusted source coverage
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/acl-statement-source-server.ts
+          --test-coverage-include=lib/squad-pilot-server.ts
+          lib/acl-statement-source-server.test.ts lib/squad-acl-source.test.ts
+          lib/squad-pilot-config.test.ts lib/forum-authority-service.test.ts
+
   build:
     # Compile the production bundle; runtime acceptance runs in Infra nightly.
     runs-on: ubuntu-latest
