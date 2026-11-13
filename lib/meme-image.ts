@@ -51,7 +51,7 @@ export function drawMeme(canvas:HTMLCanvasElement,image:ImageBitmap|null,top:str
   if(image)ctx.drawImage(image,0,panel,w,h);
   if(panel){ctx.fillStyle="#ffffff";ctx.fillRect(0,0,w,panel);}
   const margin=Math.max(8,w*.04),space=panel||h*.34;
-  function caption(text:string,position:"top"|"bottom") {
+  const caption=(text:string,position:"top"|"bottom") => {
     let size=Math.max(12,Math.min(72,w*.07)),lines:string[]=[];
     for(;;){ctx.font=`bold ${size}px Arial, sans-serif`;lines=captionLines(text,w-2*margin,t=>ctx.measureText(t).width);
       if(lines.length*size*1.2<=space-2*margin)break;
@@ -60,6 +60,6 @@ export function drawMeme(canvas:HTMLCanvasElement,image:ImageBitmap|null,top:str
     ctx.fillStyle=panel&&position==="top"?"#111111":"#ffffff";ctx.strokeStyle="#111111";
     const y=position==="top"?margin:canvas.height-margin-lines.length*size*1.2;
     lines.forEach((line,i)=>{if(!(panel&&position==="top"))ctx.strokeText(line,w/2,y+i*size*1.2);ctx.fillText(line,w/2,y+i*size*1.2);});
-  }
+  };
   caption(top,"top");caption(bottom,"bottom");
 }
