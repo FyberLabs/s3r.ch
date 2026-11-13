@@ -48,6 +48,14 @@ jobs:
         run: node scripts/test-public-media-browser.mjs
       - name: Room task browser contracts (CI only)
         run: node scripts/test-room-tasks.mjs
+      - name: Recording browser contracts (CI only)
+        run: node scripts/test-media-recorder.mjs
+      - name: Recording draft coverage
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/media-recorder.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-recorder.test.ts
 
       - name: Feed reply and cached conversation coverage (CI only)
         run: >-
