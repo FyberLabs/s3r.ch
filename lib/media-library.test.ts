@@ -92,3 +92,18 @@ test("default browser adapter refuses a locked identity",async()=>{
   try {await library.load();assert.equal(state?.loaded,false);assert.match(state!.message,/unavailable/);}
   finally {library.dispose();}
 });
+
+test("sharing management only cancels listed recipients and does not retry writes",async()=>{
+  let writes=0;const item=setup({browser:()=>({
+    catalog:async()=>({at:1,objects:["owned"],nextPage:1,principal:key}),
+    recipients:async(object,owner)=>{assert.equal(object,"owned");assert.equal(owner,key);return [key];},
+    cancel:async(object,reader)=>{assert.equal(object,"owned");assert.equal(reader,key);writes++;},
+  } as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    await item.library.recipients("unknown");await item.library.cancel("owned",key);assert.equal(writes,0);
+    await item.library.load();await item.library.recipients("owned");assert.deepEqual(item.state().audience,{object:"owned",readers:[key]});
+    await item.library.cancel("other",key);await item.library.cancel("owned","other");assert.equal(writes,0);
+    await item.library.cancel("owned",key);assert.equal(writes,1);assert.equal(item.state().audience,null);
+    assert.match(item.state().message,/Sharing stopped/);await item.library.cancel("owned",key);assert.equal(writes,1);
+  } finally {item.library.dispose();}
+});

@@ -5,7 +5,7 @@ import { createMediaLibrary, type MediaLibraryState } from "@/lib/media-library"
 import { IdentityBar } from "./IdentityBar";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
-  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null});
+  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null});
   const library=useRef<ReturnType<typeof createMediaLibrary>|null>(null);
   useEffect(()=>{
     const current=createMediaLibrary(setState);library.current=current;
@@ -30,7 +30,17 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
       {state.loaded && !state.objects.length && <p>No media on this page.</p>}
       <ul className="space-y-2">{state.objects.map((object,index)=><li key={object}>
         <button type="button" disabled={state.busy} className="underline disabled:opacity-50" onClick={()=>void library.current?.open(object,tenant)}>Open image {state.page*4+index+1}</button>
+        <button type="button" disabled={state.busy} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.recipients(object)}>Manage sharing</button>
       </li>)}</ul>
+      {state.audience && <section className="space-y-2" aria-label="Image sharing">
+        <h2 className="font-semibold">Sharing</h2>
+        {!state.audience.readers.length && <p>No recipient grants to cancel.</p>}
+        <ul>{state.audience.readers.map(reader=><li key={reader} className="my-2 flex flex-wrap gap-3">
+          <span className="break-all font-mono text-xs">{reader}</span>
+          <button type="button" disabled={state.busy} className="underline disabled:opacity-50"
+            onClick={()=>void library.current?.cancel(state.audience!.object,reader)}>Stop sharing</button>
+        </li>)}</ul>
+      </section>}
       {state.preview && <figure className="space-y-2">
         {/* Decrypted bytes stay in a temporary browser URL; never send to an image optimizer. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}

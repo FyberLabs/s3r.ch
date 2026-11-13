@@ -5,8 +5,9 @@ import { subscribeUnlockedMeshPair } from "./identity/unlocked-mesh";
 
 export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly string[]; page: number;
   nextPage: number | null; loaded: boolean; message: string;
+  audience: Readonly<{object:string;readers:readonly string[]}> | null;
   preview: Readonly<{ url: string; name: string; mediaType: string }> | null }>;
-const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null});
+const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null});
 
 /** Private, in-memory navigation. Never persists catalog entries or plaintext. */
 export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, options: {
@@ -16,13 +17,13 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
 } = {}) {
   const fetcher=options.fetcher ?? fetch, clock=options.clock ?? Date.now;
   const makeUrl=options.makeUrl ?? URL.createObjectURL, revokeUrl=options.revokeUrl ?? URL.revokeObjectURL;
-  let state=empty(), key: string|null=null, expires=0, generation=0, disposed=false;
+  let state=empty(), key: string|null=null, owner: string|null=null, expires=0, generation=0, disposed=false;
   let pending: AbortController|null=null, expiry: ReturnType<typeof setTimeout>|undefined;
   const browser=(options.browser ?? createPrivateMediaBrowser)(()=>clock()<expires ? key : null,fetcher);
   function publish(next: MediaLibraryState) { state=Object.freeze(next); if(!disposed)changed(state); }
   function clearPreview() { if(state.preview)revokeUrl(state.preview.url); }
   function reset(message="") {
-    generation++;pending?.abort();pending=null;key=null;expires=0;
+    generation++;pending?.abort();pending=null;key=null;owner=null;expires=0;
     if(expiry)clearTimeout(expiry);expiry=undefined;clearPreview();publish({...empty(),message});
   }
   const unsubscribe=subscribeUnlockedMeshPair(()=>reset("Identity changed. Refresh your media."));
@@ -61,7 +62,22 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
     load(page=0) {
       return operation(async(signal,current)=>{
         const catalog=await browser.catalog(page,signal);
-        if(current())publish({...state,objects:catalog.objects,page,nextPage:catalog.nextPage,loaded:true});
+        if(current()){owner=catalog.principal;publish({...state,objects:catalog.objects,page,nextPage:catalog.nextPage,loaded:true,audience:null});}
+      });
+    },
+    recipients(object: string) {
+      if(!state.objects.includes(object) || !owner)return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        const readers=await browser.recipients(object,principal,signal);
+        if(current())publish({...state,audience:{object,readers}});
+      });
+    },
+    cancel(object: string, reader: string) {
+      if(state.audience?.object!==object || !state.audience.readers.includes(reader))return Promise.resolve();
+      return operation(async(signal,current)=>{
+        await browser.cancel(object,reader,signal);
+        if(current())publish({...state,audience:null,message:"Sharing stopped for this identity. Copies already saved cannot be removed."});
       });
     },
     open(object: string, tenant: string) {

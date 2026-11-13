@@ -76,6 +76,34 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
       const { principal, ...catalog } = result;
       return { ...parseMediaCatalogPage(catalog, page, principal), principal };
     },
+    async recipients(object: string, owner: string, signal?: AbortSignal) {
+      const held=await view(object,owner,signal ?? new AbortController().signal);
+      if(!exact(held.snapshot,["entries"]) || !Array.isArray(held.snapshot.entries) || held.snapshot.entries.length>64)
+        throw Error("Invalid private media recipients");
+      const recipients: string[]=[];
+      for(const entry of held.snapshot.entries) {
+        if(!exact(entry,["accessor","grantRevision","stated","from","until","scope","setId","hamState"]) ||
+            typeof entry.accessor!=="string" || !isSeaPubkey(entry.accessor) || ![0,1].includes(entry.stated as number) ||
+            entry.scope!=="direct" || entry.setId!=="" || entry.hamState!==0 || !Number.isSafeInteger(entry.grantRevision) ||
+            (entry.grantRevision as number)<1 || !Number.isSafeInteger(entry.from) || (entry.from as number)<0 ||
+            !Number.isSafeInteger(entry.until) || (entry.until as number)<=(entry.from as number)) throw Error("Invalid private media recipients");
+        if(entry.stated===1)recipients.push(entry.accessor);
+      }
+      if(new Set(recipients).size!==recipients.length)throw Error("Invalid private media recipients");
+      return recipients;
+    },
+    async cancel(object: string, reader: string, scalar: Uint8Array, signal?: AbortSignal) {
+      if(!objectOK(object) || !isSeaPubkey(reader))throw Error("Invalid private media cancellation");
+      return withKey(scalar,signal,async(key,deadline)=>{
+        const held=await request("cancel-view",{object,reader},deadline);current(held);
+        if(!exact(held,["at","fence","ownerPub","grant"]) || typeof held.ownerPub!=="string" || !isSeaPubkey(held.ownerPub))
+          throw Error("Invalid private media cancellation draft");
+        const signed=signPrivateMediaGrant(held.grant,key,held.ownerPub);
+        if(signed.claims.object!==object || signed.claims.accessor!==reader || signed.claims.stated!==0 || signed.claims.grantRevision<2)
+          throw Error("Private media cancellation binding mismatch");
+        await mutate(object,held,"grant",signed,deadline);
+      });
+    },
     async grant(object: string, owner: string, draft: unknown, scalar: Uint8Array, signal?: AbortSignal) {
       const input=structuredClone(draft);
       return withKey(scalar,signal,async(key,deadline)=>{

@@ -121,3 +121,30 @@ test("catalog validates source scope, pagination and monotonic freshness",async(
   }
   const aborted=new AbortController();aborted.abort();await assert.rejects(client.catalog(0,aborted.signal));
 });
+
+test("recipients are read-only and cancellation signs only the bound zero-stated draft",async()=>{
+  const entry={accessor:other,grantRevision:1,stated:1,from:0,until:1,scope:"direct",setId:"",hamState:0};
+  const cancel={...grant,accessor:other,stated:0,grantRevision:2};let writes=0;
+  const client=createPrivateMediaOwner(async(url,init)=>{
+    if(String(url).endsWith("/view"))return Response.json({...view,snapshot:{entries:[entry]}});
+    if(String(url).endsWith("/cancel-view"))return Response.json({at:100,fence:view.fence,ownerPub:owner,grant:cancel});
+    writes++;const body=JSON.parse(String(init?.body));assert.equal(body.operation,"grant");assert.deepEqual(body.payload.claims,cancel);
+    return Response.json({accepted:true});
+  },()=>0);
+  assert.deepEqual(await client.recipients(object,owner),[other]);assert.equal(writes,0);
+  await client.cancel(object,other,key());assert.equal(writes,1);
+  for(const invalid of [{...cancel,stated:1},{...cancel,accessor:owner},{...cancel,object:object.replace(/1/g,"2")},
+    {...cancel,grantRevision:1}]) {
+    const bad=createPrivateMediaOwner(async()=>Response.json({at:100,fence:view.fence,ownerPub:owner,grant:invalid}),()=>0);
+    await assert.rejects(bad.cancel(object,other,key()));
+  }
+  await assert.rejects(client.cancel("bad",other,key()));await assert.rejects(client.cancel(object,"bad",key()));
+  await assert.rejects(createPrivateMediaOwner(async()=>Response.json({at:100,fence:view.fence,ownerPub:"bad",grant:cancel}),()=>0).cancel(object,other,key()));
+  for(const entries of [[{...entry,accessor:"bad"}],[{...entry,scope:"group"}],[{...entry,stated:2}],
+    [{...entry,grantRevision:0}],[{...entry,from:-1}],[{...entry,until:0}],[{...entry,hamState:1}],
+    [{...entry,setId:"set"}],[entry,entry],new Array(65).fill(entry)]) {
+    await assert.rejects(createPrivateMediaOwner(async()=>Response.json({...view,snapshot:{entries}}),()=>0).recipients(object,owner));
+  }
+  const empty=createPrivateMediaOwner(async()=>Response.json({...view,snapshot:{entries:[{...entry,stated:0}]}}),()=>0);
+  assert.deepEqual(await empty.recipients(object,owner),[]);
+});

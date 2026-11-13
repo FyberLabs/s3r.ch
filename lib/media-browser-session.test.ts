@@ -101,3 +101,14 @@ test("catalog preserves the protected stable principal after signing key rotatio
   const browser=createPrivateMediaBrowser(()=>other,async()=>Response.json(result));
   assert.deepEqual(await browser.catalog(0),result);
 });
+
+test("recipient management and cancellation use the held signing key",async()=>{
+  unlock();let writes=0;
+  const entry={accessor:other,grantRevision:1,stated:1,from:0,until:200000,scope:"direct",setId:"",hamState:0};
+  const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
+    if(String(url).endsWith("/view"))return Response.json({...view,snapshot:{entries:[entry]}});
+    if(String(url).endsWith("/cancel-view"))return Response.json({at:100,fence:view.fence,ownerPub:owner,grant:{...grant,accessor:other,stated:0,grantRevision:2}});
+    writes++;assert.equal(JSON.parse(String(init?.body)).payload.claims.stated,0);return Response.json({accepted:true});
+  });
+  assert.deepEqual(await browser.recipients(object,owner),[other]);await browser.cancel(object,other);assert.equal(writes,1);
+});
