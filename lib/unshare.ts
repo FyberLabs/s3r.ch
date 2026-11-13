@@ -25,6 +25,7 @@ export type UnshareTombstone = ReturnType<typeof toUnshareTombstone> & {
   kind?: null;
   author?: null;
   body?: null;
+  media?: null;
   permalink?: null;
   tags?: null;
   provenance?: null;
@@ -82,6 +83,7 @@ export function itemUnshareTombstone(
     kind: null,
     author: null,
     body: null,
+    media: null,
     permalink: null,
     tags: null,
     provenance: null,

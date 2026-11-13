@@ -29,12 +29,20 @@ test("removed bodies disappear from snapshots and Gun, including after reopening
     globals.__s3rchGun = ref(); delete globals.__s3rchStore; delete globals.__s3rchGunHydrated;
     applySourcePull(pull([row]), "2026-11-11T00:00:00Z");
     assert.equal(listSnapshot().items.length, 1);
+    const withMedia = {...row, media:[{kind:"image" as const,url:"https://example.org/photo.png"}]};
+    applySourcePull(pull([withMedia]), "2026-11-11T00:10:00Z");
+    delete globals.__s3rchStore;
+    assert.deepEqual(getMemoryStore().windows.get("feed")?.[0].media,withMedia.media);
+    applySourcePull({items:[],windows:[],sourcesOk:0,sourcesTried:1,error:"offline"}, "2026-11-11T00:20:00Z");
+    assert.deepEqual(listSnapshot().items[0].media,withMedia.media);
+
     applySourcePull(pull([]), "2026-11-11T01:00:00Z");
     assert.deepEqual(listSnapshot().items, []);
     for (const file of ["snapshot.json", "public/feed-cache/snapshot.json"]) {
       assert.equal(readFileSync(join(directory, file), "utf8").includes(row.body), false);
     }
     assert.equal(graph.get("/s3rch/items/source-post")?.body, null);
+    assert.equal(graph.get("/s3rch/items/source-post")?.media, null);
     assert.equal(graph.get("/s3rch/items/source-post")?.unshared, 1);
     // Model an old Gun disk row surviving an interrupted write; replay must clear it.
     graph.set("/s3rch/items/source-post", { ...row });

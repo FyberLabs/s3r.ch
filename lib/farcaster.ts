@@ -1,3 +1,4 @@
+import { mediaFields, farcasterMedia } from "./feed-media-adapters";
 import { collectSourceWindows } from "./source-windows";
 /**
  * Farcaster Hubble HTTP (no API key).
@@ -34,6 +35,7 @@ export type HubCastMessage = {
     timestamp?: number;
     castAddBody?: {
       text?: string;
+      embeds?: unknown[];
     };
   };
 };
@@ -81,6 +83,7 @@ export function normalizeHubCast(
   return {
     id: hash,
     source: "farcaster",
+    ...mediaFields(farcasterMedia(data.castAddBody?.embeds)),
     kind: "social",
     author,
     body: clip(text, BODY_MAX),

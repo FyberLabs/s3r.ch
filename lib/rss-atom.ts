@@ -1,3 +1,5 @@
+import { mediaFields } from "./feed-media-adapters";
+import { mediaKindForUrl, parseFeedMedia } from "./feed-media";
 import { collectSourceWindows } from "./source-windows";
 import type { FeedItem, FeedSource, SourcePull } from "./feed-types";
 import { normalizeTags } from "./feed-types";
@@ -77,6 +79,7 @@ function fromRss(block: string, feedUrl: string): FeedItem | null {
     permalink,
     tags: normalizeTags(["rss", "user"]),
     provenance: `rss:${feedUrl}`,
+    ...mediaFields(enclosureMedia(block, feedUrl)),
   };
 }
 
@@ -103,6 +106,7 @@ function fromAtom(block: string, feedUrl: string): FeedItem | null {
     permalink,
     tags: normalizeTags(["atom", "user"]),
     provenance: `atom:${feedUrl}`,
+    ...mediaFields(enclosureMedia(block, feedUrl)),
   };
 }
 
@@ -185,4 +189,22 @@ async function pullRss(feed: PublicRssFeed): Promise<FeedItem[]> {
       ...feed.extraTags,
     ]),
   }));
+}
+
+function enclosureMedia(block: string, feedUrl: string) {
+  const media: unknown[] = [];
+  for (const match of block.matchAll(/<(enclosure|media:content|link)\b[^>]*>/gi)) {
+    const tag = match[1], element = match[0];
+    if (tag.toLowerCase() === "link" && attr(element, tag, "rel") !== "enclosure") continue;
+    const raw = attr(element, tag, tag.toLowerCase() === "link" ? "href" : "url");
+    if (!raw) continue;
+    try {
+      const url = new URL(raw, feedUrl).href;
+      media.push({ kind: mediaKindForUrl(url, attr(element, tag, "type")), url,
+        width: Number(attr(element, tag, "width")), height: Number(attr(element, tag, "height")),
+        duration: Number(attr(element, tag, "duration")) });
+    } catch { continue; }
+    if (media.length === 8) break;
+  }
+  return parseFeedMedia(media);
 }
