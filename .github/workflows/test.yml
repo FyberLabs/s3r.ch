@@ -46,6 +46,8 @@ jobs:
           sudo apt-get install -y ffmpeg
       - name: Public media browser contracts (CI only)
         run: node scripts/test-public-media-browser.mjs
+      - name: Room task browser contracts (CI only)
+        run: node scripts/test-room-tasks.mjs
 
       - name: Feed reply and cached conversation coverage (CI only)
         run: >-

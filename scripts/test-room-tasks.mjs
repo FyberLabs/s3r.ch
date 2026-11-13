@@ -4,6 +4,8 @@ import { once } from "node:events";
 import { build } from "esbuild";
 import { chromium } from "playwright-core";
 
+if (process.env.GITHUB_ACTIONS !== "true") throw Error("Room task browser contracts run in CI only");
+
 // Isolated component/browser contract. No shared TEST or external endpoints.
 const owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const other = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
