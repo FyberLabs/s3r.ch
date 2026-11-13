@@ -69,3 +69,34 @@ test("outbox retains identical prepared messages across restart and refuses rebi
   } finally { second.close(); }
   assert.throws(() => openForumBotOutbox(join(s.dir, "outbox.db"), { ...s.scope, tenant: randomUUID() }), /scope differs/);
 });
+
+test("one user's delegated chain runs once in each independently scoped worker", async t => {
+  const f = await forumBotFixture(t), root = f.task(f.botA), child = f.task(f.botB, root[2]);
+  const first = await f.signed(root), second = await f.signed(child, f.a);
+  const reports: unknown[][] = [[], []], calls = [0, 0], cancelled = [false, false];
+  const workers = [root, child].map((task, index) => {
+    const channel = f.open(task[3]), session = randomUUID(), id = randomUUID();
+    const approval: LocalBotApproval = { version: 1, tenant: f.tenant, forum: f.forum, bot: task[3],
+      principal: index === 0 ? f.a.pub : f.b.pub, handle: task[4], session, expires: task[5], revoked: false,
+      task: { steps: [{ tool: "view", arguments: {} }] }, artifactReaders: [] };
+    const worker = createForumBotWorker({ tenant: f.tenant, channel, clock: () => f.now() * 1000,
+      approvals: { read: handle => handle === approval.handle ? approval : null },
+      artifacts: { put() { throw Error("not shared"); }, read: async () => { throw Error("not shared"); }, revoke() {} },
+      refresh: async () => { await f.refresh(); return true; }, publish: async report => { reports[index].push(report); },
+      executor: { consent: async () => ({ running: true, resume: index + 1 }),
+        submit: async (grant, _until, resume) => { assert.equal(grant.session, session); assert.equal(resume, index + 1); calls[index]++; return { id }; },
+        status: async () => ({ id, session, status: cancelled[index] ? "cancelled" : "completed", completed_steps: 1, total_steps: 1, results: [] }),
+        cancel: async () => { cancelled[index] = true; } } });
+    return { worker, channel };
+  });
+  await workers[0].worker.deliver([first]); await workers[1].worker.deliver([first, second]);
+  await workers[0].worker.tick(); await workers[1].worker.tick();
+  await workers[0].worker.tick(); await workers[1].worker.tick();
+  assert.deepEqual(calls, [1, 1]);
+  assert.equal(workers[0].channel.status(root[2]), "completed"); assert.equal(workers[1].channel.status(child[2]), "completed");
+  assert.deepEqual(reports.map(rows => rows.map(row => (row as string[])[0])), [["ack", "result"], ["ack", "result"]]);
+  await workers[0].worker.deliver([first]); await workers[1].worker.deliver([first, second]);
+  await workers[0].worker.tick(); await workers[1].worker.tick(); assert.deepEqual(calls, [1, 1]);
+  const foreign = await f.signed(f.task(f.botB), f.owner, f.forum.slice(0, -32) + "b".repeat(32));
+  await assert.rejects(workers[1].worker.deliver([foreign])); assert.deepEqual(calls, [1, 1]);
+});
