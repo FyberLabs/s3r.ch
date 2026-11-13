@@ -5,7 +5,8 @@ export function parseFeedReference(value:unknown):FeedReference|null {
  if(typeof value==="string"){if(value.length>8192)return null;try{value=JSON.parse(value);}catch{return null;}}
  const item=row(value),permalink=publicMediaUrl(item.permalink);
  if(typeof item.id!=="string" || !item.id.trim() || item.id.length>2048 || !permalink)return null;
- return {id:item.id,permalink,...(typeof item.author==="string" && item.author.length<=256?{author:item.author}:{})};
+ const reference={id:item.id,permalink,...(typeof item.author==="string" && item.author.length<=256?{author:item.author}:{})};
+ return JSON.stringify(reference).length<=8192?reference:null;
 }
 function atReference(value:unknown,view?:unknown):FeedReference|null {
  const item=row(value),id=item.uri;

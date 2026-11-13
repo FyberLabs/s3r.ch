@@ -33,3 +33,7 @@ test("reply references are additive, bounded and explicitly removed on updates",
  assert.equal(fromGunNode({...node,...toGunNode(without)})?.replyTo,undefined);
  assert.equal(itemUnshareTombstone("one").replyTo,null);assert.equal(itemUnshareTombstone("one").root,null);
 });
+test("object references obey the same serialized bound as Gun strings",()=>{
+ const reference={id:"x"+"\u0001".repeat(2047),permalink:"https://example.com/parent"};
+ assert.equal(parseFeedReference(reference),null);assert.equal(parseFeedReference(JSON.stringify(reference)),null);
+});
