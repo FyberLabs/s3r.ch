@@ -33,7 +33,8 @@ async function setup(t: test.TestContext) {
     headers: { Origin: origin, "Content-Type": "application/json", ...(key ? { "x-test-key": key } : {}) },
     body: JSON.stringify({ version: 1, forumId: f.forum, owner: f.owner.pub, evaluatedAt: f.now(), rows: additions, ...extra }) });
   return { f, service, additions, request,
-    nextObject: () => sign("object", { object: `stmt_${seaToPrincipalKey(f.b.pub)}_${randomUUID().replaceAll("-", "")}`, owner: f.b.pub, issuedAt: f.now() }), retained: () => rows.length,
+    nextObject: (pair = f.b) => sign("object", { object: `stmt_${seaToPrincipalKey(pair.pub)}_${randomUUID().replaceAll("-", "")}`, owner: pair.pub, issuedAt: f.now() }, pair), retained: () => rows.length,
+    seed(additions: typeof rows) { rows.push(...additions); },
     fill(count: number) { while (rows.length < count) rows.push(structuredClone(rows[0])); }, writes: () => writes, hang(value: boolean) { hung = value; }, change() { changed = true; }, expire() { expired = true; } };
 }
 test("an independently authenticated bot admits only its signed statement and current reader grants", async t => {
@@ -94,4 +95,15 @@ test("canonical signed retries do not consume retained history slots", async t =
   const forged = structuredClone(s.additions); forged[0].record.sig = "forged";
   assert.notEqual((await s.service(s.request({ rows: forged }))).status, 200);
   assert.equal(s.retained(), before + 2); assert.equal(s.writes(), 1);
+});
+
+test("a writer exhausting its retained allocation cannot consume another bot's capacity", async t => {
+  const s = await setup(t);
+  s.seed(Array.from({ length: 127 }, () => s.nextObject()));
+  const last = s.nextObject();
+  assert.equal((await s.service(s.request({ rows: [last] }))).status, 200);
+  assert.equal((await s.service(s.request({ rows: [s.nextObject()] }))).status, 507);
+  assert.equal((await s.service(s.request({ rows: [last] }))).status, 200);
+  assert.equal((await s.service(s.request({ rows: [s.nextObject(s.f.a)] }, s.f.a.pub))).status, 200);
+  assert.equal(s.writes(), 2);
 });

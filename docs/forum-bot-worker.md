@@ -111,6 +111,11 @@ wallet. The forum card deliberately does not fetch these handles.
 The primary source append is also bounded by the authority reader contract:
 at most 1024 retained signed rows and a 4 MiB complete response. The source
 fence must cover the retained total; concurrent growth must lose the comparison.
+Each enrolled principal receives an equal share of a 512-row/2-MiB statement
+budget, capped at 128 rows and 256 KiB. Retained statement ACL rows count too,
+including expired grants. Exhausting one principal's allocation returns 507;
+other principals keep their shares. The remainder is reserved for identity and
+thread history. This bounded worker does not prune signed history automatically.
 Canonical signed retries are idempotent: retained rows and duplicates within
 one request consume no additional slots. Supplied signatures are still checked.
 An admission of new rows that would exceed these limits returns 507 without appending.

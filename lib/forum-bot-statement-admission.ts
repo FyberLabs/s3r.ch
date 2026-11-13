@@ -93,6 +93,19 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       // The same complete-history fence makes the aggregate check atomic.
       const nextSnapshot = { ...snapshot, rows: [...snapshot.rows, ...additions] };
       if (nextSnapshot.rows.length > 1024 || responseSize(nextSnapshot) > 4 * 1024 * 1024) return reply(507);
+      // Partition half the store across enrolled principals, leaving room for
+      // enrollment and thread ACL history. Rotation keeps the same principal;
+      // expired/cancelled rows still consume its retained allocation.
+      const principals = new Set(snapshot.history.accounts.map(account => account.principal));
+      if (!principals.has(principal)) return reply(403);
+      const rowQuota = Math.min(128, Math.floor(512 / principals.size));
+      const byteQuota = Math.min(256 * 1024, Math.floor(2 * 1024 * 1024 / principals.size));
+      const owned = nextSnapshot.rows.filter(envelope => {
+        const value = parseForumAuthority(envelope.kind, envelope.record);
+        return value && (value.kind === "object" || value.kind === "see") &&
+          value.row.owner === principal && isForumObjectId(value.row.object, "stmt");
+      });
+      if (additions.length && (owned.length > rowQuota || Buffer.byteLength(JSON.stringify(owned), "utf8") > byteQuota)) return reply(507);
       const candidate = createForumAuthority(config, clock);
       const result = await candidate.refresh(nextSnapshot, at);
       if (!result.ok || result.diagnostics.length || candidate.graph.ownerOf(object) !== principal) return reply(403);
