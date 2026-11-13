@@ -50,15 +50,16 @@ export function drawMeme(canvas:HTMLCanvasElement,image:ImageBitmap|null,top:str
   ctx.fillStyle=background==="dark"?"#142538":"#e6edf5";ctx.fillRect(0,0,w,h+panel);
   if(image)ctx.drawImage(image,0,panel,w,h);
   if(panel){ctx.fillStyle="#ffffff";ctx.fillRect(0,0,w,panel);}
-  const margin=Math.max(8,w*.04),space=panel||h*.34;
+  const margin=Math.max(8,w*.04),space=panel||h*.34,verticalMargin=Math.max(4,Math.min(h*.04,margin));
   const caption=(text:string,position:"top"|"bottom") => {
+    if(!text.trim()){captionLines(text,1,()=>0);return;}
     let size=Math.max(12,Math.min(72,w*.07)),lines:string[]=[];
     for(;;){ctx.font=`bold ${size}px Arial, sans-serif`;lines=captionLines(text,w-2*margin,t=>ctx.measureText(t).width);
-      if(lines.length*size*1.2<=space-2*margin)break;
+      if(lines.length*size*1.2<=space-2*verticalMargin)break;
       size-=2;if(size<10)throw Error("Shorten the caption or choose a larger image.");}
     ctx.textAlign="center";ctx.textBaseline="top";ctx.lineJoin="round";ctx.lineWidth=Math.max(2,size/12);
     ctx.fillStyle=panel&&position==="top"?"#111111":"#ffffff";ctx.strokeStyle="#111111";
-    const y=position==="top"?margin:canvas.height-margin-lines.length*size*1.2;
+    const y=position==="top"?verticalMargin:canvas.height-verticalMargin-lines.length*size*1.2;
     lines.forEach((line,i)=>{if(!(panel&&position==="top"))ctx.strokeText(line,w/2,y+i*size*1.2);ctx.fillText(line,w/2,y+i*size*1.2);});
   };
   caption(top,"top");caption(bottom,"bottom");

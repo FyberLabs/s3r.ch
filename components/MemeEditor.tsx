@@ -4,11 +4,11 @@ import {drawMeme,rasterDimensions,MEME_FILE_MAX,MEME_CAPTION_MAX,type MemeLayout
 export function MemeEditor(){
  const canvas=useRef<HTMLCanvasElement|null>(null),bitmap=useRef<ImageBitmap|null>(null),generation=useRef(0),download=useRef<string|null>(null);
  const [revision,setRevision]=useState(0),[top,setTop]=useState(""),[bottom,setBottom]=useState(""),[layout,setLayout]=useState<MemeLayout>("overlay"),[background,setBackground]=useState<"dark"|"light">("dark");
- const [notice,setNotice]=useState(""),[busy,setBusy]=useState(false),[url,setUrl]=useState<string|null>(null),[valid,setValid]=useState(true);
+ const [notice,setNotice]=useState(""),[busy,setBusy]=useState(false),[url,setUrl]=useState<string|null>(null),[valid,setValid]=useState(true),[drawError,setDrawError]=useState("");
  function invalidate(){generation.current++;if(download.current)URL.revokeObjectURL(download.current);download.current=null;setUrl(null);}
  function clear(){invalidate();bitmap.current?.close();bitmap.current=null;setTop("");setBottom("");setBusy(false);setNotice("");setRevision(n=>n+1);}
- useEffect(()=>{const changed=()=>clear();window.addEventListener("s3rch-session-changed",changed);return()=>{window.removeEventListener("s3rch-session-changed",changed);generation.current++;bitmap.current?.close();if(download.current)URL.revokeObjectURL(download.current);};},[]);
- useEffect(()=>{try{if(canvas.current)drawMeme(canvas.current,bitmap.current,top,bottom,layout,background);setValid(true);setNotice("");}catch(error){setValid(false);setNotice(error instanceof Error?error.message:"Could not draw this image.");}},[top,bottom,layout,background,revision]);
+ useEffect(()=>{const changed=()=>clear();const storage=(event:StorageEvent)=>{if(event.key===null||event.key==="s3rch-session-changed")clear();};window.addEventListener("storage",storage);window.addEventListener("s3rch-session-changed",changed);return()=>{window.removeEventListener("storage",storage);window.removeEventListener("s3rch-session-changed",changed);generation.current++;bitmap.current?.close();if(download.current)URL.revokeObjectURL(download.current);};},[]);
+ useEffect(()=>{try{if(canvas.current)drawMeme(canvas.current,bitmap.current,top,bottom,layout,background);setValid(true);setDrawError("");}catch(error){setValid(false);setDrawError(error instanceof Error?error.message:"Could not draw this image.");}},[top,bottom,layout,background,revision]);
  async function select(file:File|undefined){
   invalidate();const token=generation.current;bitmap.current?.close();bitmap.current=null;setRevision(n=>n+1);setBusy(true);setNotice("");
   try{
@@ -45,6 +45,6 @@ export function MemeEditor(){
   </fieldset>
   <canvas ref={canvas} role="img" aria-label={["Image draft",top,bottom].filter(Boolean).join(": ")} className="max-w-full border"/>
   <div className="flex gap-4"><button type="button" className="underline" disabled={busy||!valid} onClick={()=>void exportImage()}>Prepare PNG</button><button type="button" className="underline" onClick={clear}>Clear draft</button>{url?<a className="underline" href={url} download="s3rch-image.png">Save PNG</a>:null}</div>
-  <p role="status" aria-live="polite">{busy?"Preparing image…":notice}</p>
+  <p role="status" aria-live="polite">{busy?"Preparing image…":notice||drawError}</p>
  </section>;
 }

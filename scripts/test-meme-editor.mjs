@@ -14,6 +14,8 @@ try{
  const result=await page.getByRole("link",{name:"Save PNG"}).evaluate(async link=>{const blob=await(await fetch(link.href)).blob();const bitmap=await createImageBitmap(blob);const value={type:blob.type,width:bitmap.width,height:bitmap.height};bitmap.close();return value;});
  assert.deepEqual(result,{type:"image/png",width:1280,height:972});
  await page.getByLabel("Top caption").fill("Changed");assert.equal(await page.getByRole("link",{name:"Save PNG"}).count(),0);
+ await page.locator('input[type=file]').setInputFiles({name:"empty.png",mimeType:"image/png",buffer:Buffer.alloc(0)});await page.getByRole("status").filter({hasText:"up to 8 MiB"}).waitFor();
+ await page.locator('input[type=file]').setInputFiles({name:"large.png",mimeType:"image/png",buffer:Buffer.alloc(8*1024*1024+1)});await page.getByRole("status").filter({hasText:"up to 8 MiB"}).waitFor();
  const png=await page.evaluate(()=>{const c=document.createElement("canvas");c.width=300;c.height=200;c.getContext("2d").fillRect(0,0,300,200);return c.toDataURL().split(",")[1];});
  await page.locator('input[type=file]').setInputFiles({name:"source.png",mimeType:"image/png",buffer:Buffer.from(png,"base64")});
  await page.waitForFunction(()=>document.querySelector("canvas").width===300);
@@ -25,5 +27,7 @@ try{
  await page.waitForFunction(()=>typeof window.finishDecode==="function");await page.getByRole("button",{name:"Clear draft"}).click();await page.evaluate(()=>window.finishDecode());
  await page.waitForFunction(()=>document.querySelector("canvas").width===1280);assert.equal(await page.getByLabel("Top caption").inputValue(),"");
  await page.getByLabel("Top caption").fill("Identity private draft");await page.evaluate(()=>window.dispatchEvent(new Event("s3rch-session-changed")));await page.waitForFunction(()=>document.querySelector('input[maxlength]').value==="");
+ await page.getByLabel("Top caption").fill("Cross-tab private draft");await page.getByRole("button",{name:"Prepare PNG"}).click();await page.getByRole("link",{name:"Save PNG"}).waitFor();
+ const other=await page.context().newPage();await other.goto(origin);await other.evaluate(()=>localStorage.setItem("s3rch-session-changed",crypto.randomUUID()));await page.waitForFunction(()=>document.querySelector('input[maxlength]').value==="");assert.equal(await page.getByRole("link",{name:"Save PNG"}).count(),0);await other.close();
  assert.deepEqual(remote,[]);assert.deepEqual(errors,[]);console.log("PASS image draft templates, PNG export, invalid input, stale decode and identity clearing");
 }finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
