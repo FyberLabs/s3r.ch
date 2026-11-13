@@ -60,8 +60,9 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
         await response.body?.cancel().catch(() => {}); return reply(response.status === 409 ? 409 : 403);
       }
       const result = await readBoundedIdentityJson(response, 262144, signal);
+      let catalog: ReturnType<typeof parseMediaCatalogPage> | undefined;
       if (action === "catalog") {
-        try { parseMediaCatalogPage(result, body.page as number, principal); } catch { return reply(403); }
+        try { catalog = parseMediaCatalogPage(result, body.page as number, principal); } catch { return reply(403); }
       } else if (action === "view") {
         if (!exact(result, ["at", "fence", "snapshot", "objectVersion", "owner", "bindings"]) || result.owner !== principal ||
             (!Number.isSafeInteger(result.at) || (result.at as number) < 0) || !digest(result.fence) || !Number.isSafeInteger(result.objectVersion) ||
@@ -86,7 +87,7 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
       signal.throwIfAborted();
       const elapsed = clock() - started;
       if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 4) return reply(403);
-      return Response.json(action === "catalog" ? { ...result, principal } : result, { headers });
+      return Response.json(catalog ? { ...catalog, principal } : result, { headers });
     } catch { return reply(503); }
     finally {
       if (occupied && principal) active.delete(principal);
