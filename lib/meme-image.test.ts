@@ -21,6 +21,7 @@ test("templates render captions over bounded raster output",()=>{
   const c=canvas();drawMeme(c.element,null,"Top","Bottom",layout,background);assert.equal(c.element.width,1280);assert.ok(c.calls.includes("Top"));assert.ok(c.calls.includes("Bottom"));assert.ok(c.calls.includes("stroke"));
  }
  const c=canvas();drawMeme(c.element,{width:4096,height:2048} as ImageBitmap,"","","overlay","dark");assert.equal(c.element.width,1600);assert.equal(c.element.height,800);assert.ok(c.calls.includes("image"));
+ for(const [width,height] of [[1,4096],[4096,1]]){drawMeme(c.element,{width,height} as ImageBitmap,"","","overlay","dark");assert.ok(c.element.width>=1);assert.ok(c.element.height>=1);}
  for(const top of [""," ","Wide image"]){drawMeme(c.element,{width:4096,height:512} as ImageBitmap,top,"","overlay","dark");assert.equal(c.element.height,200);}
  assert.throws(()=>drawMeme(c.element,{width:5000,height:1} as ImageBitmap,"","","overlay","dark"));
  assert.throws(()=>drawMeme(c.element,null,"","","bad" as never,"dark"));

@@ -16,6 +16,9 @@ try{
  await page.getByLabel("Top caption").fill("Changed");assert.equal(await page.getByRole("link",{name:"Save PNG"}).count(),0);
  await page.locator('input[type=file]').setInputFiles({name:"empty.png",mimeType:"image/png",buffer:Buffer.alloc(0)});await page.getByRole("status").filter({hasText:"up to 8 MiB"}).waitFor();
  await page.locator('input[type=file]').setInputFiles({name:"large.png",mimeType:"image/png",buffer:Buffer.alloc(8*1024*1024+1)});await page.getByRole("status").filter({hasText:"up to 8 MiB"}).waitFor();
+ await page.getByLabel("Top caption").fill("");await page.getByLabel("Bottom caption").fill("");await page.getByLabel("Layout").selectOption("overlay");
+ const thin=await page.evaluate(()=>{const c=document.createElement("canvas");c.width=1;c.height=4096;return c.toDataURL().split(",")[1];});await page.locator('input[type=file]').setInputFiles({name:"thin.png",mimeType:"image/png",buffer:Buffer.from(thin,"base64")});await page.waitForFunction(()=>document.querySelector("canvas").width===1);await page.getByRole("button",{name:"Prepare PNG"}).click();await page.getByRole("link",{name:"Save PNG"}).waitFor();
+ assert.deepEqual(await page.getByRole("link",{name:"Save PNG"}).evaluate(async link=>{const image=await createImageBitmap(await(await fetch(link.href)).blob());const dimensions=[image.width,image.height];image.close();return dimensions;}),[1,1600]);
  const png=await page.evaluate(()=>{const c=document.createElement("canvas");c.width=300;c.height=200;c.getContext("2d").fillRect(0,0,300,200);return c.toDataURL().split(",")[1];});
  await page.locator('input[type=file]').setInputFiles({name:"source.png",mimeType:"image/png",buffer:Buffer.from(png,"base64")});
  await page.waitForFunction(()=>document.querySelector("canvas").width===300);

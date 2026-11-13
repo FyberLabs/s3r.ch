@@ -43,7 +43,7 @@ export function drawMeme(canvas:HTMLCanvasElement,image:ImageBitmap|null,top:str
   if(layout!=="overlay"&&layout!=="panel" || background!=="dark"&&background!=="light")throw Error("Unknown template.");
   const originalWidth=image?.width??1280,originalHeight=image?.height??720;
   if(!originalWidth||!originalHeight||originalWidth>4096||originalHeight>4096)throw Error("Image dimensions are unsupported.");
-  const scale=Math.min(1,1600/originalWidth,1600/originalHeight),w=Math.round(originalWidth*scale),h=Math.round(originalHeight*scale);
+  const scale=Math.min(1,1600/originalWidth,1600/originalHeight),w=Math.max(1,Math.round(originalWidth*scale)),h=Math.max(1,Math.round(originalHeight*scale));
   const panel=layout==="panel"?Math.max(100,Math.round(h*.35)):0;
   canvas.width=w;canvas.height=h+panel;
   const ctx=canvas.getContext("2d");if(!ctx)throw Error("Image editing is unavailable in this browser.");
