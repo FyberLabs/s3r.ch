@@ -96,9 +96,9 @@ test("default browser adapter refuses a locked identity",async()=>{
 test("sharing management only cancels listed recipients and does not retry writes",async()=>{
   let writes=0;const item=setup({browser:()=>({
     catalog:async()=>({at:1,objects:["owned"],nextPage:1,principal:key}),
-    recipients:async(object,owner)=>{assert.equal(object,"owned");assert.equal(owner,key);return [key];},
-    cancel:async(object,reader)=>{assert.equal(object,"owned");assert.equal(reader,key);writes++;},
-  } as ReturnType<typeof createPrivateMediaBrowser>)});
+    recipients:async(object:string,owner:string)=>{assert.equal(object,"owned");assert.equal(owner,key);return [key];},
+    cancel:async(object:string,reader:string)=>{assert.equal(object,"owned");assert.equal(reader,key);writes++;},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
   try {
     await item.library.recipients("unknown");await item.library.cancel("owned",key);assert.equal(writes,0);
     await item.library.load();await item.library.recipients("owned");assert.deepEqual(item.state().audience,{object:"owned",readers:[key]});
