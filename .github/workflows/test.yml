@@ -40,6 +40,22 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Install isolated browser for media contracts
+        run: |
+          npx playwright-core install --with-deps chromium
+          sudo apt-get install -y ffmpeg
+      - name: Public media browser contracts (CI only)
+        run: node scripts/test-public-media-browser.mjs
+
+      - name: Public media proxy and player coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/public-media-proxy.ts
+          --test-coverage-include=lib/public-media-player.ts
+          --test-coverage-include=lib/public-media-admission.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/public-media-proxy.test.ts lib/public-media-player.test.ts lib/public-media-admission.test.ts
+
       - name: Public feed media metadata coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage

@@ -12,7 +12,7 @@ export function activityPubMedia(value: unknown): FeedMedia[] {
     const candidate = Array.isArray(item.url) ? item.url[0] : item.url;
     const url = typeof candidate === "string" ? candidate : row(candidate).href;
     return { kind: mediaKindForUrl(str(url), str(item.mediaType)), url, alt: item.name,
-      width: item.width, height: item.height, duration: item.duration,
+      playlist: /mpegurl/i.test(str(item.mediaType)), width: item.width, height: item.height, duration: item.duration,
       sensitive: object.sensitive, warning: object.sensitive === true ? object.summary : undefined };
   }));
 }
@@ -42,7 +42,7 @@ export function nostrMedia(value: unknown): FeedMedia[] {
       }
       const dimensions = /^(\d{1,5})x(\d{1,5})$/.exec(fields.dim ?? "");
       result.push({ kind: mediaKindForUrl(fields.url ?? "", fields.m), url: fields.url,
-        alt: fields.alt, width: dimensions ? Number(dimensions[1]) : undefined,
+        playlist: /mpegurl/i.test(fields.m ?? ""), alt: fields.alt, width: dimensions ? Number(dimensions[1]) : undefined,
         height: dimensions ? Number(dimensions[2]) : undefined });
     } else if (["url", "image"].includes(tag[0]) && typeof tag[1] === "string") {
       result.push({ kind: tag[0] === "image" ? "image" : mediaKindForUrl(tag[1]), url: tag[1] });
@@ -51,10 +51,12 @@ export function nostrMedia(value: unknown): FeedMedia[] {
     }
     if (result.length >= FEED_MEDIA_MAX) break;
   }
-  return parseFeedMedia(result);
+  const warningTag = (Array.isArray(value) ? value.slice(0, 128) : []).find(tag => Array.isArray(tag) && tag[0] === "content-warning");
+  const warning = warningTag ? (str(warningTag[1]) || "Sensitive media").slice(0, 256) : "";
+  return parseFeedMedia(result.map(value => warning ? {...row(value), sensitive:true, warning} : value));
 }
 
-export function atprotoMedia(value: unknown): FeedMedia[] {
+export function atprotoMedia(value: unknown, labels?: unknown): FeedMedia[] {
   const result: unknown[] = [];
   function visit(value: unknown, depth: number) {
     if (depth > 2 || result.length >= FEED_MEDIA_MAX) return;
@@ -67,7 +69,7 @@ export function atprotoMedia(value: unknown): FeedMedia[] {
       }
     } else if (type === "app.bsky.embed.video#view") {
       const size = row(embed.aspectRatio);
-      result.push({kind: "video", url: embed.playlist, thumbnail: embed.thumbnail, alt: embed.alt,
+      result.push({kind: "video", playlist:true, url: embed.playlist, thumbnail: embed.thumbnail, alt: embed.alt,
         width: size.width, height: size.height});
     } else if (type === "app.bsky.embed.external#view") {
       const external = row(embed.external);
@@ -83,7 +85,10 @@ export function atprotoMedia(value: unknown): FeedMedia[] {
     }
   }
   visit(value, 0);
-  return parseFeedMedia(result.slice(0, FEED_MEDIA_MAX));
+  const warning = (Array.isArray(labels) ? labels.slice(0, 32) : [])
+    .map(row).filter(label => label.neg !== true && typeof label.val === "string")
+    .map(label => str(label.val)).join(", ").slice(0, 256);
+  return parseFeedMedia(result.slice(0, FEED_MEDIA_MAX).map(value => warning ? {...row(value), sensitive:true, warning} : value));
 }
 
 export function mediaFields(media: FeedMedia[]): {media?: FeedMedia[]} {

@@ -114,7 +114,7 @@ export function normalizeAtprotoPost(raw: unknown, provenance: string): FeedItem
   return {
     id: uri,
     source: "atproto",
-    ...mediaFields(atprotoMedia(post.embed)),
+    ...mediaFields(atprotoMedia(post.embed, post.labels)),
     kind: "social",
     author: handle,
     body: clip(text, BODY_MAX),

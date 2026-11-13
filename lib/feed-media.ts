@@ -1,7 +1,7 @@
 import { assertPublicHttpUrl } from "./url-guard";
 export type FeedMedia = {
   kind: "image"|"video"|"audio"|"link"|"quote";
-  url: string; alt?: string; title?: string; text?: string; author?: string; thumbnail?: string;
+  url: string; playlist?: boolean; alt?: string; title?: string; text?: string; author?: string; thumbnail?: string;
   width?: number; height?: number; duration?: number; sensitive?: boolean; warning?: string;
 };
 export const FEED_MEDIA_MAX=8, FEED_MEDIA_BYTES=16384;
@@ -28,6 +28,7 @@ export function parseFeedMedia(value: unknown): FeedMedia[] {
     for(const key of ["width","height","duration"] as const)
       if(typeof row[key]==="number" && Number.isFinite(row[key]) && (row[key] as number)>0 &&
           (row[key] as number)<=(key==="duration"?86400:16384))media[key]=row[key] as number;
+    if(media.kind==="video" && row.playlist===true)media.playlist=true;
     if(row.sensitive===true || media.warning)media.sensitive=true;
     result.push(media);
   }

@@ -201,7 +201,7 @@ function enclosureMedia(block: string, feedUrl: string) {
     try {
       const url = new URL(raw, feedUrl).href;
       media.push({ kind: mediaKindForUrl(url, attr(element, tag, "type")), url,
-        width: Number(attr(element, tag, "width")), height: Number(attr(element, tag, "height")),
+        playlist: /mpegurl/i.test(attr(element, tag, "type")), width: Number(attr(element, tag, "width")), height: Number(attr(element, tag, "height")),
         duration: Number(attr(element, tag, "duration")) });
     } catch { continue; }
     if (media.length === 8) break;

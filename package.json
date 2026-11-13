@@ -1,6 +1,6 @@
 {
   "name": "s3rch-website",
-  "version": "0.1.76",
+  "version": "0.1.77",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -26,6 +26,7 @@
     "@tanstack/react-query": "^5.107.1",
     "@walletconnect/ethereum-provider": "^2.26.0",
     "gun": "^0.2020.1241",
+    "hls.js": "1.7.4",
     "jose": "^6.2.15",
     "next": "^16.4.5",
     "react": "^19",
@@ -43,12 +44,12 @@
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.6.2",
     "esbuild": "^0.28.2",
+    "fake-indexeddb": "6.2.4",
     "playwright-core": "1.65.0",
     "postcss": "^8.5.32",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2",
-    "fake-indexeddb": "6.2.4"
+    "typescript": "^7.0.2"
   },
   "engines": {
     "node": ">=24"

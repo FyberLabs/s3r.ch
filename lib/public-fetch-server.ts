@@ -49,7 +49,8 @@ export function createPublicLookup(
   };
 }
 
-export async function fetchPublicOnServer(url: URL, init?: { accept?: string }): Promise<Response> {
+export async function fetchPublicOnServer(url: URL, init?: { accept?: string; range?: string }): Promise<Response> {
+  if (init?.range && !/^bytes=(?:\d+-\d+|-\d+)$/.test(init.range)) throw new Error("Invalid bounded range");
   const signal = AbortSignal.timeout(PUBLIC_FETCH_MS);
   const dispatcher = new Agent({ connect: { lookup: createPublicLookup(signal) } });
   let current = assertPublicHttpUrl(url.href);
@@ -60,7 +61,7 @@ export async function fetchPublicOnServer(url: URL, init?: { accept?: string }):
       // every DNS answer inside the socket lookup, preserving Host and TLS SNI.
       // codeql[js/request-forgery] -- Validated socket lookup; see public-fetch-server.test.ts.
       const response = await fetch(current, {
-        headers: { accept: init?.accept ?? "application/json", "user-agent": PUBLIC_USER_AGENT },
+        headers: { accept: init?.accept ?? "application/json", "user-agent": PUBLIC_USER_AGENT, ...(init?.range ? {range:init.range} : {}) },
         signal, redirect: "manual", cache: "no-store", dispatcher,
       } as RequestInit & { dispatcher: Agent });
       const location = response.headers.get("location");
