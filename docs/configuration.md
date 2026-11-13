@@ -207,3 +207,25 @@ endpoint. Its runtime verifies the existing site cookie and exposes no token
 issuance actions. Existing `/api/squad/pilot/session/*` aliases forward to that shared handler
 for patch compatibility; they do not create a second issuer.
 The shared replay configuration remains required and dedicated to identity.
+
+
+### Native agent identity
+
+`POST /api/identity/agent/challenge` accepts a delegation ID and sorted requested
+scopes. `POST /api/identity/agent/exchange` accepts the challenge and agent SEA
+signature, returning a bearer token without browser cookies. Every protected
+consumer must use `authenticateAgentRequest` with its own required scopes and
+then enforce current object ACL for the returned agent principal. The delegating
+owner does not lend its object grants to the bot. A token alone is not an object grant.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `S3RCH_AGENT_SESSION_CONFIG` | Unset (disabled) | Private JSON with exact `origin`, `source` (`origin`, `tenant`, `scope`) and `authority` (`jwks`, `policy`, `pinnedIss`) fields. `policy` contains `allowedDomains`, `allowedUris`, `allowedChainIds`, and explicit `clockSkewSeconds` (0–300). Witness keys are independently trusted configuration; source responses cannot install them. |
+| `S3RCH_DELEGATION_SOURCE_API_KEY` | Unset | Dedicated service key with `acl:delegations:read` and the operator-bound tenant/subject/scope. It is never sent to the client. |
+
+The origin must match the configured s3r.ch deployment. The delegation source and
+existing Spanopticon identity replay settings must name the same tenant. The
+shared identity secret and durable replay backend are mandatory. No fallback
+creates stores, enrolls identities, accepts request-supplied history or activates
+these routes from legacy Squad configuration. These settings remain unset until
+an operator has provisioned the protected owner journal and staged credentials.
