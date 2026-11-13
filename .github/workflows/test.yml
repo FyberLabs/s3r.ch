@@ -47,6 +47,14 @@ jobs:
       - name: Public media browser contracts (CI only)
         run: node scripts/test-public-media-browser.mjs
 
+      - name: Feed reply and cached conversation coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/feed-reply.ts
+          --test-coverage-include=lib/feed-conversation.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/feed-reply.test.ts lib/feed-conversation.test.ts
+
       - name: Public media proxy and player coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage

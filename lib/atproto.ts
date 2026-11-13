@@ -1,3 +1,4 @@
+import { atprotoReply } from "./feed-reply";
 import { mediaFields, atprotoMedia } from "./feed-media-adapters";
 import { collectSourceWindows } from "./source-windows";
 /**
@@ -114,6 +115,7 @@ export function normalizeAtprotoPost(raw: unknown, provenance: string): FeedItem
   return {
     id: uri,
     source: "atproto",
+    ...atprotoReply(record.reply, raw.reply),
     ...mediaFields(atprotoMedia(post.embed, post.labels)),
     kind: "social",
     author: handle,

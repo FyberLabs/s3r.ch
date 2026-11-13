@@ -262,6 +262,8 @@ function asFeedItem(value: unknown): FeedItem | null {
   return fromGunNode({
     id: record.id,
     media: record.media,
+    replyTo: record.replyTo,
+    root: record.root,
     v: record.v,
     source: typeof record.source === "string" ? record.source : "",
     kind: typeof record.kind === "string" ? record.kind : "",

@@ -1,3 +1,4 @@
+import { activityPubReply } from "./feed-reply";
 import { mediaFields, activityPubMedia } from "./feed-media-adapters";
 import { collectSourceWindows } from "./source-windows";
 /**
@@ -79,6 +80,7 @@ export function normalizeActivityPubItem(
   return {
     id,
     source: "activitypub",
+    ...activityPubReply(object),
     ...mediaFields(activityPubMedia(object)),
     kind: "social",
     author,
