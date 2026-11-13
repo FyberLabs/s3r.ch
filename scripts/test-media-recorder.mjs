@@ -7,7 +7,7 @@ const bundle=await build({stdin:{contents:"import React from 'react';import {cre
 const server=createServer((req,res)=>{res.setHeader("content-type",req.url==="/app.js"?"text/javascript":"text/html");res.end(req.url==="/app.js"?bundle.outputFiles[0].contents:'<!doctype html><div id="root"></div><script src="/app.js"></script>');});
 await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));const origin=`http://127.0.0.1:${server.address().port}`;let browser;
 try{
- browser=await chromium.launch({headless:true,args:["--use-fake-ui-for-media-stream","--use-fake-device-for-media-stream"]});const page=await browser.newPage();const errors=[],remote=[];
+ browser=await chromium.launch({headless:true,args:["--use-fake-ui-for-media-stream","--use-fake-device-for-media-stream"]});const context=await browser.newContext();const page=await context.newPage();const errors=[],remote=[];
  page.on("pageerror",error=>errors.push(error.message));await page.route("**/*",route=>{if(new URL(route.request().url()).origin!==origin){remote.push(route.request().url());return route.abort();}return route.continue();});
  await page.addInitScript(()=>{window.captured=[];const original=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=async constraints=>{const stream=await original(constraints);window.captured.push(stream);return stream;};});
  await page.goto(origin);assert.equal(await page.evaluate(()=>window.captured.length),0);
