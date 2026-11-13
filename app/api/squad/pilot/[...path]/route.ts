@@ -16,15 +16,11 @@ export async function POST(request: Request, context: { params: Promise<{ path: 
   const reply = (status: number) => Response.json({ error: "pilot-unavailable" }, { status, headers: { "Cache-Control": "no-store" } });
   try {
     const { path } = await context.params;
-    if (path[0] === "assignment") return reply(404);
+    if (path[0] === "assignment" || path[0] === "session") return reply(404);
     const pilot = getSquadPilotServer();
     if (!pilot) return reply(404);
     if (path.length === 1 && path[0] === "statement") return pilot.services.statements ? pilot.services.statements(request) : reply(503);
     if (path.length === 1 && path[0] === "authority") return pilot.services.authority(request);
-    if (path.length === 2 && path[0] === "session") {
-      const action = path[1];
-      if (action === "challenge" || action === "exchange" || action === "logout") return pilot.services[action](request);
-    }
     return reply(404);
   } catch { return reply(503); }
 }

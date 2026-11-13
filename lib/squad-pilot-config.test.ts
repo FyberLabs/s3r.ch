@@ -17,6 +17,7 @@ test("pilot is explicitly disabled or requires complete secret-backed scope and 
   const c = parseSquadPilotConfig(JSON.stringify(config())); assert.ok(c);
   const browser = publicSquadPilotConfig(c), serialized = JSON.stringify(browser);
   assert.ok(!serialized.includes(secret.toString("hex")));
+  assert.equal(browser.sessionBase, "/api/identity/sea");
   const retired = parseSquadPilotConfig(JSON.stringify({ ...config(), ownerSigningKey: secret.toString("hex") }));
   assert.equal("ownerSigningKey" in retired!, false);
   assert.deepEqual(Object.keys(browser).sort(), ["authorityEndpoint", "config", "origin", "sessionBase", "squad"]);

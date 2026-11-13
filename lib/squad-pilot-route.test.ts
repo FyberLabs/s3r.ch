@@ -29,3 +29,16 @@ test("retired assignment actions cannot select a server executor", async () => {
     }
   } finally { if(saved===undefined) delete process.env.S3RCH_SQUAD_PILOT; else process.env.S3RCH_SQUAD_PILOT=saved; }
 });
+
+test("retired Squad session aliases cannot create a second issuer", async () => {
+  const saved = process.env.S3RCH_SQUAD_PILOT;
+  try {
+    process.env.S3RCH_SQUAD_PILOT = "retired-config-must-not-be-loaded";
+    for (const action of ["challenge", "exchange", "logout"]) {
+      const response = await POST(new Request("https://s3r.ch/api/squad/pilot/session/" + action,{method:"POST"}),
+        {params:Promise.resolve({path:["session",action]})});
+      assert.equal(response.status,404);
+      assert.equal(response.headers.has("set-cookie"),false);
+    }
+  } finally { if(saved===undefined) delete process.env.S3RCH_SQUAD_PILOT; else process.env.S3RCH_SQUAD_PILOT=saved; }
+});

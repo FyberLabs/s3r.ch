@@ -4,7 +4,10 @@ import { configuredIdentityReplay, type IdentityReplay } from "./identity/spanop
 import { getIdentitySecret } from "./identity/secret";
 import { parseSquadPilotConfig, type SquadPilotConfig } from "./squad-pilot-config";
 import { createForumAuthority, type ForumAuthoritySnapshot } from "./identity/forum-authority";
-import { createSquadHttpServices } from "./squad-http-services";
+import { createBotStatementAdmission } from "./forum-bot-statement-admission";
+import { createForumAuthorityService } from "./forum-authority-service";
+import { createIdentityTokenVerifier } from "./identity/sea-session-verifier";
+import { readSeaSessionCookie } from "./identity/sea-session-http";
 import { identitySessionNamespace } from "./identity/replay-namespace";
 export { identitySessionNamespace } from "./identity/replay-namespace";
 
@@ -16,9 +19,15 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
   if (!replay) throw Error("ACL authority requires configured identity replay");
   const config = structuredClone(c);
   const source = { read: async (at: number, signal: AbortSignal) => (await statements.read(at, signal)).snapshot };
-  const services = createSquadHttpServices({ squad: config.squad, origin: config.origin, config: config.authority,
-    secret: identitySecret, clock, consume: replay.consume, challengeDomain: replay.challengeDomain,
-    statements, read: source.read });
+  const verifier = createIdentityTokenVerifier({ origin: config.origin, secret: identitySecret, clock });
+  const authenticate = async (request: Request) => {
+    const token = readSeaSessionCookie(request);
+    return token ? verifier.authenticate(token) : null;
+  };
+  const common = { squad: config.squad, origin: config.origin, config: config.authority, clock, authenticate };
+  const services = Object.freeze({ authenticate,
+    authority: createForumAuthorityService({ ...common, read: source.read }),
+    statements: createBotStatementAdmission({ ...common, source: statements }) });
   return { backend: "acl" as const, config, source, services };
 }
 // No build-time or import-time secret/storage reads. Key Vault references are
