@@ -35,6 +35,7 @@ export function createAclStatementSource(input: AclStatementConfig, fetcher: typ
           return value;
         }));
       signal.throwIfAborted();
+      if (!response) throw Error("Missing statement source response");
       if (response.status === 409) throw new StatementSourceConflict();
       if (response.status !== 200 || response.headers.get("content-type")?.split(";")[0] !== "application/json" ||
           ![null, "identity"].includes(response.headers.get("content-encoding")) || !response.body) throw Error();

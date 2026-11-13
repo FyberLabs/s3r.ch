@@ -43,6 +43,7 @@ test("changed or unavailable source never triggers a retry or legacy fallback", 
   const source = createAclStatementSource(config, async () => { calls++; return new Response(null, { status: 409 }); }, () => 100);
   assert.equal(await source.append("100." + "a".repeat(64), [{}] as any, () => {}, signal()), false);
   await assert.rejects(source.read(100, signal()), StatementSourceConflict); assert.equal(calls, 2);
+  await assert.rejects(createAclStatementSource(config, async () => undefined as any, () => 100).read(100, signal()), /unavailable/);
   for (const status of [302, 403, 503]) {
     const failed = createAclStatementSource(config, async () => new Response(null, { status }), () => 100);
     await assert.rejects(failed.read(100, signal()), /unavailable/);

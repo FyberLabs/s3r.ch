@@ -39,7 +39,7 @@ test("ACL pilot refuses missing replay instead of constructing a Blob fallback",
 
 test("deployment selection needs no Blob settings and rotates cached source configuration", () => {
   const values:Record<string,string|undefined> = {
-    IDENTITY_SESSION_SECRET:"s".repeat(32),S3RCH_SQUAD_PILOT:JSON.stringify({version:1,...config}),
+    IDENTITY_SESSION_SECRET:"s".repeat(32),S3RCH_SQUAD_PILOT:JSON.stringify(config),
     S3RCH_SQUAD_BLOB_ACCOUNT:undefined,S3RCH_SQUAD_BLOB_CONTAINER:undefined,
     S3RCH_AUTHORITY_BACKEND:"acl",S3RCH_STATEMENT_SOURCE_ORIGIN:"https://acl.example.test",
     S3RCH_STATEMENT_SOURCE_TENANT_ID:"01234567-89ab-cdef-0123-456789abcdef",S3RCH_STATEMENT_SOURCE_SCOPE:"forum",
