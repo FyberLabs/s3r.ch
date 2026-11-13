@@ -1,10 +1,10 @@
 "use client";
 import {useEffect,useRef} from "react";
 import {attachPublicHls} from "@/lib/public-media-player";
-export function PublicFeedVideo({url,poster,onError}:{url:string;poster?:string;onError:()=>void}) {
+export function PublicFeedVideo({url,poster,onError,isPlaylist=false}:{url:string;poster?:string;onError:()=>void;isPlaylist?:boolean}) {
   const video=useRef<HTMLVideoElement>(null), player=useRef<ReturnType<typeof attachPublicHls>|null>(null);
   const failure=useRef(onError);failure.current=onError;
-  const playlist=/\.m3u8(?:$|[?#])/i.test(url);
+  const playlist=isPlaylist || /\.m3u8(?:$|[?#])/i.test(url);
   const source=`/api/feed/media?${new URLSearchParams({url,kind:"video"})}`;
   useEffect(()=>{
     const element=video.current;if(!element || !playlist)return;

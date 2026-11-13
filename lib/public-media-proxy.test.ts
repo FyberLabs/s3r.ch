@@ -76,3 +76,11 @@ test("bounded media supports single byte ranges for seeking",async()=>{
  for(const range of ["bytes=8-9","bytes=3-1","bytes=-","bytes=0-1,3-4"])
   assert.equal((await servePublicMedia(new Request(request("video").url,{headers:{range}}),read)).status,416);
 });
+test("HLS byte ranges reach upstream without downloading the entire resource",async()=>{
+ const response=await servePublicMedia(new Request(request("video").url,{headers:{range:"bytes=20000000-20000002"}}),async(_url,options)=>{
+  assert.equal(options?.range,"bytes=20000000-20000002");
+  return new Response("abc",{status:206,headers:{"content-type":"video/mp4","content-range":"bytes 20000000-20000002/50000000"}});
+ });
+ assert.equal(response.status,206);assert.equal(await response.text(),"abc");
+ assert.equal((await servePublicMedia(new Request(request("video").url,{headers:{range:"bytes=0-2"}}),async()=>new Response("abc",{status:206,headers:{"content-type":"video/mp4","content-range":"bytes 9-11/20"}}))).status,502);
+});

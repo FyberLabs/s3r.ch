@@ -12,7 +12,7 @@ export function activityPubMedia(value: unknown): FeedMedia[] {
     const candidate = Array.isArray(item.url) ? item.url[0] : item.url;
     const url = typeof candidate === "string" ? candidate : row(candidate).href;
     return { kind: mediaKindForUrl(str(url), str(item.mediaType)), url, alt: item.name,
-      width: item.width, height: item.height, duration: item.duration,
+      playlist: /mpegurl/i.test(str(item.mediaType)), width: item.width, height: item.height, duration: item.duration,
       sensitive: object.sensitive, warning: object.sensitive === true ? object.summary : undefined };
   }));
 }
@@ -42,7 +42,7 @@ export function nostrMedia(value: unknown): FeedMedia[] {
       }
       const dimensions = /^(\d{1,5})x(\d{1,5})$/.exec(fields.dim ?? "");
       result.push({ kind: mediaKindForUrl(fields.url ?? "", fields.m), url: fields.url,
-        alt: fields.alt, width: dimensions ? Number(dimensions[1]) : undefined,
+        playlist: /mpegurl/i.test(fields.m ?? ""), alt: fields.alt, width: dimensions ? Number(dimensions[1]) : undefined,
         height: dimensions ? Number(dimensions[2]) : undefined });
     } else if (["url", "image"].includes(tag[0]) && typeof tag[1] === "string") {
       result.push({ kind: tag[0] === "image" ? "image" : mediaKindForUrl(tag[1]), url: tag[1] });
@@ -69,7 +69,7 @@ export function atprotoMedia(value: unknown, labels?: unknown): FeedMedia[] {
       }
     } else if (type === "app.bsky.embed.video#view") {
       const size = row(embed.aspectRatio);
-      result.push({kind: "video", url: embed.playlist, thumbnail: embed.thumbnail, alt: embed.alt,
+      result.push({kind: "video", playlist:true, url: embed.playlist, thumbnail: embed.thumbnail, alt: embed.alt,
         width: size.width, height: size.height});
     } else if (type === "app.bsky.embed.external#view") {
       const external = row(embed.external);

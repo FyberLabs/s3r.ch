@@ -89,3 +89,7 @@ test("source content warnings survive into click-to-reveal metadata",()=>{
  assert.equal(atprotoMedia(embed,[{val:"nudity",neg:true}])[0].sensitive,undefined);
  assert.equal(nostrMedia([["image","https://example.com/a.png"],["content-warning","Spoiler"]])[0].warning,"Spoiler");
 });
+test("extensionless HLS retains its declared playlist type",()=>{
+ assert.equal(activityPubMedia({attachment:[{url:"https://example.com/stream",mediaType:"application/vnd.apple.mpegurl"}]})[0].playlist,true);
+ assert.equal(nostrMedia([["imeta","url https://example.com/stream","m application/vnd.apple.mpegurl"]])[0].playlist,true);
+});

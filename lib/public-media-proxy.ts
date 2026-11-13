@@ -97,10 +97,25 @@ export async function servePublicMedia(request: Request, read = fetchPublic, sig
   if (!url || !Object.hasOwn(TYPES, kind) || !/^[0-3]$/.test(depthRaw)) return new Response("Invalid media request", {status:400});
   if (request.headers.get("sec-fetch-site") === "cross-site") return new Response("Forbidden", {status:403});
   if (!budget.request()) return new Response("Media quota exhausted",{status:429,headers:{"retry-after":"60"}});
+  const range = request.headers.get("range");
+  let boundedRange: string | undefined;
+  let rangeStart: number | undefined, rangeEnd: number | undefined, suffix: number | undefined;
+  if (range) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+    if (!match || (!match[1] && !match[2])) return new Response(null,{status:416});
+    if (match[1]) {
+      rangeStart=Number(match[1]);rangeEnd=match[2] ? Number(match[2]) : rangeStart+PUBLIC_MEDIA_BYTES-1;
+      if (!Number.isSafeInteger(rangeStart) || !Number.isSafeInteger(rangeEnd) || rangeEnd<rangeStart || rangeEnd-rangeStart>=PUBLIC_MEDIA_BYTES)return new Response(null,{status:416});
+      boundedRange=`bytes=${rangeStart}-${rangeEnd}`;
+    } else {
+      suffix=Number(match[2]);if(!Number.isSafeInteger(suffix) || suffix<1 || suffix>PUBLIC_MEDIA_BYTES)return new Response(null,{status:416});
+      boundedRange=`bytes=-${suffix}`;
+    }
+  }
   const release = await acquireMedia(request.signal);
   if (!release) return new Response("Media busy", {status:429,headers:{"retry-after":"5"}});
   try {
-    const upstream = await read(url, {accept:TYPES[kind].join(", ")});
+    const upstream = await read(url, {accept:TYPES[kind].join(", "),range:boundedRange});
     const type = (upstream.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
     if (!upstream.ok || !TYPES[kind].includes(type)) {
       await upstream.body?.cancel(); return new Response("Unsupported media", {status:415});
@@ -114,7 +129,13 @@ export async function servePublicMedia(request: Request, read = fetchPublic, sig
       "x-content-type-options":"nosniff", "content-security-policy":"default-src 'none'; sandbox",
       "cross-origin-resource-policy":"same-origin", "referrer-policy":"no-referrer",
     };
-    const range = request.headers.get("range");
+    if (upstream.status===206) {
+      const partial=/^bytes (\d+)-(\d+)\/(\d+)$/.exec(upstream.headers.get("content-range")??"");
+      const start=Number(partial?.[1]),end=Number(partial?.[2]),total=Number(partial?.[3]);
+      if (!range || playlist || !partial || ![start,end,total].every(Number.isSafeInteger) || start>end || end>=total || end-start+1!==body.length ||
+          (suffix!==undefined ? end!==total-1 || start!==Math.max(0,total-suffix) : start!==rangeStart || end>rangeEnd!))return new Response("Invalid media range",{status:502});
+      return new Response(body,{status:206,headers:{...headers,"accept-ranges":"bytes","content-range":`bytes ${start}-${end}/${total}`}});
+    }
     if (range && !playlist) {
       const match = /^bytes=(\d*)-(\d*)$/.exec(range);
       const start = match?.[1] ? Number(match[1]) : Math.max(0, body.length - Number(match?.[2]));
