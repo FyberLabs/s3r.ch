@@ -119,3 +119,15 @@ test("at most two media requests hold buffers per configured service", async () 
   release(); assert.equal((await first).status, 403); assert.equal((await second).status, 403);
   assert.equal((await source(request(), object)).status, 403);
 });
+
+test("one owner cannot exhaust the tenant object or byte quota", async () => {
+  const h = setup();
+  const entries = Array.from({ length: 8 }, (_, i) => ({ object: `media_p_${key}_${i.toString(16).padStart(32, "0")}`, digest, length: bytes.length }));
+  h.setRecord({ version: 1, entries });
+  assert.equal((await h.service(request("PUT"), object)).status, 507);
+  const otherKey = Buffer.from(p256.getPublicKey(new Uint8Array(32).fill(54), false).slice(1)).toString("hex");
+  assert.equal((await h.service(request("PUT"), `media_p_${otherKey}_${"b".repeat(32)}`)).status, 201);
+  const full = setup(); full.setRecord({ version: 1, entries: [{ ...entries[0], length: 64 * 1024 * 1024 }] });
+  assert.equal((await full.service(request("PUT"), object)).status, 507);
+  assert.equal(full.calls.includes("object-put"), false);
+});

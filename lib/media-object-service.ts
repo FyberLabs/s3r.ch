@@ -1,3 +1,4 @@
+import { objectPrincipal } from "./identity/forum-authority-records";
 import { createHash } from "node:crypto";
 import { isCanonicalObjectId } from "./identity/object-id";
 import { OBJECT_BYTES_MAX, type ObjectStore } from "./object-store";
@@ -91,6 +92,8 @@ export function createMediaObjectService(input: {
           if (existing.digest !== digest || existing.length !== bytes.length) return reply(409);
           reserved = true; break;
         }
+        const owned = entries.filter(row => objectPrincipal(row.object) === objectPrincipal(object));
+        if (owned.length >= 8 || owned.reduce((sum, row) => sum + row.length, bytes.length) > 64 * 1024 * 1024) return reply(507);
         if (entries.length >= COUNT_MAX || entries.reduce((sum, row) => sum + row.length, bytes.length) > TOTAL_MAX) return reply(507);
         if (!await allowed()) return reply(403);
         entries.push({ object, digest, length: bytes.length });

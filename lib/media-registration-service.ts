@@ -15,7 +15,7 @@ export function createMediaRegistrationService(input: {
   return async (request: Request, object: string) => {
     const reply = (status: number) => new Response(null, { status, headers: {
       "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", Vary: "Cookie, Authorization, Origin" } });
-    if (request.method !== "POST") return reply(405);
+    if (!["POST", "DELETE"].includes(request.method)) return reply(405);
     if (!matchesBrowserOrigin(request, origin)) return reply(403);
     if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json" ||
         ![null, "identity"].includes(request.headers.get("content-encoding"))) return reply(415);
@@ -41,10 +41,11 @@ export function createMediaRegistrationService(input: {
       if (!record || record.object !== object) return reply(400);
       const authorized = () => input.authorize(request, object, "write", signal, record);
       if (!await authorized()) return reply(403);
-      await input.store.admit(record, signal, authorized);
+      if (request.method === "DELETE") await input.store.remove(object, signal, authorized);
+      else await input.store.admit(record, signal, authorized);
       if (!await authorized()) return reply(403);
       signal.throwIfAborted();
-      return reply(201);
+      return reply(request.method === "DELETE" ? 204 : 201);
     } catch (error) {
       return reply(error instanceof RecordConflict ? 409 : error instanceof MediaRegistrationCapacity ? 507 : 503);
     } finally { active--; }

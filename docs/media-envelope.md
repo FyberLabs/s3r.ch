@@ -108,10 +108,10 @@ SEA signing key. A same-origin human session must resolve to that owner through
 the deployment's complete, fresh key history. A supplied public key or an
 unenrolled principal cannot create its own history through this route.
 
-The signed record is held in the private Spanopticon `media/ownership-index-v1`
-record. It is reverified on each upload and download; storing it never caches an
-allow decision. There are at most 128 registrations per tenant, with conditional
-updates and three bounded conflict attempts. Exact retries succeed without a new
+Signed records are partitioned by their embedded owner in private Spanopticon
+`media/ownership-v1-{sha256(owner)}` records. Each owner has eight registration
+slots; one owner cannot consume another owner's slots. It is reverified on each upload and download; storing it never caches an
+allow decision. Updates are conditional with three bounded conflict attempts. Exact retries succeed without a new
 write. A replacement needs a strictly later issuance time and a currently valid
 owner signature. This permits re-signing after key rotation without changing the
 object's identity or immutable ciphertext mapping.
@@ -119,7 +119,12 @@ object's identity or immutable ciphertext mapping.
 Registration returns an empty 201 response. It does not upload ciphertext, publish
 a post, add an assignment destination, share with a forum, distribute a key wrap,
 or grant a reader. The ciphertext route's separate byte and object quotas still
-apply. Registration and upload failures retain their records for reconciliation;
-there is no deletion or capacity reclamation API yet. Reader grant and confidential
+apply. `DELETE /api/media/{object}` accepts the same signed ownership body and fresh
+owner authentication, removes only that registration, and returns empty 204.
+It reclaims a registration slot without deleting ciphertext or releasing reserved
+upload quota. Re-registering the object restores the same immutable ciphertext
+mapping. Uploads have an additional eight-object/64-MiB owner limit within the
+existing tenant limits, so registration cleanup cannot bypass upload quotas.
+Physical ciphertext deletion and upload-quota reclamation remain unfinished. Reader grant and confidential
 wrap delivery, client upload/playback controls, and replacing the primary Squad
 history source remain separate unfinished work.

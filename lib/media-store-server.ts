@@ -25,6 +25,6 @@ export function getMediaObjectService() {
     read: pilot.source.read, registration: registrations.get });
   const objects = createMediaObjectService({ origin: pilot.config.origin, objects: createSpanopticonObjectStore(config), records, authorize });
   const register = createMediaRegistrationService({ origin: pilot.config.origin, store: registrations, authorize });
-  const service = (request: Request, object: string) => request.method === "POST" ? register(request, object) : objects(request, object);
+  const service = (request: Request, object: string) => ["POST", "DELETE"].includes(request.method) ? register(request, object) : objects(request, object);
   cached = { identity, pilot, service }; return service;
 }
