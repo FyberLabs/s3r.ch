@@ -50,7 +50,7 @@ test("changed or unavailable source never triggers a retry or legacy fallback", 
 });
 test("stale/malformed snapshots and append acknowledgements fail closed", async () => {
   for (const value of [{ snapshot: { ...snapshot, completeThrough: 99 }, fence: "a".repeat(64) },
-    { snapshot, fence: "bad" }, { snapshot: { ...snapshot, history: {} }, fence: "a".repeat(64) },
+    { snapshot, fence: "bad" }, { snapshot, fence: ["a".repeat(64)] }, { snapshot: { ...snapshot, history: {} }, fence: "a".repeat(64) },
     { snapshot: { ...snapshot, rows: Array(1025).fill({}) }, fence: "a".repeat(64) }]) {
     const source = createAclStatementSource(config, async () => Response.json(value), () => 100);
     await assert.rejects(source.read(100, signal()), /Invalid statement snapshot/);
@@ -68,6 +68,7 @@ test("local expiry, malformed writes and caller guard stop requests", async () =
   const source = createAclStatementSource(config, async () => { calls++; return answer(); }, () => 100);
   await assert.rejects(source.read(99, signal()), StatementSourceConflict);
   await assert.rejects(source.append("bad", [], () => {}, signal()));
+  await assert.rejects(source.append(["100." + "a".repeat(64)] as any, [], () => {}, signal()));
   for (const rows of [[], Array(66).fill({}), [{ huge: "x".repeat(65537) }]])
     await assert.rejects(source.append("100." + "a".repeat(64), rows as any, () => {}, signal()));
   await assert.rejects(source.append("100." + "a".repeat(64), [{}] as any, () => { throw Error("revoked"); }, signal()), /revoked/);

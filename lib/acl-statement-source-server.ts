@@ -62,7 +62,7 @@ export function createAclStatementSource(input: AclStatementConfig, fetcher: typ
       atNow(at);
       const result = await call("snapshot", { evaluatedAt: at }, signal);
       atNow(at); signal.throwIfAborted();
-      if (!result || Object.keys(result).sort().join() !== "fence,snapshot" || !/^[a-f0-9]{64}$/.test(result.fence) ||
+      if (!result || Object.keys(result).sort().join() !== "fence,snapshot" || typeof result.fence !== "string" || !/^[a-f0-9]{64}$/.test(result.fence) ||
           !result.snapshot || Object.keys(result.snapshot).sort().join() !== "completeThrough,history,rows" ||
           result.snapshot.completeThrough !== at || result.snapshot.history?.completeThrough !== at ||
           !Array.isArray(result.snapshot.rows) || result.snapshot.rows.length > 1024 ||
@@ -71,6 +71,7 @@ export function createAclStatementSource(input: AclStatementConfig, fetcher: typ
       return { snapshot: structuredClone(result.snapshot) as ForumAuthoritySnapshot, fence: `${at}.${result.fence}` };
     },
     async append(fence: string, rows: ForumAuthoritySnapshot["rows"], guard: () => void, signal: AbortSignal) {
+      if (typeof fence !== "string") throw Error("Invalid statement fence");
       const match = /^(0|[1-9][0-9]{0,15})\.([a-f0-9]{64})$/.exec(fence);
       if (!match) throw Error("Invalid statement fence");
       const at = Number(match[1]); atNow(at); signal.throwIfAborted(); guard();
