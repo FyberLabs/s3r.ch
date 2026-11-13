@@ -1,6 +1,6 @@
 import {isFeedSource} from "@/lib/feed-types";
 import {cachedConversation} from "@/lib/feed-conversation";
-import {publicMediaSnapshot} from "@/lib/public-media-snapshot";
+import {authoritativePublicMediaSnapshot} from "@/lib/public-media-snapshot";
 import {createMediaBudget} from "@/lib/public-media-admission";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -10,7 +10,7 @@ export async function GET(request:Request){
  const query=new URL(request.url).searchParams,source=query.get("source"),id=query.get("id");
  if(!isFeedSource(source) || !id || id.length>2048)return new Response("Invalid conversation",{status:400});
  try {
-  const result=cachedConversation(publicMediaSnapshot(),source,id);
+  const result=cachedConversation(await authoritativePublicMediaSnapshot(),source,id);
   if(!result)return new Response("Post unavailable",{status:404});
   const body=JSON.stringify(result);
   if(new TextEncoder().encode(body).length>512*1024)return new Response("Conversation too large",{status:413});
