@@ -31,6 +31,8 @@ const origin=`http://127.0.0.1:${server.address().port}`;
 let browser;
 try {
  browser=await chromium.launch({headless:true});const page=await browser.newPage();
+ // Exercise the bundled fallback even on Chromium builds advertising native HLS.
+ await page.addInitScript(()=>{const original=HTMLMediaElement.prototype.canPlayType;HTMLMediaElement.prototype.canPlayType=function(type){return /mpegurl/i.test(type)?"":original.call(this,type);};});
  const external=[];page.on("request",request=>{if(!request.url().startsWith(origin))external.push(request.url());});
  await page.goto(origin);await page.getByRole("button",{name:"Show media"}).waitFor();
  assert.equal(requests.some(url=>url.includes("photo.png")),false);
@@ -44,6 +46,7 @@ try {
  await page.getByRole("button",{name:"Expand image"}).click();
  assert.equal(await page.locator("dialog[open]").count(),1);
  await page.keyboard.press("Escape");assert.equal(await page.locator("dialog[open]").count(),0);
+ console.log("HLS fixture state",await page.locator("video").nth(1).evaluate(element=>({src:element.src,ready:element.readyState,error:element.error?.code})));
  await page.waitForFunction(()=>document.querySelectorAll("video")[1]?.src.startsWith("blob:"));
  await page.locator("video").nth(1).evaluate(element=>{void element.play();});
  await page.waitForFunction(()=>document.querySelectorAll("video")[1]?.currentTime>0.2);
