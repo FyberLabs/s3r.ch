@@ -62,6 +62,12 @@ jobs:
           --test-coverage-include=lib/media-browser-session.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/media-browser-session.test.ts
+      - name: Private media library state and coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-library.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-library.test.ts
       - name: Trusted source coverage
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
