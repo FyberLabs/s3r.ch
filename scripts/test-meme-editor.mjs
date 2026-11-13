@@ -7,7 +7,7 @@ const bundle=await build({stdin:{contents:"import React from 'react';import {cre
 const server=createServer((req,res)=>{res.setHeader("content-type",req.url==="/app.js"?"text/javascript":"text/html");res.end(req.url==="/app.js"?bundle.outputFiles[0].contents:'<!doctype html><div id="root"></div><script src="/app.js"></script>');});
 await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));const origin=`http://127.0.0.1:${server.address().port}`;let browser;
 try{
- browser=await chromium.launch({headless:true});const page=await browser.newPage();const errors=[],remote=[];
+ browser=await chromium.launch({headless:true});const context=await browser.newContext();const page=await context.newPage();const errors=[],remote=[];
  page.on("pageerror",e=>errors.push(e.message));await page.route("**/*",route=>{if(new URL(route.request().url()).origin!==origin){remote.push(route.request().url());return route.abort();}return route.continue();});
  await page.goto(origin);await page.getByLabel("Top caption").fill("A <caption>");await page.getByLabel("Bottom caption").fill("Local only");
  await page.getByLabel("Layout").selectOption("panel");await page.getByRole("button",{name:"Prepare PNG"}).click();await page.getByRole("link",{name:"Save PNG"}).waitFor();
