@@ -52,7 +52,7 @@ test("conflicts and lost responses never replay a signed operation",async()=>{
   await assert.rejects(client.grant(object,owner,grant,key()));assert.equal(calls,2);
 });
 test("wrong session owner, rotated keys, expired views and malformed responses refuse before writes",async()=>{
-  for(const result of [null,[],{...view,owner:other},{...view,at:99},{...view,fence:"bad"},
+  for(const result of [null,[],{...view,owner:other},{...view,at:-1},{...view,fence:"bad"},
     {...view,bindings:[]},{...view,bindings:{}},{...view,bindings:{[owner]:{pub:other}}}]){
     let calls=0;const client=createPrivateMediaOwner(async()=>{calls++;return Response.json(result);},()=>100);
     await assert.rejects(client.grant(object,owner,grant,key()));assert.equal(calls,1);
@@ -88,4 +88,23 @@ test("private publication hashes the encrypted record and preserves the referenc
   await assert.rejects(client.publishWrap(object,owner,owner,{...wrap,wrappedKey:"00".repeat(40000)},reference));
   const bad=createPrivateMediaOwner(async(url)=>action(url)==="view"?Response.json(view):Response.json({digest:"f".repeat(64),record:"f".repeat(64)}),()=>100);
   await assert.rejects(bad.publishWrap(object,owner,owner,wrap,reference));
+});
+
+test("source timestamps survive clock skew and second boundaries; delayed views expire",async()=>{
+  for(const start of [0,99.9,1000000]) {
+    let now=start, calls=0;
+    const client=createPrivateMediaOwner(async(url,init)=>{
+      calls++;
+      if(action(url)==="view"){now+=0.2;return Response.json(view);}
+      assert.equal(JSON.parse(String(init?.body)).at,100);
+      return Response.json({accepted:true});
+    },()=>now);
+    await client.grant(object,owner,grant,key());assert.equal(calls,2);
+  }
+  for(const elapsed of [4,-1,NaN]) {
+    let now=0,calls=0;
+    const client=createPrivateMediaOwner(async()=>{calls++;now=elapsed;return Response.json(view);},()=>now);
+    await assert.rejects(client.grant(object,owner,grant,key()),PrivateMediaConflict);
+    assert.equal(calls,1);
+  }
 });

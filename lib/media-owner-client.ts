@@ -16,8 +16,10 @@ const objectOK = (object: string) => object.startsWith("media_") && isCanonicalO
 
 /** Owner writes never retry automatically. A lost response requires explicit
  * reconciliation against a new protected view before another signature. */
-export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = () => Date.now() / 1000) {
+export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = () => performance.now() / 1000) {
+  const fetchedAt = new WeakMap<object, number>();
   async function request(action: string, body: unknown, signal: AbortSignal): Promise<Record<string, unknown>> {
+    const started=clock();
     const deadline=AbortSignal.any([signal,AbortSignal.timeout(4000)]), encoded=JSON.stringify(body);
     if (new TextEncoder().encode(encoded).length>100000) throw Error("Private media request too large");
     deadline.throwIfAborted();
@@ -32,10 +34,13 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
     const result=await readBoundedIdentityJson(response,262144,deadline);
     deadline.throwIfAborted();
     if(!result || typeof result!=="object" || Array.isArray(result))throw Error("Invalid private media response");
+    fetchedAt.set(result,started);
     return result as Record<string,unknown>;
   }
   function current(view: Record<string,unknown>) {
-    if(view.at!==Math.floor(clock()) || !digest(view.fence))throw new PrivateMediaConflict();
+    const started=fetchedAt.get(view), elapsed=started===undefined ? NaN : clock()-started;
+    if(!Number.isSafeInteger(view.at) || (view.at as number)<0 || !digest(view.fence) ||
+        !Number.isFinite(elapsed) || elapsed<0 || elapsed>=4)throw new PrivateMediaConflict();
   }
   async function view(object: string, owner: string, signal: AbortSignal): Promise<Record<string,unknown> & {key:string}> {
     if(!objectOK(object) || !isSeaPubkey(owner))throw Error("Invalid private media owner");
@@ -45,7 +50,7 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
     const binding=(result.bindings as Record<string,unknown>)[owner];
     const pub=binding && typeof binding==="object" ? (binding as Record<string,unknown>).pub : null;
     if(typeof pub!=="string" || !isSeaPubkey(pub))throw Error("Invalid private media owner key");
-    return {...result,key:pub};
+    return Object.assign(result,{key:pub});
   }
   async function mutate(object: string, held: Record<string,unknown>, operation: string, payload: unknown, signal: AbortSignal) {
     current(held);signal.throwIfAborted();
