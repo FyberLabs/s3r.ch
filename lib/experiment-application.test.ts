@@ -41,7 +41,8 @@ test("product consumption preserves anonymous assignment through verified SEA si
   try{
     const ingress={host:"s3r.ch","x-forwarded-proto":"https"};
     assert.equal((await app.get(new Request("http://localhost:3000/api/experiments",{headers:ingress}))).status,200);
-    for(const extra of [{host:"attacker.invalid"},{"x-forwarded-host":"attacker.invalid"},{"x-forwarded-proto":"http"}]) {
+    const refusedHeaders:Record<string,string>[]=[{host:"attacker.invalid"},{"x-forwarded-host":"attacker.invalid"},{"x-forwarded-proto":"http"}];
+    for(const extra of refusedHeaders) {
       assert.equal((await app.get(new Request("http://localhost:3000/api/experiments",{headers:{...ingress,...extra}}))).status,403);
     }
     const write=()=>new Request("http://localhost:3000/api/experiments",{method:"POST",headers:{...ingress,origin:site,"content-type":"application/json"},body:JSON.stringify({action:"evaluate"})});
