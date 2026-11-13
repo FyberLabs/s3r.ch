@@ -20,6 +20,7 @@ test("privacy covers the disclosed data flows and consumer rights",()=>{
     "WalletConnect","Coinbase","SIWE","Cloudflare","Azure","Hypermesh","Spanopticon","45 calendar days","60 days","opt-in consent"])
     assert.ok(html.includes(text),text);
   assert.match(html,/mailto:legal@s3r.ch/);assert.match(html,/Privacy%20appeal/);
+  for(const text of ["116 Agnes Rd, Ste 200, Knoxville, TN 37919","90 days","at least one year","2 years","NCMEC","Mailed requests follow the same verification"])assert.ok(html.includes(text),text);
 });
 test("shared footer exposes legal and contact links without sign-in",()=>{
   const html=renderToStaticMarkup(createElement(SiteFooter));

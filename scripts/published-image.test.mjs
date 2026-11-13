@@ -33,6 +33,15 @@ function run(mode = "ok", override = {}) {
     else if (path === "/api/version") console.log(JSON.stringify({revision:(process.env.TEST_MODE === "wrong-revision" ? "b" : "a").repeat(40)}));
     else process.exit(1);
   `);
+  executable("node", `
+    const fs = require("node:fs"), args = process.argv.slice(2);
+    if (args[0]?.endsWith("check-legal-routes.mjs")) {
+      fs.appendFileSync(process.env.TEST_LOG, JSON.stringify(["legal-routes",args[1]])+"\\n");
+      process.exit(process.env.TEST_MODE === "legal-fails" ? 1 : 0);
+    }
+    const result = require("node:child_process").spawnSync(${JSON.stringify(process.execPath)},args,{stdio:"inherit"});
+    process.exit(result.status ?? 1);
+  `);
   executable("sleep", "");
   try {
     const result = spawnSync("bash", [resolve("scripts/require-anonymous-pull.sh")], {
@@ -50,6 +59,7 @@ test("pulls and boots the immutable published digest, never the local rebuild or
   const r = run(); assert.equal(r.status, 0, r.stderr);
   const pulls = r.calls.filter(args => args[0] === "--config");
   assert.equal(pulls.length, 1); assert.deepEqual(pulls[0].slice(2), ["pull", `${image}@${digest}`]);
+  assert.deepEqual(r.calls.filter(args => args[0] === "legal-routes"), [["legal-routes","http://127.0.0.1:3921"]]);
   const runs = r.calls.filter(args => args[0] === "run");
   assert.ok(runs.some(args => args.includes("-d")), "actually boots the published image");
   assert.ok(runs.some(args => args.some(a => a.includes("require.resolve('viem')"))));
@@ -57,7 +67,7 @@ test("pulls and boots the immutable published digest, never the local rebuild or
   assert.ok(!r.calls.flat().includes("s3rch:release"));
   assert.ok(!r.calls.flat().includes(`${image}:0.1.0`));
 });
-for (const mode of ["pull-fails", "package-missing", "boot-fails", "wrong-revision"]) test(`published artifact gate fails closed when ${mode}`, () => {
+for (const mode of ["pull-fails", "package-missing", "boot-fails", "wrong-revision", "legal-fails"]) test(`published artifact gate fails closed when ${mode}`, () => {
   const r = run(mode); assert.notEqual(r.status, 0);
   if (mode === "pull-fails") {
     assert.equal(r.calls.filter(args => args[0] === "--config").length, 5);

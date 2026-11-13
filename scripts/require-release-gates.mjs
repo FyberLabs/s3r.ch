@@ -15,6 +15,7 @@ export const TRUSTED_RELEASE_FILES = [
   "scripts/version-tag-plan.mjs",
   "scripts/require-anonymous-pull.sh",
   "scripts/smoke-image.sh",
+  "scripts/check-legal-routes.mjs",
   "scripts/startup-packages.mjs",
   "scripts/publish-github-release.sh",
 ];
