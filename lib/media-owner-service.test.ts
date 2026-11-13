@@ -30,7 +30,8 @@ test("unknown actions, spoofed owner and malformed bodies never call provider",a
     ["mutate",{...mutation,at:-1}],["mutate",{...mutation,fence:"bad"}],["mutate",{...mutation,operation:"policy"}],
     ["mutate",{...mutation,payload:[]}],["publish-wrap",{...publication,metadata:[]}],
     ["publish-wrap",{...publication,wrapBase64:"!"}]] as const)assert.notEqual((await handle(action,request(body))).status,200);
-  for(const headers of [{origin:"https://evil.example"},{"content-encoding":"gzip"},{"content-type":"text/plain"}])
+  const badHeaders: Record<string,string>[] = [{origin:"https://evil.example"},{"content-encoding":"gzip"},{"content-type":"text/plain"}];
+  for(const headers of badHeaders)
     assert.notEqual((await handle("view",request({object},headers))).status,200);
   assert.equal((await handle("view",new Request("https://s3r.ch",{method:"GET"}))).status,405);assert.equal(calls,0);
 });
