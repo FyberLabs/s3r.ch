@@ -45,6 +45,9 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     },signal);
   }
   return Object.freeze({
+    catalog(page:number,signal?:AbortSignal){
+      return run((pair,transport,deadline)=>createPrivateMediaOwner(transport).catalog(page,pair.pub,deadline),signal);
+    },
     grant(object:string,owner:string,draft:unknown,signal?:AbortSignal){
       return signed((client,key,deadline)=>client.grant(object,owner,draft,key,deadline),signal);
     },

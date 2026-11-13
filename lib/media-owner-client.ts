@@ -1,3 +1,4 @@
+import { isMediaCatalogPageNumber, parseMediaCatalogPage } from "./media-catalog";
 import { signPrivateMediaGrant, signPrivateMediaEpoch, signPrivateMediaFinalization, signPrivateMediaStatus } from "sociacl-ids/private-media";
 import type { ItemReaderWrap } from "sociacl-ids";
 import type { MediaCiphertextReference } from "./media-client";
@@ -65,6 +66,13 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
     finally { held.fill(0); }
   }
   return Object.freeze({
+    async catalog(page: number, owner: string, signal?: AbortSignal) {
+      if (!isMediaCatalogPageNumber(page) || !isSeaPubkey(owner)) throw Error("Invalid media catalog request");
+      const result = await request("catalog", {page}, signal ?? new AbortController().signal);
+      const started = fetchedAt.get(result), elapsed = started === undefined ? NaN : clock() - started;
+      if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 4) throw new PrivateMediaConflict();
+      return parseMediaCatalogPage(result, page, owner);
+    },
     async grant(object: string, owner: string, draft: unknown, scalar: Uint8Array, signal?: AbortSignal) {
       const input=structuredClone(draft);
       return withKey(scalar,signal,async(key,deadline)=>{

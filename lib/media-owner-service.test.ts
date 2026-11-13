@@ -95,3 +95,22 @@ test("owner views preserve source clocks across transport and session boundaries
     }
   }
 });
+
+test("catalog uses fixed credentials, exact bounded pages and private responses",async()=>{
+  const result={at:100,objects:[object],nextPage:1};
+  let calls=0;
+  const handle=service(async(url,init)=>{calls++;assert.equal(actionName(url),"catalog");
+    assert.deepEqual(JSON.parse(String(init?.body)),{page:0});return Response.json(result);});
+  const response=await handle("catalog",request({page:0}));
+  assert.equal(response.status,200);assert.deepEqual(await response.json(),result);
+  assert.equal(response.headers.get("cache-control"),"private, no-store");
+  for(const body of [{page:-1},{page:16},{page:true},{page:0.5},{page:0,owner:principal},{object}])
+    assert.equal((await handle("catalog",request(body))).status,400);
+  assert.equal(calls,1);
+  for(const bad of [{...result,nextPage:null},{...result,at:-1},{...result,objects:[object,object]},
+    {...result,objects:["private-secret"]},{...result,objects:new Array(5).fill(object)},{...result,secret:"hidden"}]) {
+    const rejected=await service(async()=>Response.json(bad))("catalog",request({page:0}));
+    assert.equal(rejected.status,403);assert.equal(await rejected.text(),"");
+  }
+  assert.equal((await service(async()=>Response.json({at:100,objects:[],nextPage:null}))("catalog",request({page:15}))).status,200);
+});

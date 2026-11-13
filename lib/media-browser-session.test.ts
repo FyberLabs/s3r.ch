@@ -80,3 +80,16 @@ test("session changes while consuming a write response refuse completion without
   });
   await assert.rejects(browser.grant(object,owner,grant));assert.equal(calls,2);
 });
+
+test("catalog is private navigation bound to the unlocked session",async()=>{
+  unlock();let calls=0;
+  const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
+    calls++;assert.equal(String(url),"/api/media/owner/catalog");assert.deepEqual(JSON.parse(String(init?.body)),{page:0});
+    return Response.json({at:1,objects:[object],nextPage:1});
+  });
+  assert.deepEqual(await browser.catalog(0),{at:1,objects:[object],nextPage:1});
+  for(const page of [-1,16,0.5,NaN])await assert.rejects(browser.catalog(page));
+  assert.equal(calls,1);
+  const changing=createPrivateMediaBrowser(()=>owner,async()=>{forgetUnlockedMeshPair();return Response.json({at:1,objects:[object],nextPage:1});});
+  await assert.rejects(changing.catalog(0));
+});
