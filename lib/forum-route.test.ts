@@ -10,6 +10,8 @@ import { GET as sessionGET } from "../app/api/identity/session/route";
 import { oauthSessionCookieName, sessionCookieName } from "./identity/cookies";
 import { linkLoginPaths, useLinkStore, unavailableLinkStore } from "./identity/link";
 import { signBackupSession } from "./identity/oauth";
+import { SignJWT } from "jose";
+import { secretKey } from "./identity/secret";
 import { getIdentitySecret } from "./identity/secret";
 import { signSessionToken } from "./identity/session";
 
@@ -173,52 +175,48 @@ describe("forum route resolves a login, then honors invites", { concurrency: 1 }
       assert.equal(daveBody.owner, DAVE);
       assert.equal((await sessionGET(sessionReq(carol))).status, 401);
 
+      const malformed = await POST(new Request("http://localhost/api/forum",{
+        method:"POST",headers:{cookie:bob,"content-type":"application/json"},body:"{",
+      }));
+      assert.equal(malformed.status,400);
+      for (const cookie of [sessionCookieName(false)+"=invalid",oauthSessionCookieName(false)+"=invalid"]) {
+        assert.equal((await GET(req(cookie))).status,401);
+        assert.equal((await post(cookie,{action:"token"})).status,401);
+      }
+
       const minted = await post(bob, { action: "token" });
-      assert.equal(minted.status, 200);
-      assert.equal(minted.body.owner, ALICE);
-      const forumToken = minted.body.token as string;
-      assert.equal(forumToken.includes("hm_"), false);
-      const asToken = await GET(
-        new Request("http://localhost/api/forum", {
-          headers: { "x-s3rch-forum-token": forumToken },
-        }),
-      );
-      assert.equal(asToken.status, 200);
-      const tokenView = (await asToken.json()) as {
-        channel: { owner: string };
-        messages: { body: string }[];
-      };
-      assert.equal(tokenView.channel.owner, ALICE);
-      assert.deepEqual(
-        tokenView.messages.map((row) => row.body),
-        ["alice only", "from carol"],
-      );
-      const remint = await POST(
-        new Request("http://localhost/api/forum", {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-s3rch-forum-token": forumToken,
-          },
-          body: JSON.stringify({ action: "token" }),
-        }),
-      );
-      assert.equal(remint.status, 403);
-      assert.equal((await remint.json()).reason, "forum-token");
-      assert.equal(
-        (
-          await GET(
-            new Request("http://localhost/api/forum", {
-              headers: { "x-s3rch-forum-token": "not-a-token" },
-            }),
-          )
-        ).status,
-        401,
-      );
+      assert.equal(minted.status, 410);
+      assert.equal(minted.body.error, "owner-bot-token-retired");
+      assert.equal(minted.body.token, undefined);
+      const forumToken = await new SignJWT({kind:"forum-bot",owner:ALICE})
+        .setProtectedHeader({alg:"HS256",typ:"JWT"}).setSubject(ALICE)
+        .setIssuedAt().setExpirationTime("1h").sign(secretKey(secret));
+      const credentials: Record<string,string>[] = [
+        {"x-s3rch-forum-token":forumToken},
+        {"x-s3rch-forum-token":forumToken,cookie:bob},
+        {"x-s3rch-forum-token":"",cookie:bob},
+        {authorization:"Bearer "+forumToken,cookie:bob},
+      ];
+      for (const headers of credentials) {
+        const read = await GET(new Request("http://localhost/api/forum",{headers}));
+        assert.equal(read.status,401);
+        assert.equal(read.headers.get("cache-control"),"private, no-store");
+        for (const action of ["token","post","invite","desktop"]) {
+          const result = await POST(new Request("http://localhost/api/forum",{
+            method:"POST",headers:{...headers,"content-type":"application/json"},
+            body:JSON.stringify({action,body:"must not act as owner"}),
+          }));
+          assert.equal(result.status,401);
+        }
+      }
 
       const oldEnv = process.env.NODE_ENV;
       const oldSecret = process.env.IDENTITY_SESSION_SECRET;
       try {
+        Object.assign(process.env, { NODE_ENV: "production" });
+        delete process.env.IDENTITY_SESSION_SECRET;
+        assert.equal((await GET(req(bob))).status,500);
+        assert.equal((await post(bob,{action:"token"})).status,500);
         Object.assign(process.env, { NODE_ENV: "production", IDENTITY_SESSION_SECRET: secret });
         useLinkStore(unavailableLinkStore);
         for (const cookie of [bob, carol]) {
