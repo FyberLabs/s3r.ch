@@ -230,6 +230,7 @@ export function fromGunNode(
   if (v === null) {
     return null;
   }
+  const media = parseFeedMedia(node.media);
   return {
     id: node.id.trim(),
     source,
@@ -240,7 +241,7 @@ export function fromGunNode(
     permalink: asText(node.permalink),
     tags: splitTags(node.tags),
     provenance: asText(node.provenance),
-    ...(parseFeedMedia(node.media).length ? {media: parseFeedMedia(node.media)} : {}),
+    ...(media.length ? {media} : {}),
     v,
   };
 }

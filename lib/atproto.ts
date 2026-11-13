@@ -1,3 +1,4 @@
+import { atprotoMedia } from "./feed-media-adapters";
 import { collectSourceWindows } from "./source-windows";
 /**
  * ATProto public AppView (no auth, no Neynar).
@@ -113,6 +114,7 @@ export function normalizeAtprotoPost(raw: unknown, provenance: string): FeedItem
   return {
     id: uri,
     source: "atproto",
+    media: atprotoMedia(post.embed),
     kind: "social",
     author: handle,
     body: clip(text, BODY_MAX),
