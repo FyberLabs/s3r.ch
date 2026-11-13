@@ -63,7 +63,8 @@ export async function siteAgentSession(request: Request, action: string,
     return token ? reply(200,{token,tokenType:"Bearer"}) : reply(403,{error:"proof"});
   } catch {return reply(503,{error:"agent-identity-unavailable"});}
 }
-/** Every object consumer supplies its own required scopes and still checks ACL. */
+/** Every object consumer supplies required scopes and checks ACL for result.agent.
+ * result.principal is the delegating owner, not permission to borrow owner ACL. */
 export async function authenticateAgentRequest(request: Request, scopes: readonly string[],
   env: Readonly<Record<string,string|undefined>> = process.env, fetcher: typeof fetch = fetch,
   clock = () => Math.floor(Date.now()/1000)) {

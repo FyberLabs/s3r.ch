@@ -215,7 +215,8 @@ The shared replay configuration remains required and dedicated to identity.
 scopes. `POST /api/identity/agent/exchange` accepts the challenge and agent SEA
 signature, returning a bearer token without browser cookies. Every protected
 consumer must use `authenticateAgentRequest` with its own required scopes and
-then enforce current object ACL. A token alone is not an object grant.
+then enforce current object ACL for the returned agent principal. The delegating
+owner does not lend its object grants to the bot. A token alone is not an object grant.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
