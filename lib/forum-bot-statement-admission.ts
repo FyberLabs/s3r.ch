@@ -1,5 +1,5 @@
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
-import { parseForumAuthority } from "./identity/forum-authority-records";
+import { parseForumAuthority, type ParsedAuthority } from "./identity/forum-authority-records";
 import { isForumObjectId, sameEmbeddedPrincipal } from "./identity/forum-check";
 import { matchesBrowserOrigin } from "./request-origin";
 import type { LiveSquadSpec } from "./squad-view";
@@ -50,12 +50,9 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       const held = await bounded(source.read(at, signal));
       if (typeof held.fence !== "string" || !held.fence || held.fence.length > 4096) return reply(503);
       const snapshot = structuredClone(held.snapshot);
-      // Compare the retained total under the same source fence used by append.
-      // Never commit a snapshot that the authority endpoint/reader cannot serve.
-      if (!Array.isArray(snapshot.rows) || snapshot.rows.length + body.rows.length > 1024) return reply(507);
-      const nextSnapshot = { ...snapshot, rows: [...snapshot.rows, ...body.rows] };
-      if (Buffer.byteLength(JSON.stringify({ version: 1, forumId: spec.forumId, owner: spec.owner,
-          evaluatedAt: at, snapshot: nextSnapshot }), "utf8") > 4 * 1024 * 1024) return reply(507);
+      const responseSize = (value: ForumAuthoritySnapshot) => Buffer.byteLength(JSON.stringify({ version: 1,
+        forumId: spec.forumId, owner: spec.owner, evaluatedAt: at, snapshot: value }), "utf8");
+      if (!Array.isArray(snapshot.rows) || snapshot.rows.length > 1024 || responseSize(snapshot) > 4 * 1024 * 1024) return reply(507);
       const authority = createForumAuthority(config, clock), verified = await authority.refresh(snapshot, at);
       const principal = authority.graph.principalForKey(session.key, at);
       if (!verified.ok || verified.diagnostics.length || !principal || authority.graph.ownerOf(spec.forumId) !== spec.owner ||
@@ -78,11 +75,26 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
         if (p.kind === "see" && (p.row.until > at + 3600 || (p.row.stated === 1 &&
             !authority.graph.checkForumSee(spec.forumId, p.row.accessor, at).allowed))) return reply(403);
       }
+      // Canonical signed meaning, not object key order or signature encoding,
+      // identifies a retained row. Verify supplied signatures even on retries.
+      const identity = (row: ParsedAuthority) => JSON.stringify([row.kind, row.soul, Buffer.from(row.bytes).toString("base64")]);
+      const seen = new Set(snapshot.rows.map(row => {
+        const value = parseForumAuthority(row.kind, row.record);
+        if (!value) throw Error("Invalid retained authority"); return identity(value);
+      }));
+      const additions = body.rows.filter((_row: unknown, index: number) => {
+        const key = identity(parsed[index]); if (seen.has(key)) return false; seen.add(key); return true;
+      });
+      // The same complete-history fence makes the aggregate check atomic.
+      const nextSnapshot = { ...snapshot, rows: [...snapshot.rows, ...additions] };
+      if (nextSnapshot.rows.length > 1024 || responseSize(nextSnapshot) > 4 * 1024 * 1024) return reply(507);
       const candidate = createForumAuthority(config, clock);
-      const result = await candidate.refresh(nextSnapshot, at);
+      const result = await candidate.refresh({ ...snapshot, rows: [...snapshot.rows, ...body.rows] }, at);
       if (!result.ok || result.diagnostics.length || candidate.graph.ownerOf(object) !== principal) return reply(403);
       const guard = () => { signal.throwIfAborted(); if (clock() !== at) throw Error("Statement authority expired"); };
-      guard(); return reply(await bounded(source.append(held.fence, structuredClone(body.rows), guard, signal)) ? 200 : 409);
+      guard();
+      if (additions.length === 0) return reply(200);
+      return reply(await bounded(source.append(held.fence, structuredClone(additions), guard, signal)) ? 200 : 409);
     } catch { return reply(503); } finally {
       clearTimeout(timer); deadline.abort();
       if (reserved !== null) { active--; const count = (readers.get(reserved) ?? 1) - 1; if (count) readers.set(reserved, count); else readers.delete(reserved); }

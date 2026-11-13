@@ -32,7 +32,8 @@ async function setup(t: test.TestContext) {
   const request = (extra = {}, key?: string) => new Request(origin + "/api/bot/statement", { method: "POST",
     headers: { Origin: origin, "Content-Type": "application/json", ...(key ? { "x-test-key": key } : {}) },
     body: JSON.stringify({ version: 1, forumId: f.forum, owner: f.owner.pub, evaluatedAt: f.now(), rows: additions, ...extra }) });
-  return { f, service, additions, request, retained: () => rows.length,
+  return { f, service, additions, request,
+    nextObject: () => sign("object", { object: `stmt_${seaToPrincipalKey(f.b.pub)}_${randomUUID().replaceAll("-", "")}`, owner: f.b.pub, issuedAt: f.now() }), retained: () => rows.length,
     fill(count: number) { while (rows.length < count) rows.push(structuredClone(rows[0])); }, writes: () => writes, hang(value: boolean) { hung = value; }, change() { changed = true; }, expire() { expired = true; } };
 }
 test("an independently authenticated bot admits only its signed statement and current reader grants", async t => {
@@ -76,6 +77,21 @@ test("retained history capacity is checked before the fenced append", async t =>
   assert.equal((await s.service(s.request())).status, 507); assert.equal(s.retained(), 1023); assert.equal(s.writes(), 0);
   assert.equal((await s.service(s.request({ rows: [s.additions[0]] }))).status, 200);
   assert.equal(s.retained(), 1024); assert.equal(s.writes(), 1);
-  assert.equal((await s.service(s.request({ rows: [s.additions[0]] }))).status, 507);
+  assert.equal((await s.service(s.request({ rows: [s.additions[0]] }))).status, 200);
+  assert.equal((await s.service(s.request({ rows: [s.nextObject()] }))).status, 507);
   assert.equal(s.retained(), 1024); assert.equal(s.writes(), 1);
+});
+
+test("canonical signed retries do not consume retained history slots", async t => {
+  const s = await setup(t), before = s.retained();
+  assert.equal((await s.service(s.request({ rows: [...s.additions, ...s.additions] }))).status, 200);
+  assert.equal(s.retained(), before + 2); assert.equal(s.writes(), 1);
+  for (let i = 0; i < 3; i++) {
+    const reordered = s.additions.map(row => ({ ...row, record: Object.fromEntries(Object.entries(row.record).reverse()) }));
+    assert.equal((await s.service(s.request({ rows: reordered }))).status, 200);
+  }
+  assert.equal(s.retained(), before + 2); assert.equal(s.writes(), 1);
+  const forged = structuredClone(s.additions); forged[0].record.sig = "forged";
+  assert.notEqual((await s.service(s.request({ rows: forged }))).status, 200);
+  assert.equal(s.retained(), before + 2); assert.equal(s.writes(), 1);
 });

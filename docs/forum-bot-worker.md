@@ -111,7 +111,9 @@ wallet. The forum card deliberately does not fetch these handles.
 The primary source append is also bounded by the authority reader contract:
 at most 1024 retained signed rows and a 4 MiB complete response. The source
 fence must cover the retained total; concurrent growth must lose the comparison.
-An admission that would exceed these limits returns 507 without appending.
+Canonical signed retries are idempotent: retained rows and duplicates within
+one request consume no additional slots. Supplied signatures are still checked.
+An admission of new rows that would exceed these limits returns 507 without appending.
 
 Client capacity is bounded: 4096 retained reports, 256 artifacts of at most 1 MiB each,
 and 512 authorized statement subscriptions. Capacity exhaustion refuses work;
