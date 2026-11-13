@@ -8,9 +8,9 @@ export function ForumBotMessage({ message, author, viewer, onPrepareCancel }: {
   onPrepareCancel?: (body: string) => void;
 }) {
   const kind = message[0];
-  const expiry = message[0] === "task" || message[0] === "approval" ? new Date(message[5] * 1000) : null;
+  const expiry = message[0] === "task" ? new Date(message[5] * 1000) : message[0] === "approval" ? new Date(message[4] * 1000) : null;
   const expiryLabel = expiry && Number.isFinite(expiry.getTime()) ? expiry.toISOString().replace("T", " ").replace(".000Z", " UTC") : "Invalid deadline";
-  const approvedAt = message[0] === "approval" ? new Date(message[4] * 1000) : null;
+  const approvedAt = message[0] === "approval" ? new Date(message[3] * 1000) : null;
   const approvalLabel = approvedAt && Number.isFinite(approvedAt.getTime()) ? approvedAt.toISOString().replace("T", " ").replace(".000Z", " UTC") : "Invalid approval time";
   const title = kind === "task" ? "Task request" : kind === "approval" ? "Local approval reported" : kind === "ack" ? "Acknowledgement" :
     kind === "cancel" ? "Cancellation request" : kind === "progress" ? "Progress report" : "Result report";
@@ -34,7 +34,6 @@ export function ForumBotMessage({ message, author, viewer, onPrepareCancel }: {
           <dt>Delegation limit</dt><dd>{message[7]}</dd>
         </>}
         {message[0] === "approval" && <>
-          <dt>Reported approval reference</dt><dd><code>{message[3]}</code></dd>
           <dt>Reported approval time</dt><dd>{approvalLabel}</dd>
           <dt>Approval deadline</dt><dd>{expiryLabel}</dd>
         </>}

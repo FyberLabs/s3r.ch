@@ -96,7 +96,7 @@ export function createForumBotWorker(input: {
         if (!/^[0-9a-f-]{36}$/.test(submitted.id)) throw Error("Invalid local task identity");
         active = { task: id, handle: claimed.handle, session: grant.session, local: submitted.id, until, progress: -1, resume: consent.resume, grant: JSON.stringify(grant) };
         uncertainUntil = 0;
-        await publish(["approval", input.tenant, id, grant.handle, approvedAt, Math.min(grant.expires, claimed.expires)]);
+        await publish(["approval", input.tenant, id, approvedAt, Math.min(grant.expires, claimed.expires)]);
         await publish(["ack", input.tenant, id]); break;
       }
     }); },

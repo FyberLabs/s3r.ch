@@ -149,8 +149,8 @@ export function openForumBotChannel(input: {
             (message[0] === "cancel" ? row.author !== chain[0].author && row.author !== last.author : row.author !== last.recipient))
           throw Error("Forum bot event authority unavailable");
         let cancelled = false;
-        if (message[0] === "approval" && (message[3] !== last.task[4] || message[5] > last.task[5] ||
-            message[4] < last.at || message[4] > row.issuedAt))
+        if (message[0] === "approval" && (message[4] > last.task[5] ||
+            message[3] < last.at || message[3] > row.issuedAt))
           throw Error("Forum bot approval report binding differs");
         const affected: string[] = [];
         if (message[0] === "cancel") {

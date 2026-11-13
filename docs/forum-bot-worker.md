@@ -81,8 +81,9 @@ restores chains while the durable inbox deduplicates execution. Its checkpoint
 is an opaque last accepted statement ID, not an ordered Gun offset.
 
 Local approval reports, acknowledgments, progress and results first enter the private durable outbox.
-After a successful submission, the bot reports the local approval handle, time,
-and deadline. It never publishes the approved tool arguments or reader list.
+After a successful submission, the bot reports the task ID, approval time,
+and deadline. It never republishes the private approval handle, approved tool
+arguments, or reader list to report readers.
 This is a historical report by the bot; neither it nor the forum card can grant
 execution permission. The private approval and live session consent still control
 each dispatch and cancellation.

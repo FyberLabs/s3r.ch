@@ -40,6 +40,7 @@ test("worker dispatches only the approved reference once and durably reports act
   const s = await setup(t); assert.equal(await s.worker.deliver([s.signed]), "stored");
   assert.equal(await s.worker.deliver([s.signed]), "duplicate");
   await s.worker.tick(); assert.equal(s.submissions(), 1); assert.match(s.outbox.next()!.body, /approval/);
+  assert.ok(!s.outbox.next()!.body.includes(s.task[4]), "private approval handle must not enter report readers");
   s.complete(); await s.worker.tick(); assert.equal(s.channel.status(s.task[2]), "completed");
   await s.worker.deliver([s.signed]); await s.worker.tick(); assert.equal(s.submissions(), 1);
 });

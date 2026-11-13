@@ -55,19 +55,19 @@ test("the durable task context refuses a rewritten ancestor after restart", asyn
 test("bot protocol carries bounded handles and explicit status correlation", () => {
   const tenant = randomUUID(), task = randomUUID();
   for (const message of [["ack", tenant, task], ["cancel", tenant, task], ["progress", tenant, task, 0],
-    ["result", tenant, task, "completed", null], ["approval", tenant, task, randomUUID(), 10, 20]] as BotMessage[]) assert.deepEqual(parseBotMessage(encodeBotMessage(message)), message);
+    ["result", tenant, task, "completed", null], ["approval", tenant, task, 10, 20]] as BotMessage[]) assert.deepEqual(parseBotMessage(encodeBotMessage(message)), message);
   for (const body of ['visor:v2:[]', 'visor:v1:[]', 'visor:v1:' + JSON.stringify(["result", tenant, task, "completed", "https://private/file"]),
-    'visor:v1:' + JSON.stringify(["approval", tenant, task, randomUUID(), 20, 20]),
+    'visor:v1:' + JSON.stringify(["approval", tenant, task, 20, 20]),
     'visor:v1:' + JSON.stringify(["progress", tenant, task, 101])]) assert.equal(parseBotMessage(body), null);
 });
 
-test("local approval reports bind the assigned bot and task handle without authorizing execution", async t => {
+test("local approval reports bind the assigned bot and task without authorizing execution", async t => {
   const f = await fixture(t), c = f.open(), task = f.task();
   await c.receive([await f.signed(task)]);
-  const report: BotMessage = ["approval", f.tenant, task[2], task[4], f.now(), task[5]];
+  const report: BotMessage = ["approval", f.tenant, task[2], f.now(), task[5]];
   await assert.rejects(c.event(await f.signed(report, f.a)));
-  await assert.rejects(c.event(await f.signed(["approval", f.tenant, task[2], randomUUID(), f.now(), task[5]], f.b)));
-  await assert.rejects(c.event(await f.signed(["approval", f.tenant, task[2], task[4], f.now(), task[5] + 1], f.b)));
+  await assert.rejects(c.event(await f.signed(["approval", f.tenant, randomUUID(), f.now(), task[5]], f.b)));
+  await assert.rejects(c.event(await f.signed(["approval", f.tenant, task[2], f.now(), task[5] + 1], f.b)));
   assert.equal((await c.event(await f.signed(report, f.b))).message[0], "approval");
   assert.equal(c.status(task[2]), "pending");
   f.setConsent(false); assert.throws(() => c.claim(task[2]), /authority/);
