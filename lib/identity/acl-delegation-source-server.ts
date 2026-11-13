@@ -82,7 +82,7 @@ export function createAclDelegationSource(config: AclStatementConfig, audience: 
     if (!/^[0-9a-f]{64}$/.test(id)) return null;
     const { snapshot } = await source.read(at, AbortSignal.timeout(1500));
     if (snapshot.audience !== audience) throw Error("Wrong delegation audience");
-    const { accounts, contextFor } = contexts(snapshot.history, trust, at);
+    const { accounts, contextFor } = contexts(snapshot.history, structuredClone(trust), at);
     const delegations = new Map<string, ReturnType<typeof parseAgentDelegation> extends Result<infer T> ? T : never>();
     const revocations: ReturnType<typeof parseAgentRevocation> extends Result<infer T> ? T[] : never = [];
     for (const raw of snapshot.rows) {

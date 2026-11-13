@@ -81,3 +81,10 @@ test("caller mutations cannot install new witness trust after construction", asy
   (h.trust.jwks.keys as unknown[]).splice(0);
   assert.ok(await h.sessions.agentChallenge(h.id,["forum:read"]));
 });
+
+test("returned contexts cannot mutate trust for later source reads", async () => {
+  const h=setup(), first=await h.source(h.id,f.now); assert.ok(first);
+  (first.context.jwks.keys as unknown[]).splice(0);
+  (first.context.pinnedIss as Set<string>).clear();
+  assert.ok(await h.sessions.agentChallenge(h.id,["forum:read"]));
+});
