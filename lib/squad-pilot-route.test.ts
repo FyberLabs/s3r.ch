@@ -25,20 +25,26 @@ test("retired assignment actions cannot select a server executor", async () => {
     for (const action of ["plan", "start-signed", "read", "start", "resume", "abort", "read-child", "child"]) {
       const response = await POST(new Request("https://s3r.ch/api/squad/pilot/assignment/" + action, {method:"POST"}),
         {params:Promise.resolve({path:["assignment",action]})});
-      assert.equal(response.status,404);
+      assert.equal(response.status,503);
     }
   } finally { if(saved===undefined) delete process.env.S3RCH_SQUAD_PILOT; else process.env.S3RCH_SQUAD_PILOT=saved; }
 });
 
-test("retired Squad session aliases cannot create a second issuer", async () => {
-  const saved = process.env.S3RCH_SQUAD_PILOT;
+test("Squad session aliases forward to the shared identity handler without pilot config", async () => {
+  const {siteSeaSession} = await import("./identity/site-sea-session-server");
+  const keys=["S3RCH_SQUAD_PILOT","S3RCH_IDENTITY_REPLAY_BACKEND"] as const;
+  const saved=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
   try {
-    process.env.S3RCH_SQUAD_PILOT = "retired-config-must-not-be-loaded";
-    for (const action of ["challenge", "exchange", "logout"]) {
-      const response = await POST(new Request("https://s3r.ch/api/squad/pilot/session/" + action,{method:"POST"}),
-        {params:Promise.resolve({path:["session",action]})});
-      assert.equal(response.status,404);
-      assert.equal(response.headers.has("set-cookie"),false);
+    process.env.S3RCH_SQUAD_PILOT="old-pilot-config-is-not-an-issuer";
+    delete process.env.S3RCH_IDENTITY_REPLAY_BACKEND;
+    for(const action of ["challenge","exchange","logout","unknown"]) {
+      const make=()=>new Request("https://test.s3r.ch/api/squad/pilot/session/"+action,
+        {method:"POST",headers:{Origin:"https://test.s3r.ch","Content-Type":"application/json"},body:"{}"});
+      const direct=await siteSeaSession(make(),action);
+      const alias=await POST(make(),{params:Promise.resolve({path:["session",action]})});
+      assert.equal(alias.status,direct.status);
+      assert.equal(alias.headers.get("set-cookie"),direct.headers.get("set-cookie"));
+      assert.deepEqual(await alias.json(),await direct.json());
     }
-  } finally { if(saved===undefined) delete process.env.S3RCH_SQUAD_PILOT; else process.env.S3RCH_SQUAD_PILOT=saved; }
+  } finally { for(const key of keys) {if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];} }
 });
