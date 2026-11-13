@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { checkExperimentExpiry } from "./experiment-expiry-probes.mjs";
 import { loadExperimentBrowserFixture, scheduledExperiments } from "./experiment-browser-fixture.mjs";
 const cases = [];
 const report = (status, reason) => console.log(JSON.stringify({ schema_version: 1, status, ...(reason ? { reason } : {}), cases }));
@@ -83,7 +84,31 @@ else {
     await until(() => evaluations.length > previous);
     assert.equal(evaluations.at(-1).cohort, original.cohort);
     cases.push({ name: "refresh-preserves-assignment", status: "passed" });
-    status = "passed"; reason = undefined;
+    const expiryCases = ["browser-display-expires-offline", "browser-display-recovers-online"];
+    try {
+      await page.bringToFront();
+      await checkExperimentExpiry({
+        assignment: original, latest: () => evaluations.at(-1), now: Date.now,
+        offline: value => context.setOffline(value), wait: milliseconds => page.waitForTimeout(milliseconds),
+        label: async variant => {
+          await page.getByTestId("experiment-hero").getByRole("heading", { level: 1, name: variant === "create" ? "Create together, with people and AI." : "Where humans and AI create together.", exact: true }).waitFor({ state: "visible", timeout: 5000 });
+        },
+        recover: async before => {
+          await until(() => evaluations.at(-1)?.expiresAt > before.expiresAt && evaluations.at(-1)?.cohort === original.cohort);
+          return evaluations.at(-1);
+        },
+        passed: name => cases.push({ name, status: "passed" }),
+      });
+    } catch {
+      let failed = false;
+      for (const name of expiryCases) {
+        if (cases.some(row => row.name === name)) continue;
+        cases.push({ name, status: failed ? "blocked" : "failed" }); failed = true;
+      }
+      reason = "browser-display-expiry-failed";
+    }
+    status = cases.every(row => row.status === "passed") ? "passed" : "failed";
+    if (status === "passed") reason = undefined; else process.exitCode = 1;
   } catch { status = fixture ? "failed" : "blocked"; process.exitCode = fixture ? 1 : 78; }
   finally {
     if (page && fixture) {
