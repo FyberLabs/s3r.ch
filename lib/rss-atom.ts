@@ -1,3 +1,4 @@
+import { mediaFields } from "./feed-media-adapters";
 import { mediaKindForUrl, parseFeedMedia } from "./feed-media";
 import { collectSourceWindows } from "./source-windows";
 import type { FeedItem, FeedSource, SourcePull } from "./feed-types";
@@ -78,7 +79,7 @@ function fromRss(block: string, feedUrl: string): FeedItem | null {
     permalink,
     tags: normalizeTags(["rss", "user"]),
     provenance: `rss:${feedUrl}`,
-    media: enclosureMedia(block, feedUrl),
+    ...mediaFields(enclosureMedia(block, feedUrl)),
   };
 }
 
@@ -105,7 +106,7 @@ function fromAtom(block: string, feedUrl: string): FeedItem | null {
     permalink,
     tags: normalizeTags(["atom", "user"]),
     provenance: `atom:${feedUrl}`,
-    media: enclosureMedia(block, feedUrl),
+    ...mediaFields(enclosureMedia(block, feedUrl)),
   };
 }
 

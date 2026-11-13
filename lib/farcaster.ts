@@ -1,4 +1,4 @@
-import { farcasterMedia } from "./feed-media-adapters";
+import { mediaFields, farcasterMedia } from "./feed-media-adapters";
 import { collectSourceWindows } from "./source-windows";
 /**
  * Farcaster Hubble HTTP (no API key).
@@ -83,7 +83,7 @@ export function normalizeHubCast(
   return {
     id: hash,
     source: "farcaster",
-    media: farcasterMedia(data.castAddBody?.embeds),
+    ...mediaFields(farcasterMedia(data.castAddBody?.embeds)),
     kind: "social",
     author,
     body: clip(text, BODY_MAX),

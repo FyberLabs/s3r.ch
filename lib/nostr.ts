@@ -1,4 +1,4 @@
-import { nostrMedia } from "./feed-media-adapters";
+import { mediaFields, nostrMedia } from "./feed-media-adapters";
 import { collectSourceWindows } from "./source-windows";
 /**
  * Nostr inbound (no outbound). NIP-01 REQ on a documented public relay
@@ -77,7 +77,7 @@ export function normalizeNostrEvent(
   return {
     id: id.toLowerCase(),
     source: "nostr",
-    media: nostrMedia(raw.tags),
+    ...mediaFields(nostrMedia(raw.tags)),
     kind: "social",
     author: pubkey.toLowerCase(),
     body: clip(asString(raw.content) ?? "", BODY_MAX),

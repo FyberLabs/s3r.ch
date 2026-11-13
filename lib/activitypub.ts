@@ -1,4 +1,4 @@
-import { activityPubMedia } from "./feed-media-adapters";
+import { mediaFields, activityPubMedia } from "./feed-media-adapters";
 import { collectSourceWindows } from "./source-windows";
 /**
  * ActivityPub inbound (no outbound). Pull a documented public actor,
@@ -79,7 +79,7 @@ export function normalizeActivityPubItem(
   return {
     id,
     source: "activitypub",
-    media: activityPubMedia(object),
+    ...mediaFields(activityPubMedia(object)),
     kind: "social",
     author,
     body: clip(stripTags(asString(object.content) ?? asString(object.summary) ?? ""), BODY_MAX),

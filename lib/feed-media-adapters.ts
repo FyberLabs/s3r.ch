@@ -85,3 +85,7 @@ export function atprotoMedia(value: unknown): FeedMedia[] {
   visit(value, 0);
   return parseFeedMedia(result.slice(0, FEED_MEDIA_MAX));
 }
+
+export function mediaFields(media: FeedMedia[]): {media?: FeedMedia[]} {
+  return media.length ? {media} : {};
+}
