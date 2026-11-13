@@ -41,7 +41,9 @@ jobs:
         run: npm test
 
       - name: Install isolated browser for media contracts
-        run: npx playwright-core install --with-deps chromium
+        run: |
+          npx playwright-core install --with-deps chromium
+          sudo apt-get install -y ffmpeg
       - name: Public media browser contracts (CI only)
         run: node scripts/test-public-media-browser.mjs
 
