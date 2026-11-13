@@ -222,3 +222,18 @@ Every signed write uses the exact source fence. A conflict or lost response stop
 the operation; the caller must refresh and reconcile explicitly. No automatic
 retry reuses signatures or silently signs a different grant. These client helpers
 do not provision an object or activate a tenant.
+
+### Unlocked browser identity
+
+`createPrivateMediaBrowser(sessionKey)` connects these clients to the single
+already-unlocked SEA identity in page memory. The callback supplies the current
+authenticated session key. It does not read a wallet session, load a key from
+disk, enroll an identity, or create a grant. Ambiguous unlocked identities and
+session/key mismatches refuse before transport.
+
+Lock, replacement, or re-unlock cancels pending requests, including replacement
+with the same public key. Each transport and completed operation rechecks the
+selected identity revision and session key. Signing scalar copies are cleared;
+opened file bytes are cleared if the final identity check fails. Callers still
+own successful plaintext and must clear it when their view closes. These helpers
+do not enable upload/playback UI or bypass the protected source's object grants.

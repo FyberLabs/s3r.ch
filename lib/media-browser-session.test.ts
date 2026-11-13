@@ -1,0 +1,82 @@
+// Browser identity, signature and HTTP contracts: CI only.
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createPrivateMediaBrowser } from "./media-browser-session";
+import { rememberUnlockedMeshPair, forgetUnlockedMeshPair } from "./identity/unlocked-mesh";
+import { signPrivateMediaEpoch } from "sociacl-ids/private-media";
+import { sealMediaFile } from "./media-file";
+const owner="axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
+const other="fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
+const pair={pub:owner,priv:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE",
+  epub:"EMvdmXTv89JPyMx5n3blU3L_D70U-6JoVaVzTvSzgYg.B_b0CP3o9X3I7tWrxA_F1VhXpjeMuIJCtQWnOh7LN5c",epriv:"6EXhKuFCyTddo7uvYddNjXON5iKEMV7v8bCol7XOHt8"};
+const object="media_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_11111111111111111111111111111111";
+const tenant="11111111-1111-4111-8111-111111111111";
+const view={at:100,fence:"a".repeat(64),snapshot:{entries:[]},objectVersion:0,owner,bindings:{[owner]:{pub:owner,epub:pair.epub,head:0}}};
+const grant={object,owner,accessor:owner,from:0,until:200000,stated:1,epoch:1,grantRevision:1,itemCiphertextDigest:"b".repeat(64)};
+function unlock(){forgetUnlockedMeshPair();rememberUnlockedMeshPair("linked-credential",pair);}
+test.afterEach(()=>forgetUnlockedMeshPair());
+test("requires one already unlocked identity matching the authenticated SEA session",async()=>{
+  let calls=0;const browser=createPrivateMediaBrowser(()=>owner,async()=>{calls++;throw Error("unexpected");});
+  forgetUnlockedMeshPair();await assert.rejects(browser.grant(object,owner,grant));
+  unlock();rememberUnlockedMeshPair("another",{...pair,pub:other});await assert.rejects(browser.grant(object,owner,grant));
+  unlock();await assert.rejects(createPrivateMediaBrowser(()=>other).grant(object,owner,grant));
+  assert.equal(calls,0);
+});
+test("owner methods use the unlocked key without placing private fields on HTTP",async()=>{
+  unlock();const operations:string[]=[];
+  const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
+    const body=JSON.parse(String(init?.body));assert.ok(!String(init?.body).includes(pair.priv));assert.ok(!String(init?.body).includes(pair.epriv));
+    if(String(url).endsWith("/view"))return Response.json(view);
+    if(String(url).endsWith("/status-view"))return Response.json({at:100,fence:view.fence,ownerPub:owner,status:{object,epoch:1,
+      revisionId:"b".repeat(64),accessor:owner,grantRevision:1,stated:1,signedAt:100000,maxAgeMs:60000,
+      zookie:{object,objectVersion:1,snapshotHash:"c".repeat(64)}}});
+    if(String(url).endsWith("/publish-wrap"))return Response.json({record:body.metadata.digest,digest:body.metadata.digest});
+    operations.push(body.operation);return Response.json({accepted:true});
+  });
+  await browser.grant(object,owner,grant);
+  const draft={object,previousEpoch:0,epoch:1,deviceId:"browser",keyCommitment:"c".repeat(64),settleWindowMs:3600000};
+  const scalar=new Uint8Array(32);scalar[31]=1;
+  const revisionId=signPrivateMediaEpoch(draft,view.snapshot,scalar,owner).manifest.revisionId;scalar.fill(0);
+  await browser.epoch(object,owner,draft,{object,epoch:1,previousEpoch:0,revisionId,candidateRevisionIds:[revisionId],previousFinalizationId:""});
+  await browser.status(object,owner);
+  await browser.publishWrap(object,owner,owner,{object,epoch:1,revisionId,scope:"item-dek",target:"reader-epub",targetId:pair.epub,wrappedKey:"00"},
+    {sha256:"b".repeat(64),length:64});
+  assert.deepEqual(operations,["grant","epoch","status"]);
+});
+test("lock, replacement, ambiguity and session change stop an in-flight write",async()=>{
+  for(const change of [()=>forgetUnlockedMeshPair(),()=>rememberUnlockedMeshPair("linked-credential",{...pair}),
+    ()=>rememberUnlockedMeshPair("other",{...pair,pub:other}),()=>{}]) {
+    unlock();let calls=0,session:string|null=owner;let signal:AbortSignal|null|undefined;
+    const browser=createPrivateMediaBrowser(()=>session,async(_url,init)=>{calls++;signal=init?.signal;change();session=null;return Response.json(view);});
+    await assert.rejects(browser.grant(object,owner,grant));assert.equal(calls,1);assert.equal(signal?.aborted,true);
+  }
+  unlock();await assert.rejects(createPrivateMediaBrowser(()=>owner).grant(object,owner,grant,AbortSignal.abort()));
+});
+test("invalid scalar encodings refuse before transport and release subscriptions",async()=>{
+  for(const priv of ["bad",pair.priv.slice(0,-1)+"F"]){
+    unlock();rememberUnlockedMeshPair("linked-credential",{...pair,priv});let calls=0;
+    await assert.rejects(createPrivateMediaBrowser(()=>owner,async()=>{calls++;throw Error("unexpected");}).grant(object,owner,grant));
+    assert.equal(calls,0);forgetUnlockedMeshPair();
+  }
+});
+test("private reads use unlocked encryption keys and return authenticated file bytes",async()=>{
+  unlock();const plain=new TextEncoder().encode("private fixture"),context={object,epoch:1,revisionId:"a".repeat(64)};
+  const sealed=await sealMediaFile(plain,{name:"image.png",mediaType:"image/png"},{tenant,object},context,
+    [{account:owner,pub:owner,identityPub:owner,epub:pair.epub}],[owner]);
+  const reference={sha256:sealed.sha256,length:sealed.bytes.length};
+  const wrapBase64=Buffer.from(JSON.stringify({reference,wrap:sealed.wraps[0]})).toString("base64");
+  const browser=createPrivateMediaBrowser(()=>owner,async(url)=>String(url)==="/api/media/read-wrap"
+    ?Response.json({context,readerEpub:pair.epub,expiresAt:Date.now()/1000+2,wrapBase64})
+    :new Response(new Uint8Array(sealed.bytes),{headers:{"content-type":"application/octet-stream","content-length":String(sealed.bytes.length),etag:`"${sealed.sha256}"`}}));
+  const opened=await browser.open(object,tenant);assert.deepEqual(opened.bytes,plain);opened.bytes.fill(0);
+});
+test("session changes while consuming a write response refuse completion without replay",async()=>{
+  unlock();let session:string|null=owner,calls=0;
+  const browser=createPrivateMediaBrowser(()=>session,async()=>{
+    if(++calls===1)return Response.json(view);
+    return new Response(new ReadableStream({pull(controller){
+      session=null;controller.enqueue(new TextEncoder().encode('{"accepted":true}'));controller.close();
+    }},{highWaterMark:0}),{headers:{"content-type":"application/json"}});
+  });
+  await assert.rejects(browser.grant(object,owner,grant));assert.equal(calls,2);
+});

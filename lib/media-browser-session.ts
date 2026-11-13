@@ -1,0 +1,65 @@
+import { createPrivateMediaOwner } from "./media-owner-client";
+import { createPrivateMediaReader } from "./media-wrap-client";
+import { readSingleUnlockedIdentity, subscribeUnlockedMeshPair } from "./identity/unlocked-mesh";
+import type { SeaPair } from "./identity/sea";
+import type { ItemReaderWrap } from "sociacl-ids";
+import type { MediaCiphertextReference } from "./media-client";
+
+/** Browser memory only. A held SEA key is possession, never an object grant.
+ * sessionKey must come from the current authenticated SEA session. */
+export function createPrivateMediaBrowser(sessionKey: () => string | null, fetcher: typeof fetch = fetch) {
+  async function run<T>(operation: (pair: SeaPair, fetcher: typeof fetch, signal: AbortSignal) => Promise<T>,
+    signal?: AbortSignal, discard?: (result: T) => void): Promise<T> {
+    const selected=readSingleUnlockedIdentity();
+    if(!selected || selected.pair.pub!==sessionKey())throw Error("Unlock the signed-in media identity");
+    const stopped=new AbortController();
+    const deadline=AbortSignal.any([stopped.signal,...(signal?[signal]:[]),AbortSignal.timeout(120000)]);
+    const check=()=>{
+      const current=readSingleUnlockedIdentity();
+      if(!current || current.revision!==selected.revision || current.pair.pub!==selected.pair.pub ||
+          sessionKey()!==selected.pair.pub)stopped.abort();
+      deadline.throwIfAborted();
+    };
+    // Listeners must not throw into the shared identity event dispatcher.
+    const unsubscribe=subscribeUnlockedMeshPair(()=>{stopped.abort();});
+    const guardedFetch: typeof fetch=async(url,init)=>{
+      check();
+      const response=await fetcher(url,{...init,signal:AbortSignal.any([deadline,...(init?.signal?[init.signal]:[])])});
+      try {check();return response;}
+      catch(error){await response.body?.cancel().catch(()=>{});throw error;}
+    };
+    try {
+      check();const result=await operation(selected.pair,guardedFetch,deadline);
+      try {check();return result;}catch(error){discard?.(result);throw error;}
+    } finally {unsubscribe();stopped.abort();}
+  }
+  async function signed<T>(operation: (client: ReturnType<typeof createPrivateMediaOwner>, scalar: Uint8Array, signal: AbortSignal)=>Promise<T>,signal?:AbortSignal) {
+    return run(async(pair,transport,deadline)=>{
+      if(!/^[A-Za-z0-9_-]{43}$/.test(pair.priv))throw Error("Invalid media signing key");
+      const scalar=Uint8Array.from(atob(pair.priv.replace(/-/g,"+").replace(/_/g,"/")+"="),c=>c.charCodeAt(0));
+      try {
+        if(scalar.length!==32 || btoa(String.fromCharCode(...scalar)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")!==pair.priv)
+          throw Error("Invalid media signing key");
+        return await operation(createPrivateMediaOwner(transport),scalar,deadline);
+      } finally {scalar.fill(0);}
+    },signal);
+  }
+  return Object.freeze({
+    grant(object:string,owner:string,draft:unknown,signal?:AbortSignal){
+      return signed((client,key,deadline)=>client.grant(object,owner,draft,key,deadline),signal);
+    },
+    epoch(object:string,owner:string,draft:unknown,finalization:unknown,signal?:AbortSignal){
+      return signed((client,key,deadline)=>client.epoch(object,owner,draft,finalization,key,deadline),signal);
+    },
+    status(object:string,reader:string,signal?:AbortSignal){
+      return signed((client,key,deadline)=>client.status(object,reader,key,deadline),signal);
+    },
+    publishWrap(object:string,owner:string,reader:string,wrap:ItemReaderWrap,reference:MediaCiphertextReference,signal?:AbortSignal){
+      return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).publishWrap(object,owner,reader,wrap,reference,deadline),signal);
+    },
+    open(object:string,tenant:string,signal?:AbortSignal){
+      return run((pair,transport,deadline)=>createPrivateMediaReader(transport).open(object,tenant,pair.epriv,pair.epub,deadline),signal,
+        result=>result.bytes.fill(0));
+    },
+  });
+}
