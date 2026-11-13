@@ -154,11 +154,15 @@ test("Squad uses the isolated provider, not legacy ACL hydration or implicit cha
   const page = readFileSync("app/feed/squad/page.tsx", "utf8"), component = readFileSync("components/SquadForum.tsx", "utf8");
   assert.match(page, /ForumAuthorityProvider/); assert.doesNotMatch(page, /SeeAclProvider|MeshAclSync/);
   assert.doesNotMatch(component, /admitFeedNode|see\.acl|see\.persist|overlaySeeGraph/);
-  assert.match(component, /liveEnabled \? authority\?\.graph \?\? null : sampleAcl/);
-  assert.match(component, /publishBrowserForumRecord/);
+  const coordination = readFileSync("lib/use-squad-forum-coordination.ts", "utf8");
+  assert.match(component, /useSquadForumCoordination/);
+  assert.doesNotMatch(component, /publishBrowserForumRecord|observeUnlockedForumSigner|putForumSoul|useGunPeer/);
+  assert.doesNotMatch(coordination, /admitFeedNode|see\.acl|see\.persist|overlaySeeGraph/);
+  assert.match(coordination, /liveEnabled \? authority\?\.graph \?\? null : sampleAcl/);
+  assert.match(coordination, /publishBrowserForumRecord/);
   const signer = readFileSync("lib/identity/browser-forum-signer.ts", "utf8");
   assert.match(signer, /publishForumAuthorized/);
-  assert.doesNotMatch(component, /getMeshKey|signForumRecord|\.put\(/);
+  assert.doesNotMatch(component + coordination, /getMeshKey|signForumRecord|\.put\(/);
 });
 
 import { recoveryId } from "./forum-recovery-records";

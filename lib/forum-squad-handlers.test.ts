@@ -16,11 +16,11 @@ import type { FeedGun } from "../components/GunPeerProvider";
 import { createMemorySeeAcl } from "./identity/see-acl";
 import { toGunNode, type FeedItem } from "./feed-types";
 
-// Execute the actual component receive functions without mounting the disabled
+// Execute the actual coordination receive functions without mounting the disabled
 // public fixture or reimplementing their admission/continuation logic. Only
 // React state, transport and the cryptographic boundary are controlled here.
 function handlers(names: string[], bindings: Record<string, unknown>) {
-  const source = readFileSync(new URL("../components/SquadForum.tsx", import.meta.url), "utf8");
+  const source = readFileSync(new URL("./use-squad-forum-coordination.ts", import.meta.url), "utf8");
   const found = names.map(name => {
     const declaration = source.match(new RegExp(`^      (?:async )?function ${name}\\([\\s\\S]*?^      }`, "m"));
     assert.ok(declaration, name);
