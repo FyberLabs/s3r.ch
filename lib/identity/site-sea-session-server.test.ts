@@ -64,3 +64,40 @@ test("foreign origins, insecure requests, linked metadata and legacy wallet cook
   const foreign = new Request(origin+"/api/identity/sea/challenge", {method:"POST",headers:{origin:"https://foreign.invalid","content-type":"application/json"},body:"{}"});
   assert.equal((await siteSeaSession(foreign,"challenge",env,noIO)).status,403);
 });
+
+// CI-only signed HTTP compatibility: old Squad and new site paths share one issuer.
+test("cached Squad clients use the shared issuer and replay store through the alias", async t => {
+  const {POST} = await import("../../app/api/squad/pilot/[...path]/route");
+  const values={...env,S3RCH_SQUAD_PILOT:"old-pilot-config-is-not-an-issuer"};
+  const saved=Object.fromEntries(Object.keys(values).map(key=>[key,process.env[key]]));
+  const cookies=new Map<string,string>(), used=new Set<string>(); let consumes=0;
+  t.mock.method(globalThis,"fetch",async (url: string | URL | Request, init?: RequestInit)=>{
+    assert.ok(String(url).startsWith("https://storage.example/api/v1/storage/replays/"));
+    assert.equal(init?.method,"POST"); consumes++;
+    const repeated=used.has(String(url));used.add(String(url));return new Response(null,{status:repeated?409:204});
+  });
+  const request:typeof fetch=async(url,init)=>{
+    const headers=new Headers(init?.headers);headers.set("origin",origin);
+    headers.set("cookie",[...cookies].map(([key,value])=>key+"="+value).join("; "));
+    const path=String(url),action=path.split("/").at(-1)!;
+    const req=new Request(origin+path,{...init,headers});
+    const response=path.startsWith("/api/squad/")
+      ? await POST(req,{params:Promise.resolve({path:["session",action]})})
+      : await siteSeaSession(req,action);
+    for(const row of response.headers.getSetCookie()) {
+      const [key,value]=row.split(";")[0].split("=");if(value)cookies.set(key,value);else cookies.delete(key);
+    }
+    return response;
+  };
+  try {
+    Object.assign(process.env,values);
+    const pair=await sea.pair();
+    const old=createSeaSessionClient({base:"/api/squad/pilot/session",origin,fetch:request});
+    const current=createSeaSessionClient({base:"/api/identity/sea",origin,fetch:request});
+    assert.equal(await old.signIn(pair),true); assert.equal(consumes,1);
+    assert.equal((await (await request("/api/identity/sea/session")).json()).principal,pair.pub);
+    assert.equal(await current.logout(),true);assert.equal(cookies.size,0);
+    assert.equal(await current.signIn(pair),true);assert.equal(consumes,2);
+    assert.equal(await old.logout(),true);assert.equal(cookies.size,0);
+  } finally {for(const [key,value] of Object.entries(saved)){if(value===undefined)delete process.env[key];else process.env[key]=value;}}
+});
