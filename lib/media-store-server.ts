@@ -1,3 +1,5 @@
+import { createMediaRegistrationStore } from "./media-registration-store";
+import { createMediaRegistrationService } from "./media-registration-service";
 import { getSquadPilotServer } from "./squad-pilot-server";
 import { createSpanopticonObjectStore } from "./spanopticon-object-store-server";
 import { createSpanopticonRecordStore } from "./spanopticon-record-store-server";
@@ -18,8 +20,12 @@ export function getMediaObjectService() {
   if (cached?.identity === identity && cached.pilot === pilot) return cached.service;
   cached = undefined;
   const config = { origin, tenant, apiKey };
-  const service = createMediaObjectService({ origin: pilot.config.origin,
-    objects: createSpanopticonObjectStore(config), records: createSpanopticonRecordStore(config),
-    authorize: createMediaAuthority({ config: pilot.config.authority, authenticate: pilot.services.authenticate, read: pilot.source.read }) });
+  const records = createSpanopticonRecordStore(config), registrations = createMediaRegistrationStore(records);
+  const authorize = createMediaAuthority({ config: pilot.config.authority, authenticate: pilot.services.authenticate,
+    read: pilot.source.read, registration: registrations.get });
+  const objects = createMediaObjectService({ origin: pilot.config.origin, objects: createSpanopticonObjectStore(config), records, authorize });
+  const register = createMediaRegistrationService({ origin: pilot.config.origin, store: registrations, authorize,
+    preflight: (request, object, signal) => authorize(request, object, "register", signal) });
+  const service = (request: Request, object: string) => ["POST", "DELETE"].includes(request.method) ? register(request, object) : objects(request, object);
   cached = { identity, pilot, service }; return service;
 }

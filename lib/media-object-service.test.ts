@@ -119,3 +119,33 @@ test("at most two media requests hold buffers per configured service", async () 
   release(); assert.equal((await first).status, 403); assert.equal((await second).status, 403);
   assert.equal((await source(request(), object)).status, 403);
 });
+
+test("one owner cannot exhaust the tenant object or byte quota", async () => {
+  const h = setup();
+  const entries = Array.from({ length: 8 }, (_, i) => ({ object: `media_p_${key}_${i.toString(16).padStart(32, "0")}`, digest, length: bytes.length }));
+  h.setRecord({ version: 1, entries });
+  assert.equal((await h.service(request("PUT"), object)).status, 507);
+  const otherKey = Buffer.from(p256.getPublicKey(new Uint8Array(32).fill(54), false).slice(1)).toString("hex");
+  assert.equal((await h.service(request("PUT"), `media_p_${otherKey}_${"b".repeat(32)}`)).status, 201);
+  const full = setup(); full.setRecord({ version: 1, entries: [{ ...entries[0], length: 64 * 1024 * 1024 }] });
+  assert.equal((await full.service(request("PUT"), object)).status, 507);
+  assert.equal(full.calls.includes("object-put"), false);
+});
+
+test("a stalled owner upload cannot block another owner's upload or reads", async () => {
+  const h = setup(), controller = new AbortController();
+  let entered!: () => void, cancelled = 0;
+  const reading = new Promise<void>(resolve => { entered = resolve; });
+  const stalled = new Request(request("PUT"), { body: new ReadableStream({
+    pull() { entered(); }, cancel() { cancelled++; },
+  }, { highWaterMark: 0 }), signal: controller.signal, duplex: "half" } as RequestInit);
+  const pending = h.service(stalled, object);
+  await reading;
+  assert.equal((await h.service(request("PUT"), other)).status, 429);
+  const otherKey = Buffer.from(p256.getPublicKey(new Uint8Array(32).fill(54), false).slice(1)).toString("hex");
+  const otherObject = `media_p_${otherKey}_${"b".repeat(32)}`;
+  assert.equal((await h.service(request("PUT"), otherObject)).status, 201);
+  assert.equal((await h.service(request(), otherObject)).status, 200);
+  controller.abort(); assert.equal((await pending).status, 503); assert.equal(cancelled, 1);
+  assert.equal((await h.service(request("PUT"), object)).status, 201);
+});

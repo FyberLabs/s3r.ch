@@ -86,7 +86,9 @@ fetches use same-origin browser metadata or an explicit matching Origin.
 
 The primary index uses conditional writes to reserve at most 128 objects and
 256 MiB per tenant before an object upload. Each file is at most 64 MiB, including
-the encrypted envelope; two requests may be active per configured worker. A
+the encrypted envelope; two ciphertext requests may be active per configured worker, with at most one
+active upload per authenticated owner. Initial authority reads have a separate
+two-request bound, so stalled upload bodies cannot consume those slots. A
 failed upload retains its reservation so an identical retry is safe; there is
 no automatic deletion or quota reclamation. This is a bounded initial transport,
 not a billing quota system. The media key needs object read/write and media
@@ -97,3 +99,41 @@ are configured. They currently use the existing primary Squad source and do not
 claim the broader trusted-history migration is complete. Browser upload/playback,
 confidential reader-wrap delivery, object admission, quota management UI, and
 scheduled browser qualification remain in #300 and its dependent issues.
+
+## Private ownership registration
+
+When media storage is configured, `POST /api/media/{object}` accepts a bounded
+JSON object with exactly `object`, `owner`, `issuedAt`, and `sig`. The ID must be
+a canonical `media_` object and match the URL. The signature is the existing
+SociACL `sociacl-object-v2` P-256 ownership record, signed by the owner's current
+SEA signing key. Before reading a request body or reserving a processing slot, a same-origin
+human session must resolve to the embedded owner through
+the deployment's complete, fresh key history. The signed record is then
+verified again after the body arrives and before persistence. A supplied public key or an
+unenrolled principal cannot create its own history through this route.
+
+Signed records are partitioned by their embedded owner in private Spanopticon
+`media/ownership-v1-{sha256(owner)}` records. Each owner has eight registration
+slots; one owner cannot consume another owner's slots. It is reverified on each upload and download; storing it never caches an
+allow decision. Updates are conditional with three bounded conflict attempts. Exact retries succeed without a new
+write. A replacement needs a strictly later issuance time and a currently valid
+owner signature. This permits re-signing after key rotation without changing the
+object's identity or immutable ciphertext mapping.
+
+Body processing is limited to two requests per authenticated owner and sixteen
+per worker, with a 15-second deadline. A separate two-request preflight bound
+limits authority reads before body admission. Different objects of one owner share the
+same limit; completion, failure and cancellation release their slots.
+
+Registration returns an empty 201 response. It does not upload ciphertext, publish
+a post, add an assignment destination, share with a forum, distribute a key wrap,
+or grant a reader. The ciphertext route's separate byte and object quotas still
+apply. `DELETE /api/media/{object}` accepts the same signed ownership body and fresh
+owner authentication, removes only that registration, and returns empty 204.
+It reclaims a registration slot without deleting ciphertext or releasing reserved
+upload quota. Re-registering the object restores the same immutable ciphertext
+mapping. Uploads have an additional eight-object/64-MiB owner limit within the
+existing tenant limits, so registration cleanup cannot bypass upload quotas.
+Physical ciphertext deletion and upload-quota reclamation remain unfinished. Reader grant and confidential
+wrap delivery, client upload/playback controls, and replacing the primary Squad
+history source remain separate unfinished work.
