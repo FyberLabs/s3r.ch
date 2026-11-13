@@ -20,8 +20,9 @@ export function createPrivateMediaReader(fetcher: typeof fetch = fetch, clock = 
     const response = await fetcher("/api/media/read-wrap", { method: "POST", credentials: "same-origin",
       redirect: "error", cache: "no-store", signal, headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ object }) });
-    if (response.status !== 200 || response.headers.get("content-type")?.split(";")[0] !== "application/json" ||
-        ![null, "identity"].includes(response.headers.get("content-encoding")) || !response.body) {
+    // Fetch exposes decoded bytes even when Content-Encoding is retained. Bound
+    // that decoded stream below; browsers cannot request identity encoding.
+    if (response.status !== 200 || response.headers.get("content-type")?.split(";")[0] !== "application/json" || !response.body) {
       await response.body?.cancel().catch(() => {}); throw Error("Private media unavailable");
     }
     const reader = response.body.getReader(), chunks: Uint8Array[] = []; let size = 0;

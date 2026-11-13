@@ -68,3 +68,16 @@ test("malformed private envelopes and cross-object context refuse before downloa
   await assert.rejects(client.open("invalid",tenant,epriv,epub));
   const abort=new AbortController();abort.abort();await assert.rejects(client.open(object,tenant,epriv,epub,abort.signal));
 });
+test("Fetch-decoded compressed JSON remains bounded and readable",async()=>{
+  const f=await fixture();
+  for(const encoding of ["gzip","br"]){
+    const client=createPrivateMediaReader(async(url)=>String(url)==="/api/media/read-wrap"
+      ? Response.json(f.delivery,{headers:{"content-encoding":encoding}})
+      : new Response(new Uint8Array(f.sealed.bytes),{headers:{"content-type":"application/octet-stream",
+          "content-length":String(f.sealed.bytes.length),etag:`"${f.sealed.sha256}"`}}),()=>100);
+    assert.deepEqual((await client.open(object,tenant,epriv,epub)).bytes,plain);
+    const oversized=createPrivateMediaReader(async()=>new Response(" ".repeat(100001),{
+      headers:{"content-type":"application/json","content-encoding":encoding}}),()=>100);
+    await assert.rejects(oversized.open(object,tenant,epriv,epub));
+  }
+});
