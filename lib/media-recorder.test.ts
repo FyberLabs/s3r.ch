@@ -22,6 +22,7 @@ test("duration stops capture; oversize, empty and recorder errors discard it",as
 });
 test("late permission and late recorder callbacks cannot restore a cleared draft",async()=>{
  for(const dispose of [false,true]){const h=setup();let resolve!:(s:MediaStream)=>void;h.deps.getUserMedia=()=>new Promise(r=>resolve=r);const starting=h.draft.start("video");if(dispose)h.draft.dispose();else h.draft.clear();resolve(h.stream);await starting;assert.ok(h.stops>0);assert.equal(h.draft.getState().phase,"idle");}
+ const stale=setup();let timeout!:()=>void;stale.deps.later=fn=>{timeout=fn;return 1 as unknown as ReturnType<typeof setTimeout>;};await stale.draft.start("audio");const oldTimeout=timeout;await stale.draft.start("video");oldTimeout();assert.equal(stale.draft.getState().phase,"recording");stale.draft.dispose();
  const h=setup();await h.draft.start("audio");const data=h.fake.ondataavailable,done=h.fake.onstop,error=h.fake.onerror;h.draft.clear();data?.({data:new Blob(["late"])});done?.();error?.();assert.equal(h.draft.getState().phase,"idle");assert.equal(h.blob,null);
  h.draft.dispose();h.draft.dispose();await h.draft.start("audio");assert.equal(h.draft.getState().phase,"idle");
 });

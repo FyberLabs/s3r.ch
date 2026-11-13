@@ -31,7 +31,7 @@ export function createRecordingDraft(changed:(state:RecordingState)=>void,deps:R
    recorder.onstop=()=>{if(active!==held||token!==generation)return;
     try{if(!held.size)throw Error();const blob=new Blob(held.chunks,{type:mime.split(";")[0]});const url=deps.url(blob);release();emit({phase:"ready",stream:null,url,name:`s3rch-${mode}.${mime.includes("webm")?"webm":"mp4"}`,message:"Recording stays in this tab until you save it."});}
     catch{fail("Could not finish the recording. Try again.");}};
-   recorder.start(1000);emit({phase:"recording",stream});held.timer=deps.later(stop,RECORDING_MS_MAX);
+   recorder.start(1000);emit({phase:"recording",stream});held.timer=deps.later(()=>{if(active===held&&token===generation)stop();},RECORDING_MS_MAX);
   }catch{stream?.getTracks().forEach(track=>track.stop());if(token===generation&&!disposed)fail("Microphone or camera is unavailable. Check permission and browser support.");}
  }
  return {start,stop,clear,dispose(){if(disposed)return;disposed=true;clear();},getState:()=>state};
