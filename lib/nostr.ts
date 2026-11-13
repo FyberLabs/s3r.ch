@@ -19,6 +19,8 @@ export const NOSTR_RELAY_URL = process.env.NOSTR_RELAY_URL ?? "wss://nos.lol";
 
 const LIMIT = 20;
 const BODY_MAX = 320;
+export const NOSTR_FRAME_BYTES_MAX = 256 * 1024, NOSTR_WINDOW_BYTES_MAX = 2 * 1024 * 1024;
+const NOSTR_FRAME_COUNT_MAX = 128;
 const HEX64 = /^[0-9a-f]{64}$/i;
 
 /**
@@ -121,6 +123,13 @@ export async function queryNostrRelay(
 }
 
 async function queryRelay(relay: string, filter: NostrFilter): Promise<unknown[]> {
+  if (!Array.isArray(filter.authors) || !filter.authors.length || filter.authors.length > 16 ||
+      filter.authors.some(author => typeof author !== "string" || !HEX64.test(author)) ||
+      !Array.isArray(filter.kinds) || !filter.kinds.length || filter.kinds.length > 8 ||
+      filter.kinds.some(kind => !Number.isSafeInteger(kind) || kind < 0 || kind > 65535) ||
+      !Number.isSafeInteger(filter.limit) || filter.limit < 1 || filter.limit > 100) throw new Error("Invalid Nostr window filter");
+  // Copy caller-owned arrays before awaiting socket events.
+  filter = { authors: filter.authors.map(author => author.toLowerCase()), kinds: [...filter.kinds], limit: filter.limit };
   if (typeof WebSocket === "undefined") {
     throw new Error("Nostr pull needs WebSocket.");
   }
@@ -130,7 +139,7 @@ async function queryRelay(relay: string, filter: NostrFilter): Promise<unknown[]
   const ws = new WebSocket(relay);
 
   return new Promise((resolve, reject) => {
-    let settled = false;
+    let settled = false, frameCount = 0, windowBytes = 0;
 
     const timer = setTimeout(() => {
       finish(() => reject(new Error(`${relay} timed out`)));
@@ -162,9 +171,17 @@ async function queryRelay(relay: string, filter: NostrFilter): Promise<unknown[]
     });
 
     ws.addEventListener("message", (ev) => {
+      if (settled) return;
+      const data: unknown = ev.data;
+      if (++frameCount > NOSTR_FRAME_COUNT_MAX || typeof data !== "string" || data.length > NOSTR_FRAME_BYTES_MAX) {
+        finish(() => reject(new Error("Nostr window exceeds its bounds"))); return;
+      }
+      const size = new TextEncoder().encode(data).length; windowBytes += size;
+      if (size > NOSTR_FRAME_BYTES_MAX || windowBytes > NOSTR_WINDOW_BYTES_MAX) {
+        finish(() => reject(new Error("Nostr window exceeds its bounds"))); return;
+      }
       let parsed: unknown;
       try {
-        const data = typeof ev.data === "string" ? ev.data : String(ev.data);
         parsed = JSON.parse(data);
       } catch {
         return;
@@ -172,7 +189,11 @@ async function queryRelay(relay: string, filter: NostrFilter): Promise<unknown[]
       const frame = parseNostrFrame(parsed, subId);
       if (!frame) return;
       if (frame.kind === "event") {
-        events.push(frame.event);
+        const event = frame.event;
+        if (!isRecord(event) || typeof event.pubkey !== "string" || !filter.authors.includes(event.pubkey.toLowerCase()) ||
+            typeof event.kind !== "number" || !filter.kinds.includes(event.kind)) return;
+        if (events.length >= filter.limit) { finish(() => reject(new Error("Nostr window exceeds its bounds"))); return; }
+        events.push(event);
         return;
       }
       finish(() => resolve(events));
