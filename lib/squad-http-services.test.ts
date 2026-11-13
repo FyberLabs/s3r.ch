@@ -46,7 +46,7 @@ test("production Squad verifies shared SEA sessions without exposing issuer acti
     authority:{keys:[],pinnedIssuers:[],policy:vectors.context.policy}}, {
       read:async evaluatedAt=>{reads++;return {fence:"opaque",snapshot:{completeThrough:evaluatedAt,rows:f.rows,
         history:{completeThrough:evaluatedAt,links:[],accounts:[f.owner,f.a,f.b].map(pair=>
-          ({principal:pair.pub,rotations:[],revocations:[],genesisEpubBindings:[]}))}};},
+          ({principal:pair.pub,rotations:[],revocations:[],genesisEpubBindings:[]}))}}};},
       append:async()=>false,
     },{challengeDomain:"a".repeat(64),consume:async()=>{assert.fail("Squad must not issue or consume challenges");}},()=>at,secret);
   assert.deepEqual(Object.keys(runtime.services).sort(),["authenticate","authority","statements"]);
