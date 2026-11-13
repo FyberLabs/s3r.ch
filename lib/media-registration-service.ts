@@ -6,6 +6,7 @@ import type { UnverifiedObjectRecord } from "./identity/forum-object-record";
 /** Registers signed private ownership only; it does not publish a post, grant
  * a reader, issue a wrap, or enroll an identity into the trusted history source. */
 export function createMediaRegistrationService(input: {
+  preflight(request: Request, object: string, signal: AbortSignal): Promise<boolean>;
   origin: string; store: ReturnType<typeof createMediaRegistrationStore>;
   authorize(request: Request, object: string, action: "write", signal: AbortSignal, candidate: UnverifiedObjectRecord): Promise<boolean>;
 }) {
@@ -20,9 +21,16 @@ export function createMediaRegistrationService(input: {
     if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json" ||
         ![null, "identity"].includes(request.headers.get("content-encoding"))) return reply(415);
     if (!request.body) return reply(400);
-    if (active >= 2) return reply(429);
-    active++;
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]);
+    try {
+      signal.throwIfAborted();
+      if (!await input.preflight(request, object, signal)) {
+        void request.body.cancel().catch(() => {}); return reply(403);
+      }
+      signal.throwIfAborted();
+    } catch { void request.body.cancel().catch(() => {}); return reply(503); }
+    if (active >= 2) { void request.body.cancel().catch(() => {}); return reply(429); }
+    active++;
     try {
       const reader = request.body.getReader(), bytes = new Uint8Array(2048); let size = 0;
       const abort = () => { void reader.cancel().catch(() => {}); };

@@ -1,3 +1,4 @@
+import { objectPrincipal } from "./identity/forum-authority-records";
 import { mediaRegistration } from "./media-registration-store";
 import type { UnverifiedObjectRecord } from "./identity/forum-object-record";
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
@@ -12,13 +13,13 @@ export function createMediaAuthority(input: {
   clock?: () => number;
 }) {
   const config = structuredClone(input.config), clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
-  return async (request: Request, object: string, action: "read" | "write", signal: AbortSignal, candidate?: UnverifiedObjectRecord): Promise<boolean> => {
+  return async (request: Request, object: string, action: "read" | "write" | "register", signal: AbortSignal, candidate?: UnverifiedObjectRecord): Promise<boolean> => {
     signal.throwIfAborted();
     const at = clock(), session = await input.authenticate(request);
     signal.throwIfAborted();
     if (clock() !== at || !session || isPublicSquadPrincipal(session.key)) return false;
     const source = structuredClone(await input.read(at, signal));
-    const registration = candidate ?? await input.registration?.(object, signal);
+    const registration = candidate ?? (action === "register" ? null : await input.registration?.(object, signal));
     if (candidate && action !== "write") return false;
     const parsed = registration ? mediaRegistration(registration) : null;
     if (registration && (!parsed || parsed.object !== object)) return false;
@@ -29,6 +30,7 @@ export function createMediaAuthority(input: {
     if (!result.ok || result.diagnostics.length || clock() !== at) return false;
     const principal = authority.graph.principalForKey(session.key, at);
     if (!principal || isPublicSquadPrincipal(principal)) return false;
+    if (action === "register") return object.startsWith("media_") && objectPrincipal(object) === principal;
     return action === "write" ? authority.graph.ownerOf(object) === principal : authority.graph.checkDirectSee(object, principal, at).allowed;
   };
 }

@@ -88,3 +88,16 @@ test("a registration read cannot extend the authority evaluation second", async 
     registration: async () => { now++; return registration; } });
   assert.equal(await authorize(request, squad.forumId, "read", signal), false);
 });
+
+test("registration preflight requires an enrolled current owner without loading registrations", async () => {
+  let registrationReads = 0;
+  for (const key of [owner, member, null]) {
+    const authorize = createMediaAuthority({ config, clock: () => at, authenticate: async () => key ? { key } : null,
+      read: async () => ({ ...snapshot(), rows: [] }), registration: async () => { registrationReads++; return null; } });
+    assert.equal(await authorize(request, squad.forumId, "register", signal), key === owner);
+  }
+  const unknown = createMediaAuthority({ config, clock: () => at, authenticate: async () => ({ key: owner }),
+    read: async () => ({ ...snapshot(), rows: [], history: { ...snapshot().history, accounts: [] } }) });
+  assert.equal(await unknown(request, squad.forumId, "register", signal), false);
+  assert.equal(registrationReads, 0);
+});

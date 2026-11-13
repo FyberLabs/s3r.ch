@@ -38,6 +38,7 @@ function setup() {
     clock: () => at, authenticate: async () => allowed ? { key: identity } : null,
     read: async () => ({ completeThrough: at, rows: [], history: { completeThrough: at, links: [], accounts: [...new Set([owner, identity])].map(principal => ({ principal, rotations: [], revocations: [], genesisEpubBindings: [] })) } }) });
   const service = createMediaRegistrationService({ origin: "https://s3r.ch", store,
+    preflight: (request, object, signal) => verify(request, object, "register", signal),
     authorize: async (...args) => { checks++; return verify(...args); } });
   return { service, store, calls, hooks, as: (key: string) => { identity = key; }, checks: () => checks, deny: () => { allowed = false; }, conflicts: (n: number) => { conflicts = n; },
     seed: (entries: unknown[]) => { saved.set(name, { bytes: new TextEncoder().encode(JSON.stringify({ version: 1, entries })), revision: String(++revision) }); } };
@@ -123,4 +124,15 @@ test("authenticated cleanup reclaims a registration slot and supports conditiona
   assert.equal((await h.service(remove(), object)).status, 204);
   assert.equal((await h.service(request(), object)).status, 201);
   h.deny(); assert.equal((await h.service(remove(), object)).status, 403);
+});
+
+test("unauthenticated stalled bodies are refused before reading or consuming capacity", async () => {
+  const h = setup(); h.deny(); let pulls = 0, cancelled = 0;
+  for (let i = 0; i < 3; i++) {
+    const req = new Request("https://s3r.ch/api/media/" + object, { method: "POST",
+      headers: { origin: "https://s3r.ch", "content-type": "application/json" },
+      body: new ReadableStream({ pull() { pulls++; }, cancel() { cancelled++; } }, { highWaterMark: 0 }), duplex: "half" } as RequestInit);
+    assert.equal((await h.service(req, object)).status, 403);
+  }
+  assert.equal(pulls, 0); assert.equal(cancelled, 3); assert.deepEqual(h.calls, []);
 });

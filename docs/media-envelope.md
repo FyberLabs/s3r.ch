@@ -104,8 +104,10 @@ When media storage is configured, `POST /api/media/{object}` accepts a bounded
 JSON object with exactly `object`, `owner`, `issuedAt`, and `sig`. The ID must be
 a canonical `media_` object and match the URL. The signature is the existing
 SociACL `sociacl-object-v2` P-256 ownership record, signed by the owner's current
-SEA signing key. A same-origin human session must resolve to that owner through
-the deployment's complete, fresh key history. A supplied public key or an
+SEA signing key. Before reading a request body or reserving a processing slot, a same-origin
+human session must resolve to the embedded owner through
+the deployment's complete, fresh key history. The signed record is then
+verified again after the body arrives and before persistence. A supplied public key or an
 unenrolled principal cannot create its own history through this route.
 
 Signed records are partitioned by their embedded owner in private Spanopticon
