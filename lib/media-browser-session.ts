@@ -48,6 +48,12 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     catalog(page:number,signal?:AbortSignal){
       return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).catalog(page,deadline),signal);
     },
+    recipients(object:string,owner:string,signal?:AbortSignal){
+      return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).recipients(object,owner,deadline),signal);
+    },
+    cancel(object:string,reader:string,signal?:AbortSignal){
+      return signed((client,key,deadline)=>client.cancel(object,reader,key,deadline),signal);
+    },
     grant(object:string,owner:string,draft:unknown,signal?:AbortSignal){
       return signed((client,key,deadline)=>client.grant(object,owner,draft,key,deadline),signal);
     },

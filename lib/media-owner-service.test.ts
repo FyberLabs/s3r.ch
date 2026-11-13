@@ -114,3 +114,15 @@ test("catalog uses fixed credentials, exact bounded pages and private responses"
   }
   assert.equal((await service(async()=>Response.json({at:100,objects:[],nextPage:null}))("catalog",request({page:15}))).status,200);
 });
+
+test("cancellation drafts bind the stable owner, object and recipient",async()=>{
+  const grant={object,owner:principal,accessor:principal,from:0,until:1,stated:0,epoch:1,grantRevision:2,itemCiphertextDigest:"a".repeat(64)};
+  const draft={at:100,fence:view.fence,ownerPub:principal,grant};
+  assert.equal((await service(async()=>Response.json(draft))("cancel-view",request({object,reader:principal}))).status,200);
+  for(const bad of [{...draft,ownerPub:"bad"},{...draft,grant:{...grant,owner:"other"}},
+    {...draft,grant:{...grant,accessor:"other"}},{...draft,grant:{...grant,object:"other"}},
+    {...draft,grant:{...grant,stated:1}},{...draft,grant:{...grant,grantRevision:1}},
+    {...draft,grant:{...grant,until:0}},{...draft,grant:{...grant,from:-1}},
+    {...draft,grant:{...grant,epoch:0}},{...draft,grant:{...grant,itemCiphertextDigest:"bad"}}])
+    assert.equal((await service(async()=>Response.json(bad))("cancel-view",request({object,reader:principal}))).status,403);
+});
