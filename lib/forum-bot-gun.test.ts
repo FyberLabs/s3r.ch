@@ -8,7 +8,7 @@ import { readForumSignature } from "./forum-sign";
 import type { createForumBotWorker } from "./forum-bot-worker";
 test("transport watches authorized object IDs and admits parents before cancellation in one batch", async t => {
   const f = await forumBotFixture(t), root = f.task(f.botA), child = f.task(f.botB, root[2]);
-  const foreignTask: BotTaskMessage = [...root]; foreignTask[1] = randomUUID();
+  const foreignTask: BotTaskMessage = [root[0], randomUUID(), root[2], root[3], root[4], root[5], root[6], root[7]];
   const foreign = await f.signed(foreignTask), conflict = await f.signed(root, f.a);
   const first = await f.signed(root), second = await f.signed(child, f.a), cancellation = await f.signed(["cancel", f.tenant, root[2]]);
   const rows = new Map<string, unknown>();
