@@ -26,7 +26,7 @@ function setup() {
     history: { completeThrough: f.now, links: [] as unknown[], accounts: [{ principal: owner, rotations: [] as unknown[], revocations: [] as unknown[], genesisEpubBindings: [f.binding] }] },
     rows: [{ kind: "delegation", record: delegation }] as { kind: string; record: unknown }[] } };
   let now = f.now, status = 200, calls = 0;
-  const trust = { jwks: f.jwks, policy: f.policy, pinnedIss: new Set<string>(f.pinnedIss) } as DelegationTrust;
+  const trust = structuredClone({ jwks: f.jwks, policy: f.policy, pinnedIss: new Set<string>(f.pinnedIss) }) as DelegationTrust;
   const fetcher: typeof fetch = async (url, options) => {
     calls++;
     assert.equal(String(url), "https://acl.example/api/v1/acl/sociacl/delegations/agents/snapshot");
