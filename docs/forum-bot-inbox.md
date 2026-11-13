@@ -49,6 +49,46 @@ must authenticate and scope its cursor, then supply every message through this
 path. A checkpoint is not itself an access grant. A denied or conflicting task
 never advances it.
 
-Remaining #31 work includes signed transport wiring, complete current authority,
-bot enrollment, bounded delegation, artifact expiry/revocation, transport checkpoint wiring, worker execution, and forum status/approval/cancellation UI. Unit
-contracts for this component do not establish those features.
+## Signed channel admission
+
+`openForumBotChannel` wraps the inbox with real SEA verification and the current
+`ForumAuthorityGraph`. Provision each tenant/thread with independently enrolled
+bot UUIDs and SEA principals, the thread owner, allowed human root senders, and
+a local delegation ceiling (zero by default, at most four). Bots cannot mint
+root tasks. Every hop requires current read and post grants for its sender and
+recipient, a current signing key, a nonextended deadline, an exact parent task,
+and no repeated bot or task. The caller supplies complete signed chains, not
+claims about ancestor authorization. A persisted context digest prevents a
+changed ancestor from being substituted after restart.
+
+Ordinary signed forum statements carry `visor:v1:` followed by a compact JSON
+array, bounded by the forum's 280-character body limit:
+
+- `task`: tenant UUID, task UUID, recipient bot UUID, authorized task handle UUID,
+  expiry in Unix seconds, parent task UUID or null, delegation depth limit.
+- `ack` and `cancel`: tenant UUID and task UUID.
+- `progress`: tenant UUID, task UUID and integer percent from 0 to 100.
+- `result`: tenant UUID, task UUID, terminal state and artifact UUID or null.
+
+Statement IDs bind the signing principal and provide message identity; task IDs
+correlate replies. These records carry no executable instructions or private file
+contents. Task handles are reauthorized on receipt and claim through the required
+synchronous `handleAllowed` callback. Local consent is required on claim. Current
+authority must be refreshed for the current second using complete trusted history;
+stale or missing authority fails closed. Old owner-impersonating forum JWTs are
+not accepted by this channel.
+
+`event` verifies a correlated signed status or cancellation after its task chain
+has been admitted. Only the assigned bot can report status. The root user or
+immediate task issuer can cancel pending work. It returns `cancelled: false` for
+active or unknown work; it does not report that running work stopped. Remote
+status is informational and cannot finish a local claim. Status consumers must
+deduplicate/order signed message IDs and timestamps. Artifact references require
+a separate current access/expiry/revocation check before retrieval. Replaying the
+original signed task chain restores proof availability after restart without
+reclaiming uncertain work.
+
+Remaining #31 work includes deployed enrollment and complete-authority wiring,
+Gun subscription/checkpoint wiring, worker execution and active cancellation,
+authorized artifact retrieval, and forum status/approval/cancellation UI. The
+signed-channel unit contracts do not establish those deployment features.
