@@ -88,6 +88,8 @@ fi
 
 docker exec "$name" node -e 'const fs = require("node:fs"); if (fs.existsSync(process.env.GUN_FILE) || fs.existsSync(process.env.GUN_SNAPSHOT)) throw Error("web process created peer storage")'
 
+node "$root/scripts/check-legal-routes.mjs" "http://127.0.0.1:${port}"
+
 # TEST starts this same image with a command override and its baked-in revision.
 cleanup
 docker run -d --name "$name" -p "127.0.0.1:${port}:8080" "$image" node /app/seed-peer.cjs >/dev/null
