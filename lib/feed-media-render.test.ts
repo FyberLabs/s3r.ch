@@ -19,7 +19,9 @@ function expectKind(source:FeedSource,media:FeedMedia[],kind:FeedMedia["kind"],a
  assert.match(html,/Open original/);
  if(kind==="image"||kind==="audio"||kind==="video") {
   assert.match(html,new RegExp(`<${kind==="image"?"img":kind}\\b`));
-  assert.match(html,/src="\/api\/feed\/media\?/);
+  // Playlist sources attach in an effect; CI browser playback covers that path.
+  if(media[0].playlist)assert.doesNotMatch(html,/src=/);
+  else assert.match(html,/src="\/api\/feed\/media\?/);
   assert.doesNotMatch(html,/src="https:|autoplay/i);
  } else assert.match(html,/<blockquote/);
  if(alt)assert.ok(html.includes(alt),`${source} lost accessible text`);
