@@ -13,7 +13,7 @@ export function publicMediaProxyUrl(url: string, kind: string, depth = 0): strin
   return `/api/feed/media?${new URLSearchParams({url, kind, depth: String(depth)})}`;
 }
 
-export function rewriteMediaPlaylist(text: string, base: string, depth: number, sign = publicMediaProxyUrl): string {
+export function rewriteMediaPlaylist(text: string, base: string, depth: number, sign: (url:string,kind:string,depth:number)=>string = publicMediaProxyUrl): string {
   if (!text.startsWith("#EXTM3U") || depth >= 3) throw new Error("Unsupported playlist");
   const lines = text.split(/\r?\n/);
   if (lines.length > 2048) throw new Error("Playlist too large");
@@ -90,7 +90,7 @@ export function createMediaQueue(limit = 4, capacity = 32, timeoutMs = 5000) {
 }
 const acquireMedia = createMediaQueue();
 const budget = createMediaBudget();
-export async function servePublicMedia(request: Request, read = fetchPublic, sign = publicMediaProxyUrl): Promise<Response> {
+export async function servePublicMedia(request: Request, read = fetchPublic, sign: (url:string,kind:string,depth:number)=>string = publicMediaProxyUrl): Promise<Response> {
   const input = new URL(request.url), raw = input.searchParams.get("url");
   const kind = input.searchParams.get("kind") ?? "", depthRaw = input.searchParams.get("depth") ?? "0";
   const url = publicMediaUrl(raw);

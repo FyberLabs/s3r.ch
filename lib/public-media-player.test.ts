@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type Hls from "hls.js";
 import {attachPublicHls} from "./public-media-player";
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
-function video(native=false){return {src:"",canPlayType:()=>native?"probably":"",removeAttribute(){this.src="";},load(){}} as unknown as HTMLVideoElement;}
+function video(native=false){return {src:"",canPlayType:()=>native?"probably":"",removeAttribute(this:{src:string}){this.src="";},load(){}} as unknown as HTMLVideoElement;}
 test("native playback uses only the proxy and clears on unmount",()=>{
  const element=video(true);const controller=attachPublicHls(element,"/api/feed/media?url=fixture","https://s3r.ch",()=>assert.fail(),()=>{throw Error("must not import");});
  assert.match(element.src,/^\/api\/feed\/media/);controller.start();controller.destroy();controller.destroy();assert.equal(element.src,"");
