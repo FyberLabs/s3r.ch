@@ -23,7 +23,9 @@ export async function testSquadPilot(container: ContainerClient, phase: "write" 
     authority: { keys: [{ kid: "synthetic", kty: "EC", crv: "P-256", x: witness.pub.split(".")[0], y: witness.pub.split(".")[1], notBefore: at - 100, notAfter: at + 1000 }],
       policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] } }))!;
   const server = () => createSquadPilotServer(config, container, () => at, "e".repeat(64));
-  const pilot = server(), scope = { forum: squad.forumId, owner: squad.owner }, id = "e".repeat(32);
+  const pilot = server();
+  if (pilot.backend !== "legacy") throw Error("Synthetic Blob fixture requires the legacy backend");
+  const scope = { forum: squad.forumId, owner: squad.owner }, id = "e".repeat(32);
   const sign = (kind: AuthorityKind, fields: Record<string, unknown>) => {
     const record = { ...fields, sig: "pending" }, p = parseForumAuthority(kind, record)!;
     record.sig = Buffer.from(p256.sign(p.bytes, Buffer.alloc(32, 53), { prehash: true, format: "compact" })).toString("base64url");

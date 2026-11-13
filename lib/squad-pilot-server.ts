@@ -1,3 +1,4 @@
+import { configuredAclStatementSource, StatementSourceConflict } from "./acl-statement-source-server";
 import type { BotStatementSource } from "./forum-bot-statement-admission";
 import { configuredIdentityReplay, type IdentityReplay } from "./identity/spanopticon-replay-server";
 import { getIdentitySecret } from "./identity/secret";
@@ -22,8 +23,17 @@ export function createSquadPilotSource(c: SquadPilotConfig, container: Pick<Cont
   return createSquadCommitStore(createBlobSquadCommitStore(container, squadPilotNamespace(config)), config.squad, clock, "authoritative-ledger");
 }
 /** Never accepts browser-selected accounts, paths, policies or signing keys. */
-export function createSquadPilotServer(c: SquadPilotConfig, container: Pick<ContainerClient, "getBlockBlobClient">, clock = () => Math.floor(Date.now() / 1000), identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" }), replay?: IdentityReplay, statementSource?: BotStatementSource) {
+export function createSquadPilotServer(c: SquadPilotConfig, container: Pick<ContainerClient, "getBlockBlobClient"> | undefined, clock = () => Math.floor(Date.now() / 1000), identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" }), replay?: IdentityReplay, statementSource?: BotStatementSource) {
   const config = structuredClone(c), namespace = squadPilotNamespace(config);
+  if (statementSource) {
+    if (!replay) throw Error("ACL authority requires configured identity replay");
+    const source = { read: async (at: number, signal: AbortSignal) => (await statementSource.read(at, signal)).snapshot };
+    const services = createSquadHttpServices({ squad: config.squad, origin: config.origin, config: config.authority,
+      secret: identitySecret, clock, consume: replay.consume, challengeDomain: replay.challengeDomain,
+      statements: statementSource, read: source.read });
+    return { backend: "acl" as const, config, source, services };
+  }
+  if (!container) throw Error("pilot primary storage unavailable");
   const source = createSquadPilotSource(config, container, clock);
   const consume = replay?.consume ?? createSquadSessionReplayStore(createBlobSquadSessionReplayStore(container, identitySessionNamespace(config.origin)), clock);
   const services = createSquadHttpServices({ squad: config.squad, origin: config.origin, config: config.authority, secret: identitySecret,
@@ -36,7 +46,7 @@ export function createSquadPilotServer(c: SquadPilotConfig, container: Pick<Cont
           cancellations: createBlobCancellationOutboxStore(container, namespace), grants: createBlobReplacementGrantStore(container, namespace) };
       },
     } } });
-  return { config, source, services };
+  return { backend: "legacy" as const, config, source, services };
 }
 export function pilotContainer(env = process.env) {
   const account = env.S3RCH_SQUAD_BLOB_ACCOUNT, container = env.S3RCH_SQUAD_BLOB_CONTAINER;
@@ -47,13 +57,16 @@ export function pilotContainer(env = process.env) {
 // resolved by App Service. Invalid/missing material never initializes state.
 let cached: { identity: string; server: ReturnType<typeof createSquadPilotServer> } | undefined;
 export function getSquadPilotServer() {
-  const identity = JSON.stringify([process.env.IDENTITY_SESSION_SECRET, process.env.S3RCH_SQUAD_PILOT, process.env.S3RCH_SQUAD_BLOB_ACCOUNT, process.env.S3RCH_SQUAD_BLOB_CONTAINER, process.env.S3RCH_IDENTITY_REPLAY_BACKEND, process.env.S3RCH_IDENTITY_REPLAY_ORIGIN, process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID, process.env.S3RCH_IDENTITY_REPLAY_API_KEY]);
+  const identity = JSON.stringify([process.env.IDENTITY_SESSION_SECRET, process.env.S3RCH_SQUAD_PILOT, process.env.S3RCH_SQUAD_BLOB_ACCOUNT, process.env.S3RCH_SQUAD_BLOB_CONTAINER, process.env.S3RCH_IDENTITY_REPLAY_BACKEND, process.env.S3RCH_IDENTITY_REPLAY_ORIGIN, process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID, process.env.S3RCH_IDENTITY_REPLAY_API_KEY, process.env.S3RCH_AUTHORITY_BACKEND, process.env.S3RCH_STATEMENT_SOURCE_ORIGIN, process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID, process.env.S3RCH_STATEMENT_SOURCE_SCOPE, process.env.S3RCH_STATEMENT_SOURCE_API_KEY]);
   if (cached?.identity === identity) return cached.server;
   cached = undefined;
   const config = parseSquadPilotConfig(process.env.S3RCH_SQUAD_PILOT);
   if (!config) return null;
   const replay = configuredIdentityReplay(identitySessionNamespace(config.origin));
-  const server = createSquadPilotServer(config, pilotContainer(), undefined, undefined, replay);
+  const statements = configuredAclStatementSource();
+  if (statements && process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID !== process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID)
+    throw Error("Statement source and replay must use the same tenant");
+  const server = createSquadPilotServer(config, statements ? undefined : pilotContainer(), undefined, undefined, replay, statements);
   cached = { identity, server }; return server;
 }
 
@@ -76,7 +89,7 @@ export async function squadPilotReady(pilot: {
       if (clock() === at) return result.ok && authority.graph.ownerOf(pilot.config.squad.forumId) === pilot.config.squad.owner;
       if (!result.ok && result.reason !== "superseded" && result.reason !== "incomplete-authority") return false;
     } catch (error) {
-      if (!(error instanceof LedgerEvaluationExpired)) throw error;
+      if (!(error instanceof LedgerEvaluationExpired) && !(error instanceof StatementSourceConflict)) throw error;
     }
     if (clock() <= at) return false;
   }

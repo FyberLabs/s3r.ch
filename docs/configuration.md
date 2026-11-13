@@ -186,3 +186,9 @@ provisioning and protected freshness storage. Neither importing Gun records nor
 setting these variables establishes completeness. Provisioning must not enroll
 existing peer histories as exclusively owned from genesis. No credential or
 source binding is created by s3r.ch configuration.
+
+ACL mode routes authority, statement admission, media checks and readiness reads
+through that one source. It requires the separately configured Spanopticon
+identity replay backend and does not construct a Blob ledger or replay store.
+Legacy assignment mutations return unavailable in this mode; they cannot write
+a second authority journal. Existing session wire formats remain unchanged.
