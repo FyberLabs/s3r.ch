@@ -50,8 +50,9 @@ jobs:
           node --import tsx --test --test-isolation=none --experimental-test-coverage
           --test-coverage-include=lib/public-media-proxy.ts
           --test-coverage-include=lib/public-media-player.ts
+          --test-coverage-include=lib/public-media-admission.ts
           --test-coverage-lines=90 --test-coverage-branches=80
-          lib/public-media-proxy.test.ts lib/public-media-player.test.ts
+          lib/public-media-proxy.test.ts lib/public-media-player.test.ts lib/public-media-admission.test.ts
 
       - name: Public feed media metadata coverage (CI only)
         run: >-

@@ -108,6 +108,23 @@ export async function servePublicMedia(request: Request, read = fetchPublic, sig
     const playlist = type.includes("mpegurl");
     const bytes = await readMediaBytes(upstream, playlist ? PLAYLIST_BYTES : PUBLIC_MEDIA_BYTES, 15_000, budget.bytes);
     const body = playlist ? new TextEncoder().encode(rewriteMediaPlaylist(new TextDecoder("utf-8",{fatal:true}).decode(bytes), upstream.url || url, Number(depthRaw), sign)) : bytes;
+    const headers = {
+      "content-type":playlist ? "application/vnd.apple.mpegurl" : type,
+      "content-length":String(body.byteLength), "cache-control":"no-store",
+      "x-content-type-options":"nosniff", "content-security-policy":"default-src 'none'; sandbox",
+      "cross-origin-resource-policy":"same-origin", "referrer-policy":"no-referrer",
+    };
+    const range = request.headers.get("range");
+    if (range && !playlist) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+      const start = match?.[1] ? Number(match[1]) : Math.max(0, body.length - Number(match?.[2]));
+      const end = match?.[1] ? (match[2] ? Math.min(body.length - 1, Number(match[2])) : body.length - 1) : body.length - 1;
+      if (!match || (!match[1] && !match[2]) || !Number.isSafeInteger(start) || start > end || start >= body.length) {
+        return new Response(null,{status:416,headers:{...headers,"content-length":"0","content-range":`bytes */${body.length}`}});
+      }
+      const selected = body.slice(start, end + 1);
+      return new Response(selected,{status:206,headers:{...headers,"content-length":String(selected.length),"accept-ranges":"bytes","content-range":`bytes ${start}-${end}/${body.length}`}});
+    }
     return new Response(body, {headers:{
       "content-type":playlist ? "application/vnd.apple.mpegurl" : type,
       "content-length":String(body.byteLength), "cache-control":"no-store",

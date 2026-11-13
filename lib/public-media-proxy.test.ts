@@ -67,3 +67,12 @@ test("queue expires waiters and refuses already aborted callers",async()=>{
  const signal=new AbortController().signal,release=await acquire(signal);assert.ok(release);
  assert.equal(await acquire(signal),null);release();
 });
+test("bounded media supports single byte ranges for seeking",async()=>{
+ const read=async()=>new Response("012345",{headers:{"content-type":"video/mp4"}});
+ for(const [range,expected] of [["bytes=1-3","123"],["bytes=-2","45"],["bytes=4-","45"]]){
+  const response=await servePublicMedia(new Request(request("video").url,{headers:{range}}),read);
+  assert.equal(response.status,206);assert.equal(await response.text(),expected);
+ }
+ for(const range of ["bytes=8-9","bytes=3-1","bytes=-","bytes=0-1,3-4"])
+  assert.equal((await servePublicMedia(new Request(request("video").url,{headers:{range}}),read)).status,416);
+});
