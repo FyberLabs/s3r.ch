@@ -17,7 +17,7 @@ function configuration(raw: string, now: number): Configuration {
       !Number.isSafeInteger(value.issuedAt) || (value.issuedAt as number) > now ||
       !Number.isSafeInteger(value.expiresAt) || (value.expiresAt as number) <= now ||
       (value.expiresAt as number) <= (value.issuedAt as number) ||
-      (value.expiresAt as number) - (value.issuedAt as number) > 7 * 86400 ||
+      (value.expiresAt as number) - (value.issuedAt as number) > 300 ||
       !Array.isArray(value.experiments) || value.experiments.length > 8) throw Error("Invalid flag payload");
   for (const row of value.experiments) {
     if (!exact(row, "control,disabled,key,variants,weights") || typeof row.key !== "string" || !slug.test(row.key) ||
@@ -66,6 +66,7 @@ export async function createExperimentProvider(input: { publicKey: KeyObject; do
       pending = work;
       return work;
     },
+    validUntil(): number | null { return active()?.expiresAt ?? null; },
     definitions(): readonly ExperimentDefinition[] {
       return Object.freeze((active()?.experiments ?? []).map(row => Object.freeze({ key: row.key, control: row.control, variants: Object.freeze([...row.variants]) })));
     },

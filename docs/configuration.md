@@ -12,6 +12,18 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 
 | Setting | Required | Default | Secret | What it does |
 | --- | --- | --- | --- | --- |
+| `S3RCH_EXPERIMENTS_ENABLED` | no | unset | no | Set to 1 to enable the optional landing experiment. Withdrawal remains available after disabling. |
+| `S3RCH_EXPERIMENT_ORIGIN` | for experiments | unset | no | Exact canonical HTTPS site origin. |
+| `S3RCH_EXPERIMENT_TENANT` | for experiments | unset | no | Nonzero tenant UUID for private experiment records. |
+| `S3RCH_EXPERIMENT_SECRET` | for experiments | unset | yes | Separate random 32-byte experiment root, encoded as 64 lowercase hex characters. |
+| `S3RCH_EXPERIMENT_PREVIOUS_SECRETS` | no | unset | yes | Up to three comma-separated previous experiment roots for bounded rotation. |
+| `S3RCH_EXPERIMENT_STORAGE_ORIGIN` | for experiments | unset | no | Exact HTTPS private Storage origin; not a browser-supplied endpoint. |
+| `S3RCH_EXPERIMENT_CACHE_KEY` | for experiments | unset | yes | Read-only storage:experiments:s3rch:cache:read credential. |
+| `S3RCH_EXPERIMENT_OUTBOX_KEY` | for experiments | unset | yes | Separate storage:experiments:s3rch:outbox:read/write credential. |
+| `S3RCH_EXPERIMENT_PUBLIC_KEY` | for experiments | unset | no | Ed25519 configuration verification PEM; no private signing key in this process. |
+| `S3RCH_EXPERIMENT_PRIMARY_V2` | no | unset | no | Set to 1 only when the primary first-party destination supports named conversion v2. |
+| `S3RCH_EXPERIMENT_SECONDARY_CONNECTION` | no | unset | yes | Optional secondary Application Insights connection string. Primary uses APPLICATIONINSIGHTS_CONNECTION_STRING. |
+| `S3RCH_EXPERIMENT_SECONDARY_V2` | no | unset | no | Set to 1 only when the configured secondary destination supports named conversion v2. |
 | `GUN_FILE` | no | `data/radata` under the process cwd; the image sets `/app/data/radata` | no | Directory for this process's Gun radisk. Create it on a persistent volume. |
 | `GUN_SNAPSHOT` | no | `data/snapshot.json` under the cwd; the image sets `/app/data/snapshot.json` | no | JSON cache of seeder public items. |
 | `PANOPTICON_API_KEY` | no | unset | yes | `X-Api-Key` for the TURN, oracles, and payments hops. All three of this key, `PANOPTICON_TENANT_ID`, and that hop's base must be set or the hop stays unconfigured. |

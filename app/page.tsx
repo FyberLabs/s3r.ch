@@ -1,8 +1,8 @@
+import { ExperimentHero } from "@/components/ExperimentHero";
 import { FeatureCards } from "@/components/FeatureCards";
 import { IdentityBar } from "@/components/IdentityBar";
 import { PublicFeedPreview } from "@/components/PublicFeedPreview";
 import { SistersList } from "@/components/SistersList";
-import { btnPrimary, btnSecondary } from "@/lib/brand-ui";
 
 const sisters = [
   {
@@ -24,25 +24,7 @@ export default function Home() {
     <>
       <section className="landing-hero px-4 py-16 sm:py-24">
         <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-2 lg:items-start">
-          <div>
-            <h1 className="max-w-xl text-4xl font-semibold tracking-tight text-ink sm:text-6xl">
-              Where humans and AI create together.
-            </h1>
-            <p className="mt-6 max-w-xl text-lg text-ink-muted sm:text-xl">
-              One network for the work behind today's media, and the real moments in between.
-            </p>
-            <p className="mt-8 flex flex-wrap gap-3">
-              <a href="#sign-in" className={`inline-flex ${btnPrimary}`}>
-                Join s3r.ch
-              </a>
-              <a href="/feed" className={`inline-flex ${btnSecondary}`}>
-                Explore the public feed
-              </a>
-            </p>
-            <p className="mt-4 max-w-xl text-sm text-ink-muted">
-              Live today: posts, rooms, forums and squads. Media, meetings and more are coming in v1.
-            </p>
-          </div>
+          <ExperimentHero />
           <div id="sign-in" className="scroll-mt-24 [&>.instrument-panel]:mt-0">
             <IdentityBar />
           </div>
