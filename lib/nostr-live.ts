@@ -40,10 +40,14 @@ export function createLiveDirectory(authors:readonly string[]=PUBLIC_NOSTR_PUBKE
  const followed=[...authors],latest=new Map<string,LiveEvent>();let until=0,pending:Promise<void>|null=null,available=false;
  const update=async()=>{
   const results=await Promise.allSettled(followed.map(author=>Promise.resolve().then(()=>pull(author))));
-  const now=Math.floor(clock()/1000);available=results.some(r=>r.status==="fulfilled");
+  const now=Math.floor(clock()/1000);
+  for(const [id,event] of latest)if(event.created_at<=now-LIVE_MAX_AGE)latest.delete(id);
+  available=results.some(r=>r.status==="fulfilled");
   for(const result of results){if(result.status!=="fulfilled"||result.value.length>100)continue;
    for(const raw of result.value){const event=verifiedLiveEvent(raw,followed,now);if(!event)continue;
     const address=liveAddress(event);if(!address)continue;const prior=latest.get(address);
+    // Retain ended markers until expiry; capacity cannot make stale live events win.
+    if(!prior&&latest.size>=1600)continue;
     if(!prior||event.created_at>prior.created_at||event.created_at===prior.created_at&&event.id<prior.id)latest.set(address,event);
    }
   }
@@ -52,8 +56,6 @@ export function createLiveDirectory(authors:readonly string[]=PUBLIC_NOSTR_PUBKE
   if(!pending&&clock()>=until){until=clock()+60_000;pending=update().finally(()=>{pending=null;});}
   await pending;const now=Math.floor(clock()/1000);
   for(const [id,event] of latest)if(event.created_at<=now-LIVE_MAX_AGE)latest.delete(id);
-  // Bound retained replacement markers even if an author continually creates addresses.
-  if(latest.size>1600){for(const [id] of [...latest].sort((a,b)=>a[1].created_at-b[1].created_at).slice(0,latest.size-1600))latest.delete(id);}
   return {available,streams:[...latest.values()].map(event=>liveProjection(event,now)).filter((s):s is PublicLiveStream=>s!==null).sort((a,b)=>b.starts-a.starts).slice(0,100)};
  };
 }

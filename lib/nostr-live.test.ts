@@ -44,3 +44,17 @@ test("invalid events and oversized windows cannot populate the directory",async(
   const load=createLiveDirectory([author],async()=>events,()=>now*1000);assert.equal((await load()).streams.length,0);
  }
 });
+
+test("capacity pressure preserves ended markers instead of admitting older live replays",async()=>{
+ let time=now*1000,events:unknown[]=[];
+ const load=createLiveDirectory([author],async()=>events,()=>time);
+ for(let batch=0;batch<16;batch++){
+  events=Array.from({length:100},(_,i)=>signed({tags:[["d",String(batch*100+i)],["status","ended"]]}));
+  await load();time+=60_000;
+ }
+ events=[signed({created_at:now-1,tags:[["d","0"],["status","live"],["streaming","https://example.com/replay"]]}),
+  signed({created_at:now+960,tags:[["d","new"],["status","live"],["streaming","https://example.com/new"]]})];
+ assert.equal((await load()).streams.length,0);
+ time=(now+LIVE_MAX_AGE+1)*1000;
+ events=[signed({created_at:Math.floor(time/1000)})];assert.equal((await load()).streams.length,1);
+});
