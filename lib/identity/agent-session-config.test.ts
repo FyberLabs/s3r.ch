@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { agentSessionConfig } from "./agent-session-config";
 const origin="https://s3r.ch";
 const config=()=>({origin,source:{origin:"https://acl.example",tenant:"tenant",scope:"agents"},
-  authority:{jwks:{keys:[{}]},policy:{allowedDomains:[],allowedUris:[],allowedChainIds:[],clockSkewSeconds:0},pinnedIss:[]}});
+  authority:{jwks:{keys:[{kty:"EC",crv:"P-256",kid:"witness",x:"x".repeat(43),y:"y".repeat(43),notBefore:0,notAfter:1}]},policy:{allowedDomains:[],allowedUris:[],allowedChainIds:[],clockSkewSeconds:0},pinnedIss:[]}});
 const env=(value:unknown)=>({S3RCH_AGENT_SESSION_CONFIG:JSON.stringify(value),S3RCH_DELEGATION_SOURCE_API_KEY:"private-key"});
 test("agent session configuration is absent by default and explicit when supplied",()=>{
   assert.equal(agentSessionConfig(origin,{}),undefined);
@@ -25,6 +25,18 @@ test("invalid policy bounds and sources deny",()=>{
     if(change==="skew") value.authority.policy.clockSkewSeconds=301;
     if(change==="strings") (value.authority.policy.allowedUris as unknown[])=[null];
     if(change==="issuer") (value.authority.pinnedIss as unknown[])=["x".repeat(2049)];
+    assert.throws(()=>agentSessionConfig(origin,env(value)));
+  }
+});
+
+test("malformed and duplicate witness keys deny",()=>{
+  for(const change of ["type","coordinates","time","duplicate","extra"]){
+    const value=config(),key=value.authority.jwks.keys[0];
+    if(change==="type") key.kty="RSA";
+    if(change==="coordinates") key.x="bad";
+    if(change==="time") key.notAfter=0;
+    if(change==="duplicate") value.authority.jwks.keys.push({...key});
+    if(change==="extra") Object.assign(key,{private:"forbidden"});
     assert.throws(()=>agentSessionConfig(origin,env(value)));
   }
 });
