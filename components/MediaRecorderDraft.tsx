@@ -5,8 +5,9 @@ export function MediaRecorderDraft(){
  const [state,setState]=useState<RecordingState>({phase:"idle",mode:"audio",stream:null,url:null,name:null,message:""}),[mode,setMode]=useState<RecordingMode>("audio");
  const recorder=useRef<ReturnType<typeof createRecordingDraft>|null>(null),preview=useRef<HTMLVideoElement|null>(null);
  useEffect(()=>{const current=createRecordingDraft(setState);recorder.current=current;const clear=()=>current.clear();const hidden=()=>{if(document.visibilityState==="hidden")clear();};
-  window.addEventListener("s3rch-session-changed",clear);document.addEventListener("visibilitychange",hidden);
-  return()=>{window.removeEventListener("s3rch-session-changed",clear);document.removeEventListener("visibilitychange",hidden);current.dispose();recorder.current=null;};},[]);
+  const storage=(event:StorageEvent)=>{if(event.key===null||event.key==="s3rch-session-changed")clear();};
+  window.addEventListener("storage",storage);window.addEventListener("s3rch-session-changed",clear);document.addEventListener("visibilitychange",hidden);
+  return()=>{window.removeEventListener("storage",storage);window.removeEventListener("s3rch-session-changed",clear);document.removeEventListener("visibilitychange",hidden);current.dispose();recorder.current=null;};},[]);
  useEffect(()=>{const video=preview.current;if(!video)return;video.srcObject=state.stream;if(state.stream)void video.play().catch(()=>{});return()=>{video.pause();video.srcObject=null;};},[state.stream]);
  const busy=["requesting","recording","stopping"].includes(state.phase);
  return <section className="mx-auto max-w-3xl space-y-4 px-4 py-8">

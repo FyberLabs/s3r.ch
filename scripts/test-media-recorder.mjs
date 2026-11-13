@@ -15,6 +15,7 @@ try{
   await page.getByLabel("Recording type").selectOption(mode);await page.getByRole("button",{name:`Start ${mode} recording`}).click();await page.getByRole("button",{name:"Stop recording"}).waitFor();
   await page.waitForTimeout(1200);await page.getByRole("button",{name:"Stop recording"}).click();await page.getByRole("link",{name:"Save recording"}).waitFor();
   const output=await page.getByRole("link",{name:"Save recording"}).evaluate(async link=>{const b=await(await fetch(link.href)).blob();return {size:b.size,type:b.type};});assert.ok(output.size>0);assert.equal(output.type,`${mode}/webm`);
+  const player=page.getByLabel(mode==="audio"?"Recorded audio":"Recorded video");await player.evaluate(element=>element.play());await page.waitForFunction(()=>{const p=document.querySelector("audio[controls],video[controls]");return p&&p.currentTime>0.05;});await player.evaluate(element=>element.pause());
   assert.equal(await page.evaluate(()=>window.captured.flatMap(s=>s.getTracks()).every(t=>t.readyState==="ended")),true);
   await page.getByRole("button",{name:"Clear recording"}).click();assert.equal(await page.getByRole("link",{name:"Save recording"}).count(),0);
  }
