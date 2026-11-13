@@ -92,10 +92,8 @@ export default function WorkspaceFeaturePage() {
           stays in this browser until mesh publish.
         </p>
         <p>
-          Rooms have tasks and issues with status and assignment controls for
-          their creators. Private work stays in the page and clears on reload;
-          shared work appears in the room timeline. Room access is required.
-          Coming in v1: native bot updates and squad coordination on the peer graph.
+          Coming in v1, tasks and issues inside rooms, and squad coordination on
+          the peer graph, with access checked on each client.
         </p>
       </FeatureSection>
 
