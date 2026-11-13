@@ -1,11 +1,11 @@
 import type { KeyObject } from "node:crypto";
 import { createExperimentProvider } from "./experiment-provider";
-import type { RecordStore } from "./record-store";
+type CacheReader = { get(namespace: "cache", name: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array } | null> };
 
 /** Server-owned cache reader. The cache transports bytes; only the pinned
  * Ed25519 key can authorize their contents. Never construct from request data. */
 export async function createCachedExperimentProvider(input: {
-  records: Pick<RecordStore, "get">; publicKey: KeyObject; domain: string; clock?: () => number;
+  records: CacheReader; publicKey: KeyObject; domain: string; clock?: () => number;
 }) {
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   const provider = await createExperimentProvider(input);
@@ -41,6 +41,7 @@ export async function createCachedExperimentProvider(input: {
   return Object.freeze({
     refresh,
     definitions: provider.definitions,
+    validUntil: provider.validUntil,
     guardrailHealthy: provider.guardrailHealthy,
     choose: provider.choose,
     async close() { closed = true; controller?.abort(); await pending; await provider.close(); },

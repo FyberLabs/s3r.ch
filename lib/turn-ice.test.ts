@@ -76,7 +76,8 @@ describe("browser allocate consume", () => {
   });
 
   it("keeps public / and /feed copy short — no TURN essay", () => {
-    const home = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+    const home = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8") +
+      readFileSync(new URL("../components/ExperimentHero.tsx", import.meta.url), "utf8");
     const feed = readFileSync(new URL("../app/feed/page.tsx", import.meta.url), "utf8");
     for (const src of [home, feed]) {
       assert.equal(src.includes("iceServers"), false);

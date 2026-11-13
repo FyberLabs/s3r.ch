@@ -114,6 +114,10 @@ export function createExperimentState(input: { secret: Uint8Array; previousSecre
         return Object.freeze({ experiment_key: key, variant: guardrailHealthy ? assigned?.variant ?? config.control : config.control,
           assignment_hash: assigned?.hash ?? targetingKey, surface: "s3r.ch" });
       },
+      assignment(key: string): ExperimentPayload | null {
+        const assigned = state.assignments.find(value => value.key === key);
+        return assigned ? Object.freeze({ experiment_key: key, variant: assigned.variant, assignment_hash: assigned.hash, surface: "s3r.ch" }) : null;
+      },
       /** Server-side attribution metadata, deliberately absent from v1/v2 events. */
       assignmentKeyVersion(key: string): string | null { return keyVersions.get(key)?.version ?? null; },
       async cookies(): Promise<readonly string[]> {

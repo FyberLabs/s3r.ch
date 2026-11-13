@@ -75,7 +75,9 @@ describe("public marketing copy", () => {
   });
 
   it("puts real sign-in and the public snapshot on the home page", () => {
-    const home = read("../app/page.tsx");
+    const page = read("../app/page.tsx");
+    assert.equal(page.includes("<ExperimentHero />"), true);
+    const home = page + read("../components/ExperimentHero.tsx");
     const preview = read("../components/PublicFeedPreview.tsx");
     const layout = read("../app/layout.tsx");
     const agents = read("../public/llms.txt");

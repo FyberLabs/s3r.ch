@@ -1,5 +1,6 @@
 "use client";
 
+import { identitySessionChanged } from "./useIdentitySession";
 import { useEffect, useRef, useState } from "react";
 import { createSeaSessionClient } from "@/lib/identity/sea-session-client";
 import { createSeaIdentityActivation } from "@/lib/identity/sea-identity-activation";
@@ -62,6 +63,7 @@ export function SeaIdentitySession() {
       const result = await activation.current.activate(AbortSignal.timeout(10_000), { principal: selected.pair.pub, revision: selected.revision });
       setMessage(result === "ready" ? "Identity session ready." : result === "changed" ? "Your saved identity changed. Retry with the identity you want to use." :
         result === "locked" ? "Unlock one saved identity to continue." : "Identity sign-in is unavailable. Try again.");
+      if (result === "ready" || result === "changed") identitySessionChanged();
       setRevision(value => value + 1);
     } finally { setBusy(false); }
   }
@@ -71,7 +73,7 @@ export function SeaIdentitySession() {
     try {
       const done = await client.current.logout(AbortSignal.timeout(10_000));
       setMessage(done ? "Identity session cleared." : "Could not clear the identity session. Retry sign-out.");
-      if (done) setRevision(value => value + 1);
+      if (done) { identitySessionChanged(); setRevision(value => value + 1); }
     } finally { setBusy(false); }
   }
   if (!status?.enabled) return null;

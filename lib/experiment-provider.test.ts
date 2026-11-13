@@ -39,7 +39,7 @@ test("forged, stale, foreign and malformed refreshes preserve the last usable pa
     for (const input of [[raw + " ", signature], [raw, "invalid"], ["x".repeat(32769), signature], signed(config()),
       signed({ ...config(2), audience: "portal" }), signed({ ...config(2), email: "private" }),
       signed({ ...config(2), issuedAt: 102 }), signed({ ...config(2), expiresAt: 99 }),
-      signed({ ...config(2), expiresAt: 1000000 }), signed({ ...config(2), sequence: 1.5 }),
+      signed({ ...config(2), expiresAt: 401 }), signed({ ...config(2), expiresAt: 1000000 }), signed({ ...config(2), sequence: 1.5 }),
       signed({ ...config(2), experiments: [config(2).experiments[0], config(2).experiments[0]] }),
       signed({ ...config(2), experiments: [{ ...config(2).experiments[0], weights: [0.5, 0.6] }] }),
       signed({ ...config(2), experiments: [{ ...config(2).experiments[0], condition: { age: 18 } }] })] as Array<readonly [string, string]>) {

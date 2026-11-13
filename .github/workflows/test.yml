@@ -34,6 +34,9 @@ jobs:
       - name: Verify SociACL contract against pinned upstream
         run: node scripts/check-sociacl-contract.mjs --upstream
 
+      - name: Check scheduled experiment harness
+        run: node --check scripts/test-experiment-browser.mjs && node --test scripts/experiment-browser-fixture.test.mjs
+
       - name: Run tests
         run: npm test
 
