@@ -33,8 +33,9 @@ for (const mode of ["eose", "close", "error", "timeout"] as const) {
 }
 
 import {NOSTR_FRAME_BYTES_MAX,NOSTR_WINDOW_BYTES_MAX} from "./nostr";
+const baseWebSocket=globalThis.WebSocket;
 async function windowFixture(t:import("node:test").TestContext,frames:(id:string)=>unknown[],limit=2){
- const original=globalThis.WebSocket;let closed=0;
+ const original=baseWebSocket;let closed=0;
  class Socket extends EventTarget{static OPEN=1;readyState=1;constructor(_url:string){super();queueMicrotask(()=>this.dispatchEvent(new Event("open")));}
   send(value:string){const [type,id]=JSON.parse(value);if(type!=="REQ")return;for(const data of frames(id))this.dispatchEvent(new MessageEvent("message",{data}));}
   close(){closed++;this.readyState=3;this.dispatchEvent(new Event("close"));}}
