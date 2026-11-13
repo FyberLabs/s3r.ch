@@ -43,8 +43,9 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
     if(!exact(result,["at","fence","snapshot","objectVersion","owner","bindings"]) || result.owner!==owner ||
         !result.bindings || typeof result.bindings!=="object" || Array.isArray(result.bindings))throw Error("Invalid private media owner view");
     const binding=(result.bindings as Record<string,unknown>)[owner];
-    if(!binding || typeof binding!=="object" || !isSeaPubkey((binding as Record<string,unknown>).pub))throw Error("Invalid private media owner key");
-    return {...result,key:(binding as {pub:string}).pub};
+    const pub=binding && typeof binding==="object" ? (binding as Record<string,unknown>).pub : null;
+    if(typeof pub!=="string" || !isSeaPubkey(pub))throw Error("Invalid private media owner key");
+    return {...result,key:pub};
   }
   async function mutate(object: string, held: Record<string,unknown>, operation: string, payload: unknown, signal: AbortSignal) {
     current(held);signal.throwIfAborted();
@@ -85,7 +86,7 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
       if(!objectOK(object) || !isSeaPubkey(reader))throw Error("Invalid private media status request");
       return withKey(scalar,signal,async(key,deadline)=>{
         const held=await request("status-view",{object,reader},deadline);current(held);
-        if(!exact(held,["at","fence","ownerPub","status"]) || !isSeaPubkey(held.ownerPub))throw Error("Invalid private media status view");
+        if(!exact(held,["at","fence","ownerPub","status"]) || typeof held.ownerPub!=="string" || !isSeaPubkey(held.ownerPub))throw Error("Invalid private media status view");
         const signed=signPrivateMediaStatus(held.status,key,held.ownerPub as string);
         if(signed.object!==object || signed.accessor!==reader || signed.signedAt!==(held.at as number)*1000)throw Error("Private media status binding mismatch");
         await mutate(object,held,"status",signed,deadline);

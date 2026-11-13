@@ -40,7 +40,7 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
         ["object", "at", "fence", "operation", "payload"] : ["object", "at", "fence", "metadata", "wrapBase64"];
       if (!exact(body, keys) || typeof body.object !== "string" || !body.object.startsWith("media_") || !isCanonicalObjectId(body.object)) return reply(400);
       if (!["view", "status-view"].includes(action) && (!Number.isSafeInteger(body.at) || (body.at as number) < 0 || !digest(body.fence))) return reply(400);
-      if (action === "status-view" && !isSeaPubkey(body.reader)) return reply(400);
+      if (action === "status-view" && (typeof body.reader!=="string" || !isSeaPubkey(body.reader))) return reply(400);
       if (action === "mutate" && (typeof body.operation !== "string" || !["grant", "epoch", "status", "wrap"].includes(body.operation) ||
           !body.payload || typeof body.payload !== "object" || Array.isArray(body.payload))) return reply(400);
       if (action === "publish-wrap" && (!body.metadata || typeof body.metadata !== "object" || Array.isArray(body.metadata) ||
@@ -64,7 +64,7 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
             result.snapshot.entries.length > 64 || !result.bindings || typeof result.bindings !== "object" || Array.isArray(result.bindings) ||
             Object.keys(result.bindings).length > 64) return reply(403);
       } else if (action === "status-view") {
-        if (!exact(result,["at","fence","ownerPub","status"]) || result.at!==Math.floor(clock()) || !digest(result.fence) || !isSeaPubkey(result.ownerPub) ||
+        if (!exact(result,["at","fence","ownerPub","status"]) || result.at!==Math.floor(clock()) || !digest(result.fence) || typeof result.ownerPub!=="string" || !isSeaPubkey(result.ownerPub) ||
             !exact(result.status,["object","epoch","revisionId","accessor","grantRevision","stated","signedAt","maxAgeMs","zookie"])) return reply(403);
         const status=result.status;
         if (status.object!==body.object || status.accessor!==body.reader || status.signedAt!==(result.at as number)*1000 || status.stated!==1 ||
