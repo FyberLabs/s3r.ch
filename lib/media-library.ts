@@ -1,3 +1,4 @@
+import { mediaPreviewKind } from "./media-preview";
 import { createPrivateMediaBrowser } from "./media-browser-session";
 import { readBoundedIdentityJson } from "./identity/bounded-json";
 import { isSeaPubkey } from "./identity/forum-check";
@@ -86,8 +87,8 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         const file=await browser.open(object,tenant,signal);
         try {
           if(!current())return;
-          if(!/^image\/(png|jpeg|gif|webp|avif)$/.test(file.description.mediaType)) {
-            publish({...state,message:"This file is not an image. Image previews are available here."});return;
+          if(!mediaPreviewKind(file.description.mediaType)) {
+            publish({...state,message:"This file format cannot be previewed."});return;
           }
           const url=makeUrl(new Blob([new Uint8Array(file.bytes)],{type:file.description.mediaType}));
           if(!current()){revokeUrl(url);return;}
