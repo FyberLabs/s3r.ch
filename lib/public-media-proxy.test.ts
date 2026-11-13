@@ -24,3 +24,20 @@ test("HLS child URLs stay on proxy and private keys/URLs refuse",()=>{
   assert.throws(()=>rewriteMediaPlaylist('#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="key"',"https://example.com/a",0));
   assert.throws(()=>rewriteMediaPlaylist('#EXTM3U\na.m3u8',"https://example.com/a",3));
 });
+test("bounded queue serves waiting attachments and removes abandoned callers",async()=>{
+ const {createMediaQueue}=await import("./public-media-proxy");
+ const acquire=createMediaQueue(1,1,1000),signal=new AbortController().signal;
+ const release=await acquire(signal);assert.ok(release);
+ const second=acquire(signal);assert.equal(await acquire(signal),null);
+ release();const releaseSecond=await second;assert.ok(releaseSecond);releaseSecond();
+ const controller=new AbortController(),held=await acquire(signal);assert.ok(held);
+ const abandoned=acquire(controller.signal);controller.abort();assert.equal(await abandoned,null);held();
+});
+test("HLS audio segments are accepted and manifests cannot be cached stale",async()=>{
+ for(const type of ["audio/aac","audio/mpeg"]){
+  const response=await servePublicMedia(request("video"),async()=>new Response("segment",{headers:{"content-type":type}}));
+  assert.equal(response.status,200);
+ }
+ const response=await servePublicMedia(request("video"),async()=>new Response("#EXTM3U\nsegment.ts",{headers:{"content-type":"application/vnd.apple.mpegurl"}}));
+ assert.equal(response.status,200);assert.equal(response.headers.get("cache-control"),"no-store");
+});

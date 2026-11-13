@@ -6,7 +6,7 @@ const PLAYLIST_BYTES = 256 * 1024;
 const TYPES: Record<string, readonly string[]> = {
   image: ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"],
   audio: ["audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/mp4"],
-  video: ["video/mp4", "video/webm", "video/ogg", "video/mp2t", "audio/mp4", "application/vnd.apple.mpegurl", "application/x-mpegurl"],
+  video: ["video/mp4", "video/webm", "video/ogg", "video/mp2t", "audio/mp4", "audio/aac", "audio/mpeg", "application/vnd.apple.mpegurl", "application/x-mpegurl"],
 };
 export function publicMediaProxyUrl(url: string, kind: string, depth = 0): string {
   return `/api/feed/media?${new URLSearchParams({url, kind, depth: String(depth)})}`;
@@ -65,15 +65,36 @@ export async function readMediaBytes(response: Response, limit: number): Promise
   } finally { clearTimeout(timer); reader.releaseLock(); }
 }
 
-let active = 0;
+export function createMediaQueue(limit = 4, capacity = 32, timeoutMs = 5000) {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  const release = () => { const next = waiting.shift(); if (next) next(); else active--; };
+  return async (signal: AbortSignal): Promise<(() => void) | null> => {
+    if (signal.aborted) return null;
+    if (active < limit) { active++; return release; }
+    if (waiting.length >= capacity) return null;
+    return new Promise(resolve => {
+      const remove = () => {
+        const index = waiting.indexOf(ready); if (index >= 0) waiting.splice(index, 1);
+        clearTimeout(timer); signal.removeEventListener("abort", remove); resolve(null);
+      };
+      const ready = () => {
+        clearTimeout(timer); signal.removeEventListener("abort", remove); resolve(release);
+      };
+      const timer = setTimeout(remove, timeoutMs);
+      waiting.push(ready); signal.addEventListener("abort", remove, {once:true});
+    });
+  };
+}
+const acquireMedia = createMediaQueue();
 export async function servePublicMedia(request: Request, read = fetchPublic): Promise<Response> {
   const input = new URL(request.url), raw = input.searchParams.get("url");
   const kind = input.searchParams.get("kind") ?? "", depthRaw = input.searchParams.get("depth") ?? "0";
   const url = publicMediaUrl(raw);
   if (!url || !Object.hasOwn(TYPES, kind) || !/^[0-3]$/.test(depthRaw)) return new Response("Invalid media request", {status:400});
   if (request.headers.get("sec-fetch-site") === "cross-site") return new Response("Forbidden", {status:403});
-  if (active >= 4) return new Response("Media busy", {status:429,headers:{"retry-after":"5"}});
-  active++;
+  const release = await acquireMedia(request.signal);
+  if (!release) return new Response("Media busy", {status:429,headers:{"retry-after":"5"}});
   try {
     const upstream = await read(url, {accept:TYPES[kind].join(", ")});
     const type = (upstream.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
@@ -85,10 +106,10 @@ export async function servePublicMedia(request: Request, read = fetchPublic): Pr
     const body = playlist ? new TextEncoder().encode(rewriteMediaPlaylist(new TextDecoder("utf-8",{fatal:true}).decode(bytes), upstream.url || url, Number(depthRaw))) : bytes;
     return new Response(body, {headers:{
       "content-type":playlist ? "application/vnd.apple.mpegurl" : type,
-      "content-length":String(body.byteLength), "cache-control":"public, max-age=300",
+      "content-length":String(body.byteLength), "cache-control":"no-store",
       "x-content-type-options":"nosniff", "content-security-policy":"default-src 'none'; sandbox",
       "cross-origin-resource-policy":"same-origin", "referrer-policy":"no-referrer",
     }});
   } catch { return new Response("Media unavailable",{status:502}); }
-  finally { active--; }
+  finally { release(); }
 }
