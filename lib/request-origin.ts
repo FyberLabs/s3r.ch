@@ -25,7 +25,12 @@ export function requestHost(request: Request): string {
 /** Browser writes require an explicit canonical Origin. At a TLS terminator,
  * the public Host must also agree; a forwarded host alone cannot authorize a write. */
 export function matchesBrowserOrigin(request: Request, origin: URL): boolean {
-  if (request.headers.get("origin") !== origin.origin || requestHost(request) !== origin.host) return false;
+  return request.headers.get("origin") === origin.origin && matchesRequestOrigin(request, origin);
+}
+
+/** Canonical ingress check for reads that do not carry a browser Origin. */
+export function matchesRequestOrigin(request: Request, origin: URL): boolean {
+  if (requestHost(request) !== origin.host) return false;
   const host = request.headers.get("host");
   if (host !== null && host !== origin.host) return false;
   const forwardedProto = request.headers.get("x-forwarded-proto");

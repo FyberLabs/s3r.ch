@@ -39,6 +39,14 @@ test("product consumption preserves anonymous assignment through verified SEA si
   }
   const native=async(subject:string)=>new SignJWT({}).setProtectedHeader({alg:"HS256",typ:"s3rch-identity-session-v1"}).setSubject(subject).setIssuer(site).setAudience(site).setIssuedAt(now).setExpirationTime(now+300).setJti("b".repeat(64)).sign(new TextEncoder().encode(env.IDENTITY_SESSION_SECRET));
   try{
+    const ingress={host:"s3r.ch","x-forwarded-proto":"https"};
+    assert.equal((await app.get(new Request("http://localhost:3000/api/experiments",{headers:ingress}))).status,200);
+    for(const extra of [{host:"attacker.invalid"},{"x-forwarded-host":"attacker.invalid"},{"x-forwarded-proto":"http"}]) {
+      assert.equal((await app.get(new Request("http://localhost:3000/api/experiments",{headers:{...ingress,...extra}}))).status,403);
+    }
+    const write=()=>new Request("http://localhost:3000/api/experiments",{method:"POST",headers:{...ingress,origin:site,"content-type":"application/json"},body:JSON.stringify({action:"evaluate"})});
+    assert.equal((await app.post(write())).status,200);
+    assert.equal((await app.post(new Request(write(),{headers:{...ingress,origin:"https://attacker.invalid","content-type":"application/json"}}))).status,403);
     assert.equal((await post({action:"evaluate",subject:"injected"})).status,400);
     assert.equal((await post({action:"error",failures:10000})).status,400);
     assert.equal((await post({action:"consent",allowed:true})).status,200);

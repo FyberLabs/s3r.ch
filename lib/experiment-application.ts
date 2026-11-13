@@ -1,4 +1,5 @@
 import { createHmac, createPublicKey, randomUUID } from "node:crypto";
+import { matchesBrowserOrigin, matchesRequestOrigin } from "./request-origin";
 import { anonymousExperimentCookie } from "./experiment-state";
 import { createCachedExperimentProvider } from "./experiment-cache-provider";
 import { createExperimentRecords } from "./experiment-records";
@@ -73,7 +74,7 @@ export async function createExperimentApplication(env: Record<string, string | u
   return Object.freeze({
     close: provider.close,
     async get(request: Request, enabled = true) {
-      if (new URL(request.url).origin !== site) return result({ enabled: false }, 403);
+      if (!matchesRequestOrigin(request, new URL(site))) return result({ enabled: false }, 403);
       const privacy = await sessions.privacy(request.headers.get("cookie") ?? "");
       if (!enabled) return result({ enabled: false, consented: privacy !== null, variant: "control" });
       let authenticated = false;
@@ -81,7 +82,7 @@ export async function createExperimentApplication(env: Record<string, string | u
       return result({ enabled: true, consented: privacy !== null, authenticated, variant: "control" });
     },
     async post(request: Request, enabled = true) {
-      if (new URL(request.url).origin !== site || request.headers.get("origin") !== site) return result({ error: "Same-origin request required" }, 403);
+      if (!matchesBrowserOrigin(request, new URL(site))) return result({ error: "Same-origin request required" }, 403);
       if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json" || request.headers.has("content-encoding")) return result({ error: "JSON request required" }, 415);
       if (active >= 8) return result({ error: "Experiment service busy" }, 429);
       active++;
@@ -119,7 +120,7 @@ export async function createExperimentApplication(env: Record<string, string | u
         const displayed = typeof body.display === "string" ? await sessions.displayed(body.display, privacy.id) : null;
         const open = createExperimentRuntime({ tenant, secret: createHmac("sha256", secret).update(privacy.id).digest(), previousSecrets: previousSecrets.map(key => createHmac("sha256", key).update(privacy.id).digest()), provider, experiments: s3rchExperiments,
           outbox: queue, sinks: [{ supportedEventTypes: Object.values(sinks).every(s => s.supportedEventTypes.includes("experiment.conversion.v2")) ? ["experiment.exposure.v1", "experiment.conversion.v2"] : ["experiment.exposure.v1"],
-            async send() { await queue.flush(); } }] });
+            async send(event) { await queue.flush(event.event_id); } }] });
         const context = await open({ cookies, verifiedPrincipal: principal.subject, privacy: () => ({ consent: Date.now() < principal.expiresAt * 1000, deletionRequested: false, retentionUntil: privacy.retentionUntil }),
           ...(displayed ? { verifiedDisplay: displayed } : {}) });
         if (body.action === "evaluate") {

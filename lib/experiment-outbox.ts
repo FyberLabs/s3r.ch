@@ -49,10 +49,11 @@ export function createExperimentOutbox(input: {
     }
     throw Error("Experiment outbox busy");
   }
-  async function flush(): Promise<void> {
+  async function flush(targetId?: string): Promise<void> {
       if (!permitted()) throw Error("Experiment consent unavailable");
       const { ledger } = await load();
       if (ledger.revoked) throw Error("Experiment consent revoked");
+      let busy = false;
       for (const row of ledger.rows) {
         if (row.expires <= now()) continue;
         for (const [key, sink] of Object.entries(input.sinks)) {
@@ -68,7 +69,7 @@ export function createExperimentOutbox(input: {
             const current = rows.find(r => r.event.event_id === row.event.event_id);
             if (!current || current.delivered.includes(key)) return;
             if (JSON.stringify(current.event) !== JSON.stringify(row.event)) throw Error("Experiment event changed");
-            if (current.delivered.some(marker => marker.startsWith(prefix) && Number(marker.split(":")[2]) > now())) throw Error("Experiment delivery busy");
+            if (current.delivered.some(marker => marker.startsWith(prefix) && Number(marker.split(":")[2]) > now())) { busy = true; return; }
             current.delivered = current.delivered.filter(marker => !marker.startsWith(prefix));
             current.delivered.push(claim); claimed = true;
           });
@@ -100,6 +101,12 @@ export function createExperimentOutbox(input: {
           }
         }
       }
+      if (targetId !== undefined) {
+        const { ledger: latest } = await load();
+        if (!permitted() || latest.revoked) throw Error("Experiment consent unavailable");
+        const target = latest.rows.find(row => row.event.event_id === targetId);
+        if (!target || !Object.keys(input.sinks).every(key => target.delivered.includes(key))) throw Error("Experiment delivery busy");
+      } else if (busy) throw Error("Experiment delivery busy");
   }
   return Object.freeze({
     async active(): Promise<boolean> {

@@ -134,3 +134,19 @@ test("a full pending queue drains after outage before admitting a fresh page act
   await assert.rejects(queue.retain(fresh),/offline/);assert.equal(sent,0);
   offline=false;await queue.retain(fresh);await queue.flush();assert.equal(sent,65);
 });
+
+test("a pending exposure claim does not strand a newly retained conversion", async () => {
+  const m=memory();let release!:()=>void,started!:()=>void;const sent:string[]=[];
+  const began=new Promise<void>(resolve=>{started=resolve;});
+  const wait=new Promise<void>(resolve=>{release=resolve;});
+  const conversion:ExperimentEvent={...event,event_id:"22345678-1234-4234-8234-123456789abc",event_type:"experiment.conversion.v2",payload:{...event.payload,conversion_key:"feed_opened"}};
+  const sink:ExperimentSink={supportedEventTypes:["experiment.exposure.v1","experiment.conversion.v2"],async send(value){sent.push(value.event_id);if(value.event_id===event.event_id){started();await wait;}}};
+  const first=open(m.store,{primary:sink}),second=open(m.store,{primary:sink});
+  await first.retain(event);const pending=first.flush(event.event_id);await began;
+  try {
+    await second.retain(conversion);await second.flush(conversion.event_id);
+    assert.deepEqual(sent,[event.event_id,conversion.event_id]);
+    await assert.rejects(second.flush(event.event_id),/busy/);
+  } finally {release();await pending;}
+  await second.flush();assert.equal(sent.length,2);
+});

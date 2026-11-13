@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { btnPrimary, btnSecondary } from "@/lib/brand-ui";
+import { experimentHeadingVisible } from "@/lib/experiment-visibility";
 import { sendFeedConversion } from "@/lib/experiment-navigation";
 type Display = { authenticated: boolean; variant: string; cohort: string; display: string; expiresAt: number };
 async function request(body: { action: string; allowed?: boolean; display?: string; eventId?: string }) {
@@ -67,7 +68,7 @@ function HeroScope() {
         } catch { /* The durable server queue retries with the same action ID. */ }
       });
     };
-    const observer = new IntersectionObserver(entries => { visible = entries.some(e => e.isIntersecting); attempt(); }, { threshold: 0.5 });
+    const observer = new IntersectionObserver(entries => { visible = experimentHeadingVisible(entries); attempt(); }, { threshold: 0.5 });
     observer.observe(heading.current); document.addEventListener("visibilitychange", attempt);
     return () => { cancelled = true; observer.disconnect(); document.removeEventListener("visibilitychange", attempt); };
   }, [display, consented]);
