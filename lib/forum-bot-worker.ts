@@ -30,6 +30,10 @@ export function createForumBotWorker(input: {
   };
   async function cancel() { if (active && !active.cancelRequested) { await executor.cancel(active.session, active.local); active.cancelRequested = true; } }
   return Object.freeze({
+    inspect(chain: readonly SignedBotStatement[]) { return run(async () => {
+      if (stopped || !await refresh()) throw Error("Forum authority unavailable");
+      await channel.inspect(chain);
+    }); },
     deliver(chain: readonly SignedBotStatement[]) { return run(async () => {
       if (stopped || !await refresh()) throw Error("Forum authority unavailable");
       const before = channel.cursor(), after = chain.at(-1)?.id ?? "";

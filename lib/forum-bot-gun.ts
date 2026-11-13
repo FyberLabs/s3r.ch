@@ -2,7 +2,7 @@ import type { ForumAuthorityGraph } from "./identity/forum-authority";
 import type { SignedBotStatement } from "./forum-bot-channel";
 import type { createForumBotWorker } from "./forum-bot-worker";
 import { forumStatementFromNode } from "./forum-squad";
-import { parseBotMessage } from "./forum-bot-protocol";
+import { parseBotMessage, type BotTaskMessage } from "./forum-bot-protocol";
 import { sameEmbeddedPrincipal } from "./identity/forum-check";
 import { readForumSignature, signatureOf } from "./forum-sign";
 /** Watches only individually authorized statement objects from the provisioned
@@ -39,6 +39,7 @@ export function createForumBotGunTransport(input: {
         watches.set(id, watch);
       }
       const events: [string, SignedBotStatement][] = [];
+      const candidates: [BotTaskMessage, SignedBotStatement][] = [];
       for (const [id, raw] of [...incoming]) {
         if (delivered.has(id)) { incoming.delete(id); continue; }
         const hint = forumStatementFromNode(raw, forum), sig = signatureOf(raw);
@@ -51,16 +52,30 @@ export function createForumBotGunTransport(input: {
             !authority.checkForumSee(id, principal, clock()).allowed) { incoming.delete(id); continue; }
         const envelope = Object.freeze({ id, author: item.author, issuedAt: item.ts, signature: sig });
         if (message[0] === "task") {
-          const old = tasks.get(message[2]);
-          if (old && old.envelope.id !== id) {
-            // A signed duplicate must not starve unrelated tasks or cancellation.
-            incoming.delete(id); continue;
-          }
-          if (!old && tasks.size >= 4096) throw Error("Bot task transport capacity reached");
-          tasks.set(message[2], { envelope, parent: message[6] });
+          candidates.push([message, envelope]);
         } else {
           events.push([id, envelope]);
         }
+      }
+      // Transport order cannot reserve a task identity. Authenticate the full
+      // prefix first, including roots addressed to another bot in this chain.
+      for (let pass = 0; pass < 5; pass++) {
+        let progress = false;
+        for (const [message, envelope] of candidates) {
+          const old = tasks.get(message[2]);
+          if (old) { if (old.envelope.id !== envelope.id) incoming.delete(envelope.id); continue; }
+          if (tasks.size >= 4096) continue;
+          const chain: SignedBotStatement[] = [envelope], seen = new Set<string>([message[2]]);
+          let next = message[6];
+          while (next && chain.length <= 5 && !seen.has(next)) {
+            seen.add(next); const parent = tasks.get(next); if (!parent) break;
+            chain.unshift(parent.envelope); next = parent.parent;
+          }
+          if (next || chain.length > 5) continue;
+          try { await worker.inspect(chain); } catch { continue; }
+          tasks.set(message[2], { envelope, parent: message[6] }); progress = true;
+        }
+        if (!progress) break;
       }
       for (const [taskId, entry] of tasks) {
         if (delivered.has(entry.envelope.id)) continue;

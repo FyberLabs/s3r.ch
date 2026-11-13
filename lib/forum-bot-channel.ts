@@ -73,7 +73,35 @@ export function openForumBotChannel(input: {
         (operation !== "dispatch" || localConsent(scope, task.handle) === true);
     },
   });
+  async function verifyChain(chainInput: readonly SignedBotStatement[]): Promise<readonly Link[]> {
+    if (stopped || !Array.isArray(chainInput) || chainInput.length < 1 || chainInput.length > depth + 1)
+      throw Error("Invalid forum bot delivery");
+    // Pin all transport fields before asynchronous cryptographic verification.
+    const statements = chainInput.map(row => Object.freeze({ ...row }));
+    if (statements.some(row => Object.keys(row).sort().join() !== "author,id,issuedAt,signature" ||
+        !isSeaPubkey(row.author) || !isForumObjectId(row.id, "stmt") || !sameEmbeddedPrincipal(row.author, row.id) ||
+        !Number.isSafeInteger(row.issuedAt) || row.issuedAt < 0 || typeof row.signature !== "string" || row.signature.length > 32768))
+      throw Error("Invalid signed bot statement");
+    const chain: Link[] = [];
+    for (const row of statements) {
+      const at = clock(), key = authority.writerKey(row.author, row.issuedAt, at);
+      if (!key) throw Error("Forum bot signer unavailable");
+      const decoded = await readForumSignature(row.signature, key);
+      const item = forumStatementFromNode(decoded, scope.forum), task = parseBotMessage(item?.body);
+      if (!item || item.id !== row.id || item.author !== row.author || item.ts !== row.issuedAt ||
+          item.kind !== "statement" || task?.[0] !== "task" || !bots[task[3]]) throw Error("Invalid signed bot task");
+      chain.push(Object.freeze({ message: item.id, author: item.author, at: item.ts, key, recipient: bots[task[3]], task }));
+    }
+    if (!valid(chain)) throw Error("Forum bot task authority unavailable");
+    return Object.freeze(chain);
+  }
   return Object.freeze({
+    /** Verify a complete prefix without claiming it or granting tool access. */
+    async inspect(chainInput: readonly SignedBotStatement[]) {
+      if (receiving) throw Error("Forum bot delivery busy");
+      receiving = true;
+      try { await verifyChain(chainInput); } finally { receiving = false; }
+    },
     close() { stopped = true; proofs.clear(); inbox.close(); },
     cursor: inbox.cursor,
     status: inbox.status,
@@ -137,26 +165,10 @@ export function openForumBotChannel(input: {
     async receive(chainInput: readonly SignedBotStatement[], cursor?: BotInboxCursor) {
       if (stopped || receiving || !Array.isArray(chainInput) || chainInput.length < 1 || chainInput.length > depth + 1)
         throw Error("Invalid or busy forum bot delivery");
-      // Pin all transport fields before asynchronous cryptographic verification.
-      const statements = chainInput.map(row => Object.freeze({ ...row }));
-      if (statements.some(row => Object.keys(row).sort().join() !== "author,id,issuedAt,signature" ||
-          !isSeaPubkey(row.author) || !isForumObjectId(row.id, "stmt") || !sameEmbeddedPrincipal(row.author, row.id) ||
-          !Number.isSafeInteger(row.issuedAt) || row.issuedAt < 0 || typeof row.signature !== "string" || row.signature.length > 32768))
-        throw Error("Invalid signed bot statement");
       receiving = true;
       try {
-        const chain: Link[] = [];
-        for (const row of statements) {
-          const at = clock(), key = authority.writerKey(row.author, row.issuedAt, at);
-          if (!key) throw Error("Forum bot signer unavailable");
-          const decoded = await readForumSignature(row.signature, key);
-          const item = forumStatementFromNode(decoded, scope.forum), task = parseBotMessage(item?.body);
-          if (!item || item.id !== row.id || item.author !== row.author || item.ts !== row.issuedAt ||
-              item.kind !== "statement" || task?.[0] !== "task" || !bots[task[3]]) throw Error("Invalid signed bot task");
-          chain.push(Object.freeze({ message: item.id, author: item.author, at: item.ts, key, recipient: bots[task[3]], task }));
-        }
-        const last = chain.at(-1)!;
-        if (!valid(chain) || last.task[3] !== scope.bot) throw Error("Forum bot task authority unavailable");
+        const chain = await verifyChain(chainInput), last = chain.at(-1)!;
+        if (last.task[3] !== scope.bot) throw Error("Forum bot task authority unavailable");
         const task: BotInboxTask = { id: last.task[2], message: last.message, sender: last.author,
           handle: last.task[4], expires: last.task[5], context: context(chain) };
         const previous = proofs.get(task.id);

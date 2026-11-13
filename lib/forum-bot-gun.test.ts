@@ -18,11 +18,12 @@ test("transport watches authorized object IDs and admits parents before cancella
   const chain = (path: string[]): any => ({ get: (key: string) => chain([...path, key]),
     on(receive: (row: unknown) => void) { const id = path.at(-1)!; watched.push(path.join("/")); receive(rows.get(id)); return { off() { stopped.push(id); } }; } });
   const channel = f.open(), order: string[] = [];
-  const worker = { deliver: async (links: any) => { const result = await channel.receive(links); order.push("task"); return result; },
+  const worker = { inspect: (links: any) => channel.inspect(links), deliver: async (links: any) => { const result = await channel.receive(links); order.push("task"); return result; },
     event: async (row: any) => { const result = await channel.event(row); order.push("cancel"); return result; } } as ReturnType<typeof createForumBotWorker>;
   const transport = createForumBotGunTransport({ gun: chain([]), tenant: f.tenant, forum: f.forum, principal: f.b.pub,
-    authority: f.auth.graph, principals: [f.owner.pub, f.a.pub, f.b.pub], worker, clock: f.now });
+    authority: f.auth.graph, principals: [f.a.pub, f.owner.pub, f.b.pub], worker, clock: f.now });
   await transport.tick(); assert.deepEqual(order, ["task", "cancel"]); assert.equal(channel.status(child[2]), "cancelled");
+  assert.equal(channel.status(root[2]), null); // Prefix inspection never claims another bot's task.
   assert.equal(watched.length, 5); assert.ok(watched.every(path => path.startsWith("s3rch/items/stmt_")));
   await transport.tick(); assert.deepEqual(order, ["task", "cancel"]);
   f.auth.invalidate(); await transport.tick(); assert.equal(stopped.length, 5); transport.close();
