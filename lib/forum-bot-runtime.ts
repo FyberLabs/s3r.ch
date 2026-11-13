@@ -24,6 +24,30 @@ export function currentBotReportReaders(authority: ForumAuthorityGraph, forum: s
   return principals.filter(p => p !== principal && authority.checkForumSee(forum, p, at).allowed);
 }
 
+export function createBotAuthorityRefresh(input: { authority: ReturnType<typeof createForumAuthority>;
+  reader: ReturnType<typeof createHttpForumAuthorityReader>; signIn(): Promise<boolean>;
+  forum: string; principal: string; owner: string; key: string; clock?: () => number }) {
+  const { authority, reader, signIn, forum, principal, owner, key } = input, clock = input.clock ?? Date.now;
+  let last = -1, lastSignInAttempt = 0;
+  return async function refresh(force = false): Promise<boolean> {
+    let at = Math.floor(clock() / 1000);
+    if (!force && last === at && authority.graph.ownerOf(forum) === owner) return true;
+    last = -1; authority.invalidate();
+    try {
+      let snapshot = await reader(at, AbortSignal.timeout(900));
+      if (!snapshot && clock() - lastSignInAttempt > 30000) {
+        lastSignInAttempt = clock();
+        if (await signIn()) { at = Math.floor(clock() / 1000); snapshot = await reader(at, AbortSignal.timeout(900)); }
+      }
+      if (!snapshot) return false;
+      const result = await authority.refresh(snapshot, at);
+      if (!result.ok || result.diagnostics.length || authority.graph.ownerOf(forum) !== owner ||
+          authority.graph.writerKey(principal, at, at) !== key) { authority.invalidate(); return false; }
+      last = at; return true;
+    } catch { authority.invalidate(); return false; }
+  }
+}
+
 type Config = { version: 1; scope: BotInboxScope; owner: string; bots: Record<string, string>; rootSenders: string[];
   maxDelegationDepth: number; authority: ForumAuthorityConfig; origin: string; authorityEndpoint: string;
   statementEndpoint: string; peer: string; approvalsDirectory: string; stateDirectory: string;
@@ -58,23 +82,8 @@ export async function openForumBotRuntime(configPath: string, artifactOnly = fal
   if (!await session.signIn()) throw Error("Independent bot sign-in unavailable");
   const authority = createForumAuthority(c.authority), spec = { forumId: c.scope.forum, owner: c.owner, label: "Bot thread" };
   const reader = createHttpForumAuthorityReader({ endpoint: c.authorityEndpoint, squad: spec, fetch: session.fetch });
-  let last = -1, lastSignInAttempt = 0;
-  async function refresh(force = false): Promise<boolean> {
-    let at = Math.floor(Date.now() / 1000);
-    if (!force && last === at && authority.graph.ownerOf(c.scope.forum) === c.owner) return true;
-    authority.invalidate();
-    try {
-      let snapshot = await reader(at, AbortSignal.timeout(900));
-      if (!snapshot && Date.now() - lastSignInAttempt > 30000) {
-        lastSignInAttempt = Date.now();
-        if (await session.signIn()) { at = Math.floor(Date.now() / 1000); snapshot = await reader(at, AbortSignal.timeout(900)); }
-      }
-      if (!snapshot) return false;
-      const result = await authority.refresh(snapshot, at); last = at;
-      return result.ok && result.diagnostics.length === 0 && authority.graph.ownerOf(c.scope.forum) === c.owner &&
-        authority.graph.writerKey(c.scope.principal, at, at) === pair.pub;
-    } catch { authority.invalidate(); return false; }
-  }
+  const refresh = createBotAuthorityRefresh({ authority, reader, signIn: session.signIn,
+    forum: c.scope.forum, principal: c.scope.principal, owner: c.owner, key: pair.pub });
   const approvals = openLocalBotApprovals(c.approvalsDirectory, c.scope), directory = join(c.stateDirectory, "artifacts");
   try { mkdirSync(directory, { mode: 0o700 }); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
   const artifacts = openForumBotArtifacts({ directory, scope: c.scope, authority: authority.graph, approval: approvals.read });
