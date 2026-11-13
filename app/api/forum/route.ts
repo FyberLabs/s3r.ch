@@ -9,7 +9,6 @@ import {
   readSessionFromRequest,
   secretFailureResponse,
 } from "@/lib/identity/http";
-import { readForumBotToken, signForumBotToken } from "@/lib/identity/forum-token";
 import { ownerForOAuthResult, ownerForWallet } from "@/lib/identity/link";
 import { readBackupFromRequest } from "@/lib/identity/oauth";
 import { readSessionToken } from "@/lib/identity/session";
@@ -17,17 +16,8 @@ import { readSessionToken } from "@/lib/identity/session";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/**
- * AI forum for bots, cloud agents, and the signed-in owner.
- *
- * Resolve first: a SIWE wallet or a linked Keycloak subject becomes the one
- * sociacl owner (the checksummed address). Invite and group checks then run
- * on that address. Owner-private unless a direct invite or group membership.
- * An unlinked OAuth session is not an owner. A forum bot token is that
- * same owner for a headless bot, not a second owner and not a Hypermesh
- * API key. Gun mesh keys stay on the signing wallet. There is no second
- * API key. The JSON body cannot name another owner.
- */
+/** Legacy human forum. Its wallet-era ledger cannot authorize a delegated SEA
+ * agent. Agent credentials must never be projected onto the owner's access. */
 export async function GET(request: Request) {
   const session = await requireSession(request);
   if (!session.ok) return session.response;
@@ -60,20 +50,9 @@ export async function POST(request: Request) {
   }
 
   if (isTokenMint(body)) {
-    if (session.via === "forum-bot") {
-      return Response.json({ denied: true, reason: "forum-token" }, { status: 403 });
-    }
-    let secret: string;
-    try {
-      secret = identitySecretOrThrow();
-    } catch (error) {
-      return (
-        secretFailureResponse(error) ??
-        Response.json({ error: "Identity session is not configured." }, { status: 500 })
-      );
-    }
-    const token = await signForumBotToken({ owner: session.address }, secret);
-    return Response.json({ token, owner: session.address });
+    return Response.json({ error: "owner-bot-token-retired" }, {
+      status: 410, headers: { "Cache-Control": "private, no-store" },
+    });
   }
 
   const result = handleForumPost(getForum(), session.address, body);
@@ -87,9 +66,15 @@ function isTokenMint(body: unknown): boolean {
 async function requireSession(
   request: Request,
 ): Promise<
-  | { ok: true; address: string; via: "wallet" | "oauth" | "forum-bot" }
+  | { ok: true; address: string; via: "wallet" | "oauth" }
   | { ok: false; response: Response }
 > {
+  // Reject credential mixing rather than falling back to a human cookie.
+  if (request.headers.has("x-s3rch-forum-token") || request.headers.has("authorization")) {
+    return { ok: false, response: Response.json({ error: "agent-forum-unavailable" }, {
+      status: 401, headers: { "Cache-Control": "private, no-store" },
+    }) };
+  }
   let secret: string;
   try {
     secret = identitySecretOrThrow();
@@ -133,19 +118,6 @@ async function requireSession(
       ok: false,
       response: Response.json({ error: "unauthorized" }, { status: 401 }),
     };
-  }
-
-  const header = request.headers.get("x-s3rch-forum-token");
-  if (header && header.length <= 4096) {
-    try {
-      const bot = await readForumBotToken(header.trim(), secret);
-      return { ok: true, address: bot.owner, via: "forum-bot" };
-    } catch {
-      return {
-        ok: false,
-        response: Response.json({ error: "unauthorized" }, { status: 401 }),
-      };
-    }
   }
 
   return {

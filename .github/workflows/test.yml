@@ -63,6 +63,12 @@ jobs:
           --test-coverage-include=lib/identity/site-agent-session-server.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/identity/agent-session-config.test.ts lib/identity/site-agent-session-server.test.ts
+      - name: Legacy forum credential retirement coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=app/api/forum/route.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/forum-route.test.ts
 
   build:
     # Compile the production bundle; runtime acceptance runs in Infra nightly.
