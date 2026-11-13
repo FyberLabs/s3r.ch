@@ -107,3 +107,16 @@ test("signed ancestor cancellation blocks current and future descendants across 
   const restarted = f.open(), later = await f.signed(f.task(f.botB, root[2]), f.a);
   await assert.rejects(restarted.receive([first, later]), /authority/);
 });
+
+test("ancestor cancellation does not depend on a stale retained descendant", async t => {
+  const f = await fixture(t), root = f.task(f.botA), old = f.task(f.botB, root[2]), current = f.task(f.botB, root[2]);
+  const first = await f.signed(root), stale = await f.signed(old, f.a), live = await f.signed(current, f.a), c = f.open();
+  await c.receive([first, stale]); await c.receive([first, live]);
+  const cancel = await f.signed(["cancel", f.tenant, root[2]]);
+  await f.refresh(f.rows.filter(row => (row.record as { object?: string }).object !== stale.id));
+  assert.equal(c.authorized(old[2]), false); assert.equal(c.authorized(current[2]), true);
+  const result = await c.event(cancel);
+  assert.deepEqual(result.affected, [old[2], current[2]]);
+  assert.equal(c.status(old[2]), "cancelled"); assert.equal(c.status(current[2]), "cancelled");
+  await f.refresh(); await assert.rejects(c.receive([first, live]), /authority/);
+});

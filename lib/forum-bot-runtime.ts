@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { p256 } from "@noble/curves/nist.js";
-import { createForumAuthority, type ForumAuthorityConfig } from "./identity/forum-authority";
+import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthorityGraph } from "./identity/forum-authority";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
 import { isSeaPubkey } from "./identity/forum-check";
 import type { SeaPair } from "./identity/sea";
@@ -19,6 +19,10 @@ import { createBotSession } from "./forum-bot-session";
 import { buildForumStatement, forumStatementFromNode } from "./forum-squad";
 import { signForumRecord, readForumSignature } from "./forum-sign";
 import { toGunNode } from "./feed-types";
+
+export function currentBotReportReaders(authority: ForumAuthorityGraph, forum: string, principal: string, principals: readonly string[], at: number) {
+  return principals.filter(p => p !== principal && authority.checkForumSee(forum, p, at).allowed);
+}
 
 type Config = { version: 1; scope: BotInboxScope; owner: string; bots: Record<string, string>; rootSenders: string[];
   maxDelegationDepth: number; authority: ForumAuthorityConfig; origin: string; authorityEndpoint: string;
@@ -123,7 +127,7 @@ export async function openForumBotRuntime(configPath: string, artifactOnly = fal
         authority.graph.writerKey(c.scope.principal, item.ts, at) !== pair.pub) throw Error("Outgoing bot authority unavailable");
     const grantAt = Math.max(item.ts, Math.floor(at / 3600) * 3600);
     const rows = [signRow("object", { object: item.id, owner: c.scope.principal, issuedAt: item.ts }),
-      ...principals.filter(p => p !== c.scope.principal).map(accessor => signRow("see", { object: item.id, owner: c.scope.principal,
+      ...currentBotReportReaders(authority.graph, c.scope.forum, c.scope.principal, principals, at).map(accessor => signRow("see", { object: item.id, owner: c.scope.principal,
         accessor, from: grantAt, until: grantAt + 3600, stated: 1, hamState: grantAt, issuedAt: grantAt }))];
     if (!await responseOK(await session.fetch(c.statementEndpoint, { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ version: 1, forumId: c.scope.forum, owner: c.owner, evaluatedAt: at, rows }) })))

@@ -35,7 +35,7 @@ export function openForumBotChannel(input: {
     throw Error("Invalid forum bot provisioning");
   const proofs = new Map<string, readonly Link[]>();
   let stopped = false, receiving = false;
-  let cancelling: string | null = null;
+  let cancelling: { id: string; ancestor: string } | null = null;
   function valid(chain: readonly Link[], report = false): boolean {
     const at = clock();
     if (stopped || !Number.isSafeInteger(at) || at < 0 || authority.ownerOf(scope.forum) !== owner ||
@@ -66,8 +66,10 @@ export function openForumBotChannel(input: {
   const inbox = openForumBotInbox({ path: input.path, scope, clock,
     authorize(task, operation) {
       const chain = proofs.get(task.id), last = chain?.at(-1);
-      return !!chain && !!last && valid(chain, operation === "cancel") && last.task[3] === scope.bot && task.context === context(chain) &&
-        (operation === "cancel" ? cancelling === task.id : handleAllowed(task.handle, scope, operation) === true) &&
+      const checked = operation === "cancel" && chain && cancelling ?
+        chain.slice(0, chain.findIndex(link => link.task[2] === cancelling!.ancestor) + 1) : chain;
+      return !!chain && !!last && !!checked && valid(checked, operation === "cancel") && last.task[3] === scope.bot && task.context === context(chain) &&
+        (operation === "cancel" ? cancelling?.id === task.id : handleAllowed(task.handle, scope, operation) === true) &&
         (operation !== "dispatch" || localConsent(scope, task.handle) === true);
     },
   });
@@ -105,9 +107,10 @@ export function openForumBotChannel(input: {
         if (!item || item.id !== row.id || item.author !== row.author || item.ts !== row.issuedAt ||
             item.kind !== "statement" || !message || message[0] === "task" || message[1] !== scope.tenant)
           throw Error("Invalid signed bot event");
-        const chain = proofs.get(message[2]) ?? (message[0] === "cancel" ? [...proofs.values()].find(links =>
+        const retained = proofs.get(message[2]) ?? (message[0] === "cancel" ? [...proofs.values()].find(links =>
           links.some(link => link.task[2] === message[2])) : undefined);
-        const last = message[0] === "cancel" ? chain?.find(link => link.task[2] === message[2]) : chain?.at(-1), at = clock();
+        const chain = message[0] === "cancel" ? retained?.slice(0, retained.findIndex(link => link.task[2] === message[2]) + 1) : retained;
+        const last = chain?.at(-1), at = clock();
         if (!chain || !last || !valid(chain, true) || row.issuedAt < last.at || row.issuedAt > at ||
             authority.writerKey(row.author, row.issuedAt, at) !== key ||
             authority.checkForumSee(scope.forum, row.author, at).allowed !== true ||
@@ -122,7 +125,7 @@ export function openForumBotChannel(input: {
         if (message[0] === "cancel") {
           inbox.block(message[2]); // Persist ancestor revocation before touching descendants.
           for (const [id, links] of proofs) if (links.some(link => link.task[2] === message[2])) {
-            affected.push(id); cancelling = id;
+            affected.push(id); cancelling = { id, ancestor: message[2] };
             try { cancelled = inbox.cancel(id) || cancelled; } finally { cancelling = null; }
           }
         }

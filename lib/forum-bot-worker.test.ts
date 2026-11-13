@@ -13,14 +13,14 @@ async function setup(t: test.TestContext) {
   const scope = { tenant: f.tenant, forum: f.forum, bot: f.botB, principal: f.b.pub };
   let grant: LocalBotApproval | null = { version: 1, ...scope, handle: task[4], session: randomUUID(), expires: task[5], revoked: false,
     task: { steps: [{ tool: "view", arguments: {} }] }, artifactReaders: [] };
-  let submissions = 0, cancellations = 0, failSubmit = false, fresh = true;
+  let submissions = 0, cancellations = 0, exports = 0, failSubmit = false, fresh = true;
   const id = randomUUID(), session = grant.session;
   let state: BotExecutionStatus["status"] = "running";
   const dir = mkdtempSync(join(tmpdir(), "bot-worker-")); chmodSync(dir, 0o700);
   const outbox = openForumBotOutbox(join(dir, "outbox.db"), scope);
   t.after(() => { outbox.close(); rmSync(dir, { recursive: true, force: true }); });
   const worker = createForumBotWorker({ tenant: f.tenant, channel, approvals: { read: () => grant },
-    artifacts: { put() { throw Error("not authorized"); }, read: async () => { throw Error("not authorized"); }, revoke() {} },
+    artifacts: { put() { exports++; return randomUUID(); }, read: async () => { throw Error("not authorized"); }, revoke() {} },
     refresh: async () => { if (!fresh) throw Error("source unavailable"); await f.refresh(); return true; },
     publish: async message => outbox.enqueue(message), clock: () => f.now() * 1000,
     executor: {
@@ -29,10 +29,11 @@ async function setup(t: test.TestContext) {
         assert.ok(until > f.now() * 1000 && until <= f.now() * 1000 + 15000);
         if (failSubmit) throw Error("uncertain submission"); return { id }; },
       status: async () => ({ id, session, status: state, completed_steps: state === "completed" ? 1 : 0, total_steps: 1, results: [] }),
-      cancel: async () => { cancellations++; state = "cancelled"; },
+      cancel: async () => { cancellations++; if (state !== "completed") state = "cancelled"; },
     } });
   return { f, task, signed, channel, worker, outbox, dir, scope,
-    submissions: () => submissions, cancellations: () => cancellations,
+    submissions: () => submissions, cancellations: () => cancellations, exports: () => exports,
+    replaceApproval() { grant = { ...grant!, task: { steps: [{ tool: "type_text", arguments: { text: "new task" } }] }, artifactReaders: [f.owner.pub] }; },
     revoke() { grant = null; }, loseAuthority() { fresh = false; }, failSubmit() { failSubmit = true; }, complete() { state = "completed"; } };
 }
 test("worker dispatches only the approved reference once and durably reports actual completion", async t => {
@@ -99,4 +100,10 @@ test("one user's delegated chain runs once in each independently scoped worker",
   await workers[0].worker.tick(); await workers[1].worker.tick(); assert.deepEqual(calls, [1, 1]);
   const foreign = await f.signed(f.task(f.botB), f.owner, f.forum.slice(0, -32) + "b".repeat(32));
   await assert.rejects(workers[1].worker.deliver([foreign])); assert.deepEqual(calls, [1, 1]);
+});
+
+test("replacement approval cannot share an already completed private task", async t => {
+  const s = await setup(t); await s.worker.deliver([s.signed]); await s.worker.tick();
+  s.complete(); s.replaceApproval(); await s.worker.tick();
+  assert.equal(s.cancellations(), 1); assert.equal(s.channel.status(s.task[2]), "completed"); assert.equal(s.exports(), 0);
 });

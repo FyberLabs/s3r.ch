@@ -15,7 +15,9 @@ export function createSquadHttpServices(input: Omit<Parameters<typeof createForu
 }) {
   const sessions = createIdentitySessions(input);
   const handlers = createSquadSessionHandlers({ origin: input.origin, sessions });
-  const authority = createForumAuthorityService({ ...input, authenticate: handlers.authenticate });
+  const read = input.statements ? async (at: number, signal: AbortSignal) =>
+    (await input.statements!.read(at, signal)).snapshot : input.read;
+  const authority = createForumAuthorityService({ ...input, read, authenticate: handlers.authenticate });
   const assignments = input.assignments ? createSquadAssignmentService({ ...input.assignments, runtime: { ...input.assignments.runtime, config: input.config, clock: input.clock }, squad: input.squad, origin: input.origin, authenticate: handlers.authenticate }) : undefined;
   const statements = input.statements ? createBotStatementAdmission({ ...input, source: input.statements, authenticate: handlers.authenticate }) : undefined;
   return Object.freeze({ ...handlers, authority, assignments, statements });

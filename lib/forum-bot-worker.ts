@@ -58,7 +58,7 @@ export function createForumBotWorker(input: {
           // Preserve results locally only when the owner explicitly shares them.
           const grant = approvals.read(current.handle);
           if (!current.result) {
-            if (fresh && status.status === "completed" && grant?.artifactReaders.length) {
+            if (fresh && status.status === "completed" && grant?.artifactReaders.length && JSON.stringify(grant) === current.grant) {
               try { artifact = artifacts.put(current.handle, current.task, "application/json", Buffer.from(JSON.stringify(status.results))); }
               catch { /* Execution can complete without an exportable artifact. */ }
             }
