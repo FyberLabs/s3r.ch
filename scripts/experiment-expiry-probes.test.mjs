@@ -30,7 +30,7 @@ for (const invalid of [{ ...assignment, variant: "control" }, { ...assignment, e
     const f = fixture({ latest: () => invalid });
     await assert.rejects(checkExperimentExpiry(f.input));
     assert.deepEqual(f.cases, []);
-    assert.deepEqual(f.operations.at(-1), ["offline", false]);
+    assert.deepEqual(f.operations, []);
   });
 }
 test("new cohort after recovery is a failure", async () => {
@@ -42,5 +42,14 @@ test("new cohort after recovery is a failure", async () => {
 test("fractional native-session deadlines remain valid", async () => {
   const f = fixture({ latest: () => ({ ...assignment, expiresAt: 1060.25 }) });
   await checkExperimentExpiry(f.input);
+  assert.equal(f.cases.length, 2);
+});
+
+test("waits online for renewal when the current display is near expiry", async () => {
+  const f = fixture();
+  f.input.latest = () => ({ ...assignment, expiresAt: f.input.now() < 1030000 ? 1005 : 1090 });
+  await checkExperimentExpiry(f.input);
+  assert.deepEqual(f.operations[0], ["offline", true]);
+  assert.deepEqual(f.operations[1], ["label", assignment.variant, 1035500]);
   assert.equal(f.cases.length, 2);
 });

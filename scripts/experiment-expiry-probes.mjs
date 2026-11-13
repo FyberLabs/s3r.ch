@@ -5,6 +5,20 @@ import assert from "node:assert/strict";
 export async function checkExperimentExpiry({ assignment, latest, offline, wait, now, label, recover, passed }) {
   assert.equal(assignment.variant, "create", "Declared TEST treatment required for visible expiry");
   assert.match(assignment.cohort, /^[a-f0-9]{64}$/);
+  // A valid cached response can be near expiry. Wait online for a usable
+  // observation window rather than attributing fixture timing to the browser.
+  const readyUntil = now() + 75000;
+  while (true) {
+    const candidate = latest();
+    assert.equal(candidate.variant, assignment.variant);
+    assert.equal(candidate.cohort, assignment.cohort);
+    assert.ok(Number.isFinite(candidate.expiresAt));
+    const remaining = candidate.expiresAt * 1000 - now();
+    assert.ok(remaining <= 300000, "Bounded display required");
+    if (remaining > 10000) break;
+    assert.ok(now() < readyUntil, "Fresh display window unavailable");
+    await wait(250);
+  }
   let disconnected = false;
   try {
     await offline(true); disconnected = true;
