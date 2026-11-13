@@ -1169,7 +1169,7 @@ function FeedItems({
                 <tr key={item.id}>
                   <td className="font-data">{item.author || ""}</td>
                   <td>{item.kind}</td>
-                  <td className="whitespace-normal">{item.body}</td>
+                  <td className="whitespace-normal">{item.body}<PublicFeedMedia media={item.media} /></td>
                   <td className="whitespace-normal">{item.tags.join(",")}</td>
                   <td className="font-data">{formatIso(item.ts)}</td>
                   <td className="whitespace-normal">{item.provenance}</td>

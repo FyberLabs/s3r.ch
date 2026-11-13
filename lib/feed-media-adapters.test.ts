@@ -83,3 +83,9 @@ test("canonical URLs stay bounded and malformed quote encoding cannot fail the s
  assert.deepEqual(parseFeedMedia([{kind:"image",url:"https://example.com/"+"é".repeat(400)+".png"}]),[]);
  assert.deepEqual(atprotoMedia({$type:"app.bsky.embed.record#view",record:{uri:"at://did:plc:abc/app.bsky.feed.post/\ud800"}}),[]);
 });
+test("source content warnings survive into click-to-reveal metadata",()=>{
+ const embed={$type:"app.bsky.embed.images#view",images:[{fullsize:"https://example.com/a.png"}]};
+ assert.equal(atprotoMedia(embed,[{val:"nudity"}])[0].sensitive,true);
+ assert.equal(atprotoMedia(embed,[{val:"nudity",neg:true}])[0].sensitive,undefined);
+ assert.equal(nostrMedia([["image","https://example.com/a.png"],["content-warning","Spoiler"]])[0].warning,"Spoiler");
+});

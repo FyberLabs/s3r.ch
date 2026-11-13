@@ -51,10 +51,12 @@ export function nostrMedia(value: unknown): FeedMedia[] {
     }
     if (result.length >= FEED_MEDIA_MAX) break;
   }
-  return parseFeedMedia(result);
+  const warningTag = (Array.isArray(value) ? value.slice(0, 128) : []).find(tag => Array.isArray(tag) && tag[0] === "content-warning");
+  const warning = warningTag ? (str(warningTag[1]) || "Sensitive media").slice(0, 256) : "";
+  return parseFeedMedia(result.map(value => warning ? {...row(value), sensitive:true, warning} : value));
 }
 
-export function atprotoMedia(value: unknown): FeedMedia[] {
+export function atprotoMedia(value: unknown, labels?: unknown): FeedMedia[] {
   const result: unknown[] = [];
   function visit(value: unknown, depth: number) {
     if (depth > 2 || result.length >= FEED_MEDIA_MAX) return;
@@ -83,7 +85,10 @@ export function atprotoMedia(value: unknown): FeedMedia[] {
     }
   }
   visit(value, 0);
-  return parseFeedMedia(result.slice(0, FEED_MEDIA_MAX));
+  const warning = (Array.isArray(labels) ? labels.slice(0, 32) : [])
+    .map(row).filter(label => label.neg !== true && typeof label.val === "string")
+    .map(label => str(label.val)).join(", ").slice(0, 256);
+  return parseFeedMedia(result.slice(0, FEED_MEDIA_MAX).map(value => warning ? {...row(value), sensitive:true, warning} : value));
 }
 
 export function mediaFields(media: FeedMedia[]): {media?: FeedMedia[]} {

@@ -139,7 +139,7 @@ export function PublicFeedPreview() {
               <tr key={item.id}>
                 <td>{SOURCE_LABEL[item.source]}</td>
                 <td>{clip(item.author, 48)}</td>
-                <td className="whitespace-normal">{clip(item.body, 180)}</td>
+                <td className="whitespace-normal">{clip(item.body, 180)}<PublicFeedMedia media={item.media} /></td>
                 <td className="font-data">{when(item.ts)}</td>
               </tr>
             ))}
