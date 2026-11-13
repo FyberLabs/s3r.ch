@@ -34,6 +34,8 @@ test("approval reports display the handle and deadline without creating permissi
   assert.match(html, /Local approval reported/);
   assert.match(html, /historical report does not grant access/);
   assert.match(html, /2023-11-14 22:13:20 UTC/);
+  assert.match(html, /Reported approval time<\/dt><dd>2023-11-14 22:13:19 UTC/);
   assert.doesNotMatch(html, /<button|href=|src=/);
   assert.match(render(["approval", id, id, id, 1, Number.MAX_SAFE_INTEGER]), /Invalid deadline/);
+  assert.match(render(["approval", id, id, id, Number.MAX_SAFE_INTEGER - 1, Number.MAX_SAFE_INTEGER]), /Invalid approval time/);
 });
