@@ -1,3 +1,4 @@
+import { isMediaCatalogPageNumber, parseMediaCatalogPage } from "./media-catalog";
 import { isSeaPubkey } from "./identity/forum-check";
 import { isCanonicalObjectId } from "./identity/object-id";
 import { readBoundedIdentityJson } from "./identity/bounded-json";
@@ -19,7 +20,7 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
   const active = new Set<string>(); let preflights = 0, transports = 0;
   return async (action: string, request: Request) => {
     const reply = (status: number) => new Response(null, { status, headers });
-    if (!["view", "status-view", "mutate", "publish-wrap"].includes(action)) return reply(404);
+    if (!["catalog", "view", "status-view", "mutate", "publish-wrap"].includes(action)) return reply(404);
     if (request.method !== "POST") return reply(405);
     if (!matchesBrowserOrigin(request, origin)) return reply(403);
     if (request.headers.get("content-type")?.split(";")[0] !== "application/json" ||
@@ -35,12 +36,13 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
       if (!principal || !credentials.has(principal)) return reply(403);
       if (active.has(principal)) return reply(429);
       active.add(principal); occupied = true;
-      const body = await readBoundedIdentityJson(new Response(request.body), ["view", "status-view"].includes(action) ? 2048 : 100000,
+      const body = await readBoundedIdentityJson(new Response(request.body), ["catalog", "view", "status-view"].includes(action) ? 2048 : 100000,
         AbortSignal.any([signal, AbortSignal.timeout(1000)]));
-      const keys = action === "view" ? ["object"] : action === "status-view" ? ["object", "reader"] : action === "mutate" ?
+      const keys = action === "catalog" ? ["page"] : action === "view" ? ["object"] : action === "status-view" ? ["object", "reader"] : action === "mutate" ?
         ["object", "at", "fence", "operation", "payload"] : ["object", "at", "fence", "metadata", "wrapBase64"];
-      if (!exact(body, keys) || typeof body.object !== "string" || !body.object.startsWith("media_") || !isCanonicalObjectId(body.object)) return reply(400);
-      if (!["view", "status-view"].includes(action) && (!Number.isSafeInteger(body.at) || (body.at as number) < 0 || !digest(body.fence))) return reply(400);
+      if (!exact(body, keys)) return reply(400);
+      if (action === "catalog" ? !isMediaCatalogPageNumber(body.page) : typeof body.object !== "string" || !body.object.startsWith("media_") || !isCanonicalObjectId(body.object)) return reply(400);
+      if (!["catalog", "view", "status-view"].includes(action) && (!Number.isSafeInteger(body.at) || (body.at as number) < 0 || !digest(body.fence))) return reply(400);
       if (action === "status-view" && (typeof body.reader!=="string" || !isSeaPubkey(body.reader))) return reply(400);
       if (action === "mutate" && (typeof body.operation !== "string" || !["grant", "epoch", "status", "wrap"].includes(body.operation) ||
           !body.payload || typeof body.payload !== "object" || Array.isArray(body.payload))) return reply(400);
@@ -58,7 +60,10 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
         await response.body?.cancel().catch(() => {}); return reply(response.status === 409 ? 409 : 403);
       }
       const result = await readBoundedIdentityJson(response, 262144, signal);
-      if (action === "view") {
+      let catalog: ReturnType<typeof parseMediaCatalogPage> | undefined;
+      if (action === "catalog") {
+        try { catalog = parseMediaCatalogPage(result, body.page as number, principal); } catch { return reply(403); }
+      } else if (action === "view") {
         if (!exact(result, ["at", "fence", "snapshot", "objectVersion", "owner", "bindings"]) || result.owner !== principal ||
             (!Number.isSafeInteger(result.at) || (result.at as number) < 0) || !digest(result.fence) || !Number.isSafeInteger(result.objectVersion) ||
             (result.objectVersion as number) < 0 || !exact(result.snapshot, ["entries"]) || !Array.isArray(result.snapshot.entries) ||
@@ -82,7 +87,7 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
       signal.throwIfAborted();
       const elapsed = clock() - started;
       if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 4) return reply(403);
-      return Response.json(result, { headers });
+      return Response.json(catalog ? { ...catalog, principal } : result, { headers });
     } catch { return reply(503); }
     finally {
       if (occupied && principal) active.delete(principal);

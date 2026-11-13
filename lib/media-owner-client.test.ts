@@ -108,3 +108,16 @@ test("source timestamps survive clock skew and second boundaries; delayed views 
     assert.equal(calls,1);
   }
 });
+
+test("catalog validates source scope, pagination and monotonic freshness",async()=>{
+  const result={at:100,objects:[object],nextPage:1,principal:owner};
+  const client=createPrivateMediaOwner(async()=>Response.json(result),()=>10);
+  assert.deepEqual(await client.catalog(0),result);
+  await assert.rejects(client.catalog(16));
+  for(const principal of [other,"invalid",null])await assert.rejects(createPrivateMediaOwner(async()=>Response.json({...result,principal})).catalog(0));
+  for(const elapsed of [4,-1,NaN]) {
+    let now=0;const delayed=createPrivateMediaOwner(async()=>{now=elapsed;return Response.json(result);},()=>now);
+    await assert.rejects(delayed.catalog(0),PrivateMediaConflict);
+  }
+  const aborted=new AbortController();aborted.abort();await assert.rejects(client.catalog(0,aborted.signal));
+});

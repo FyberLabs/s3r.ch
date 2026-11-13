@@ -53,8 +53,9 @@ jobs:
           node --import tsx --test --test-isolation=none --experimental-test-coverage
           --test-coverage-include=lib/media-owner-service.ts
           --test-coverage-include=lib/media-owner-client.ts
+          --test-coverage-include=lib/media-catalog.ts
           --test-coverage-lines=90 --test-coverage-branches=80
-          lib/media-owner-service.test.ts lib/media-owner-client.test.ts
+          lib/media-owner-service.test.ts lib/media-owner-client.test.ts lib/media-catalog.test.ts
       - name: Unlocked media identity contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
