@@ -69,3 +69,17 @@ test("adapters ignore malformed input and bound nested combinations",()=>{
  assert.equal(nostrMedia([null,["imeta",42,"x".repeat(4097),"broken"],["image","https://example.com/a.png"],["url","https://example.com/a"],["q","ab".repeat(32)]]).length,3);
  assert.equal(nostrMedia(Array.from({length:20},()=>["image","https://example.com/a.png"])).length,8);
 });
+
+test("attachment removal overwrites merged Gun fields and unshare clears content",async()=>{
+ const {toGunNode,fromGunNode}=await import("./feed-types");
+ const {itemUnshareTombstone}=await import("./unshare");
+ const item={id:"one",source:"atproto" as const,kind:"social",author:"Alice",body:"Text",ts:1,permalink:"https://example.com/one",tags:[],provenance:"fixture"};
+ const old=toGunNode({...item,media:[{kind:"image",url:"https://example.com/a.png"}]});
+ const updated={...old,...toGunNode(item)};
+ assert.equal(updated.media,"[]");assert.equal(fromGunNode(updated)?.media,undefined);
+ assert.equal(itemUnshareTombstone("one").media,null);
+});
+test("canonical URLs stay bounded and malformed quote encoding cannot fail the source",()=>{
+ assert.deepEqual(parseFeedMedia([{kind:"image",url:"https://example.com/"+"é".repeat(400)+".png"}]),[]);
+ assert.deepEqual(atprotoMedia({$type:"app.bsky.embed.record#view",record:{uri:"at://did:plc:abc/app.bsky.feed.post/\ud800"}}),[]);
+});

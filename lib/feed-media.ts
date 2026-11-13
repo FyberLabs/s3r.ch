@@ -7,7 +7,7 @@ export type FeedMedia = {
 export const FEED_MEDIA_MAX=8, FEED_MEDIA_BYTES=16384;
 export function publicMediaUrl(value: unknown): string|null {
   if(typeof value!=="string" || value.length>2048)return null;
-  try {const url=assertPublicHttpUrl(value);if(url.username || url.password)return null;url.hash="";return url.href;}catch{return null;}
+  try {const url=assertPublicHttpUrl(value);if(url.username || url.password)return null;url.hash="";return url.href.length<=2048 ? url.href : null;}catch{return null;}
 }
 /** Additive public metadata only. Private wraps/keys must never enter this shape. */
 export function parseFeedMedia(value: unknown): FeedMedia[] {

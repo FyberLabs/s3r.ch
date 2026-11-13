@@ -76,7 +76,7 @@ export function atprotoMedia(value: unknown): FeedMedia[] {
     } else if (type === "app.bsky.embed.record#view") {
       const record = row(embed.record), author = row(record.author), content = row(record.value);
       const uri = /^at:\/\/([^/]+)\/app\.bsky\.feed\.post\/([^/]+)$/.exec(str(record.uri));
-      if (uri) result.push({kind: "quote", url: `https://bsky.app/profile/${encodeURIComponent(uri[1])}/post/${encodeURIComponent(uri[2])}`,
+      if (uri && uri[1].isWellFormed() && uri[2].isWellFormed()) result.push({kind: "quote", url: `https://bsky.app/profile/${encodeURIComponent(uri[1])}/post/${encodeURIComponent(uri[2])}`,
         author: author.handle, text: content.text});
     } else if (type === "app.bsky.embed.recordWithMedia#view") {
       visit(embed.media, depth + 1); visit(embed.record, depth + 1);

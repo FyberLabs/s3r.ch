@@ -209,7 +209,7 @@ export function toGunNode(item: FeedItem): GunFeedNode {
     permalink: item.permalink,
     tags: item.tags.join(","),
     provenance: item.provenance,
-    ...(item.media?.length ? {media: JSON.stringify(parseFeedMedia(item.media))} : {}),
+    media: JSON.stringify(parseFeedMedia(item.media)),
     v: item.v ?? GUN_PROTOCOL_V,
   };
 }
