@@ -1,5 +1,6 @@
 "use client";
 import PublicFeedMedia from "./PublicFeedMedia";
+import FeedConversation from "./FeedConversation";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -139,7 +140,7 @@ export function PublicFeedPreview() {
               <tr key={item.id}>
                 <td>{SOURCE_LABEL[item.source]}</td>
                 <td>{clip(item.author, 48)}</td>
-                <td className="whitespace-normal">{clip(item.body, 180)}<PublicFeedMedia media={item.media} /></td>
+                <td className="whitespace-normal">{clip(item.body, 180)}<FeedConversation key={`${item.source}:${item.id}`} item={item} /><PublicFeedMedia media={item.media} /></td>
                 <td className="font-data">{when(item.ts)}</td>
               </tr>
             ))}
@@ -159,7 +160,7 @@ export function PublicFeedPreview() {
             <li key={item.id} className="border border-rule bg-panel p-4">
               <p className="text-xs font-semibold text-signal">{SOURCE_LABEL[item.source]}</p>
               <p className="mt-2 text-sm text-ink">{clip(item.body, 180)}</p>
-              <PublicFeedMedia media={item.media} />
+              <FeedConversation key={`${item.source}:${item.id}`} item={item} /><PublicFeedMedia media={item.media} />
               <p className="mt-2 text-xs text-ink-muted">
                 {clip(item.author, 48)}
                 {item.ts ? <span className="font-data"> · {when(item.ts)}</span> : null}

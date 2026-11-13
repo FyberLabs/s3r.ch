@@ -1,5 +1,6 @@
 "use client";
 import PublicFeedMedia from "./PublicFeedMedia";
+import FeedConversation from "./FeedConversation";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FeedItem, FeedSnapshot, FeedTab } from "@/lib/feed-types";
@@ -1169,7 +1170,7 @@ function FeedItems({
                 <tr key={item.id}>
                   <td className="font-data">{item.author || ""}</td>
                   <td>{item.kind}</td>
-                  <td className="whitespace-normal">{item.body}<PublicFeedMedia media={item.media} /></td>
+                  <td className="whitespace-normal">{item.body}<FeedConversation key={`${item.source}:${item.id}`} item={item} /><PublicFeedMedia media={item.media} /></td>
                   <td className="whitespace-normal">{item.tags.join(",")}</td>
                   <td className="font-data">{formatIso(item.ts)}</td>
                   <td className="whitespace-normal">{item.provenance}</td>
@@ -1282,7 +1283,7 @@ function FeedCard({
         </span>
       </div>
       <p className="mt-1 text-sm text-ink-muted">{item.body}</p>
-      <PublicFeedMedia media={item.media} />
+      <FeedConversation key={`${item.source}:${item.id}`} item={item} /><PublicFeedMedia media={item.media} />
       <p className="mt-2 text-xs text-ink-muted">
         {item.tags.join(" · ")}
         {when ? ` · ${when}` : ""}
