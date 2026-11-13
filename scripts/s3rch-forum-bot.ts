@@ -13,7 +13,10 @@ async function main() {
   try {
     if (mode === "artifact") {
       const result = await runtime.readArtifact(JSON.parse(readPrivateBotFile(proofFile!, 16384).toString("utf8")));
-      process.stdout.write(result.bytes); return;
+      await new Promise<void>((resolve, reject) => {
+        process.stdout.write(result.bytes, error => error ? reject(error) : resolve());
+      });
+      return;
     }
     if (!("tick" in runtime) || typeof runtime.tick !== "function") throw Error("Worker unavailable");
     let stopped = false; const stop = () => { stopped = true; };
