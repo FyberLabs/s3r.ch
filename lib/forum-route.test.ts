@@ -175,6 +175,15 @@ describe("forum route resolves a login, then honors invites", { concurrency: 1 }
       assert.equal(daveBody.owner, DAVE);
       assert.equal((await sessionGET(sessionReq(carol))).status, 401);
 
+      const malformed = await POST(new Request("http://localhost/api/forum",{
+        method:"POST",headers:{cookie:bob,"content-type":"application/json"},body:"{",
+      }));
+      assert.equal(malformed.status,400);
+      for (const cookie of [sessionCookieName(false)+"=invalid",oauthSessionCookieName(false)+"=invalid"]) {
+        assert.equal((await GET(req(cookie))).status,401);
+        assert.equal((await post(cookie,{action:"token"})).status,401);
+      }
+
       const minted = await post(bob, { action: "token" });
       assert.equal(minted.status, 410);
       assert.equal(minted.body.error, "owner-bot-token-retired");
@@ -204,6 +213,10 @@ describe("forum route resolves a login, then honors invites", { concurrency: 1 }
       const oldEnv = process.env.NODE_ENV;
       const oldSecret = process.env.IDENTITY_SESSION_SECRET;
       try {
+        Object.assign(process.env, { NODE_ENV: "production" });
+        delete process.env.IDENTITY_SESSION_SECRET;
+        assert.equal((await GET(req(bob))).status,500);
+        assert.equal((await post(bob,{action:"token"})).status,500);
         Object.assign(process.env, { NODE_ENV: "production", IDENTITY_SESSION_SECRET: secret });
         useLinkStore(unavailableLinkStore);
         for (const cookie of [bob, carol]) {
