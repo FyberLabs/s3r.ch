@@ -1,3 +1,4 @@
+import {createMediaBudget} from "./public-media-admission";
 import { fetchPublic } from "./public-fetch";
 import { publicMediaUrl } from "./feed-media";
 
@@ -12,14 +13,14 @@ export function publicMediaProxyUrl(url: string, kind: string, depth = 0): strin
   return `/api/feed/media?${new URLSearchParams({url, kind, depth: String(depth)})}`;
 }
 
-export function rewriteMediaPlaylist(text: string, base: string, depth: number): string {
+export function rewriteMediaPlaylist(text: string, base: string, depth: number, sign = publicMediaProxyUrl): string {
   if (!text.startsWith("#EXTM3U") || depth >= 3) throw new Error("Unsupported playlist");
   const lines = text.split(/\r?\n/);
   if (lines.length > 2048) throw new Error("Playlist too large");
   const rewrite = (value: string) => {
     const url = publicMediaUrl(new URL(value, base).href);
     if (!url) throw new Error("Unsafe playlist URL");
-    return publicMediaProxyUrl(url, "video", depth + 1);
+    return sign(url, "video", depth + 1);
   };
   return lines.map(line => {
     if (line.length > 8192) throw new Error("Playlist line too large");
@@ -39,7 +40,7 @@ export function rewriteMediaPlaylist(text: string, base: string, depth: number):
   }).join("\n");
 }
 
-export async function readMediaBytes(response: Response, limit: number, timeoutMs = 15_000): Promise<Uint8Array<ArrayBuffer>> {
+export async function readMediaBytes(response: Response, limit: number, timeoutMs = 15_000, charge = (_bytes: number) => true): Promise<Uint8Array<ArrayBuffer>> {
   const declared = response.headers.get("content-length");
   if (declared && (!/^\d+$/.test(declared) || Number(declared) > limit)) {
     await response.body?.cancel(); throw new Error("Media too large");
@@ -56,6 +57,7 @@ export async function readMediaBytes(response: Response, limit: number, timeoutM
       if (Date.now() - started >= timeoutMs) throw new Error("Media timeout");
       if (done) break;
       if (value.byteLength > limit - used) throw new Error("Media too large");
+      if (!charge(value.byteLength)) throw new Error("Media quota exhausted");
       buffer.set(value, used); used += value.byteLength;
     }
     if (!used) throw new Error("Empty media");
@@ -87,12 +89,14 @@ export function createMediaQueue(limit = 4, capacity = 32, timeoutMs = 5000) {
   };
 }
 const acquireMedia = createMediaQueue();
-export async function servePublicMedia(request: Request, read = fetchPublic): Promise<Response> {
+const budget = createMediaBudget();
+export async function servePublicMedia(request: Request, read = fetchPublic, sign = publicMediaProxyUrl): Promise<Response> {
   const input = new URL(request.url), raw = input.searchParams.get("url");
   const kind = input.searchParams.get("kind") ?? "", depthRaw = input.searchParams.get("depth") ?? "0";
   const url = publicMediaUrl(raw);
   if (!url || !Object.hasOwn(TYPES, kind) || !/^[0-3]$/.test(depthRaw)) return new Response("Invalid media request", {status:400});
   if (request.headers.get("sec-fetch-site") === "cross-site") return new Response("Forbidden", {status:403});
+  if (!budget.request()) return new Response("Media quota exhausted",{status:429,headers:{"retry-after":"60"}});
   const release = await acquireMedia(request.signal);
   if (!release) return new Response("Media busy", {status:429,headers:{"retry-after":"5"}});
   try {
@@ -102,8 +106,8 @@ export async function servePublicMedia(request: Request, read = fetchPublic): Pr
       await upstream.body?.cancel(); return new Response("Unsupported media", {status:415});
     }
     const playlist = type.includes("mpegurl");
-    const bytes = await readMediaBytes(upstream, playlist ? PLAYLIST_BYTES : PUBLIC_MEDIA_BYTES);
-    const body = playlist ? new TextEncoder().encode(rewriteMediaPlaylist(new TextDecoder("utf-8",{fatal:true}).decode(bytes), upstream.url || url, Number(depthRaw))) : bytes;
+    const bytes = await readMediaBytes(upstream, playlist ? PLAYLIST_BYTES : PUBLIC_MEDIA_BYTES, 15_000, budget.bytes);
+    const body = playlist ? new TextEncoder().encode(rewriteMediaPlaylist(new TextDecoder("utf-8",{fatal:true}).decode(bytes), upstream.url || url, Number(depthRaw), sign)) : bytes;
     return new Response(body, {headers:{
       "content-type":playlist ? "application/vnd.apple.mpegurl" : type,
       "content-length":String(body.byteLength), "cache-control":"no-store",
