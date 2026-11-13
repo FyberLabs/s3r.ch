@@ -118,6 +118,10 @@ write. A replacement needs a strictly later issuance time and a currently valid
 owner signature. This permits re-signing after key rotation without changing the
 object's identity or immutable ciphertext mapping.
 
+Body processing is limited to two requests per authenticated owner and sixteen
+per worker, with a 15-second deadline. Different objects of one owner share the
+same limit; completion, failure and cancellation release their slots.
+
 Registration returns an empty 201 response. It does not upload ciphertext, publish
 a post, add an assignment destination, share with a forum, distribute a key wrap,
 or grant a reader. The ciphertext route's separate byte and object quotas still

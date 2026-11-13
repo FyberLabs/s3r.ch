@@ -1,3 +1,4 @@
+import { objectPrincipal } from "./identity/forum-authority-records";
 import { matchesBrowserOrigin } from "./request-origin";
 import { RecordConflict } from "./record-store";
 import { createMediaRegistrationStore, mediaRegistration, MediaRegistrationCapacity } from "./media-registration-store";
@@ -13,6 +14,7 @@ export function createMediaRegistrationService(input: {
   const origin = new URL(input.origin);
   if (origin.origin !== input.origin || origin.protocol !== "https:") throw Error("Canonical HTTPS origin required");
   let active = 0;
+  const owners = new Map<string, number>();
   return async (request: Request, object: string) => {
     const reply = (status: number) => new Response(null, { status, headers: {
       "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", Vary: "Cookie, Authorization, Origin" } });
@@ -29,8 +31,15 @@ export function createMediaRegistrationService(input: {
       }
       signal.throwIfAborted();
     } catch { void request.body.cancel().catch(() => {}); return reply(503); }
-    if (active >= 2) { void request.body.cancel().catch(() => {}); return reply(429); }
+    // Preflight binds the session to this canonical embedded owner. Different
+    // objects owned by the same principal must share the same admission bucket.
+    const owner = object.startsWith("media_") && objectPrincipal(object);
+    if (!owner) { void request.body.cancel().catch(() => {}); return reply(403); }
+    if (active >= 16 || (owners.get(owner) ?? 0) >= 2) {
+      void request.body.cancel().catch(() => {}); return reply(429);
+    }
     active++;
+    owners.set(owner, (owners.get(owner) ?? 0) + 1);
     try {
       const reader = request.body.getReader(), bytes = new Uint8Array(2048); let size = 0;
       const abort = () => { void reader.cancel().catch(() => {}); };
@@ -56,6 +65,10 @@ export function createMediaRegistrationService(input: {
       return reply(request.method === "DELETE" ? 204 : 201);
     } catch (error) {
       return reply(error instanceof RecordConflict ? 409 : error instanceof MediaRegistrationCapacity ? 507 : 503);
-    } finally { active--; }
+    } finally {
+      active--;
+      const remaining = owners.get(owner)! - 1;
+      if (remaining) owners.set(owner, remaining); else owners.delete(owner);
+    }
   };
 }

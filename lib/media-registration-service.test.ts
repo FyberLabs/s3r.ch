@@ -93,6 +93,16 @@ test("abort cancels stalled bodies and concurrent requests are bounded", async (
     method: "POST", headers: { origin: "https://s3r.ch", "content-type": "application/json" },
     body: new ReadableStream({ cancel() { cancelled++; } }), signal: controller.signal, duplex: "half" } as RequestInit), object));
   assert.equal((await h.service(request(), object)).status, 429);
+  // Changing the object suffix cannot evade the owner's body-read limit.
+  assert.equal((await h.service(request(), object.replace(/a$/, "b"))).status, 429);
+  const otherSecret = new Uint8Array(32).fill(54), point = p256.getPublicKey(otherSecret, false);
+  const other = Buffer.from(point.slice(1,33)).toString("base64url") + "." + Buffer.from(point.slice(33)).toString("base64url");
+  const next = { object: `media_${seaToPrincipalKey(other)}_${"b".repeat(32)}`, owner: other, issuedAt: at - 1, sig: "pending" };
+  next.sig = Buffer.from(p256.sign(parseForumObjectRecord(next)!.bytes, otherSecret, { prehash: true, format: "compact" })).toString("base64url");
+  h.as(other);
+  assert.equal((await h.service(request(next), next.object)).status, 201);
+  assert.equal((await h.service(new Request(request(next), { method: "DELETE" }), next.object)).status, 204);
+  h.as(owner);
   controllers.forEach(controller => controller.abort());
   assert.deepEqual((await Promise.all(pending)).map(r => r.status), [503, 503]); assert.equal(cancelled, 2);
   assert.equal((await h.service(request(), object)).status, 201);
@@ -135,4 +145,32 @@ test("unauthenticated stalled bodies are refused before reading or consuming cap
     assert.equal((await h.service(req, object)).status, 403);
   }
   assert.equal(pulls, 0); assert.equal(cancelled, 3); assert.deepEqual(h.calls, []);
+});
+
+test("global body admission stays bounded across owners and releases aborted slots", async () => {
+  const h = setup(), controllers: AbortController[] = [], pending: Promise<Response>[] = [];
+  let cancelled = 0;
+  for (let i = 0; i < 8; i++) {
+    const key = p256.getPublicKey(new Uint8Array(32).fill(60 + i), false);
+    const principal = Buffer.from(key.slice(1, 33)).toString("base64url") + "." + Buffer.from(key.slice(33)).toString("base64url");
+    h.as(principal);
+    const id = `media_${seaToPrincipalKey(principal)}_${"a".repeat(32)}`;
+    for (let j = 0; j < 2; j++) {
+      const controller = new AbortController(); controllers.push(controller);
+      let entered!: () => void;
+      const reading = new Promise<void>(resolve => { entered = resolve; });
+      const req = new Request("https://s3r.ch/api/media/" + id, { method: "POST",
+        headers: { origin: "https://s3r.ch", "content-type": "application/json" },
+        body: new ReadableStream({ pull() { entered(); }, cancel() { cancelled++; } }, { highWaterMark: 0 }),
+        signal: controller.signal, duplex: "half" } as RequestInit);
+      pending.push(h.service(req, id));
+      await reading;
+    }
+  }
+  h.as(owner);
+  assert.equal((await h.service(request(), object)).status, 429);
+  controllers.forEach(controller => controller.abort());
+  assert.deepEqual((await Promise.all(pending)).map(response => response.status), Array(16).fill(503));
+  assert.equal(cancelled, 16);
+  assert.equal((await h.service(request(), object)).status, 201);
 });
