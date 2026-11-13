@@ -1,6 +1,7 @@
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { parseForumAuthority, type ParsedAuthority } from "./identity/forum-authority-records";
 import { isForumObjectId, sameEmbeddedPrincipal } from "./identity/forum-check";
+import { verifyForumKeySignature } from "./identity/forum-key-signature";
 import { matchesBrowserOrigin } from "./request-origin";
 import type { LiveSquadSpec } from "./squad-view";
 export type BotStatementSource = Readonly<{
@@ -72,6 +73,10 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       for (const p of parsed) {
         const row = p.row;
         if (row.owner !== principal || row.issuedAt > at) return reply(403);
+        // This endpoint admits current bot writes, never retired-key history.
+        // Verify retries without adding duplicate rows to a full snapshot.
+        const key = authority.graph.writerKey(principal, row.issuedAt, at);
+        if (!key || !verifyForumKeySignature(key, row.sig, p.bytes)) return reply(403);
         if (p.kind === "see" && (p.row.until > at + 3600 || (p.row.stated === 1 &&
             !authority.graph.checkForumSee(spec.forumId, p.row.accessor, at).allowed))) return reply(403);
       }
@@ -89,7 +94,7 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       const nextSnapshot = { ...snapshot, rows: [...snapshot.rows, ...additions] };
       if (nextSnapshot.rows.length > 1024 || responseSize(nextSnapshot) > 4 * 1024 * 1024) return reply(507);
       const candidate = createForumAuthority(config, clock);
-      const result = await candidate.refresh({ ...snapshot, rows: [...snapshot.rows, ...body.rows] }, at);
+      const result = await candidate.refresh(nextSnapshot, at);
       if (!result.ok || result.diagnostics.length || candidate.graph.ownerOf(object) !== principal) return reply(403);
       const guard = () => { signal.throwIfAborted(); if (clock() !== at) throw Error("Statement authority expired"); };
       guard();
