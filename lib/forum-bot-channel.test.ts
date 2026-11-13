@@ -24,10 +24,10 @@ async function fixture(t: test.TestContext) {
   const forum = `forum_${seaToPrincipalKey(owner.pub)}_${"a".repeat(32)}`;
   let at = 1700000060, consent = true, handles = true;
   const auth = createForumAuthority({ keys: [], pinnedIssuers: [], policy: vectors.context.policy }, () => at);
-  const sign = (kind: AuthorityKind, value: object) => {
+  const sign = (kind: AuthorityKind, value: object, signer = owner) => {
     const row = { issuedAt: at - 10, ...value, sig: "pending" };
     const parsed = parseForumAuthority(kind, row); assert.ok(parsed);
-    row.sig = Buffer.from(p256.sign(parsed.bytes, Buffer.from(owner.priv, "base64url"), { prehash: true, format: "compact" })).toString("base64url");
+    row.sig = Buffer.from(p256.sign(parsed.bytes, Buffer.from(signer.priv, "base64url"), { prehash: true, format: "compact" })).toString("base64url");
     return { kind, soul: parsed.soul, record: row };
   };
   const rows: ForumAuthoritySnapshot["rows"][number][] = [sign("object", { object: forum, owner: owner.pub })];
@@ -53,6 +53,10 @@ async function fixture(t: test.TestContext) {
   async function signed(message: BotMessage, pair = owner, overrideForum = forum): Promise<SignedBotStatement> {
     const item = buildForumStatement({ forumId: overrideForum, author: pair.pub, body: encodeBotMessage(message), now: at, entropy: randomUUID().replaceAll("-", "") }); assert.ok(item);
     const signature = await signForumRecord(toGunNode(item), pair); assert.ok(signature);
+    rows.push(sign("object", { object: item.id, owner: pair.pub }, pair));
+    for (const actor of [owner.pub, a.pub, b.pub]) if (actor !== pair.pub)
+      rows.push(sign("see", { owner: pair.pub, object: item.id, accessor: actor, stated: 1, hamState: 1, from: at - 20, until: at + 1000 }, pair));
+    await refresh();
     return { id: item.id, author: item.author, issuedAt: item.ts, signature };
   }
   return { owner, a, b, botA, botB, tenant, forum, task, signed, open, rows, refresh, auth,
@@ -134,6 +138,21 @@ test("remote results cannot complete local execution and cancellation cannot cla
   assert.equal(c.status(task[2]), "claimed");
   assert.equal((await c.event(await f.signed(["cancel", f.tenant, task[2]]))).cancelled, false);
   assert.equal(c.status(task[2]), "claimed");
+  const progress = await f.signed(["progress", f.tenant, task[2], 50], f.b);
   await f.refresh(f.rows.filter(row => !(row.kind === "post" && (row.record as { accessor?: string }).accessor === f.b.pub)));
-  await assert.rejects(c.event(await f.signed(["progress", f.tenant, task[2], 50], f.b)));
+  await assert.rejects(c.event(progress));
+});
+
+test("thread access cannot substitute for statement read authority", async t => {
+  const f = await fixture(t), c = f.open(), task = f.task(), signed = await f.signed(task);
+  await f.refresh(f.rows.filter(row => !(row.kind === "see" &&
+    (row.record as { object?: string; accessor?: string }).object === signed.id &&
+    (row.record as { accessor?: string }).accessor === f.b.pub)));
+  await assert.rejects(c.receive([signed]), /authority/);
+  await f.refresh(); await c.receive([signed]);
+  const event = await f.signed(["cancel", f.tenant, task[2]]);
+  await f.refresh(f.rows.filter(row => !(row.kind === "see" &&
+    (row.record as { object?: string; accessor?: string }).object === event.id &&
+    (row.record as { accessor?: string }).accessor === f.b.pub)));
+  await assert.rejects(c.event(event), /authority/);
 });

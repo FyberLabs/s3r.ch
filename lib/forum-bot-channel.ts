@@ -52,6 +52,9 @@ export function openForumBotChannel(input: {
           authority.checkPost(scope.forum, link.author, at).allowed !== true ||
           authority.checkForumSee(scope.forum, link.recipient, at).allowed !== true ||
           authority.checkPost(scope.forum, link.recipient, at).allowed !== true ||
+          authority.checkDirectSee(link.message, link.author, at).allowed !== true ||
+          authority.checkPost(link.message, link.author, at).allowed !== true ||
+          authority.checkForumSee(link.message, scope.principal, at).allowed !== true ||
           (i > 0 && (task[6] !== previous.task[2] || link.author !== previous.recipient ||
             link.at < previous.at || task[5] > previous.task[5] || task[7] !== first.task[7]))) return false;
       visited.add(link.recipient); ids.add(task[2]);
@@ -99,6 +102,9 @@ export function openForumBotChannel(input: {
             authority.writerKey(row.author, row.issuedAt, at) !== key ||
             authority.checkForumSee(scope.forum, row.author, at).allowed !== true ||
             authority.checkPost(scope.forum, row.author, at).allowed !== true ||
+            authority.checkDirectSee(item.id, row.author, at).allowed !== true ||
+            authority.checkPost(item.id, row.author, at).allowed !== true ||
+            authority.checkForumSee(item.id, scope.principal, at).allowed !== true ||
             (message[0] === "cancel" ? row.author !== chain[0].author && row.author !== last.author : row.author !== last.recipient))
           throw Error("Forum bot event authority unavailable");
         let cancelled = false;

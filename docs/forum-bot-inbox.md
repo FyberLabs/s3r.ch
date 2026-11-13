@@ -55,8 +55,9 @@ never advances it.
 `ForumAuthorityGraph`. Provision each tenant/thread with independently enrolled
 bot UUIDs and SEA principals, the thread owner, allowed human root senders, and
 a local delegation ceiling (zero by default, at most four). Bots cannot mint
-root tasks. Every hop requires current read and post grants for its sender and
-recipient, a current signing key, a nonextended deadline, an exact parent task,
+root tasks. Every hop requires current thread read and post grants for its sender and
+recipient, statement read/post authority for the author, statement read authority
+for the receiving bot, a current signing key, a nonextended deadline, an exact parent task,
 and no repeated bot or task. The caller supplies complete signed chains, not
 claims about ancestor authorization. A persisted context digest prevents a
 changed ancestor from being substituted after restart.
