@@ -63,13 +63,13 @@ test("busy and disposed controllers do not start duplicate operations",async()=>
   const first=item.library.load();await item.library.load(1);item.library.dispose();release();await first;
   await item.library.load();item.library.dispose();assert.deepEqual(item.pages,[]);
 });
-test("non-image content is not given a preview URL and its plaintext is cleared",async()=>{
+test("unsupported content is not given a preview URL and its plaintext is cleared",async()=>{
   const bytes=new Uint8Array([5]);const item=setup({browser:()=>({
     catalog:async()=>({at:1,objects:["owned"],nextPage:1,principal:key}),
-    open:async()=>({description:{name:"clip.mp4",mediaType:"video/mp4"},bytes}),
+    open:async()=>({description:{name:"unsafe.html",mediaType:"text/html"},bytes}),
   } as unknown as ReturnType<typeof createPrivateMediaBrowser>),makeUrl:()=>{throw Error("must not render");}});
   try {await item.library.load();await item.library.open("owned","tenant");assert.equal(bytes[0],0);
-    assert.equal(item.state().preview,null);assert.match(item.state().message,/not an image/);
+    assert.equal(item.state().preview,null);assert.match(item.state().message,/cannot be previewed/);
   } finally {item.library.dispose();}
 });
 test("expired session clears an existing preview before another operation",async()=>{
@@ -106,4 +106,16 @@ test("sharing management only cancels listed recipients and does not retry write
     await item.library.cancel("owned",key);assert.equal(writes,1);assert.equal(item.state().audience,null);
     assert.match(item.state().message,/Sharing stopped/);await item.library.cancel("owned",key);assert.equal(writes,1);
   } finally {item.library.dispose();}
+});
+
+test("audio and video previews use temporary URLs and zero plaintext",async()=>{
+  for(const mediaType of ["audio/ogg","video/mp4"]) {
+    const bytes=new Uint8Array([5]);let created=0;const item=setup({browser:()=>({
+      catalog:async()=>({at:1,objects:["owned"],nextPage:1,principal:key}),
+      open:async()=>({description:{name:"clip",mediaType},bytes}),
+    } as unknown as ReturnType<typeof createPrivateMediaBrowser>),makeUrl:blob=>{assert.equal(blob.type,mediaType);created++;return "blob:clip";}});
+    try {await item.library.load();await item.library.open("owned","tenant");assert.equal(created,1);assert.equal(bytes[0],0);
+      assert.equal(item.state().preview?.mediaType,mediaType);item.library.reset();assert.deepEqual(item.revoked,["blob:clip"]);
+    } finally {item.library.dispose();}
+  }
 });
