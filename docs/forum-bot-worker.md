@@ -25,7 +25,7 @@ with mode `0600`. Approval and state directories must already exist with mode
   "approvalsDirectory": "/absolute/private/approvals",
   "stateDirectory": "/absolute/private/state",
   "pairFile": "/absolute/private/bot-sea-pair.json",
-  "visorOrigin": "http://127.0.0.1:28800",
+  "visorOrigin": "http://127.0.0.1:9847",
   "visorTokenFile": "/absolute/private/visor-token"
 }
 ```

@@ -23,7 +23,9 @@ test("executor only uses explicit loopback leased tasks and never sends start or
       results: [], cancel_requested: init!.method === "DELETE" });
   } });
   assert.deepEqual(await executor.consent(session), { running: true, resume: 4 });
-  const grant = { session, task: { steps: [{ tool: "view", arguments: {} }] } } as LocalBotApproval;
+  const grant: LocalBotApproval = { version: 1, tenant: randomUUID(), forum: "test-thread", bot: randomUUID(),
+    principal: "test-principal", handle: randomUUID(), session, expires: 12345, revoked: false, artifactReaders: [],
+    task: { steps: [{ tool: "view", arguments: {} }] } };
   assert.deepEqual(await executor.submit(grant, 12345, 4), { id }); await executor.status(session, id); await executor.cancel(session, id);
   assert.deepEqual(requests, ["GET /companion", `POST /session/${session}/tasks/leased`, `GET /session/${session}/tasks/${id}`, `DELETE /session/${session}/tasks/${id}`]);
   wrongSession = true; await assert.rejects(executor.status(session, id), /binding differs/);

@@ -15,7 +15,7 @@ async function main() {
       const result = await runtime.readArtifact(JSON.parse(readPrivateBotFile(proofFile!, 16384).toString("utf8")));
       process.stdout.write(result.bytes); return;
     }
-    if (typeof runtime.tick !== "function") throw Error("Worker unavailable");
+    if (!("tick" in runtime) || typeof runtime.tick !== "function") throw Error("Worker unavailable");
     let stopped = false; const stop = () => { stopped = true; };
     process.once("SIGINT", stop); process.once("SIGTERM", stop);
     while (!stopped) {
