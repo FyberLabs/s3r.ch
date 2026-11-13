@@ -533,5 +533,8 @@ The application Squad runtime has no Blob assignment journal or assignment HTTP
 executor. It requires the independently provisioned ACL statement source and a
 separate identity replay store. The legacy synthetic Blob constructor lives only
 under `scripts/squad-pilot-fixture.ts`; it is not imported by application routes.
-The remaining authority relay verifies signed records, and the shared identity
-issuer remains in use while the broader identity migration continues.
+The remaining authority relay verifies signed records and reads sessions through
+the verification-only shared SEA token reader. Squad constructs no challenge, exchange or logout handlers; new clients use
+`/api/identity/sea`, while the old session URLs forward to that same shared
+handler for patch compatibility. The broader identity
+migration continues for the remaining wallet-oriented consumers.

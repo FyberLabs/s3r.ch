@@ -22,7 +22,7 @@ test("ACL pilot reads one owner source and constructs no Blob or assignment stor
   const statements = {read:async(at:number, signal:AbortSignal)=>{reads++;assert.equal(signal,abort);return {snapshot:snapshot(at),fence:"opaque"};},append:async()=>false};
   const server = createSquadPilotServer(config,statements,replay,()=>100,"s".repeat(32));
   assert.equal(server.backend,"acl");
-  assert.equal("assignments" in server.services,false);
+  for (const retired of ["assignments", "challenge", "exchange", "logout"]) assert.equal(retired in server.services,false);
   assert.equal(typeof server.services.statements,"function");
   assert.deepEqual(await server.source.read(100,abort),snapshot(100));
   assert.equal(reads,1);

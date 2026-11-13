@@ -201,3 +201,9 @@ unavailable until its owner source and replay are explicitly configured. This
 change does not provision a graph, stage credentials, remove stored data or
 activate a replacement source. Retire the old infra container and role separately
 after confirming that no operator tool still uses them.
+
+Squad connects through the shared `/api/identity/sea` challenge/exchange/logout
+endpoint. Its runtime verifies the existing site cookie and exposes no token
+issuance actions. Existing `/api/squad/pilot/session/*` aliases forward to that shared handler
+for patch compatibility; they do not create a second issuer.
+The shared replay configuration remains required and dedicated to identity.
