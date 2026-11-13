@@ -40,6 +40,14 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Public feed media metadata coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/feed-media.ts
+          --test-coverage-include=lib/feed-media-adapters.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/feed-media-adapters.test.ts
+
       - name: Private media consumer contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage

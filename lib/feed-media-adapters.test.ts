@@ -46,3 +46,26 @@ test("Gun v1 preserves additive media and rejects future versions", async () => 
   assert.equal(fromGunNode({...encoded,v:999}),null);
   assert.equal(fromGunNode({...encoded,media:"{"})?.body,"Text");
 });
+
+test("metadata rejects malformed and oversized values",()=>{
+ for(const value of [null,{},"x".repeat(16385),[null,[],{}, {kind:"bad",url:"https://example.com"}]])assert.deepEqual(parseFeedMedia(value),[]);
+ const item=parseFeedMedia(JSON.stringify([{kind:"image",url:"https://example.com/a#hash",alt:"A",title:"T",text:"Text",author:"Alice",warning:"Warning",thumbnail:"https://example.com/t",width:3,height:4,duration:5}]))[0];
+ assert.equal(item.sensitive,true);assert.equal(item.url,"https://example.com/a");assert.equal(item.duration,5);
+ const invalid=parseFeedMedia([{kind:"audio",url:"https://example.com/a",alt:"a".repeat(1025),width:-1,height:Infinity,duration:86401}])[0];
+ assert.equal(invalid.alt,undefined);assert.equal(invalid.width,undefined);
+ assert.deepEqual(parseFeedMedia(Array.from({length:8},()=>({kind:"quote",url:"https://example.com/a",text:"a".repeat(4000)}))),[]);
+});
+test("URL and MIME classifications",async()=>{
+ const {mediaKindForUrl,publicMediaUrl}=await import("./feed-media");
+ for(const [url,mime,kind] of [["https://example.com/a","image/png","image"],["https://example.com/a","audio/mpeg","audio"],["https://example.com/a","video/mp4","video"],["https://example.com/a","application/vnd.apple.mpegurl","video"],["https://example.com/a.png","","image"],["https://example.com/a.mp3","","audio"],["https://example.com/a.webm","","video"],["https://example.com/a","","link"],["bad","","link"]])assert.equal(mediaKindForUrl(url,mime),kind);
+ assert.equal(publicMediaUrl(undefined),null);assert.equal(publicMediaUrl("x".repeat(2049)),null);
+});
+test("adapters ignore malformed input and bound nested combinations",()=>{
+ for(const parse of [activityPubMedia,atprotoMedia,farcasterMedia,nostrMedia])assert.deepEqual(parse(null),[]);
+ assert.equal(activityPubMedia({attachment:{url:[{href:"https://example.com/a"}],mediaType:"image/png"}})[0].kind,"image");
+ assert.equal(atprotoMedia({$type:"app.bsky.embed.recordWithMedia#view",media:{$type:"app.bsky.embed.video#view",playlist:"https://example.com/a.m3u8"},record:{$type:"app.bsky.embed.record#view",record:{uri:"bad"}}}).length,1);
+ assert.deepEqual(atprotoMedia({$type:"app.bsky.embed.recordWithMedia#view",media:{$type:"app.bsky.embed.recordWithMedia#view",media:{$type:"app.bsky.embed.recordWithMedia#view",media:{$type:"app.bsky.embed.video#view",playlist:"https://example.com/a"}}}}),[]);
+ assert.equal(farcasterMedia([{castId:{hash:"0x"+"ab".repeat(20)}}])[0].kind,"quote");
+ assert.equal(nostrMedia([null,["imeta",42,"x".repeat(4097),"broken"],["image","https://example.com/a.png"],["url","https://example.com/a"],["q","ab".repeat(32)]]).length,3);
+ assert.equal(nostrMedia(Array.from({length:20},()=>["image","https://example.com/a.png"])).length,8);
+});
