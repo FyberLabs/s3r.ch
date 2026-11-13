@@ -137,3 +137,22 @@ existing tenant limits, so registration cleanup cannot bypass upload quotas.
 Physical ciphertext deletion and upload-quota reclamation remain unfinished. Reader grant and confidential
 wrap delivery, client upload/playback controls, and replacing the primary Squad
 history source remain separate unfinished work.
+
+
+## Browser ciphertext transport
+
+`createMediaHttpClient` sends signed ownership registration and cleanup requests,
+and encrypted upload/download bytes, only to the same-origin media routes. It
+never accepts a provider URL or sends a DEK, reader wrap, file name or MIME label.
+The browser supplies upload Content-Length from the snapshotted byte body.
+
+Downloads require a digest and exact length obtained from private verified grant
+material. The client checks status, response type, length, ETag, envelope header
+and SHA-256 before returning ciphertext. Redirects, partial content, truncation,
+changed bytes and compressed responses are refused. Requests have a bounded
+deadline and support cancellation, including a stalled download stream. Writes
+are not retried automatically; retry the same saved bytes after reconciliation.
+
+This transport does not authorize decryption. The caller still needs current
+Check and epoch status, confidential wrap delivery, and an unlocked reader key
+before calling `openMediaFile`. Upload/playback controls remain unfinished.
