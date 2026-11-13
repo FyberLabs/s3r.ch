@@ -10,7 +10,7 @@ import { readForumSignature, signatureOf } from "./forum-sign";
  * Reconnect replays retained statements; the inbox, not Gun ordering, deduplicates.
  */
 export function createForumBotGunTransport(input: {
-  gun: any; forum: string; principal: string; authority: ForumAuthorityGraph;
+  gun: any; tenant: string; forum: string; principal: string; authority: ForumAuthorityGraph;
   principals: readonly string[]; worker: ReturnType<typeof createForumBotWorker>; clock?: () => number;
 }) {
   const { gun, forum, principal, authority, worker } = input, principals = [...input.principals];
@@ -45,14 +45,17 @@ export function createForumBotGunTransport(input: {
         if (!hint || hint.id !== id || !sig) { incoming.delete(id); continue; }
         const key = authority.writerKey(hint.author, hint.ts, clock()); if (!key) continue;
         const item = forumStatementFromNode(await readForumSignature(sig, key), forum), message = parseBotMessage(item?.body);
-        if (!item || item.id !== id || item.author !== hint.author || item.ts !== hint.ts || !message ||
+        if (!item || item.id !== id || item.author !== hint.author || item.ts !== hint.ts || !message || message[1] !== input.tenant ||
             !sameEmbeddedPrincipal(item.author, id) || authority.writerKey(item.author, item.ts, clock()) !== key ||
             !authority.checkDirectSee(id, item.author, clock()).allowed || !authority.checkPost(id, item.author, clock()).allowed ||
             !authority.checkForumSee(id, principal, clock()).allowed) { incoming.delete(id); continue; }
         const envelope = Object.freeze({ id, author: item.author, issuedAt: item.ts, signature: sig });
         if (message[0] === "task") {
           const old = tasks.get(message[2]);
-          if (old && old.envelope.id !== id) throw Error("Conflicting forum task identity");
+          if (old && old.envelope.id !== id) {
+            // A signed duplicate must not starve unrelated tasks or cancellation.
+            incoming.delete(id); continue;
+          }
           if (!old && tasks.size >= 4096) throw Error("Bot task transport capacity reached");
           tasks.set(message[2], { envelope, parent: message[6] });
         } else {

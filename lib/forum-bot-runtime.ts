@@ -104,7 +104,7 @@ export async function openForumBotRuntime(configPath: string, artifactOnly = fal
     refresh, publish: async message => outbox.enqueue(message) });
   const Gun = createRequire(import.meta.url)("gun");
   const gun = Gun({ peers: [c.peer], radisk: false, localStorage: false, axe: false });
-  const transport = createForumBotGunTransport({ gun, forum: c.scope.forum, principal: c.scope.principal,
+  const transport = createForumBotGunTransport({ gun, tenant: c.scope.tenant, forum: c.scope.forum, principal: c.scope.principal,
     authority: authority.graph, principals, worker });
   const signRow = (kind: AuthorityKind, record: Record<string, unknown>) => {
     const row = { ...record, sig: "pending" }, parsed = parseForumAuthority(kind, row);
