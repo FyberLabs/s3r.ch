@@ -1,3 +1,4 @@
+import { parseFeedMedia, type FeedMedia } from "./feed-media";
 /**
  * Shared feed item shape. Public cache, snapshot, personal overlay, and
  * the live Gun mesh all use this. Public / Mine / Network tabs render.
@@ -41,6 +42,7 @@ export type FeedItem = {
   permalink: string;
   tags: string[];
   provenance: string;
+  media?: FeedMedia[];
   /** Missing on old seed rows; readers treat that as v1. */
   v?: number;
 };
@@ -127,6 +129,8 @@ export type GunFeedNode = {
   permalink: string;
   tags: string;
   provenance: string;
+  /** Bounded JSON because Gun cannot store arrays. Older v1 readers ignore it. */
+  media?: string;
   /** Missing on old seed rows; treat as v1. Unknown versions fail closed. */
   v?: number;
   /**
@@ -205,6 +209,7 @@ export function toGunNode(item: FeedItem): GunFeedNode {
     permalink: item.permalink,
     tags: item.tags.join(","),
     provenance: item.provenance,
+    ...(item.media?.length ? {media: JSON.stringify(parseFeedMedia(item.media))} : {}),
     v: item.v ?? GUN_PROTOCOL_V,
   };
 }
@@ -235,6 +240,7 @@ export function fromGunNode(
     permalink: asText(node.permalink),
     tags: splitTags(node.tags),
     provenance: asText(node.provenance),
+    ...(parseFeedMedia(node.media).length ? {media: parseFeedMedia(node.media)} : {}),
     v,
   };
 }
