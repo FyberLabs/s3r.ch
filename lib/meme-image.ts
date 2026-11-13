@@ -33,6 +33,7 @@ export function captionLines(text:string,width:number,measure:(text:string)=>num
   for(const character of Array.from(text.trim())){
     if(measure(character)>width)throw Error("Shorten the caption or choose a larger image.");
     if(line && measure(line+character)>width){lines.push(line.trimEnd());line="";}
+    if(!line && character===" ")continue;
     line+=character;
   }
   if(line.trim())lines.push(line.trim());

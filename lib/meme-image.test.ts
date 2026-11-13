@@ -8,7 +8,7 @@ test("raster headers bound dimensions before browser decoding",()=>{
  for(const bytes of [new Uint8Array(),new Uint8Array(MEME_FILE_MAX+1),png(0),png(4097),png(20,4097),new TextEncoder().encode('<svg/>'),new Uint8Array([255,216]),new Uint8Array([255,216,0,0,0,0]),new Uint8Array([255,216,255,218,0,2]),new Uint8Array([255,216,255,224,0,1]),new Uint8Array([255,216,255,224,0,50]),new Uint8Array([255,216,255,255,255,255])])assert.throws(()=>rasterDimensions(bytes));
 });
 test("captions wrap bounded Unicode text without evaluating markup",()=>{
- assert.deepEqual(captionLines("hello world",5,s=>Array.from(s).length),["hello","worl","d"]);
+ assert.deepEqual(captionLines("hello world",5,s=>Array.from(s).length),["hello","world"]);
  assert.deepEqual(captionLines("😀😀😀",2,s=>Array.from(s).length),["😀😀","😀"]);
  assert.deepEqual(captionLines("   ",10,s=>s.length),[]);
  assert.deepEqual(captionLines("<script>",20,s=>s.length),["<script>"]);
