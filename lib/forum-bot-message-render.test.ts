@@ -28,3 +28,12 @@ test("untrusted out-of-range deadlines do not crash task rendering", () => {
   assert.match(render(["task", id, id, id, id, Number.MAX_SAFE_INTEGER, null, 0]), /Invalid deadline/);
   assert.match(render(["task", id, id, id, id, 1700000000, null, 0]), /2023-11-14 22:13:20 UTC/);
 });
+
+test("approval reports display the handle and deadline without creating permission controls", () => {
+  const html = render(["approval", id, id, id, 1699999999, 1700000000]);
+  assert.match(html, /Local approval reported/);
+  assert.match(html, /historical report does not grant access/);
+  assert.match(html, /2023-11-14 22:13:20 UTC/);
+  assert.doesNotMatch(html, /<button|href=|src=/);
+  assert.match(render(["approval", id, id, id, 1, Number.MAX_SAFE_INTEGER]), /Invalid deadline/);
+});

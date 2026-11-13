@@ -39,7 +39,7 @@ async function setup(t: test.TestContext) {
 test("worker dispatches only the approved reference once and durably reports actual completion", async t => {
   const s = await setup(t); assert.equal(await s.worker.deliver([s.signed]), "stored");
   assert.equal(await s.worker.deliver([s.signed]), "duplicate");
-  await s.worker.tick(); assert.equal(s.submissions(), 1); assert.match(s.outbox.next()!.body, /ack/);
+  await s.worker.tick(); assert.equal(s.submissions(), 1); assert.match(s.outbox.next()!.body, /approval/);
   s.complete(); await s.worker.tick(); assert.equal(s.channel.status(s.task[2]), "completed");
   await s.worker.deliver([s.signed]); await s.worker.tick(); assert.equal(s.submissions(), 1);
 });
@@ -66,7 +66,7 @@ test("outbox retains identical prepared messages across restart and refuses rebi
     assert.deepEqual(second.next()?.node, node);
     second.enqueue(["ack", s.scope.tenant, s.task[2]]); assert.equal(second.next()?.id, first.id);
     assert.throws(() => second.stage(first.id, { ...node, sig: "different" }), /already signed/);
-    second.sent(first.id); assert.equal(second.next(), null);
+    second.sent(first.id); const ack = second.next()!; assert.match(ack.body, /ack/); second.stage(ack.id, { ...node, id: ack.id, body: ack.body }); second.sent(ack.id); assert.equal(second.next(), null);
   } finally { second.close(); }
   assert.throws(() => openForumBotOutbox(join(s.dir, "outbox.db"), { ...s.scope, tenant: randomUUID() }), /scope differs/);
 });
@@ -95,7 +95,7 @@ test("one user's delegated chain runs once in each independently scoped worker",
   await workers[0].worker.tick(); await workers[1].worker.tick();
   assert.deepEqual(calls, [1, 1]);
   assert.equal(workers[0].channel.status(root[2]), "completed"); assert.equal(workers[1].channel.status(child[2]), "completed");
-  assert.deepEqual(reports.map(rows => rows.map(row => (row as string[])[0])), [["ack", "result"], ["ack", "result"]]);
+  assert.deepEqual(reports.map(rows => rows.map(row => (row as string[])[0])), [["approval", "ack", "result"], ["approval", "ack", "result"]]);
   await workers[0].worker.deliver([first]); await workers[1].worker.deliver([first, second]);
   await workers[0].worker.tick(); await workers[1].worker.tick(); assert.deepEqual(calls, [1, 1]);
   const foreign = await f.signed(f.task(f.botB), f.owner, f.forum.slice(0, -32) + "b".repeat(32));

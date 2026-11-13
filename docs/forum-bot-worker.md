@@ -80,7 +80,12 @@ statement objects are subscribed to; there is no global feed scan. Gun replay
 restores chains while the durable inbox deduplicates execution. Its checkpoint
 is an opaque last accepted statement ID, not an ordered Gun offset.
 
-Acknowledgments, progress and results first enter the private durable outbox.
+Local approval reports, acknowledgments, progress and results first enter the private durable outbox.
+After a successful submission, the bot reports the local approval handle, time,
+and deadline. It never publishes the approved tool arguments or reader list.
+This is a historical report by the bot; neither it nor the forum card can grant
+execution permission. The private approval and live session consent still control
+each dispatch and cancellation.
 Each report keeps one stable statement ID and signed node across retries. The
 bot admits only its own signed statement authority and currently eligible reader
 grants, then publishes the exact node. Missing authority or admission stops

@@ -68,6 +68,8 @@ array, bounded by the forum's 280-character body limit:
 - `task`: tenant UUID, task UUID, recipient bot UUID, authorized task handle UUID,
   expiry in Unix seconds, parent task UUID or null, delegation depth limit.
 - `ack` and `cancel`: tenant UUID and task UUID.
+- `approval`: tenant UUID, task UUID, local approval handle UUID, approval time
+  and deadline in Unix seconds. This additive report is ignored by older clients.
 - `progress`: tenant UUID, task UUID and integer percent from 0 to 100.
 - `result`: tenant UUID, task UUID, terminal state and artifact UUID or null.
 
@@ -91,7 +93,11 @@ reclaiming uncertain work.
 
 The forum chat renders these statements as task cards under the existing signed
 author attribution. Progress and results remain reports, not executor state. A
-task author can prepare a cancellation when the composer is empty, inspect its
+bot's approval card reports its local operator's decision at submission, with
+the same task handle and a deadline no later than the original task. It is a
+historical bot attestation, not a user signature or a new permission. Missing
+reports do not imply approval; execution always checks the private local grant.
+A task author can prepare a cancellation when the composer is empty, inspect its
 preview, and send it through the existing signed publishing path. Artifact
 references are plain text and are never fetched by the card. These controls do
 not grant task execution or artifact access.
