@@ -37,3 +37,12 @@ test("object references obey the same serialized bound as Gun strings",()=>{
  const reference={id:"x"+"\u0001".repeat(2047),permalink:"https://example.com/parent"};
  assert.equal(parseFeedReference(reference),null);assert.equal(parseFeedReference(JSON.stringify(reference)),null);
 });
+test("malformed source references and optional author fields fail closed",()=>{
+ for(const parse of [activityPubReply,atprotoReply,farcasterReply,nostrReply])assert.deepEqual(parse(null),{});
+ assert.deepEqual(atprotoReply({parent:{uri:"bad"}}),{});
+ assert.deepEqual(atprotoReply({parent:{uri:42}}),{});
+ assert.equal(farcasterReply({parentHash:"0x"+"ab".repeat(20)}).replyTo?.id,"0x"+"ab".repeat(20));
+ assert.equal(nostrReply([["e","ab".repeat(32),"","root"]]).replyTo?.id,"ab".repeat(32));
+ assert.equal(parseFeedReference({id:"p",permalink:"https://example.com/p",author:"x".repeat(257)})?.author,undefined);
+ assert.equal(parseFeedReference({id:" ",permalink:"https://example.com/p"}),null);
+});
