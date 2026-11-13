@@ -1,3 +1,4 @@
+import type { BotStatementSource } from "./forum-bot-statement-admission";
 import { configuredIdentityReplay, type IdentityReplay } from "./identity/spanopticon-replay-server";
 import { getIdentitySecret } from "./identity/secret";
 import { createHash } from "node:crypto";
@@ -21,12 +22,12 @@ export function createSquadPilotSource(c: SquadPilotConfig, container: Pick<Cont
   return createSquadCommitStore(createBlobSquadCommitStore(container, squadPilotNamespace(config)), config.squad, clock, "authoritative-ledger");
 }
 /** Never accepts browser-selected accounts, paths, policies or signing keys. */
-export function createSquadPilotServer(c: SquadPilotConfig, container: Pick<ContainerClient, "getBlockBlobClient">, clock = () => Math.floor(Date.now() / 1000), identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" }), replay?: IdentityReplay) {
+export function createSquadPilotServer(c: SquadPilotConfig, container: Pick<ContainerClient, "getBlockBlobClient">, clock = () => Math.floor(Date.now() / 1000), identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" }), replay?: IdentityReplay, statementSource?: BotStatementSource) {
   const config = structuredClone(c), namespace = squadPilotNamespace(config);
   const source = createSquadPilotSource(config, container, clock);
   const consume = replay?.consume ?? createSquadSessionReplayStore(createBlobSquadSessionReplayStore(container, identitySessionNamespace(config.origin)), clock);
   const services = createSquadHttpServices({ squad: config.squad, origin: config.origin, config: config.authority, secret: identitySecret,
-    clock, consume, challengeDomain: replay?.challengeDomain, read: source.read, assignments: { source, runtime: {
+    clock, consume, statements: statementSource, challengeDomain: replay?.challengeDomain, read: source.read, assignments: { source, runtime: {
       config: config.authority, clock,
       operationStores(id) {
         if (!/^[0-9a-f]{32}$/.test(id)) throw Error("invalid operation ID");
