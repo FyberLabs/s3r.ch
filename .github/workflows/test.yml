@@ -48,6 +48,12 @@ jobs:
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/media-wrap-server.test.ts lib/media-wrap-client.test.ts
 
+      - name: Private media owner contracts and coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-owner-service.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-owner-service.test.ts
       - name: Trusted source coverage
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage

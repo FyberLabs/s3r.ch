@@ -2,13 +2,15 @@ import { getSquadPilotServer } from "./squad-pilot-server";
 import { createForumAuthority } from "./identity/forum-authority";
 import { createMediaWrapService, parseMediaReaderConfig } from "./media-wrap-service";
 
-let cached: { raw: string; pilot: unknown; service: ReturnType<typeof createMediaWrapService> } | undefined;
-export function getMediaWrapService() {
+import { createMediaOwnerService } from "./media-owner-service";
+
+let cached: { raw: string; pilot: unknown; service: ReturnType<typeof createMediaWrapService>; owner: ReturnType<typeof createMediaOwnerService> } | undefined;
+function getMediaServices() {
   const raw = process.env.S3RCH_MEDIA_READER_BINDINGS;
   if (raw === undefined) { cached = undefined; return null; }
   const pilot = getSquadPilotServer();
   if (!pilot) throw Error("Private media identity unavailable");
-  if (cached?.raw === raw && cached.pilot === pilot) return cached.service;
+  if (cached?.raw === raw && cached.pilot === pilot) return cached;
   cached = undefined;
   const config = parseMediaReaderConfig(raw);
   if (config.tenant !== process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID || config.tenant !== process.env.S3RCH_MEDIA_STORAGE_TENANT_ID)
@@ -24,5 +26,9 @@ export function getMediaWrapService() {
     return authority.graph.principalForKey(session.key, at);
   };
   const service = createMediaWrapService(config, pilot.config.origin, resolveReader);
-  cached = { raw, pilot, service }; return service;
+  const owner = createMediaOwnerService(config, pilot.config.origin, resolveReader);
+  cached = { raw, pilot, service, owner }; return cached;
 }
+
+export function getMediaWrapService() { return getMediaServices()?.service ?? null; }
+export function getMediaOwnerService() { return getMediaServices()?.owner ?? null; }
