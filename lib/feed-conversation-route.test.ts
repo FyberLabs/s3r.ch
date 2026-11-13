@@ -7,7 +7,8 @@ test("anonymous conversation route uses the configured peer and refuses invalid 
  globalThis.fetch=async input=>{calls++;assert.equal(String(input),"https://peer.example/feed-cache/snapshot.json");return Response.json({items:[{id:"1",source:"nostr",body:"Parent"},{id:"2",source:"nostr",body:"Reply",replyTo:{id:"1",permalink:"https://example.com/1"}}]});};
  const request=(query:string)=>new Request("https://s3r.ch/api/feed/conversation?"+query);
  try{
-  assert.equal((await GET(request("source=unknown&id=1"))).status,400);assert.equal(calls,0);
+  for(let i=0;i<125;i++)assert.equal((await GET(request("source=unknown&id=1"))).status,400);
+  assert.equal(calls,0);
   const response=await GET(request("source=nostr&id=2"));assert.equal(response.status,200);
   const body=await response.json();assert.deepEqual(body.items.map((item:{id:string})=>item.id),["1","2"]);assert.equal(calls,1);
   assert.equal((await GET(request("source=nostr&id=missing"))).status,404);
