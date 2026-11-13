@@ -29,6 +29,7 @@ const marketing = [
   "../components/FeatureArticle.tsx",
   "../components/FeatureCards.tsx",
   "../components/SquadForum.tsx",
+  "../lib/use-squad-forum-coordination.ts",
   "../components/SquadDelegationControls.tsx",
   "../components/ForumHierarchyPreview.tsx",
   "../lib/features.ts",

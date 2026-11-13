@@ -517,3 +517,14 @@ unattributed old rows are preserved rather than guessing which failed feed owns
 them. No deployed fixture or manual migration is required. Source windows and retired
 IDs are not included in the static public snapshot. Retired IDs contain no body
 and are retained to replay removal if a graph write is interrupted.
+
+### Squad presentation and coordination
+
+`components/SquadForum.tsx` renders the board and delegates browser state and
+operations to `lib/use-squad-forum-coordination.ts`. The coordination hook owns
+Gun subscriptions, pending verification, current Check, signed writes and the
+unlocked signer adapter. The presentation receives display data, actions and
+scoped child-component properties; it does not read a key or publish a record.
+Namespace-keyed remounts still discard subscriptions and pending proofs when
+the selected forum changes. This boundary does not make a cache authoritative
+or replace the signed-record and client Check requirements.

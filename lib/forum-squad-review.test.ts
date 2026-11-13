@@ -369,7 +369,7 @@ test('public-vector squad fixture cannot connect, publish, or restore former mes
   const { PILOT_MESH_ENABLED } = await import('./forum-squad-fixture');
   assert.equal(PILOT_MESH_ENABLED, false);
   const { readFileSync } = await import('node:fs');
-  const source = readFileSync('components/SquadForum.tsx', 'utf8');
+  const source = readFileSync('lib/use-squad-forum-coordination.ts', 'utf8');
   assert.match(source, /if \(!liveEnabled \|\| !register\) return;/);
   const transport = readFileSync('lib/forum-transport.ts', 'utf8');
   const signer = readFileSync('lib/identity/browser-forum-signer.ts', 'utf8');
