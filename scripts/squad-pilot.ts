@@ -12,7 +12,7 @@ import { parseForumAuthority, type AuthorityKind } from "../lib/identity/forum-a
 import { createForumAuthority } from "../lib/identity/forum-authority";
 import { seaToPrincipalKey } from "../lib/identity/forum-check";
 import { parseSquadPilotConfig } from "../lib/squad-pilot-config";
-import { createSquadPilotSource } from "../lib/squad-pilot-server";
+import { createSquadPilotSource } from "./squad-pilot-fixture";
 import type { InventoryStore } from "../lib/delegation-inventory";
 
 async function main() {

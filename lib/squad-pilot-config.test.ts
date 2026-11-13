@@ -42,7 +42,7 @@ test("old deployment documents cannot select a Squad signing secret", () => {
 });
 
 test("ledger-only operator access needs no identity secret while the HTTP server does", async () => {
-  const { createSquadPilotSource, createSquadPilotServer } = await import("./squad-pilot-server");
+  const { createSquadPilotSource, createSquadPilotFixture } = await import("../scripts/squad-pilot-fixture");
   const { BlobServiceClient } = await import("@azure/storage-blob");
   const container = new BlobServiceClient("https://fixture.blob.core.windows.net").getContainerClient("fixture");
   const client = container.getBlockBlobClient("unused");
@@ -54,14 +54,14 @@ test("ledger-only operator access needs no identity secret while the HTTP server
     const c = parseSquadPilotConfig(JSON.stringify(config()))!;
     const source = createSquadPilotSource(c, fake);
     await assert.rejects(source.load(), /missing/);
-    assert.throws(() => createSquadPilotServer(c, fake), /IDENTITY_SESSION_SECRET is required/);
+    assert.throws(() => createSquadPilotFixture(c, fake), /IDENTITY_SESSION_SECRET is required/);
   } finally {
     if (saved === undefined) delete process.env.IDENTITY_SESSION_SECRET; else process.env.IDENTITY_SESSION_SECRET = saved;
   }
 });
 
 test("configured remote replay is passed into the existing issuer without constructing a Blob replay slot", async () => {
-  const { createSquadPilotServer } = await import("./squad-pilot-server");
+  const { createSquadPilotFixture } = await import("../scripts/squad-pilot-fixture");
   const { createRequire } = await import("node:module");
   const { signForumRecord } = await import("./forum-sign");
   const { decodeProtectedHeader } = await import("jose");
@@ -73,7 +73,7 @@ test("configured remote replay is passed into the existing issuer without constr
   let consumed = 0;
   const replay = { challengeDomain: "a".repeat(64), consume: async () => { consumed++; return true; } };
   const c = parseSquadPilotConfig(JSON.stringify(config()))!;
-  const server = createSquadPilotServer(c, fake, () => 100, "s".repeat(32), replay);
+  const server = createSquadPilotFixture(c, fake, () => 100, "s".repeat(32), replay);
   assert.ok(paths.length); assert.ok(paths.every(path => !path.includes("session-replay")));
   const request = (body: unknown, cookie = "") => new Request("https://s3r.ch/api/squad/session", {
     method: "POST", headers: { origin: "https://s3r.ch", "content-type": "application/json", cookie }, body: JSON.stringify(body) });

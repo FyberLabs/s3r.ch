@@ -20,10 +20,9 @@ test("ACL pilot reads one owner source and constructs no Blob or assignment stor
   let reads = 0;
   const abort = new AbortController().signal;
   const statements = {read:async(at:number, signal:AbortSignal)=>{reads++;assert.equal(signal,abort);return {snapshot:snapshot(at),fence:"opaque"};},append:async()=>false};
-  const container = {getBlockBlobClient(){throw Error("Blob must not be constructed");}};
-  const server = createSquadPilotServer(config,container,()=>100,"s".repeat(32),replay,statements);
+  const server = createSquadPilotServer(config,statements,replay,()=>100,"s".repeat(32));
   assert.equal(server.backend,"acl");
-  assert.equal(server.services.assignments,undefined);
+  assert.equal("assignments" in server.services,false);
   assert.equal(typeof server.services.statements,"function");
   assert.deepEqual(await server.source.read(100,abort),snapshot(100));
   assert.equal(reads,1);
@@ -33,8 +32,8 @@ test("ACL pilot reads one owner source and constructs no Blob or assignment stor
 
 test("ACL pilot refuses missing replay instead of constructing a Blob fallback", () => {
   const statements = {read:async()=>({snapshot:snapshot(100),fence:"opaque"}),append:async()=>false};
-  assert.throws(()=>createSquadPilotServer(config,undefined,()=>100,"s".repeat(32),undefined,statements),/requires configured identity replay/);
-  assert.throws(()=>createSquadPilotServer(config,undefined,()=>100,"s".repeat(32)),/primary storage unavailable/);
+  assert.throws(()=>createSquadPilotServer(config,statements,undefined,()=>100,"s".repeat(32)),/requires configured identity replay/);
+  assert.throws(()=>createSquadPilotServer(config,undefined,replay,()=>100,"s".repeat(32)),/statement source is required/);
 });
 
 test("deployment selection needs no Blob settings and rotates cached source configuration", () => {
@@ -49,6 +48,11 @@ test("deployment selection needs no Blob settings and rotates cached source conf
   const saved = Object.fromEntries(Object.keys(values).map(key=>[key,process.env[key]]));
   const assign = (entries:Record<string,string|undefined>)=>{for(const [key,value] of Object.entries(entries)) {if(value===undefined)delete process.env[key];else process.env[key]=value;}};
   try {
+    assign(values);
+    for (const backend of [undefined, "legacy"]) {
+      assign({ S3RCH_AUTHORITY_BACKEND: backend, S3RCH_SQUAD_BLOB_ACCOUNT: "oldaccount", S3RCH_SQUAD_BLOB_CONTAINER: "old-pilot" });
+      assert.throws(()=>getSquadPilotServer(),/statement source is required/);
+    }
     assign(values);
     let server = getSquadPilotServer();assert.equal(server?.backend,"acl");assert.equal(getSquadPilotServer(),server);
     for (const [key,value] of Object.entries({S3RCH_STATEMENT_SOURCE_ORIGIN:"https://new.example.test",

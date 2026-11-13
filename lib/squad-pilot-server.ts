@@ -2,71 +2,40 @@ import { configuredAclStatementSource, StatementSourceConflict } from "./acl-sta
 import type { BotStatementSource } from "./forum-bot-statement-admission";
 import { configuredIdentityReplay, type IdentityReplay } from "./identity/spanopticon-replay-server";
 import { getIdentitySecret } from "./identity/secret";
-import { createHash } from "node:crypto";
-import { ManagedIdentityCredential } from "@azure/identity";
-import { BlobServiceClient, type ContainerClient } from "@azure/storage-blob";
 import { parseSquadPilotConfig, type SquadPilotConfig } from "./squad-pilot-config";
-import { createForumAuthority } from "./identity/forum-authority";
-import { createSquadCommitStore, LedgerEvaluationExpired } from "./squad-commit-store";
-import { createBlobSquadCommitStore, createBlobSquadSessionReplayStore, createBlobInventoryStore } from "./delegation-blob-inventory";
-import { createBlobCancellationOutboxStore, createBlobReplacementGrantStore } from "./delegation-blob-outbox";
-import { createSquadSessionReplayStore } from "./identity/squad-session-replay";
+import { createForumAuthority, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { createSquadHttpServices } from "./squad-http-services";
-
 import { identitySessionNamespace } from "./identity/replay-namespace";
 export { identitySessionNamespace } from "./identity/replay-namespace";
-export const squadPilotNamespace = (c: SquadPilotConfig) => createHash("sha256").update(JSON.stringify(["s3rch-pilot-ledger-v1", c.origin, c.squad.forumId, c.squad.owner])).digest("hex");
-/** Storage-only operator entrypoint. It neither reads an identity secret nor
- * constructs an issuer; callers retain the existing ledger verification rules. */
-export function createSquadPilotSource(c: SquadPilotConfig, container: Pick<ContainerClient, "getBlockBlobClient">, clock = () => Math.floor(Date.now() / 1000)) {
+
+/** Production uses only an explicitly provisioned owner source and replay store. */
+export function createSquadPilotServer(c: SquadPilotConfig, statements: BotStatementSource | undefined, replay: IdentityReplay | undefined,
+  clock = () => Math.floor(Date.now() / 1000),
+  identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" })) {
+  if (!statements) throw Error("ACL statement source is required");
+  if (!replay) throw Error("ACL authority requires configured identity replay");
   const config = structuredClone(c);
-  return createSquadCommitStore(createBlobSquadCommitStore(container, squadPilotNamespace(config)), config.squad, clock, "authoritative-ledger");
-}
-/** Never accepts browser-selected accounts, paths, policies or signing keys. */
-export function createSquadPilotServer(c: SquadPilotConfig, container: Pick<ContainerClient, "getBlockBlobClient"> | undefined, clock = () => Math.floor(Date.now() / 1000), identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" }), replay?: IdentityReplay, statementSource?: BotStatementSource) {
-  const config = structuredClone(c), namespace = squadPilotNamespace(config);
-  if (statementSource) {
-    if (!replay) throw Error("ACL authority requires configured identity replay");
-    const source = { read: async (at: number, signal: AbortSignal) => (await statementSource.read(at, signal)).snapshot };
-    const services = createSquadHttpServices({ squad: config.squad, origin: config.origin, config: config.authority,
-      secret: identitySecret, clock, consume: replay.consume, challengeDomain: replay.challengeDomain,
-      statements: statementSource, read: source.read });
-    return { backend: "acl" as const, config, source, services };
-  }
-  if (!container) throw Error("pilot primary storage unavailable");
-  const source = createSquadPilotSource(config, container, clock);
-  const consume = replay?.consume ?? createSquadSessionReplayStore(createBlobSquadSessionReplayStore(container, identitySessionNamespace(config.origin)), clock);
-  const services = createSquadHttpServices({ squad: config.squad, origin: config.origin, config: config.authority, secret: identitySecret,
-    clock, consume, statements: statementSource, challengeDomain: replay?.challengeDomain, read: source.read, assignments: { source, runtime: {
-      config: config.authority, clock,
-      operationStores(id) {
-        if (!/^[0-9a-f]{32}$/.test(id)) throw Error("invalid operation ID");
-        const operationNamespace = createHash("sha256").update(JSON.stringify([namespace, id])).digest("hex");
-        return { inventory: createBlobInventoryStore(container, operationNamespace),
-          cancellations: createBlobCancellationOutboxStore(container, namespace), grants: createBlobReplacementGrantStore(container, namespace) };
-      },
-    } } });
-  return { backend: "legacy" as const, config, source, services };
-}
-export function pilotContainer(env = process.env) {
-  const account = env.S3RCH_SQUAD_BLOB_ACCOUNT, container = env.S3RCH_SQUAD_BLOB_CONTAINER;
-  if (!account || !/^[a-z0-9]{3,24}$/.test(account) || !container || !/^[a-z0-9](?:[a-z0-9]|-(?!-)){1,61}[a-z0-9]$/.test(container)) throw Error("pilot primary storage unavailable");
-  return new BlobServiceClient(`https://${account}.blob.core.windows.net`, new ManagedIdentityCredential()).getContainerClient(container);
+  const source = { read: async (at: number, signal: AbortSignal) => (await statements.read(at, signal)).snapshot };
+  const services = createSquadHttpServices({ squad: config.squad, origin: config.origin, config: config.authority,
+    secret: identitySecret, clock, consume: replay.consume, challengeDomain: replay.challengeDomain,
+    statements, read: source.read });
+  return { backend: "acl" as const, config, source, services };
 }
 // No build-time or import-time secret/storage reads. Key Vault references are
 // resolved by App Service. Invalid/missing material never initializes state.
 let cached: { identity: string; server: ReturnType<typeof createSquadPilotServer> } | undefined;
 export function getSquadPilotServer() {
-  const identity = JSON.stringify([process.env.IDENTITY_SESSION_SECRET, process.env.S3RCH_SQUAD_PILOT, process.env.S3RCH_SQUAD_BLOB_ACCOUNT, process.env.S3RCH_SQUAD_BLOB_CONTAINER, process.env.S3RCH_IDENTITY_REPLAY_BACKEND, process.env.S3RCH_IDENTITY_REPLAY_ORIGIN, process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID, process.env.S3RCH_IDENTITY_REPLAY_API_KEY, process.env.S3RCH_AUTHORITY_BACKEND, process.env.S3RCH_STATEMENT_SOURCE_ORIGIN, process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID, process.env.S3RCH_STATEMENT_SOURCE_SCOPE, process.env.S3RCH_STATEMENT_SOURCE_API_KEY]);
+  const identity = JSON.stringify([process.env.IDENTITY_SESSION_SECRET, process.env.S3RCH_SQUAD_PILOT, process.env.S3RCH_IDENTITY_REPLAY_BACKEND, process.env.S3RCH_IDENTITY_REPLAY_ORIGIN, process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID, process.env.S3RCH_IDENTITY_REPLAY_API_KEY, process.env.S3RCH_AUTHORITY_BACKEND, process.env.S3RCH_STATEMENT_SOURCE_ORIGIN, process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID, process.env.S3RCH_STATEMENT_SOURCE_SCOPE, process.env.S3RCH_STATEMENT_SOURCE_API_KEY]);
   if (cached?.identity === identity) return cached.server;
   cached = undefined;
   const config = parseSquadPilotConfig(process.env.S3RCH_SQUAD_PILOT);
   if (!config) return null;
   const replay = configuredIdentityReplay(identitySessionNamespace(config.origin));
   const statements = configuredAclStatementSource();
-  if (statements && process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID !== process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID)
+  if (!statements) throw Error("ACL statement source is required");
+  if (process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID !== process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID)
     throw Error("Statement source and replay must use the same tenant");
-  const server = createSquadPilotServer(config, statements ? undefined : pilotContainer(), undefined, undefined, replay, statements);
+  const server = createSquadPilotServer(config, statements, replay);
   cached = { identity, server }; return server;
 }
 
@@ -74,7 +43,7 @@ export function getSquadPilotServer() {
 // If a read expires, discard it and verify a new primary read once.
 export async function squadPilotReady(pilot: {
   config: Pick<SquadPilotConfig, "authority" | "squad">;
-  source: Pick<ReturnType<typeof createSquadCommitStore>, "read">;
+  source: { read(at: number, signal: AbortSignal): Promise<ForumAuthoritySnapshot> };
 },
   signal: AbortSignal, clock = () => Math.floor(Date.now() / 1000)) {
   const authority = createForumAuthority(pilot.config.authority, clock);
@@ -89,7 +58,7 @@ export async function squadPilotReady(pilot: {
       if (clock() === at) return result.ok && authority.graph.ownerOf(pilot.config.squad.forumId) === pilot.config.squad.owner;
       if (!result.ok && result.reason !== "superseded" && result.reason !== "incomplete-authority") return false;
     } catch (error) {
-      if (!(error instanceof LedgerEvaluationExpired) && !(error instanceof StatementSourceConflict)) throw error;
+      if (!(error instanceof StatementSourceConflict)) throw error;
     }
     if (clock() <= at) return false;
   }
