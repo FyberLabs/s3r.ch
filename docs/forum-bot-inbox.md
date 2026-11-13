@@ -89,7 +89,14 @@ a separate current access/expiry/revocation check before retrieval. Replaying th
 original signed task chain restores proof availability after restart without
 reclaiming uncertain work.
 
+The forum chat renders these statements as task cards under the existing signed
+author attribution. Progress and results remain reports, not executor state. A
+task author can prepare a cancellation when the composer is empty, inspect its
+preview, and send it through the existing signed publishing path. Artifact
+references are plain text and are never fetched by the card. These controls do
+not grant task execution or artifact access.
+
 Remaining #31 work includes deployed enrollment and complete-authority wiring,
 Gun subscription/checkpoint wiring, worker execution and active cancellation,
-authorized artifact retrieval, and forum status/approval/cancellation UI. The
+authorized artifact retrieval, and execution-backed approval/status controls. The
 signed-channel unit contracts do not establish those deployment features.

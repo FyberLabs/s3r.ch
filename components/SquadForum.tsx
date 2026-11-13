@@ -11,6 +11,8 @@ import { BusinessRoleStrips } from "@/components/BusinessRoleStrips";
 import { businessTemplateRetryKey, createBusinessRoles, parseBusinessTemplate } from "@/lib/forum-business-roles";
 import { LiveForumReports } from "./LiveForumReports";
 import { forwardFields, isNeed, type BoardSource, type ReportParents } from "@/lib/forum-report-forward";
+import { ForumBotMessage } from "@/components/ForumBotMessage";
+import { parseBotMessage } from "@/lib/forum-bot-protocol";
 import { readableForumChat } from "@/lib/forum-readable-chat";
 import { ReportList, ForumPreviewReports } from "./ForumPreviewReports";
 import { ForumHierarchyPreview, type PreviewLevel } from "@/components/ForumHierarchyPreview";
@@ -1961,6 +1963,12 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
             draft={draft}
             setDraft={setDraft}
             onSend={onSend}
+            viewer={liveEnabled ? signingPrincipal() : null}
+            onPrepareCancel={liveEnabled && !draft ? body => {
+              setDraft(body);
+              setNotice("Review the cancellation request and press Send. Active work is not stopped until the bot confirms it.");
+              composerRef.current?.focus();
+            } : undefined}
             onReport={liveEnabled ? undefined : () => onSend(true)}
             composerRef={composerRef}
             seaLabel={seaPub ? shortSea(seaPub) : "no mesh key"}
@@ -2138,6 +2146,8 @@ function ChatColumn({
   onReport,
   composerRef,
   seaLabel,
+  viewer,
+  onPrepareCancel,
 }: {
   authorLabel: (pub: string) => string;
   chat: FeedItem[];
@@ -2147,12 +2157,16 @@ function ChatColumn({
   onReport?: () => Promise<void>;
   composerRef?: { current: HTMLTextAreaElement | null };
   seaLabel: string;
+  viewer?: string | null;
+  onPrepareCancel?: (body: string) => void;
 }) {
+  const draftBotMessage = parseBotMessage(draft);
   return (
     <section data-testid="squad-chat" className="mt-3 flex h-[32rem] flex-col border border-rule bg-panel lg:mt-0">
       <h2 className="border-b border-rule px-3 py-2 text-sm font-semibold text-ink">Live chat</h2>
       <ol className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2">
         {chat.map((item) => {
+          const botMessage = parseBotMessage(item.body);
           const tone = chatTone(item);
           const klass =
             tone === "emergency"
@@ -2165,9 +2179,8 @@ function ChatColumn({
               <span className="font-data text-xs text-ink-muted">
                 {formatClock(item.ts)} {authorLabel(item.author)}
               </span>
-              <p>
-                <ChatBody body={item.body} />
-              </p>
+              {botMessage ? <ForumBotMessage message={botMessage} author={item.author} viewer={viewer}
+                onPrepareCancel={onPrepareCancel} /> : <p><ChatBody body={item.body} /></p>}
             </li>
           );
         })}
@@ -2182,6 +2195,7 @@ function ChatColumn({
         <label className="text-xs text-ink-muted" htmlFor="squad-composer">
           statement as {seaLabel}
         </label>
+        {draftBotMessage && <div aria-label="Message preview"><ForumBotMessage message={draftBotMessage} author={viewer ?? ""} /></div>}
         <textarea
           id="squad-composer"
           ref={(node) => {
