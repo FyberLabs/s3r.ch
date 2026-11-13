@@ -65,5 +65,5 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
 }
 export function publicSquadPilotConfig(c: SquadPilotConfig) {
   return structuredClone({ ...(c.reportParents ? { reportParents: c.reportParents } : {}), origin: c.origin, squad: c.squad, config: c.authority,
-    sessionBase: "/api/squad/pilot/session", authorityEndpoint: "/api/squad/pilot/authority", assignmentBase: "/api/squad/pilot/assignment" });
+    sessionBase: "/api/squad/pilot/session", authorityEndpoint: "/api/squad/pilot/authority" });
 }

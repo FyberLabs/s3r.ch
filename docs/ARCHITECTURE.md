@@ -528,3 +528,10 @@ scoped child-component properties; it does not read a key or publish a record.
 Namespace-keyed remounts still discard subscriptions and pending proofs when
 the selected forum changes. This boundary does not make a cache authoritative
 or replace the signed-record and client Check requirements.
+
+The application Squad runtime has no Blob assignment journal or assignment HTTP
+executor. It requires the independently provisioned ACL statement source and a
+separate identity replay store. The legacy synthetic Blob constructor lives only
+under `scripts/squad-pilot-fixture.ts`; it is not imported by application routes.
+The remaining authority relay verifies signed records, and the shared identity
+issuer remains in use while the broader identity migration continues.

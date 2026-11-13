@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
 import { squadPilotReady } from "./squad-pilot-server";
-import { LedgerEvaluationExpired } from "./squad-commit-store";
+import { StatementSourceConflict } from "./acl-statement-source-server";
 import { createForumAuthorityService } from "./forum-authority-service";
 import { createHttpForumAuthorityReader } from "./forum-authority-http";
 import { seaToPrincipalKey } from "./identity/forum-check";
@@ -82,7 +82,7 @@ test("aborting a stalled request body cancels it without reading storage", async
   assert.equal((await result).status, 503); assert.equal(cancelled, true); assert.equal(h.reads(), 0);
 });
 
-test("pilot health rereads the primary ledger after rollover and requires current ownership", async () => {
+test("pilot health rereads the owner source after rollover and requires current ownership", async () => {
   const signal = new AbortController().signal;
   for (const outcome of ["valid", "stale", "missing-owner", "expired-again"]) {
     let now = at - 1;
@@ -92,7 +92,7 @@ test("pilot health rereads the primary ledger after rollover and requires curren
         reads.push(second);
         if (reads.length === 1 || outcome === "expired-again") {
           now++;
-          throw new LedgerEvaluationExpired();
+          throw new StatementSourceConflict();
         }
         const data = snapshot();
         if (outcome === "stale") return { ...data, completeThrough: at - 1 };

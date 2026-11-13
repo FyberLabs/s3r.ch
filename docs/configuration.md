@@ -59,9 +59,9 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `S3RCH_SQUAD_PILOT` | Empty (disabled) | Key Vault-backed JSON deployment contract for the separately provisioned synthetic Squad. Contains the fixed HTTPS origin, fresh namespace/owner, explicit witness and credential policy, random session secret and owner signing key. Never expose as NEXT_PUBLIC or print it. Infra owns the reference through `squad_pilot_secret_name`. Uses a dedicated private primary Blob container with scoped managed-identity access; missing state denies rather than initializes. See `docs/squad-live-rollout.md`. |
-| `S3RCH_SQUAD_BLOB_ACCOUNT` | Unset | Pilot storage account, supplied by infra from its managed storage resource. Required only when the pilot is enabled. Managed identity only; no account key or CLI fallback. |
-| `S3RCH_SQUAD_BLOB_CONTAINER` | Unset | Dedicated private pilot container, supplied by infra. Never point at identity-links storage, a secondary replica or an imported snapshot mirror. |
+| `S3RCH_SQUAD_PILOT` | Empty (disabled) | Key Vault-backed JSON scope and verification policy for the configured Squad. Contains a fixed HTTPS origin, forum/owner and explicit witness policy; it contains no owner signing key. Requires the ACL statement source and separate Spanopticon identity replay settings below. Missing configuration fails closed. The shared site issuer reads `IDENTITY_SESSION_SECRET`. |
+| `S3RCH_SQUAD_BLOB_ACCOUNT` | Ignored | Retired from application runtime. Existing configuration cannot select a Blob authority backend. |
+| `S3RCH_SQUAD_BLOB_CONTAINER` | Ignored | Retired from application runtime. The old synthetic fixture remains confined to CI/operator tooling. |
 
 ### Public feed storage migration
 
@@ -170,7 +170,7 @@ a separate migration. Runtime activation waits for its dedicated credential.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `S3RCH_AUTHORITY_BACKEND` | Unset | `acl` selects the independently provisioned ACL owner source. Unset or `legacy` retains the existing pilot until an explicit cutover. Unknown values fail closed. |
+| `S3RCH_AUTHORITY_BACKEND` | Unset | `acl` selects the independently provisioned ACL owner source. An enabled Squad without `acl` fails closed, including old `legacy` settings. No Blob or assignment-journal fallback exists. |
 | `S3RCH_STATEMENT_SOURCE_ORIGIN` | Unset | Fixed HTTPS gateway origin, without path, credentials or alternate port. |
 | `S3RCH_STATEMENT_SOURCE_TENANT_ID` | Unset | The s3r.ch tenant UUID bound by the ACL owner. |
 | `S3RCH_STATEMENT_SOURCE_SCOPE` | Unset | Explicit operator-provisioned graph scope; never selected by a browser. |
@@ -192,3 +192,12 @@ through that one source. It requires the separately configured Spanopticon
 identity replay backend and does not construct a Blob ledger or replay store.
 Legacy assignment mutations return unavailable in this mode; they cannot write
 a second authority journal. Existing session wire formats remain unchanged.
+
+The application no longer exposes `/api/squad/pilot/assignment/*` or constructs an
+assignment executor. The old Blob constructor is isolated in
+`scripts/squad-pilot-fixture.ts` for CI and explicitly invoked operator tooling.
+Old deployed pilot settings alone are insufficient: the application stays
+unavailable until its owner source and replay are explicitly configured. This
+change does not provision a graph, stage credentials, remove stored data or
+activate a replacement source. Retire the old infra container and role separately
+after confirming that no operator tool still uses them.

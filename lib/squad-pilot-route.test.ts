@@ -16,3 +16,16 @@ test("unconfigured pilot routes stay disabled and invalid secret references fail
     }
   } finally { if (previous === undefined) delete process.env.S3RCH_SQUAD_PILOT; else process.env.S3RCH_SQUAD_PILOT = previous; }
 });
+
+// HTTP route contracts execute in CI only.
+test("retired assignment actions cannot select a server executor", async () => {
+  const saved = process.env.S3RCH_SQUAD_PILOT;
+  try {
+    process.env.S3RCH_SQUAD_PILOT = "retired-config-must-not-be-loaded";
+    for (const action of ["plan", "start-signed", "read", "start", "resume", "abort", "read-child", "child"]) {
+      const response = await POST(new Request("https://s3r.ch/api/squad/pilot/assignment/" + action, {method:"POST"}),
+        {params:Promise.resolve({path:["assignment",action]})});
+      assert.equal(response.status,404);
+    }
+  } finally { if(saved===undefined) delete process.env.S3RCH_SQUAD_PILOT; else process.env.S3RCH_SQUAD_PILOT=saved; }
+});

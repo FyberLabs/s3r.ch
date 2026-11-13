@@ -54,3 +54,17 @@ test("disconnect during signature confirmation prevents signed submission", asyn
   await assert.rejects(operation, /session changed/);
   assert.deepEqual(requests, [options.assignmentBase + "/plan"]); browser.dispose();
 });
+
+test("read-only owner source has no assignment client or assignment requests", async t => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout", "setInterval"], now: 100_000 });
+  const urls: string[] = [];
+  const snapshot = { completeThrough:100, rows:[], history:{completeThrough:100,accounts:[],links:[]} };
+  const browser = createSquadBrowserSource({ squad, config, authorityEndpoint:options.authorityEndpoint,
+    fetch:async url=>{urls.push(String(url));return Response.json({version:1,forumId:squad.forumId,owner,evaluatedAt:100,snapshot});} });
+  assert.equal(browser.source.assignments,undefined);
+  const received: unknown[] = []; browser.source.subscribe(value=>received.push(value));
+  browser.activate(); await flush();
+  assert.deepEqual(received.at(-1),snapshot);
+  assert.deepEqual(urls,[options.authorityEndpoint]);
+  browser.dispose();
+});
