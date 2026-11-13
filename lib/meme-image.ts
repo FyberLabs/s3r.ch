@@ -50,9 +50,10 @@ export function drawMeme(canvas:HTMLCanvasElement,image:ImageBitmap|null,top:str
   ctx.fillStyle=background==="dark"?"#142538":"#e6edf5";ctx.fillRect(0,0,w,h+panel);
   if(image)ctx.drawImage(image,0,panel,w,h);
   if(panel){ctx.fillStyle="#ffffff";ctx.fillRect(0,0,w,panel);}
-  const margin=Math.max(8,w*.04),space=panel||h*.34,verticalMargin=Math.max(4,Math.min(h*.04,margin));
+  const margin=Math.max(8,w*.04),verticalMargin=Math.max(4,Math.min(h*.04,margin));
   const caption=(text:string,position:"top"|"bottom") => {
     if(!text.trim()){captionLines(text,1,()=>0);return;}
+    const space=position==="top"&&panel?panel:h*.34;
     let size=Math.max(12,Math.min(72,w*.07)),lines:string[]=[];
     for(;;){ctx.font=`bold ${size}px Arial, sans-serif`;lines=captionLines(text,w-2*margin,t=>ctx.measureText(t).width);
       if(lines.length*size*1.2<=space-2*verticalMargin)break;

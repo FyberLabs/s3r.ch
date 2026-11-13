@@ -29,3 +29,9 @@ test("templates render captions over bounded raster output",()=>{
  assert.throws(()=>drawMeme({getContext:()=>null} as unknown as HTMLCanvasElement,null,"","","overlay","dark"));
  assert.throws(()=>drawMeme(c.element,{width:100,height:30} as ImageBitmap,"x".repeat(160),"","overlay","dark"));
 });
+
+test("panel bottom captions cannot spill out of the image into the top caption",()=>{
+ const c=canvas(),image={width:300,height:30} as ImageBitmap;
+ drawMeme(c.element,image,"x".repeat(160),"","panel","dark");
+ assert.throws(()=>drawMeme(c.element,image,"x".repeat(160),"x".repeat(160),"panel","dark"),/Shorten the caption/);
+});
