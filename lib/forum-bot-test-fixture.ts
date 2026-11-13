@@ -41,7 +41,7 @@ export async function forumBotFixture(t: test.TestContext) {
   await refresh();
   const dir = mkdtempSync(join(tmpdir(), "signed-bot-")); chmodSync(dir, 0o700);
   const clients: ReturnType<typeof openForumBotChannel>[] = [];
-  const open = (bot = botB, changes = {}) => {
+  const open = (bot: string = botB, changes = {}) => {
     const client = openForumBotChannel({ path: join(dir, bot + ".sqlite"),
       scope: { tenant, forum, bot, principal: bot === botA ? a.pub : b.pub }, owner: owner.pub,
       bots: { [botA]: a.pub, [botB]: b.pub }, rootSenders: [owner.pub], maxDelegationDepth: 2,
@@ -49,7 +49,7 @@ export async function forumBotFixture(t: test.TestContext) {
     clients.push(client); return client;
   };
   t.after(() => { for (const c of clients) try { c.close(); } catch {} rmSync(dir, { recursive: true, force: true }); });
-  const task = (bot = botB, parent: string | null = null, depth = 2): BotTaskMessage => ["task", tenant, randomUUID(), bot, randomUUID(), at + 100, parent, depth];
+  const task = (bot: string = botB, parent: string | null = null, depth = 2): BotTaskMessage => ["task", tenant, randomUUID(), bot, randomUUID(), at + 100, parent, depth];
   async function signed(message: BotMessage, pair = owner, overrideForum = forum): Promise<SignedBotStatement> {
     const item = buildForumStatement({ forumId: overrideForum, author: pair.pub, body: encodeBotMessage(message), now: at, entropy: randomUUID().replaceAll("-", "") }); assert.ok(item);
     const signature = await signForumRecord(toGunNode(item), pair); assert.ok(signature);
