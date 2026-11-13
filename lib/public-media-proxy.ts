@@ -39,7 +39,7 @@ export function rewriteMediaPlaylist(text: string, base: string, depth: number):
   }).join("\n");
 }
 
-export async function readMediaBytes(response: Response, limit: number): Promise<Uint8Array> {
+export async function readMediaBytes(response: Response, limit: number): Promise<Uint8Array<ArrayBuffer>> {
   const declared = response.headers.get("content-length");
   if (declared && (!/^\d+$/.test(declared) || Number(declared) > limit)) {
     await response.body?.cancel(); throw new Error("Media too large");
