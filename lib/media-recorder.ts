@@ -3,7 +3,7 @@ export type RecordingMode="audio"|"video";
 export type RecordingState=Readonly<{phase:"idle"|"requesting"|"recording"|"stopping"|"ready"|"error";mode:RecordingMode;stream:MediaStream|null;url:string|null;name:string|null;message:string}>;
 export const RECORDING_BYTES_MAX=16*1024*1024,RECORDING_MS_MAX=120_000;
 export type RecordingDependencies={getUserMedia:(constraints:MediaStreamConstraints)=>Promise<MediaStream>;supported:(mime:string)=>boolean;recorder:(stream:MediaStream,mime:string)=>MediaRecorder;url:(blob:Blob)=>string;revoke:(url:string)=>void;later:(fn:()=>void,ms:number)=>ReturnType<typeof setTimeout>;cancel:(timer:ReturnType<typeof setTimeout>)=>void};
-const defaults:RecordingDependencies={getUserMedia:constraints=>navigator.mediaDevices.getUserMedia(constraints),supported:mime=>MediaRecorder.isTypeSupported(mime),recorder:(stream,mime)=>new MediaRecorder(stream,{mimeType:mime}),url:blob=>URL.createObjectURL(blob),revoke:url=>URL.revokeObjectURL(url),later:setTimeout,cancel:clearTimeout};
+const defaults:RecordingDependencies={getUserMedia:constraints=>navigator.mediaDevices.getUserMedia(constraints),supported:mime=>MediaRecorder.isTypeSupported(mime),recorder:(stream,mime)=>new MediaRecorder(stream,{mimeType:mime}),url:blob=>URL.createObjectURL(blob),revoke:url=>URL.revokeObjectURL(url),later:(fn,ms)=>setTimeout(fn,ms),cancel:timer=>clearTimeout(timer)};
 export function createRecordingDraft(changed:(state:RecordingState)=>void,deps:RecordingDependencies=defaults){
  let state:RecordingState={phase:"idle",mode:"audio",stream:null,url:null,name:null,message:""};
  let generation=0,disposed=false,active:{recorder:MediaRecorder;stream:MediaStream;chunks:Blob[];size:number;timer:ReturnType<typeof setTimeout>|null}|null=null;

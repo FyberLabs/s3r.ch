@@ -27,4 +27,4 @@ try{
  await page.getByRole("button",{name:"Start video recording"}).waitFor({state:"visible"});
  assert.equal(await page.evaluate(()=>window.captured.flatMap(s=>s.getTracks()).every(t=>t.readyState==="ended")),true);assert.equal(await page.getByRole("link",{name:"Save recording"}).count(),0);
  assert.deepEqual(errors,[]);assert.deepEqual(remote,[]);console.log("PASS local audio/video capture, playable output, track shutdown and hidden-tab discard");
-}finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+}catch(error){if(browser){for(const context of browser.contexts())for(const page of context.pages())console.log("Recording fixture state",await page.locator("[role=status]").allTextContents(),await page.evaluate(()=>({captured:window.captured?.length,visibility:document.visibilityState,secure:isSecureContext})));}throw error;}finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
