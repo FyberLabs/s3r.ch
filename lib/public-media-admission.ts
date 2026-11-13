@@ -34,3 +34,5 @@ export function createMediaBudget(requestLimit=120,byteLimit=256*1024*1024,clock
   return {request(){refresh();if(requests>=requestLimit)return false;requests++;return true;},
     bytes(count:number){refresh();if(count>byteLimit-bytes)return false;bytes+=count;return true;}};
 }
+
+export const publicMediaBudget = createMediaBudget();

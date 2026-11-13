@@ -1,4 +1,4 @@
-import {createMediaBudget} from "./public-media-admission";
+import {publicMediaBudget} from "./public-media-admission";
 import { fetchPublic } from "./public-fetch";
 import { publicMediaUrl } from "./feed-media";
 
@@ -89,14 +89,14 @@ export function createMediaQueue(limit = 4, capacity = 32, timeoutMs = 5000) {
   };
 }
 const acquireMedia = createMediaQueue();
-const budget = createMediaBudget();
-export async function servePublicMedia(request: Request, read = fetchPublic, sign: (url:string,kind:string,depth:number)=>string = publicMediaProxyUrl): Promise<Response> {
+const budget = publicMediaBudget;
+export async function servePublicMedia(request: Request, read = fetchPublic, sign: (url:string,kind:string,depth:number)=>string = publicMediaProxyUrl, requestReserved = false): Promise<Response> {
   const input = new URL(request.url), raw = input.searchParams.get("url");
   const kind = input.searchParams.get("kind") ?? "", depthRaw = input.searchParams.get("depth") ?? "0";
   const url = publicMediaUrl(raw);
   if (!url || !Object.hasOwn(TYPES, kind) || !/^[0-3]$/.test(depthRaw)) return new Response("Invalid media request", {status:400});
   if (request.headers.get("sec-fetch-site") === "cross-site") return new Response("Forbidden", {status:403});
-  if (!budget.request()) return new Response("Media quota exhausted",{status:429,headers:{"retry-after":"60"}});
+  if (!requestReserved && !budget.request()) return new Response("Media quota exhausted",{status:429,headers:{"retry-after":"60"}});
   const range = request.headers.get("range");
   let boundedRange: string | undefined;
   let rangeStart: number | undefined, rangeEnd: number | undefined, suffix: number | undefined;
