@@ -10,11 +10,11 @@ import { squadView, type LiveSquadSpec } from "./squad-view";
  * deactivate synchronously on logout/key change. Enabling is transport permission,
  * never proof of authority; server and provider still verify each request/record. */
 export function createSquadBrowserSource(input: {
-  squad: LiveSquadSpec; config: ForumAuthorityConfig; authorityEndpoint: string; assignmentBase: string; fetch?: typeof fetch;
+  squad: LiveSquadSpec; config: ForumAuthorityConfig; authorityEndpoint: string; assignmentBase?: string; fetch?: typeof fetch;
   signPlan?: (plan: unknown, requested: AssignmentSigningRequest, context: { read: ForumAuthorityReader; signal: AbortSignal }) => Promise<unknown>;
 }) {
   const view = squadView(input.squad);
-  if (!view.live || !/^\/[A-Za-z0-9/_-]+$/.test(input.assignmentBase) || input.assignmentBase.startsWith("//")) throw Error("Explicit live endpoints required");
+  if (!view.live || (input.assignmentBase !== undefined && (!/^\/[A-Za-z0-9/_-]+$/.test(input.assignmentBase) || input.assignmentBase.startsWith("//")))) throw Error("Explicit live endpoints required");
   const fetcher = input.fetch ?? fetch;
   let enabled = false, disposed = false, generation = 0, controller = new AbortController();
   const transport: typeof fetch = async (url, init) => {
@@ -26,28 +26,28 @@ export function createSquadBrowserSource(input: {
     return response;
   };
   const read = createHttpForumAuthorityReader({ endpoint: input.authorityEndpoint, squad: input.squad, fetch: transport });
-  const client = createHttpAssignmentClient({ base: input.assignmentBase.replace(/\/$/, ""), fetch: transport,
+  const client = input.assignmentBase ? createHttpAssignmentClient({ base: input.assignmentBase.replace(/\/$/, ""), fetch: transport,
     ...(input.signPlan ? { signPlan: async (plan: unknown, requested: AssignmentSigningRequest) => {
       const epoch = generation, signal = controller.signal;
       if (!enabled || disposed) throw Error("Squad session inactive");
       const material = await input.signPlan!(plan, requested, { read, signal });
       if (!enabled || disposed || generation !== epoch) throw Error("Squad session changed");
       return material;
-    } } : {}) });
+    } } : {}) }) : undefined;
   async function scoped<T>(scope: AssignmentScope, perform: () => Promise<T>): Promise<T> {
     if (!enabled || disposed || scope.forum !== view.forumId || scope.owner !== view.owner) throw Error("Inactive or mismatched Squad scope");
     const epoch = generation, result = await perform();
     if (!enabled || disposed || generation !== epoch) throw Error("Squad session changed");
     return result;
   }
-  const assignments: AssignmentClient = Object.freeze({
+  const assignments: AssignmentClient | undefined = client ? Object.freeze({
     read: scope => scoped(scope, () => client.read(scope)),
     start: (scope, id, replacement, revision) => scoped(scope, () => client.start(scope, id, replacement, revision)),
     resume: (scope, id, replacement) => scoped(scope, () => client.resume(scope, id, replacement)),
     abort: (scope, id) => scoped(scope, () => client.abort(scope, id)),
     readChild: (scope, id) => scoped(scope, () => client.readChild(scope, id)),
     publishChild: (scope, record, signature) => scoped(scope, () => client.publishChild(scope, record, signature)),
-  });
+  }) : undefined;
   const upstream = createForumAuthoritySource({ config: input.config, assignments,
     read });
   const subscriptions = new Set<{ receive: Parameters<ForumAuthoritySource["subscribe"]>[0]; stop?: () => void }>();
