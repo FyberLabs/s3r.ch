@@ -202,3 +202,23 @@ described above. ACL reserves capacity before immutable storage and checks
 current authority again before committing metadata. A 409 requires a fresh view
 and explicit reconciliation; the browser transport never retries a write. These
 routes do not provision objects, enroll identities, or activate media storage.
+
+### Client-held owner signing
+
+`createPrivateMediaOwner` uses the shared SociACL private-media producers. Grant
+and epoch calls first obtain a fresh protected owner view and use its current
+signing public key. The caller supplies the client-held scalar; the client copies
+it before waiting and clears that working copy after success or failure. Neither
+private signing keys nor DEKs are sent to the owner routes.
+
+Epoch submission requires an explicit finalization draft with authenticated
+candidates; the client does not guess a winner or bypass the settlement window.
+Status refresh obtains `/api/media/owner/status-view` from the protected source,
+then signs and submits the returned current epoch, grant revision, object version
+and bounded clock. Private wrap publication computes the digest of the encrypted
+`{wrap, reference}` record and submits it through the reserved publication path.
+
+Every signed write uses the exact source fence. A conflict or lost response stops
+the operation; the caller must refresh and reconcile explicitly. No automatic
+retry reuses signatures or silently signs a different grant. These client helpers
+do not provision an object or activate a tenant.

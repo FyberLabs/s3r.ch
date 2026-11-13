@@ -60,3 +60,17 @@ test("per-owner operations share bounded capacity and release it",async()=>{
   assert.equal((await handle("mutate",request(mutation))).status,429);release();assert.equal((await first).status,200);
   assert.equal((await handle("view",request())).status,200);
 });
+test("status drafts bind the requested recipient, current source clock and object",async()=>{
+  const status={object,epoch:1,revisionId:"b".repeat(64),accessor:principal,grantRevision:1,stated:1,signedAt:100000,maxAgeMs:60000,
+    zookie:{object,objectVersion:3,snapshotHash:"c".repeat(64)}};
+  const result={at:100,fence:view.fence,ownerPub:principal,status};
+  let calls=0;const handle=service(async(url,init)=>{calls++;assert.equal(actionName(url),"status-view");
+    assert.deepEqual(JSON.parse(String(init?.body)),{object,reader:principal});return Response.json(result);});
+  assert.equal((await handle("status-view",request({object,reader:principal}))).status,200);
+  assert.equal((await handle("status-view",request({object,reader:"bad"}))).status,400);assert.equal(calls,1);
+  for(const bad of [{...result,ownerPub:"bad"},{...result,at:99},{...result,status:{...status,accessor:"other"}},
+    {...result,status:{...status,maxAgeMs:60001}},{...result,status:{...status,signedAt:99999}},
+    {...result,status:{...status,zookie:{...status.zookie,objectVersion:-1}}}])
+    assert.equal((await service(async()=>Response.json(bad))("status-view",request({object,reader:principal}))).status,403);
+});
+function actionName(url: RequestInfo | URL) { return String(url).split("/").at(-1); }
