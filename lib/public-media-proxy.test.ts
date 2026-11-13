@@ -41,3 +41,29 @@ test("HLS audio segments are accepted and manifests cannot be cached stale",asyn
  const response=await servePublicMedia(request("video"),async()=>new Response("#EXTM3U\nsegment.ts",{headers:{"content-type":"application/vnd.apple.mpegurl"}}));
  assert.equal(response.status,200);assert.equal(response.headers.get("cache-control"),"no-store");
 });
+test("proxy rejects malformed kinds, depths, cross-site loads and upstream failures",async()=>{
+ assert.equal((await servePublicMedia(request("html"))).status,400);
+ assert.equal((await servePublicMedia(new Request(request().url+"&depth=99"))).status,400);
+ assert.equal((await servePublicMedia(new Request(request().url,{headers:{"sec-fetch-site":"cross-site"}}))).status,403);
+ assert.equal((await servePublicMedia(request(),async()=>{throw Error("offline");})).status,502);
+ assert.equal((await servePublicMedia(request(),async()=>new Response(null,{status:404}))).status,415);
+});
+test("body reader cancels empty, malformed and stalled responses",async()=>{
+ await assert.rejects(readMediaBytes(new Response(null),8),/Empty/);
+ await assert.rejects(readMediaBytes(new Response(""),8),/Empty/);
+ await assert.rejects(readMediaBytes(new Response("1",{headers:{"content-length":"bad"}}),8),/large/);
+ let cancelled=false;
+ const response=new Response(new ReadableStream({cancel(){cancelled=true;}}));
+ await assert.rejects(readMediaBytes(response,8,5),/timeout|Empty/);assert.equal(cancelled,true);
+});
+test("playlist refuses malformed attributes, excessive size and unsafe URI-bearing tags",()=>{
+ for(const text of ["invalid","#EXTM3U\n"+"x".repeat(8193),"#EXTM3U\n"+"\n".repeat(2048),'#EXTM3U\n#EXT-X-SESSION-DATA:URI="data"','#EXTM3U\n#EXT-X-MAP:URI=bad','#EXTM3U\n#EXT-X-MAP:URI="a",URI="b"'])assert.throws(()=>rewriteMediaPlaylist(text,"https://example.com/a",0));
+ assert.match(rewriteMediaPlaylist("#EXTM3U\n\n#EXT-X-ENDLIST","https://example.com/a",0),/#EXT-X-ENDLIST/);
+});
+test("queue expires waiters and refuses already aborted callers",async()=>{
+ const {createMediaQueue}=await import("./public-media-proxy");
+ const acquire=createMediaQueue(1,1,5),controller=new AbortController();controller.abort();
+ assert.equal(await acquire(controller.signal),null);
+ const signal=new AbortController().signal,release=await acquire(signal);assert.ok(release);
+ assert.equal(await acquire(signal),null);release();
+});

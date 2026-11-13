@@ -39,7 +39,7 @@ export function rewriteMediaPlaylist(text: string, base: string, depth: number):
   }).join("\n");
 }
 
-export async function readMediaBytes(response: Response, limit: number): Promise<Uint8Array<ArrayBuffer>> {
+export async function readMediaBytes(response: Response, limit: number, timeoutMs = 15_000): Promise<Uint8Array<ArrayBuffer>> {
   const declared = response.headers.get("content-length");
   if (declared && (!/^\d+$/.test(declared) || Number(declared) > limit)) {
     await response.body?.cancel(); throw new Error("Media too large");
@@ -48,12 +48,12 @@ export async function readMediaBytes(response: Response, limit: number): Promise
   if (!reader) throw new Error("Empty media");
   const buffer = new Uint8Array(limit);
   let used = 0;
-  const timer = setTimeout(() => { void reader.cancel().catch(() => undefined); }, 15_000);
+  const timer = setTimeout(() => { void reader.cancel().catch(() => undefined); }, timeoutMs);
   const started = Date.now();
   try {
     while (true) {
       const {done, value} = await reader.read();
-      if (Date.now() - started >= 15_000) throw new Error("Media timeout");
+      if (Date.now() - started >= timeoutMs) throw new Error("Media timeout");
       if (done) break;
       if (value.byteLength > limit - used) throw new Error("Media too large");
       buffer.set(value, used); used += value.byteLength;
