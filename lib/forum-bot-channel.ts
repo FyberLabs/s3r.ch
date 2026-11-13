@@ -19,7 +19,7 @@ export function openForumBotChannel(input: {
   maxDelegationDepth?: number;
   authority: ForumAuthorityGraph;
   handleAllowed(handle: string, scope: BotInboxScope, operation: "receive" | "dispatch"): boolean;
-  localConsent(): boolean;
+  localConsent(scope: BotInboxScope, handle: string): boolean;
   clock?: () => number;
 }) {
   const scope = Object.freeze({ ...input.scope }), bots = Object.freeze({ ...input.bots });
@@ -36,7 +36,7 @@ export function openForumBotChannel(input: {
   const proofs = new Map<string, readonly Link[]>();
   let stopped = false, receiving = false;
   let cancelling: string | null = null;
-  function valid(chain: readonly Link[]): boolean {
+  function valid(chain: readonly Link[], report = false): boolean {
     const at = clock();
     if (stopped || !Number.isSafeInteger(at) || at < 0 || authority.ownerOf(scope.forum) !== owner ||
         chain.length < 1 || chain.length > depth + 1) return false;
@@ -45,7 +45,7 @@ export function openForumBotChannel(input: {
     for (let i = 0; i < chain.length; i++) {
       const link = chain[i], task = link.task, previous = chain[i - 1];
       if (task[1] !== scope.tenant || bots[task[3]] !== link.recipient || visited.has(link.recipient) || ids.has(task[2]) ||
-          link.at > at || task[5] <= at || task[5] > link.at + 3600 ||
+          link.at > at || (!report && (task[5] <= at || inbox.blocked(task[2]))) || task[5] > link.at + 3600 ||
           authority.writerKey(link.author, link.at, at) !== link.key ||
           !authority.writerKey(link.recipient, at, at) ||
           authority.checkForumSee(scope.forum, link.author, at).allowed !== true ||
@@ -66,15 +66,23 @@ export function openForumBotChannel(input: {
   const inbox = openForumBotInbox({ path: input.path, scope, clock,
     authorize(task, operation) {
       const chain = proofs.get(task.id), last = chain?.at(-1);
-      return !!chain && !!last && valid(chain) && last.task[3] === scope.bot && task.context === context(chain) &&
+      return !!chain && !!last && valid(chain, operation === "cancel") && last.task[3] === scope.bot && task.context === context(chain) &&
         (operation === "cancel" ? cancelling === task.id : handleAllowed(task.handle, scope, operation) === true) &&
-        (operation !== "dispatch" || localConsent() === true);
+        (operation !== "dispatch" || localConsent(scope, task.handle) === true);
     },
   });
   return Object.freeze({
     close() { stopped = true; proofs.clear(); inbox.close(); },
     cursor: inbox.cursor,
     status: inbox.status,
+    reference(id: string) { const chain = proofs.get(id), last = chain?.at(-1);
+      return chain && last && valid(chain) ? Object.freeze({ handle: last.task[4], expires: last.task[5] }) : null; },
+    pending: () => [...proofs.keys()].filter(id => inbox.status(id) === "pending"),
+    authorized(id: string) {
+      const chain = proofs.get(id), last = chain?.at(-1);
+      return !!chain && !!last && valid(chain) && last.task[3] === scope.bot &&
+        handleAllowed(last.task[4], scope, "dispatch") === true && localConsent(scope, last.task[4]) === true;
+    },
     claim: inbox.claim,
     finish: inbox.finish,
     /** Admit status only for a previously verified task. The caller must replay
@@ -97,8 +105,10 @@ export function openForumBotChannel(input: {
         if (!item || item.id !== row.id || item.author !== row.author || item.ts !== row.issuedAt ||
             item.kind !== "statement" || !message || message[0] === "task" || message[1] !== scope.tenant)
           throw Error("Invalid signed bot event");
-        const chain = proofs.get(message[2]), last = chain?.at(-1), at = clock();
-        if (!chain || !last || !valid(chain) || row.issuedAt < last.at || row.issuedAt > at ||
+        const chain = proofs.get(message[2]) ?? (message[0] === "cancel" ? [...proofs.values()].find(links =>
+          links.some(link => link.task[2] === message[2])) : undefined);
+        const last = message[0] === "cancel" ? chain?.find(link => link.task[2] === message[2]) : chain?.at(-1), at = clock();
+        if (!chain || !last || !valid(chain, true) || row.issuedAt < last.at || row.issuedAt > at ||
             authority.writerKey(row.author, row.issuedAt, at) !== key ||
             authority.checkForumSee(scope.forum, row.author, at).allowed !== true ||
             authority.checkPost(scope.forum, row.author, at).allowed !== true ||
@@ -108,13 +118,17 @@ export function openForumBotChannel(input: {
             (message[0] === "cancel" ? row.author !== chain[0].author && row.author !== last.author : row.author !== last.recipient))
           throw Error("Forum bot event authority unavailable");
         let cancelled = false;
+        const affected: string[] = [];
         if (message[0] === "cancel") {
-          cancelling = message[2];
-          try { cancelled = inbox.cancel(message[2]); } finally { cancelling = null; }
+          inbox.block(message[2]); // Persist ancestor revocation before touching descendants.
+          for (const [id, links] of proofs) if (links.some(link => link.task[2] === message[2])) {
+            affected.push(id); cancelling = id;
+            try { cancelled = inbox.cancel(id) || cancelled; } finally { cancelling = null; }
+          }
         }
         // A false cancellation result explicitly leaves active/unknown work alone.
         // Artifact handles still require their own access check before retrieval.
-        return Object.freeze({ id: item.id, author: item.author, issuedAt: item.ts, message, cancelled });
+        return Object.freeze({ id: item.id, author: item.author, issuedAt: item.ts, message, cancelled, affected: Object.freeze(affected) });
       } finally { receiving = false; }
     },
     async receive(chainInput: readonly SignedBotStatement[], cursor?: BotInboxCursor) {

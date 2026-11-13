@@ -1,9 +1,9 @@
 # Private bot dispatch inbox
 
 `lib/forum-bot-inbox.ts` prepares the durable client bookkeeping for Visor #31.
-It is a Node 24 Unix library, not a public route, React server action, forum
-principal enrollment service or running bot worker. Nothing imports it into the
-production forum yet. Gun remains the shared record; the private SQLite file
+It is a Node 24 Unix library used by the opt-in [client worker](forum-bot-worker.md),
+not a public route, React server action or principal enrollment service.
+The web server does not start workers. Gun remains the shared record; the private SQLite file
 only tracks which authorized task references this bot has already accepted.
 
 A database binds exactly one tenant, forum, registered bot and independent
@@ -96,7 +96,9 @@ preview, and send it through the existing signed publishing path. Artifact
 references are plain text and are never fetched by the card. These controls do
 not grant task execution or artifact access.
 
-Remaining #31 work includes deployed enrollment and complete-authority wiring,
-Gun subscription/checkpoint wiring, worker execution and active cancellation,
-authorized artifact retrieval, and execution-backed approval/status controls. The
-signed-channel unit contracts do not establish those deployment features.
+The client worker now connects authorized Gun subscriptions, durable reporting,
+leased Visor execution, active cancellation and private artifact retrieval.
+Deployment still requires independently enrolled bot identities and a provisioned
+complete authority source with atomic statement admission. The default pilot
+server does not manufacture that source. Execution approval currently uses
+private owner-authored files; task cards remain informational.

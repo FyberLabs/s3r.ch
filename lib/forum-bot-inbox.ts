@@ -69,7 +69,7 @@ export function openForumBotInbox(input: {
   try {
     db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
     transaction(() => {
-      db.exec("CREATE TABLE IF NOT EXISTS binding (id INTEGER PRIMARY KEY CHECK(id=1), scope TEXT NOT NULL); CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, message TEXT UNIQUE NOT NULL, body TEXT NOT NULL, expires INTEGER NOT NULL, state TEXT NOT NULL, instance TEXT); CREATE TABLE IF NOT EXISTS checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)");
+      db.exec("CREATE TABLE IF NOT EXISTS binding (id INTEGER PRIMARY KEY CHECK(id=1), scope TEXT NOT NULL); CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, message TEXT UNIQUE NOT NULL, body TEXT NOT NULL, expires INTEGER NOT NULL, state TEXT NOT NULL, instance TEXT); CREATE TABLE IF NOT EXISTS checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS cancelled_roots (id TEXT PRIMARY KEY)");
       db.prepare("INSERT OR IGNORE INTO binding VALUES (1, ?)").run(binding);
       if (db.prepare("SELECT scope FROM binding WHERE id=1").get()?.scope !== binding) throw Error("Bot inbox scope differs");
     });
@@ -84,6 +84,15 @@ export function openForumBotInbox(input: {
   }
   return {
     close() { db.close(); },
+    blocked(id: string): boolean { return !!db.prepare("SELECT id FROM cancelled_roots WHERE id=?").get(id); },
+    block(id: string) {
+      if (!uuid.test(id)) throw Error("Invalid cancelled task ID");
+      transaction(() => {
+        if (db.prepare("SELECT id FROM cancelled_roots WHERE id=?").get(id)) return;
+        if (Number(db.prepare("SELECT COUNT(*) AS n FROM cancelled_roots").get()?.n) >= capacity) throw Error("Cancellation capacity reached");
+        db.prepare("INSERT INTO cancelled_roots(id) VALUES(?)").run(id);
+      });
+    },
     cursor(): string | null {
       const row = db.prepare("SELECT value FROM checkpoint WHERE id=1").get();
       return row ? String(row.value) : null;
