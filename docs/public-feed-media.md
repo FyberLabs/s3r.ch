@@ -1,0 +1,9 @@
+# Public feed media
+
+The media proxy accepts roots in the current atomic public feed snapshot. It does not accept arbitrary URLs from callers or private account overlays. HLS child requests carry a signature bound to the admitted root, target, type, depth and one-hour expiry. Root admission is checked again on every child request. Signing uses the existing server-only `IDENTITY_SESSION_SECRET` with a distinct HMAC domain; a missing key or snapshot refuses service.
+
+Each response is limited to 16 MiB decoded bytes (256 KiB for a playlist), with four active requests, 32 waiting requests and a five-second queue deadline. Aggregate per-replica budgets allow 120 requests and 256 MiB per minute across callers. These are process budgets, not a shared fleet billing quota. The transport validates public DNS answers at socket lookup and rechecks redirects. It forwards only the fixed Accept/User-Agent and validated bounded Range headers, never caller credentials.
+
+Image, audio and video MIME types are allowlisted. SVG, HTML, script and encrypted or steering/interstitial playlists refuse. Playlists have a three-level depth limit and all supported child URLs are rewritten through the proxy. Responses use no-store, nosniff, sandbox CSP and same-origin resource policy. Byte-range responses are checked before forwarding. A retry action recovers queue/source failures; streams extending beyond a capability's one-hour lifetime need a fresh load.
+
+The shared UI renders sensitive media only after reveal. HLS.js is bundled with the app; no third-party script URL is loaded. Its request callback confines requests to the same-origin media route. The player is destroyed on teardown. CI runs metadata, admission, size/type/range, queue, player and isolated browser contracts. Hosted provider playback and private-overlay admission are separate acceptance work under #408.
