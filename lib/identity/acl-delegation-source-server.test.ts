@@ -32,6 +32,13 @@ async function setup() {
     .setProtectedHeader({alg:"ES256",kid:jwk.kid}).setIssuedAt(f.now).setExpirationTime(f.now+60)
     .sign(await importJWK({...jwk,d:Buffer.from(witness).toString("base64url")},"ES256"));
   const binding = {...genesis,keySig:sign(bytes.value),attest};
+  const cred = {iss:"https://identity.example",tenant:"01234567-89ab-cdef-0123-456789abcdef",sub:"ci-owner"};
+  const link = {v:1 as const,kind:"oidc" as const,principal:owner,cred,nonce:"a".repeat(16),issuedAt:f.now};
+  const linkBytes=signingBytes(link); assert.ok(linkBytes.ok);
+  const linkAttest=await new SignJWT({typ:"sociacl-oidc-attest-v1",...cred,principal:owner,nonce:link.nonce})
+    .setProtectedHeader({alg:"ES256",kid:jwk.kid}).setIssuedAt(f.now).setExpirationTime(f.now+60)
+    .sign(await importJWK({...jwk,d:Buffer.from(witness).toString("base64url")},"ES256"));
+  const oidc={...link,keySig:sign(linkBytes.value),attest:linkAttest};
   const unsigned = { v: 1 as const, principal: owner, agent, audience, scopes: ["forum:read"], nonce: "a".repeat(64), issuedAt: f.now, expiresAt: f.now+60 };
   const delegation = { ...unsigned, sig: sign(agentDelegationBytes(unsigned)) };
   const parsed = parseAgentDelegation(delegation); assert.ok(parsed.ok); const id = parsed.value.id;
@@ -41,7 +48,7 @@ async function setup() {
     history: { completeThrough: f.now, links: [] as unknown[], accounts: [{ principal: owner, rotations: [] as unknown[], revocations: [] as unknown[], genesisEpubBindings: [binding] }] },
     rows: [{ kind: "delegation", record: delegation }] as { kind: string; record: unknown }[] } };
   let now = f.now, status = 200, calls = 0;
-  const trust = structuredClone({ jwks: {keys:[jwk]}, policy: {allowedDomains:[],allowedUris:[],allowedChainIds:[]}, pinnedIss: new Set<string>() }) as DelegationTrust;
+  const trust = structuredClone({ jwks: {keys:[jwk]}, policy: {allowedDomains:[],allowedUris:[],allowedChainIds:[]}, pinnedIss: new Set<string>([cred.iss]) }) as DelegationTrust;
   const fetcher: typeof fetch = async (url, options) => {
     calls++;
     assert.equal(String(url), "https://acl.example/api/v1/acl/sociacl/delegations/agents/snapshot");
@@ -51,7 +58,7 @@ async function setup() {
   };
   const source = createAclDelegationSource(config, audience, trust, fetcher, () => now);
   const sessions = createIdentitySessions({ origin: audience, secret: "x".repeat(32), consume: async () => true, clock: () => now, delegationSource: source });
-  return { document, source, sessions, id, revocation, trust, calls: () => calls,
+  return { document, source, sessions, id, revocation, trust, oidc, calls: () => calls,
     offline: () => { status=503; }, advance: () => { now++; } };
 }
 test("authenticated owner snapshot supplies the existing agent issuer and retains cancellations", async () => {
@@ -102,4 +109,28 @@ test("returned contexts cannot mutate trust for later source reads", async () =>
   (first.context.jwks.keys as unknown[]).splice(0);
   (first.context.pinnedIss as Set<string>).clear();
   assert.ok(await h.sessions.agentChallenge(h.id,["forum:read"]));
+});
+
+test("peer history resolves only enrolled owners within the complete time window", async () => {
+  const h=await setup(); h.document.snapshot.history.links.push(h.oidc);
+  const snapshot=await h.source(h.id,f.now); assert.ok(snapshot);
+  const parsed=parseAgentDelegation(snapshot.delegation); assert.ok(parsed.ok);
+  const owner=parsed.value.delegation.principal, agent=parsed.value.delegation.agent;
+  for(let i=0;i<2;i++) {
+    const resolved=snapshot.context.history(owner,f.now,f.now);
+    assert.ok(resolved.ok); assert.equal(resolved.value.key,owner);
+  }
+  assert.equal(snapshot.context.history(agent,f.now,f.now).ok,false);
+  assert.equal(snapshot.context.history(owner,f.now,f.now+1).ok,false);
+  assert.equal(snapshot.context.history(owner,f.now-1,f.now-1).ok,false);
+  h.document.snapshot.history.links.push(h.oidc);
+  await assert.rejects(h.source(h.id,f.now));
+});
+test("malformed, foreign and future link indexes deny", async () => {
+  for(const row of [null,{}, {kind:"wallet",principal:"bad",issuedAt:f.now}]) {
+    const h=await setup(); h.document.snapshot.history.links.push(row);
+    await assert.rejects(h.source(h.id,f.now));
+  }
+  const h=await setup(); h.document.snapshot.history.links.push({...h.oidc,issuedAt:f.now+1});
+  await assert.rejects(h.source(h.id,f.now));
 });

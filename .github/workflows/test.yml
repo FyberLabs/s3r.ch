@@ -53,7 +53,7 @@ jobs:
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
           --test-coverage-include=lib/identity/acl-delegation-source-server.ts
-          --test-coverage-lines=85
+          --test-coverage-lines=95 --test-coverage-branches=80
           lib/identity/acl-delegation-source-server.test.ts
 
   build:
