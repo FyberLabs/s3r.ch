@@ -1,5 +1,5 @@
 import { historyState, linkId, parseAgentDelegation, parseAgentRevocation, parsePrincipalId,
-  resolveCurrentKey, resolveStoreAccount, type Diagnostic, type PrincipalId, type ResolutionContext,
+  resolveCurrentKey, type PrincipalId, type ResolutionContext,
   type Result, type Rotate, type UnsignedRecord } from "sociacl-ids";
 import { createAclGraphSource, type AclStatementConfig } from "../acl-graph-source-server";
 import type { ForumRecoverySnapshot } from "./forum-recovery-history";
@@ -17,7 +17,7 @@ const record = (input: unknown): Record<string, unknown> => {
 function contexts(snapshot: ForumRecoverySnapshot, trust: DelegationTrust, at: number) {
   if (snapshot.completeThrough !== at || !Array.isArray(snapshot.accounts) || !snapshot.accounts.length ||
       snapshot.accounts.length > 64 || !Array.isArray(snapshot.links) || snapshot.links.length > 4096) throw Error("Invalid history");
-  const accounts = new Map(snapshot.accounts.map(account => {
+  const accounts = new Map<PrincipalId, ForumRecoverySnapshot["accounts"][number]>(snapshot.accounts.map(account => {
     const principal = take(parsePrincipalId(account.principal));
     if (!Array.isArray(account.rotations) || !Array.isArray(account.revocations) || !Array.isArray(account.genesisEpubBindings) ||
         account.rotations.length > 1024 || account.revocations.length > 1024 || account.genesisEpubBindings.length !== 1)
@@ -65,8 +65,9 @@ function contexts(snapshot: ForumRecoverySnapshot, trust: DelegationTrust, at: n
       } };
   };
   for (const [principal, account] of accounts) {
-    const diagnostics: Diagnostic[] = [], head = resolveStoreAccount(principal, account.rotations, contextFor(principal, at), diagnostics);
-    if (diagnostics.length || !head.bindingEpub || head.rotations.length !== account.rotations.length) throw Error("Invalid owner history");
+    const resolved = resolveCurrentKey(principal, account.rotations, contextFor(principal, at));
+    if (!resolved.ok || resolved.diagnostics.length || !resolved.value.bindingEpub ||
+        resolved.value.rotations.length !== account.rotations.length) throw Error("Invalid owner history");
   }
   return { accounts, contextFor };
 }

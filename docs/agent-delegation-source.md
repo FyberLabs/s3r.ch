@@ -1,3 +1,4 @@
+# Trusted agent delegation source
 
 The server-only `createAclDelegationSource` adapter reads the separately provisioned
 ACL delegation endpoint for the existing agent session engine. It requires explicit
