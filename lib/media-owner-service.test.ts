@@ -102,7 +102,7 @@ test("catalog uses fixed credentials, exact bounded pages and private responses"
   const handle=service(async(url,init)=>{calls++;assert.equal(actionName(url),"catalog");
     assert.deepEqual(JSON.parse(String(init?.body)),{page:0});return Response.json(result);});
   const response=await handle("catalog",request({page:0}));
-  assert.equal(response.status,200);assert.deepEqual(await response.json(),result);
+  assert.equal(response.status,200);assert.deepEqual(await response.json(),{...result,principal});
   assert.equal(response.headers.get("cache-control"),"private, no-store");
   for(const body of [{page:-1},{page:16},{page:true},{page:0.5},{page:0,owner:principal},{object}])
     assert.equal((await handle("catalog",request(body))).status,400);

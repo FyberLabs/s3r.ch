@@ -86,7 +86,7 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
       signal.throwIfAborted();
       const elapsed = clock() - started;
       if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 4) return reply(403);
-      return Response.json(result, { headers });
+      return Response.json(action === "catalog" ? { ...result, principal } : result, { headers });
     } catch { return reply(503); }
     finally {
       if (occupied && principal) active.delete(principal);

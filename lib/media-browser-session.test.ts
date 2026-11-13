@@ -85,11 +85,19 @@ test("catalog is private navigation bound to the unlocked session",async()=>{
   unlock();let calls=0;
   const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
     calls++;assert.equal(String(url),"/api/media/owner/catalog");assert.deepEqual(JSON.parse(String(init?.body)),{page:0});
-    return Response.json({at:1,objects:[object],nextPage:1});
+    return Response.json({at:1,objects:[object],nextPage:1,principal:owner});
   });
-  assert.deepEqual(await browser.catalog(0),{at:1,objects:[object],nextPage:1});
+  assert.deepEqual(await browser.catalog(0),{at:1,objects:[object],nextPage:1,principal:owner});
   for(const page of [-1,16,0.5,NaN])await assert.rejects(browser.catalog(page));
   assert.equal(calls,1);
-  const changing=createPrivateMediaBrowser(()=>owner,async()=>{forgetUnlockedMeshPair();return Response.json({at:1,objects:[object],nextPage:1});});
+  const changing=createPrivateMediaBrowser(()=>owner,async()=>{forgetUnlockedMeshPair();return Response.json({at:1,objects:[object],nextPage:1,principal:owner});});
   await assert.rejects(changing.catalog(0));
+});
+
+// The key in the session can rotate while the canonical owner remains stable.
+test("catalog preserves the protected stable principal after signing key rotation",async()=>{
+  forgetUnlockedMeshPair();rememberUnlockedMeshPair("rotated",{...pair,pub:other});
+  const result={at:1,objects:[object],nextPage:1,principal:owner};
+  const browser=createPrivateMediaBrowser(()=>other,async()=>Response.json(result));
+  assert.deepEqual(await browser.catalog(0),result);
 });

@@ -66,12 +66,15 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
     finally { held.fill(0); }
   }
   return Object.freeze({
-    async catalog(page: number, owner: string, signal?: AbortSignal) {
-      if (!isMediaCatalogPageNumber(page) || !isSeaPubkey(owner)) throw Error("Invalid media catalog request");
+    async catalog(page: number, signal?: AbortSignal) {
+      if (!isMediaCatalogPageNumber(page)) throw Error("Invalid media catalog request");
       const result = await request("catalog", {page}, signal ?? new AbortController().signal);
       const started = fetchedAt.get(result), elapsed = started === undefined ? NaN : clock() - started;
       if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 4) throw new PrivateMediaConflict();
-      return parseMediaCatalogPage(result, page, owner);
+      if (!exact(result, ["at", "objects", "nextPage", "principal"]) || typeof result.principal !== "string" || !isSeaPubkey(result.principal))
+        throw Error("Invalid media catalog principal");
+      const { principal, ...catalog } = result;
+      return { ...parseMediaCatalogPage(catalog, page, principal), principal };
     },
     async grant(object: string, owner: string, draft: unknown, scalar: Uint8Array, signal?: AbortSignal) {
       const input=structuredClone(draft);
