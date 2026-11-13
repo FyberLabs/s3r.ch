@@ -10,17 +10,19 @@ import { DatabaseSync } from "node:sqlite";
 
 export type BotInboxScope = Readonly<{ tenant: string; forum: string; bot: string; principal: string }>;
 export type BotInboxTask = Readonly<{
-  id: string; message: string; sender: string; handle: string; expires: number;
+  id: string; message: string; sender: string; handle: string; expires: number; context?: string;
 }>;
 export type BotInboxCursor = Readonly<{ before: string | null; after: string }>;
 export type BotInboxStatus = "pending" | "claimed" | "unknown" | "completed" | "failed" | "cancelled" | "expired";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const text = (v: unknown, max: number): v is string => typeof v === "string" && v.length > 0 && v.length <= max && !/[\x00-\x1f\x7f]/.test(v);
 function taskValue(value: BotInboxTask): BotInboxTask {
-  if (!value || Object.keys(value).sort().join() !== "expires,handle,id,message,sender" ||
+  if (!value || !["expires,handle,id,message,sender", "context,expires,handle,id,message,sender"].includes(Object.keys(value).sort().join()) ||
       !text(value.id, 36) || !uuid.test(value.id) || !text(value.handle, 36) || !uuid.test(value.handle) || !text(value.message, 256) || !text(value.sender, 256) ||
-      !Number.isSafeInteger(value.expires) || value.expires <= 0) throw Error("Invalid bot inbox task");
-  return Object.freeze({ id: value.id, message: value.message, sender: value.sender, handle: value.handle, expires: value.expires });
+      !Number.isSafeInteger(value.expires) || value.expires <= 0 ||
+      ("context" in value && (typeof value.context !== "string" || !/^[0-9a-f]{64}$/.test(value.context)))) throw Error("Invalid bot inbox task");
+  return Object.freeze({ id: value.id, message: value.message, sender: value.sender, handle: value.handle, expires: value.expires,
+    ...("context" in value ? { context: value.context } : {}) });
 }
 function privateFile(path: string) {
   if (!isAbsolute(path) || !process.getuid) throw Error("Bot inbox requires a private Unix path");
