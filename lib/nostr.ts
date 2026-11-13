@@ -1,3 +1,4 @@
+import { nostrReply } from "./feed-reply";
 import { mediaFields, nostrMedia } from "./feed-media-adapters";
 import { collectSourceWindows } from "./source-windows";
 /**
@@ -77,6 +78,7 @@ export function normalizeNostrEvent(
   return {
     id: id.toLowerCase(),
     source: "nostr",
+    ...nostrReply(raw.tags),
     ...mediaFields(nostrMedia(raw.tags)),
     kind: "social",
     author: pubkey.toLowerCase(),

@@ -1,3 +1,4 @@
+import { farcasterReply } from "./feed-reply";
 import { mediaFields, farcasterMedia } from "./feed-media-adapters";
 import { collectSourceWindows } from "./source-windows";
 /**
@@ -36,6 +37,9 @@ export type HubCastMessage = {
     castAddBody?: {
       text?: string;
       embeds?: unknown[];
+      parentCastId?: {hash?:string;fid?:number};
+      parentHash?: string;
+      parentUrl?: string;
     };
   };
 };
@@ -83,6 +87,7 @@ export function normalizeHubCast(
   return {
     id: hash,
     source: "farcaster",
+    ...farcasterReply(data.castAddBody),
     ...mediaFields(farcasterMedia(data.castAddBody?.embeds)),
     kind: "social",
     author,

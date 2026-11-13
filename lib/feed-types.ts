@@ -1,3 +1,4 @@
+import { parseFeedReference, type FeedReference } from "./feed-reply";
 import { parseFeedMedia, type FeedMedia } from "./feed-media";
 /**
  * Shared feed item shape. Public cache, snapshot, personal overlay, and
@@ -43,6 +44,8 @@ export type FeedItem = {
   tags: string[];
   provenance: string;
   media?: FeedMedia[];
+  replyTo?: FeedReference;
+  root?: FeedReference;
   /** Missing on old seed rows; readers treat that as v1. */
   v?: number;
 };
@@ -131,6 +134,8 @@ export type GunFeedNode = {
   provenance: string;
   /** Bounded JSON because Gun cannot store arrays. Older v1 readers ignore it. */
   media?: string;
+  replyTo?: string;
+  root?: string;
   /** Missing on old seed rows; treat as v1. Unknown versions fail closed. */
   v?: number;
   /**
@@ -210,6 +215,8 @@ export function toGunNode(item: FeedItem): GunFeedNode {
     tags: item.tags.join(","),
     provenance: item.provenance,
     media: JSON.stringify(parseFeedMedia(item.media)),
+    replyTo: JSON.stringify(parseFeedReference(item.replyTo)),
+    root: JSON.stringify(parseFeedReference(item.root)),
     v: item.v ?? GUN_PROTOCOL_V,
   };
 }
@@ -231,6 +238,7 @@ export function fromGunNode(
     return null;
   }
   const media = parseFeedMedia(node.media);
+  const replyTo = parseFeedReference(node.replyTo), root = parseFeedReference(node.root);
   return {
     id: node.id.trim(),
     source,
@@ -242,6 +250,8 @@ export function fromGunNode(
     tags: splitTags(node.tags),
     provenance: asText(node.provenance),
     ...(media.length ? {media} : {}),
+    ...(replyTo ? {replyTo} : {}),
+    ...(root ? {root} : {}),
     v,
   };
 }
