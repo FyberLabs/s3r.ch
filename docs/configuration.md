@@ -67,6 +67,7 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 
 | Setting | Required | Default | Secret | Meaning |
 | --- | --- | --- | --- | --- |
+| `S3RCH_MEDIA_READER_BINDINGS` | for private media | unset | yes | Server-only JSON: fixed gateway origin, tenant UUID, and at most 64 `{principal, apiKey}` readers. Each dedicated key must authenticate a separate ACL subject bound to that enrolled reader. Keys cannot be shared across readers. Requires the protected media source; missing configuration disables private reads. |
 | `S3RCH_MEDIA_STORAGE_ORIGIN` | for media | unset | no | Fixed HTTPS Spanopticon gateway origin. Media routes remain unavailable until all three settings and trusted Squad authority are configured. |
 | `S3RCH_MEDIA_STORAGE_TENANT_ID` | for media | unset | no | Dedicated s3r.ch storage tenant UUID. |
 | `S3RCH_MEDIA_STORAGE_API_KEY` | for media | unset | yes | Dedicated server-only key with storage:objects:read/write and storage:media:read/write. Never use the public-feed key. |

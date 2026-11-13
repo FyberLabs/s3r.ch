@@ -156,3 +156,31 @@ are not retried automatically; retry the same saved bytes after reconciliation.
 This transport does not authorize decryption. The caller still needs current
 Check and epoch status, confidential wrap delivery, and an unlocked reader key
 before calling `openMediaFile`. Upload/playback controls remain unfinished.
+
+## Protected private-file reads
+
+`createPrivateMediaReader().open(object, tenant, epriv, epub, signal)` obtains
+current authorization from `/api/media/read-wrap`. The endpoint resolves the
+current SEA session principal from the protected identity source and uses that
+principal's dedicated fixed-reader credential. It does not accept a reader,
+epoch, revision, storage path, or provider credential from request JSON.
+Ciphertext GETs use the same protected private authorization path.
+
+The opaque private record retained by the owner contains UTF-8 JSON with exactly
+`{wrap, reference}`. `wrap` is the existing SociACL `ItemReaderWrap` returned by
+`sealMediaFile`; `reference` contains its ciphertext `sha256` and byte `length`.
+The owner retains the record's SHA-256 digest and the grant's ciphertext digest
+in the protected media source. This storage envelope adds no cryptographic
+format. Keep the complete record private; never put it in public feed metadata.
+
+The browser downloads ciphertext, fetches current context again before
+unwrapping, and checks authorization once more before returning plaintext.
+Changed wraps, object/epoch/revision, reader encryption keys, expiry, or refusal
+reject the read. Plaintext created before a failed final check is cleared.
+Callers own the returned file bytes and should clear them when the view closes.
+A previously delivered plaintext copy cannot be remotely erased by revocation.
+
+Deployment must provision `S3RCH_MEDIA_READER_BINDINGS` and matching ACL
+subject/reader bindings explicitly. Missing configuration leaves private reads
+unavailable. This consumer does not provision source grants or publish media;
+image/audio/video composition and presentation use it through their own UI work.
