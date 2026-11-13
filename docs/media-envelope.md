@@ -184,3 +184,21 @@ Deployment must provision `S3RCH_MEDIA_READER_BINDINGS` and matching ACL
 subject/reader bindings explicitly. Missing configuration leaves private reads
 unavailable. This consumer does not provision source grants or publish media;
 image/audio/video composition and presentation use it through their own UI work.
+
+## Owner browser transport
+
+`POST /api/media/owner/view`, `/mutate`, and `/publish-wrap` forward only the
+corresponding protected ACL owner operations. They use the signed-in principal's
+explicit `S3RCH_MEDIA_READER_BINDINGS` credential; it must have `acl:media:write`
+for that fixed subject. They never accept a caller-selected owner or credential.
+The existing protected identity source resolves the session before and after the
+operation. Routes remain unavailable without the configured source and bindings.
+
+View takes `{object}` and returns the protected owner's snapshot and write fence.
+Mutation takes `{object, at, fence, operation, payload}` for grant, epoch, status
+or wrap metadata; signatures remain mandatory in ACL. Publication takes
+`{object, at, fence, metadata, wrapBase64}` for the encrypted private record
+described above. ACL reserves capacity before immutable storage and checks
+current authority again before committing metadata. A 409 requires a fresh view
+and explicit reconciliation; the browser transport never retries a write. These
+routes do not provision objects, enroll identities, or activate media storage.
