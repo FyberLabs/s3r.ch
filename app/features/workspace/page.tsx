@@ -136,12 +136,14 @@ export default function WorkspaceFeaturePage() {
 
       <FeatureSection title="Memes">
         <p>
-          Today you can post text and tags, and Discover lists tags already in
-          use.
+          You can <Link href="/media/edit" className="underline">create an image draft</Link>
+          {" "}from a PNG, JPEG or blank template, add captions and save a PNG on
+          your device. Drafts stay in this page and clear when you leave or
+          change identity.
         </p>
         <p>
-          Coming in v1, image posts and a simple meme editor that uses the same
-          share and grant controls.
+          Coming in v1, publish image drafts with the same share and grant
+          controls as other posts.
         </p>
       </FeatureSection>
 
