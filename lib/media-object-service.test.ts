@@ -131,3 +131,21 @@ test("one owner cannot exhaust the tenant object or byte quota", async () => {
   assert.equal((await full.service(request("PUT"), object)).status, 507);
   assert.equal(full.calls.includes("object-put"), false);
 });
+
+test("a stalled owner upload cannot block another owner's upload or reads", async () => {
+  const h = setup(), controller = new AbortController();
+  let entered!: () => void, cancelled = 0;
+  const reading = new Promise<void>(resolve => { entered = resolve; });
+  const stalled = new Request(request("PUT"), { body: new ReadableStream({
+    pull() { entered(); }, cancel() { cancelled++; },
+  }, { highWaterMark: 0 }), signal: controller.signal, duplex: "half" } as RequestInit);
+  const pending = h.service(stalled, object);
+  await reading;
+  assert.equal((await h.service(request("PUT"), other)).status, 429);
+  const otherKey = Buffer.from(p256.getPublicKey(new Uint8Array(32).fill(54), false).slice(1)).toString("hex");
+  const otherObject = `media_p_${otherKey}_${"b".repeat(32)}`;
+  assert.equal((await h.service(request("PUT"), otherObject)).status, 201);
+  assert.equal((await h.service(request(), otherObject)).status, 200);
+  controller.abort(); assert.equal((await pending).status, 503); assert.equal(cancelled, 1);
+  assert.equal((await h.service(request("PUT"), object)).status, 201);
+});

@@ -86,7 +86,9 @@ fetches use same-origin browser metadata or an explicit matching Origin.
 
 The primary index uses conditional writes to reserve at most 128 objects and
 256 MiB per tenant before an object upload. Each file is at most 64 MiB, including
-the encrypted envelope; two requests may be active per configured worker. A
+the encrypted envelope; two ciphertext requests may be active per configured worker, with at most one
+active upload per authenticated owner. Initial authority reads have a separate
+two-request bound, so stalled upload bodies cannot consume those slots. A
 failed upload retains its reservation so an identical retry is safe; there is
 no automatic deletion or quota reclamation. This is a bounded initial transport,
 not a billing quota system. The media key needs object read/write and media
@@ -119,7 +121,8 @@ owner signature. This permits re-signing after key rotation without changing the
 object's identity or immutable ciphertext mapping.
 
 Body processing is limited to two requests per authenticated owner and sixteen
-per worker, with a 15-second deadline. Different objects of one owner share the
+per worker, with a 15-second deadline. A separate two-request preflight bound
+limits authority reads before body admission. Different objects of one owner share the
 same limit; completion, failure and cancellation release their slots.
 
 Registration returns an empty 201 response. It does not upload ciphertext, publish

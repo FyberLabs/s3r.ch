@@ -36,7 +36,8 @@ export function createMediaObjectService(input: {
 }) {
   const origin = new URL(input.origin);
   if (origin.origin !== input.origin || origin.protocol !== "https:") throw Error("Canonical HTTPS origin required");
-  let active = 0;
+  let active = 0, preflights = 0;
+  const uploading = new Set<string>();
   return async (request: Request, object: string): Promise<Response> => {
     const reply = (status: number) => new Response(null, { status, headers });
     if (!["GET", "PUT"].includes(request.method)) return reply(405);
@@ -46,8 +47,8 @@ export function createMediaObjectService(input: {
     const originRequest = request.method === "GET" ? new Request(request, { headers: originHeaders }) : request;
     if (!matchesBrowserOrigin(originRequest, origin)) return reply(403);
     if (!objectOK(object)) return reply(400);
-    if (active >= 2) return reply(429);
-    active++;
+    const owner = objectPrincipal(object)!;
+    let admitted = false, upload = false;
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(120_000)]);
     const allowed = async () => {
       signal.throwIfAborted();
@@ -55,7 +56,16 @@ export function createMediaObjectService(input: {
       signal.throwIfAborted(); return result;
     };
     try {
-      if (!await allowed()) return reply(403);
+      if (preflights >= 2) { void request.body?.cancel().catch(() => {}); return reply(429); }
+      preflights++;
+      try {
+        if (!await allowed()) { void request.body?.cancel().catch(() => {}); return reply(403); }
+      } finally { preflights--; }
+      if (active >= 2 || (request.method === "PUT" && uploading.has(owner))) {
+        void request.body?.cancel().catch(() => {}); return reply(429);
+      }
+      active++; admitted = true;
+      if (request.method === "PUT") { uploading.add(owner); upload = true; }
       if (request.method === "GET") {
         const stored = await input.records.get("media", INDEX, signal);
         const entry = stored && index(stored.bytes).find(row => row.object === object);
@@ -108,6 +118,6 @@ export function createMediaObjectService(input: {
       if (!await allowed()) return reply(403);
       return new Response(null, { status: 201, headers: { ...headers, ETag: `"${digest}"` } });
     } catch { return reply(503); }
-    finally { active--; }
+    finally { if (admitted) active--; if (upload) uploading.delete(owner); }
   };
 }

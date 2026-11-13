@@ -13,7 +13,7 @@ export function createMediaRegistrationService(input: {
 }) {
   const origin = new URL(input.origin);
   if (origin.origin !== input.origin || origin.protocol !== "https:") throw Error("Canonical HTTPS origin required");
-  let active = 0;
+  let active = 0, preflights = 0;
   const owners = new Map<string, number>();
   return async (request: Request, object: string) => {
     const reply = (status: number) => new Response(null, { status, headers: {
@@ -24,6 +24,8 @@ export function createMediaRegistrationService(input: {
         ![null, "identity"].includes(request.headers.get("content-encoding"))) return reply(415);
     if (!request.body) return reply(400);
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(15_000)]);
+    if (preflights >= 2) { void request.body.cancel().catch(() => {}); return reply(429); }
+    preflights++;
     try {
       signal.throwIfAborted();
       if (!await input.preflight(request, object, signal)) {
@@ -31,6 +33,7 @@ export function createMediaRegistrationService(input: {
       }
       signal.throwIfAborted();
     } catch { void request.body.cancel().catch(() => {}); return reply(503); }
+    finally { preflights--; }
     // Preflight binds the session to this canonical embedded owner. Different
     // objects owned by the same principal must share the same admission bucket.
     const owner = object.startsWith("media_") && objectPrincipal(object);

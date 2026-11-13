@@ -89,9 +89,12 @@ test("authority loss after storage refuses success and stored signatures grant n
 });
 test("abort cancels stalled bodies and concurrent requests are bounded", async () => {
   const h = setup(), controllers = [new AbortController(), new AbortController()]; let cancelled = 0;
+  let entered!: () => void, readingCount = 0;
+  const reading = new Promise<void>(resolve => { entered = resolve; });
   const pending = controllers.map(controller => h.service(new Request("https://s3r.ch/api/media/" + object, {
     method: "POST", headers: { origin: "https://s3r.ch", "content-type": "application/json" },
-    body: new ReadableStream({ cancel() { cancelled++; } }), signal: controller.signal, duplex: "half" } as RequestInit), object));
+    body: new ReadableStream({ pull() { if (++readingCount === 2) entered(); }, cancel() { cancelled++; } }, { highWaterMark: 0 }), signal: controller.signal, duplex: "half" } as RequestInit), object));
+  await reading;
   assert.equal((await h.service(request(), object)).status, 429);
   // Changing the object suffix cannot evade the owner's body-read limit.
   assert.equal((await h.service(request(), object.replace(/a$/, "b"))).status, 429);
@@ -173,4 +176,20 @@ test("global body admission stays bounded across owners and releases aborted slo
   assert.deepEqual((await Promise.all(pending)).map(response => response.status), Array(16).fill(503));
   assert.equal(cancelled, 16);
   assert.equal((await h.service(request(), object)).status, 201);
+});
+
+test("preflight authority reads have a separate bounded admission pool", async () => {
+  let release!: () => void, reads = 0, cancelled = 0;
+  const hold = new Promise<void>(resolve => { release = resolve; });
+  const source = createMediaRegistrationService({ origin: "https://s3r.ch", store: setup().store,
+    preflight: async () => { reads++; await hold; return false; }, authorize: async () => { throw Error("Not reached"); } });
+  const make = () => new Request("https://s3r.ch/api/media/" + object, { method: "POST",
+    headers: { origin: "https://s3r.ch", "content-type": "application/json" },
+    body: new ReadableStream({ cancel() { cancelled++; } }), duplex: "half" } as RequestInit);
+  const first = source(make(), object), second = source(make(), object);
+  assert.equal((await source(make(), object)).status, 429);
+  assert.equal(reads, 2);
+  release(); assert.equal((await first).status, 403); assert.equal((await second).status, 403);
+  assert.equal((await source(make(), object)).status, 403);
+  assert.equal(reads, 3); assert.equal(cancelled, 4);
 });
