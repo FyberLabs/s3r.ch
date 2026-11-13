@@ -188,3 +188,14 @@ Infra #923 owns registration, setup/readiness/cleanup, isolated first-party
 sink queries, controlled process restart, expiry/recovery and combined
 cross-tenant scenarios. Unavailable prerequisites are blocked, not successful
 skips. No browser suite or nightly is manually dispatched.
+
+
+Scheduled browser coverage also observes the declared `create` treatment before
+its real server display deadline, takes only its disposable browser offline,
+and requires the control heading after expiry. Restoring networking must renew
+the deadline and recover the same cohort/treatment on the same page. No clock,
+route or response is replaced; no reload occurs within this probe. A control-only
+fixture fails visibly. This is browser display expiry, not cache-server outage.
+Completed primary journeys keep their private sink observations even if expiry
+fails, and the independent Infra query still runs. Networking is restored before
+consent cleanup. Execution remains scheduled-only.
