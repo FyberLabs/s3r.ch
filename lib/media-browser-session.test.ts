@@ -70,3 +70,13 @@ test("private reads use unlocked encryption keys and return authenticated file b
     :new Response(new Uint8Array(sealed.bytes),{headers:{"content-type":"application/octet-stream","content-length":String(sealed.bytes.length),etag:`"${sealed.sha256}"`}}));
   const opened=await browser.open(object,tenant);assert.deepEqual(opened.bytes,plain);opened.bytes.fill(0);
 });
+test("session changes while consuming a write response refuse completion without replay",async()=>{
+  unlock();let session:string|null=owner,calls=0;
+  const browser=createPrivateMediaBrowser(()=>session,async()=>{
+    if(++calls===1)return Response.json(view);
+    return new Response(new ReadableStream({pull(controller){
+      session=null;controller.enqueue(new TextEncoder().encode('{"accepted":true}'));controller.close();
+    }},{highWaterMark:0}),{headers:{"content-type":"application/json"}});
+  });
+  await assert.rejects(browser.grant(object,owner,grant));assert.equal(calls,2);
+});
