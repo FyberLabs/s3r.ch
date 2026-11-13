@@ -29,5 +29,6 @@ try{
  await page.getByLabel("Top caption").fill("Identity private draft");await page.evaluate(()=>window.dispatchEvent(new Event("s3rch-session-changed")));await page.waitForFunction(()=>document.querySelector('input[maxlength]').value==="");
  await page.getByLabel("Top caption").fill("Cross-tab private draft");await page.getByRole("button",{name:"Prepare PNG"}).click();await page.getByRole("link",{name:"Save PNG"}).waitFor();
  const other=await page.context().newPage();await other.goto(origin);await other.evaluate(()=>localStorage.setItem("s3rch-session-changed",crypto.randomUUID()));await page.waitForFunction(()=>document.querySelector('input[maxlength]').value==="");assert.equal(await page.getByRole("link",{name:"Save PNG"}).count(),0);await other.close();
+ await page.getByLabel("Top caption").fill("Page departure draft");await page.evaluate(()=>window.dispatchEvent(new Event("pagehide")));await page.waitForFunction(()=>document.querySelector('input[maxlength]').value==="");
  assert.deepEqual(remote,[]);assert.deepEqual(errors,[]);console.log("PASS image draft templates, PNG export, invalid input, stale decode and identity clearing");
 }finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
