@@ -9,12 +9,13 @@ import {join,basename} from "node:path";
 if(process.env.GITHUB_ACTIONS!=="true")throw Error("Public media browser contracts run in CI only");
 const mediaRoot=mkdtempSync(join(tmpdir(),"s3rch-hls-ci-"));
 execFileSync("ffmpeg",["-hide_banner","-loglevel","error","-f","lavfi","-i","color=c=blue:s=64x64:r=10","-t","2","-c:v","libx264","-pix_fmt","yuv420p","-g","5","-f","hls","-hls_time","0.5","-hls_list_size","0",join(mediaRoot,"stream.m3u8")]);
-const result=await build({stdin:{contents:`import React from 'react'; import {createRoot} from 'react-dom/client'; import PublicFeedMedia from './components/PublicFeedMedia'; createRoot(document.getElementById('root')).render(<PublicFeedMedia media={[{kind:'image',url:'https://example.com/photo.png',alt:'Visible description',sensitive:true,warning:'Spoiler'},{kind:'audio',url:'https://example.com/audio.mp3',alt:'Interview'},{kind:'video',url:'https://example.com/video.mp4',alt:'Clip'},{kind:'video',url:'https://example.com/stream.m3u8',playlist:true,alt:'HLS fixture'}]}/>);`,resolveDir:process.cwd(),loader:"tsx"},bundle:true,write:false,platform:"browser",format:"iife",define:{"process.env.NODE_ENV":'"production"'}});
+const result=await build({stdin:{contents:`import React from 'react'; import {createRoot} from 'react-dom/client'; import PublicFeedMedia from './components/PublicFeedMedia'; import FeedConversation from './components/FeedConversation'; createRoot(document.getElementById('root')).render(<><FeedConversation item={{id:'reply',source:'nostr',body:'Reply',kind:'social',author:'Alice',ts:1,permalink:'https://example.com/reply',tags:[],provenance:'fixture',replyTo:{id:'parent',permalink:'https://example.com/parent',author:'Bob'}}}/><PublicFeedMedia media={[{kind:'image',url:'https://example.com/photo.png',alt:'Visible description',sensitive:true,warning:'Spoiler'},{kind:'audio',url:'https://example.com/audio.mp3',alt:'Interview'},{kind:'video',url:'https://example.com/video.mp4',alt:'Clip'},{kind:'video',url:'https://example.com/stream.m3u8',playlist:true,alt:'HLS fixture'}]}/></>);`,resolveDir:process.cwd(),loader:"tsx"},bundle:true,write:false,platform:"browser",format:"iife",define:{"process.env.NODE_ENV":'"production"'}});
 const png=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6sH8AAAAASUVORK5CYII=","base64");
 const requests=[];let fail=true;
 const server=createServer((req,res)=>{
  requests.push(req.url);
  if(req.url==="/app.js"){res.setHeader("content-type","application/javascript");res.end(result.outputFiles[0].contents);return;}
+ if(req.url.startsWith("/api/feed/conversation")){res.setHeader("content-type","application/json");res.end(JSON.stringify({items:[{id:"parent",source:"nostr",body:"Cached parent"},{id:"reply",source:"nostr",body:"Cached reply"}],replies:[],missingParent:null,truncated:false}));return;}
  if(req.url.startsWith("/api/feed/media")){
   const source=new URL(new URL(req.url,"http://fixture").searchParams.get("url"));
   if(source.pathname==="/stream.m3u8"){
@@ -50,5 +51,8 @@ try {
  await page.waitForFunction(()=>document.querySelectorAll("video")[1]?.src.startsWith("blob:"));
  await page.locator("video").nth(1).evaluate(element=>{void element.play();});
  await page.waitForFunction(()=>document.querySelectorAll("video")[1]?.currentTime>0.2);
+ await page.getByRole("button",{name:"Show conversation"}).click();
+ await page.getByText("Cached parent",{exact:true}).waitFor();await page.getByText("Cached reply",{exact:true}).waitFor();
+ await page.getByRole("button",{name:"Hide conversation"}).click();assert.equal(await page.getByText("Cached parent",{exact:true}).count(),0);
  assert.deepEqual(external,[]);console.log("Public media reveal, retry, dialog and proxy-only browser contracts passed");
 } finally {await browser?.close();await new Promise(resolve=>server.close(resolve));rmSync(mediaRoot,{recursive:true,force:true});}
