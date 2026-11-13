@@ -56,6 +56,14 @@ jobs:
           --test-coverage-lines=95 --test-coverage-branches=80
           lib/identity/acl-delegation-source-server.test.ts
 
+      - name: Native agent route coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/identity/agent-session-config.ts
+          --test-coverage-include=lib/identity/site-agent-session-server.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/identity/agent-session-config.test.ts lib/identity/site-agent-session-server.test.ts
+
   build:
     # Compile the production bundle; runtime acceptance runs in Infra nightly.
     runs-on: ubuntu-latest
