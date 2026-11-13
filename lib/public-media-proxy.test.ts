@@ -84,3 +84,8 @@ test("HLS byte ranges reach upstream without downloading the entire resource",as
  assert.equal(response.status,206);assert.equal(await response.text(),"abc");
  assert.equal((await servePublicMedia(new Request(request("video").url,{headers:{range:"bytes=0-2"}}),async()=>new Response("abc",{status:206,headers:{"content-type":"video/mp4","content-range":"bytes 9-11/20"}}))).status,502);
 });
+test("signed playlist expansion cannot exceed the response cap",async()=>{
+ const manifest="#EXTM3U\n"+Array(300).fill("segment.ts").join("\n");
+ const response=await servePublicMedia(request("video"),async()=>new Response(manifest,{headers:{"content-type":"application/vnd.apple.mpegurl"}}),()=>"/api/feed/media?"+"x".repeat(2048));
+ assert.equal(response.status,502);
+});

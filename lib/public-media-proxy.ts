@@ -123,6 +123,7 @@ export async function servePublicMedia(request: Request, read = fetchPublic, sig
     const playlist = type.includes("mpegurl");
     const bytes = await readMediaBytes(upstream, playlist ? PLAYLIST_BYTES : PUBLIC_MEDIA_BYTES, 15_000, budget.bytes);
     const body = playlist ? new TextEncoder().encode(rewriteMediaPlaylist(new TextDecoder("utf-8",{fatal:true}).decode(bytes), upstream.url || url, Number(depthRaw), sign)) : bytes;
+    if (playlist && (body.byteLength > PLAYLIST_BYTES || !budget.bytes(body.byteLength))) throw new Error("Rewritten playlist quota exhausted");
     const headers = {
       "content-type":playlist ? "application/vnd.apple.mpegurl" : type,
       "content-length":String(body.byteLength), "cache-control":"no-store",
