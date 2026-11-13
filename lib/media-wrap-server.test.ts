@@ -6,7 +6,7 @@ const principal="axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-
 const object="media_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_11111111111111111111111111111111";
 const tenant="11111111-1111-4111-8111-111111111111";
 const config={origin:"https://gateway.example",tenant,readers:[{principal,apiKey:"reader-one-key"}]};
-const payload={context:{object,epoch:1,revisionId:"a".repeat(64)},readerEpub:"enrolled-key",expiresAt:102,wrapBase64:"e30="};
+const payload={context:{object,epoch:1,revisionId:"a".repeat(64)},readerEpub:principal,expiresAt:102,wrapBase64:"e30="};
 const request=(body:unknown={object},headers:Record<string,string>={})=>new Request("https://s3r.ch/api/media/read-wrap",{
   method:"POST",headers:{origin:"https://s3r.ch","content-type":"application/json",...headers},body:JSON.stringify(body)});
 test("only the configured subject credential is sent, with an object-only body",async()=>{
@@ -35,7 +35,9 @@ test("rotation, expiry and provider refusals withhold delivery",async()=>{
   const rotated=createMediaWrapService(config,"https://s3r.ch",async()=>++count===1?principal:null,async()=>Response.json(payload),()=>100);
   assert.equal((await rotated(request())).status,403);
   for(const response of [new Response(null,{status:403}),Response.json({...payload,expiresAt:100}),
-    Response.json({...payload,expiresAt:104}),Response.json({...payload,extra:true}),new Response("x")]){
+    Response.json({...payload,expiresAt:104}),Response.json({...payload,extra:true}),new Response("x"),
+    Response.json({...payload,context:{...payload.context,object:"other"}}),Response.json({...payload,readerEpub:"invalid"}),
+    Response.json({...payload,wrapBase64:"!"})]){
     const service=createMediaWrapService(config,"https://s3r.ch",async()=>principal,async()=>response,()=>100);
     assert.notEqual((await service(request())).status,200);
   }

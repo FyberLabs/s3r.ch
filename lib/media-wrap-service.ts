@@ -67,9 +67,15 @@ export function createMediaWrapService(config: MediaReaderConfig, siteOrigin: st
         await response.body?.cancel().catch(() => {}); return reply(403);
       }
       const result = await readBoundedIdentityJson(response, 100000, signal) as Record<string, unknown>;
+      const context = result?.context as Record<string, unknown> | undefined;
       if (!result || Object.keys(result).sort().join() !== "context,expiresAt,readerEpub,wrapBase64" ||
+          !context || typeof context !== "object" || Object.keys(context).sort().join() !== "epoch,object,revisionId" ||
+          context.object !== object || !Number.isSafeInteger(context.epoch) || (context.epoch as number) < 1 ||
+          typeof context.revisionId !== "string" || !/^[a-f0-9]{64}$/.test(context.revisionId) ||
           typeof result.expiresAt !== "number" || !Number.isFinite(result.expiresAt) || result.expiresAt <= clock() ||
-          result.expiresAt > clock() + 3 || typeof result.readerEpub !== "string" || typeof result.wrapBase64 !== "string") return reply(403);
+          result.expiresAt > clock() + 3 || !isSeaPubkey(result.readerEpub) || typeof result.wrapBase64 !== "string" ||
+          !result.wrapBase64.length || result.wrapBase64.length > 87384 ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(result.wrapBase64)) return reply(403);
       // Rotation or session expiry during provider delivery must refuse before
       // returning even encrypted reader material to the browser.
       if (await resolveReader(request, signal) !== reader) return reply(403);
