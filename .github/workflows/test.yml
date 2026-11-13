@@ -40,6 +40,11 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Install isolated browser for media contracts
+        run: npx playwright-core install --with-deps chromium
+      - name: Public media browser contracts (CI only)
+        run: node scripts/test-public-media-browser.mjs
+
       - name: Public media proxy and player coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
