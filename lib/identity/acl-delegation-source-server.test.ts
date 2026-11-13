@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { importJWK, SignJWT } from "jose";
 import { p256 } from "@noble/curves/nist.js";
-import { agentDelegationBytes, agentRevocationBytes, parseAgentDelegation, parsePrincipalId, signingBytes, signWithKeyring } from "sociacl-ids";
+import { agentDelegationBytes, agentRevocationBytes, parseAgentDelegation, parsePrincipalId, parseTenantId, signingBytes, signWithKeyring } from "sociacl-ids";
 import { createAclDelegationSource, type DelegationTrust } from "./acl-delegation-source-server";
 import { createIdentitySessions } from "./sea-session";
 const f = { now: 1700000000 };
@@ -32,7 +32,8 @@ async function setup() {
     .setProtectedHeader({alg:"ES256",kid:jwk.kid}).setIssuedAt(f.now).setExpirationTime(f.now+60)
     .sign(await importJWK({...jwk,d:Buffer.from(witness).toString("base64url")},"ES256"));
   const binding = {...genesis,keySig:sign(bytes.value),attest};
-  const cred = {iss:"https://identity.example",tenant:"01234567-89ab-cdef-0123-456789abcdef",sub:"ci-owner"};
+  const tenant=parseTenantId(config.tenant); assert.ok(tenant.ok);
+  const cred = {iss:"https://identity.example",tenant:tenant.value,sub:"ci-owner"};
   const link = {v:1 as const,kind:"oidc" as const,principal:owner,cred,nonce:"a".repeat(16),issuedAt:f.now};
   const linkBytes=signingBytes(link); assert.ok(linkBytes.ok);
   const linkAttest=await new SignJWT({typ:"sociacl-oidc-attest-v1",...cred,principal:owner,nonce:link.nonce})
