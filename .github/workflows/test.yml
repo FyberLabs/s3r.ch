@@ -78,8 +78,9 @@ jobs:
         run: >-
           node --import tsx --test --experimental-test-coverage
           --test-coverage-include=lib/nostr-live.ts
+          --test-coverage-include=lib/public-media-sources.ts
           --test-coverage-lines=90 --test-coverage-branches=80
-          lib/nostr-live.test.ts
+          lib/nostr-live.test.ts lib/public-media-sources.test.ts
 
       - name: Feed reply and cached conversation coverage (CI only)
         run: >-

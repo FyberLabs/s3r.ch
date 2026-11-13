@@ -37,7 +37,7 @@ export function liveProjection(event:LiveEvent,now:number):PublicLiveStream|null
 export function createLiveDirectory(authors:readonly string[]=PUBLIC_NOSTR_PUBKEYS,
  pull:(author:string)=>Promise<unknown[]>=author=>queryNostrRelay(NOSTR_RELAY_URL,{authors:[author],kinds:[30311],limit:20}),clock=Date.now){
  if(!authors.length||authors.length>16||authors.some(a=>!/^[a-f0-9]{64}$/.test(a)))throw Error("Invalid live authors");
- const followed=[...authors],latest=new Map<string,LiveEvent>();let until=0,pending:Promise<void>|null=null,available=false;
+ const followed=[...authors],latest=new Map<string,LiveEvent>();let unseenFloor=0,until=0,pending:Promise<void>|null=null,available=false;
  const update=async()=>{
   const results=await Promise.allSettled(followed.map(author=>Promise.resolve().then(()=>pull(author))));
   const now=Math.floor(clock()/1000);
@@ -47,7 +47,10 @@ export function createLiveDirectory(authors:readonly string[]=PUBLIC_NOSTR_PUBKE
    for(const raw of result.value){const event=verifiedLiveEvent(raw,followed,now);if(!event)continue;
     const address=liveAddress(event);if(!address)continue;const prior=latest.get(address);
     // Retain ended markers until expiry; capacity cannot make stale live events win.
-    if(!prior&&latest.size>=1600)continue;
+    if(!prior){
+      if(latest.size>=1600){unseenFloor=Math.max(unseenFloor,event.created_at);continue;}
+      if(event.created_at<=unseenFloor)continue;
+    }
     if(!prior||event.created_at>prior.created_at||event.created_at===prior.created_at&&event.id<prior.id)latest.set(address,event);
    }
   }

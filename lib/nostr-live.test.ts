@@ -53,8 +53,9 @@ test("capacity pressure preserves ended markers instead of admitting older live 
   await load();time+=60_000;
  }
  events=[signed({created_at:now-1,tags:[["d","0"],["status","live"],["streaming","https://example.com/replay"]]}),
-  signed({created_at:now+960,tags:[["d","new"],["status","live"],["streaming","https://example.com/new"]]})];
+  signed({created_at:now+960,tags:[["d","new"],["status","ended"]]})];
  assert.equal((await load()).streams.length,0);
  time=(now+LIVE_MAX_AGE+1)*1000;
- events=[signed({created_at:Math.floor(time/1000)})];assert.equal((await load()).streams.length,1);
+ events=[signed({created_at:now+900,tags:[["d","new"],["status","live"],["streaming","https://example.com/replay"]]}),signed({created_at:Math.floor(time/1000)})];
+ const fresh=await load();assert.equal(fresh.streams.length,1);assert.ok(fresh.streams[0].id.endsWith(":show"));
 });
