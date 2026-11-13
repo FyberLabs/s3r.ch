@@ -20,6 +20,7 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
     <h1 className="text-2xl font-semibold">My media</h1>
     <p className="text-ink-muted">View images, audio and video you own using your saved identity.</p>
     <p><a className="underline" href="/media/record">Record audio or video</a></p>
+    <p><a className="underline" href="/media/edit">Create an image draft</a></p>
     <IdentityBar />
     {!tenant ? <p role="status">Private media is not available on this site yet.</p> : <>
       <div className="flex gap-4">

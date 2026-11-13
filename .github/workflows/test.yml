@@ -56,6 +56,14 @@ jobs:
           --test-coverage-include=lib/media-recorder.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/media-recorder.test.ts
+      - name: Image draft browser contracts (CI only)
+        run: node scripts/test-meme-editor.mjs
+      - name: Image draft coverage
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/meme-image.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/meme-image.test.ts
 
       - name: Nostr source and bounded relay coverage
         run: >-
