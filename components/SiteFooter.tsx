@@ -19,6 +19,9 @@ export function SiteFooter() {
         >
           Hypermesh / Hyperme.sh
         </a>
+        <a href="/privacy" className="underline hover:text-ink">Privacy Policy</a>
+        <a href="/terms" className="underline hover:text-ink">Terms of Use</a>
+        <a href="mailto:legal@s3r.ch" className="underline hover:text-ink">Contact</a>
       </p>
     </footer>
   );

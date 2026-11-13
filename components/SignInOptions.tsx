@@ -77,6 +77,7 @@ export function SignInOptions(props: Props) {
         Connect your wallet, then sign a message to continue.
         You can also start with an account you already use.
       </p>
+      <p className="mt-3 text-xs text-ink-muted">For adults 18+. By continuing, you agree to the <a className="underline" href="/terms">Terms of Use</a>. Read our <a className="underline" href="/privacy">Privacy Policy</a>.</p>
       <div className="login-methods mt-6">
         <section aria-label="Wallet sign-in" className="min-w-0">
           <h3 className="text-sm font-semibold text-ink">Use a wallet</h3>
