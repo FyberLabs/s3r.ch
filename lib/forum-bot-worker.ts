@@ -91,10 +91,12 @@ export function createForumBotWorker(input: {
         const until = Math.min(clock() + 14000, claimed.expires * 1000, grant.expires * 1000);
         if (until <= clock()) { channel.finish(id, "cancelled"); continue; }
         uncertainUntil = until;
+        const approvedAt = Math.floor(clock() / 1000);
         const submitted = await executor.submit(grant, until, consent.resume);
         if (!/^[0-9a-f-]{36}$/.test(submitted.id)) throw Error("Invalid local task identity");
         active = { task: id, handle: claimed.handle, session: grant.session, local: submitted.id, until, progress: -1, resume: consent.resume, grant: JSON.stringify(grant) };
         uncertainUntil = 0;
+        await publish(["approval", input.tenant, id, approvedAt, Math.min(grant.expires, claimed.expires)]);
         await publish(["ack", input.tenant, id]); break;
       }
     }); },

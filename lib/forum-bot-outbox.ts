@@ -22,7 +22,7 @@ export function openForumBotOutbox(path: string, binding: BotInboxScope) {
   return Object.freeze({
     close() { db.close(); },
     enqueue(message: BotMessage) {
-      if (message[1] !== scope.tenant || !["ack", "progress", "result"].includes(message[0])) throw Error("Invalid bot report");
+      if (message[1] !== scope.tenant || !["approval", "ack", "progress", "result"].includes(message[0])) throw Error("Invalid bot report");
       const body = encodeBotMessage(message), digest = createHash("sha256").update(body).digest("hex");
       db.exec("BEGIN IMMEDIATE");
       try {

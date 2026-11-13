@@ -43,9 +43,20 @@ concurrency fence. Its `append` must atomically compare every history/ACL input,
 invoke the supplied expiry/abort guard immediately before commit, and retain all
 accepted signed rows. It must not reconstruct completeness from Gun or a legacy
 assignment journal. `/api/squad/pilot/statement` returns unavailable without this
-provider; authenticated readiness is checked before the worker starts. General
-source provisioning remains part of s3r.ch #279. No production provider is
-silently installed by this change.
+provider; authenticated readiness is checked before the worker starts.
+
+For the provisioned ACL service, select `S3RCH_AUTHORITY_BACKEND=acl` on the web
+server and supply `S3RCH_STATEMENT_SOURCE_ORIGIN`,
+`S3RCH_STATEMENT_SOURCE_TENANT_ID`, `S3RCH_STATEMENT_SOURCE_SCOPE`, and the private
+`S3RCH_STATEMENT_SOURCE_API_KEY`. Follow the
+[trusted source configuration](configuration.md#trusted-signed-statement-source),
+including the separate Spanopticon identity replay backend. Use an already
+provisioned graph and dedicated read/write service identity; configuration does
+not create credentials, enroll histories, or establish completeness. Keep that
+service key on the server, never in the worker or a forum post. ACL mode routes
+reads and admissions through one source and refuses legacy assignment writes.
+Unset/legacy mode supplies no worker statement provider; missing configuration
+continues to refuse startup. No production provider is silently installed.
 
 ## Local approval and execution
 
@@ -80,7 +91,13 @@ statement objects are subscribed to; there is no global feed scan. Gun replay
 restores chains while the durable inbox deduplicates execution. Its checkpoint
 is an opaque last accepted statement ID, not an ordered Gun offset.
 
-Acknowledgments, progress and results first enter the private durable outbox.
+Local approval reports, acknowledgments, progress and results first enter the private durable outbox.
+After a successful submission, the bot reports the task ID, approval time,
+and deadline. It never republishes the private approval handle, approved tool
+arguments, or reader list to report readers.
+This is a historical report by the bot; neither it nor the forum card can grant
+execution permission. The private approval and live session consent still control
+each dispatch and cancellation.
 Each report keeps one stable statement ID and signed node across retries. The
 bot admits only its own signed statement authority and currently eligible reader
 grants, then publishes the exact node. Missing authority or admission stops
