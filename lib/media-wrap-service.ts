@@ -73,7 +73,7 @@ export function createMediaWrapService(config: MediaReaderConfig, siteOrigin: st
           context.object !== object || !Number.isSafeInteger(context.epoch) || (context.epoch as number) < 1 ||
           typeof context.revisionId !== "string" || !/^[a-f0-9]{64}$/.test(context.revisionId) ||
           typeof result.expiresAt !== "number" || !Number.isFinite(result.expiresAt) || result.expiresAt <= clock() ||
-          result.expiresAt > clock() + 3 || !isSeaPubkey(result.readerEpub) || typeof result.wrapBase64 !== "string" ||
+          result.expiresAt > clock() + 3 || typeof result.readerEpub !== "string" || !isSeaPubkey(result.readerEpub) || typeof result.wrapBase64 !== "string" ||
           !result.wrapBase64.length || result.wrapBase64.length > 87384 ||
           !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(result.wrapBase64)) return reply(403);
       // Rotation or session expiry during provider delivery must refuse before
