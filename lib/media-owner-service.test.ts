@@ -37,7 +37,7 @@ test("unknown actions, spoofed owner and malformed bodies never call provider",a
 });
 test("refused upstream and malformed successes never expose upstream bodies",async()=>{
   for(const response of [new Response("secret",{status:409}),new Response("secret",{status:500}),new Response("secret"),
-    Response.json({...view,owner:"attacker"}),Response.json({...view,at:99}),Response.json({...view,fence:"bad"}),
+    Response.json({...view,owner:"attacker"}),Response.json({...view,at:-1}),Response.json({...view,fence:"bad"}),
     Response.json({...view,objectVersion:-1}),Response.json({...view,snapshot:{entries:new Array(65).fill({})}}),
     Response.json({...view,bindings:[]})]){
     const status=response.status;const result=await service(async()=>response)("view",request());
@@ -74,3 +74,24 @@ test("status drafts bind the requested recipient, current source clock and objec
     assert.equal((await service(async()=>Response.json(bad))("status-view",request({object,reader:principal}))).status,403);
 });
 function actionName(url: RequestInfo | URL) { return String(url).split("/").at(-1); }
+
+test("owner views preserve source clocks across transport and session boundaries",async()=>{
+  const status={object,epoch:1,revisionId:"b".repeat(64),accessor:principal,grantRevision:1,stated:1,signedAt:100000,maxAgeMs:60000,
+    zookie:{object,objectVersion:3,snapshotHash:"c".repeat(64)}};
+  for(const action of ["view","status-view"]) {
+    const result=action==="view" ? view : {at:100,fence:view.fence,ownerPub:principal,status};
+    for(const start of [0,99.9,1000000]) {
+      let now=start;
+      const handle=createMediaOwnerService(config,"https://s3r.ch",async()=>{now+=0.2;return principal;},
+        async()=>{now+=0.2;return Response.json(result);},()=>now);
+      const response=await handle(action,request(action==="view"?{object}:{object,reader:principal}));
+      assert.equal(response.status,200);assert.deepEqual(await response.json(),result);
+    }
+    for(const elapsed of [4,-1,NaN]) {
+      let now=0;
+      const handle=createMediaOwnerService(config,"https://s3r.ch",async()=>principal,
+        async()=>{now=elapsed;return Response.json(result);},()=>now);
+      assert.equal((await handle(action,request(action==="view"?{object}:{object,reader:principal}))).status,403);
+    }
+  }
+});

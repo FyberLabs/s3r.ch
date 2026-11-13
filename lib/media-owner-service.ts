@@ -12,7 +12,7 @@ const digest = (value: unknown): value is string => typeof value === "string" &&
 /** Fixed subject credentials only. The ACL source verifies every owner signature. */
 export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: string,
   resolvePrincipal: (request: Request, signal: AbortSignal) => Promise<string | null>,
-  fetcher: typeof fetch = fetch, clock = () => Date.now() / 1000) {
+  fetcher: typeof fetch = fetch, clock = () => performance.now() / 1000) {
   const held = parseMediaReaderConfig(JSON.stringify(config)), origin = new URL(siteOrigin);
   if (origin.protocol !== "https:" || origin.origin !== siteOrigin) throw Error("Invalid site origin");
   const credentials = new Map(held.readers.map(row => [row.principal, row.apiKey]));
@@ -24,6 +24,7 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
     if (!matchesBrowserOrigin(request, origin)) return reply(403);
     if (request.headers.get("content-type")?.split(";")[0] !== "application/json" ||
         ![null, "identity"].includes(request.headers.get("content-encoding"))) return reply(415);
+    const started = clock();
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(4000)]);
     let principal: string | null = null, occupied = false, transport = false;
     try {
@@ -59,12 +60,12 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
       const result = await readBoundedIdentityJson(response, 262144, signal);
       if (action === "view") {
         if (!exact(result, ["at", "fence", "snapshot", "objectVersion", "owner", "bindings"]) || result.owner !== principal ||
-            result.at !== Math.floor(clock()) || !digest(result.fence) || !Number.isSafeInteger(result.objectVersion) ||
+            (!Number.isSafeInteger(result.at) || (result.at as number) < 0) || !digest(result.fence) || !Number.isSafeInteger(result.objectVersion) ||
             (result.objectVersion as number) < 0 || !exact(result.snapshot, ["entries"]) || !Array.isArray(result.snapshot.entries) ||
             result.snapshot.entries.length > 64 || !result.bindings || typeof result.bindings !== "object" || Array.isArray(result.bindings) ||
             Object.keys(result.bindings).length > 64) return reply(403);
       } else if (action === "status-view") {
-        if (!exact(result,["at","fence","ownerPub","status"]) || result.at!==Math.floor(clock()) || !digest(result.fence) || typeof result.ownerPub!=="string" || !isSeaPubkey(result.ownerPub) ||
+        if (!exact(result,["at","fence","ownerPub","status"]) || (!Number.isSafeInteger(result.at) || (result.at as number)<0) || !digest(result.fence) || typeof result.ownerPub!=="string" || !isSeaPubkey(result.ownerPub) ||
             !exact(result.status,["object","epoch","revisionId","accessor","grantRevision","stated","signedAt","maxAgeMs","zookie"])) return reply(403);
         const status=result.status;
         if (status.object!==body.object || status.accessor!==body.reader || status.signedAt!==(result.at as number)*1000 || status.stated!==1 ||
@@ -79,7 +80,8 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
           result.digest !== (body.metadata as Record<string, unknown>).digest) return reply(403);
       if (await resolvePrincipal(request, signal) !== principal) return reply(403);
       signal.throwIfAborted();
-      if (["view", "status-view"].includes(action) && (result as Record<string, unknown>).at !== Math.floor(clock())) return reply(403);
+      const elapsed = clock() - started;
+      if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 4) return reply(403);
       return Response.json(result, { headers });
     } catch { return reply(503); }
     finally {
