@@ -108,7 +108,12 @@ file. This mode does not start Gun or execute tasks. Artifact reads are separate
 authorized; they are not delegated access to `/api/media`, a vault or an owner
 wallet. The forum card deliberately does not fetch these handles.
 
-Capacity is bounded: 4096 retained reports, 256 artifacts of at most 1 MiB each,
+The primary source append is also bounded by the authority reader contract:
+at most 1024 retained signed rows and a 4 MiB complete response. The source
+fence must cover the retained total; concurrent growth must lose the comparison.
+An admission that would exceed these limits returns 507 without appending.
+
+Client capacity is bounded: 4096 retained reports, 256 artifacts of at most 1 MiB each,
 and 512 authorized statement subscriptions. Capacity exhaustion refuses work;
 there is no automatic replay-floor eviction. Remove artifact bytes explicitly
 when no longer needed, while preserving inbox/outbox replay records.

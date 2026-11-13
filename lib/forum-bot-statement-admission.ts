@@ -50,6 +50,12 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       const held = await bounded(source.read(at, signal));
       if (typeof held.fence !== "string" || !held.fence || held.fence.length > 4096) return reply(503);
       const snapshot = structuredClone(held.snapshot);
+      // Compare the retained total under the same source fence used by append.
+      // Never commit a snapshot that the authority endpoint/reader cannot serve.
+      if (!Array.isArray(snapshot.rows) || snapshot.rows.length + body.rows.length > 1024) return reply(507);
+      const nextSnapshot = { ...snapshot, rows: [...snapshot.rows, ...body.rows] };
+      if (Buffer.byteLength(JSON.stringify({ version: 1, forumId: spec.forumId, owner: spec.owner,
+          evaluatedAt: at, snapshot: nextSnapshot }), "utf8") > 4 * 1024 * 1024) return reply(507);
       const authority = createForumAuthority(config, clock), verified = await authority.refresh(snapshot, at);
       const principal = authority.graph.principalForKey(session.key, at);
       if (!verified.ok || verified.diagnostics.length || !principal || authority.graph.ownerOf(spec.forumId) !== spec.owner ||
@@ -73,7 +79,7 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
             !authority.graph.checkForumSee(spec.forumId, p.row.accessor, at).allowed))) return reply(403);
       }
       const candidate = createForumAuthority(config, clock);
-      const result = await candidate.refresh({ ...snapshot, rows: [...snapshot.rows, ...body.rows] }, at);
+      const result = await candidate.refresh(nextSnapshot, at);
       if (!result.ok || result.diagnostics.length || candidate.graph.ownerOf(object) !== principal) return reply(403);
       const guard = () => { signal.throwIfAborted(); if (clock() !== at) throw Error("Statement authority expired"); };
       guard(); return reply(await bounded(source.append(held.fence, structuredClone(body.rows), guard, signal)) ? 200 : 409);

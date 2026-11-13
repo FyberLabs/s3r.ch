@@ -32,7 +32,8 @@ async function setup(t: test.TestContext) {
   const request = (extra = {}, key?: string) => new Request(origin + "/api/bot/statement", { method: "POST",
     headers: { Origin: origin, "Content-Type": "application/json", ...(key ? { "x-test-key": key } : {}) },
     body: JSON.stringify({ version: 1, forumId: f.forum, owner: f.owner.pub, evaluatedAt: f.now(), rows: additions, ...extra }) });
-  return { f, service, additions, request, writes: () => writes, hang(value: boolean) { hung = value; }, change() { changed = true; }, expire() { expired = true; } };
+  return { f, service, additions, request, retained: () => rows.length,
+    fill(count: number) { while (rows.length < count) rows.push(structuredClone(rows[0])); }, writes: () => writes, hang(value: boolean) { hung = value; }, change() { changed = true; }, expire() { expired = true; } };
 }
 test("an independently authenticated bot admits only its signed statement and current reader grants", async t => {
   const s = await setup(t);
@@ -68,4 +69,13 @@ test("a stalled primary source releases admission slots and cannot append", asyn
   const results = await Promise.all([s.service(s.request()), s.service(s.request())]);
   assert.deepEqual(results.map(r => r.status), [503, 503]); assert.equal(s.writes(), 0);
   s.hang(false); assert.equal((await s.service(s.request({ rows: [] }))).status, 200);
+});
+
+test("retained history capacity is checked before the fenced append", async t => {
+  const s = await setup(t); s.fill(1023);
+  assert.equal((await s.service(s.request())).status, 507); assert.equal(s.retained(), 1023); assert.equal(s.writes(), 0);
+  assert.equal((await s.service(s.request({ rows: [s.additions[0]] }))).status, 200);
+  assert.equal(s.retained(), 1024); assert.equal(s.writes(), 1);
+  assert.equal((await s.service(s.request({ rows: [s.additions[0]] }))).status, 507);
+  assert.equal(s.retained(), 1024); assert.equal(s.writes(), 1);
 });
