@@ -10,7 +10,7 @@ import {join} from 'node:path';
 if(process.env.GITHUB_ACTIONS!=='true')throw Error('Room media browser contracts run in CI only');
 const pair={pub:'axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU',priv:'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE',
  epub:'EMvdmXTv89JPyMx5n3blU3L_D70U-6JoVaVzTvSzgYg.B_b0CP3o9X3I7tWrxA_F1VhXpjeMuIJCtQWnOh7LN5c',epriv:'6EXhKuFCyTddo7uvYddNjXON5iKEMV7v8bCol7XOHt8'};
-const owner='fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E';
+const owner=pair.pub;
 const object='media_p_'+owner.split('.').map(part=>Buffer.from(part,'base64url').toString('hex')).join('')+'_11111111111111111111111111111111';
 const tenant='11111111-1111-4111-8111-111111111111',context={object,epoch:1,revisionId:'b'.repeat(64)};
 const kind=process.env.S3RCH_ROOM_MEDIA_FIXTURE??'audio';
@@ -23,7 +23,7 @@ if(kind!=='image'){
  execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i',kind==='audio'?'sine=frequency=440:sample_rate=16000':'color=c=blue:s=64x64:r=10','-t','2',...(kind==='video'?['-c:v','libvpx','-an']:[]),file]);
  bytes64=readFileSync(file).toString('base64');
 }
-const result=await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {RoomMediaPanel} from './components/RoomMedia';import {composeRoomMedia} from './lib/room-media';import {sealMediaFile} from './lib/media-file';import {rememberUnlockedMeshPair} from './lib/identity/unlocked-mesh';const pair=${JSON.stringify(pair)};rememberUnlockedMeshPair('ci-reader',pair);const root=createRoot(document.getElementById('root'));window.roomAllowed=true;const message={id:'admitted-fixture-row',room:'ci-room',author:${JSON.stringify(owner)},body:composeRoomMedia(${JSON.stringify(object)}),ts:1};window.show=()=>root.render(<React.StrictMode><RoomMediaPanel tenant=${JSON.stringify(tenant)} roomId='ci-room' messages={[message,{...message,id:'unadmitted-row'}]} canRead={row=>window.roomAllowed&&row.id==='admitted-fixture-row'} send={async()=>false}/></React.StrictMode>);window.hide=()=>root.render(null);window.seed=async()=>{const bytes=Uint8Array.from(atob(${JSON.stringify(bytes64)}),c=>c.charCodeAt(0));const s=await sealMediaFile(bytes,{name:${JSON.stringify(name)},mediaType:${JSON.stringify(mediaType)}},{tenant:${JSON.stringify(tenant)},object:${JSON.stringify(object)}},${JSON.stringify(context)},[{account:pair.pub,pub:pair.pub,identityPub:pair.pub,epub:pair.epub}],[pair.pub]);return {...s,bytes:Array.from(s.bytes)};};window.show();`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"development"'}});
+const result=await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {RoomMediaPanel} from './components/RoomMedia';import {composeRoomMedia} from './lib/room-media';import {sealMediaFile} from './lib/media-file';import {rememberUnlockedMeshPair} from './lib/identity/unlocked-mesh';const pair=${JSON.stringify(pair)};rememberUnlockedMeshPair('ci-reader',pair);const root=createRoot(document.getElementById('root'));window.roomAllowed=true;window.sent=[];window.deferSend=false;const message={id:'admitted-fixture-row',room:'ci-room',author:${JSON.stringify(owner)},body:composeRoomMedia(${JSON.stringify(object)}),ts:1};window.show=()=>root.render(<React.StrictMode><RoomMediaPanel tenant=${JSON.stringify(tenant)} roomId='ci-room' messages={[message,{...message,id:'unadmitted-row'}]} canRead={row=>window.roomAllowed&&row.id==='admitted-fixture-row'} send={async(body,current)=>{if(window.deferSend)await new Promise(resolve=>{window.releaseSend=resolve;});if(!current())return false;window.sent.push(body);return true;}}/></React.StrictMode>);window.hide=()=>root.render(null);window.seed=async()=>{const bytes=Uint8Array.from(atob(${JSON.stringify(bytes64)}),c=>c.charCodeAt(0));const s=await sealMediaFile(bytes,{name:${JSON.stringify(name)},mediaType:${JSON.stringify(mediaType)}},{tenant:${JSON.stringify(tenant)},object:${JSON.stringify(object)}},${JSON.stringify(context)},[{account:pair.pub,pub:pair.pub,identityPub:pair.pub,epub:pair.epub}],[pair.pub]);return {...s,bytes:Array.from(s.bytes)};};window.show();`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"development"'}});
 let seed,allowed=true,catalog=true,downloads=0;const errors=[];
 const server=createServer(async(req,res)=>{
  const json=(value,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
@@ -34,6 +34,11 @@ const server=createServer(async(req,res)=>{
   if(req.url==='/api/identity/sea/session'){json({enabled:true,principal:pair.pub,expiresAt:Date.now()+120000});return;}
   if(req.url==='/api/media/config'){json({tenant});return;}
   if(req.url==='/api/media/catalog'){json({at:Math.floor(Date.now()/1000),principal:pair.pub,objects:catalog?[object]:[],nextPage:1});return;}
+  if(req.url==='/api/media/owner/catalog'){json({at:Math.floor(Date.now()/1000),principal:pair.pub,objects:[object],nextPage:1});return;}
+  if(req.url==='/api/media/owner/status-view'){
+   const at=Math.floor(Date.now()/1000);json({at,fence:'a'.repeat(64),ownerPub:owner,status:{...context,accessor:pair.pub,grantRevision:1,stated:1,signedAt:at*1000,maxAgeMs:60000,zookie:{object,objectVersion:3,snapshotHash:'c'.repeat(64)}}});return;
+  }
+  if(req.url==='/api/media/owner/mutate'){json({accepted:true});return;}
   if(req.url==='/api/media/read-wrap'){
    if(!allowed){json({},403);return;}
    json({context,readerEpub:pair.epub,expiresAt:Date.now()/1000+2,wrapBase64:Buffer.from(JSON.stringify({wrap:seed.wraps[0],reference:{sha256:seed.sha256,length:seed.bytes.length}})).toString('base64')});return;
@@ -69,5 +74,17 @@ try{
  assert.equal(await page.getByRole('button',{name:/Open room file/}).count(),0);assert.equal(await page.getByRole('article').count(),1);
  // Already decrypted playback belongs to the independent media session. Room polls do not release more bytes.
  await page.getByRole('button',{name:'Close room preview'}).click();await page.waitForFunction(()=>window.revoked.length===3);assert.equal(await page.getByRole('article').count(),0);
+ // Owner status endpoint is synthetic; actual browser signing/decryption is exercised.
+ await page.evaluate(()=>{window.roomAllowed=true;window.show();});
+ await page.getByRole('button',{name:'Choose my audio or video'}).click();
+ await page.getByRole('button',{name:'Select my file 1',exact:true}).click();
+ await page.getByRole('heading',{name,exact:true}).waitFor();
+ await page.getByRole('button',{name:'Send file reference',exact:true}).click();
+ await page.getByRole('status').filter({hasText:'Reference sent.'}).waitFor();
+ assert.deepEqual(await page.evaluate(()=>window.sent),['s3rch-media:v1:'+JSON.stringify([object])]);
+ await page.evaluate(()=>{window.deferSend=true;});await page.getByRole('button',{name:'Send file reference',exact:true}).click();
+ await page.waitForFunction(()=>!!window.releaseSend);await page.evaluate(()=>window.hide());
+ await page.waitForFunction(()=>window.revoked.length===4);await page.evaluate(()=>window.releaseSend());
+ assert.equal(await page.evaluate(()=>window.sent.length),1);
  assert.deepEqual(errors,[]);console.log('Room media playback, denied open, room revocation, session reset and unmount cleanup contracts passed; hosted services not qualified');
 }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));rmSync(fixtureRoot,{recursive:true,force:true});}
