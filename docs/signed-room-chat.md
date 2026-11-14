@@ -1,5 +1,9 @@
 # Signed ordinary-room chat
 
+The feed remains statically exported. After authentication, its browser provider
+fetches a bounded public configuration projection from the same-origin runtime
+API. Configuration discovery does not establish source readiness or room rights.
+
 New rooms use canonical `room_<principal>_<nonce>` IDs. The browser signs room
 ownership with its unlocked SEA key and submits it to the protected owner source
 before saving the room locally. The source uses the already provisioned forum

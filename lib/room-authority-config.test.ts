@@ -29,3 +29,13 @@ test("feed remains a static shell and public config stays behind the authenticat
  assert.match(route,/room-config[\s\S]*readSeaRequestSession\(request\)[\s\S]*publicSquadPilotConfig\(config\)/);
  assert.match(route,/"Cache-Control": "no-store"/);
 });
+
+
+test("configuration responses are bounded JSON and aborted requests never fetch",async()=>{
+ const aborted=new AbortController();aborted.abort();let fetched=false;
+ await assert.rejects(readRoomAuthorityConfig(aborted.signal,async()=>{fetched=true;return Response.json({config});}));
+ assert.equal(fetched,false);
+ assert.equal(await readRoomAuthorityConfig(new AbortController().signal,async()=>new Response(JSON.stringify({config}),{headers:{"Content-Type":"text/html"}})),null);
+ await assert.rejects(readRoomAuthorityConfig(new AbortController().signal,async()=>new Response("x".repeat(32769),{headers:{"Content-Type":"application/json"}})),/too large/);
+ await assert.rejects(readRoomAuthorityConfig(new AbortController().signal,async()=>new Response("not json",{headers:{"Content-Type":"application/json"}})));
+});
