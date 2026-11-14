@@ -488,3 +488,13 @@ access. Epoch settlement remains one hour; My media signs a fresh owner status
 before opening a settled file. This UI does not establish hosted authority or
 activate cache/replay. Hosting still depends on Infra #1262/#1264, ACL's PostgreSQL
 source work (#103), and verified owner resolution (s3r.ch #440).
+
+The image editor can pass its rendered PNG directly to the private upload
+controller. Tags are bounded descriptive PNG text metadata inside the encrypted
+file; they are not public discovery rows or access grants. Existing media files,
+wraps and service envelopes retain their format. Editing or clearing the editor
+unmounts the prepared upload controller; a recovery journal already saved remains
+available from My media. Session/key changes clear the editor's prepared file.
+The CI-only meme fixture decrypts the resulting upload and compares its bytes to
+the rendered PNG and its tags. Sharing continues to use the ordinary media ACL;
+this handoff creates only the owner's grant.

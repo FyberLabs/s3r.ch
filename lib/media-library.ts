@@ -1,3 +1,4 @@
+import { readMemePngTags } from "./meme-png-tags";
 import { mediaPreviewKind } from "./media-preview";
 import { createPrivateMediaBrowser } from "./media-browser-session";
 import { readBoundedIdentityJson } from "./identity/bounded-json";
@@ -7,7 +8,7 @@ import { subscribeUnlockedMeshPair } from "./identity/unlocked-mesh";
 export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly string[]; page: number;
   nextPage: number | null; loaded: boolean; message: string;
   audience: Readonly<{object:string;readers:readonly string[]}> | null;
-  preview: Readonly<{ url: string; name: string; mediaType: string }> | null }>;
+  preview: Readonly<{ url: string; name: string; mediaType: string; tags?:readonly string[] }> | null }>;
 const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null});
 
 /** Private, in-memory navigation. Never persists catalog entries or plaintext. */
@@ -94,7 +95,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
           }
           const url=makeUrl(new Blob([new Uint8Array(file.bytes)],{type:file.description.mediaType}));
           if(!current()){revokeUrl(url);return;}
-          publish({...state,preview:{url,...file.description}});
+          publish({...state,preview:{url,...file.description,...(file.description.mediaType==="image/png"?{tags:readMemePngTags(file.bytes)}:{})}});
         } finally {file.bytes.fill(0);}
       });
     },
