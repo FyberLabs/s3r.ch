@@ -186,3 +186,44 @@ test("a valid arrival after an undrained poison burst still reaches admission", 
  await Promise.all(pending);assert.deepEqual(accepted,[row.body]);
  await queue.resume();assert.deepEqual(accepted,[row.body]);queue.close();
 });
+
+
+test("authenticated progress survives reverse-order poison overflow", async () => {
+ const {createRoomChatReceiveQueue}=await import("./room-chat-receive-queue");
+ const f=await fixture(), row=await f.admission.compose("room","valid before flood",()=>f.alice);assert.ok(row);
+ const accepted:string[]=[];
+ const queue=createRoomChatReceiveQueue(f.admission,"room",message=>accepted.push(message.body));
+ const pending=[queue.enqueue(row,encodeKey(row.id))];
+ for(let i=0;i<8448;i++) {
+  const forged={...row,id:"s3rch:chat:"+i.toString(16).padStart(64,"0")};
+  pending.push(queue.enqueue(forged,encodeKey(forged.id)));
+ }
+ await Promise.all(pending);assert.deepEqual(accepted,[row.body]);
+ await queue.resume();assert.deepEqual(accepted,[row.body]);queue.close();
+});
+
+test("queue priority checks signatures and never grants display authority", async () => {
+ const f=await fixture(), row=await f.admission.compose("room","priority",()=>f.alice);assert.ok(row);
+ assert.equal(f.admission.authenticateEnvelope(row),true);
+ const wrapped=JSON.parse(row.sig.slice(3));wrapped.s="A".repeat(86)+"==";
+ assert.equal(f.admission.authenticateEnvelope({...row,sig:"SEA"+JSON.stringify(wrapped)}),false);
+ f.revoke();assert.equal(f.admission.authenticateEnvelope(row),true);
+ assert.equal(await f.admission.receive(row,"room",encodeKey(row.id)),null);
+ f.keys.delete(f.alice.pub);assert.equal(f.admission.authenticateEnvelope(row),true);
+ assert.equal(await f.admission.receive(row,"room",encodeKey(row.id)),null);
+ f.admission.reset();assert.equal(f.admission.authenticateEnvelope(row),null);
+});
+
+
+test("unknown-author flooding cannot displace authenticated late-grant retries", async () => {
+ const {createRoomChatReceiveQueue}=await import("./room-chat-receive-queue");
+ const f=await fixture(), row=await f.admission.compose("room","waiting safely",()=>f.alice);assert.ok(row);
+ f.revoke();const accepted:string[]=[];
+ const queue=createRoomChatReceiveQueue(f.admission,"room",message=>accepted.push(message.body));
+ await queue.enqueue(row,encodeKey(row.id));f.keys.delete(f.bob.pub);
+ for(let i=0;i<8448;i++) {
+  const forged={...row,author:f.bob.pub,id:"s3rch:chat:"+i.toString(16).padStart(64,"0")};
+  void queue.enqueue(forged,encodeKey(forged.id));
+ }
+ f.restore();await queue.resume();assert.deepEqual(accepted,[row.body]);queue.close();
+});

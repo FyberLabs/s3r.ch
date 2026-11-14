@@ -1,5 +1,7 @@
 /** Signed room-chat boundary. The authority graph must come from the owning
  * authenticated source; legacy local ACL rows cannot establish room authority. */
+import { sha256, toBytes } from "viem";
+import { verifyForumKeySignature } from "./identity/forum-key-signature";
 import { CHAT_BODY_MAX, shortChatEntropy, type ChatMessage } from "./chat";
 import { createForumReceiveProofs } from "./forum-receive-proofs";
 import { readForumSignature, signForumRecord } from "./forum-sign";
@@ -48,6 +50,31 @@ export function createRoomChatAdmission(input: {
   clock?: () => number;
 }) {
   const { graph } = input, clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
+  // Cryptographic queue priority only, never display authority. Keep a bounded
+  // cache of source-verified keys through transient authority refreshes.
+  const queueKeys = new Map<string, string>();
+  function authenticateEnvelope(row: SignedRoomChat): boolean | null {
+    const current = graph.writerKey(row.author, row.ts, clock());
+    if (current) {
+      queueKeys.delete(row.author); queueKeys.set(row.author, current);
+      if (queueKeys.size > 128) queueKeys.delete(queueKeys.keys().next().value!);
+    }
+    const key = current ?? queueKeys.get(row.author);
+    if (!key) return null;
+    try {
+      if (!row.sig.startsWith("SEA")) return false;
+      const envelope = JSON.parse(row.sig.slice(3));
+      if (!envelope || typeof envelope !== "object" || Object.keys(envelope).sort().join() !== "m,s" ||
+          typeof envelope.s !== "string" || !/^[A-Za-z0-9+/]{86}==$/.test(envelope.s)) return false;
+      const signed = payload(envelope.m);
+      if (!signed || envelope.m.domain !== domain || JSON.stringify(signed) !== JSON.stringify(payload(row)) ||
+          !row.id.startsWith(`s3rch:chat:${sha256(toBytes(row.author)).slice(2,34)}`)) return false;
+      // Gun SEA.sign signs SHA-256(JSON.stringify(m)) with ECDSA/SHA-256.
+      // Verify that existing wire format synchronously before queue allocation.
+      return verifyForumKeySignature(key, envelope.s.replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/, ""),
+        sha256(toBytes(JSON.stringify(envelope.m)), "bytes"));
+    } catch { return false; }
+  }
   const proofs = createForumReceiveProofs({
     key: principal => graph.writerKey(principal, clock(), clock()),
     ready: () => integer(clock()), verify: readForumSignature,
@@ -77,6 +104,7 @@ export function createRoomChatAdmission(input: {
   }
   return Object.freeze({
     receive,
+    authenticateEnvelope,
     canCompose(room: string, currentPair: () => SeaPair | null): boolean {
       const pair = currentPair(), at = clock();
       const author = pair && graph.principalForKey(pair.pub, at);
@@ -84,7 +112,7 @@ export function createRoomChatAdmission(input: {
     },
     valid: (row: ChatMessage) => proofs.valid(row),
     readable: (rows: readonly ChatMessage[], room: string) => rows.filter(row => row.room === room && proofs.valid(row)),
-    reset: () => proofs.reset(),
+    reset: () => { proofs.reset(); queueKeys.clear(); },
     async compose(room: string, body: string, currentPair: () => SeaPair | null): Promise<SignedRoomChat | null> {
       const pair = currentPair(), at = clock();
       if (!pair || !integer(at)) return null;

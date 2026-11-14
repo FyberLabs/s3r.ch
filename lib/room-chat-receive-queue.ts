@@ -6,11 +6,12 @@ export function createRoomChatReceiveQueue(admission: RoomChatAdmission, room: s
   const pendingLimit = 8192, rejectedLimit = 256;
   const pending = new Map<string, SignedRoomChat>();
   const rejected = new Map<string, SignedRoomChat>();
+  const deferred = new Map<string, SignedRoomChat>();
   let active = true, worker: Promise<void> | null = null;
-  function retainForRetry(key: string, row: SignedRoomChat) {
-    rejected.delete(key);
-    rejected.set(key, row);
-    if (rejected.size > rejectedLimit) rejected.delete(rejected.keys().next().value!);
+  function retainForRetry(key: string, row: SignedRoomChat, cache = rejected) {
+    cache.delete(key);
+    cache.set(key, row);
+    if (cache.size > rejectedLimit) cache.delete(cache.keys().next().value!);
   }
   async function drain() {
     while (active && pending.size && ready()) {
@@ -35,8 +36,13 @@ export function createRoomChatReceiveQueue(admission: RoomChatAdmission, room: s
       if (!active || typeof key !== "string") return Promise.resolve();
       const row = snapshotRoomChatEnvelope(raw);
       if (!row || row.room !== room || encodeKey(row.id) !== key) return Promise.resolve();
-      rejected.delete(key);
-      // Unverified history cannot lock out every fresh arrival. Prefer fresh
+      const authenticated = admission.authenticateEnvelope(row);
+      if (authenticated !== true) {
+        if (authenticated === null && !pending.has(key) && !rejected.has(key)) retainForRetry(key, row, deferred);
+        return Promise.resolve();
+      }
+      rejected.delete(key); deferred.delete(key);
+      // Authenticated history cannot lock out every fresh arrival. Prefer fresh
       // candidates at the bound and retain a bounded tail of displaced work for
       // the next authority refresh; every candidate still needs admission.
       if (!pending.has(key) && pending.size >= pendingLimit) {
@@ -51,15 +57,17 @@ export function createRoomChatReceiveQueue(admission: RoomChatAdmission, room: s
     // Pending replacements win; retained untrusted rows never bypass admission.
     resume() {
       if (!active) return Promise.resolve();
-      for (const [key, row] of rejected) {
-        // Reserve space for new arrivals even when retrying untrusted history.
+      for (const cache of [rejected, deferred]) for (const [key, row] of cache) {
+        // Unknown-author history never competes with authenticated retry rows.
         if (pending.size >= pendingLimit - rejectedLimit) break;
-        if (!pending.has(key)) pending.set(key, row);
-        rejected.delete(key);
+        const authenticated = admission.authenticateEnvelope(row);
+        if (authenticated === null) continue;
+        if (authenticated && !pending.has(key)) pending.set(key, row);
+        cache.delete(key);
       }
       if (pending.size && ready()) return start();
       return Promise.resolve();
     },
-    close() { active = false; pending.clear(); rejected.clear(); },
+    close() { active = false; pending.clear(); rejected.clear(); deferred.clear(); },
   };
 }
