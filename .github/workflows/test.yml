@@ -173,6 +173,8 @@ jobs:
           --test-coverage-include=lib/media-object-service.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/allocated-media-store-server.test.ts lib/allocated-media-service.test.ts lib/media-object-service.test.ts
+      - name: Granted media browser contract (CI only)
+        run: node scripts/test-granted-media-browser.mjs
       - name: Private sharing browser recovery contract (CI only)
         run: node scripts/test-private-sharing-browser.mjs
       - name: Private media owner contracts and coverage (CI only)

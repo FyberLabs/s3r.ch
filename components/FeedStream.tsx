@@ -68,6 +68,7 @@ import { IngestForm } from "@/components/IngestForm";
 import { OutboundPostControls } from "@/components/OutboundPostControls";
 import { PostSeeGrantControls } from "@/components/PostSeeGrantControls";
 import { PostContent, postCardClassName } from "@/components/PostContent";
+import { GrantedMediaPanel } from "@/components/GrantedMediaPanel";
 import { RoomSeeGrantControls } from "@/components/RoomSeeGrantControls";
 import { RoomChat } from "@/components/RoomChat";
 import { RoomPresence } from "@/components/RoomPresence";
@@ -108,7 +109,7 @@ function writeDiscoverTagQuery(tags: readonly string[]): void {
   }
 }
 
-export function FeedStream() {
+export function FeedStream({mediaTenant=null}: {mediaTenant?:string|null} = {}) {
   const [tab, setTab] = useState<FeedTab>("public");
   const [accountOpen, setAccountOpen] = useState(false);
   const [sharePeers, setSharePeers] = useState(false);
@@ -127,7 +128,7 @@ export function FeedStream() {
         <button type="button" className={btnSecondary} onClick={() => setAccountOpen(true)}>Account and posting</button>
       )}
     <div hidden={observingIdentity && identity === undefined && owner !== null}>
-    <FeedStreamBody key={owner ?? "signed-out"} identity={identity}
+    <FeedStreamBody key={owner ?? "signed-out"} identity={identity} mediaTenant={mediaTenant}
       tab={tab} setTab={setTab} accountOpen={accountOpen} setAccountOpen={setAccountOpen}
       sharePeers={sharePeers} setSharePeers={setSharePeers}
       openRoomId={openRoomId} setOpenRoomId={setOpenRoomId} />
@@ -135,8 +136,9 @@ export function FeedStream() {
   </div>;
 }
 
-function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
+function FeedStreamBody({ mediaTenant, identity, tab, setTab, accountOpen, setAccountOpen,
   sharePeers, setSharePeers, openRoomId, setOpenRoomId }: {
+  mediaTenant: string|null;
   identity: IdentitySession | null | undefined;
   tab: FeedTab; setTab: Dispatch<SetStateAction<FeedTab>>;
   accountOpen: boolean; setAccountOpen: Dispatch<SetStateAction<boolean>>;
@@ -973,6 +975,8 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
       {shareMessage && tab === "mine" ? (
         <p className="mt-3 text-xs text-ink-muted">{shareMessage}</p>
       ) : null}
+
+      {tab === "granted" && session && mediaTenant && <GrantedMediaPanel key={mediaTenant} tenant={mediaTenant} />}
 
       {visible.length === 0 ? (
         <p className="mt-8 border border-rule bg-panel p-6 text-sm text-ink-muted">
