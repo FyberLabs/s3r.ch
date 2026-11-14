@@ -45,7 +45,8 @@ try{
  browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE}:{})});
  const page=await browser.newPage(),errors:string[]=[],external:string[]=[];page.on("pageerror",e=>errors.push(e.message));
  await page.route("**/*",route=>{if(new URL(route.request().url()).origin!==origin){external.push(route.request().url());return route.abort();}return route.continue();});
- await page.goto(origin+(farcaster?"/?farcaster":nostr?"/?nostr":activity?"/?activitypub":"/"));await page.getByRole("button",{name:"Show conversation"}).click();await page.getByText("Provider parent",{exact:true}).waitFor();
+ await page.goto(origin+(farcaster?"/?farcaster":nostr?"/?nostr":activity?"/?activitypub":"/"));const marker=page.getByRole("link",{name:/^Replying to /});await marker.waitFor();assert.equal(await marker.getAttribute("href"),threadAnchor.replyTo!.permalink);
+ await page.getByRole("button",{name:"Show conversation"}).click();await page.getByText("Provider parent",{exact:true}).waitFor();
  assert.deepEqual(await page.locator("article > p:nth-child(2)").allTextContents(),["Provider root","Provider parent","Public child","Provider reply"]);
  const picture=farcaster?page.locator("article").filter({has:page.getByText("Provider parent",{exact:true})}).locator("button img").first():page.getByRole("img",{name:"Parent photo"}).first();await picture.waitFor();await page.waitForFunction(()=>Array.from(document.images).some(image=>image.naturalWidth>0));
  const media=await picture.getAttribute("src");assert.ok(media?.includes("context="));
