@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { IDBFactory } from "fake-indexeddb";
+import { MediaQuotaExceeded } from "./media-client";
 import { uploadMedia, pendingMediaUpload, discardMediaUpload } from "./media-upload";
 import { createUploadJournal, decryptUploadJournal } from "./media-upload-journal";
 const owner="axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
@@ -99,5 +100,22 @@ test("a stale discard confirmation cannot remove another window's newer draft",a
   await assert.rejects(discardMediaUpload(f.journal,tenant,inspected.object,pair,signal),/Pending upload changed/);
   assert.equal((await f.journal.read(signal))!.revision,replacement.revision);
   await discardMediaUpload(f.journal,tenant,replacement.object,pair,signal);
+  assert.equal(await f.journal.read(signal),null);
+});
+
+test("remote quota refusal keeps the same encrypted upload for explicit retry", async () => {
+  const f=fixture(); let refused=true;
+  const fetcher:typeof fetch=async(url,init)=> {
+    if(init?.method==="PUT" && refused)return new Response(null,{status:507});
+    return f.fetcher(url,init);
+  };
+  await assert.rejects(uploadMedia({tenant,pair,signal,...f,fetcher,file:file()}),MediaQuotaExceeded);
+  const pending=await f.journal.read(signal);assert.ok(pending);
+  assert.equal(f.writes.filter(x=>x==="put").length,0);
+  refused=false;
+  const result=await uploadMedia({tenant,pair,signal,...f,fetcher});
+  assert.equal(result.object,pending.object);
+  assert.equal(f.writes.filter(x=>x==="allocate").length,1);
+  assert.equal(f.writes.filter(x=>x==="put").length,1);
   assert.equal(await f.journal.read(signal),null);
 });

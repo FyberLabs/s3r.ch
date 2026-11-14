@@ -2,6 +2,10 @@ import { isCanonicalObjectId } from "./identity/object-id";
 import { parseForumObjectRecord, type UnverifiedObjectRecord } from "./identity/forum-object-record";
 import { MEDIA_STORED_MAX } from "./media-crypto";
 
+export class MediaQuotaExceeded extends Error {
+  constructor() { super("Media storage quota exceeded"); this.name = "MediaQuotaExceeded"; }
+}
+
 export type MediaCiphertextReference = Readonly<{ sha256: string; length: number }>;
 const objectOK = (value: string) => value.startsWith("media_") && isCanonicalObjectId(value);
 const referenceOK = (value: MediaCiphertextReference) => value && /^[a-f0-9]{64}$/.test(value.sha256) &&
@@ -23,6 +27,7 @@ export function createMediaHttpClient(fetcher: typeof fetch = fetch) {
       credentials: "same-origin", redirect: "error", cache: "no-store" });
     try {
       signal.throwIfAborted();
+      if (response.status === 507 && method !== "DELETE") throw new MediaQuotaExceeded();
       if (response.status !== (method === "DELETE" ? 204 : 201)) throw Error("Media write refused");
     } finally { await response.body?.cancel().catch(() => {}); }
   }

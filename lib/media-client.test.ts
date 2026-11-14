@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
 import { p256 } from "@noble/curves/nist.js";
-import { createMediaHttpClient } from "./media-client";
+import { createMediaHttpClient, MediaQuotaExceeded } from "./media-client";
 import { seaToPrincipalKey } from "./identity/forum-check";
 const point = p256.getPublicKey(new Uint8Array(32).fill(53), false);
 const owner = Buffer.from(point.slice(1, 33)).toString("base64url") + "." + Buffer.from(point.slice(33)).toString("base64url");
@@ -82,4 +82,15 @@ test("registration cleanup sends only the signed record and requires empty-succe
   await client.removeRegistration(row);
   await assert.rejects(createMediaHttpClient(async () => new Response(null, { status: 201 })).removeRegistration(row));
   await assert.rejects(client.removeRegistration({ ...row, object: "bad" }));
+});
+
+test("only upload capacity refusals are classified as quota, without reading response bodies", async () => {
+  let cancelled = 0;
+  const client = createMediaHttpClient(async () => new Response(new ReadableStream({
+    cancel() { cancelled++; },
+  }), { status: 507 }));
+  await assert.rejects(client.register(row), MediaQuotaExceeded);
+  await assert.rejects(client.put(object, bytes, reference), MediaQuotaExceeded);
+  await assert.rejects(client.removeRegistration(row), error => !(error instanceof MediaQuotaExceeded));
+  assert.equal(cancelled, 3);
 });
