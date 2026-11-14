@@ -19,3 +19,12 @@ transaction. The browser validates the exact owner, scope, policy key and named
 binding set while keeping direct cancellations separate from group membership.
 A missing policy remains null. This view is preparation input, not authorization
 to deliver a wrap; group epoch/status admission and delivery remain pending.
+
+`prepareGroupRow` signs an owner object-set row, the owner's own membership
+assent, or the owner's cancellation through `sociacl-ids/group-signing`.
+The scope and unsigned row are detached before awaiting the protected owner
+view. The service supplies the issuance time and current owner key; the temporary
+scalar copy is cleared. Another party's assent is refused. The result is a signed
+envelope only: the caller explicitly submits it with `appendGroupRows`, which
+obtains a new fence and still requires native admission. This does not create the
+other party's assent, an epoch, or a delivery grant.
