@@ -170,3 +170,19 @@ test("rejected history cannot exhaust capacity for later authenticated messages"
  await queue.resume();assert.deepEqual(accepted,[row.body]);
  queue.close();
 });
+
+
+test("a valid arrival after an undrained poison burst still reaches admission", async () => {
+ const {createRoomChatReceiveQueue}=await import("./room-chat-receive-queue");
+ const f=await fixture(), row=await f.admission.compose("room","fresh during flood",()=>f.alice);assert.ok(row);
+ const accepted:string[]=[];
+ const queue=createRoomChatReceiveQueue(f.admission,"room",message=>accepted.push(message.body));
+ const pending=Array.from({length:8192},(_,i)=>{
+  const forged={...row,id:"s3rch:chat:"+i.toString(16).padStart(64,"0"),sig:"invalid"};
+  return queue.enqueue(forged,encodeKey(forged.id));
+ });
+ // Do not yield to the microtask drain before the 8193rd, authentic arrival.
+ pending.push(queue.enqueue(row,encodeKey(row.id)));
+ await Promise.all(pending);assert.deepEqual(accepted,[row.body]);
+ await queue.resume();assert.deepEqual(accepted,[row.body]);queue.close();
+});

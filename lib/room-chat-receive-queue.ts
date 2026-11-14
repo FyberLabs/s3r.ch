@@ -7,6 +7,11 @@ export function createRoomChatReceiveQueue(admission: RoomChatAdmission, room: s
   const pending = new Map<string, SignedRoomChat>();
   const rejected = new Map<string, SignedRoomChat>();
   let active = true, worker: Promise<void> | null = null;
+  function retainForRetry(key: string, row: SignedRoomChat) {
+    rejected.delete(key);
+    rejected.set(key, row);
+    if (rejected.size > rejectedLimit) rejected.delete(rejected.keys().next().value!);
+  }
   async function drain() {
     while (active && pending.size && ready()) {
       const [key, row] = pending.entries().next().value!; pending.delete(key);
@@ -14,11 +19,7 @@ export function createRoomChatReceiveQueue(admission: RoomChatAdmission, room: s
         const admitted = await admission.receive(row, room, key);
         if (!ready()) { if (!pending.has(key)) pending.set(key, row); return; }
         if (active && admitted && admission.valid(admitted)) receive(admitted);
-        else if (active && !pending.has(key)) {
-          rejected.delete(key);
-          rejected.set(key, row);
-          if (rejected.size > rejectedLimit) rejected.delete(rejected.keys().next().value!);
-        }
+        else if (active && !pending.has(key)) retainForRetry(key, row);
       } catch { /* A malformed row cannot prevent later queued rows being checked. */ }
     }
   }
@@ -33,8 +34,16 @@ export function createRoomChatReceiveQueue(admission: RoomChatAdmission, room: s
     enqueue(raw: unknown, key: unknown): Promise<void> {
       if (!active || typeof key !== "string") return Promise.resolve();
       const row = snapshotRoomChatEnvelope(raw);
-      if (!row || row.room !== room || encodeKey(row.id) !== key || (!pending.has(key) && pending.size >= pendingLimit)) return Promise.resolve();
+      if (!row || row.room !== room || encodeKey(row.id) !== key) return Promise.resolve();
       rejected.delete(key);
+      // Unverified history cannot lock out every fresh arrival. Prefer fresh
+      // candidates at the bound and retain a bounded tail of displaced work for
+      // the next authority refresh; every candidate still needs admission.
+      if (!pending.has(key) && pending.size >= pendingLimit) {
+        const [oldKey, oldRow] = pending.entries().next().value!;
+        pending.delete(oldKey);
+        retainForRetry(oldKey, oldRow);
+      }
       pending.set(key, row);
       return ready() ? start() : Promise.resolve();
     },
