@@ -1,4 +1,4 @@
-import { roomAuthorityDiagnosticsBlock } from "./room-authority-diagnostics";
+import { roomAuthorityDiagnosticsBlock, roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { parseForumAuthority, type ParsedAuthority } from "./identity/forum-authority-records";
 import { isForumObjectId, sameEmbeddedPrincipal } from "./identity/forum-check";
@@ -61,7 +61,7 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       if (!verified.ok || (objectKind !== "room" && verified.diagnostics.length) || !principal || authority.graph.ownerOf(spec.forumId) !== spec.owner ||
           !authority.graph.checkForumSee(spec.forumId, principal, at).allowed || !authority.graph.checkPost(spec.forumId, principal, at).allowed)
         return reply(403);
-      if (body.rows.length === 0) return reply(200); // Authenticated provider readiness; no mutation.
+      if (body.rows.length === 0) return reply(roomAuthorityReadDiagnosticsBlock(verified.diagnostics, snapshot) ? 403 : 200); // Authenticated provider readiness; no mutation.
       const parsed = body.rows.map((row: any) => {
         if (!row || Object.keys(row).sort().join() !== "kind,record,soul") throw Error("Invalid authority envelope");
         const value = parseForumAuthority(row.kind, row.record);
@@ -112,7 +112,7 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       if (additions.length && (owned.length > rowQuota || Buffer.byteLength(JSON.stringify(owned), "utf8") > byteQuota)) return reply(507);
       const candidate = createForumAuthority(config, clock);
       const result = await candidate.refresh(nextSnapshot, at);
-      if (!result.ok || (objectKind === "room" ? roomAuthorityDiagnosticsBlock(result.diagnostics, nextSnapshot, candidate.graph) : result.diagnostics.length) || candidate.graph.ownerOf(object) !== principal) return reply(403);
+      if (!result.ok || (objectKind === "room" ? roomAuthorityDiagnosticsBlock(result.diagnostics, nextSnapshot, candidate.graph, object) : result.diagnostics.length) || candidate.graph.ownerOf(object) !== principal) return reply(403);
       const guard = () => { signal.throwIfAborted(); if (clock() !== at) throw Error("Statement authority expired"); };
       guard();
       if (additions.length === 0) return reply(200);

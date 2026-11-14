@@ -61,7 +61,7 @@ export async function admitBrowserRoom(input: {
   // This lets a current key refresh its old room without trusting the old row.
   const candidate = { ...snapshot, rows: [...snapshot.rows, ...rows] };
   const proposed = await authority.refresh(candidate, at);
-  if (!proposed.ok || roomAuthorityDiagnosticsBlock(proposed.diagnostics, candidate, authority.graph) || !permitted())
+  if (!proposed.ok || roomAuthorityDiagnosticsBlock(proposed.diagnostics, candidate, authority.graph, item.id) || !permitted())
     throw Error("Room authority denied");
   current();
   const fetcher = input.fetch;
@@ -76,7 +76,7 @@ export async function admitBrowserRoom(input: {
   if (!admitted) throw Error("Room admission not confirmed");
   const checked = await authority.refresh(admitted, at);
   current();
-  if (!checked.ok || roomAuthorityDiagnosticsBlock(checked.diagnostics, admitted, authority.graph) || !permitted() || !authority.graph.checkDirectSee(item.id, item.author, at).allowed ||
+  if (!checked.ok || roomAuthorityDiagnosticsBlock(checked.diagnostics, admitted, authority.graph, item.id) || !permitted() || !authority.graph.checkDirectSee(item.id, item.author, at).allowed ||
       !authority.graph.checkPost(item.id, item.author, at).allowed) throw Error("Room admission not confirmed");
   for (const accessor of readers) {
     if (!authority.graph.checkForumSee(item.id, accessor, at).allowed ||
