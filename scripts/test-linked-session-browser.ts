@@ -1,7 +1,8 @@
 /** Scheduled isolated browser/HTTP admission contract; no deployed identity. */
 import assert from "node:assert/strict";
-import { chromium } from "playwright-core";
+import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright-core";
 import { linkedSessionFixture } from "./fixtures/linked-session";
+import type { LinkedCredential } from "../lib/identity/linked-session-admission";
 import { createSeaSessionHandlers } from "../lib/identity/sea-session-http";
 const names = ["wallet-linked-session", "oidc-linked-session", "replayed-proof-refused", "revoked-link-refused", "stale-source-refused", "missing-source-refused"];
 const cases = names.map(name => ({ name, status: "blocked", reason: "not-run" }));
@@ -9,18 +10,20 @@ const report = (status: string, reason?: string) => console.log(JSON.stringify({
 if (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_EVENT_NAME !== "schedule") {
   report("blocked", "scheduled-ci-required"); process.exit(1);
 }
+type Prepared = { challenge: string; proof: unknown };
+type ExchangeResult = { status: number; session: { key: string } | null };
 async function main() {
-  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  let browser: Browser | undefined;
   try {
     browser = await chromium.launch({ headless: true });
     for (const row of cases) {
       const fixture = await linkedSessionFixture(row.name === "oidc-linked-session" ? "oidc" : "wallet");
       const origin = "https://s3r.ch", handlers = createSeaSessionHandlers({ origin, sessions: fixture.sessions });
-      const context = await browser.newContext();
+      const context: BrowserContext = await browser.newContext();
       try {
-        const page = await context.newPage();
+        const page: Page = await context.newPage();
         let unexpected = false;
-        await context.route("**/*", async route => {
+        await context.route("**/*", async (route: Route) => {
           const req = route.request(), url = new URL(req.url());
           if (url.origin !== origin) { unexpected = true; await route.abort(); return; }
           if (url.pathname === "/") { await route.fulfill({ contentType: "text/html", body: "<!doctype html><title>Isolated linked admission</title>" }); return; }
@@ -39,7 +42,7 @@ async function main() {
           await route.fulfill({ status: response.status, headers, body: await response.text() });
         });
         await page.goto(origin);
-        const prepared = await page.evaluate(async credential => {
+        const prepared: Prepared = await page.evaluate(async (credential: LinkedCredential): Promise<Prepared> => {
           const response = await fetch("/api/identity/sea/linked-challenge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ credential }) });
           if (response.status !== 200) throw Error("challenge-refused");
           const { challenge } = await response.json();
@@ -49,12 +52,12 @@ async function main() {
         if (row.name === "revoked-link-refused") fixture.revoke();
         if (row.name === "stale-source-refused") fixture.stale();
         if (row.name === "missing-source-refused") fixture.unavailable();
-        const exchange = () => page.evaluate(async body => {
+        const exchange = (): Promise<ExchangeResult> => page.evaluate(async (body: Prepared): Promise<ExchangeResult> => {
           const result = await fetch("/api/identity/sea/linked-exchange", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
           const session = await (await fetch("/fixture/session")).json();
           return { status: result.status, session };
         }, prepared);
-        const first = await exchange();
+        const first: ExchangeResult = await exchange();
         if (row.name.endsWith("linked-session") || row.name === "replayed-proof-refused") {
           assert.equal(first.status, 200); assert.deepEqual(first.session, { key: fixture.principal });
           if (row.name === "replayed-proof-refused") {
