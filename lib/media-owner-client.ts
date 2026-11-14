@@ -1,5 +1,5 @@
 import {snapshotOwnerGroupDraft,signOwnerGroupRow,type OwnerGroupRowKind} from "./media-group-signing";
-import { parseMediaGroupAuthority, parseMediaGroupPolicyView, parseMediaGroupPolicy, parseMediaGroupScope, parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
+import { parseMediaGroupWriteState, parseMediaGroupAuthority, parseMediaGroupPolicyView, parseMediaGroupPolicy, parseMediaGroupScope, parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
 import { parseMediaSharePlan } from "./media-share";
 import { parseMediaDeletionDraft, parseMediaDeletionIntent, type MediaDeletionIntent } from "./media-deletion";
 import { parseForumObjectRecord, type UnverifiedObjectRecord } from "./identity/forum-object-record";
@@ -62,6 +62,12 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
     current(held);signal.throwIfAborted();
     const result=await request("mutate",{object,at:held.at,fence:held.fence,operation,payload},signal);
     if(!exact(result,["accepted"]) || result.accepted!==true)throw Error("Private media write refused");
+  }
+  async function groupCheck(object:string,draft:ReturnType<typeof parseMediaGroupAppend>,signal:AbortSignal) {
+    if(!objectOK(object))throw Error("Invalid media group object");
+    const held=await request("group-check",{object,...draft},signal);
+    current(held);parseMediaGroupWriteState(held);
+    return held as ReturnType<typeof parseMediaGroupWriteState>;
   }
   async function withKey<T>(scalar: Uint8Array, signal: AbortSignal | undefined,
     operation: (held: Uint8Array, deadline: AbortSignal)=>Promise<T>): Promise<T> {
@@ -142,11 +148,16 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
       const held=await request("group-view",{object},signal??new AbortController().signal);current(held);
       return parseMediaGroupView(held,object);
     },
+    async groupRowsState(object:string,input:unknown,signal?:AbortSignal) {
+      const draft=parseMediaGroupAppend(input),deadline=signal??new AbortController().signal;
+      return parseMediaGroupWriteState(await groupCheck(object,draft,deadline));
+    },
     async appendGroupRows(object:string,input:unknown,signal?:AbortSignal) {
       if(!objectOK(object))throw Error("Invalid media group object");
       const draft=parseMediaGroupAppend(input),deadline=signal??new AbortController().signal;
-      const held=await request("group-view",{object},deadline);
-      parseMediaGroupView(held,object);current(held);deadline.throwIfAborted();
+      const held=await groupCheck(object,draft,deadline);
+      current(held);deadline.throwIfAborted();
+      if(held.state==="applied")return;
       const result=await request("group-append",{object,at:held.at,fence:held.fence,...draft},deadline);
       if(!exact(result,["accepted"])||result.accepted!==true)throw Error("Media group append refused");
     },

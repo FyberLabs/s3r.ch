@@ -112,3 +112,10 @@ export function parseMediaGroupAuthority(input:unknown,object:string,owner:strin
   return {...held,owner,direct:v.direct as {entries:DirectEntry[]},policy:policy?{context:policy.context,config:policy.config}:null,
     bindings:bindings as Record<string,{pub:string;epub:string;head:number}>};
 }
+
+export function parseMediaGroupWriteState(input:unknown) {
+  const v=structuredClone(input);
+  if(!exact(v,["at","fence","state"])||!integer(v.at)||typeof v.fence!=="string"||!/^[a-f0-9]{64}$/.test(v.fence)||
+      (v.state!=="applied"&&v.state!=="absent"))return fail();
+  return {at:v.at,fence:v.fence,state:v.state};
+}

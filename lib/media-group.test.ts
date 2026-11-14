@@ -1,7 +1,7 @@
 // HTTP and protected projection contracts run in CI only.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseMediaGroupAuthority, parseMediaGroupPolicyView, parseMediaGroupPolicy, parseMediaGroupScope, parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
+import { parseMediaGroupWriteState, parseMediaGroupAuthority, parseMediaGroupPolicyView, parseMediaGroupPolicy, parseMediaGroupScope, parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
 import { createPrivateMediaOwner, PrivateMediaConflict } from "./media-owner-client";
 import { createMediaOwnerService } from "./media-owner-service";
 const owner="axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
@@ -12,6 +12,7 @@ const edge={predicate:"same-group",setId:set,stated:1,hamState:3};
 const member={...edge,accessor:reader,hamState:2};
 const projection={object,set,predicate:"same-group",members:[reader],snapshot:{members:[member],objectSet:edge}};
 const view={at:100,fence:"a".repeat(64),objectVersion:4,projection};
+const appendState={at:100,fence:view.fence,state:"absent"};
 const rows=[{kind:"object",soul:object,record:{signature:"native-verifier-checks-this"}}];
 const draft={predicate:"same-group",set,rows};
 const signal=()=>new AbortController().signal;
@@ -54,6 +55,7 @@ test("client reads current projection and sends detached signed rows with a fres
   const client=createPrivateMediaOwner(async(url,init)=>{
     assert.equal(init?.credentials,"same-origin");assert.equal(init?.redirect,"error");
     if(String(url).endsWith("group-view")){input.rows.length=0;return Response.json(view);}
+    if(String(url).endsWith("group-check")){input.rows.length=0;return Response.json(appendState);}
     sent.push(JSON.parse(String(init?.body)));return Response.json({accepted:true});
   },()=>100);
   assert.deepEqual(await client.groupView(object),view);
@@ -62,15 +64,15 @@ test("client reads current projection and sends detached signed rows with a fres
 });
 test("stale or invalid views and lost writes never replay group appends",async()=>{
   for(const failure of [409,500,200]){
-    let calls=0;const client=createPrivateMediaOwner(async()=>++calls===1?Response.json(view):
+    let calls=0;const client=createPrivateMediaOwner(async()=>++calls===1?Response.json(appendState):
       failure===200?Response.json({accepted:false}):new Response(null,{status:failure}),()=>100);
     await assert.rejects(client.appendGroupRows(object,draft),failure===409?PrivateMediaConflict:Error);assert.equal(calls,2);
   }
-  let calls=0;const client=createPrivateMediaOwner(async()=>{if(++calls===1)return Response.json(view);throw Error("lost");},()=>100);
+  let calls=0;const client=createPrivateMediaOwner(async()=>{if(++calls===1)return Response.json(appendState);throw Error("lost");},()=>100);
   await assert.rejects(client.appendGroupRows(object,draft));assert.equal(calls,2);
-  let tick=0;const stale=createPrivateMediaOwner(async()=>Response.json(view),()=>tick++*5);
+  let tick=0;const stale=createPrivateMediaOwner(async()=>Response.json(appendState),()=>tick++*5);
   await assert.rejects(stale.appendGroupRows(object,draft),PrivateMediaConflict);
-  const invalid=createPrivateMediaOwner(async()=>Response.json({...view,projection:{...projection,members:[]}}),()=>100);
+  const invalid=createPrivateMediaOwner(async()=>Response.json({...appendState,state:"unknown"}),()=>100);
   await assert.rejects(invalid.appendGroupRows(object,draft));
   await assert.rejects(invalid.appendGroupRows("bad",draft));
   await assert.rejects(invalid.groupView(object,AbortSignal.abort()));
@@ -217,4 +219,36 @@ test("atomic authority client and BFF keep fixed owner, freshness and session bo
   assert.equal((await bad("group-authority-view",request({object}))).status,403);
   let resolves=0;const changed=createMediaOwnerService(config,"https://s3r.ch",async()=>++resolves===1?owner:reader,async()=>Response.json(authority),()=>100);
   assert.equal((await changed("group-authority-view",request({object}))).status,403);
+});
+
+test("group reconciliation recognizes exact applied batches after a lost response",async()=>{
+  let applied=false,writes=0;const sent:unknown[]=[];
+  const client=createPrivateMediaOwner(async(url,init)=>{
+    if(String(url).endsWith("group-check")){sent.push(JSON.parse(String(init?.body)));return Response.json({...appendState,state:applied?"applied":"absent"});}
+    writes++;applied=true;throw Error("lost response after commit");
+  },()=>100);
+  assert.equal((await client.groupRowsState(object,draft)).state,"absent");
+  await assert.rejects(client.appendGroupRows(object,draft));assert.equal(writes,1);
+  assert.equal((await client.groupRowsState(object,draft)).state,"applied");
+  await client.appendGroupRows(object,draft);assert.equal(writes,1);
+  assert.ok(sent.every(body=>JSON.stringify(body)===JSON.stringify({object,...draft})));
+  assert.deepEqual(parseMediaGroupWriteState(appendState),appendState);
+  for(const bad of [null,{}, {...appendState,extra:1},{...appendState,at:-1},{...appendState,fence:"bad"},{...appendState,state:"unknown"}])
+    assert.throws(()=>parseMediaGroupWriteState(bad));
+  await assert.rejects(client.groupRowsState("bad",draft));
+});
+test("group-check BFF bounds signed batches, pins owner credential and rechecks session",async()=>{
+  let calls=0;
+  const service=createMediaOwnerService(config,"https://s3r.ch",async()=>owner,async(url,init)=>{
+    calls++;assert.ok(String(url).endsWith("group-check"));assert.equal(new Headers(init?.headers).get("X-Api-Key"),"fixed-owner-key");
+    assert.deepEqual(JSON.parse(String(init?.body)),{object,...draft});return Response.json(appendState);
+  },()=>100);
+  const result=await service("group-check",request({object,...draft}));assert.equal(result.status,200);assert.deepEqual(await result.json(),appendState);
+  for(const body of [{object,...draft,at:100},{object,...draft,owner},{object,...draft,rows:[]},{object,...draft,set:"bad"}])
+    assert.equal((await service("group-check",request(body))).status,400);
+  assert.equal(calls,1);
+  const invalid=createMediaOwnerService(config,"https://s3r.ch",async()=>owner,async()=>Response.json({...appendState,state:"unknown"}),()=>100);
+  assert.equal((await invalid("group-check",request({object,...draft}))).status,403);
+  let count=0;const changed=createMediaOwnerService(config,"https://s3r.ch",async()=>++count===1?owner:reader,async()=>Response.json(appendState),()=>100);
+  assert.equal((await changed("group-check",request({object,...draft}))).status,403);
 });
