@@ -204,14 +204,14 @@ test("authenticated progress survives reverse-order poison overflow", async () =
 
 test("queue priority checks signatures and never grants display authority", async () => {
  const f=await fixture(), row=await f.admission.compose("room","priority",()=>f.alice);assert.ok(row);
- assert.equal(f.admission.authenticateEnvelope(row),true);
+ assert.equal(await f.admission.authenticateEnvelope(row),true);
  const wrapped=JSON.parse(row.sig.slice(3));wrapped.s="A".repeat(86)+"==";
- assert.equal(f.admission.authenticateEnvelope({...row,sig:"SEA"+JSON.stringify(wrapped)}),false);
- f.revoke();assert.equal(f.admission.authenticateEnvelope(row),true);
+ assert.equal(await f.admission.authenticateEnvelope({...row,sig:"SEA"+JSON.stringify(wrapped)}),false);
+ f.revoke();assert.equal(await f.admission.authenticateEnvelope(row),true);
  assert.equal(await f.admission.receive(row,"room",encodeKey(row.id)),null);
- f.keys.delete(f.alice.pub);assert.equal(f.admission.authenticateEnvelope(row),true);
+ f.keys.delete(f.alice.pub);assert.equal(await f.admission.authenticateEnvelope(row),true);
  assert.equal(await f.admission.receive(row,"room",encodeKey(row.id)),null);
- f.admission.reset();assert.equal(f.admission.authenticateEnvelope(row),null);
+ f.admission.reset();assert.equal(await f.admission.authenticateEnvelope(row),null);
 });
 
 
@@ -245,4 +245,25 @@ test("initial history waits for authority and later refreshes retain the subscri
  ready=false;changed();ready=true;changed();await subscription.refresh();
  assert.equal(subscriptions,1);assert.equal(accepted.length,300);
  subscription.close();assert.equal(stopped,1);changed();await subscription.refresh();assert.equal(subscriptions,1);
+});
+
+
+test("ingress bounds asynchronous verification and yields during peer floods", async () => {
+ const {createRoomChatReceiveQueue}=await import("./room-chat-receive-queue");
+ const f=await fixture(), row=await f.admission.compose("room","bounded",()=>f.alice);assert.ok(row);
+ let release!:()=>void, calls=0, active=0, maximum=0;
+ const gate=new Promise<void>(resolve=>{release=resolve;});
+ // Substitute only the verifier latency/result to measure scheduling bounds.
+ const admission={...f.admission,authenticateEnvelope:async()=>{
+  calls++;active++;maximum=Math.max(maximum,active);await gate;active--;return false;
+ }};
+ const queue=createRoomChatReceiveQueue(admission,"room",()=>assert.fail("invalid rows must not display"));
+ const jobs=Array.from({length:8448},(_,i)=>{
+  const input={...row,id:"s3rch:chat:"+i.toString(16).padStart(64,"0")};return queue.enqueue(input,encodeKey(input.id));
+ });
+ assert.equal(calls,1);assert.equal(maximum,1);
+ let timerCalls=0;const timer=setTimeout(()=>{timerCalls=calls;},0);
+ release();await Promise.all(jobs);clearTimeout(timer);
+ assert.equal(maximum,1);assert.equal(calls,8193);assert.ok(timerCalls>0 && timerCalls<calls);
+ queue.close();
 });
