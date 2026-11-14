@@ -17,3 +17,9 @@ test("unavailable hashing fails closed",async t=>{
  t.mock.method(crypto.subtle,"digest",async()=>{throw Error("unavailable");});
  assert.equal(await verifiedNostrEvent(note(),[pubkey],1,now),null);
 });
+
+test("async verification returns a captured event, not mutable caller fields",async()=>{
+ const raw=note(),expected=structuredClone(raw),pending=verifiedNostrEvent(raw,[pubkey],1,now);
+ raw.content="forged after hashing";raw.tags.push(["injected"] as never);
+ assert.deepEqual(await pending,expected);
+});

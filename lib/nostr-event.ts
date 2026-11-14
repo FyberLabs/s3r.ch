@@ -11,10 +11,11 @@ export async function verifiedNostrEvent(raw:unknown,authors:readonly string[],k
   !Number.isSafeInteger(e.created_at)||e.created_at<0||e.created_at<=now-maxAge||e.created_at>now+60||
   typeof e.content!=="string"||e.content.length>16384||!e.content.isWellFormed()||
   !Array.isArray(e.tags)||e.tags.length>128||e.tags.some(t=>!Array.isArray(t)||!t.length||t.length>8||t.some(s=>typeof s!=="string"||s.length>2048||!s.isWellFormed())))return null;
+ const event:NostrEvent={id:e.id,pubkey:e.pubkey,created_at:e.created_at,kind:e.kind,tags:e.tags.map(tag=>[...tag]),content:e.content,sig:e.sig};
  try {
-  const payload=new TextEncoder().encode(JSON.stringify([0,e.pubkey,e.created_at,e.kind,e.tags,e.content]));
+  const payload=new TextEncoder().encode(JSON.stringify([0,event.pubkey,event.created_at,event.kind,event.tags,event.content]));
   const hash=new Uint8Array(await crypto.subtle.digest("SHA-256",payload));
-  if(hex(hash)!==e.id||!schnorr.verify(bytes(e.sig),hash,bytes(e.pubkey)))return null;
+  if(hex(hash)!==event.id||!schnorr.verify(bytes(event.sig),hash,bytes(event.pubkey)))return null;
  }catch{return null;}
- return e;
+ return event;
 }
