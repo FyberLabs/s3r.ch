@@ -68,6 +68,7 @@ import { IngestForm } from "@/components/IngestForm";
 import { OutboundPostControls } from "@/components/OutboundPostControls";
 import { PostSeeGrantControls } from "@/components/PostSeeGrantControls";
 import { PostContent, postCardClassName } from "@/components/PostContent";
+import { GrantedMediaFeed } from "@/components/GrantedMediaFeed";
 import { RoomSeeGrantControls } from "@/components/RoomSeeGrantControls";
 import { RoomChat } from "@/components/RoomChat";
 import { RoomPresence } from "@/components/RoomPresence";
@@ -973,6 +974,8 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
       {shareMessage && tab === "mine" ? (
         <p className="mt-3 text-xs text-ink-muted">{shareMessage}</p>
       ) : null}
+
+      {tab === "granted" && session && <GrantedMediaFeed />}
 
       {visible.length === 0 ? (
         <p className="mt-8 border border-rule bg-panel p-6 text-sm text-ink-muted">
