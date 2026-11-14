@@ -101,3 +101,18 @@ test("a stale discard confirmation cannot remove another window's newer draft",a
   await discardMediaUpload(f.journal,tenant,replacement.object,pair,signal);
   assert.equal(await f.journal.read(signal),null);
 });
+
+test("allocation refusal preserves the encrypted draft without granting or uploading",async()=>{
+  const f=fixture();let confirmed=0,refusals=0;
+  const fetcher:typeof fetch=async(url,init)=>{
+    if(String(url).endsWith("/allocate")){refusals++;return new Response(null,{status:403});}
+    return f.fetcher(url,init);
+  };
+  await assert.rejects(uploadMedia({tenant,pair,signal,journal:f.journal,fetcher,file:file(),allocationConfirmed:()=>{confirmed++;}}));
+  const held=(await f.journal.read(signal))!;assert.ok(held);
+  assert.equal(refusals,1);assert.equal(confirmed,0);assert.deepEqual(f.writes,[]);
+  assert.equal((await pendingMediaUpload(f.journal,tenant,pair,signal))!.name,"private.png");
+  const result=await uploadMedia({tenant,pair,signal,...f,allocationConfirmed:()=>{confirmed++;}});
+  assert.equal(result.object,held.object);assert.equal(confirmed,1);
+  assert.equal(f.writes.filter(action=>action==="allocate").length,1);
+});

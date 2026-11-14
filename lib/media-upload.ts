@@ -48,7 +48,7 @@ export async function discardMediaUpload(journal:UploadJournal,tenant:string,exp
 /** Explicit user invocation only. A failure retains the encrypted journal and
  * immutable signed intents. Resume probes them before any replacement write. */
 export async function uploadMedia(input:{tenant:string;pair:SeaPair;fetcher:typeof fetch;signal:AbortSignal;journal:UploadJournal;
-  file?:{bytes:Uint8Array;description:MediaFileDescription};progress?:(message:string)=>void}) {
+  file?:{bytes:Uint8Array;description:MediaFileDescription};progress?:(message:string)=>void;allocationConfirmed?:()=>void}) {
   const {tenant,pair,fetcher,signal,journal}=input,ownerClient=createPrivateMediaOwner(fetcher),media=createMediaHttpClient(fetcher);
   let entry=await journal.read(signal),draft:Draft|undefined,key:Uint8Array|undefined,scalar:Uint8Array|undefined;
   const progress=(message:string)=>{signal.throwIfAborted();input.progress?.(message);};
@@ -82,6 +82,7 @@ export async function uploadMedia(input:{tenant:string;pair:SeaPair;fetcher:type
     progress("Confirming private allocation…");
     try {await ownerClient.confirmAllocation(object,d.owner,signal);}
     catch {signal.throwIfAborted();await ownerClient.allocate(d.record,signal);}
+    signal.throwIfAborted();input.allocationConfirmed?.();
     if(!d.grant) {
       d.grant=await ownerClient.prepareUploadGrant(object,d.owner,{object,owner:d.owner,accessor:d.owner,
         from:d.record.issuedAt*1000,until:Number.MAX_SAFE_INTEGER,stated:1,epoch:1,grantRevision:1,

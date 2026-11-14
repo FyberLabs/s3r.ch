@@ -55,8 +55,8 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     });
   }
   return Object.freeze({
-    upload(tenant:string,file?:{bytes:Uint8Array;description:MediaFileDescription},signal?:AbortSignal,progress?:(message:string)=>void){
-      return locked(()=>run((pair,transport,deadline)=>uploadMedia({tenant,pair,fetcher:transport,signal:deadline,journal:createUploadJournal(),file,progress}),signal));
+    upload(tenant:string,file?:{bytes:Uint8Array;description:MediaFileDescription},signal?:AbortSignal,progress?:(message:string)=>void,allocationConfirmed?:()=>void){
+      return locked(()=>run((pair,transport,deadline)=>uploadMedia({tenant,pair,fetcher:transport,signal:deadline,journal:createUploadJournal(),file,progress,allocationConfirmed}),signal));
     },
     pendingUpload(tenant:string,signal?:AbortSignal){
       return run((pair,_transport,deadline)=>pendingMediaUpload(createUploadJournal(),tenant,pair,deadline),signal);
