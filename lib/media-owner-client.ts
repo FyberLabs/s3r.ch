@@ -181,6 +181,16 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
         return {...plan,grants};
       });
     },
+    async prepareUnshare(object:string,owner:string,reader:string,scalar:Uint8Array,signal?:AbortSignal) {
+      if(!objectOK(object)||!isSeaPubkey(owner)||!isSeaPubkey(reader)||owner===reader)throw Error("Invalid media share target");
+      return withKey(scalar,signal,async(key,deadline)=>{
+        const held=await request("unshare-view",{object,reader},deadline);current(held);
+        const plan=parseMediaSharePlan(held,object,owner,reader,true);
+        const grants=plan.grants.map(draft=>signPrivateMediaGrant(draft,key,plan.ownerPub));
+        deadline.throwIfAborted();current(held);
+        return {...plan,grants};
+      });
+    },
     async uploadState(object: string, operation: "grant" | "epoch" | "wrap", payload: unknown, signal: AbortSignal) {
       if (!objectOK(object)) throw Error("Invalid media upload");
       const result = await request("upload-state", { object, operation, payload }, signal);

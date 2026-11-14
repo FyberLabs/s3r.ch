@@ -79,7 +79,7 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
       <section aria-label="Saved sharing" className="space-y-2 rounded border p-4">
         <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.inspectSharing(tenant)}>Check saved sharing</button>
         {state.sharing && <>
-          <p className="break-all">Pending sharing with {state.sharing.reader}</p>
+          <p className="break-all">Pending {state.sharing.remove?"removal of":"sharing with"} {state.sharing.reader}</p>
           <p>Resume uses the saved request. Sharing may wait for the access update to settle; closing this page does not undo accepted changes.</p>
           <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeSharing(tenant)}>Resume sharing</button>
           <label className="block"><input type="checkbox" checked={abandon} onChange={event=>setAbandon(event.target.checked)} disabled={state.busy}/> I understand that forgetting recovery does not undo accepted access changes.</label>
@@ -97,7 +97,7 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
         <ul>{state.audience.readers.map(reader=><li key={reader} className="my-2 flex flex-wrap gap-3">
           <span className="break-all font-mono text-xs">{reader}</span>
           <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50"
-            onClick={()=>void library.current?.cancel(state.audience!.object,reader)}>Stop sharing</button>
+            onClick={()=>void library.current?.unshare(tenant,state.audience!.object,reader)}>Stop sharing</button>
         </li>)}</ul>
       </section>}
       {state.preview && <PrivateMediaPreview preview={state.preview} />}

@@ -11,7 +11,7 @@ class SessionUnavailable extends Error {}
 
 export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly string[]; page: number;
   nextPage: number | null; loaded: boolean; message: string;
-  sharing: Readonly<{object:string;reader:string;token:string}> | null;
+  sharing: Readonly<{object:string;reader:string;token:string;remove?:boolean}> | null;
   granted: Readonly<{objects:readonly string[];page:number;nextPage:number|null}> | null;
   cleanup: Readonly<{objects:readonly MediaCleanupItem[];page:number;nextPage:number|null}> | null;
   deletion: Readonly<{object:string;prepared:boolean}> | null;
@@ -151,7 +151,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       const principal=owner;
       return operation(async(signal,current)=>{
         const result=await browser.share(tenant,{object,owner:principal,reader},signal);
-        if(current())publish({...state,audience:null,sharing:result.pending?{object,reader,token:result.token}:null,
+        if(current())publish({...state,audience:null,sharing:result.pending?{object,reader,token:result.token,...(result.remove?{remove:true}:{})}:null,
           message:result.pending?"Sharing is saved but not yet confirmed. Resume after the access update settles.":"Sharing confirmed. Recipient access uses fresh authorization."});
       },()=>publish({...state,sharing:null,message:"Sharing could not be confirmed. Check saved sharing before retrying; accepted changes are not undone."}));
     },
@@ -160,7 +160,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       const selected={...state.sharing};
       return operation(async(signal,current)=>{
         const result=await browser.resumeShare(tenant,selected,signal);
-        if(current())publish({...state,audience:null,sharing:result.pending?{object:result.object,reader:result.reader,token:result.token}:null,
+        if(current())publish({...state,audience:null,sharing:result.pending?{object:result.object,reader:result.reader,token:result.token,...(result.remove?{remove:true}:{})}:null,
           message:result.pending?"Sharing is still pending. Future access times and settlement can delay completion.":"Sharing confirmed."});
       },()=>publish({...state,message:"Sharing could not be confirmed. The saved change is retained; check access and retry."}));
     },
@@ -179,6 +179,15 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         const readers=(await browser.recipients(object,principal,signal)).filter(reader=>reader!==principal);
         if(current())publish({...state,audience:{object,readers}});
       });
+    },
+    unshare(tenant:string,object:string,reader:string) {
+      if(state.deletion||state.sharing||state.audience?.object!==object||!state.audience.readers.includes(reader)||!owner)return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        const result=await browser.share(tenant,{object,owner:principal,reader,remove:true},signal);
+        if(current())publish({...state,audience:null,sharing:result.pending?{object,reader,token:result.token,remove:true}:null,
+          message:result.pending?"Removal is saved. Resume to finish the remaining readers' access update.":"Sharing stopped for this identity. Copies already saved cannot be removed."});
+      },()=>publish({...state,sharing:null,message:"Removal could not be confirmed. Check saved sharing before retrying; accepted changes are not undone."}));
     },
     cancel(object: string, reader: string) {
       if(state.deletion || state.audience?.object!==object || !state.audience.readers.includes(reader))return Promise.resolve();
