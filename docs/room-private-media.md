@@ -19,8 +19,12 @@ catalog page; catalog membership is navigation, not authorization. No arbitrary
 URL is accepted and no player receives a remote storage URL. The decrypted
 preview uses a temporary blob URL and the shared audio/video player.
 
-Closing the panel or preview, hiding the document, changing identity, or losing
-the selected message's room admission clears pending work and the preview.
+Closing the panel or preview, hiding the document, or changing identity clears
+pending work and the preview. Current room admission is required to open a
+reference. Once independently authorized file bytes have been decrypted, playback
+belongs to the media session: routine room-authority refreshes do not restart or
+re-download it. Loss of room admission removes the reference open control; it
+does not retract those already authorized bytes.
 The existing media library also clears previews on unlock changes and session
 expiry. Player teardown pauses playback and releases its source. Access changes
 cannot retract copies already saved by an authorized reader.

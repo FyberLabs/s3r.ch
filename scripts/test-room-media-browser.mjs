@@ -66,6 +66,8 @@ try{
  await page.waitForFunction(()=>window.revoked.length===2);assert.equal(await page.getByRole('article').count(),0);
  allowed=true;await open();await page.getByRole('article').waitFor();
  await page.evaluate(()=>{window.roomAllowed=false;window.show();});
- await page.waitForFunction(()=>window.revoked.length===3);assert.equal(await page.getByRole('article').count(),0);assert.equal(await page.getByRole('button',{name:/Open room file/}).count(),0);
+ assert.equal(await page.getByRole('button',{name:/Open room file/}).count(),0);assert.equal(await page.getByRole('article').count(),1);
+ // Already decrypted playback belongs to the independent media session. Room polls do not release more bytes.
+ await page.getByRole('button',{name:'Close room preview'}).click();await page.waitForFunction(()=>window.revoked.length===3);assert.equal(await page.getByRole('article').count(),0);
  assert.deepEqual(errors,[]);console.log('Room media playback, denied open, room revocation, session reset and unmount cleanup contracts passed; hosted services not qualified');
 }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));rmSync(fixtureRoot,{recursive:true,force:true});}

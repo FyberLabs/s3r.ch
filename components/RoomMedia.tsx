@@ -60,8 +60,6 @@ export function RoomMediaPanel({tenant,roomId,messages,canRead,send}:PanelProps&
     return ()=>{generation.current++;window.removeEventListener("s3rch-session-changed",reset);
       document.removeEventListener("visibilitychange",hidden);controller.dispose();library.current=null;};
   },[tenant,roomId]);
-  const selectionCurrent=!selected?.message || (selected.message.room===roomId && canRead(selected.message));
-  useEffect(()=>{if(!selectionCurrent){generation.current++;library.current?.reset();setSelected(null);}},[selectionCurrent]);
   const references=messages.filter(message=>message.room===roomId && canRead(message) && parseRoomMedia(message.body)).slice(-64);
   async function open(object:string,message?:ChatMessage) {
     if(!library.current || state?.busy || busy.current || (message && !current.current.canRead(message)))return;
@@ -89,7 +87,7 @@ export function RoomMediaPanel({tenant,roomId,messages,canRead,send}:PanelProps&
       {state.page>0 && <button type="button" disabled={state.busy||sending} onClick={()=>{setSelected(null);void library.current?.load(state.page-1);}}>Previous files</button>}
       {state.nextPage!==null && <button type="button" disabled={state.busy||sending} onClick={()=>{setSelected(null);void library.current?.load(state.nextPage!);}}>Next files</button>}
     </>}
-    {selectionCurrent && state?.preview && <>
+    {state?.preview && <>
       <PrivateMediaPreview preview={state.preview}/>
       <button type="button" className={btnSecondary} onClick={()=>{generation.current++;setSelected(null);library.current?.reset();}}>Close room preview</button>
       {selected && !selected.message && ["audio","video"].includes(mediaPreviewKind(state.preview.mediaType)??"") &&
