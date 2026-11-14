@@ -147,3 +147,22 @@ test("initial epoch uses the unlocked session and stops on identity replacement"
   });
   await assert.rejects(changing.initialEpoch(object, owner, input)); assert.equal(calls, 1);
 });
+
+test("upload recovery wrappers require one unlocked identity and an exclusive browser lock",async()=>{
+  const {IDBFactory}=await import("fake-indexeddb");
+  const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,"navigator"),oldDb=Object.getOwnPropertyDescriptor(globalThis,"indexedDB");
+  try {
+    Object.defineProperty(globalThis,"indexedDB",{configurable:true,value:new IDBFactory()});
+    Object.defineProperty(globalThis,"navigator",{configurable:true,value:{locks:{request:async(_name:unknown,_options:unknown,work:(lock:unknown)=>unknown)=>work({})}}});
+    unlock();const browser=createPrivateMediaBrowser(()=>owner);
+    assert.equal(await browser.pendingUpload(tenant),null);await browser.discardUpload(tenant);
+    await assert.rejects(browser.upload(tenant),/No pending/);
+    Object.defineProperty(globalThis,"navigator",{configurable:true,value:{locks:{request:async(_name:unknown,_options:unknown,work:(lock:unknown)=>unknown)=>work(null)}}});
+    await assert.rejects(browser.discardUpload(tenant),/another tab/);
+    Object.defineProperty(globalThis,"navigator",{configurable:true,value:{}});
+    await assert.rejects(browser.upload(tenant),/cannot safely resume/);
+  } finally {
+    if(oldNavigator)Object.defineProperty(globalThis,"navigator",oldNavigator);else Reflect.deleteProperty(globalThis,"navigator");
+    if(oldDb)Object.defineProperty(globalThis,"indexedDB",oldDb);else Reflect.deleteProperty(globalThis,"indexedDB");
+  }
+});

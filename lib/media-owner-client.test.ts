@@ -198,3 +198,15 @@ test("initial epoch refuses caller finalization fields and never retries a confl
   await assert.rejects(client.initialEpoch(object, owner, input, key()), PrivateMediaConflict);
   assert.equal(calls, 2);
 });
+
+test("recovery preparation and probes refuse foreign scopes, keys and malformed classifications",async()=>{
+  const signal=new AbortController().signal;
+  const client=createPrivateMediaOwner(async()=>Response.json(view),()=>100);
+  await assert.rejects(client.prepareUploadGrant(object,owner,{...grant,accessor:other},key(),signal));
+  await assert.rejects(client.prepareUploadGrant(object,owner,{...grant,grantRevision:2},key(),signal));
+  const wrong=createPrivateMediaOwner(async()=>Response.json({...view,bindings:{[owner]:{pub:owner,epub:"bad"}}}),()=>100);
+  await assert.rejects(wrong.prepareUploadEpoch(object,owner,"c".repeat(64),key(),signal));
+  for(const result of [{at:1,state:"allowed"},{at:-1,state:"applied"},{at:1,state:"applied",fence:view.fence}])
+    await assert.rejects(createPrivateMediaOwner(async()=>Response.json(result),()=>100).uploadState(object,"epoch",{},signal));
+  await assert.rejects(client.uploadState("bad","epoch",{},signal));
+});

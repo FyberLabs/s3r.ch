@@ -11,7 +11,7 @@ function setup(overrides: Partial<Parameters<typeof createMediaLibrary>[1]> = {}
   const bytes=new Uint8Array([1,2,3]), revoked:string[]=[], pages:number[]=[];
   const browser: typeof createPrivateMediaBrowser=()=>({
     catalog:async(page:number)=>{pages.push(page);return {at:1,objects:["owned"],nextPage:page===15?null:page+1,principal:key};},
-    open:async()=>({description:{name:"image.png",mediaType:"image/png"},bytes}),
+    status:async()=>{},open:async()=>({description:{name:"image.png",mediaType:"image/png"},bytes}),
   } as unknown as ReturnType<typeof createPrivateMediaBrowser>);
   const library=createMediaLibrary(value=>{state=value;},{clock:()=>0,browser,
     fetcher:async(url,init)=>{assert.equal(String(url),"/api/identity/sea/session");assert.equal(init?.cache,"no-store");
@@ -50,7 +50,7 @@ test("identity changes revoke previews and discard a late decrypted result",asyn
   let release!:()=>void;const pending=new Promise<void>(resolve=>{release=resolve;});const bytes=new Uint8Array([9]);
   let started!:()=>void;const began=new Promise<void>(resolve=>{started=resolve;});
   const delayed=setup({browser:()=>({catalog:async()=>({at:1,objects:["owned"],nextPage:1,principal:key}),
-    open:async()=>{started();await pending;return {description:{name:"x.png",mediaType:"image/png"},bytes};},
+    status:async()=>{},open:async()=>{started();await pending;return {description:{name:"x.png",mediaType:"image/png"},bytes};},
   } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
   try {
     await delayed.library.load();const opening=delayed.library.open("owned","tenant");await began;
@@ -66,7 +66,7 @@ test("busy and disposed controllers do not start duplicate operations",async()=>
 test("unsupported content is not given a preview URL and its plaintext is cleared",async()=>{
   const bytes=new Uint8Array([5]);const item=setup({browser:()=>({
     catalog:async()=>({at:1,objects:["owned"],nextPage:1,principal:key}),
-    open:async()=>({description:{name:"unsafe.html",mediaType:"text/html"},bytes}),
+    status:async()=>{},open:async()=>({description:{name:"unsafe.html",mediaType:"text/html"},bytes}),
   } as unknown as ReturnType<typeof createPrivateMediaBrowser>),makeUrl:()=>{throw Error("must not render");}});
   try {await item.library.load();await item.library.open("owned","tenant");assert.equal(bytes[0],0);
     assert.equal(item.state().preview,null);assert.match(item.state().message,/cannot be previewed/);
@@ -112,7 +112,7 @@ test("audio and video previews use temporary URLs and zero plaintext",async()=>{
   for(const mediaType of ["audio/ogg","video/mp4"]) {
     const bytes=new Uint8Array([5]);let created=0;const item=setup({browser:()=>({
       catalog:async()=>({at:1,objects:["owned"],nextPage:1,principal:key}),
-      open:async()=>({description:{name:"clip",mediaType},bytes}),
+      status:async()=>{},open:async()=>({description:{name:"clip",mediaType},bytes}),
     } as unknown as ReturnType<typeof createPrivateMediaBrowser>),makeUrl:blob=>{assert.equal(blob.type,mediaType);created++;return "blob:clip";}});
     try {await item.library.load();await item.library.open("owned","tenant");assert.equal(created,1);assert.equal(bytes[0],0);
       assert.equal(item.state().preview?.mediaType,mediaType);item.library.reset();assert.deepEqual(item.revoked,["blob:clip"]);

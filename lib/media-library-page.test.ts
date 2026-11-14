@@ -22,3 +22,10 @@ test("missing or malformed tenant disables private media actions",()=>{
     if(original===undefined)delete process.env.S3RCH_MEDIA_STORAGE_TENANT_ID;else process.env.S3RCH_MEDIA_STORAGE_TENANT_ID=original;
   }
 });
+
+test("private upload UI requires explicit actions and describes recovery and settlement",()=>{
+  const html=renderToStaticMarkup(createElement(PrivateMediaLibrary,{tenant:"11111111-1111-4111-8111-111111111111"}));
+  assert.match(html,/Upload privately/);assert.match(html,/Check pending upload/);
+  assert.match(html,/one-hour settlement/);assert.match(html,/encrypted recovery draft/);
+  assert.doesNotMatch(html,/Resume this upload|Discard local recovery draft|private.png/);
+});

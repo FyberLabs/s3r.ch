@@ -462,3 +462,29 @@ and lost responses require explicit reconciliation and never trigger automatic
 allocation retries. Hosted use still requires the private ACL allocation binding,
 Storage issuer configuration and controlled registry initialization. No such
 configuration or credentials are enabled by this consumer change.
+
+
+### Private upload recovery
+
+My media offers owner-only image/audio/video upload (up to 63 MiB). Before the
+first remote mutation it saves one encrypted recovery journal plus ciphertext
+in origin IndexedDB. The journal holds the original ownership record, file key,
+and signed upload intents encrypted to the unlocked identity's encryption key.
+No plaintext file or raw key is persisted. Browser Web Locks and journal CAS
+prevent concurrent tabs from replacing an unfinished draft.
+
+Explicit Resume confirms allocation and probes initial grant/epoch/wrap intents
+through ACL's `upload-state` contract before writing anything missing. A lost
+response never triggers a new object or replacement signed intent automatically.
+Ciphertext registration and upload reuse the original ownership record, bytes and
+digest. The journal is removed only after ciphertext upload is acknowledged.
+Discard is an explicit local-only action; it cannot delete server data or release
+reservations. The same identity encryption key is needed to decrypt a pending
+draft, including after page reload. Clearing site storage can destroy recovery.
+
+The initial grant is only to the owner and remains subject to current protected
+policy, key history, revocation and fresh native status. It grants no other reader
+access. Epoch settlement remains one hour; My media signs a fresh owner status
+before opening a settled file. This UI does not establish hosted authority or
+activate cache/replay. Hosting still depends on Infra #1262/#1264, ACL's PostgreSQL
+source work (#103), and verified owner resolution (s3r.ch #440).
