@@ -1,3 +1,4 @@
+import { parseLinkedCredential, type LinkedSessionAdmission } from "./linked-session-admission";
 import { createIdentityTokenVerifier } from "./sea-session-verifier";
 import { parseAgentDelegation, parsePrincipalId, verifyAgentDelegation, type ResolutionContext } from "sociacl-ids";
 import { randomBytes } from "node:crypto";
@@ -32,6 +33,7 @@ export function createIdentitySessions(input: {
   consume(id: string, expiresAt: number): Promise<boolean>;
   clock?: () => number;
   delegationSource?: AgentDelegationSource;
+  linkedAdmission?: LinkedSessionAdmission;
 }) {
   if (typeof input.secret !== "string" || new TextEncoder().encode(input.secret).length < 32) throw Error("Explicit identity session configuration required");
   const origin = new URL(input.origin);
@@ -47,6 +49,19 @@ export function createIdentitySessions(input: {
     return new SignJWT(extra).setSubject(key).setProtectedHeader({ alg: "HS256", typ: type })
       .setIssuer(issuer).setAudience(audience).setIssuedAt(now).setExpirationTime(expiresAt)
       .setJti(randomBytes(32).toString("hex")).sign(secret);
+  }
+  if (input.linkedAdmission && input.linkedAdmission.origin !== issuer) throw Error("Linked admission origin mismatch");
+  const linkedType = "s3rch-linked-challenge-v1" + domain;
+  async function linkedClaims(value: string) {
+    if (typeof value !== "string" || value.length > 4096) throw Error("Invalid linked challenge");
+    const now = clock();
+    const { payload } = await jwtVerify(value, secret, { algorithms: ["HS256"], typ: linkedType,
+      issuer, audience, currentDate: new Date(now * 1000), requiredClaims: ["sub", "iat", "exp", "jti"] });
+    const credential = parseLinkedCredential(payload.credential);
+    if (!credential || typeof payload.linkId !== "string" || !idPattern.test(payload.linkId) || typeof payload.sub !== "string" || !isSeaPubkey(payload.sub) || isPublicSquadPrincipal(payload.sub) ||
+        !Number.isSafeInteger(payload.iat) || !Number.isSafeInteger(payload.exp) || payload.iat! > now || payload.exp! - payload.iat! !== 60 ||
+        typeof payload.jti !== "string" || !idPattern.test(payload.jti)) throw Error("Invalid linked challenge");
+    return { key: payload.sub, linkId: payload.linkId, credential, token: value, id: payload.jti, issuedAt: payload.iat!, expiresAt: payload.exp! };
   }
   const claims = createIdentityTokenVerifier({ origin: issuer, secret: input.secret, clock }).claims;
   const agentChallengeType = "s3rch-agent-challenge-v1" + domain, agentSessionType = "s3rch-agent-session-v1";
@@ -88,6 +103,37 @@ export function createIdentitySessions(input: {
     return token(type, record.principal, ttl, { agent: record.agent, delegationId: id, scopes }, record.expiresAt);
   }
   return Object.freeze({
+    async linkedChallenge(value: unknown): Promise<string | null> {
+      try {
+        const credential = parseLinkedCredential(value), at = clock();
+        if (!credential || !input.linkedAdmission) return null;
+        const resolved = await input.linkedAdmission.resolve(credential, at);
+        if (!resolved || clock() !== at) return null;
+        const challenge = await token(linkedType, resolved.key, 60, { credential, linkId: resolved.linkId });
+        return challenge.length <= 4096 ? challenge : null;
+      } catch { return null; }
+    },
+    async exchangeLinked(challenge: string, credentialProof: unknown): Promise<string | null> {
+      try {
+        const admission = input.linkedAdmission;
+        if (!admission) return null;
+        const proof = await linkedClaims(challenge);
+        if (!await admission.verify(proof.credential, credentialProof, proof, clock())) return null;
+        async function current() {
+          await linkedClaims(challenge);
+          const at = clock(), resolved = await admission!.resolve(proof.credential, at);
+          if (clock() !== at || resolved?.key !== proof.key || resolved.linkId !== proof.linkId) throw Error("Linked authority changed");
+          await linkedClaims(challenge);
+          if (clock() !== at) throw Error("Linked authority stale");
+        }
+        await current();
+        if (!await consume(proof.id, proof.expiresAt)) return null;
+        // Revocation, expiry or rotation while consuming burns the challenge and denies.
+        if (!await admission.verify(proof.credential, credentialProof, proof, clock())) return null;
+        await current();
+        return token(sessionType, proof.key, 300);
+      } catch { return null; }
+    },
     /** Caller-selected scopes may only narrow the signed grant. This challenge
      * is signed by the agent, not the delegating owner. It grants no object ACL. */
     async agentChallenge(id: string, requestedScopes: readonly string[]): Promise<string | null> {

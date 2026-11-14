@@ -1,3 +1,4 @@
+import type { LinkedSessionAdmission } from "./linked-session-admission";
 import { OAUTH_REDIRECT_URIS } from "./config";
 import { requestHost, requestIsSecure } from "../request-origin";
 import { getIdentitySecret } from "./secret";
@@ -13,12 +14,16 @@ const reply = (status: number, body: unknown) => Response.json(body, { status, h
 
 /** Shared identity route: no Squad config, ledger, owner grant or Blob client. */
 export async function siteSeaSession(request: Request, action: string, env: Readonly<Record<string, string | undefined>> = process.env,
-  fetcher: typeof fetch = fetch, clock = () => Math.floor(Date.now() / 1000)) {
+  fetcher: typeof fetch = fetch, clock = () => Math.floor(Date.now() / 1000),
+  linkedAdmission?: LinkedSessionAdmission) {
   if (!((request.method === "GET" && action === "session") ||
-      (request.method === "POST" && ["challenge", "exchange", "logout"].includes(action)))) return reply(404, { error: "not-found" });
+      (request.method === "POST" && ["challenge", "exchange", "linked-challenge", "linked-exchange", "logout"].includes(action)))) return reply(404, { error: "not-found" });
   try {
     const origin = "https://" + requestHost(request);
     if (!requestIsSecure(request) || !origins.has(origin)) return reply(403, { error: "origin" });
+    // No environment boolean, request evidence, local export or metadata mapping
+    // can supply completeness. A real owning adapter must be installed in code.
+    if (action.startsWith("linked-") && !linkedAdmission) return reply(503, { error: "linked-identity-unavailable" });
     const replay = configuredIdentityReplay(identitySessionNamespace(origin), env, fetcher, clock);
     if (!replay) return request.method === "GET" ? reply(200, { enabled: false, principal: null }) : reply(503, { error: "identity-unavailable" });
     const secret = getIdentitySecret({ ...env, NODE_ENV: "production" });
@@ -29,8 +34,8 @@ export async function siteSeaSession(request: Request, action: string, env: Read
         return reply(200, { enabled: true, principal: claims?.key ?? null, expiresAt: claims ? claims.expiresAt * 1000 : null });
       } catch { return reply(200, { enabled: true, principal: null, expiresAt: null }); }
     }
-    const sessions = createIdentitySessions({ origin, secret, clock, consume: replay.consume, challengeDomain: replay.challengeDomain });
+    const sessions = createIdentitySessions({ origin, secret, clock, consume: replay.consume, challengeDomain: replay.challengeDomain, linkedAdmission });
     const handlers = createSeaSessionHandlers({ origin, sessions });
-    return handlers[action as "challenge" | "exchange" | "logout"](request);
+    return handlers[action as "challenge" | "exchange" | "linked-challenge" | "linked-exchange" | "logout"](request);
   } catch { return reply(503, { error: "identity-unavailable" }); }
 }

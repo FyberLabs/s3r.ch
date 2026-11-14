@@ -1,5 +1,21 @@
 # s3r.ch architecture (2026-09-08)
 
+## Identity and authority
+
+The current identity model is one SEA principal per person. Linked wallets and
+Keycloak accounts are credentials, never Check owners. Feed and user ownership,
+see-grants, Granted inboxes and authenticated forum ownership use exact SEA keys.
+The shared session issuer accepts existing-key possession and has a replay-bound
+signed-link admission path; hosted signed-link admission remains unavailable
+without a complete authenticated owning source. No login creates or merges an
+identity, reconstructs a key, or grants object access. Delegated agent tokens
+retain their explicit scopes and cannot fall back to human owner cookies.
+Historical wallet-owned records remain stored without authorizing wallet access.
+See [the current identity contract](identity.md#current-ownership-model-277-443-444)
+and [signed-link admission status](linked-session-admission.md). Older wallet-era
+implementation descriptions below are historical where they describe ownership.
+
+
 Internal notes for the lab prototype. This is not a public `/research` route, not a protocol spec, and not tokenomics.
 
 s3r.ch is a Fyber Labs lab site. **Gun is the graph.** RSS3 Data Sublayer activity and other allowed sites / crypto-social sources concentrate on that graph. Popular items cache across peers. The same graph is the unique real-time streaming / chat / sharing network — **mostly browser-to-browser**, not a chat server we host.

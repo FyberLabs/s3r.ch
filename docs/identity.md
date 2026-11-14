@@ -1,26 +1,57 @@
-# s3r.ch user identity (2026-09-08)
+# s3r.ch identity
 
-## SEA transition status (#277)
+## Current ownership model (#277, #443, #444)
 
-The root identity decision is SEA public key. Wallet and OIDC credentials are
-linked login/recovery proofs. The older wallet-based sections below describe
-remaining legacy implementation, not permission to derive new principals from
-wallet addresses.
+A person has one SEA principal. Wallet addresses and Keycloak issuer/tenant/subject
+triples are linked credentials, not owners or aliases for Check. Feed authors,
+Mine user records, see-grants, Granted inboxes and forum owner operations use the
+exact SEA public key. Historical wallet rows remain readable as stored data but
+cannot authorize a new operation. Switching linked credentials does not change
+ownership. SEA keys are case-sensitive.
 
-TURN allocation now accepts only the existing five-minute SEA proof session
-(`__Host-s3rch-squad-session`, type `s3rch-identity-session-v1`) from the shared
-site issuer. Its verification-only reader cannot issue tokens and does not
-initialize Squad storage or authority services. SIWE, OIDC backup, startup linked
-metadata, challenge tokens, public demo keys and foreign-origin sessions cannot
-allocate TURN. The normal site sign-out clears the SEA session and pending
-challenge cookies too. The provider receives the generic `s3rch-peer` client hint, not a
-wallet address or SEA key. Missing/expired proof leaves the client on STUN.
-This does not add another session issuer or migrate the remaining wallet-based
-forum, feed and linked-credential routes. Delegated agent TURN admission remains
-pending current delegation-source wiring; a human token is not an agent grant.
+`createIdentitySessions` is the single five-minute session issuer. Existing-key
+login proves possession of an already held SEA key. Signed-link login uses
+`linked-challenge` and `linked-exchange` under `/api/identity/sea`: the issuer binds
+a 60-second challenge to the exact credential, signed link ID and current SEA key.
+The wallet signs challenge-bound SIWE; OIDC supplies a fresh pinned-provider ID
+token with the challenge nonce, exact issuer/audience/tenant/subject and fresh
+`auth_time`. The browser challenge cookie and origin must also match. Both paths
+issue the same SEA-subject session type and cookie. Credential-only cookies,
+startup mapping metadata and old wallet cookies confer no owner authority.
 
+Signed links and present revocation are verified through the locked SociACL
+`resolveWalletLinkNow` / `resolveOidcLinkNow` contract. A trusted owning source must
+supply every candidate and complete authenticated histories/revocations through
+the evaluation instant. Multiple eligible identities deny; the app never selects
+a newer account to merge or replace another. Authority is re-read before and
+after atomic proof consumption through the existing identity replay store.
+Missing, stale, revoked, replayed or unavailable evidence produces no session.
+No new state store, enrollment or key factory is introduced.
 
-Source of truth for login on this Next app.
+**Hosted signed-link admission is not configured.** The route returns unavailable
+until an owning adapter supplies real completeness provenance. #440's read-only
+resolver and a local link export do not establish it. The isolated unit/nightly
+fixture substitutes a synthetic single-account authority, provider and replay
+store; it proves the admission contract, not hosted availability. See
+[linked admission and nightly coverage](linked-session-admission.md).
+
+Login does not reconstruct private keys. Lost-key recovery must use the shared
+SociACL recovery policy and authenticated rotation/history contract; this change
+does not publish rotations, create identities or merge accounts. An issued session
+is short-lived authentication, not a new ACL grant; authorization remains checked
+by each consumer. Delegated agents keep their own scopes and never borrow human
+owner grants. TURN consumes the same SEA session through a verification-only
+reader; unavailable proof leaves STUN behavior intact.
+
+## Historical credential integration reference
+
+The following implementation notes describe older credential, claim and key-storage
+surfaces. Any wallet-owner wording here is historical, superseded by the current
+model above; these routes cannot supply SEA owner authority or manufacture missing
+signed-link provenance. Wallet connectors, provider authentication and claim
+verification remain separate from ownership.
+
+Historical wallet/OIDC integration notes (not the current ownership contract).
 
 This kit is **s3r.ch login** (wallet first) and, later, a Hypermesh **wallet door**. The Hypermesh portal stays Keycloak. **Do not make OIDC primary login on s3r.ch.** Panopticon Keycloak OAuth is a **backup** door only, with the same brokers Hypermesh already uses (Microsoft, GitHub, Google). See [oauth-idp.md](oauth-idp.md).
 

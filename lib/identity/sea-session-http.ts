@@ -26,7 +26,7 @@ export function createSeaSessionHandlers(input: { origin: string; sessions: Retu
     for (const value of cookies) headers.append("Set-Cookie", value);
     return Response.json(body, { status, headers });
   };
-  async function handle(request: Request, action: "challenge" | "exchange" | "logout") {
+  async function handle(request: Request, action: "challenge" | "exchange" | "linked-challenge" | "linked-exchange" | "logout") {
     try {
       if (request.method !== "POST") return response(405, { error: "method" });
       if (!matchesBrowserOrigin(request, origin) ||
@@ -54,6 +54,19 @@ export function createSeaSessionHandlers(input: { origin: string; sessions: Retu
         if (keys !== "") return response(400, { error: "request" });
         return response(200, { ok: true }, [cookie(sessionCookie, "", 0), cookie(challengeCookie, "", 0)]);
       }
+      if (action === "linked-challenge") {
+        if (keys !== "credential") return response(400, { error: "request" });
+        const challenge = await sessions.linkedChallenge(body.credential);
+        if (!challenge) return response(403, { error: "linked-identity-unavailable" });
+        return response(200, { challenge }, [cookie(challengeCookie, challenge, 60)]);
+      }
+      if (action === "linked-exchange") {
+        if (keys !== "challenge,proof" || typeof body.challenge !== "string") return response(400, { error: "request" });
+        if (body.challenge !== readCookie(request, challengeCookie)) return response(403, { error: "challenge" });
+        const token = await sessions.exchangeLinked(body.challenge, body.proof);
+        if (!token) return response(403, { error: "proof" }, [cookie(challengeCookie, "", 0)]);
+        return response(200, { ok: true }, [cookie(sessionCookie, token, 300), cookie(challengeCookie, "", 0)]);
+      }
       if (action === "challenge") {
         if (keys !== "key" || typeof body.key !== "string") return response(400, { error: "request" });
         const challenge = await sessions.challenge(body.key);
@@ -69,6 +82,8 @@ export function createSeaSessionHandlers(input: { origin: string; sessions: Retu
   return Object.freeze({
     challenge: (request: Request) => handle(request, "challenge"),
     exchange: (request: Request) => handle(request, "exchange"),
+    "linked-challenge": (request: Request) => handle(request, "linked-challenge"),
+    "linked-exchange": (request: Request) => handle(request, "linked-exchange"),
     logout: (request: Request) => handle(request, "logout"),
     async authenticate(request: Request) {
       const token = readSeaSessionCookie(request);
