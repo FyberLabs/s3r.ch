@@ -19,7 +19,7 @@ async function fixture(lost="") {
     {tenant,object},context,[{account:owner,pub:owner,identityPub:owner,epub:pair.epub}],[owner]);
   const reference={sha256:sealed.sha256,length:sealed.bytes.length};
   const grants=[owner,reader].map(accessor=>({object,owner,accessor,from:0,until:Number.MAX_SAFE_INTEGER,stated:1,epoch:2,grantRevision:2,itemCiphertextDigest:sealed.sha256}));
-  const snapshot={entries:grants.map(g=>({accessor:g.accessor,grantRevision:2,stated:1,from:0,until:g.until,scope:"direct",setId:"",hamState:0}))};
+  const snapshot={entries:grants.map(g=>({accessor:g.accessor,from:0,until:g.until,stated:1,grantRevision:2,scope:"direct",setId:"",hamState:0}))};
   const bindings={[owner]:{pub:owner,epub:pair.epub,head:0},[reader]:{pub:reader,epub:reader,head:0}};
   const plan={at:100,fence:"a".repeat(64),owner,ownerPub:owner,reader,previousEpoch:1,previousFinalizationId:"d".repeat(64),grants,snapshot,bindings};
   const applied=new Map<string,unknown>(),writes:string[]=[];let failed=false,delay=false,conflict=false;

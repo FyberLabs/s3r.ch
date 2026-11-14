@@ -7,6 +7,9 @@ import { decryptShareJournal, encryptShareJournal, shareDigest, type ShareJourna
 export type PendingShare=Readonly<{object:string;reader:string;token:string}>;
 type SignedPlan=Awaited<ReturnType<ReturnType<typeof createPrivateMediaOwner>["prepareShare"]>>;
 type Prepared=Awaited<ReturnType<ReturnType<typeof createPrivateMediaReader>["prepareSharing"]>>;
+const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):value&&typeof value==="object"
+  ?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([k,v])=>[k,canonical(v)])):value;
+const same=(a:unknown,b:unknown)=>JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
 type Draft={version:1;tenant:string;object:string;owner:string;reader:string;plan:ReturnType<typeof parseMediaSharePlan>;grants:SignedPlan["grants"];prepared:Prepared};
 function parse(value:unknown,entry:ShareEntry,tenant:string,pair:SeaPair):Draft {
   if(!value||typeof value!=="object"||Array.isArray(value))throw Error("Invalid sharing recovery");
@@ -14,10 +17,10 @@ function parse(value:unknown,entry:ShareEntry,tenant:string,pair:SeaPair):Draft 
   if(d.version!==1||d.tenant!==tenant||d.object!==entry.object||!Array.isArray(d.grants)||!d.prepared)throw Error("Invalid sharing recovery");
   const plan=parseMediaSharePlan(d.plan,d.object,d.owner,d.reader);
   if(plan.ownerPub!==pair.pub||plan.bindings[d.owner].epub!==pair.epub||d.grants.length!==plan.grants.length||
-      d.grants.some((g,i)=>JSON.stringify(g.claims)!==JSON.stringify(plan.grants[i])))throw Error("Sharing identity or grants changed");
+      d.grants.some((g,i)=>!same(g.claims,plan.grants[i])))throw Error("Sharing identity or grants changed");
   const p=d.prepared,m=p.document?.manifest;
   if(!m||m.object!==d.object||m.epoch!==plan.previousEpoch+1||p.finalization?.revisionId!==m.revisionId||
-      p.finalization.previousFinalizationId!==plan.previousFinalizationId||JSON.stringify(p.document.snapshot)!==JSON.stringify(plan.snapshot)||
+      p.finalization.previousFinalizationId!==plan.previousFinalizationId||!same(p.document.snapshot,plan.snapshot)||
       !p.reference||p.reference.sha256!==plan.grants[0].itemCiphertextDigest||!Number.isSafeInteger(p.reference.length)||
       !Array.isArray(p.wraps)||p.wraps.length!==plan.grants.length||plan.grants.some(g=>!p.wraps.some(w=>w.object===d.object&&
         w.epoch===m.epoch&&w.revisionId===m.revisionId&&w.targetId===plan.bindings[g.accessor].epub)))throw Error("Sharing recovery changed");
