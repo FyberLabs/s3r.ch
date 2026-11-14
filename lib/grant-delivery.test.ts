@@ -34,7 +34,7 @@ import { admitComposedUser, assembleMineUser, composeUser } from "./users";
 
 const ALICE = "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
 const BOB = "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
-const CAROL = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+const CAROL = "F3yDeuCsSVphgF3y2F7i_HkuKEtl6tWKmOFdnUYHLAE.Y7tYzU6-pViiQJGttA9OcibuFMOh-03znEO74u_Hv9g";
 const NOW = 1_700_000_000;
 
 function nativePost(body = "granted body", entropy = "aa11"): FeedItem {

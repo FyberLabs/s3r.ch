@@ -157,12 +157,12 @@ export function heldClaimOptions(input: {
 }): HeldClaimOption[] {
   let checksum: string;
   try {
-    checksum = getAddress(input.address);
+    checksum = isSeaPubkey(input.address) ? input.address : getAddress(input.address);
   } catch {
     return [];
   }
   const options: HeldClaimOption[] = [
-    { id: walletClaimId(checksum), label: checksum },
+    { id: isSeaPubkey(checksum) ? checksum : walletClaimId(checksum), label: checksum },
   ];
   if (input.ens) options.push({ id: ensClaimId(input.ens), label: input.ens });
   if (input.unstoppable) {

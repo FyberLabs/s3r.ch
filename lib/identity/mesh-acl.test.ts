@@ -1,3 +1,4 @@
+import { seaToPrincipalKey } from "./forum-check";
 import { legacyUserSoul } from "./legacy-user-soul";
 import { legacyGrantSoul } from "./legacy-acl-souls";
 import assert from "node:assert/strict";
@@ -25,9 +26,9 @@ import {
 } from "./mesh-acl";
 import { createMemorySeeAcl } from "./see-acl";
 
-const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const BOB = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
-const CAROL = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+const ALICE = "PtETt4g7TFkGODedsMIc2hZ0LtAlUEi_QzOR03S8IdE.kJkgmszEyKIkyEOvpPTGigkNBNpemIna4vju_OgqN0A";
+const BOB = "dB3VvagX2V5GJlNzIOXVUXmYMCiy-CyZ1QDF7oYk48Q.B3C0apw4X9xWc4NVSIexVI7rkSw1ulynGZX_Is1EgdM";
+const CAROL = "F3yDeuCsSVphgF3y2F7i_HkuKEtl6tWKmOFdnUYHLAE.Y7tYzU6-pViiQJGttA9OcibuFMOh-03znEO74u_Hv9g";
 const CLAIM = "ens:alice.eth";
 const NOW = 1_000;
 
@@ -126,10 +127,10 @@ describe("mesh Check objects", () => {
   it("feed item souls stay five-segment dest ACL paths", () => {
     const object = itemSoul("rss3:act/1#x");
     const grant = { claimId: object, accessor: BOB, from: 0, until: 80 };
-    const edge = prepareMeshSeeGrant(legacyUserSoul(ALICE), grant);
+    const edge = prepareMeshSeeGrant(ALICE, grant);
     assert.ok(edge);
     assert.equal(edge.soul.split("/").length, 5);
-    assert.equal(edge.soul.startsWith(`s3rch/acl/${ALICE}/`), true);
+    assert.equal(edge.soul.startsWith(`s3rch/acl/${seaToPrincipalKey(ALICE)}/`), true);
   });
 
   it("fail closed without dest ACL — hop and hint do not mint", () => {
@@ -194,7 +195,7 @@ describe("mesh Check objects", () => {
     const edge = prepareMeshSeeGrant(ALICE, grant, 0, 50);
     assert.ok(edge);
     putMeshSeeGrant(gun, edge);
-    assert.deepEqual(gun.nodes.get(`s3rch/acl/${ALICE}/ens:alice_eth/${BOB}`), {
+    assert.deepEqual(gun.nodes.get(`s3rch/acl/${seaToPrincipalKey(ALICE)}/ens:alice_eth/${seaToPrincipalKey(BOB)}`), {
       object: CLAIM,
       accessor: BOB,
       from: 0,

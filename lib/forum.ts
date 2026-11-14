@@ -16,7 +16,7 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { getAddress } from "viem";
+import { isSeaPubkey } from "./identity/forum-check";
 import { CHAT_BODY_MAX } from "./chat";
 
 export const FORUM_FILE_V = 1;
@@ -1396,11 +1396,7 @@ function parseDesktopPost(
 
 function checksumOwner(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
-  try {
-    return getAddress(value.trim());
-  } catch {
-    return null;
-  }
+  return isSeaPubkey(value) ? value : null;
 }
 
 function cleanLabel(value: string): string | null {

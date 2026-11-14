@@ -16,7 +16,6 @@
  */
 
 import { legacyUserSoul } from "./identity/legacy-user-soul";
-import { getAddress } from "viem";
 import { isSeaPubkey } from "./identity/forum-check";
 import { isNativePost } from "./compose";
 import {
@@ -78,17 +77,8 @@ export function grantedSoul(
   kind: GrantInboxKind,
   objectId: string,
 ): string {
-  const trimmed = accessor.trim();
-  let wallet = trimmed;
-  if (trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)) {
-    wallet = trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length);
-  }
-  try {
-    wallet = getAddress(wallet);
-  } catch {
-    wallet = wallet.trim();
-  }
-  return `${S3RCH_ROOT}/${S3RCH_GRANTED}/${wallet}/${kind}/${encodeKey(objectId)}`;
+  if (!isSeaPubkey(accessor)) throw new Error("SEA principal required");
+  return `${S3RCH_ROOT}/${S3RCH_GRANTED}/${accessor}/${kind}/${encodeKey(objectId)}`;
 }
 
 export const GRANT_DELIVERED_COPY =
@@ -176,16 +166,7 @@ export function grantDeliveryKindFromKey(
 }
 
 export function checksumAccessor(accessor: string): string | null {
-  const trimmed = accessor.trim();
-  if (!trimmed) return null;
-  const wallet = trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)
-    ? trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length)
-    : trimmed;
-  try {
-    return isSeaPubkey(wallet) ? wallet : getAddress(wallet);
-  } catch {
-    return null;
-  }
+  return isSeaPubkey(accessor) ? accessor : null;
 }
 
 /** Public graph souls. Delivery must not write these. */

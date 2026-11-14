@@ -21,8 +21,8 @@ import {
 import { createMemorySeeAcl } from "./identity/see-acl";
 import { composeRoom } from "./rooms";
 
-const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const BOB = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+const ALICE = "PtETt4g7TFkGODedsMIc2hZ0LtAlUEi_QzOR03S8IdE.kJkgmszEyKIkyEOvpPTGigkNBNpemIna4vju_OgqN0A";
+const BOB = "dB3VvagX2V5GJlNzIOXVUXmYMCiy-CyZ1QDF7oYk48Q.B3C0apw4X9xWc4NVSIexVI7rkSw1ulynGZX_Is1EgdM";
 const NOW = 1_700_000_000;
 
 function roomId(entropy = "ab12cd"): string {
@@ -62,7 +62,7 @@ describe("GunChatNode", () => {
     const built = composeChat({
       body: "  ping  ",
       roomId: roomId("deadbeef"),
-      address: ALICE.toLowerCase(),
+      address: ALICE,
       nowSeconds: NOW,
       entropy: "aabbcc",
     });
@@ -97,7 +97,7 @@ describe("composeChat", () => {
     const built = composeChat({
       body: "  a line  ",
       roomId: room,
-      address: ALICE.toLowerCase(),
+      address: ALICE,
       nowSeconds: NOW,
       entropy: "112233",
     });

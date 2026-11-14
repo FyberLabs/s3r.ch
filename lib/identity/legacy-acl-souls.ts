@@ -1,7 +1,7 @@
-/** Wallet-era feed ACL paths. Canonical callers must use acl-souls.ts.
- * Retained only for the existing feed consumer pending #277/#281 migration. */
-import { getAddress } from "viem";
-import { encodeKey, S3RCH_ROOT, S3RCH_ACL, S3RCH_USERS, type AccessorId, type CheckObjectId } from "./check";
+/** Feed object ACL paths with canonical SEA principal keys.
+ * Minted canonical objects continue to use acl-souls.ts. */
+import { seaToPrincipalKey } from "./forum-check";
+import { encodeKey, S3RCH_ROOT, S3RCH_ACL, type AccessorId, type CheckObjectId } from "./check";
 
 /**
  * Dest-ACL path key. encodeKey, then `/` → `_`, so a grant soul stays
@@ -12,21 +12,13 @@ export function legacyAclKey(id: string): string {
 }
 
 /**
- * Owner / accessor key on dest ACL. `s3rch/users/<wallet>` collapses
- * to the wallet. Anything else is legacyAclKey.
+ * Owner / accessor key on dest ACL. Only canonical SEA principal keys are
+ * accepted; credential and user-object aliases cannot become principals.
  */
 export function legacyAclPrincipalKey(id: string): string {
-  const trimmed = id.trim();
-  if (!trimmed) return "";
-  let key = trimmed;
-  if (trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)) {
-    key = trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length);
-  }
-  try {
-    return getAddress(key);
-  } catch {
-    return legacyAclKey(key);
-  }
+  const key = seaToPrincipalKey(id);
+  if (!key) throw new Error("SEA principal required");
+  return key;
 }
 
 /**

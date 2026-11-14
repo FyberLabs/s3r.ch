@@ -14,8 +14,8 @@ import {
   grantWindowFromHours,
 } from "./held-claims";
 
-const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const BOB = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+const ALICE = "PtETt4g7TFkGODedsMIc2hZ0LtAlUEi_QzOR03S8IdE.kJkgmszEyKIkyEOvpPTGigkNBNpemIna4vju_OgqN0A";
+const BOB = "dB3VvagX2V5GJlNzIOXVUXmYMCiy-CyZ1QDF7oYk48Q.B3C0apw4X9xWc4NVSIexVI7rkSw1ulynGZX_Is1EgdM";
 const CLAIM = "ens:vitalik.eth";
 
 describe("SeeAcl dest store", () => {
@@ -75,7 +75,7 @@ describe("SeeAcl dest store", () => {
 describe("held claim ids and grant form", () => {
   it("uses the claim id, not s3rch/users/{wallet}/claims/…", () => {
     const options = heldClaimOptions({
-      address: ALICE.toLowerCase(),
+      address: ALICE,
       ens: "vitalik.eth",
       unstoppable: "brad.x",
       farcaster: "dwr",
@@ -113,7 +113,7 @@ describe("held claim ids and grant form", () => {
   });
 
   it("refuses wallet recipients and requires a positive window", () => {
-    assert.equal(parseGrantAccessor(BOB.toLowerCase()), null);
+    assert.equal(parseGrantAccessor(BOB), BOB);
     assert.equal(parseGrantAccessor("not-an-address"), null);
     assert.deepEqual(grantWindowFromHours(1, 100), { from: 100, until: 3700 });
     assert.equal(grantWindowFromHours(0, 100), null);

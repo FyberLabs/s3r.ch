@@ -10,6 +10,7 @@
  * the next merge. Do not cache an allow.
  */
 
+import { isSeaPubkey } from "./forum-check";
 import { legacyAclKey, legacyAclPrincipalKey, legacyGrantSoul } from "./legacy-acl-souls";
 import type { IdentitySeeGrant } from "@/lib/feed-types";
 import {
@@ -142,7 +143,7 @@ export function prepareMeshSeeGrant(
   previousHam?: number,
   now = Date.now(),
 ): GunAclEdge | null {
-  if (!isIdentitySeeGrant(grant)) return null;
+  if (!isSeaPubkey(owner) || !isSeaPubkey(grant.accessor) || !isIdentitySeeGrant(grant)) return null;
   if (isUrlLeafId(grant.claimId) || isMetaId(grant.claimId) || isAclId(grant.claimId)) {
     return null;
   }
@@ -170,7 +171,7 @@ export function prepareMeshSeeCancel(
   const dest = owner.trim();
   const who = accessor.trim();
   const target = object.trim();
-  if (!dest || !who || !target) return null;
+  if (!isSeaPubkey(dest) || !isSeaPubkey(who) || !target) return null;
   if (isUrlLeafId(target) || isMetaId(target) || isAclId(target)) return null;
   if (isUrlLeafId(who) || isMetaId(who) || isAclId(who)) return null;
   if (isUrlLeafId(dest) || isMetaId(dest) || isAclId(dest)) return null;
@@ -227,12 +228,12 @@ export function fromGunAclNode(
     typeof recordedOwner === "string" && recordedOwner.trim()
       ? recordedOwner.trim()
       : ownerKey?.trim();
-  if (!owner) return null;
-  if (ownerKey && legacyAclPrincipalKey(owner) !== legacyAclPrincipalKey(ownerKey)) {
+  if (!owner || !isSeaPubkey(owner) || !isSeaPubkey(grant.accessor)) return null;
+  if (ownerKey && legacyAclPrincipalKey(owner) !== ownerKey) {
     return null;
   }
   if (objectKey && legacyAclKey(grant.object) !== objectKey) return null;
-  if (accessorKey && legacyAclPrincipalKey(grant.accessor) !== legacyAclPrincipalKey(accessorKey)) {
+  if (accessorKey && legacyAclPrincipalKey(grant.accessor) !== accessorKey) {
     return null;
   }
   return {
@@ -303,6 +304,7 @@ export function stateSeeGrantOnMesh(
   grant: IdentitySeeGrant,
   gun?: MeshAclGunRef | null,
 ): GunAclEdge | null {
+  if (!isSeaPubkey(owner) || !isSeaPubkey(grant.accessor)) return null;
   applySeeGrant(acl, owner, grant);
   if (!sameAccessor(acl.ownerOf(grant.claimId), owner)) {
     const aliases = [grant.claimId];
@@ -330,7 +332,7 @@ export function cancelSeeOnMesh(
   object: CheckObjectId,
   gun?: MeshAclGunRef | null,
 ): GunAclEdge | null {
-  if (!ownerOwnsObject(acl, owner, object)) return null;
+  if (!isSeaPubkey(accessor) || !ownerOwnsObject(acl, owner, object)) return null;
   cancelSee(acl, owner, accessor, object);
   const soul = legacyGrantSoul(owner, object, accessor);
   const edge = prepareMeshSeeCancel(owner, accessor, object, mesh.get(soul)?.hamState);
