@@ -18,7 +18,7 @@ async function fixture(){
  const graph={writerKey:(p:string)=>keys.has(p)?p:null,principalForKey:(p:string)=>keys.has(p)?p:null,
   checkForumSee:()=>({allowed:access}),checkPost:()=>({allowed:access})} as unknown as ForumAuthorityGraph;
  const admission=createRoomChatAdmission({graph,readerKey:()=>alice.pub,clock:()=>100});
- return {alice,bob,admission,keys,revoke:()=>{access=false;}};
+ return {alice,bob,admission,keys,revoke:()=>{access=false;}, restore:()=>{access=true;}};
 }
 test("signed chat binds author, payload, transport ID and room; unsigned rows are refused",async()=>{
  const f=await fixture();const row=await f.admission.compose("room","hello",()=>f.alice);assert.ok(row);
@@ -140,5 +140,17 @@ test("authority refresh pauses and resumes queued history without replaying its 
  await queue.resume();assert.equal(calls,11);
  ready=true;await queue.resume();
  assert.equal(calls,41);assert.equal(accepted.length,40);assert.equal(new Set(accepted).size,40);
+ queue.close();
+});
+
+test("history arriving before grants is revalidated after authority changes", async () => {
+ const {createRoomChatReceiveQueue} = await import("./room-chat-receive-queue");
+ const f=await fixture();const row=await f.admission.compose("room","waiting for grant",()=>f.alice);assert.ok(row);
+ f.revoke();const accepted:string[]=[];
+ const queue=createRoomChatReceiveQueue(f.admission,"room",message=>accepted.push(message.body));
+ await queue.enqueue(row,encodeKey(row.id));assert.deepEqual(accepted,[]);
+ await queue.resume();assert.deepEqual(accepted,[]);
+ f.restore();await queue.resume();assert.deepEqual(accepted,[row.body]);
+ await queue.resume();assert.deepEqual(accepted,[row.body]);
  queue.close();
 });
