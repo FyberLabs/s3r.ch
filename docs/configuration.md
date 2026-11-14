@@ -232,3 +232,14 @@ shared identity secret and durable replay backend are mandatory. No fallback
 creates stores, enrolls identities, accepts request-supplied history or activates
 these routes from legacy Squad configuration. These settings remain unset until
 an operator has provisioned the protected owner journal and staged credentials.
+
+### Private media sharing preparation
+
+The fixed-owner media proxy accepts `share-view` with only `{object, reader}`.
+It validates the protected plan's grants, selected bindings and projected direct
+ACL snapshot before returning it. `prepareShare` signs those exact grants using
+the held unlocked identity and refuses if the session locks during the request.
+No grant is published by preparation; it neither enrolls a reader nor activates
+storage. The signed plan must be retained in encrypted recovery storage before
+publication, followed by the matching epoch and recipient wraps. Full sharing
+publication and UI remain separate work under #301.

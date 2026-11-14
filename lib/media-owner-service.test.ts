@@ -223,3 +223,24 @@ test("next epoch context proxy binds owner and permits only object selection",as
   const changing=service(async()=>Response.json(context),async()=>++resolveCalls===1?principal:"foreign");
   assert.equal((await changing("epoch-view",request())).status,403);
 });
+
+const shareContext=(owner:string,reader:string,object:string)=>{
+  const grants=[owner,reader].map(accessor=>({object,owner,accessor,from:100000,until:200000,stated:1,epoch:2,grantRevision:2,itemCiphertextDigest:"b".repeat(64)}));
+  return {at:100,fence:"a".repeat(64),owner,ownerPub:owner,reader,previousEpoch:1,previousFinalizationId:"d".repeat(64),grants,
+    snapshot:{entries:grants.map(g=>({accessor:g.accessor,grantRevision:g.grantRevision,stated:1,from:g.from,until:g.until,scope:"direct",setId:"",hamState:0}))},
+    bindings:{[owner]:{pub:owner,epub:owner,head:0},[reader]:{pub:reader,epub:reader,head:0}}};
+};
+
+test("share proxy binds owner and recipient and checks the projected snapshot",async()=>{
+  const reader="fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
+  const context=shareContext(principal,reader,object);let calls=0;
+  const handle=service(async(url,init)=>{calls++;assert.ok(String(url).endsWith("/owner/share-view"));
+    assert.deepEqual(JSON.parse(String(init?.body)),{object,reader});return Response.json(context);});
+  assert.equal((await handle("share-view",request({object,reader}))).status,200);
+  for(const body of [{object,reader,owner:principal},{object,reader:"bad"},{object}])
+    assert.equal((await handle("share-view",request(body))).status,400);
+  assert.equal(calls,1);
+  assert.equal((await service(async()=>Response.json({...context,snapshot:{entries:[]}}))("share-view",request({object,reader}))).status,403);
+  let resolves=0;
+  assert.equal((await service(async()=>Response.json(context),async()=>++resolves===1?principal:reader)("share-view",request({object,reader}))).status,403);
+});
