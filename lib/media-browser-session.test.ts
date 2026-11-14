@@ -180,3 +180,17 @@ test("deletion uses the unlocked owner and refuses replay after identity changes
   await assert.rejects(browser.submitDeletion({...intent,ownerPub:other}));assert.equal(writes,1);
   forgetUnlockedMeshPair();await assert.rejects(browser.submitDeletion(intent));assert.equal(writes,1);
 });
+
+test("next epoch preparation uses held identity and aborts on lock",async()=>{
+  unlock();let calls=0;
+  const context={at:100,fence:view.fence,snapshot:view.snapshot,owner,ownerPub:owner,previousEpoch:1,
+    previousFinalizationId:"d".repeat(64),bindings:view.bindings};
+  const input={deviceId:"browser",keyCommitment:"c".repeat(64),settleWindowMs:3600000};
+  const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
+    calls++;assert.ok(String(url).endsWith("/epoch-view"));assert.deepEqual(JSON.parse(String(init?.body)),{object});
+    return Response.json(context);
+  });
+  assert.equal((await browser.prepareNextEpoch(object,owner,input)).document.manifest.epoch,2);assert.equal(calls,1);
+  const changing=createPrivateMediaBrowser(()=>owner,async()=>{forgetUnlockedMeshPair();return Response.json(context);});
+  await assert.rejects(changing.prepareNextEpoch(object,owner,input));
+});

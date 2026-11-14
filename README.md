@@ -187,3 +187,9 @@ allocation rather than writing a second registration index. The protected source
 still retains its own capacity limit, so this does not claim complete quota reclamation. Existing data needs explicit provider and
 reference reconciliation before selecting the new mode. ACL reader wraps must
 use the corresponding version-3 allocation-bound configuration.
+
+The private media browser can prepare the next epoch from the protected
+`epoch-view` response. It derives the parent finalization and signs one candidate
+and matching finalization without writing them. The session must remain unlocked
+through preparation. This adapter does not implement share publication or recovery;
+a caller must retain the exact signed intent before a later fenced write.
