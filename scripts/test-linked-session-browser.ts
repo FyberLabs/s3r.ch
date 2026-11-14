@@ -1,12 +1,16 @@
 /** Scheduled isolated browser/HTTP admission contract; no deployed identity. */
 import assert from "node:assert/strict";
+import { writeNightlyCaseResults } from "./nightly-case-results.mjs";
 import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright-core";
 import { linkedSessionFixture } from "./fixtures/linked-session";
 import type { LinkedCredential } from "../lib/identity/linked-session-admission";
 import { createSeaSessionHandlers } from "../lib/identity/sea-session-http";
 const names = ["wallet-linked-session", "oidc-linked-session", "replayed-proof-refused", "revoked-link-refused", "stale-source-refused", "missing-source-refused"];
 const cases = names.map(name => ({ name, status: "blocked", reason: "not-run" }));
-const report = (status: string, reason?: string) => console.log(JSON.stringify({ status, ...(reason ? { reason } : {}), cases }));
+const report = (status: string, reason?: string) => {
+  const result = writeNightlyCaseResults({ suite: "linked-session", expectedCases: names, cases });
+  console.log(JSON.stringify({ ...result, status: status === "failed" ? "failed" : result.status, ...(reason ? { reason } : {}) }));
+};
 if (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_EVENT_NAME !== "schedule") {
   report("blocked", "scheduled-ci-required"); process.exit(1);
 }

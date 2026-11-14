@@ -56,7 +56,9 @@ HTTP handlers and issuer run against these **named substitutions**:
 Readiness is a successful browser challenge with the HttpOnly cookie. Cases are
 `wallet-linked-session`, `oidc-linked-session`, `replayed-proof-refused`,
 `revoked-link-refused`, `stale-source-refused`, and `missing-source-refused`.
-The runner emits only case names, statuses and fixed refusal reasons. It never
+The runner writes sanitized per-case JUnit to `TEST_EVIDENCE_DIR/linked-session.xml`
+through the shared nightly case-results helper, for Infra ingestion into
+`results.json`. It also emits only case names, statuses and fixed refusal reasons. It never
 prints proofs, cookies, credential values or signed records. Every context and
 browser closes in `finally`; no shared service or persistent fixture is mutated.
 The isolated result does not establish hosted identity readiness. The existing
