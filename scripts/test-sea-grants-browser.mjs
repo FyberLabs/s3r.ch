@@ -15,6 +15,7 @@ async function runCase(name, exercise) {
   try { await exercise(); row.status = "passed"; }
   catch { row.status = "failed"; throw Error("sea-grants-browser-case-failed"); }
 }
+async function main() {
 const principal = () => {
   const pair = createECDH("prime256v1"); pair.generateKeys(); const pub = pair.getPublicKey();
   return `${pub.subarray(1, 33).toString("base64url")}.${pub.subarray(33).toString("base64url")}`;
@@ -55,7 +56,7 @@ function App(){
  <section aria-label="Granted inbox">{rows.map(row=><p key={row.id}>{row.body}</p>)}</section></>;
 }
 createRoot(document.getElementById('root')).render(<SeeAclProvider><GunPeerProvider><App/></GunPeerProvider></SeeAclProvider>);
-` }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" });
+` }, logLevel: "silent", bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" });
 const server = createServer((req, res) => {
   if (req.url === "/fixture.js") { res.setHeader("Content-Type", "text/javascript"); res.end(bundle.outputFiles[0].contents); }
   else { res.setHeader("Content-Type", "text/html"); res.end('<!doctype html><div id="root"></div><script src="/fixture.js"></script>'); }
@@ -96,3 +97,6 @@ try {
 } catch { report("failed"); process.exitCode = 1; } finally {
   await browser?.close(); await new Promise(resolve => server.close(resolve));
 }
+
+}
+await main().catch(() => { report("failed"); process.exitCode = 1; });
