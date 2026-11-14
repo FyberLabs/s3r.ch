@@ -44,7 +44,9 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
     if(!response.ok || response.headers.get("content-type")?.split(";")[0]!=="application/json") {
       await response.body?.cancel().catch(()=>{});throw Error("Sign in with your saved identity to view media.");
     }
-    const value=await readBoundedIdentityJson(response,4096,signal) as Record<string,unknown>|null;
+    let value:Record<string,unknown>|null;
+    try {value=await readBoundedIdentityJson(response,4096,signal) as Record<string,unknown>|null;}
+    catch {throw new SessionUnavailable();}
     signal.throwIfAborted();
     if(!value || value.enabled!==true || typeof value.principal!=="string" || !isSeaPubkey(value.principal) ||
         !Number.isSafeInteger(value.expiresAt) || (value.expiresAt as number)<=clock() ||

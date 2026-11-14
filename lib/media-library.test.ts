@@ -183,12 +183,14 @@ test("temporary session failure retains the original deletion intent without sub
   let requests=0,prepared=0,submitted=0;const intent={object:"owned"};
   const item=setup({fetcher:async()=>{
     requests++;if(requests===3)return new Response("unavailable",{status:503});
+    if(requests===4)return new Response(new ReadableStream({start(controller){controller.error(Error("connection lost"));}}),{headers:{"content-type":"application/json"}});
     return Response.json({enabled:true,principal:key,expiresAt:100000});
   },browser:()=>({catalog:async()=>({at:1,objects:["owned"],nextPage:null,principal:key}),
     prepareDeletion:async()=>{prepared++;return intent;},
     submitDeletion:async(value:unknown)=>{assert.equal(value,intent);if(++submitted===1)throw Error("lost");},
   } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
   try {await item.library.load();item.library.requestDeletion("owned");await item.library.confirmDeletion("tenant");
+    await item.library.confirmDeletion("tenant");assert.equal(submitted,1);assert.equal(item.state().deletion?.prepared,true);
     await item.library.confirmDeletion("tenant");assert.equal(submitted,1);assert.equal(item.state().deletion?.prepared,true);
     await item.library.confirmDeletion("tenant");assert.equal(submitted,2);assert.equal(prepared,1);
   }finally{item.library.dispose();}
