@@ -1665,23 +1665,23 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
         setNotice("Statement not sent. Current forum authority was unavailable.");
         return;
       }
-    let soul: string;
-    try {
-      soul = forumStatementSoul(item.id);
-    } catch {
-      setNotice("Statement was not accepted.");
-      return;
-    }
-    const wrote = await putAuthedRecord(soul, node, writer, () => {
-      const now = Math.floor(Date.now() / 1000);
-      return signingPrincipal() === writer && !!authority?.graph.checkDirectSee(item.id, writer, now).allowed &&
-        authority.graph.checkPost(item.id, writer, now).allowed &&
-        authority.graph.checkForumSee(forumId, writer, now).allowed && authority.graph.checkPost(forumId, writer, now).allowed;
-    });
-    if (wrote === "signed") { stagedStatement.current = null; setDraft(value => value.trim() === item.body ? "" : value); }
-    if (wrote === "denied" || wrote === "local") setNotice("Statement not sent. Current post authority or a mesh signature was unavailable.");
-    else if (wrote === "offline") setNotice("Statement not sent. The mesh peer was not ready.");
-    else setNotice("Statement sent.");
+      let soul: string;
+      try {
+        soul = forumStatementSoul(item.id);
+      } catch {
+        setNotice("Statement was not accepted.");
+        return;
+      }
+      const wrote = await putAuthedRecord(soul, node, writer, () => {
+        const now = Math.floor(Date.now() / 1000);
+        return signingPrincipal() === writer && !!authority?.graph.checkDirectSee(item.id, writer, now).allowed &&
+          authority.graph.checkPost(item.id, writer, now).allowed &&
+          authority.graph.checkForumSee(forumId, writer, now).allowed && authority.graph.checkPost(forumId, writer, now).allowed;
+      });
+      if (wrote === "signed") { stagedStatement.current = null; setDraft(value => value.trim() === item.body ? "" : value); }
+      if (wrote === "denied" || wrote === "local") setNotice("Statement not sent. Current post authority or a mesh signature was unavailable.");
+      else if (wrote === "offline") setNotice("Statement not sent. The mesh peer was not ready.");
+      else setNotice("Statement sent.");
     } catch { setNotice("Statement not sent. Reconnect or retry when current forum authority is available."); }
     finally { statementSending.current = false; }
   }

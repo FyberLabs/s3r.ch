@@ -427,3 +427,23 @@ are excluded by the verifier even when current-key ownership resolves correctly.
 The higher-level runtime still rejects all diagnostics, so reissuing records
 alone does not yet restore operation after rotation. Do not delete the old rows
 to work around this: the rotation acceptance gate remains pending.
+
+## Native browser statement admission
+
+The configured pilot now exposes `statementEndpoint` alongside its authority
+endpoint. The live composer uses the authenticated SEA session to submit signed
+statement ownership and grants to current forum readers. Keys remain in the
+browser. The protected source independently checks the principal, forum access,
+current key, complete history, quotas and atomic append fence.
+
+The browser verifies a fresh snapshot before signing and again after admission;
+HTTP success alone does not permit a Gun write. The final signed write also
+requires current forum read/post access and statement ownership. Disconnect,
+key changes, expiry and replaced providers invalidate pending work. A retained
+unsent draft keeps its ID for five minutes so retrying an uncertain response
+does not allocate a new object. Reader grants expire one hour after the original
+statement timestamp; retries do not extend them.
+
+The CI browser contract uses isolated synthetic identities and the real browser
+WebCrypto signer, HTTP reader and protected admission handler. It does not stage
+storage credentials, enable a live namespace, or establish deployed acceptance.
