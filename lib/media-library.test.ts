@@ -1,6 +1,7 @@
 // Session HTTP and browser state contracts: CI only.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { tagMemePng } from "./meme-png-tags";
 import { createMediaLibrary, type MediaLibraryState } from "./media-library";
 import { createPrivateMediaBrowser } from "./media-browser-session";
 import { rememberUnlockedMeshPair, forgetUnlockedMeshPair } from "./identity/unlocked-mesh";
@@ -26,7 +27,7 @@ test("catalog pagination and image bytes stay in temporary browser state",async(
     await item.library.open("unknown","tenant");assert.deepEqual(item.pages,[]);
     await item.library.load();assert.deepEqual(item.state().objects,["owned"]);assert.equal(item.state().nextPage,1);
     await item.library.open("owned","tenant");assert.deepEqual([...item.bytes],[0,0,0]);
-    assert.deepEqual(item.state().preview,{url:"blob:private",name:"image.png",mediaType:"image/png"});
+    assert.deepEqual(item.state().preview,{url:"blob:private",name:"image.png",mediaType:"image/png",tags:[]});
     await item.library.load(15);assert.deepEqual(item.revoked,["blob:private"]);assert.equal(item.state().nextPage,null);
     item.library.reset();assert.equal(item.state().loaded,false);assert.deepEqual(item.state().objects,[]);
   } finally {item.library.dispose();}
@@ -118,4 +119,19 @@ test("audio and video previews use temporary URLs and zero plaintext",async()=>{
       assert.equal(item.state().preview?.mediaType,mediaType);item.library.reset();assert.deepEqual(item.revoked,["blob:clip"]);
     } finally {item.library.dispose();}
   }
+});
+
+test("decrypted PNG tags live only with the preview and clear on identity change",async()=>{
+  const bytes=tagMemePng(new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jp1sAAAAASUVORK5CYII=","base64")),[" Team ","demo"]);
+  const item=setup({browser:()=>({
+    catalog:async()=>({at:1,objects:["owned"],nextPage:null,principal:key}),
+    status:async()=>{},open:async()=>({description:{name:"meme.png",mediaType:"image/png"},bytes}),
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    await item.library.load();await item.library.open("owned","tenant");
+    assert.deepEqual(item.state().preview?.tags,["team","demo"]);
+    assert.ok(bytes.every(value=>value===0));
+    rememberUnlockedMeshPair("test",pair);
+    assert.equal(item.state().preview,null);assert.deepEqual(item.revoked,["blob:private"]);
+  }finally{item.library.dispose();}
 });
