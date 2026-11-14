@@ -112,3 +112,19 @@ test("recipient management and cancellation use the held signing key",async()=>{
   });
   assert.deepEqual(await browser.recipients(object,owner),[other]);await browser.cancel(object,other);assert.equal(writes,1);
 });
+
+test("allocation requires the unlocked session and refuses identity changes before confirmation",async()=>{
+  const record={object,owner,issuedAt:100,sig:"signed"};let calls=0;
+  unlock();
+  const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
+    calls++;assert.ok(!String(init?.body).includes(pair.priv));assert.ok(!String(init?.body).includes(pair.epriv));
+    return Response.json(String(url).endsWith("/allocate")?{object,accepted:true}:view);
+  });
+  assert.deepEqual(await browser.allocate(record),{object});assert.equal(calls,2);
+  forgetUnlockedMeshPair();await assert.rejects(browser.allocate(record));assert.equal(calls,2);
+  unlock();let changedCalls=0;
+  const changing=createPrivateMediaBrowser(()=>owner,async()=>{
+    changedCalls++;forgetUnlockedMeshPair();return Response.json({object,accepted:true});
+  });
+  await assert.rejects(changing.allocate(record));assert.equal(changedCalls,1);
+});
