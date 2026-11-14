@@ -1,6 +1,7 @@
 // UI state/session contracts: CI only.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { MediaQuotaExceeded } from "./media-client";
 import { createMediaUploadPanel, type UploadPanelState } from "./media-upload-panel";
 import type { createPrivateMediaBrowser } from "./media-browser-session";
 import { rememberUnlockedMeshPair,forgetUnlockedMeshPair } from "./identity/unlocked-mesh";
@@ -68,4 +69,19 @@ test("reservation confirmation survives a later failure but is cleared with the 
   }finally{f.panel.dispose();}
   const refused=setup({upload:async()=>{throw Error("allocation refused");}});
   try {await refused.panel.resume();assert.equal(refused.state().allocationConfirmed,false);}finally{refused.panel.dispose();}
+});
+
+test("quota refusal preserves pending recovery, clears plaintext and reports no success", async () => {
+  const f=setup({upload:async()=>{throw new MediaQuotaExceeded();}});
+  try {
+    await f.panel.inspect();
+    await f.panel.resume();
+    assert.equal(f.state().pending?.name,"private.png");
+    assert.match(f.state().message,/Storage quota reached/);
+    assert.match(f.state().message,/did not complete/);
+    await f.panel.upload(new File([new Uint8Array([1])],"x.png",{type:"image/png"}));
+    assert.equal(f.held()![0],0);
+    assert.equal(f.state().busy,false);
+    assert.deepEqual(f.calls,["upload","upload"]);
+  } finally { f.panel.dispose(); }
 });
