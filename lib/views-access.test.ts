@@ -6,8 +6,8 @@ import { applyPick, type PickerSource } from "./views-picker";
 import { formatCanonical, type SourceKind, type SourceRef } from "./views-source-ref";
 import { validateWindow, type View, type ViewWindow } from "./views-window";
 
-const ME = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const ORG = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+const ME = "PtETt4g7TFkGODedsMIc2hZ0LtAlUEi_QzOR03S8IdE.kJkgmszEyKIkyEOvpPTGigkNBNpemIna4vju_OgqN0A";
+const ORG = "dB3VvagX2V5GJlNzIOXVUXmYMCiy-CyZ1QDF7oYk48Q.B3C0apw4X9xWc4NVSIexVI7rkSw1ulynGZX_Is1EgdM";
 const NET = `s3rch:https://s3r.ch:443;key=${"a".repeat(64)}`;
 const LAB = `s3rch:https://lab.fyberlabs.com:443;key=${"b".repeat(64)}`;
 
