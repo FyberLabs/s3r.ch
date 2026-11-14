@@ -34,13 +34,13 @@ for (const mode of ["eose", "close", "error", "timeout"] as const) {
 
 import {NOSTR_FRAME_BYTES_MAX,NOSTR_WINDOW_BYTES_MAX} from "./nostr";
 const baseWebSocket=globalThis.WebSocket;
-async function windowFixture(t:import("node:test").TestContext,frames:(id:string)=>unknown[],limit=2){
+async function windowFixture(t:import("node:test").TestContext,frames:(id:string)=>unknown[],limit=2,filter:import("./nostr-filter").NostrFilter={authors:["b".repeat(64)],kinds:[1],limit}){
  const original=baseWebSocket;let closed=0;
  class Socket extends EventTarget{static OPEN=1;readyState=1;constructor(_url:string){super();queueMicrotask(()=>this.dispatchEvent(new Event("open")));}
   send(value:string){const [type,id]=JSON.parse(value);if(type!=="REQ")return;for(const data of frames(id))this.dispatchEvent(new MessageEvent("message",{data}));}
   close(){closed++;this.readyState=3;this.dispatchEvent(new Event("close"));}}
  globalThis.WebSocket=Socket as unknown as typeof WebSocket;t.after(()=>{globalThis.WebSocket=original;});
- const result=queryNostrRelay("wss://example.org",{authors:["b".repeat(64)],kinds:[1],limit});return {result,closed:()=>closed};
+ const result=queryNostrRelay("wss://example.org",filter);return {result,closed:()=>closed};
 }
 const eventFrame=(id:string,changes:Record<string,unknown>={})=>JSON.stringify(["EVENT",id,{id:"a".repeat(64),pubkey:"b".repeat(64),kind:1,...changes}]);
 test("relay refuses oversized, binary, cumulative and excessive-frame windows",async t=>{
@@ -93,4 +93,11 @@ test("public pulls normalize complete windows and exclude failed relay windows",
  assert.equal(partial.items[0].author,fixtureAuthors[0]);
  tamperFirst=true;const forged=await fetchPublicNostr(fixtureAuthors);assert.equal(forged.sourcesOk,0);assert.deepEqual(forged.windows,[]);assert.deepEqual(forged.completeSources,[]);
  for(const authors of [[],["bad"],Array(17).fill(fixtureAuthors[0])])await assert.rejects(fetchPublicNostr(authors),/Invalid Nostr authors/);
+});
+
+test("relay applies exact event IDs and reference tags before admitting windows",async t=>{
+ for(const filter of [{ids:["a".repeat(64)],kinds:[1],limit:1},{"#e":["c".repeat(64)],kinds:[1],limit:1}]){
+  const h=await windowFixture(t,id=>[eventFrame(id,{id:"d".repeat(64),tags:[]}),eventFrame(id,{tags:[["e","c".repeat(64)]]}),JSON.stringify(["EOSE",id])],1,filter);
+  assert.equal((await h.result).length,1);
+ }
 });

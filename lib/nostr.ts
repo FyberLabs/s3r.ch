@@ -1,3 +1,5 @@
+import {boundedNostrFilter,matchesNostrFilter,type NostrFilter} from "./nostr-filter";
+export type {NostrFilter} from "./nostr-filter";
 import { verifiedNostrEvent } from "./nostr-event";
 import { nostrReply } from "./feed-reply";
 import { mediaFields, nostrMedia } from "./feed-media-adapters";
@@ -34,11 +36,6 @@ export const PUBLIC_NOSTR_PUBKEYS = [
   "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2",
 ] as const;
 
-export type NostrFilter = {
-  authors: string[];
-  kinds: number[];
-  limit: number;
-};
 
 export function nostrPermalink(id: string): string {
   return HEX64.test(id) ? `https://njump.me/${id.toLowerCase()}` : "";
@@ -129,13 +126,7 @@ export async function queryNostrRelay(
 }
 
 async function queryRelay(relay: string, filter: NostrFilter): Promise<unknown[]> {
-  if (!Array.isArray(filter.authors) || !filter.authors.length || filter.authors.length > 16 ||
-      filter.authors.some(author => typeof author !== "string" || !HEX64.test(author)) ||
-      !Array.isArray(filter.kinds) || !filter.kinds.length || filter.kinds.length > 8 ||
-      filter.kinds.some(kind => !Number.isSafeInteger(kind) || kind < 0 || kind > 65535) ||
-      !Number.isSafeInteger(filter.limit) || filter.limit < 1 || filter.limit > 100) throw new Error("Invalid Nostr window filter");
-  // Copy caller-owned arrays before awaiting socket events.
-  filter = { authors: filter.authors.map(author => author.toLowerCase()), kinds: [...filter.kinds], limit: filter.limit };
+  filter = boundedNostrFilter(filter);
   if (typeof WebSocket === "undefined") {
     throw new Error("Nostr pull needs WebSocket.");
   }
@@ -196,8 +187,7 @@ async function queryRelay(relay: string, filter: NostrFilter): Promise<unknown[]
       if (!frame) return;
       if (frame.kind === "event") {
         const event = frame.event;
-        if (!isRecord(event) || typeof event.pubkey !== "string" || !filter.authors.includes(event.pubkey.toLowerCase()) ||
-            typeof event.kind !== "number" || !filter.kinds.includes(event.kind)) return;
+        if (!isRecord(event) || !matchesNostrFilter(event,filter)) return;
         if (events.length >= filter.limit) { finish(() => reject(new Error("Nostr window exceeds its bounds"))); return; }
         events.push(event);
         return;
