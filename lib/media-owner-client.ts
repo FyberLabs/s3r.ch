@@ -1,3 +1,4 @@
+import { parseForumObjectRecord, type UnverifiedObjectRecord } from "./identity/forum-object-record";
 import { isMediaCatalogPageNumber, parseMediaCatalogPage } from "./media-catalog";
 import { signPrivateMediaGrant, signPrivateMediaEpoch, signPrivateMediaFinalization, signPrivateMediaStatus } from "sociacl-ids/private-media";
 import type { ItemReaderWrap } from "sociacl-ids";
@@ -21,7 +22,7 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
   const fetchedAt = new WeakMap<object, number>();
   async function request(action: string, body: unknown, signal: AbortSignal): Promise<Record<string, unknown>> {
     const started=clock();
-    const deadline=AbortSignal.any([signal,AbortSignal.timeout(4000)]), encoded=JSON.stringify(body);
+    const deadline=AbortSignal.any([signal,AbortSignal.timeout(action === "allocate" ? 6000 : 4000)]), encoded=JSON.stringify(body);
     if (new TextEncoder().encode(encoded).length>100000) throw Error("Private media request too large");
     deadline.throwIfAborted();
     const response=await fetcher("/api/media/owner/"+action,{method:"POST",credentials:"same-origin",redirect:"error",cache:"no-store",
@@ -66,6 +67,17 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
     finally { held.fill(0); }
   }
   return Object.freeze({
+    async allocate(input: UnverifiedObjectRecord, signal?: AbortSignal) {
+      const parsed = parseForumObjectRecord(input);
+      if (!parsed || !objectOK(parsed.record.object)) throw Error("Invalid media ownership record");
+      const record = parsed.record, deadline = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(10000)]);
+      const result = await request("allocate", record, deadline);
+      if (!exact(result, ["object", "accepted"]) || result.object !== record.object || result.accepted !== true)
+        throw Error("Private media allocation refused");
+      // Confirm the protected object view; a transport acknowledgement grants no reader access.
+      await view(record.object, record.owner, deadline);
+      return Object.freeze({ object: record.object });
+    },
     async catalog(page: number, signal?: AbortSignal) {
       if (!isMediaCatalogPageNumber(page)) throw Error("Invalid media catalog request");
       const result = await request("catalog", {page}, signal ?? new AbortController().signal);

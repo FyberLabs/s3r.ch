@@ -126,3 +126,15 @@ test("cancellation drafts bind the stable owner, object and recipient",async()=>
     {...draft,grant:{...grant,epoch:0}},{...draft,grant:{...grant,itemCiphertextDigest:"bad"}}])
     assert.equal((await service(async()=>Response.json(bad))("cancel-view",request({object,reader:principal}))).status,403);
 });
+
+test("allocation uses the bound principal and separate ACL route without browser authority settings", async()=>{
+  const record={object,owner:principal,issuedAt:100,sig:"signed"};let calls=0;
+  const handle=service(async(url,init)=>{calls++;assert.equal(String(url),config.origin+"/api/v1/acl/sociacl/media/allocate");
+    assert.deepEqual(JSON.parse(String(init?.body)),record);return Response.json({object,accepted:true});});
+  assert.equal((await handle("allocate",request(record))).status,200);
+  assert.equal((await handle("allocate",request({...record,owner:"foreign"}))).status,403);
+  assert.equal((await handle("allocate",request({...record,policy:{}}))).status,400);
+  assert.equal(calls,1);
+  assert.equal((await service(async()=>Response.json({object:"foreign",accepted:true}))("allocate",request(record))).status,403);
+  assert.equal((await service(async()=>Response.json({object,accepted:false}))("allocate",request(record))).status,403);
+});

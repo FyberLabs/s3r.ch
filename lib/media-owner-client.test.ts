@@ -148,3 +148,22 @@ test("recipients are read-only and cancellation signs only the bound zero-stated
   const empty=createPrivateMediaOwner(async()=>Response.json({...view,snapshot:{entries:[{...entry,stated:0}]}}),()=>0);
   assert.deepEqual(await empty.recipients(object,owner),[]);
 });
+
+test("allocation snapshots only signed ownership and confirms a fresh protected object view",async()=>{
+  const record={object,owner,issuedAt:100,sig:"signed"};const calls:string[]=[];
+  const client=createPrivateMediaOwner(async(url,init)=>{
+    calls.push(action(url)!);
+    if(action(url)==="allocate"){
+      assert.deepEqual(JSON.parse(String(init?.body)),record);
+      return Response.json({object,accepted:true});
+    }
+    return Response.json(view);
+  },()=>100);
+  assert.deepEqual(await client.allocate({...record,secret:"never sent"} as typeof record),{object});
+  assert.deepEqual(calls,["allocate","view"]);
+  await assert.rejects(client.allocate({...record,object:"bad"}));
+  for(const response of [{object:"wrong",accepted:true},{object,accepted:false}]){
+    await assert.rejects(createPrivateMediaOwner(async()=>Response.json(response)).allocate(record));
+  }
+  await assert.rejects(createPrivateMediaOwner(async(url)=>action(url)==="allocate" ? Response.json({object,accepted:true}) : new Response(null,{status:403})).allocate(record));
+});
