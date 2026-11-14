@@ -30,22 +30,35 @@ async function digest(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
 /** Each call makes a fresh 256-bit key and 96-bit nonce. Retry storage with the
  * returned bytes and digest, rather than encrypting again under a reused key. */
 export async function sealMedia(plaintext: Uint8Array, binding: MediaBinding): Promise<SealedMedia> {
-  const data = copy(plaintext, 1, MEDIA_PLAIN_MAX), additionalData = aad(binding);
-  const key = crypto.getRandomValues(new Uint8Array(32));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const imported = await crypto.subtle.importKey("raw", key, "AES-GCM", false, ["encrypt"]);
-  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData, tagLength: 128 }, imported, data));
-  const bytes = new Uint8Array(HEADER.length + iv.length + ciphertext.length);
-  bytes.set(HEADER); bytes.set(iv, HEADER.length); bytes.set(ciphertext, HEADER.length + iv.length);
-  return { bytes, sha256: await digest(bytes), key };
+  const additionalData = aad(binding), data = copy(plaintext, 1, MEDIA_PLAIN_MAX);
+  const key = new Uint8Array(32);
+  let returned = false;
+  try {
+    crypto.getRandomValues(key);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const imported = await crypto.subtle.importKey("raw", key, "AES-GCM", false, ["encrypt"]);
+    const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData, tagLength: 128 }, imported, data));
+    const bytes = new Uint8Array(HEADER.length + iv.length + ciphertext.length);
+    bytes.set(HEADER); bytes.set(iv, HEADER.length); bytes.set(ciphertext, HEADER.length + iv.length);
+    const sha256 = await digest(bytes);
+    returned = true;
+    return { bytes, sha256, key };
+  } finally {
+    data.fill(0);
+    // The caller owns a successfully returned key; failures transfer no key.
+    if (!returned) key.fill(0);
+  }
 }
 
 /** No plaintext is returned until address, envelope, binding and GCM tag verify.
  * The caller must obtain both binding and key through its current Check grant. */
 export async function openMedia(stored: Uint8Array, sha256: string, key: Uint8Array, binding: MediaBinding): Promise<Uint8Array> {
-  const bytes = copy(stored, OVERHEAD + 1, MEDIA_STORED_MAX), rawKey = copy(key, 32, 32), additionalData = aad(binding);
-  if (!/^[0-9a-f]{64}$/.test(sha256) || HEADER.some((value, i) => bytes[i] !== value) || await digest(bytes) !== sha256)
-    throw new Error("Invalid media envelope");
-  const imported = await crypto.subtle.importKey("raw", rawKey, "AES-GCM", false, ["decrypt"]);
-  return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.slice(4, 16), additionalData, tagLength: 128 }, imported, bytes.slice(16)));
+  const additionalData = aad(binding), bytes = copy(stored, OVERHEAD + 1, MEDIA_STORED_MAX);
+  const rawKey = copy(key, 32, 32);
+  try {
+    if (!/^[a-f0-9]{64}$/.test(sha256) || HEADER.some((value, i) => bytes[i] !== value) || await digest(bytes) !== sha256)
+      throw new Error("Invalid media envelope");
+    const imported = await crypto.subtle.importKey("raw", rawKey, "AES-GCM", false, ["decrypt"]);
+    return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.slice(4, 16), additionalData, tagLength: 128 }, imported, bytes.slice(16)));
+  } finally { rawKey.fill(0); }
 }
