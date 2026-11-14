@@ -1,3 +1,5 @@
+"use client";
+import { useEffect, useRef } from "react";
 import { PostContent, postCardClassName } from "./PostContent";
 import { mediaPreviewKind } from "@/lib/media-preview";
 export function PrivateMediaPreview({preview}: {preview:{url:string;name:string;mediaType:string;tags?:readonly string[]}}) {
@@ -16,4 +18,15 @@ export function PrivateMediaPreview({preview}: {preview:{url:string;name:string;
     </figure>
     </PostContent>
   </article>;
+}
+
+function PrivateMediaPlayer({kind,url,name}: {kind:"audio"|"video";url:string;name:string}) {
+  const media=useRef<HTMLMediaElement|null>(null);
+  useEffect(()=>{
+    const element=media.current;
+    return ()=>{if(element){element.pause();element.removeAttribute("src");element.load();}};
+  },[]);
+  return kind==="audio"
+    ? <audio ref={element=>{media.current=element;}} controls preload="metadata" src={url} aria-label={name} className="w-full"/>
+    : <video ref={element=>{media.current=element;}} controls playsInline preload="metadata" src={url} aria-label={name} className="max-h-[70vh] max-w-full"/>;
 }
