@@ -11,11 +11,12 @@ class SessionUnavailable extends Error {}
 
 export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly string[]; page: number;
   nextPage: number | null; loaded: boolean; message: string;
+  granted: Readonly<{objects:readonly string[];page:number;nextPage:number|null}> | null;
   cleanup: Readonly<{objects:readonly MediaCleanupItem[];page:number;nextPage:number|null}> | null;
   deletion: Readonly<{object:string;prepared:boolean}> | null;
   audience: Readonly<{object:string;readers:readonly string[]}> | null;
   preview: Readonly<{ url: string; name: string; mediaType: string; tags?:readonly string[] }> | null }>;
-const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null});
+const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null});
 
 /** Private, in-memory navigation. Never persists catalog entries or plaintext. */
 export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, options: {
@@ -130,6 +131,13 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         if(current()){owner=catalog.principal;publish({...state,objects:catalog.objects,page,nextPage:catalog.nextPage,loaded:true,audience:null});}
       });
     },
+    loadGranted(page=0) {
+      if(state.deletion)return Promise.resolve();
+      return operation(async(signal,current)=>{
+        const catalog=await browser.grantedCatalog(page,signal);
+        if(current())publish({...state,granted:{objects:catalog.objects,page,nextPage:catalog.nextPage},audience:null});
+      });
+    },
     recipients(object: string) {
       if(state.deletion || !state.objects.includes(object) || !owner)return Promise.resolve();
       const principal=owner;
@@ -146,10 +154,12 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       });
     },
     open(object: string, tenant: string) {
-      if(state.deletion || !state.objects.includes(object))return Promise.resolve();
+      if(state.deletion || (!state.objects.includes(object) && !state.granted?.objects.includes(object)))return Promise.resolve();
       return operation(async(signal,current)=>{
-        if (!owner) throw Error("Media owner unavailable");
-        await browser.status(object,owner,signal);
+        if(state.objects.includes(object)) {
+          if (!owner) throw Error("Media owner unavailable");
+          await browser.status(object,owner,signal);
+        }
         const file=await browser.open(object,tenant,signal);
         try {
           if(!current())return;

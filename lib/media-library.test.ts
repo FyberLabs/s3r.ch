@@ -222,3 +222,31 @@ test("identity reset discards late cleanup navigation",async()=>{
     assert.equal(item.state().cleanup,null);assert.equal(item.state().busy,false);
   }finally{release();item.library.dispose();}
 });
+
+test("granted navigation opens without owner signing and never enables owner controls",async()=>{
+  let statuses=0,opens=0;const bytes=new Uint8Array([1,2,3]);
+  const item=setup({browser:()=>({
+    grantedCatalog:async(page:number)=>({at:1,objects:["shared"],nextPage:page===15?null:page+1,principal:key}),
+    status:async()=>{statuses++;},open:async()=>{opens++;return {description:{name:"shared.png",mediaType:"image/png"},bytes};},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    await item.library.loadGranted();assert.deepEqual(item.state().granted?.objects,["shared"]);
+    item.library.requestDeletion("shared");assert.equal(item.state().deletion,null);
+    await item.library.recipients("shared");assert.equal(item.state().audience,null);
+    await item.library.open("shared","tenant");assert.equal(opens,1);assert.equal(statuses,0);
+    assert.deepEqual([...bytes],[0,0,0]);assert.ok(item.state().preview);
+    await item.library.loadGranted(15);assert.equal(item.state().granted?.nextPage,null);
+    item.library.reset();assert.equal(item.state().granted,null);assert.equal(item.state().preview,null);
+  } finally {item.library.dispose();}
+});
+test("revoked granted delivery clears the catalog and old previews",async()=>{
+  const item=setup({browser:()=>({
+    grantedCatalog:async()=>({at:1,objects:["shared"],nextPage:1,principal:key}),
+    open:async()=>{throw Error("revoked");},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    await item.library.loadGranted();await item.library.open("shared","tenant");
+    assert.equal(item.state().granted,null);assert.equal(item.state().preview,null);
+    assert.match(item.state().message,/unavailable/);
+  } finally {item.library.dispose();}
+});
