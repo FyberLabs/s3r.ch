@@ -105,7 +105,6 @@ function writeDiscoverTagQuery(tags: readonly string[]): void {
 }
 
 export function FeedStream() {
-  const { current: roomAuthority, revision: roomAuthorityRevision } = useRoomAuthority();
   const [tab, setTab] = useState<FeedTab>("public");
   const [accountOpen, setAccountOpen] = useState(false);
   const [sharePeers, setSharePeers] = useState(false);
@@ -140,6 +139,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
   sharePeers: boolean; setSharePeers: Dispatch<SetStateAction<boolean>>;
   openRoomId: string | null; setOpenRoomId: Dispatch<SetStateAction<string | null>>;
 }) {
+  const { current: roomAuthority, revision: roomAuthorityRevision } = useRoomAuthority();
   // Every private overlay, child draft, selection and subscription belongs to this
   // mount. A resolved owner change replaces it; a refresh retains but hides it.
   const session = identity ?? null;
@@ -695,6 +695,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     if (!roomAuthority || !await roomAuthority.admit(room, true)) {
       setRoomShareMessage("Room access could not be shared."); return;
     }
+    if (!canMutate()) return;
     const prepared = prepareShareRoomIntoMesh(see.acl, room, objectOwner(session));
     if ("denied" in prepared) {
       setRoomShareMessage("Could not share.");

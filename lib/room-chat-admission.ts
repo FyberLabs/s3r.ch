@@ -70,6 +70,11 @@ export function createRoomChatAdmission(input: {
   }
   return Object.freeze({
     receive,
+    canCompose(room: string, currentPair: () => SeaPair | null): boolean {
+      const pair = currentPair(), at = clock();
+      const author = pair && graph.principalForKey(pair.pub, at);
+      return !!pair && !!author && allowed({ id: "", room, author, body: "", ts: at, v: 1 }, pair.pub);
+    },
     valid: (row: ChatMessage) => proofs.valid(row),
     readable: (rows: readonly ChatMessage[], room: string) => rows.filter(row => row.room === room && proofs.valid(row)),
     reset: () => proofs.reset(),

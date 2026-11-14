@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { admitComposedChat, type ChatMessage } from "@/lib/chat";
-import { canPlayRoomGame, composeRoomGame, roomGames, type RoomGameAction } from "@/lib/room-game";
+import { type ChatMessage } from "@/lib/chat";
+import { admittedRoomGames, type RoomGameAction } from "@/lib/room-game";
 import { isPresenceLive, shortPresenceAddress, type PresenceEntry } from "@/lib/presence";
-import { useSeeAcl } from "./SeeAclProvider";
+import { useRoomAuthority } from "./RoomAuthorityProvider";
 import { objectOwner, useIdentitySession } from "./useIdentitySession";
 import { btnPrimary, field } from "@/lib/brand-ui";
 
@@ -12,29 +12,29 @@ export function RoomGame({ roomId, messages, presence, onPublicGraph, seedWsUp, 
   roomId: string; messages: ChatMessage[]; presence: PresenceEntry[]; onPublicGraph: boolean; seedWsUp: boolean;
   onComposed: (message: ChatMessage, putOnGun: boolean) => void;
 }) {
-  const session = useIdentitySession(), see = useSeeAcl();
+  const session = useIdentitySession();
+  const { current: authority } = useRoomAuthority();
   const actor = session ? objectOwner(session) : null;
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const current = useRef({ actor, roomId, see, onPublicGraph });
-  current.current = { actor, roomId, see, onPublicGraph };
+  const current = useRef({ actor, roomId, authority, onPublicGraph });
+  current.current = { actor, roomId, authority, onPublicGraph };
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   useEffect(() => { const timer = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 10_000); return () => clearInterval(timer); }, []);
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState("");
-  const games = roomGames(messages, roomId), game = games.find(row => row.id === selected) ?? games[0];
+  const games = authority ? admittedRoomGames(messages, roomId, authority.admission) : [], game = games.find(row => row.id === selected) ?? games[0];
   const connected = (address: string | null) => !!address && presence.some(row => row.room === roomId && row.address === address && isPresenceLive(row, now));
   const turn = game && (game.turn === "X" ? game.x : game.o);
-  const canPlay = !!actor && !!see?.acl && onPublicGraph && !busy && canPlayRoomGame(see.acl, roomId, actor, now);
+  const canPlay = !!actor && !!authority && onPublicGraph && !busy && authority.admission.canCompose(roomId, authority.pair);
   async function send(action: RoomGameAction) {
-    if (!actor || !see?.acl || !onPublicGraph || busy || !canPlayRoomGame(see.acl, roomId, actor, Math.floor(Date.now() / 1000))) return;
+    if (!actor || !authority || !onPublicGraph || busy || !authority.admission.canCompose(roomId, authority.pair)) return;
     setBusy(true); setNotice("");
     try {
-      const message = composeRoomGame(roomId, actor, action);
-      if (!message || "denied" in admitComposedChat(see.acl, message, actor)) { setNotice("Room access is required to play."); return; }
-      await see.persist();
-      if (!mounted.current || current.current.actor !== actor || current.current.roomId !== roomId || current.current.see !== see || !current.current.onPublicGraph ||
-          !canPlayRoomGame(see.acl, roomId, actor, Math.floor(Date.now() / 1000)) || "denied" in admitComposedChat(see.acl, message, actor)) return;
+      const message = await authority.admission.compose(roomId, "s3rch-game:v1:" + JSON.stringify(action), authority.pair);
+      if (!message) { setNotice("Room access is required to play."); return; }
+      if (!mounted.current || current.current.actor !== actor || current.current.roomId !== roomId || current.current.authority !== authority || !current.current.onPublicGraph ||
+          !authority.admission.valid(message)) return;
       onComposed(message, true);
       if (action[0] === "start") setSelected(message.id);
     } catch { setNotice("Could not send that move. Try again."); }

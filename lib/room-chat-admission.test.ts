@@ -3,6 +3,7 @@ import test from "node:test";
 import { createRequire } from "node:module";
 import { createRoomChatAdmission } from "./room-chat-admission";
 import { signForumRecord } from "./forum-sign";
+import { admittedRoomGames, roomGames } from "./room-game";
 import { admittedRoomTasks } from "./room-tasks";
 import { encodeKey } from "./identity/check";
 import type { ForumAuthorityGraph } from "./identity/forum-authority";
@@ -61,4 +62,24 @@ test("locking or replacing the key during asynchronous receive cancels a pending
   });
   assert.equal(composed, null, replacement);
  }
+});
+
+
+test("signed games use admitted compact predecessors and lose visibility on revocation", async () => {
+ const f = await fixture();
+ const send = (action: unknown[], pair: SeaPair) => f.admission.compose("room", "s3rch-game:v1:" + JSON.stringify(action), () => pair);
+ assert.equal(f.admission.canCompose("room", () => f.alice), true);
+ assert.equal(f.admission.canCompose("room", () => null), false);
+ const start = await send(["start"], f.alice); assert.ok(start);
+ const join = await send(["join", start.id, start.id], f.bob); assert.ok(join);
+ const move = await send(["move", start.id, join.id, 4], f.alice); assert.ok(move);
+ const wrongTurn = await send(["move", start.id, move.id, 0], f.alice); assert.ok(wrongTurn);
+ const rows = [wrongTurn, move, join, start];
+ const game = admittedRoomGames(rows, "room", f.admission)[0];
+ assert.equal(game.x, f.alice.pub); assert.equal(game.o, f.bob.pub);
+ assert.equal(game.board[4], "X"); assert.equal(game.board[0], null); assert.equal(game.head, move.id);
+ assert.deepEqual(roomGames(rows, "room"), []);
+ assert.deepEqual(admittedRoomGames(rows.map(row => ({...row})), "room", f.admission), []);
+ f.revoke(); assert.equal(f.admission.canCompose("room", () => f.alice), false);
+ assert.deepEqual(admittedRoomGames(rows, "room", f.admission), []);
 });
