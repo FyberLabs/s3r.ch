@@ -23,8 +23,9 @@ function PrivateMediaPlayer({kind,url,name}: {kind:"audio"|"video";url:string;na
   const media=useRef<HTMLMediaElement|null>(null);
   useEffect(()=>{
     const element=media.current;
+    if(element)element.setAttribute("src",url);
     return ()=>{if(element){element.pause();element.removeAttribute("src");element.load();}};
-  },[]);
+  },[url]);
   return kind==="audio"
     ? <audio ref={element=>{media.current=element;}} controls preload="metadata" src={url} aria-label={name} className="w-full"/>
     : <video ref={element=>{media.current=element;}} controls playsInline preload="metadata" src={url} aria-label={name} className="max-h-[70vh] max-w-full"/>;
