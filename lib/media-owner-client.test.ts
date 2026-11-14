@@ -210,3 +210,33 @@ test("recovery preparation and probes refuse foreign scopes, keys and malformed 
     await assert.rejects(createPrivateMediaOwner(async()=>Response.json(result),()=>100).uploadState(object,"epoch",{},signal));
   await assert.rejects(client.uploadState("bad","epoch",{},signal));
 });
+
+test("deletion preparation signs once and explicit retry sends the identical proof",async()=>{
+  const tenant="11111111-1111-4111-8111-111111111111";
+  const claims={tenant,object,owner,objectVersion:3,fence:view.fence,issuedAt:100000,expiresAt:160000};
+  let drafts=0;const writes:unknown[]=[];
+  const client=createPrivateMediaOwner(async(url,init)=>{
+    if(action(url)==="delete-view"){drafts++;return Response.json({at:100,ownerPub:owner,claims});}
+    writes.push(JSON.parse(String(init?.body)));
+    if(writes.length===1)throw Error("lost response");
+    return Response.json({accepted:true,command:"f".repeat(64),cleanup:"pending"});
+  },()=>100);
+  const intent=await client.prepareDeletion(tenant,object,owner,key());assert.equal(writes.length,0);
+  await assert.rejects(client.submitDeletion(intent));
+  assert.deepEqual(await client.submitDeletion(intent),{command:"f".repeat(64),cleanup:"pending"});
+  assert.equal(drafts,1);assert.deepEqual(writes[0],writes[1]);
+  assert.equal((writes[0] as {proof:{signature:string}}).proof.signature.length,128);
+});
+test("deletion refuses stale or foreign drafts and never treats pending cleanup as completed",async()=>{
+  const tenant="11111111-1111-4111-8111-111111111111";
+  const claims={tenant,object,owner,objectVersion:1,fence:view.fence,issuedAt:100000,expiresAt:160000};
+  for(const draft of [{at:100,ownerPub:other,claims},{at:100,ownerPub:owner,claims:{...claims,object:"bad"}}]){
+    let calls=0;const client=createPrivateMediaOwner(async()=>{calls++;return Response.json(draft);},()=>100);
+    await assert.rejects(client.prepareDeletion(tenant,object,owner,key()));assert.equal(calls,1);
+  }
+  let ticks=0;const stale=createPrivateMediaOwner(async()=>Response.json({at:100,ownerPub:owner,claims}),()=>ticks++?105:100);
+  await assert.rejects(stale.prepareDeletion(tenant,object,owner,key()),PrivateMediaConflict);
+  const client=createPrivateMediaOwner(async(url)=>action(url)==="delete-view"?Response.json({at:100,ownerPub:owner,claims}):Response.json({accepted:true,command:"f".repeat(64),cleanup:"complete"}),()=>100);
+  const intent=await client.prepareDeletion(tenant,object,owner,key());await assert.rejects(client.submitDeletion(intent));
+  await assert.rejects(client.prepareDeletion(tenant,"bad",owner,key()));
+});

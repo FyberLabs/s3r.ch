@@ -1,6 +1,7 @@
+import { parseMediaDeletionDraft, parseMediaDeletionIntent, type MediaDeletionIntent } from "./media-deletion";
 import { parseForumObjectRecord, type UnverifiedObjectRecord } from "./identity/forum-object-record";
 import { isMediaCatalogPageNumber, parseMediaCatalogPage } from "./media-catalog";
-import { signPrivateMediaGrant, signPrivateMediaEpoch, signPrivateMediaFinalization, signPrivateMediaStatus } from "sociacl-ids/private-media";
+import { signPrivateMediaGrant, signPrivateMediaEpoch, signPrivateMediaFinalization, signPrivateMediaStatus, signPrivateMediaDeletion } from "sociacl-ids/private-media";
 import type { ItemReaderWrap } from "sociacl-ids";
 import type { MediaCiphertextReference } from "./media-client";
 import { MEDIA_STORED_MAX } from "./media-crypto";
@@ -67,6 +68,24 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
     finally { held.fill(0); }
   }
   return Object.freeze({
+    async prepareDeletion(tenant:string,object:string,owner:string,scalar:Uint8Array,signal?:AbortSignal):Promise<MediaDeletionIntent> {
+      return withKey(scalar,signal,async(key,deadline)=>{
+        if(!objectOK(object)||!isSeaPubkey(owner))throw Error("Invalid media deletion owner");
+        const held=await request("delete-view",{object},deadline);
+        const started=fetchedAt.get(held),elapsed=started===undefined?NaN:clock()-started;
+        if(!Number.isFinite(elapsed)||elapsed<0||elapsed>=4)throw new PrivateMediaConflict();
+        const draft=parseMediaDeletionDraft(held,tenant,object,owner);
+        const signed=signPrivateMediaDeletion(draft.claims,key,draft.ownerPub);
+        deadline.throwIfAborted();
+        return parseMediaDeletionIntent({tenant,object,owner,ownerPub:draft.ownerPub,at:draft.at,proof:signed.proof});
+      });
+    },
+    async submitDeletion(input:MediaDeletionIntent,signal?:AbortSignal) {
+      const intent=parseMediaDeletionIntent(input);
+      const result=await request("delete",{object:intent.object,at:intent.at,proof:intent.proof},signal??new AbortController().signal);
+      if(!exact(result,["accepted","command","cleanup"])||result.accepted!==true||!digest(result.command)||result.cleanup!=="pending")throw Error("Private media deletion refused");
+      return Object.freeze({command:result.command,cleanup:"pending" as const});
+    },
     async confirmAllocation(object: string, owner: string, signal: AbortSignal) {
       await view(object, owner, signal);
     },

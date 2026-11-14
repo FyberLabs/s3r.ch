@@ -152,3 +152,16 @@ test("upload reconciliation keeps fixed credentials and rejects extra authority 
   for(const result of [{at:100,state:"allowed"},{at:-1,state:"applied"},{at:100,state:"applied",secret:"no"}])
     assert.equal((await service(async()=>Response.json(result))("upload-state",request(body))).status,403);
 });
+
+test("deletion proxy binds drafts to configured tenant and session owner",async()=>{
+  const claims={tenant:config.tenant,object,owner:principal,objectVersion:1,fence:view.fence,issuedAt:100000,expiresAt:160000};
+  const draft={at:100,ownerPub:principal,claims};
+  assert.equal((await service(async()=>Response.json(draft))("delete-view",request())).status,200);
+  assert.equal((await service(async()=>Response.json({...draft,claims:{...claims,tenant:"22222222-2222-4222-8222-222222222222"}}))("delete-view",request())).status,403);
+  const body={object,at:100,proof:{deletionBytes:"aa",signature:"b".repeat(128)}};
+  const result={accepted:true,command:"c".repeat(64),cleanup:"pending"};
+  const forwarded=service(async(url,init)=>{assert.ok(String(url).endsWith("/owner/delete"));assert.deepEqual(JSON.parse(String(init?.body)),body);return Response.json(result);});
+  assert.deepEqual(await (await forwarded("delete",request(body))).json(),result);
+  for(const changed of [{...body,at:true},{...body,writer:principal},{...body,proof:[]},{...body,proof:{deletionBytes:"zz",signature:"b".repeat(128)}}])assert.equal((await forwarded("delete",request(changed))).status,400);
+  assert.equal((await service(async()=>Response.json({...result,cleanup:"complete"}))("delete",request(body))).status,403);
+});
