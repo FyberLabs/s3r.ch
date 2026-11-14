@@ -109,3 +109,11 @@ test("tagged envelopes reject mismatched versions and ambiguous tag metadata",as
   const unknown=packed(valid);unknown[3]=3;
   await assert.rejects(open(await sealMediaForReaders(unknown,binding,expected,[reader],[pub])));
 });
+
+test("Unicode tag normalization cannot create an unreadable descriptor",async()=>{
+  assert.throws(()=>mediaFileDescription({name:"voice.wav",mediaType:"audio/wav",tags:["İ".repeat(21)]}));
+  const description=mediaFileDescription({name:"voice.wav",mediaType:"audio/wav",tags:["İ".repeat(20)]});
+  assert.equal(description.tags![0].length,40);assert.deepEqual(mediaFileDescription(description),description);
+  const opened=await open(await sealMediaFile(plain,description,binding,expected,[reader],[pub]));
+  assert.deepEqual(opened.description,description);assert.deepEqual(opened.bytes,plain);
+});
