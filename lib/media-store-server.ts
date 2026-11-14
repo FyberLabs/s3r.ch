@@ -1,3 +1,4 @@
+import { createAllocatedMediaStore } from "./allocated-media-store-server";
 import { createMediaRegistrationStore } from "./media-registration-store";
 import { createMediaRegistrationService } from "./media-registration-service";
 import { getSquadPilotServer } from "./squad-pilot-server";
@@ -11,13 +12,15 @@ let cached: { identity: string; pilot: unknown; service: ReturnType<typeof creat
 /** Disabled until deployment stages a dedicated media credential. Never reuse
  * feed-cache, Oracles, replay, or browser credentials for private media. */
 export function getMediaObjectService() {
+  const mode=process.env.S3RCH_MEDIA_STORAGE_MODE;
+  if(mode!==undefined && mode!=="allocated-v1")throw Error("Invalid media storage mode");
   const origin = process.env.S3RCH_MEDIA_STORAGE_ORIGIN, tenant = process.env.S3RCH_MEDIA_STORAGE_TENANT_ID,
     apiKey = process.env.S3RCH_MEDIA_STORAGE_API_KEY;
-  if ([origin, tenant, apiKey].every(value => value === undefined)) { cached = undefined; return null; }
+  if ([origin, tenant, apiKey, mode].every(value => value === undefined)) { cached = undefined; return null; }
   if (!origin || !tenant || !apiKey) throw Error("Media storage unavailable");
   const pilot = getSquadPilotServer();
   if (!pilot) throw Error("Media authority unavailable");
-  const identity = JSON.stringify([origin, tenant, apiKey]);
+  const identity = JSON.stringify([origin, tenant, apiKey, mode]);
   if (cached?.identity === identity && cached.pilot === pilot) return cached.service;
   cached = undefined;
   const config = { origin, tenant, apiKey };
@@ -39,7 +42,7 @@ export function getMediaObjectService() {
     try { signal.throwIfAborted(); return response.status === 200; }
     finally { await response.body?.cancel().catch(() => {}); }
   };
-  const objects = createMediaObjectService({ origin: pilot.config.origin, objects: createSpanopticonObjectStore(config), records, authorize });
+  const objects = createMediaObjectService({ origin: pilot.config.origin, objects: createSpanopticonObjectStore(config), records, authorize, ...(mode==="allocated-v1"?{allocated:createAllocatedMediaStore(config)}:{}) });
   const register = createMediaRegistrationService({ origin: pilot.config.origin, store: registrations, authorize,
     preflight: (request, object, signal) => authorize(request, object, "register", signal) });
   const service = (request: Request, object: string) => ["POST", "DELETE"].includes(request.method) ? register(request, object) : objects(request, object);

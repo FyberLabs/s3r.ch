@@ -164,6 +164,13 @@ jobs:
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/media-wrap-server.test.ts lib/media-wrap-client.test.ts
 
+      - name: Allocated media payload contracts and coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/allocated-media-store-server.ts
+          --test-coverage-include=lib/media-object-service.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/allocated-media-store-server.test.ts lib/media-object-service.test.ts
       - name: Private media owner contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
