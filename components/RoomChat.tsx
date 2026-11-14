@@ -40,6 +40,11 @@ export function RoomChat({
   return (
     <div className={`mt-6 ${panel}`}>
       <h2 className="text-sm font-semibold text-ink">Live chat</h2>
+      <p className="mt-2 text-xs text-ink-muted">
+        {onPublicGraph
+          ? "Public chat: anyone can read and copy these messages, even without signing in."
+          : "Messages stay in this browser until you share this room. Sharing also publishes its chat."}
+      </p>
       {listed.length === 0 ? (
         <p className="mt-3 text-xs text-ink-muted">
           No messages yet.

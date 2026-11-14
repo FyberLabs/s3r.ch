@@ -11,9 +11,10 @@ namespace; creating a room never creates a tenant, account, namespace or parent
 grant. Missing namespace configuration or identity history refuses creation.
 
 Mine rooms initially admit only their owner. Explicit room sharing publishes the
-room listing and signs see grants for current parent-forum readers, plus post
-grants for its current writers. These grants last at most one hour. The interface
-states that audience before confirmation. Retrying a failed operation requires
+room listing and chat publicly, and signs see grants for current parent-forum readers, plus post
+grants for its current writers. These app-admission grants last at most one hour. They do not encrypt the
+public transport. The interface discloses public publication of the room and
+its chat before confirmation. Retrying a failed operation requires
 another explicit user action; writes are not automatically retried. Unsharing a
 listing retains its existing meaning: it retracts discovery, not signed grants.
 
@@ -78,3 +79,21 @@ Bounded paging or resumable history recovery is tracked in
 [#485](https://github.com/FyberLabs/s3r.ch/issues/485). It requires transport
 progress semantics in addition to #445's signature and access checks; increasing
 an in-memory limit or retaining an unbounded promise backlog is not a substitute.
+
+
+## Public chat and confidentiality
+
+Shared ordinary-room chat retains the public transport contract in
+[ARCHITECTURE.md](ARCHITECTURE.md#item-identity-and-merge): anyone can read or
+copy the plaintext Gun rows without an identity session. The share action
+publishes Mine-only chat alongside the room listing and explicitly discloses
+that audience. The composer repeats that shared chat is public. Unsharing a
+listing, grant expiry, and Check refusal cannot erase those published bytes or
+copies already received.
+
+SEA signatures and current Check admission protect authorship and the official
+app's accepted message/task projection. They do not establish confidentiality.
+#445 implements that signed admission boundary; it does not introduce private
+room chat. Private media uses its separate encrypted storage and grants. A future
+private chat transport would need authenticated recipient encryption or an
+access-controlled source before publishing any private message.

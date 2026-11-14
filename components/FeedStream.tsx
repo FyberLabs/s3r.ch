@@ -688,7 +688,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     }
     if (confirmShareRoomId !== room.id) {
       setConfirmShareRoomId(room.id);
-      setRoomShareMessage("The room listing becomes public. Current forum members receive chat access for one hour; posts inside stay on Mine.");
+      setRoomShareMessage("Sharing publishes this room and its chat for anyone to read and copy, even without signing in. Current forum members can participate in this app for one hour. Posts inside stay on Mine.");
       return;
     }
     if (!roomAuthority || !await roomAuthority.admit(room, true)) {
@@ -737,7 +737,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     }
     setConfirmShareRoomId(null);
     setRoomShareMessage(
-      "Room listing published; chat shared with current forum members for one hour. Posts inside stay on Mine.",
+      "Room and chat published publicly. Copies may remain after unsharing. Posts inside stay on Mine.",
     );
     await see.persist();
   }
@@ -773,7 +773,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     setGraphChat((prev) => prev.filter((row) => row.room !== room.id));
     setGraphPresence((prev) => prev.filter((row) => row.room !== room.id));
     setConfirmUnshareRoomId(null);
-    setRoomShareMessage("Unshare removes this room from public.");
+    setRoomShareMessage("The public room listing is removed. Published chat and copies may remain.");
   }
 
   const composeRoomId =
@@ -1123,7 +1123,7 @@ function RoomThreadHeader({
               </button>
               {isForumObjectId(room.id, "room") ? (
                 <button type="button" onClick={onShare} className={`ml-2 mt-2 ${btnSecondary}`}>
-                  {confirmShare ? "Confirm renewal" : "Renew chat access"}
+                  {confirmShare ? "Confirm renewal" : "Renew participation"}
                 </button>
               ) : null}
             </>
@@ -1146,8 +1146,9 @@ function RoomThreadHeader({
           ) : null}
           {isForumObjectId(room.id, "room") ? (
             <p className="mt-2 text-xs text-ink-muted">
-              Sharing grants chat access to current forum members for one hour.
-              Renew access to include new members. Removing the public listing does not revoke existing chat access.
+              Sharing publishes the room and its chat for anyone to read or copy.
+              Current forum members can participate in this app for one hour; renew participation to include new members.
+              Removing the listing does not erase published chat or copies.
             </p>
           ) : <RoomSeeGrantControls address={sessionAddress} room={room} />}
         </div>
