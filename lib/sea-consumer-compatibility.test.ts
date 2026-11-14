@@ -38,7 +38,7 @@ test("SEA view unread storage and picker ownership preserve case", async () => {
   const { buildBrowseTree } = await import("./views-picker");
   assert.equal(seenStorageKey(alice, "view"), `s3rch-views-seen:${alice}:view`);
   assert.notEqual(seenStorageKey(alice, "view"), seenStorageKey(alice.toLowerCase(), "view"));
-  const source = { ref: { network: DEPLOYMENT_SELF_NETWORK, owner: alice, kind: "feed" as const, id: "home" }, label: "Feed" };
+  const source = { ref: { network: DEPLOYMENT_SELF_NETWORK, owner: alice, kind: "feed" as const, source: "home", v: 1 as const }, label: "Feed" };
   const own = JSON.stringify(buildBrowseTree([source], DEPLOYMENT_SELF_NETWORK, alice));
   const other = JSON.stringify(buildBrowseTree([source], DEPLOYMENT_SELF_NETWORK, alice.toLowerCase()));
   assert.match(own, /Me \(/);
