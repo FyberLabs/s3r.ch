@@ -11,12 +11,13 @@ class SessionUnavailable extends Error {}
 
 export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly string[]; page: number;
   nextPage: number | null; loaded: boolean; message: string;
+  sharing: Readonly<{object:string;reader:string}> | null;
   granted: Readonly<{objects:readonly string[];page:number;nextPage:number|null}> | null;
   cleanup: Readonly<{objects:readonly MediaCleanupItem[];page:number;nextPage:number|null}> | null;
   deletion: Readonly<{object:string;prepared:boolean}> | null;
   audience: Readonly<{object:string;readers:readonly string[]}> | null;
   preview: Readonly<{ url: string; name: string; mediaType: string; tags?:readonly string[] }> | null }>;
-const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null});
+const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null});
 
 /** Private, in-memory navigation. Never persists catalog entries or plaintext. */
 export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, options: {
@@ -137,6 +138,30 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         const catalog=await browser.grantedCatalog(page,signal);
         if(current())publish({...state,granted:{objects:catalog.objects,page,nextPage:catalog.nextPage},audience:null});
       });
+    },
+    inspectSharing(tenant:string) {
+      if(state.deletion)return Promise.resolve();
+      return operation(async(signal,current)=>{
+        const sharing=await browser.pendingShare(tenant,signal);
+        if(current())publish({...state,sharing,message:sharing?"A sharing change is saved. Resume to confirm it.":"No pending sharing change."});
+      });
+    },
+    share(tenant:string,object:string,reader:string) {
+      if(state.deletion||state.sharing||state.audience?.object!==object||!state.objects.includes(object)||!owner||!isSeaPubkey(reader)||reader===owner)return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        const result=await browser.share(tenant,{object,owner:principal,reader},signal);
+        if(current())publish({...state,audience:null,sharing:result.pending?{object,reader}:null,
+          message:result.pending?"Sharing is saved but not yet confirmed. Resume after the access update settles.":"Sharing confirmed. Recipient access uses fresh authorization."});
+      },()=>publish({...state,sharing:{object,reader},message:"Sharing could not be confirmed. Check saved sharing before retrying; accepted changes are not undone."}));
+    },
+    resumeSharing(tenant:string) {
+      if(state.deletion||!state.sharing)return Promise.resolve();
+      return operation(async(signal,current)=>{
+        const result=await browser.share(tenant,undefined,signal);
+        if(current())publish({...state,audience:null,sharing:result.pending?{object:result.object,reader:result.reader}:null,
+          message:result.pending?"Sharing is still pending. Future access times and settlement can delay completion.":"Sharing confirmed."});
+      },()=>publish({...state,message:"Sharing could not be confirmed. The saved change is retained; check access and retry."}));
     },
     recipients(object: string) {
       if(state.deletion || !state.objects.includes(object) || !owner)return Promise.resolve();

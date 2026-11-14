@@ -7,7 +7,9 @@ import { PrivateMediaUpload } from "./PrivateMediaUpload";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
-  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null});
+  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null});
+  const [recipient,setRecipient]=useState("");
+  useEffect(()=>{setRecipient("");},[state.audience?.object,state.loaded]);
   const library=useRef<ReturnType<typeof createMediaLibrary>|null>(null);
   useEffect(()=>{
     const current=createMediaLibrary(setState);library.current=current;
@@ -72,8 +74,21 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
         <button type="button" disabled={state.busy} className="underline disabled:opacity-50" onClick={()=>void library.current?.confirmDeletion(tenant)}>{state.deletion.prepared ? "Retry deletion" : "Permanently delete file"}</button>
         <button type="button" disabled={state.busy} className="ml-4 underline disabled:opacity-50" onClick={()=>library.current?.cancelDeletion()}>{state.deletion.prepared ? "Close" : "Keep file"}</button>
       </section>}
+      <section aria-label="Saved sharing" className="space-y-2 rounded border p-4">
+        <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.inspectSharing(tenant)}>Check saved sharing</button>
+        {state.sharing && <>
+          <p className="break-all">Pending sharing with {state.sharing.reader}</p>
+          <p>Resume uses the saved request. Sharing may wait for the access update to settle; closing this page does not undo accepted changes.</p>
+          <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeSharing(tenant)}>Resume sharing</button>
+        </>}
+      </section>
       {state.audience && <section className="space-y-2" aria-label="File sharing">
         <h2 className="font-semibold">Sharing</h2>
+        <label className="block">Recipient SEA account
+          <input value={recipient} onChange={event=>setRecipient(event.target.value)} autoComplete="off" spellCheck={false} className="block w-full rounded border p-2" disabled={state.busy||!!state.sharing} />
+        </label>
+        <p>The recipient must already be enrolled. Sharing does not create an account.</p>
+        <button type="button" disabled={state.busy||!!state.sharing||!recipient.trim()} className="underline disabled:opacity-50" onClick={()=>void library.current?.share(tenant,state.audience!.object,recipient.trim())}>Share with this identity</button>
         {!state.audience.readers.length && <p>No recipient grants to cancel.</p>}
         <ul>{state.audience.readers.map(reader=><li key={reader} className="my-2 flex flex-wrap gap-3">
           <span className="break-all font-mono text-xs">{reader}</span>

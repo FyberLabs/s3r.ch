@@ -161,6 +161,15 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
           !["absent", "applied", "conflict"].includes(result.state as string)) throw new PrivateMediaConflict();
       return result.state as "absent" | "applied" | "conflict";
     },
+    async shareState(object: string, operation: "grant" | "epoch" | "wrap", payload: unknown, signal: AbortSignal) {
+      if (!objectOK(object)) throw Error("Invalid media upload");
+      const result = await request("share-state", { object, operation, payload }, signal);
+      const started = fetchedAt.get(result), elapsed = started === undefined ? NaN : clock() - started;
+      if (!exact(result, ["at", "state"]) || !Number.isSafeInteger(result.at) || (result.at as number) < 0 ||
+          !Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 4 ||
+          !["absent", "applied", "conflict"].includes(result.state as string)) throw new PrivateMediaConflict();
+      return result.state as "absent" | "applied" | "conflict";
+    },
     async commitUploadIntent(object: string, owner: string, operation: "grant" | "epoch", payload: unknown, signal: AbortSignal) {
       const input = structuredClone(payload), held = await view(object, owner, signal);
       await mutate(object, held, operation, input, signal);

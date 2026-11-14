@@ -1,3 +1,5 @@
+import { createShareJournal } from "./media-share-journal";
+import { shareMedia, pendingMediaShare } from "./media-share-recovery";
 import { readGrantedMedia } from "./media-reader-catalog";
 import { parseMediaDeletionIntent, type MediaDeletionIntent } from "./media-deletion";
 import { createUploadJournal } from "./media-upload-journal";
@@ -50,13 +52,19 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
       } finally {scalar.fill(0);}
     },signal);
   }
-  async function locked<T>(work:()=>Promise<T>) {
+  async function locked<T>(work:()=>Promise<T>,name="s3rch-private-upload-v1") {
     if (typeof navigator === "undefined" || !navigator.locks) throw Error("This browser cannot safely resume uploads");
-    return navigator.locks.request("s3rch-private-upload-v1", {mode:"exclusive",ifAvailable:true}, lock=>{
+    return navigator.locks.request(name, {mode:"exclusive",ifAvailable:true}, lock=>{
       if(!lock)throw Error("An upload is active in another tab");return work();
     });
   }
   return Object.freeze({
+    share(tenant:string,target?:{object:string;owner:string;reader:string},signal?:AbortSignal){
+      return locked(()=>run((pair,transport,deadline)=>shareMedia({tenant,pair,fetcher:transport,signal:deadline,journal:createShareJournal(),target}),signal),"s3rch-private-share-v1");
+    },
+    pendingShare(tenant:string,signal?:AbortSignal){
+      return run((pair,_transport,deadline)=>pendingMediaShare(createShareJournal(),tenant,pair,deadline),signal);
+    },
     upload(tenant:string,file?:{bytes:Uint8Array;description:MediaFileDescription},signal?:AbortSignal,progress?:(message:string)=>void,allocationConfirmed?:()=>void){
       return locked(()=>run((pair,transport,deadline)=>uploadMedia({tenant,pair,fetcher:transport,signal:deadline,journal:createUploadJournal(),file,progress,allocationConfirmed}),signal));
     },

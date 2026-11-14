@@ -1,3 +1,8 @@
+import { openItemDekReaderWrap, wrapItemDekToReaders } from "sociacl-ids";
+import { signPrivateMediaEpoch, signPrivateMediaFinalization } from "sociacl-ids/private-media";
+import { openMedia } from "./media-crypto";
+import { parseMediaSharePlan } from "./media-share";
+import { uploadDigest } from "./media-upload-journal";
 import type { ItemReaderWrap, ItemWrapContext } from "sociacl-ids";
 import { createMediaHttpClient, type MediaCiphertextReference } from "./media-client";
 import { openMediaFile } from "./media-file";
@@ -58,7 +63,38 @@ export function createPrivateMediaReader(fetcher: typeof fetch = fetch, clock = 
     return Object.freeze({ context: data.context as ItemWrapContext, readerEpub: epub, expiresAt: data.expiresAt,
       wrap: material.wrap as ItemReaderWrap, reference: material.reference as MediaCiphertextReference, encoded: data.wrapBase64 });
   }
-  return Object.freeze({ async open(object: string, tenant: string, epriv: string, epub: string, signal?: AbortSignal) {
+  return Object.freeze({
+    async prepareSharing(object:string,tenant:string,epriv:string,epub:string,planInput:unknown,owner:string,recipient:string,scalar:Uint8Array,signal:AbortSignal) {
+      const plan=parseMediaSharePlan(planInput,object,owner,recipient),key=new Uint8Array(scalar);
+      let dek:Uint8Array|undefined;
+      try {
+        signal.throwIfAborted();
+        const initial=await delivery(object,epub,signal),stored=await ciphertext.get(object,initial.reference,signal);
+        const current=await delivery(object,epub,signal);
+        if(current.encoded!==initial.encoded||current.context.epoch!==plan.previousEpoch||
+            plan.grants.some(g=>g.itemCiphertextDigest!==current.reference.sha256))throw Error("Private media changed");
+        const opened=await openItemDekReaderWrap(current.wrap,epriv,epub,current.context);
+        if(!opened.ok)throw Error("Private wrapping refused");dek=opened.value;
+        const plaintext=await openMedia(stored,current.reference.sha256,dek,{tenant,object});plaintext.fill(0);
+        signal.throwIfAborted();
+        const epoch=plan.previousEpoch+1;
+        const document=signPrivateMediaEpoch({object,previousEpoch:plan.previousEpoch,epoch,deviceId:"s3rch-share",
+          keyCommitment:await uploadDigest(dek),settleWindowMs:3600000},plan.snapshot,key,plan.ownerPub);
+        const revisionId=document.manifest.revisionId;
+        const finalization=signPrivateMediaFinalization({object,previousEpoch:plan.previousEpoch,epoch,revisionId,
+          candidateRevisionIds:[revisionId],previousFinalizationId:plan.previousFinalizationId},key,plan.ownerPub);
+        const readers=plan.grants.map(g=>({account:g.accessor,identityPub:plan.bindings[g.accessor].pub,
+          pub:plan.bindings[g.accessor].pub,epub:plan.bindings[g.accessor].epub}));
+        const wrapped=await wrapItemDekToReaders(dek,{object,epoch,revisionId},readers,plan.grants.map(g=>g.accessor));
+        if(!wrapped.ok)throw Error("Private wrapping refused");
+        const final=await delivery(object,epub,signal);
+        if(final.encoded!==current.encoded||final.context.epoch!==current.context.epoch||final.context.revisionId!==current.context.revisionId||clock()>=final.expiresAt)
+          throw Error("Private media changed");
+        signal.throwIfAborted();
+        return {document,finalization,wraps:wrapped.value,reference:current.reference};
+      } finally {key.fill(0);dek?.fill(0);}
+    },
+    async open(object: string, tenant: string, epriv: string, epub: string, signal?: AbortSignal) {
     if (!object.startsWith("media_") || !isCanonicalObjectId(object)) throw Error("Invalid media object");
     const deadline = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(120_000)]);
     // The first authorization supplies the private ciphertext reference. Fetch

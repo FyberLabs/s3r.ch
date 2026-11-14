@@ -244,3 +244,12 @@ test("share proxy binds owner and recipient and checks the projected snapshot",a
   let resolves=0;
   assert.equal((await service(async()=>Response.json(context),async()=>++resolves===1?principal:reader)("share-view",request({object,reader}))).status,403);
 });
+
+test("share reconciliation proxy keeps caller scope and bounded state responses",async()=>{
+  const body={object,operation:"grant",payload:{claims:{}}};let calls=0;
+  const handle=service(async(url,init)=>{calls++;assert.ok(String(url).endsWith("/share-state"));assert.deepEqual(JSON.parse(String(init?.body)),body);return Response.json({at:100,state:"absent"});});
+  assert.equal((await handle("share-state",request(body))).status,200);
+  for(const bad of [{...body,owner:principal},{...body,operation:"policy"},{...body,payload:[]}])assert.equal((await handle("share-state",request(bad))).status,400);
+  assert.equal(calls,1);
+  assert.equal((await service(async()=>Response.json({at:100,state:"write-now"}))("share-state",request(body))).status,403);
+});
