@@ -154,3 +154,19 @@ test("history arriving before grants is revalidated after authority changes", as
  await queue.resume();assert.deepEqual(accepted,[row.body]);
  queue.close();
 });
+
+
+test("rejected history cannot exhaust capacity for later authenticated messages", async () => {
+ const {createRoomChatReceiveQueue}=await import("./room-chat-receive-queue");
+ const f=await fixture(), row=await f.admission.compose("room","valid after flood",()=>f.alice);assert.ok(row);
+ const accepted:string[]=[];
+ const queue=createRoomChatReceiveQueue(f.admission,"room",message=>accepted.push(message.body));
+ await Promise.all(Array.from({length:8192},(_,i)=>{
+  const forged={...row,id:"s3rch:chat:"+i.toString(16).padStart(64,"0"),sig:"invalid"};
+  return queue.enqueue(forged,encodeKey(forged.id));
+ }));
+ assert.deepEqual(accepted,[]);
+ await queue.enqueue(row,encodeKey(row.id));assert.deepEqual(accepted,[row.body]);
+ await queue.resume();assert.deepEqual(accepted,[row.body]);
+ queue.close();
+});

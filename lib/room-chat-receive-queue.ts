@@ -3,6 +3,7 @@ import { encodeKey } from "./identity/check";
 /** Bound both queued row count and each immutable envelope. Serialize crypto so
  * cached history bursts cannot exhaust the shared proof verifier's operation cap. */
 export function createRoomChatReceiveQueue(admission: RoomChatAdmission, room: string, receive: (row: SignedRoomChat) => void, ready: () => boolean = () => true) {
+  const pendingLimit = 8192, rejectedLimit = 256;
   const pending = new Map<string, SignedRoomChat>();
   const rejected = new Map<string, SignedRoomChat>();
   let active = true, worker: Promise<void> | null = null;
@@ -13,7 +14,11 @@ export function createRoomChatReceiveQueue(admission: RoomChatAdmission, room: s
         const admitted = await admission.receive(row, room, key);
         if (!ready()) { if (!pending.has(key)) pending.set(key, row); return; }
         if (active && admitted && admission.valid(admitted)) receive(admitted);
-        else if (active && !pending.has(key)) rejected.set(key, row);
+        else if (active && !pending.has(key)) {
+          rejected.delete(key);
+          rejected.set(key, row);
+          if (rejected.size > rejectedLimit) rejected.delete(rejected.keys().next().value!);
+        }
       } catch { /* A malformed row cannot prevent later queued rows being checked. */ }
     }
   }
@@ -28,7 +33,7 @@ export function createRoomChatReceiveQueue(admission: RoomChatAdmission, room: s
     enqueue(raw: unknown, key: unknown): Promise<void> {
       if (!active || typeof key !== "string") return Promise.resolve();
       const row = snapshotRoomChatEnvelope(raw);
-      if (!row || row.room !== room || encodeKey(row.id) !== key || (!pending.has(key) && !rejected.has(key) && pending.size + rejected.size >= 8192)) return Promise.resolve();
+      if (!row || row.room !== room || encodeKey(row.id) !== key || (!pending.has(key) && pending.size >= pendingLimit)) return Promise.resolve();
       rejected.delete(key);
       pending.set(key, row);
       return ready() ? start() : Promise.resolve();
@@ -37,8 +42,12 @@ export function createRoomChatReceiveQueue(admission: RoomChatAdmission, room: s
     // Pending replacements win; retained untrusted rows never bypass admission.
     resume() {
       if (!active) return Promise.resolve();
-      for (const [key, row] of rejected) if (!pending.has(key)) pending.set(key, row);
-      rejected.clear();
+      for (const [key, row] of rejected) {
+        // Reserve space for new arrivals even when retrying untrusted history.
+        if (pending.size >= pendingLimit - rejectedLimit) break;
+        if (!pending.has(key)) pending.set(key, row);
+        rejected.delete(key);
+      }
       if (pending.size && ready()) return start();
       return Promise.resolve();
     },

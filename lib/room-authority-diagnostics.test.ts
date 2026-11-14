@@ -137,3 +137,31 @@ test("room readiness rejects grant, cancellation and malformed diagnostics", asy
  held=snapshot([fresh,{...old,record:{bad:true}}]); assert.equal((await service(request())).status,403);
  held=snapshot([old]); assert.equal((await service(request())).status,403);
 });
+
+
+test("retired room ownership cannot deny unrelated statement writes or pilot health", async () => {
+ const {createBotStatementAdmission}=await import("./forum-bot-statement-admission");
+ const {squadPilotReady}=await import("./squad-pilot-server");
+ const room=`room_${seaToPrincipalKey(owner)}_${"8".repeat(32)}`;
+ const statement=`stmt_${seaToPrincipalKey(owner)}_${"9".repeat(32)}`;
+ const retired=signed("object",{object:room,owner},1,time-40);
+ const renewed=signed("object",{object:room,owner},2,time-10);
+ const target=signed("object",{object:statement,owner},2,time);
+ let held=snapshot([old,fresh,retired,renewed]),appends=0;
+ const squad={forumId:forum,owner,label:"Shared history unit"};
+ const service=createBotStatementAdmission({squad,origin:"https://room.test",config,clock:()=>time,
+  authenticate:async()=>({key:key(2)}),source:{read:async()=>({snapshot:held,fence:"held"}),
+   append:async(_fence,rows,guard)=>{guard();appends++;held={...held,rows:[...held.rows,...rows]};return true;}}});
+ const request=(rows:unknown[])=>new Request("https://room.test/statement",{method:"POST",headers:{Origin:"https://room.test","Content-Type":"application/json"},
+  body:JSON.stringify({version:1,forumId:forum,owner,evaluatedAt:time,rows})});
+ const ready=()=>squadPilotReady({config:{authority:config,squad},source:{read:async()=>held}},new AbortController().signal,()=>time);
+ assert.equal(await ready(),true);assert.equal((await service(request([]))).status,200);
+ assert.equal((await service(request([target]))).status,200);assert.equal(appends,1);
+ for(const rows of [[old,retired],[fresh,{...retired,record:{...retired.record as object,sig:"forged"}}],
+  ...[0,1].map(stated=>[fresh,signed("see",{object:forum,owner,accessor:owner,stated,from:0,until:time+60,hamState:1},1,time-40)])]) {
+  held=snapshot(rows);assert.equal(await ready(),false);
+  assert.equal((await service(request([]))).status,403);
+  assert.equal((await service(request([target]))).status,403);
+ }
+ assert.equal(appends,1);
+});
