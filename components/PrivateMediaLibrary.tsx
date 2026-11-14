@@ -7,7 +7,7 @@ import { PrivateMediaUpload } from "./PrivateMediaUpload";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
-  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null});
+  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null});
   const library=useRef<ReturnType<typeof createMediaLibrary>|null>(null);
   useEffect(()=>{
     const current=createMediaLibrary(setState);library.current=current;
@@ -38,6 +38,20 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
         <button type="button" disabled={state.busy || !!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.recipients(object)}>Manage sharing</button>
         <button type="button" disabled={state.busy || !!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>library.current?.requestDeletion(object)}>Delete file</button>
       </li>)}</ul>
+      <section aria-labelledby="media-granted-title" className="space-y-3 rounded border p-4">
+        <h2 id="media-granted-title" className="font-semibold">Granted media</h2>
+        <p>Files shared with you appear while their access is current.</p>
+        <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadGranted(0)}>Refresh granted media</button>
+        {state.granted && <>
+          <p>Page {state.granted.page+1} of 16. Empty pages are valid.</p>
+          {!state.granted.objects.length && <p>No currently available shared files on this page.</p>}
+          <ul>{state.granted.objects.map((object,index)=><li key={object}>
+            <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.open(object,tenant)}>Open shared file {state.granted!.page*4+index+1}</button>
+          </li>)}</ul>
+          {state.granted.page>0 && <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadGranted(state.granted!.page-1)}>Previous granted page</button>}
+          {state.granted.nextPage!==null && <button type="button" disabled={state.busy || !!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.loadGranted(state.granted!.nextPage!)}>Next granted page</button>}
+        </>}
+      </section>
       <section aria-labelledby="media-cleanup-title" className="space-y-3 rounded border p-4">
         <h2 id="media-cleanup-title" className="font-semibold">Pending storage cleanup</h2>
         <p>Deleted files stay inaccessible while storage cleanup finishes. Retry a previously accepted deletion here.</p>

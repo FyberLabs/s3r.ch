@@ -180,3 +180,14 @@ test("deletion uses the unlocked owner and refuses replay after identity changes
   await assert.rejects(browser.submitDeletion({...intent,ownerPub:other}));assert.equal(writes,1);
   forgetUnlockedMeshPair();await assert.rejects(browser.submitDeletion(intent));assert.equal(writes,1);
 });
+
+test("granted catalog uses the held identity and discards rotation during its request",async()=>{
+  unlock();const browser=createPrivateMediaBrowser(()=>owner,async(url)=>{
+    assert.equal(String(url),"/api/media/catalog");return Response.json({at:100,objects:[],nextPage:1,principal:owner});
+  });
+  assert.deepEqual((await browser.grantedCatalog(0)).objects,[]);
+  const changed=createPrivateMediaBrowser(()=>owner,async()=>{
+    forgetUnlockedMeshPair();return Response.json({at:100,objects:[],nextPage:1,principal:owner});
+  });
+  await assert.rejects(changed.grantedCatalog(0));
+});

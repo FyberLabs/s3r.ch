@@ -1,3 +1,4 @@
+import { POST as catalogPost } from "../app/api/media/catalog/route";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { GET, PUT, POST, DELETE } from "../app/api/media/[object]/route";
@@ -19,4 +20,16 @@ test("media routes stay unavailable with missing or partial deployment configura
     process.env.S3RCH_MEDIA_STORAGE_ORIGIN = "https://storage.example";
     assert.equal((await GET(new Request("https://s3r.ch/api/media/object"), { params: Promise.resolve({ object: "object" }) })).status, 503);
   } finally { names.forEach((name, i) => { if (saved[i] === undefined) delete process.env[name]; else process.env[name] = saved[i]; }); }
+});
+
+test("reader catalog remains unavailable without reader bindings",async()=>{
+  const saved=process.env.S3RCH_MEDIA_READER_BINDINGS;
+  try {
+    delete process.env.S3RCH_MEDIA_READER_BINDINGS;
+    const response=await catalogPost(new Request("https://s3r.ch/api/media/catalog",{method:"POST"}));
+    assert.equal(response.status,503);assert.equal(await response.text(),"");
+    assert.equal(response.headers.get("cache-control"),"private, no-store");
+  } finally {
+    if(saved===undefined)delete process.env.S3RCH_MEDIA_READER_BINDINGS;else process.env.S3RCH_MEDIA_READER_BINDINGS=saved;
+  }
 });
