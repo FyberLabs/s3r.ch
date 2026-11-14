@@ -43,7 +43,7 @@ export function RoomChat({
       <p className="mt-2 text-xs text-ink-muted">
         {onPublicGraph
           ? "Public chat: anyone can read and copy these messages, even without signing in."
-          : "Messages stay in this browser until you share this room. Sharing also publishes its chat."}
+          : "New messages stay in this browser until you confirm public sharing here. Sharing publishes retained chat; earlier public copies may remain."}
       </p>
       {listed.length === 0 ? (
         <p className="mt-3 text-xs text-ink-muted">

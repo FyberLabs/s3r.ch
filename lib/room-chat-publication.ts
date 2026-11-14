@@ -1,3 +1,4 @@
+import type { ForumAuthorityGraph } from "./identity/forum-authority";
 import type { ChatMessage } from "./chat";
 import type { RoomChatAdmission } from "./room-chat-admission";
 import { isRoomTaskBody } from "./room-tasks";
@@ -14,4 +15,19 @@ export function publishCurrentRoomChat(input: {
     if (!input.publicRoom()) return;
     if (input.admission.valid(row)) input.publish(row);
   }
+}
+
+
+/** Mesh presence is not the owner's consent to publish Mine-only messages.
+ * Owner consent is held only after this mount's explicit signed share succeeds;
+ * a new session/device must confirm again rather than infer consent from peers. */
+export function roomChatPublicationAllowed(input: {
+  room: string; readerKey: string | null; now: number;
+  graph: Pick<ForumAuthorityGraph, "ownerOf" | "principalForKey">;
+  publishedRooms: ReadonlySet<string>; ownerConfirmedShares: ReadonlySet<string>;
+}): boolean {
+  const principal = input.readerKey && input.graph.principalForKey(input.readerKey, input.now);
+  const owner = input.graph.ownerOf(input.room);
+  return !!principal && !!owner && input.publishedRooms.has(input.room) &&
+    (owner !== principal || input.ownerConfirmedShares.has(input.room));
 }

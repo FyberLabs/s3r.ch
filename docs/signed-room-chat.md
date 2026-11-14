@@ -97,3 +97,13 @@ app's accepted message/task projection. They do not establish confidentiality.
 room chat. Private media uses its separate encrypted storage and grants. A future
 private chat transport would need authenticated recipient encryption or an
 access-controlled source before publishing any private message.
+
+
+Owner publication consent is separate from mesh visibility. The browser records
+consent only after its explicit, confirmed share completes signed owner admission.
+A peer's unsigned room listing cannot turn the owner's Mine-only chat into a
+public write. Confirmed unshare clears this local consent immediately, even if
+an older share request is still completing. Consent is scoped to the current
+identity mount; after a new session/page, owners must confirm public sharing again
+using the room controls (also available on their signed rooms outside Mine).
+Previously published copies remain public; this only controls new local writes.

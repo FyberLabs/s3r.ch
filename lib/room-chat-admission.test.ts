@@ -304,3 +304,21 @@ test("room sharing publishes current local rows and late composition uses curren
  publicRoom=false;publish(()=>rows);assert.equal(sent.length,2);
  publicRoom=true;f.revoke();publish(()=>rows);assert.equal(sent.length,2);
 });
+
+
+test("unsigned mesh visibility cannot authorize publication of the owner's Mine chat", async () => {
+ const {roomChatPublicationAllowed}=await import("./room-chat-publication");
+ const f=await fixture(), row=await f.admission.compose("room","Mine only",()=>f.alice);assert.ok(row);
+ const publishedRooms=new Set(["room"]),ownerConfirmedShares=new Set<string>();
+ // Substitute an already authenticated authority graph; the hostile mesh can
+ // change only publishedRooms, never this owner binding or the local receipt.
+ const graph={ownerOf:()=>f.alice.pub,principalForKey:(key:string)=>f.keys.has(key)?key:null};
+ const allowed=()=>roomChatPublicationAllowed({room:"room",readerKey:f.alice.pub,now:100,graph,publishedRooms,ownerConfirmedShares});
+ assert.equal(allowed(),false);assert.equal(f.admission.valid(row),true);
+ const {publishCurrentRoomChat}=await import("./room-chat-publication");let puts=0;
+ const publish=()=>publishCurrentRoomChat({room:"room",currentRows:()=>[row],publicRoom:allowed,admission:f.admission,publish:()=>{puts++;}});
+ publish();assert.equal(puts,0);
+ ownerConfirmedShares.add("room");publish();assert.equal(puts,1);
+ ownerConfirmedShares.delete("room");publishedRooms.add("room");publish();assert.equal(puts,1);
+ const restarted=new Set<string>();assert.equal(roomChatPublicationAllowed({room:"room",readerKey:f.alice.pub,now:100,graph,publishedRooms,ownerConfirmedShares:restarted}),false);
+});
