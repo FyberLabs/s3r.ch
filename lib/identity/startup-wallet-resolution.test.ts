@@ -80,8 +80,11 @@ test("two eligible accounts refuse even when one link is newer", async () => {
 
 test("source cancellation bounds a source that never settles", async () => {
   const controller = new AbortController();
-  const resolver = createStartupWalletResolver({ read: async () => new Promise(() => {}) }, trust, () => at);
+  let started = false;
+  const resolver = createStartupWalletResolver({ read: async () => { started = true; return new Promise(() => {}); } }, trust, () => at);
   const result = resolver(link.address, controller.signal);
+  await Promise.resolve();
+  assert.equal(started, true);
   controller.abort();
   assert.deepEqual(await result, { ok: false, reason: "source-unavailable" });
 });
