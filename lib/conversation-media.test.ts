@@ -1,0 +1,30 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {conversationMediaTickets,conversationMediaAdmission,CONVERSATION_MEDIA_MS} from "./conversation-media";
+import type {FeedConversation} from "./feed-conversation";
+import {parseConversationTickets} from "./conversation-media-tickets";
+import type {FeedItem} from "./feed-types";
+const key="x".repeat(32),now=1800000000000,url="https://example.com/stream.m3u8",poster="https://example.com/poster.png";
+const anchor={id:"anchor",source:"atproto",kind:"social",author:"a",body:"",ts:1,permalink:"https://example.com/anchor",tags:[],provenance:"fixture"} as FeedItem;
+const conversation:FeedConversation={items:[{...anchor,id:"parent",media:[{kind:"video",url,thumbnail:poster}]}],replies:[],missingParent:null,truncated:false};
+const request=(token:string,target=url,kind="video")=>new Request(`https://s3r.ch/api/feed/media?${new URLSearchParams({url:target,kind,context:token})}`);
+test("tickets bind fetched media and HLS descendants to a still-public anchor",()=>{
+ const tickets=conversationMediaTickets(key,anchor,conversation,now);assert.deepEqual(parseConversationTickets(tickets),tickets);
+ const token=tickets[`video\0${url}`],sign=conversationMediaAdmission(request(token),key,[anchor],now);assert.ok(sign);
+ assert.ok(conversationMediaAdmission(request(tickets[`image\0${poster}`],poster,"image"),key,[anchor],now));
+ const child=new Request("https://s3r.ch"+sign("https://example.com/segment.ts","video",1));
+ assert.ok(conversationMediaAdmission(child,key,[anchor],now));assert.equal(conversationMediaAdmission(child,key,[],now),null);
+ assert.equal(conversationMediaAdmission(request(token),key,[{...anchor,source:"nostr"}],now),null);
+ assert.equal(conversationMediaAdmission(request(token),key,[anchor],now+CONVERSATION_MEDIA_MS),null);
+ assert.equal(conversationMediaAdmission(request(token),key,[anchor],now-1),null);
+});
+test("tampering, wrong roots, missing configuration and malformed browser maps fail closed",()=>{
+ const token=conversationMediaTickets(key,anchor,conversation,now)[`video\0${url}`];
+ for(const value of ["",token.slice(0,-1)+(token.endsWith("0")?"1":"0"),token.replace(String(now+CONVERSATION_MEDIA_MS),"9999999999999999")])assert.equal(conversationMediaAdmission(request(value),key,[anchor],now),null);
+ assert.equal(conversationMediaAdmission(request(token,"https://attacker.example/x"),key,[anchor],now),null);
+ assert.equal(conversationMediaAdmission(request(token,url,"audio"),key,[anchor],now),null);
+ assert.equal(conversationMediaAdmission(request(token),"short",[anchor],now),null);
+ assert.throws(()=>conversationMediaTickets("short",anchor,conversation,now));
+ assert.deepEqual(parseConversationTickets(undefined),{});
+ for(const value of [null,[],{"bad":"bad"},Object.fromEntries(Array.from({length:401},(_,i)=>[String(i),token])),{["image\0https://example.com/"+"x".repeat(2200)]:token}])assert.throws(()=>parseConversationTickets(value));
+});

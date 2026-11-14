@@ -1,3 +1,4 @@
+import {conversationMediaAdmission} from "./conversation-media";
 import {mediaAdmission} from "./public-media-admission";
 import type {FeedItem} from "./feed-types";
 import type {PublicLiveStream} from "./nostr-live";
@@ -5,7 +6,7 @@ import type {PublicLiveStream} from "./nostr-live";
 export async function publicMediaSourceAdmission(request:Request,key:string,snapshot:()=>Promise<FeedItem[]>,live:()=>Promise<{available:boolean;streams:PublicLiveStream[]}>){
  mediaAdmission(key,[]); // Validate configuration before invoking either source.
  let unavailable=false;
- try {const sign=mediaAdmission(key,await snapshot())(request);if(sign)return sign;}catch{unavailable=true;}
+ try {const rows=await snapshot();const sign=mediaAdmission(key,rows)(request)??conversationMediaAdmission(request,key,rows);if(sign)return sign;}catch{unavailable=true;}
  try {
   const result=await live();
   const items:FeedItem[]=result.streams.map(stream=>({id:stream.id,source:"nostr",kind:"social",author:stream.author,body:"",ts:stream.starts,permalink:"",tags:[],provenance:"nostr-live",

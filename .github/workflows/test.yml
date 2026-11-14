@@ -85,6 +85,18 @@ jobs:
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/nostr-live.test.ts lib/nostr-event.test.ts lib/public-media-sources.test.ts
 
+      - name: Provider conversation browser contracts (CI only)
+        run: node --import tsx scripts/test-provider-conversation.ts
+      - name: Public provider conversation coverage
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/atproto-conversation.ts
+          --test-coverage-include=lib/public-conversation.ts
+          --test-coverage-include=lib/conversation-media.ts
+          --test-coverage-include=lib/conversation-media-tickets.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/atproto-conversation.test.ts lib/public-conversation.test.ts lib/conversation-media.test.ts
+
       - name: Feed reply and cached conversation coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
