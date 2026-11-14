@@ -51,7 +51,7 @@ try{
  const open=()=>page.getByRole('button',{name:'Open shared file 1',exact:true}).click();
  await refresh();await open();await page.getByRole('heading',{name,exact:true}).waitFor();
  const url=await page.getByRole('article',{name:'Private media post'}).locator(kind==='image'?'img':kind).getAttribute('src');assert.ok(url.startsWith('blob:'));assert.equal(downloads,1);
- if(kind==='audio'){await page.getByLabel('Audio tags').getByText('#team',{exact:true}).waitFor();await page.getByLabel('Audio tags').getByText('#demo',{exact:true}).waitFor();}
+ if(kind==='audio'){await page.getByLabel('Audio tags').waitFor();assert.equal(await page.getByLabel('Audio tags').textContent(),'#team · #demo');}
  if(kind!=='image'){
   await page.locator(kind).evaluate(async element=>{window.lastPlayer=element;await element.play();});
   await page.waitForFunction(()=>window.lastPlayer.currentTime>0.1);
