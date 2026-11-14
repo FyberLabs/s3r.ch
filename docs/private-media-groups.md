@@ -28,3 +28,12 @@ scalar copy is cleared. Another party's assent is refused. The result is a signe
 envelope only: the caller explicitly submits it with `appendGroupRows`, which
 obtains a new fence and still requires native admission. This does not create the
 other party's assent, an epoch, or a delivery grant.
+
+`groupRowsState` reconciles an exact signed batch through the protected
+`group-check` route. `appendGroupRows` checks first: an applied batch returns
+without another write; an absent batch is submitted once with the returned
+fresh fence. A lost response is not retried automatically. Callers retain the
+original signed rows and reconcile them before another attempt. Applied means
+retained, not live authorization: an older object-set row can remain retained
+after a later withdrawal without regaining access. Current-history refusal,
+stale fences and session changes still stop the operation.
