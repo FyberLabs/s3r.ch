@@ -498,3 +498,12 @@ available from My media. Session/key changes clear the editor's prepared file.
 The CI-only meme fixture decrypts the resulting upload and compares its bytes to
 the rendered PNG and its tags. Sharing continues to use the ordinary media ACL;
 this handoff creates only the owner's grant.
+
+Recorded audio and video can be explicitly uploaded through the same private
+media controller as selected files and PNG drafts. Capture completion does not
+write remotely. Clearing, hiding the tab, or changing identity discards the
+plaintext recording and unmounts the uploader; an encrypted pending journal
+already saved before interruption remains resumable from My media. CI captures
+both media types, interrupts and resumes each upload, and compares decrypted
+uploaded bytes and MIME type with the recording. This does not qualify hosted
+login, reader sharing, feed/room presentation, or provider activation.
