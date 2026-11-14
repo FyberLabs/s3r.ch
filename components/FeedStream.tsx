@@ -186,6 +186,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     null,
   );
   const [roomShareMessage, setRoomShareMessage] = useState<string | null>(null);
+  const roomPublicationEpoch = useRef(0);
   const [overlayChat, setOverlayChat] = useState<ChatMessage[]>([]);
   const overlayChatRef = useRef<ChatMessage[]>([]);
   const [graphChat, setGraphChat] = useState<ChatMessage[]>([]);
@@ -693,10 +694,11 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
       setRoomShareMessage("Sharing publishes this room and its chat for anyone to read and copy, even without signing in. Current forum members can participate in this app for one hour. Posts inside stay on Mine.");
       return;
     }
-    if (!roomAuthority || !await roomAuthority.admit(room, true)) {
-      setRoomShareMessage("Room access could not be shared."); return;
-    }
-    if (!canMutate()) return;
+    if (!roomAuthority) { setRoomShareMessage("Room access could not be shared."); return; }
+    const epoch = ++roomPublicationEpoch.current;
+    const admitted = await roomAuthority.admit(room, true);
+    if (!canMutate() || roomPublicationEpoch.current !== epoch) return;
+    if (!admitted) { setRoomShareMessage("Room access could not be shared."); return; }
     const prepared = prepareShareRoomIntoMesh(see.acl, room, roomPrincipal ?? "");
     if ("denied" in prepared) {
       setRoomShareMessage("Could not share.");
@@ -752,6 +754,8 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
       setConfirmShareRoomId(null);
       return;
     }
+    // A confirmed unshare wins over an earlier share/renewal still awaiting admission.
+    roomPublicationEpoch.current++;
     const prepared = prepareUnshareRoomIntoMesh(see.acl, room, roomPrincipal ?? "");
     if ("denied" in prepared) {
       setRoomShareMessage("Could not unshare this room.");
