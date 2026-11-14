@@ -144,7 +144,7 @@ export type ObservedTimes = Record<string, number>;
 const MAX_OBSERVED = ROWS_PER_SOURCE * MAX_WINDOWS * MAX_SOURCES_PER_WINDOW;
 
 export function observedStorageKey(owner: string, viewId: string): string {
-  return `s3rch-views-observed:${owner.toLowerCase()}:${viewId}`;
+  return `s3rch-views-observed:${isSeaPubkey(owner) ? owner : owner.toLowerCase()}:${viewId}`;
 }
 
 /** Parse stored first-seen times. Only finite times on row keys are kept. */

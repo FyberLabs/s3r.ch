@@ -4,7 +4,7 @@ import vectors from "./identity/vectors/principal.json";
 import { composeRoomGame, roomGames } from "./room-game";
 import { toGunChatNode, fromGunChatNode } from "./chat";
 import { createMemoryViewsStore, emptyState } from "./views-store";
-import { feedSourceOf, DEPLOYMENT_SELF_NETWORK } from "./views-live";
+import { feedSourceOf, DEPLOYMENT_SELF_NETWORK, observedStorageKey } from "./views-live";
 import { validateOwner } from "./views-source-ref";
 import { composeNativePost } from "./compose";
 const [alice, bob] = vectors.accept.map(row => row.input);
@@ -22,6 +22,7 @@ test("SEA game start/join/move envelopes survive chat transport and form a board
 test("SEA owners retain isolated view storage and native feed source identity", async () => {
   const store = createMemoryViewsStore();
   assert.equal(emptyState(alice, "device").owner, alice);
+  assert.equal(observedStorageKey(alice, "view"), `s3rch-views-observed:${alice}:view`);
   const first = await store.read(alice, "device"); assert.equal(first.state.owner, alice);
   await store.update(alice, "device", state => state);
   assert.equal((await store.read(bob, "device")).state.owner, bob);
