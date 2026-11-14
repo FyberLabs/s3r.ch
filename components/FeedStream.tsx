@@ -141,6 +141,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
   openRoomId: string | null; setOpenRoomId: Dispatch<SetStateAction<string | null>>;
 }) {
   const { current: roomAuthority, revision: roomAuthorityRevision } = useRoomAuthority();
+  const roomReceiveQueue = useRef<ReturnType<typeof createRoomChatReceiveQueue> | null>(null);
   // Every private overlay, child draft, selection and subscription belongs to this
   // mount. A resolved owner change replaces it; a refresh retains but hides it.
   const session = identity ?? null;
@@ -511,7 +512,8 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     const queue = createRoomChatReceiveQueue(roomAuthority.admission, roomId, message => {
       // Fresh proof objects replace objects retained by a previous controller.
       setGraphChat(prev => mergeChat([message], prev).slice(0, 8192));
-    });
+    }, () => !!roomAuthority.authority.graph.principalForKey(session?.owner ?? "", Math.floor(Date.now() / 1000)));
+    roomReceiveQueue.current = queue;
     const listener = gun
       .get("s3rch")
       .get("rooms")
@@ -521,9 +523,12 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
       .on((data, key) => { void queue.enqueue(data, key); });
     return () => {
       queue.close();
+      if (roomReceiveQueue.current === queue) roomReceiveQueue.current = null;
       if (typeof listener?.off === "function") listener.off();
     };
-  }, [gunReady, openRoomId, openRoomIsPublic, roomAuthority, roomAuthorityRevision]);
+  }, [gunReady, openRoomId, openRoomIsPublic, roomAuthority, session?.owner]);
+
+  useEffect(() => { void roomReceiveQueue.current?.resume(); }, [roomAuthorityRevision]);
 
   useEffect(() => {
     const gun = gunRef.current;

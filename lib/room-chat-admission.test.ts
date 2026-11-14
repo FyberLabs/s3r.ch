@@ -122,3 +122,23 @@ test("closing a receive queue fences in-flight and pending messages", async () =
  void queue.enqueue(row,encodeKey(row.id));queue.close();release();await done;
  assert.equal(calls,1);assert.equal(accepted,0);
 });
+
+test("authority refresh pauses and resumes queued history without replaying its prefix", async () => {
+ const {createRoomChatReceiveQueue} = await import("./room-chat-receive-queue");
+ const f=await fixture(), rows=[];
+ for(let i=0;i<40;i++){const row=await f.admission.compose("room",`refresh ${i}`,()=>f.alice);assert.ok(row);rows.push(row);}
+ let ready=true, calls=0, release!:()=>void, entered!:()=>void;
+ const gate=new Promise<void>(resolve=>{release=resolve;});const started=new Promise<void>(resolve=>{entered=resolve;});
+ const admission={...f.admission,receive:async(...args:Parameters<typeof f.admission.receive>)=>{
+  if(++calls===11){entered();await gate;}return f.admission.receive(...args);
+ }};
+ const accepted:string[]=[];
+ const queue=createRoomChatReceiveQueue(admission,"room",row=>accepted.push(row.body),()=>ready);
+ const pending=rows.map(row=>queue.enqueue(row,encodeKey(row.id)));
+ await started;ready=false;release();await Promise.all(pending);
+ assert.equal(accepted.length,10);assert.equal(calls,11);
+ await queue.resume();assert.equal(calls,11);
+ ready=true;await queue.resume();
+ assert.equal(calls,41);assert.equal(accepted.length,40);assert.equal(new Set(accepted).size,40);
+ queue.close();
+});
