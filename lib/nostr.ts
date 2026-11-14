@@ -41,7 +41,7 @@ export function nostrPermalink(id: string): string {
   return HEX64.test(id) ? `https://njump.me/${id.toLowerCase()}` : "";
 }
 
-export function kind1Filter(pubkey: string, limit = LIMIT): NostrFilter {
+export function kind1Filter(pubkey: string, limit = LIMIT): NostrFilter & {authors:string[]} {
   return { authors: [pubkey.toLowerCase()], kinds: [1], limit };
 }
 
