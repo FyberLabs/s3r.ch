@@ -51,3 +51,14 @@ test("an authorized signer cannot preempt another author's message or task ID", 
  assert.ok(sig);
  assert.equal(await f.admission.receive({ ...forged, sig }, "room", encodeKey(created.id)), null);
 });
+
+test("locking or replacing the key during asynchronous receive cancels a pending send", async () => {
+ for (const replacement of ["locked", "replaced"] as const) {
+  const f = await fixture(); let calls = 0, changed = false;
+  const composed = await f.admission.compose("room", "pending", () => {
+   if (++calls === 2) queueMicrotask(() => { changed = true; });
+   return changed ? (replacement === "locked" ? null : f.bob) : f.alice;
+  });
+  assert.equal(composed, null, replacement);
+ }
+});

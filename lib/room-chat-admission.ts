@@ -83,7 +83,8 @@ export function createRoomChatAdmission(input: {
       if (!row || !allowed(row, pair.pub)) return null;
       const sig = await signForumRecord({ domain, ...row }, pair);
       if (!sig || currentPair() !== pair || !allowed(row, pair.pub)) return null;
-      return receive({ ...row, sig }, room, encodeKey(row.id));
+      const admitted = await receive({ ...row, sig }, room, encodeKey(row.id));
+      return currentPair() === pair && admitted && proofs.valid(admitted) ? admitted : null;
     },
   });
 }
