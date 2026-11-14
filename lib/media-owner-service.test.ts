@@ -165,3 +165,14 @@ test("deletion proxy binds drafts to configured tenant and session owner",async(
   for(const changed of [{...body,at:true},{...body,writer:principal},{...body,proof:[]},{...body,proof:{deletionBytes:"zz",signature:"b".repeat(128)}}])assert.equal((await forwarded("delete",request(changed))).status,400);
   assert.equal((await service(async()=>Response.json({...result,cleanup:"complete"}))("delete",request(body))).status,403);
 });
+
+test("cleanup proxy keeps fixed subject credentials and requires completed acknowledgement",async()=>{
+  const result={accepted:true,command:"a".repeat(64),cleanup:"complete"};let calls=0;
+  const handle=service(async(url,init)=>{calls++;assert.match(String(url),/owner\/cleanup$/);
+    assert.deepEqual(JSON.parse(String(init?.body)),{object});assert.equal(new Headers(init?.headers).get("x-api-key"),"owner-key");
+    return Response.json(result);});
+  assert.deepEqual(await (await handle("cleanup",request({object}))).json(),result);
+  assert.equal((await handle("cleanup",request({object,command:"b".repeat(64)}))).status,400);assert.equal(calls,1);
+  for(const bad of [{...result,cleanup:"pending"},{...result,command:"bad"},{...result,accepted:1}])
+    assert.equal((await service(async()=>Response.json(bad))("cleanup",request({object}))).status,403);
+});

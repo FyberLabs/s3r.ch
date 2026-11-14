@@ -84,6 +84,9 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
         return createPrivateMediaOwner(transport).submitDeletion(intent,deadline);
       },signal);
     },
+    cleanup(object:string,command:string,signal?:AbortSignal){
+      return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).cleanup(object,command,deadline),signal);
+    },
     cancel(object:string,reader:string,signal?:AbortSignal){
       return signed((client,key,deadline)=>client.cancel(object,reader,key,deadline),signal);
     },

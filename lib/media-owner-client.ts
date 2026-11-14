@@ -86,6 +86,13 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
       if(!exact(result,["accepted","command","cleanup"])||result.accepted!==true||!digest(result.command)||result.cleanup!=="pending")throw Error("Private media deletion refused");
       return Object.freeze({command:result.command,cleanup:"pending" as const});
     },
+    async cleanup(object:string,command:string,signal?:AbortSignal) {
+      if(!objectOK(object)||!digest(command))throw Error("Invalid media cleanup command");
+      const result=await request("cleanup",{object},signal??new AbortController().signal);
+      if(!exact(result,["accepted","command","cleanup"])||result.accepted!==true||result.command!==command||result.cleanup!=="complete")
+        throw Error("Media cleanup unconfirmed");
+      return Object.freeze({command,cleanup:"complete" as const});
+    },
     async confirmAllocation(object: string, owner: string, signal: AbortSignal) {
       await view(object, owner, signal);
     },
