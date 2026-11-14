@@ -517,7 +517,8 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
         if (!roomAuthority || cancelled || typeof key !== "string") return;
         void roomAuthority.admission.receive(data, roomId, key).then(message => {
           if (!message || cancelled || !roomAuthority.admission.valid(message)) return;
-          setGraphChat(prev => mergeChat(prev, [message]).slice(0, 8192));
+          // Prefer the freshly admitted object: prior controllers cannot lend proofs.
+          setGraphChat(prev => mergeChat([message], prev).slice(0, 8192));
         });
       });
     return () => {
