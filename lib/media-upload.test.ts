@@ -17,7 +17,7 @@ function fixture(lost="") {
     const path=String(url),action=path.split("/").at(-1)!;calls.push(action);
     const body=typeof init?.body==="string"?JSON.parse(init.body):null;
     if(typeof init?.body==="string") {assert.ok(!init.body.includes(pair.priv));assert.ok(!init.body.includes(pair.epriv));}
-    if(action==="catalog")return Response.json({at:100,objects:[],nextPage:null,principal:owner});
+    if(action==="catalog")return Response.json({at:100,objects:[],nextPage:1,principal:owner});
     if(action==="view") {
       if(!allocated)return new Response(null,{status:403});
       const grant=applied.get("grant") as {claims:Record<string,unknown>}|undefined;

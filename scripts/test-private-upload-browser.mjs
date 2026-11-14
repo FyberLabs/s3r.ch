@@ -20,7 +20,7 @@ const server=createServer(async(req,res)=>{
   const body=req.headers['content-type']==='application/json'?JSON.parse(raw):null;
   if(body){assert.ok(!raw.toString().includes(pair.priv));assert.ok(!raw.toString().includes(pair.epriv));}
   const action=req.url.split('/').at(-1);
-  if(action==='catalog'){json({at:Math.floor(Date.now()/1000),objects:[],nextPage:null,principal:pair.pub});return;}
+  if(action==='catalog'){json({at:Math.floor(Date.now()/1000),objects:[],nextPage:1,principal:pair.pub});return;}
   if(action==='view'){
    if(!allocated){json({},403);return;}
    const grant=applied.get('grant');const entries=grant?[Object.fromEntries(['accessor','grantRevision','stated','from','until'].map(k=>[k,grant.claims[k]]))]:[];
