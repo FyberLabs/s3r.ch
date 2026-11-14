@@ -5,6 +5,8 @@ import {fetchPublicText} from "./public-fetch";
 import {assertPublicHttpUrl} from "./url-guard";
 const record=(value:unknown):Record<string,unknown>=>value&&typeof value==="object"&&!Array.isArray(value)?value as Record<string,unknown>:{};
 const publicUrl=(value:unknown)=>{try{return typeof value==="string"&&value.length<=2048?assertPublicHttpUrl(value).href:null;}catch{return null;}};
+const collectionType=(value:unknown)=>typeof value==="string"&&["Collection","OrderedCollection","CollectionPage","OrderedCollectionPage"].includes(value);
+const reference=(value:unknown)=>publicUrl(typeof value==="string"?value:record(value).id??record(value).href);
 const PUBLIC="https://www.w3.org/ns/activitystreams#Public";
 export async function fetchActivityPubObject(url:string,pull=fetchPublicText){
  const result=await pull(url,{accept:ACTIVITYPUB_ACCEPT});
@@ -24,7 +26,7 @@ export async function fetchActivityPubConversation(anchor:FeedItem,pull=fetchAct
   try{return record(await pull(id));}catch(error){if(id===anchor.id)throw error;return null;}
  };
  const project=(raw:Record<string,unknown>,id:string)=>{
-  if(raw.id!==id||!["Note","Article"].includes(String(raw.type)))return null;
+  if(raw.id!==id||(typeof raw.type!=="string"||!["Note","Article"].includes(raw.type)))return null;
   const author=publicUrl(raw.attributedTo);if(!author||new URL(author).origin!==new URL(id).origin)return null;
   const audience=[raw.to,raw.cc].flatMap(value=>Array.isArray(value)?value:[value]);
   if(!audience.includes(PUBLIC))return null;
@@ -44,15 +46,17 @@ export async function fetchActivityPubConversation(anchor:FeedItem,pull=fetchAct
  // Only the anchor authority can supply its reply collection. Child objects
  // are always re-fetched from their own authority, never trusted when embedded.
  let collection=record(raw.replies);
- const repliesUrl=publicUrl(raw.replies);
+ const repliesUrl=typeof raw.replies==="string"||!collectionType(collection.type)?reference(raw.replies):null;
  if(repliesUrl&&new URL(repliesUrl).origin===new URL(anchor.id).origin)collection=await fetchObject(repliesUrl)??{};
- if(!["Collection","OrderedCollection","CollectionPage","OrderedCollectionPage"].includes(String(collection.type)))return empty();
+ if(!collectionType(collection.type))return empty();
  let entries=collection.orderedItems??collection.items;
  if(!Array.isArray(entries)){
-  const first=publicUrl(collection.first);
-  if(first&&new URL(first).origin===new URL(anchor.id).origin){collection=await fetchObject(first)??{};entries=collection.orderedItems??collection.items;}
+  const embedded=record(collection.first),first=reference(collection.first);
+  const sameAuthority=first===null?embedded.id===undefined&&embedded.href===undefined:new URL(first).origin===new URL(anchor.id).origin;
+  if(sameAuthority&&collectionType(embedded.type)){collection=embedded;entries=collection.orderedItems??collection.items;}
+  else if(first&&sameAuthority){collection=await fetchObject(first)??{};entries=collection.orderedItems??collection.items;}
  }
- if(!["Collection","OrderedCollection","CollectionPage","OrderedCollectionPage"].includes(String(collection.type))||!Array.isArray(entries))return empty();
+ if(!collectionType(collection.type)||!Array.isArray(entries))return empty();
  if(entries.length>CONVERSATION_REPLIES||collection.next)truncated=true;
  for(const entry of entries.slice(0,CONVERSATION_REPLIES)){
   const id=publicUrl(typeof entry==="string"?entry:record(entry).id);if(!id)continue;

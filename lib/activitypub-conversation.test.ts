@@ -46,3 +46,21 @@ test("HTTP JSON reader checks final authority and rejects malformed JSON",async(
  for(const url of ["","https://foreign.example/object"])await assert.rejects(fetchActivityPubObject(anchor.id,async()=>({url,text:"{}"})));
  await assert.rejects(fetchActivityPubObject(anchor.id,async()=>({url:anchor.id,text:"invalid"})));
 });
+
+test("embedded and referenced first pages work without trusting embedded replies",async()=>{
+ const page="https://example.com/page";
+ for(const first of [{id:page},{href:page},{type:"CollectionPage",items:[note("reply","child")]},{id:page,type:"CollectionPage",orderedItems:[id("reply")]}]){
+  const result=await fetchActivityPubConversation(anchor,async url=>url===anchor.id?{...note("child"),replies:{type:"Collection",first}}:url===page?{type:"CollectionPage",items:[id("reply")]}:note("reply","child"));
+  assert.deepEqual(result.rows.map(row=>row.id),[anchor.id,id("reply")]);
+ }
+ for(const first of [{id:"https://foreign.example/page",type:"CollectionPage",items:[id("reply")]},{id:"http://127.0.0.1/page",type:"CollectionPage",items:[id("reply")]}]){
+  let calls=0;const result=await fetchActivityPubConversation(anchor,async()=>{calls++;return {...note("child"),replies:{type:"Collection",first}};});assert.equal(calls,1);assert.equal(result.rows.length,1);
+ }
+});
+test("malformed remote types preserve successfully fetched ancestors",async()=>{
+ for(const type of [{toString:"Note"},[],null]){
+  const result=await fetchActivityPubConversation(anchor,async url=>url===anchor.id?{...note("child","parent"),replies:{type:"Collection",items:[id("reply")]}}:url===id("parent")?note("parent"): {...note("reply","child"),type});
+  assert.deepEqual(result.rows.map(row=>row.id),[anchor.id,id("parent")]);
+  const collection=await fetchActivityPubConversation(anchor,async url=>url===anchor.id?{...note("child","parent"),replies:{type}}:note("parent"));assert.equal(collection.rows.length,2);
+ }
+});
