@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
 import { mergeChat } from "./chat";
-import { createRoomChatAdmission } from "./room-chat-admission";
+import { createRoomChatAdmission, type SignedRoomChat } from "./room-chat-admission";
 import { signForumRecord } from "./forum-sign";
 import { admittedRoomGames, roomGames } from "./room-game";
 import { admittedRoomTasks } from "./room-tasks";
@@ -231,7 +231,7 @@ test("unknown-author flooding cannot displace authenticated late-grant retries",
 
 test("initial history waits for authority and later refreshes retain the subscription", async () => {
  const {createRoomChatSubscription}=await import("./room-chat-receive-queue");
- const f=await fixture(), rows=[];
+ const f=await fixture(), rows: SignedRoomChat[]=[];
  for(let i=0;i<300;i++){const row=await f.admission.compose("room",`initial ${i}`,()=>f.alice);assert.ok(row);rows.push(row);}
  let ready=false, subscriptions=0, stopped=0, changed=()=>{};
  const accepted:string[]=[];
