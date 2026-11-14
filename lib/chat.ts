@@ -102,8 +102,8 @@ export function fromGunChatNode(
  */
 export function composeChat(input: ComposeChatInput): ChatMessage | null {
   const body = input.body.trim();
-  // Task envelopes carry two predecessor IDs and an assignee SEA key.
-  const limit = body.startsWith("s3rch-work:v1:") ? 512 : CHAT_BODY_MAX;
+  // Task/game envelopes carry two predecessor IDs and may include an assignee SEA key.
+  const limit = (body.startsWith("s3rch-work:v1:") || body.startsWith("s3rch-game:v1:")) ? 512 : CHAT_BODY_MAX;
   if (!body || body.length > limit) return null;
   const room = input.roomId.trim();
   if (!room) return null;

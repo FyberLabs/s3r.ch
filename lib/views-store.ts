@@ -4,6 +4,8 @@
  * See docs/views.md §2 and §5.
  */
 import { getAddress } from "viem";
+import { isSeaPubkey } from "./identity/forum-check";
+const viewOwner = (owner: string): string => isSeaPubkey(owner) ? owner : getAddress(owner);
 import { formatShareable, sameSource, validateSourceRef, type SourceRef } from "./views-source-ref";
 import { canonicalJson } from "./views-canonical";
 import {
@@ -72,7 +74,7 @@ export type ViewsState = {
 
 export function emptyState(owner: string, deviceId: string): ViewsState {
   if (!isSafeKey(deviceId)) throw new Error("deviceId is empty or reserved");
-  return { owner: getAddress(owner), deviceId, views: {}, recents: [], favorites: [], favoritesVV: {}, retirements: {}, dropped: {}, v: 1 };
+  return { owner: viewOwner(owner), deviceId, views: {}, recents: [], favorites: [], favoritesVV: {}, retirements: {}, dropped: {}, v: 1 };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -668,11 +670,11 @@ type RawIO = { get(owner: string): Promise<unknown>; put(owner: string, value: V
 function makeStore(io: RawIO, lock: Lock): ViewsStore {
   return {
     async read(owner, deviceId) {
-      const key = getAddress(owner);
+      const key = viewOwner(owner);
       return parseState(await io.get(key), key, deviceId);
     },
     async update(owner, deviceId, fn) {
-      const key = getAddress(owner);
+      const key = viewOwner(owner);
       return lock(`s3rch-views:${key}`, async () => {
         const { state, notices } = parseState(await io.get(key), key, deviceId);
         const next = fn(state);

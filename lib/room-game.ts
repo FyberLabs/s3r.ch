@@ -3,6 +3,7 @@
  * Presence is display-only; a heartbeat never selects a player or grants access. */
 import { checkSee, roomSoul, type SeeAcl } from "./identity/check";
 import { getAddress } from "viem";
+import { isSeaPubkey } from "./identity/forum-check";
 import { composeChat, shortChatEntropy, type ChatMessage } from "./chat";
 
 const PREFIX = "s3rch-game:v1:";
@@ -16,7 +17,7 @@ export type RoomGame = Readonly<{
   outcome: "X" | "O" | "draw" | null; startedAt: number;
 }>;
 const idOK = (value: unknown): value is string => typeof value === "string" &&
-  /^s3rch:chat:0x[0-9a-fA-F]{40}:[0-9]{1,16}:[A-Za-z0-9_-]{1,32}$/.test(value);
+  /^s3rch:chat:(?:0x[0-9a-fA-F]{40}|[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}):[0-9]{1,16}:[A-Za-z0-9_-]{1,32}$/.test(value);
 const order = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 
 export function canPlayRoomGame(acl: SeeAcl, room: string, actor: string, now: number): boolean {
@@ -24,7 +25,7 @@ export function canPlayRoomGame(acl: SeeAcl, room: string, actor: string, now: n
 }
 
 export function parseRoomGameAction(body: unknown): RoomGameAction | null {
-  if (typeof body !== "string" || body.length > 280 || !body.startsWith(PREFIX)) return null;
+  if (typeof body !== "string" || body.length > 512 || !body.startsWith(PREFIX)) return null;
   try {
     const value: unknown = JSON.parse(body.slice(PREFIX.length));
     if (!Array.isArray(value)) return null;
@@ -65,7 +66,7 @@ export function roomGames(messages: readonly ChatMessage[], room: string): RoomG
   for (const message of messages) {
     if (message.room !== room || !idOK(message.id) || !Number.isSafeInteger(message.ts) || message.ts < 0 || (message.v !== undefined && message.v !== 1)) continue;
     let author: string;
-    try { author = getAddress(message.author); } catch { continue; }
+    try { author = isSeaPubkey(message.author) ? message.author : getAddress(message.author); } catch { continue; }
     if (!message.id.startsWith(`s3rch:chat:${author}:`)) continue;
     const action = parseRoomGameAction(message.body);
     if (!action) continue;
