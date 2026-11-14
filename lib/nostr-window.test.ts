@@ -59,27 +59,38 @@ test("invalid filters never open a socket",async()=>{
  for(const change of [{limit:0},{limit:101},{limit:NaN},{authors:[]},{authors:["bad"]},{kinds:[]},{kinds:[-1]},{kinds:[65536]}])await assert.rejects(queryNostrRelay("wss://example.org",{authors:["b".repeat(64)],kinds:[1],limit:20,...change}),/Invalid Nostr/);
 });
 
-import {fetchPublicNostr,PUBLIC_NOSTR_PUBKEYS} from "./nostr";
+import {fetchPublicNostr} from "./nostr";
+import {createHash} from "node:crypto";
+import {schnorr} from "@noble/curves/secp256k1.js";
+const keys=[1,2].map(n=>{const key=new Uint8Array(32);key[31]=n;return key;});
+const fixtureAuthors=keys.map(key=>Buffer.from(schnorr.getPublicKey(key)).toString("hex"));
+function signedNote(pubkey:string){
+ const event={pubkey,created_at:123,kind:1,tags:[],content:"Public note"};
+ const hash=createHash("sha256").update(JSON.stringify([0,pubkey,event.created_at,event.kind,event.tags,event.content])).digest();
+ return {...event,id:hash.toString("hex"),sig:Buffer.from(schnorr.sign(hash,keys[fixtureAuthors.indexOf(pubkey)],new Uint8Array(32))).toString("hex")};
+}
 test("public pulls normalize complete windows and exclude failed relay windows",async t=>{
- const original=globalThis.WebSocket;let failSecond=false;
+ const original=globalThis.WebSocket;let failSecond=false,tamperFirst=false;
  class Socket extends EventTarget {
   static OPEN=1;readyState=1;
   constructor(_url:string){super();queueMicrotask(()=>this.dispatchEvent(new Event("open")));}
   send(value:string){
    const [type,id,filter]=JSON.parse(value);if(type!=="REQ")return;
    const pubkey=filter.authors[0];
-   if(failSecond&&pubkey===PUBLIC_NOSTR_PUBKEYS[1])throw Error("fixture send failure");
-   for(const event of [{id:pubkey,pubkey,kind:1,content:"Public note",created_at:123},{id:"invalid",pubkey,kind:1}])
-    this.dispatchEvent(new MessageEvent("message",{data:JSON.stringify(["EVENT",id,event])}));
+   if(failSecond&&pubkey===fixtureAuthors[1])throw Error("fixture send failure");
+   const event=signedNote(pubkey);if(tamperFirst&&pubkey===fixtureAuthors[0])event.content="forged";
+   this.dispatchEvent(new MessageEvent("message",{data:JSON.stringify(["EVENT",id,event])}));
    this.dispatchEvent(new MessageEvent("message",{data:JSON.stringify(["EOSE",id])}));
   }
   close(){this.readyState=3;this.dispatchEvent(new Event("close"));}
  }
  globalThis.WebSocket=Socket as unknown as typeof WebSocket;t.after(()=>{globalThis.WebSocket=original;});
- const complete=await fetchPublicNostr();
+ const complete=await fetchPublicNostr(fixtureAuthors);
  assert.equal(complete.sourcesOk,2);assert.equal(complete.items.length,2);assert.deepEqual(complete.completeSources,["nostr"]);
  assert.ok(complete.items.every(item=>item.body==="Public note"&&item.ts===123&&item.source==="nostr"));
- failSecond=true;const partial=await fetchPublicNostr();
+ failSecond=true;const partial=await fetchPublicNostr(fixtureAuthors);
  assert.equal(partial.sourcesOk,1);assert.equal(partial.windows?.length,1);assert.deepEqual(partial.completeSources,[]);
- assert.equal(partial.items[0].author,PUBLIC_NOSTR_PUBKEYS[0]);
+ assert.equal(partial.items[0].author,fixtureAuthors[0]);
+ tamperFirst=true;const forged=await fetchPublicNostr(fixtureAuthors);assert.equal(forged.sourcesOk,0);assert.deepEqual(forged.windows,[]);assert.deepEqual(forged.completeSources,[]);
+ for(const authors of [[],["bad"],Array(17).fill(fixtureAuthors[0])])await assert.rejects(fetchPublicNostr(authors),/Invalid Nostr authors/);
 });

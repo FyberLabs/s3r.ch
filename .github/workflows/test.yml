@@ -72,15 +72,18 @@ jobs:
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/nostr.test.ts lib/nostr-window.test.ts
 
+      - name: Nostr signature browser contracts (CI only)
+        run: node scripts/test-nostr-signatures.mjs
       - name: Public live directory browser contracts (CI only)
         run: node scripts/test-live-directory.mjs
       - name: Public live source coverage
         run: >-
           node --import tsx --test --experimental-test-coverage
           --test-coverage-include=lib/nostr-live.ts
+          --test-coverage-include=lib/nostr-event.ts
           --test-coverage-include=lib/public-media-sources.ts
           --test-coverage-lines=90 --test-coverage-branches=80
-          lib/nostr-live.test.ts lib/public-media-sources.test.ts
+          lib/nostr-live.test.ts lib/nostr-event.test.ts lib/public-media-sources.test.ts
 
       - name: Feed reply and cached conversation coverage (CI only)
         run: >-
