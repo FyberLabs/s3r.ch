@@ -178,6 +178,7 @@ jobs:
           node --import tsx --test --test-isolation=none --experimental-test-coverage
           --test-coverage-include=lib/media-owner-service.ts
           --test-coverage-include=lib/media-owner-client.ts
+          --test-coverage-include=lib/media-share.ts
           --test-coverage-include=lib/media-deletion.ts
           --test-coverage-include=lib/media-catalog.ts
           --test-coverage-lines=90 --test-coverage-branches=80

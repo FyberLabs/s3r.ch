@@ -1,3 +1,4 @@
+import { parseMediaSharePlan } from "./media-share";
 import { parseMediaDeletionDraft, parseMediaDeletionIntent, type MediaDeletionIntent } from "./media-deletion";
 import { parseForumObjectRecord, type UnverifiedObjectRecord } from "./identity/forum-object-record";
 import { isMediaCatalogPageNumber, parseMediaCatalogPage, parseMediaCleanupPage } from "./media-catalog";
@@ -138,6 +139,17 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
           candidateRevisionIds:[revisionId],previousFinalizationId:held.previousFinalizationId},key,held.ownerPub);
         deadline.throwIfAborted();current(held);
         return {document,finalization,ownerPub:held.ownerPub};
+      });
+    },
+    /** Prepare exact signatures only; persist them before publishing any grant. */
+    async prepareShare(object:string,owner:string,reader:string,scalar:Uint8Array,signal?:AbortSignal) {
+      if(!objectOK(object)||!isSeaPubkey(owner)||!isSeaPubkey(reader)||owner===reader)throw Error("Invalid media share target");
+      return withKey(scalar,signal,async(key,deadline)=>{
+        const held=await request("share-view",{object,reader},deadline);current(held);
+        const plan=parseMediaSharePlan(held,object,owner,reader);
+        const grants=plan.grants.map(draft=>signPrivateMediaGrant(draft,key,plan.ownerPub));
+        deadline.throwIfAborted();current(held);
+        return {...plan,grants};
       });
     },
     async uploadState(object: string, operation: "grant" | "epoch" | "wrap", payload: unknown, signal: AbortSignal) {
