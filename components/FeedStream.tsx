@@ -67,6 +67,7 @@ import { useGunPeer, type FeedGun } from "@/components/GunPeerProvider";
 import { IngestForm } from "@/components/IngestForm";
 import { OutboundPostControls } from "@/components/OutboundPostControls";
 import { PostSeeGrantControls } from "@/components/PostSeeGrantControls";
+import { PostContent, postCardClassName } from "@/components/PostContent";
 import { RoomSeeGrantControls } from "@/components/RoomSeeGrantControls";
 import { RoomChat } from "@/components/RoomChat";
 import { RoomPresence } from "@/components/RoomPresence";
@@ -1322,25 +1323,11 @@ function FeedCard({
     : null;
   const ownNative = mine && ownsNativePost(item, sessionAddress);
   const inner = (
-    <>
-      <div className="flex items-start justify-between gap-3">
-        <h2 className="text-base font-semibold text-ink">
-          {item.author || item.kind}
-        </h2>
-        <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-signal">
-          {item.kind}
-        </span>
-      </div>
-      <p className="mt-1 text-sm text-ink-muted">{item.body}</p>
+    <PostContent title={item.author || item.kind} kind={item.kind} body={item.body} tags={item.tags} when={when}>
       <FeedConversation key={`${item.source}:${item.id}`} item={item} /><PublicFeedMedia media={item.media} />
-      <p className="mt-2 text-xs text-ink-muted">
-        {item.tags.join(" · ")}
-        {when ? ` · ${when}` : ""}
-      </p>
-    </>
+    </PostContent>
   );
-  const className =
-    "block border border-rule bg-panel p-5";
+  const className = postCardClassName;
 
   if (ownNative && sessionAddress) {
     return (
