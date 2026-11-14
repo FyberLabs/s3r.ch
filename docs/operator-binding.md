@@ -43,3 +43,15 @@ There is no newest-key choice or fallback to an older declaration.
 This proof is not login, ACL enrollment, a reader grant or a provisioning receipt.
 The private fixture delivery and registered hosted driver remain Infra work.
 Installation and activation remain off.
+
+## Explicit browser export
+
+On TEST, connect the declared wallet and unlock the existing SEA identity through
+its ordinary flow. The account control **Sign and export TEST operator binding**
+asks for explicit confirmation, requests the wallet signature, and signs the
+reciprocal statement locally with the already unlocked SEA key. It rechecks the
+session, wallet and unlock revision across asynchronous steps, verifies both
+proofs, and downloads `s3rch-operator-binding.json` in Infra's disabled template
+format. It creates no identity, sends no declaration, and changes no activation.
+The exported file contains public fields and signatures only. Do not send a
+private-key backup in its place. Other origins/wallets and locked identities refuse.
