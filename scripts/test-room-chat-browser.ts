@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { writeNightlyCaseResults } from "./nightly-case-results.mjs";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { createRequire } from "node:module";
@@ -114,4 +115,10 @@ void main().catch(() => {
   if (!outcomes.has("room-create-share")) report("room-create-share", "fail");
   for (const name of caseNames) if (!outcomes.has(name)) report(name, "blocked", ["room-create-share"]);
   console.error("Signed room scenario setup or cleanup failed."); process.exitCode = 1;
+}).finally(() => {
+  const result = writeNightlyCaseResults({ suite: "signed-room-chat", expectedCases: caseNames,
+    cases: caseNames.map(name => ({ name, status: outcomes.get(name) === "pass" ? "passed" : outcomes.get(name) === "fail" ? "failed" : "blocked" })) });
+  if (result.status !== "passed") process.exitCode = 1;
+}).catch(() => {
+  console.error("Signed room case report could not be written."); process.exitCode = 1;
 });
