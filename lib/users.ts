@@ -1,12 +1,12 @@
 /**
- * Gun-native user node. A user is a SociACL object on s3rch/users/<wallet>.
+ * Gun-native user node. A user is a SociACL object on s3rch/users/<SEA principal>.
  * Held claims link by claim id (`ens:name.eth`). Default visibility is mine.
  * Share-into-mesh is a separate explicit put of the user node and/or
  * individual claims. Holding a claim is not publishing it.
  * Unshare retracts the user node (tombstone) or republishes without one claim.
  */
 
-import { legacyUserSoul } from "./identity/legacy-user-soul";
+import { isSeaPubkey } from "./identity/forum-check";
 import { getAddress } from "viem";
 import {
   GUN_PROTOCOL_V,
@@ -162,12 +162,8 @@ export function assembleMineUser(input: AssembleMineUserInput): User | null {
   const indicators = input.indicators
     ? splitIndicators([...input.indicators])
     : linkHeldIndicators(input.lookups ?? {}, input.previous?.indicators ?? []);
-  let checksum: string;
-  try {
-    checksum = getAddress(input.address);
-  } catch {
-    return null;
-  }
+  if (!isSeaPubkey(input.address)) return null;
+  const checksum = input.address;
   const samePrevious =
     input.previous &&
     input.previous.id === checksum &&
@@ -245,7 +241,7 @@ export function fromGunUserNode(
   if (typeof node.id !== "string" || !node.id.trim()) return null;
   let id: string;
   try {
-    id = getAddress(node.id);
+    id = isSeaPubkey(node.id) ? node.id : getAddress(node.id);
   } catch {
     return null;
   }
@@ -261,17 +257,13 @@ export function fromGunUserNode(
 }
 
 /**
- * Build a user node keyed by the checksummed wallet.
+ * Build a user node keyed by the authenticated SEA principal.
  * Indicators are verified held-claim ids. Empty indicators is valid
  * (published wallet identity, no shared claims yet).
  */
 export function composeUser(input: ComposeUserInput): User | null {
-  let id: string;
-  try {
-    id = getAddress(input.address);
-  } catch {
-    return null;
-  }
+  if (!isSeaPubkey(input.address)) return null;
+  const id = input.address;
   const ts =
     typeof input.nowSeconds === "number" && Number.isFinite(input.nowSeconds)
       ? Math.floor(input.nowSeconds)
@@ -307,7 +299,7 @@ function sharedIntersection(
 }
 
 /**
- * Prepare an explicit share of the user node onto s3rch/users/<wallet>.
+ * Prepare an explicit share of the user node onto s3rch/users/<SEA principal>.
  * Indicators on the public put are only those already marked shared.
  * Does not grant see. Does not dump the private footprint.
  */
@@ -349,12 +341,7 @@ export function prepareShareClaimIntoMesh(
   const claim = claimId.trim();
   if (!claim) return { denied: true };
 
-  let walletClaim = false;
-  try {
-    walletClaim = getAddress(claim) === getAddress(user.id);
-  } catch {
-    walletClaim = false;
-  }
+  const walletClaim = isUserIdentityClaimId(claim, user.id);
 
   if (!walletClaim) {
     const held = user.indicators.some(
@@ -416,7 +403,7 @@ export function prepareUnshareClaimFromMesh(
   if (!claim) return { denied: true };
   if (!ownsUser(user, owner)) return { denied: true };
 
-  if (isWalletClaimId(claim, user.id)) {
+  if (isUserIdentityClaimId(claim, user.id)) {
     return prepareUnshareUserFromMesh(acl, user, owner, nowSeconds);
   }
 
@@ -441,11 +428,11 @@ export function ownsUser(
   address: string | null | undefined,
 ): boolean {
   if (!address) return false;
-  try {
-    return getAddress(user.id) === getAddress(address);
-  } catch {
-    return false;
-  }
+  return isSeaPubkey(address) && user.id === address;
+}
+
+export function isUserIdentityClaimId(claimId: string, principal: string): boolean {
+  return isSeaPubkey(principal) && claimId === principal;
 }
 
 export function isWalletClaimId(claimId: string, wallet: string): boolean {
@@ -496,7 +483,8 @@ export function shortenWallet(address: string): string {
 }
 
 export function userObjectSoul(wallet: string): string {
-  return legacyUserSoul(wallet);
+  if (!isSeaPubkey(wallet)) throw new Error("SEA principal required");
+  return `s3rch/users/${wallet}`;
 }
 
 export { walletClaimId };

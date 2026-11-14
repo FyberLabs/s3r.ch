@@ -79,6 +79,45 @@ if (!scheduledStartupBrowser(process.env)) {
       await panel.getByRole("button", { name: "Sign out linked account" }).click();
       await panel.getByRole("link", { name: "Sign in with your linked organization account" }).waitFor();
       await login(); cases.push({ name: "logout-relogin-preserves-existing-sea", status: "passed" });
+      const seaSession = page.getByTestId("sea-identity-session");
+      await seaSession.getByRole("button", { name: "Use saved identity", exact: true }).click();
+      await seaSession.getByText("Identity session ready.", { exact: true }).waitFor();
+      const feedSession = await page.evaluate(async () => {
+        const response = await fetch("/api/identity/session", { cache: "no-store" });
+        if (!response.ok) throw Error("Feed identity unavailable");
+        return response.json();
+      });
+      assert.equal(feedSession.owner, fixture.expected.sea_public_key);
+      await page.getByRole("button", { name: "Mine", exact: true }).click();
+      const body = "Scheduled private feed ownership check";
+      await page.getByRole("textbox", { name: "Body", exact: true }).fill(body);
+      await page.getByRole("button", { name: "Post to Mine", exact: true }).click();
+      await page.getByText("Saved.", { exact: true }).waitFor();
+      await page.getByText(body, { exact: true }).waitFor();
+      await page.getByRole("button", { name: "Public", exact: true }).click();
+      await page.getByRole("button", { name: "Mine", exact: true }).click();
+      await page.getByText(body, { exact: true }).waitFor();
+      await seaSession.getByRole("button", { name: "Refresh identity session", exact: true }).click();
+      await seaSession.getByText("Identity session ready.", { exact: true }).waitFor();
+      await page.getByText(body, { exact: true }).waitFor();
+      cases.push({ name: "sea-sign-in-post-mine", status: "passed" });
+      const roomTitle = "Scheduled private room ownership check";
+      await page.getByRole("textbox", { name: "New room", exact: true }).fill(roomTitle);
+      await page.getByRole("button", { name: "New room", exact: true }).click();
+      await page.getByRole("button", { name: roomTitle, exact: true }).waitFor();
+      await page.getByRole("textbox", { name: "Body", exact: true }).fill("Private draft from the previous session");
+      // Mine is browser-local. Sign-out must remove rows, rooms and drafts; never share them.
+      await seaSession.getByRole("button", { name: "Sign out identity", exact: true }).click();
+      await seaSession.getByText("Identity session cleared.", { exact: true }).waitFor();
+      await page.getByText(body, { exact: true }).waitFor({ state: "hidden" });
+      await page.getByRole("button", { name: roomTitle, exact: true }).waitFor({ state: "hidden" });
+      await seaSession.getByRole("button", { name: "Use saved identity", exact: true }).click();
+      await seaSession.getByText("Identity session ready.", { exact: true }).waitFor();
+      await page.getByRole("textbox", { name: "Body", exact: true }).waitFor();
+      assert.equal(await page.getByRole("textbox", { name: "Body", exact: true }).inputValue(), "");
+      assert.equal(await page.getByText(body, { exact: true }).count(), 0);
+      assert.equal(await page.getByRole("button", { name: roomTitle, exact: true }).count(), 0);
+      cases.push({ name: "sea-sign-out-clears-mine", status: "passed" });
       report("passed");
     }
   } catch { report("failed", "startup-browser-contract-failed"); process.exitCode = 1; }

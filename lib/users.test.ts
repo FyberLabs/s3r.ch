@@ -28,8 +28,8 @@ import {
   type User,
 } from "./users";
 
-const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const BOB = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+const ALICE = "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
+const BOB = "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
 const NOW = 1_700_000_000;
 
 function user(overrides: Partial<{ indicators: string[]; nowSeconds: number }> = {}): User {
@@ -45,7 +45,7 @@ function user(overrides: Partial<{ indicators: string[]; nowSeconds: number }> =
 describe("GunUserNode csv indicators", () => {
   it("toGunUserNode / fromGunUserNode round-trip", () => {
     const built = composeUser({
-      address: ALICE.toLowerCase(),
+      address: ALICE,
       indicators: ["ens:vitalik.eth", " ENS:vitalik.eth ", "farcaster:dwr"],
       nowSeconds: NOW,
     });
@@ -90,7 +90,7 @@ describe("GunUserNode csv indicators", () => {
 describe("composeUser", () => {
   it("builds a valid user node", () => {
     const built = composeUser({
-      address: ALICE.toLowerCase(),
+      address: ALICE,
       indicators: namedHeldIndicators({
         ens: "vitalik.eth",
         farcaster: "dwr",
@@ -111,7 +111,7 @@ describe("composeUser", () => {
     ]);
     assert.equal(built.ts, NOW);
     assert.equal(built.v, 1);
-    assert.equal(ownsUser(built, ALICE.toLowerCase()), true);
+    assert.equal(ownsUser(built, ALICE), true);
     assert.equal(ownsUser(built, BOB), false);
   });
 
@@ -126,7 +126,7 @@ describe("composeUser", () => {
 describe("assemble / link Mine overlay", () => {
   it("assembles a Mine GunUserNode with linked claim ids after SIWE lookups", () => {
     const overlay = assembleMineUser({
-      address: ALICE.toLowerCase(),
+      address: ALICE,
       lookups: {
         ens: "vitalik.eth",
         unstoppable: "brad.x",
@@ -450,12 +450,12 @@ describe("merge and provenance", () => {
     const built = user();
     assert.equal(
       userProvenanceLine(built),
-      "0xf39F…2266 · ens:vitalik.eth, farcaster:dwr",
+      "axfR8u…_UfU · ens:vitalik.eth, farcaster:dwr",
     );
-    assert.equal(userProvenanceLine({ id: ALICE, indicators: [] }), "0xf39F…2266");
+    assert.equal(userProvenanceLine({ id: ALICE, indicators: [] }), "axfR8u…_UfU");
   });
 
   it("legacyUserSoul checksums a lowercase wallet", () => {
-    assert.equal(legacyUserSoul(ALICE.toLowerCase()), `s3rch/users/${ALICE}`);
+    assert.equal(legacyUserSoul(ALICE), `s3rch/users/${ALICE}`);
   });
 });

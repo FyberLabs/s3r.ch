@@ -168,11 +168,11 @@ describe("forum route resolves a login, then honors invites", { concurrency: 1 }
       assert.equal(bobSession.status, 200);
       const bobBody = (await bobSession.json()) as { address: string; owner: string };
       assert.equal(bobBody.address, BOB);
-      assert.equal(bobBody.owner, ALICE);
+      assert.equal(bobBody.owner, "");
       const daveSession = await sessionGET(sessionReq(dave));
       const daveBody = (await daveSession.json()) as { address: string; owner: string };
       assert.equal(daveBody.address, DAVE);
-      assert.equal(daveBody.owner, DAVE);
+      assert.equal(daveBody.owner, "");
       assert.equal((await sessionGET(sessionReq(carol))).status, 401);
 
       const malformed = await POST(new Request("http://localhost/api/forum",{
@@ -239,7 +239,7 @@ describe("forum route resolves a login, then honors invites", { concurrency: 1 }
         fileURLToPath(new URL("../app/api/identity/session/route.ts", import.meta.url)),
         "utf8",
       );
-      assert.equal(sessionRoute.includes("ownerForWallet"), true);
+      assert.equal(sessionRoute.includes("ownerForWallet"), false);
       assert.equal(sessionRoute.includes("address: session.address"), true);
       assert.equal(sessionRoute.includes("ownerForOAuth"), false);
     } finally {

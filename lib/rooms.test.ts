@@ -26,14 +26,15 @@ import {
   type Room,
 } from "./rooms";
 
-const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+const ALICE = "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
 const BOB = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+const SEA = "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
 const NOW = 1_700_000_000;
 
 function room(overrides: Partial<ComposeRoomLike> = {}): Room {
   const built = composeRoom({
     title: "Lab thread",
-    address: ALICE,
+    address: SEA,
     nowSeconds: NOW,
     entropy: "ab12cd",
     ...overrides,
@@ -54,7 +55,7 @@ describe("GunRoomNode csv tags", () => {
   it("toGunRoomNode / fromGunRoomNode round-trip", () => {
     const built = composeRoom({
       title: "  Mesh notes  ",
-      address: ALICE.toLowerCase(),
+      address: ALICE,
       tags: ["Lab", "lab", "mesh"],
       nowSeconds: NOW,
       entropy: "deadbeef",
@@ -89,7 +90,7 @@ describe("composeRoom", () => {
   it("builds a valid room", () => {
     const built = composeRoom({
       title: "  a room  ",
-      address: ALICE.toLowerCase(),
+      address: ALICE,
       tags: ["mesh"],
       nowSeconds: NOW,
       entropy: "cafebabe",
@@ -105,13 +106,13 @@ describe("composeRoom", () => {
   });
 
   it("rejects an empty title", () => {
-    assert.equal(composeRoom({ title: "", address: ALICE, entropy: "aa" }), null);
-    assert.equal(composeRoom({ title: "   ", address: ALICE, entropy: "aa" }), null);
+    assert.equal(composeRoom({ title: "", address: SEA, entropy: "aa" }), null);
+    assert.equal(composeRoom({ title: "   ", address: SEA, entropy: "aa" }), null);
   });
 
   it("rejects a title that is too long", () => {
     assert.equal(
-      composeRoom({ title: "x".repeat(81), address: ALICE, entropy: "aa" }),
+      composeRoom({ title: "x".repeat(81), address: SEA, entropy: "aa" }),
       null,
     );
   });
@@ -154,7 +155,7 @@ describe("admit before overlay / share", () => {
     admitComposedRoom(acl, built, ALICE);
     const post = composeNativePostInRoom({
       body: "still mine after room unshare",
-      address: ALICE,
+      address: SEA,
       roomId: built.id,
       nowSeconds: NOW,
       entropy: "keep",
@@ -280,14 +281,14 @@ describe("room thread filter and share isolation", () => {
     const built = room({ entropy: "55" });
     const tagged = composeNativePostInRoom({
       body: "in the room",
-      address: ALICE,
+      address: SEA,
       roomId: built.id,
       nowSeconds: NOW,
       entropy: "post1",
     });
     const untagged = composeNativePost({
       body: "not in the room",
-      address: ALICE,
+      address: SEA,
       nowSeconds: NOW,
       entropy: "post2",
     });
@@ -309,7 +310,7 @@ describe("room thread filter and share isolation", () => {
     admitComposedRoom(acl, built, ALICE);
     const post = composeNativePostInRoom({
       body: "still mine",
-      address: ALICE,
+      address: SEA,
       roomId: built.id,
       nowSeconds: NOW,
       entropy: "post3",
@@ -334,7 +335,7 @@ describe("room thread filter and share isolation", () => {
     const built = room({ entropy: "77" });
     const older = composeNativePostInRoom({
       body: "older room note",
-      address: ALICE,
+      address: SEA,
       roomId: built.id,
       tags: ["lab"],
       nowSeconds: NOW - 10,
@@ -342,7 +343,7 @@ describe("room thread filter and share isolation", () => {
     });
     const newer = composeNativePostInRoom({
       body: "newer room note",
-      address: ALICE,
+      address: SEA,
       roomId: built.id,
       tags: ["lab", "mesh"],
       nowSeconds: NOW,
@@ -350,7 +351,7 @@ describe("room thread filter and share isolation", () => {
     });
     const outside = composeNativePost({
       body: "outside",
-      address: ALICE,
+      address: SEA,
       tags: ["lab", "mesh"],
       nowSeconds: NOW + 10,
       entropy: "out",

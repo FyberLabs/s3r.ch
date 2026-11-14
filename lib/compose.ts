@@ -4,7 +4,7 @@
  * Unshare is an own-only tombstone put of a prior share — not a grant revoke.
  */
 
-import { getAddress } from "viem";
+import { isSeaPubkey } from "./identity/forum-check";
 import {
   GUN_PROTOCOL_V,
   normalizeTags,
@@ -56,12 +56,8 @@ export function composeNativePost(input: ComposeNativeInput): FeedItem | null {
   const body = input.body.trim();
   if (!body) return null;
 
-  let author: string;
-  try {
-    author = getAddress(input.address);
-  } catch {
-    return null;
-  }
+  if (!isSeaPubkey(input.address)) return null;
+  const author = input.address;
 
   const ts =
     typeof input.nowSeconds === "number" && Number.isFinite(input.nowSeconds)
@@ -91,7 +87,7 @@ export function admitNativePost(
   item: FeedItem,
   owner: string,
 ): AdmitNativeResult {
-  if (item.source !== NATIVE_SOURCE) return { denied: true };
+  if (!ownsNativePost(item, owner)) return { denied: true };
   const admitted = admitFeedNode(acl, toGunNode(item), owner);
   if ("denied" in admitted) return { denied: true };
   return { item, object: admitted.object };
@@ -141,9 +137,5 @@ export function ownsNativePost(
   address: string | null | undefined,
 ): boolean {
   if (!address || item.source !== NATIVE_SOURCE) return false;
-  try {
-    return getAddress(item.author) === getAddress(address);
-  } catch {
-    return false;
-  }
+  return isSeaPubkey(address) && item.author === address;
 }

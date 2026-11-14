@@ -66,11 +66,11 @@ export function PostSeeGrantControls({
     }
     const accessor = parseGrantAccessor(accessorInput);
     if (!accessor) {
-      setMessage("Enter a checksummed address.");
+      setMessage("Enter a SEA public key.");
       return;
     }
-    if (accessor.toLowerCase() === address.toLowerCase()) {
-      setMessage("Grant see to another address.");
+    if (accessor === address) {
+      setMessage("Grant see to another identity.");
       return;
     }
     const hours = Number(hoursInput);
@@ -153,7 +153,7 @@ export function PostSeeGrantControls({
           type="text"
           value={accessorInput}
           onChange={(event) => setAccessorInput(event.target.value)}
-          placeholder="0x… accessor"
+          placeholder="Recipient SEA public key"
           autoComplete="off"
           spellCheck={false}
           disabled={busy}

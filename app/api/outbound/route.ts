@@ -7,14 +7,7 @@ import {
   outboundStatus,
   parseOutboundRequest,
 } from "@/lib/outbound";
-import {
-  identitySecretOrThrow,
-  readSessionFromRequest,
-  secretFailureResponse,
-} from "@/lib/identity/http";
-import { ownerForWallet } from "@/lib/identity/link";
-import { readSessionToken } from "@/lib/identity/session";
-
+import { readSeaRequestSession } from "@/lib/identity/sea-request-session";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -59,45 +52,12 @@ export async function POST(request: Request) {
   return Response.json(result, { status: result.ok ? 200 : 502 });
 }
 
-async function requireSession(
-  request: Request,
-): Promise<
-  | { ok: true; address: string; owner: string }
+async function requireSession(request: Request): Promise<
+  | { ok: true; owner: string }
   | { ok: false; response: Response }
 > {
-  let secret: string;
-  try {
-    secret = identitySecretOrThrow();
-  } catch (error) {
-    return {
-      ok: false,
-      response:
-        secretFailureResponse(error) ??
-        Response.json({ error: "Identity session is not configured." }, { status: 500 }),
-    };
-  }
-
-  const token = await readSessionFromRequest(request);
-  if (!token) {
-    return {
-      ok: false,
-      response: Response.json({ error: "unauthorized" }, { status: 401 }),
-    };
-  }
-
-  try {
-    const session = await readSessionToken(token, secret);
-    const owner = ownerForWallet(session.address);
-    if (!owner) return { ok: false, response: Response.json({ error: "Identity store unavailable" }, { status: 503 }) };
-    return {
-      ok: true,
-      address: session.address,
-      owner,
-    };
-  } catch {
-    return {
-      ok: false,
-      response: Response.json({ error: "unauthorized" }, { status: 401 }),
-    };
-  }
+  const session = await readSeaRequestSession(request);
+  return session ? { ok: true, owner: session.key } : {
+    ok: false, response: Response.json({ error: "unauthorized" }, { status: 401 }),
+  };
 }

@@ -1,3 +1,4 @@
+import { isSeaPubkey } from "./identity/forum-check";
 /**
  * View route layout helpers (docs/views.md §6, PR 6): window order, split resizing, unread
  * counts, last-seen times and the focus keys (`F` maximize, `Esc` restore, `Alt+1..9`).
@@ -124,7 +125,7 @@ export function seenBaseline(ms: number = Date.now()): number {
 export type SeenTimes = Record<string, number>;
 
 export function seenStorageKey(owner: string, viewId: string): string {
-  return `s3rch-views-seen:${owner.toLowerCase()}:${viewId}`;
+  return `s3rch-views-seen:${isSeaPubkey(owner) ? owner : owner.toLowerCase()}:${viewId}`;
 }
 
 /** Parse stored last-seen times, keeping only finite times for the View's windows. */

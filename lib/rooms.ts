@@ -8,6 +8,7 @@
  */
 
 import { getAddress } from "viem";
+import { isSeaPubkey } from "./identity/forum-check";
 import { composeNativePost, type ComposeNativeInput } from "./compose";
 import {
   GUN_PROTOCOL_V,
@@ -101,7 +102,7 @@ export function fromGunRoomNode(
   let owner = typeof node.owner === "string" ? node.owner.trim() : "";
   if (!owner) return null;
   try {
-    owner = getAddress(owner);
+    owner = isSeaPubkey(owner) ? owner : getAddress(owner);
   } catch {
     return null;
   }
@@ -128,7 +129,7 @@ export function composeRoom(input: ComposeRoomInput): Room | null {
 
   let owner: string;
   try {
-    owner = getAddress(input.address);
+    owner = isSeaPubkey(input.address) ? input.address : getAddress(input.address);
   } catch {
     return null;
   }
@@ -207,6 +208,7 @@ export function ownsRoom(
 ): boolean {
   if (!address) return false;
   try {
+    if (isSeaPubkey(address)) return room.owner === address;
     return getAddress(room.owner) === getAddress(address);
   } catch {
     return false;

@@ -446,6 +446,7 @@ describe("CHECK(see, object, accessor) consume laws", () => {
   });
 
   it("admitUserNode requires dest re-auth; unknown v and secrets fail closed", () => {
+    const ALICE = "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
     const acl = createMemorySeeAcl();
     const node = {
       id: ALICE,

@@ -6,9 +6,9 @@ import { SeeAclProvider, useSeeAcl } from "../../components/SeeAclProvider";
 import { identitySessionChanged } from "../../components/useIdentitySession";
 import { applySeeGrant, roomSoul } from "../../lib/identity/check";
 import { preparePublishRoomChat, type ChatMessage } from "../../lib/chat";
-const owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const other = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
-const room = "s3rch:room:0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266:100:work";
+const owner = "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
+const other = "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
+const room = "s3rch:room:axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU:100:work";
 function Fixture() {
   const see = useSeeAcl();
   const [shared, setShared] = useState(false), [ready, setReady] = useState(false);
