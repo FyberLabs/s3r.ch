@@ -1625,7 +1625,10 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       put: value => putForumSoul(gunRef.current, soul, value, liveEnabled) });
   }
 
+  const statementSending = useRef(false);
+  const stagedStatement = useRef<ReturnType<typeof buildForumStatement>>(null);
   async function onSend(report = false) {
+    if (statementSending.current) return;
     if (report && liveEnabled) return;
     const writer = signingPrincipal();
     if (!writer) {
@@ -1633,7 +1636,8 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       return;
     }
     const now = Math.floor(Date.now() / 1000);
-    const item = buildForumStatement({
+    const prior = stagedStatement.current;
+    const item = liveEnabled && prior && prior.author === writer && prior.body === draft.trim() && prior.tags.includes(`forum:${forumId}`) && now - prior.ts <= 300 ? prior : buildForumStatement({
       forumId: forumId,
       author: writer,
       body: draft,
@@ -1652,28 +1656,34 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       return;
     }
     const node = toGunNode(item);
-    // Descriptive chat never creates ACL ownership. A separately signed
-    // object admission and current direct post authority must already exist.
-    if (!graph?.checkPost?.(item.id, writer, now).allowed) {
-      setNotice("Check denied the statement.");
-      return;
-    }
-    let soul: string;
+    stagedStatement.current = item;
+    statementSending.current = true;
     try {
-      soul = forumStatementSoul(item.id);
-    } catch {
-      setNotice("Statement was not accepted.");
-      return;
-    }
-    const wrote = await putAuthedRecord(soul, node, writer, () => {
-      const now = Math.floor(Date.now() / 1000);
-      return !!authority?.graph.checkDirectSee(item.id, writer, now).allowed &&
-        authority.graph.checkPost(item.id, writer, now).allowed;
-    });
-    if (wrote === "signed") setDraft("");
-    if (wrote === "denied" || wrote === "local") setNotice("Statement not sent. Current post authority or a mesh signature was unavailable.");
-    else if (wrote === "offline") setNotice("Statement not sent. The mesh peer was not ready.");
-    else setNotice("Statement sent.");
+      // Admit signed ownership through the protected source, never descriptive
+      // Gun chat. Re-read complete authority before the existing signed put.
+      if (!authority?.admitStatement || !await authority.admitStatement(item) || signingPrincipal() !== writer) {
+        setNotice("Statement not sent. Current forum authority was unavailable.");
+        return;
+      }
+      let soul: string;
+      try {
+        soul = forumStatementSoul(item.id);
+      } catch {
+        setNotice("Statement was not accepted.");
+        return;
+      }
+      const wrote = await putAuthedRecord(soul, node, writer, () => {
+        const now = Math.floor(Date.now() / 1000);
+        return signingPrincipal() === writer && !!authority?.graph.checkDirectSee(item.id, writer, now).allowed &&
+          authority.graph.checkPost(item.id, writer, now).allowed &&
+          authority.graph.checkForumSee(forumId, writer, now).allowed && authority.graph.checkPost(forumId, writer, now).allowed;
+      });
+      if (wrote === "signed") { stagedStatement.current = null; setDraft(value => value.trim() === item.body ? "" : value); }
+      if (wrote === "denied" || wrote === "local") setNotice("Statement not sent. Current post authority or a mesh signature was unavailable.");
+      else if (wrote === "offline") setNotice("Statement not sent. The mesh peer was not ready.");
+      else setNotice("Statement sent.");
+    } catch { setNotice("Statement not sent. Reconnect or retry when current forum authority is available."); }
+    finally { statementSending.current = false; }
   }
 
   const wallet = session?.address
