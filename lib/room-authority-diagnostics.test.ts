@@ -62,3 +62,49 @@ test("old room sharing signs refreshed ownership with the current key and admiss
  held=snapshot([fresh,{...retained,record:{...retained.record as object,sig:"forged"}}]);
  await assert.rejects(admitBrowserRoom(input),/denied/); assert.equal(posted.length,0);
 });
+
+
+test("protected reads return retired child ownership without granting child authority", async () => {
+ const {createForumAuthorityService} = await import("./forum-authority-service");
+ const room = `room_${seaToPrincipalKey(owner)}_${"3".repeat(32)}`;
+ const retiredChild = signed("object",{object:room,owner},1,time-40);
+ const liveOwner=key(53),liveForum=`forum_${seaToPrincipalKey(liveOwner)}_${"5".repeat(32)}`;
+ const parent=signed("object",{object:liveForum,owner:liveOwner},53,time-10);
+ const source=(rows: ForumAuthoritySnapshot["rows"])=>{const value=snapshot(rows);return {...value,history:{...value.history,
+  accounts:[...value.history.accounts,{principal:liveOwner,rotations:[],revocations:[],genesisEpubBindings:[]}]}};};
+ let held = source([parent,old,fresh,retiredChild]), reader=liveOwner;
+ const service=createForumAuthorityService({squad:{forumId:liveForum,owner:liveOwner,label:"Read unit"},origin:"https://room.test",config,
+  clock:()=>time,authenticate:async()=>({key:reader}),read:async()=>held});
+ const request=()=>new Request("https://room.test/authority",{method:"POST",headers:{Origin:"https://room.test","Content-Type":"application/json"},
+  body:JSON.stringify({version:1,forumId:liveForum,owner:liveOwner,evaluatedAt:time})});
+ const response=await service(request()); assert.equal(response.status,200);
+ const received=(await response.json()).snapshot,authority=createForumAuthority(config,()=>time);
+ assert.ok((await authority.refresh(received,time)).ok);
+ assert.equal(authority.graph.ownerOf(liveForum),liveOwner); assert.equal(authority.graph.ownerOf(room),undefined);
+ assert.equal(authority.graph.checkForumSee(room,owner,time).allowed,false);
+ reader=key(3); assert.equal((await service(request())).status,403);
+ reader=liveOwner; held=source([old,retiredChild]); assert.equal((await service(request())).status,503);
+ held=source([{...parent,record:{...parent.record as object,sig:"bad"}},retiredChild]); assert.equal((await service(request())).status,503);
+ held=source([parent,fresh,{...retiredChild,record:{...retiredChild.record as object,sig:"bad"}}]);
+ assert.equal((await service(request())).status,503);
+ const grant=signed("see",{object:forum,owner,accessor:owner,stated:1,from:0,until:time+60,hamState:1},1,time-40);
+ held=source([parent,fresh,grant]); assert.equal((await service(request())).status,503);
+});
+
+test("room append requires the authenticated stable owner and current replacement ownership", async () => {
+ const {createBotStatementAdmission} = await import("./forum-bot-statement-admission");
+ const room = `room_${seaToPrincipalKey(owner)}_${"4".repeat(32)}`;
+ const oldRoom=signed("object",{object:room,owner},1,time-40),newRoom=signed("object",{object:room,owner},2,time);
+ const rights=(["see","post"] as const).map(kind=>signed(kind,{object:forum,owner,accessor:key(3),stated:1,from:0,until:time+60,hamState:1},2,time-10));
+ let held=snapshot([old,fresh,oldRoom,...rights]),reader=key(3),appends=0;
+ held={...held,history:{...held.history,accounts:[...held.history.accounts,{principal:key(3),rotations:[],revocations:[],genesisEpubBindings:[]}]}};
+ const service=createBotStatementAdmission({squad:{forumId:forum,owner,label:"Append unit"},origin:"https://room.test",config,
+  clock:()=>time,objectKind:"room",authenticate:async()=>({key:reader}),source:{read:async()=>({snapshot:held,fence:"held"}),
+   append:async(_fence,rows,guard)=>{guard();appends++;held={...held,rows:[...held.rows,...rows]};return true;}}});
+ const request=(rows: unknown[])=>new Request("https://room.test/room",{method:"POST",headers:{Origin:"https://room.test","Content-Type":"application/json"},
+  body:JSON.stringify({version:1,forumId:forum,owner,evaluatedAt:time,rows})});
+ assert.equal((await service(request([newRoom]))).status,403); assert.equal(appends,0);
+ reader=key(2); assert.equal((await service(request([oldRoom]))).status,403); assert.equal(appends,0);
+ assert.equal((await service(request([newRoom]))).status,200); assert.equal(appends,1);
+ assert.equal(held.rows.includes(oldRoom),true); assert.equal(held.rows.length,6);
+});

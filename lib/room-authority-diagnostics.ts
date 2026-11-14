@@ -13,3 +13,11 @@ export function roomAuthorityDiagnosticsBlock(diagnostics: readonly { index: num
     return !parsed || parsed.kind !== "object" || graph.ownerOf(parsed.row.object) !== parsed.row.owner;
   });
 }
+
+/** A protected read may return old ownership as non-authoritative history.
+ * The caller must separately require current parent ownership and reader access.
+ * Unlike write admission, this does not certify any child ownership. */
+export function roomAuthorityReadDiagnosticsBlock(diagnostics: readonly { index: number; reason: string }[],
+  snapshot: ForumAuthoritySnapshot): boolean {
+  return diagnostics.some(diagnostic => diagnostic.reason !== "retired-key" || snapshot.rows[diagnostic.index]?.kind !== "object");
+}
