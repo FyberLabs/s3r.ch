@@ -76,3 +76,20 @@ test("two eligible accounts refuse even when one link is newer", async () => {
   const resolver = createStartupWalletResolver({ read: async () => full }, { ...trust, keys: [...trust.keys, witnessKey] }, () => at);
   assert.deepEqual(await resolver(link.address), { ok: false, reason: "multiple-accounts" });
 });
+
+
+test("source cancellation bounds a source that never settles", async () => {
+  const controller = new AbortController();
+  const resolver = createStartupWalletResolver({ read: async () => new Promise(() => {}) }, trust, () => at);
+  const result = resolver(link.address, controller.signal);
+  controller.abort();
+  assert.deepEqual(await result, { ok: false, reason: "source-unavailable" });
+});
+
+test("trust policy mutation after construction cannot authorize a link", async () => {
+  const policy = structuredClone(trust);
+  policy.policy.allowedDomains = ["different.example"];
+  const resolver = createStartupWalletResolver({ read: async () => snapshot() }, policy, () => at);
+  policy.policy.allowedDomains = ["s3r.ch"];
+  assert.deepEqual(await resolver(link.address), { ok: false, reason: "invalid-evidence" });
+});

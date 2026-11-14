@@ -37,7 +37,14 @@ export function createStartupWalletResolver(source: StartupWalletSource | null, 
       if (!Number.isSafeInteger(at) || at < 0) return deny("bad-input");
       if (!source) return deny("source-unavailable");
       signal.throwIfAborted();
-      const raw = await source.read(wallet, at, signal);
+      // Bound even an unavailable source that fails to honor cancellation.
+      const raw = await new Promise<ForumRecoverySnapshot | null>((resolve, reject) => {
+        const abort = () => reject(Error("Source read cancelled"));
+        signal.addEventListener("abort", abort, { once: true });
+        if (signal.aborted) abort();
+        Promise.resolve().then(() => { signal.throwIfAborted(); return source.read(wallet, at, signal); })
+          .then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+      });
       signal.throwIfAborted();
       if (clock() !== at) return deny("stale");
       if (!raw) return deny("source-unavailable");
