@@ -55,6 +55,15 @@ exactly `version: 1`, `name`, `mediaType`, and `length`, followed by the file by
 The byte count is bounded to 1024; `length` must match the nonempty file body.
 All descriptor overhead counts toward the 64 MiB encrypted object limit.
 
+Tagged audio uses magic `73 33 66 02` with exactly `version: 2`, `name`,
+`mediaType`, `length`, and a nonempty canonical `tags` array. This descriptor is
+bounded to 4096 bytes; the audio file body is unchanged. Tags are encrypted and
+authenticated with the file and are descriptive only. The reader accepts v1 and
+v2; untagged uploads still emit v1. Older browser readers reject v2 until updated.
+Storage and authorization APIs retain the same opaque outer ciphertext format.
+See [private audio tags](private-media-tags.md) for bounds and recovery behavior.
+
+
 Names are bounded to 255 UTF-8 bytes and reject paths, controls, bidi controls,
 unpaired surrogates and surrounding whitespace. The initial media types are
 PNG, JPEG, GIF, WebP, AVIF, MPEG/OGG/WAV/WebM/MP4 audio, and MP4/WebM/OGG video.

@@ -4,7 +4,7 @@ import { seaToPrincipalKey, isSeaPubkey } from "./identity/forum-check";
 import type { SeaPair } from "./identity/sea";
 import { createPrivateMediaOwner, PrivateMediaConflict } from "./media-owner-client";
 import { createMediaHttpClient, type MediaCiphertextReference } from "./media-client";
-import { prepareMediaFile, type MediaFileDescription } from "./media-file";
+import { prepareMediaFile, mediaFileDescription, type MediaFileDescription } from "./media-file";
 import { decryptUploadJournal, encryptUploadJournal, uploadDigest, type UploadEntry, type UploadJournal } from "./media-upload-journal";
 
 type Owner = ReturnType<typeof createPrivateMediaOwner>;
@@ -69,8 +69,9 @@ export async function uploadMedia(input:{tenant:string;pair:SeaPair;fetcher:type
       const catalog=await ownerClient.catalog(0,signal),owner=catalog.principal;
       const object=`media_${seaToPrincipalKey(owner)}_${hex(crypto.getRandomValues(new Uint8Array(16)))}`;
       const record=await ownership(object,owner,catalog.at,pair);
-      const sealed=await prepareMediaFile(input.file.bytes,input.file.description,{tenant,object});key=sealed.key;
-      draft={version:1,tenant,owner,record,fileKey:Array.from(key),description:{...input.file.description},reference:{sha256:sealed.sha256,length:sealed.bytes.length}};
+      const description=mediaFileDescription(input.file.description);
+      const sealed=await prepareMediaFile(input.file.bytes,description,{tenant,object});key=sealed.key;
+      draft={version:1,tenant,owner,record,fileKey:Array.from(key),description,reference:{sha256:sealed.sha256,length:sealed.bytes.length}};
       // Saving recovery must succeed before the first remote mutation.
       entry={revision:0,tenant,object,ciphertext:sealed.bytes,encrypted:new Uint8Array(),sha256:"",wrap:null as unknown as ItemReaderWrap};
       await save();

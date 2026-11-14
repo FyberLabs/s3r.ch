@@ -85,3 +85,15 @@ test("quota refusal preserves pending recovery, clears plaintext and reports no 
     assert.deepEqual(f.calls,["upload","upload"]);
   } finally { f.panel.dispose(); }
 });
+
+test("audio tags are captured before session awaits and sent only inside file metadata",async()=>{
+  const tags=["Team","demo"];let captured:unknown;
+  const f=setup({fetcher:async()=>{tags.push("late");return Response.json({enabled:true,principal:pub,expiresAt:1000});},
+    upload:async(...args)=>{captured=(args[1] as {description:unknown}).description;}});
+  try {
+    await f.panel.upload(new File([new Uint8Array([1])],"voice.webm",{type:"audio/webm"}),tags);
+    assert.deepEqual(captured,{name:"voice.webm",mediaType:"audio/webm",tags:["team","demo"]});
+    await f.panel.upload(new File([new Uint8Array([1])],"x.png",{type:"image/png"}),["tag"]);
+    assert.equal(f.calls.length,1);
+  }finally{f.panel.dispose();}
+});

@@ -1,3 +1,4 @@
+import { privateMediaTags } from "./media-tags";
 import { createPrivateMediaBrowser } from "./media-browser-session";
 import { subscribeUnlockedMeshPair } from "./identity/unlocked-mesh";
 import { readBoundedIdentityJson } from "./identity/bounded-json";
@@ -41,13 +42,15 @@ export function createMediaUploadPanel(tenant:string,changed:(state:UploadPanelS
   return Object.freeze({
     reset,
     inspect:()=>operation(async(signal,progress)=>{const pending=await browser.pendingUpload(tenant,signal);signal.throwIfAborted();publish({...state,pending});progress(pending?"Encrypted draft ready to resume.":"No pending upload in this browser.");}),
-    upload:(file:File)=>operation(async(signal,progress,allocated)=>{
+    upload:(file:File,tags:readonly string[]=[])=>{const heldTags=[...tags];return operation(async(signal,progress,allocated)=>{
+      const metadataTags=privateMediaTags(heldTags);
+      if(metadataTags.length&&!file.type.startsWith("audio/"))throw Error("Audio tags require audio");
       if(!file.size||file.size>63*1024*1024)throw Error("File too large");
       const bytes=new Uint8Array(await file.arrayBuffer());
-      try {signal.throwIfAborted();await browser.upload(tenant,{bytes,description:{name:file.name,mediaType:file.type}},signal,progress,allocated);}
+      try {signal.throwIfAborted();await browser.upload(tenant,{bytes,description:{name:file.name,mediaType:file.type,...(metadataTags.length?{tags:metadataTags}:{})}},signal,progress,allocated);}
       finally {bytes.fill(0);}
       signal.throwIfAborted();publish({...state,pending:null});progress("Uploaded privately. Refresh My media. New files open after the one-hour settlement period.");
-    }),
+    });},
     resume:()=>operation(async(signal,progress,allocated)=>{
       await browser.upload(tenant,undefined,signal,progress,allocated);signal.throwIfAborted();publish({...state,pending:null});
       progress("Upload complete. Refresh My media. New files open after the one-hour settlement period.");
