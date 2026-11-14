@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { FeatureArticle, FeatureSection } from "@/components/FeatureArticle";
 
 export const metadata: Metadata = {
@@ -109,7 +110,10 @@ export default function WorkspaceFeaturePage() {
 
       <FeatureSection title="Music">
         <p>
-          Today a post is text. You can already share a link in a post or a room.
+          You can <Link href="/media/record" className="underline">record an audio draft</Link>,
+          play it back and save it on your device. Recording needs microphone
+          permission. Drafts stay in this page until you save a file; leaving
+          the tab or changing identity clears them.
         </p>
         <p>
           Coming in v1, audio posts with a player, so a track can live on Mine,
@@ -119,6 +123,12 @@ export default function WorkspaceFeaturePage() {
 
       <FeatureSection title="Video">
         <p>
+          You can <Link href="/media/record" className="underline">record a video draft</Link>
+          {" "}with camera and microphone permission, preview it and save it on your
+          device. Capture is limited to two minutes and 16 MiB. Leaving the tab
+          or changing identity clears the draft.
+        </p>
+        <p>
           Coming in v1, video posts you can keep on Mine, share, or grant see to
           one address.
         </p>
@@ -126,12 +136,14 @@ export default function WorkspaceFeaturePage() {
 
       <FeatureSection title="Memes">
         <p>
-          Today you can post text and tags, and Discover lists tags already in
-          use.
+          You can <Link href="/media/edit" className="underline">create an image draft</Link>
+          {" "}from a PNG, JPEG or blank template, add captions and save a PNG on
+          your device. Drafts stay in this page and clear when you leave or
+          change identity.
         </p>
         <p>
-          Coming in v1, image posts and a simple meme editor that uses the same
-          share and grant controls.
+          Coming in v1, publish image drafts with the same share and grant
+          controls as other posts.
         </p>
       </FeatureSection>
 
