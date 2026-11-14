@@ -7,7 +7,7 @@ import { PrivateMediaLibrary } from "../components/PrivateMediaLibrary";
 import MediaPage from "../app/media/page";
 test("media page starts without private catalog entries, plaintext or automatic loads",()=>{
   const html=renderToStaticMarkup(createElement(PrivateMediaLibrary,{tenant:"11111111-1111-4111-8111-111111111111"}));
-  assert.match(html,/>My media</);assert.match(html,/Refresh my media/);
+  assert.match(html,/>My media</);assert.match(html,/Refresh my media/);assert.match(html,/Refresh pending cleanup/);
   assert.doesNotMatch(html,/blob:|Open image|Next page|media_p_/);
 });
 test("missing or malformed tenant disables private media actions",()=>{
