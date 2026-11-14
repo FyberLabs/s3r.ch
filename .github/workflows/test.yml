@@ -92,17 +92,20 @@ jobs:
         run: node --import tsx scripts/test-provider-conversation.ts --activitypub
       - name: Nostr conversation browser contracts (CI only)
         run: node --import tsx scripts/test-provider-conversation.ts --nostr
+      - name: Farcaster conversation browser contracts (CI only)
+        run: node --import tsx scripts/test-provider-conversation.ts --farcaster
       - name: Public provider conversation coverage
         run: >-
           node --import tsx --test --experimental-test-coverage
           --test-coverage-include=lib/atproto-conversation.ts
           --test-coverage-include=lib/activitypub-conversation.ts
           --test-coverage-include=lib/nostr-conversation.ts
+          --test-coverage-include=lib/farcaster-conversation.ts
           --test-coverage-include=lib/public-conversation.ts
           --test-coverage-include=lib/conversation-media.ts
           --test-coverage-include=lib/conversation-media-tickets.ts
           --test-coverage-lines=90 --test-coverage-branches=80
-          lib/atproto-conversation.test.ts lib/activitypub-conversation.test.ts lib/nostr-conversation.test.ts lib/public-conversation.test.ts lib/conversation-media.test.ts
+          lib/atproto-conversation.test.ts lib/activitypub-conversation.test.ts lib/nostr-conversation.test.ts lib/farcaster-conversation.test.ts lib/public-conversation.test.ts lib/conversation-media.test.ts
 
       - name: Feed reply and cached conversation coverage (CI only)
         run: >-

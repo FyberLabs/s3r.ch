@@ -13,3 +13,7 @@ export const activityObjects:Record<string,unknown>={
  [activityUri("parent")]:{...activity("parent","Provider parent","root"),attachment:[{type:"Image",mediaType:"image/png",url:"https://example.com/parent.png",name:"Parent photo"}]},
  [activityUri("root")]:activity("root","Provider root"),[activityUri("reply")]:activity("reply","Provider reply","child"),
 };
+export const farcasterHash=(n:number)=>"0x"+n.toString(16).padStart(40,"0");
+export const farcasterAnchor:FeedItem={...threadAnchor,id:farcasterHash(3),source:"farcaster",permalink:`https://farcaster.xyz/~/conversations/${farcasterHash(3)}`,provenance:"farcaster:hub:https://hub.pinata.cloud/v1/castsByFid?fid=2&pageSize=20",replyTo:{id:farcasterHash(2),permalink:`https://farcaster.xyz/~/conversations/${farcasterHash(2)}`}};
+const cast=(n:number,text:string,parent?:number)=>({hash:farcasterHash(n),data:{fid:2,type:"MESSAGE_TYPE_CAST_ADD",timestamp:123,castAddBody:{text,...(parent?{parentCastId:{fid:2,hash:farcasterHash(parent)}}:{})}}});
+export const farcasterMessages=[cast(1,"Provider root"),{...cast(2,"Provider parent",1),data:{...cast(2,"Provider parent",1).data,castAddBody:{...cast(2,"Provider parent",1).data.castAddBody,embeds:[{url:"https://example.com/parent.png"}]}}},cast(3,"Public child",2),cast(4,"Provider reply",3)];

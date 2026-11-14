@@ -28,8 +28,17 @@ NIP-01 event-hash and Schnorr verification before projection. Unrelated, forged,
 duplicate and malformed events are omitted. Relay hints in event tags never
 choose an endpoint. Existing relay frame/window byte, count, timeout and EOSE
 requirements apply to every request. No new request starts after 15 seconds,
-with at most ten relay windows per conversation. Farcaster retains the cached
-fallback pending its provider adapter.
+with at most ten relay windows per conversation.
+
+Farcaster derives the anchor FID from its existing configured-hub `castsByFid`
+provenance. Missing or foreign provenance retains the cached-only result. It
+fetches matching FID/hash pairs with `castById`, follows at most eight parent
+pairs, and requests one `castsByParent` page of 17 candidates. Only direct
+replies to the exact anchor FID/hash are admitted; the component displays at
+most 16. All requests use the configured public hub, with no provider key or
+caller-selected endpoint. At most ten requests start within 15 seconds. The
+hub remains the trusted public-data provider, consistent with the existing
+feed source; this is not an independent Farcaster consensus verifier.
 
 Successful provider responses have a 60-second in-process cache; failures have a
 15-second negative cache. The cache holds at most 64 keys with four concurrent
@@ -54,9 +63,11 @@ conversation reads retain the cached-only behavior.
 
 CI covers traversal and count limits, source failures, cache expiry/overload,
 forged media roots, expiry, child URLs and anchor removal. The CI-only browser
-fixture runs the actual Bluesky, ActivityPub and Nostr provider adapters, conversation component and media
+fixture runs the actual Bluesky, ActivityPub, Nostr and Farcaster provider adapters, conversation component and media
 admission path to check parent/reply order, a ticketed image, a blocked-parent
 placeholder and denial after anchor removal. No shared TEST data is involved.
 
 Primary API schema:
 [Bluesky getPostThread](https://github.com/bluesky-social/atproto/blob/main/packages/api/lexicons/app/bsky/feed/getPostThread.json).
+
+[Farcaster cast/thread API](https://github.com/farcasterxyz/snapchain/blob/main/site/docs/pages/reference/httpapi/casts.md).
