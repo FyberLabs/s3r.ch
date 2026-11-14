@@ -24,7 +24,14 @@ test("excess work falls back without unbounded polling and cache evicts old keys
  const load=createPublicConversations(async()=>{calls++;return blocked;});
  const pending=Array.from({length:4},(_,i)=>load([item(String(i))],"atproto",String(i)));
  assert.ok(await load([item("extra")],"atproto","extra"));assert.equal(calls,4);resolve({rows:[],truncated:true});assert.ok((await Promise.all(pending)).every(c=>c?.truncated));
- let fetched=0;const cached=createPublicConversations(async()=>{fetched++;return {rows:[],truncated:false};},()=>0);
- for(let n=0;n<65;n++)await cached([item(String(n))],"atproto",String(n));
+ let fetched=0,cacheClock=0;const cached=createPublicConversations(async()=>{fetched++;return {rows:[],truncated:false};},()=>cacheClock);
+ for(let n=0;n<65;n++){cacheClock=n*60_001;await cached([item(String(n))],"atproto",String(n));}
  await cached([item("0")],"atproto","0");assert.equal(fetched,66);
+});
+
+test("cold source requests have a shared minute budget while cached reads continue",async()=>{
+ let now=0,calls=0;const load=createPublicConversations(async()=>{calls++;return {rows:[],truncated:false};},()=>now);
+ for(let n=0;n<31;n++)await load([item(String(n))],"atproto",String(n));
+ assert.equal(calls,30);assert.ok(await load([item("0")],"atproto","0"));assert.equal(calls,30);
+ now=60_000;const ap={...item("ap"),source:"activitypub" as const};assert.ok(await load([ap],"activitypub","ap"));assert.equal(calls,31);
 });
