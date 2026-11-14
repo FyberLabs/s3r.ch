@@ -1,7 +1,7 @@
 // HTTP and protected projection contracts run in CI only.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseMediaGroupPolicyView, parseMediaGroupPolicy, parseMediaGroupScope, parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
+import { parseMediaGroupAuthority, parseMediaGroupPolicyView, parseMediaGroupPolicy, parseMediaGroupScope, parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
 import { createPrivateMediaOwner, PrivateMediaConflict } from "./media-owner-client";
 import { createMediaOwnerService } from "./media-owner-service";
 const owner="axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
@@ -171,4 +171,50 @@ test("group policy BFF validates fixed-session requests and returned signing con
   assert.equal((await bad("group-policy-view",request({object,...policyScope}))).status,403);
   let principal=0;const changed=createMediaOwnerService(config,"https://s3r.ch",async()=>++principal===1?owner:reader,async()=>Response.json(policyView),()=>100);
   assert.equal((await changed("group-policy-view",request({object,...policyScope}))).status,403);
+});
+
+const directEntry={accessor:reader,grantRevision:2,stated:0,from:0,until:200000,scope:"direct",setId:"",hamState:0};
+const authority={...view,owner,direct:{entries:[directEntry]},policy:{context:policyView.context,config:policy},
+  bindings:{[owner]:{pub:owner,epub:owner,head:0},[reader]:{pub:reader,epub:reader,head:0}}};
+test("atomic group authority preserves independent cancellation and exact named keys",()=>{
+  const held=parseMediaGroupAuthority(authority,object,owner);assert.deepEqual(held,authority);
+  assert.equal(held.direct.entries[0].stated,0);assert.deepEqual(held.projection!.members,[reader]);
+  held.bindings[owner].head=10;assert.equal(authority.bindings[owner].head,0);
+  assert.equal(parseMediaGroupAuthority({...authority,policy:{...authority.policy,config:null}},object,owner).policy!.config,null);
+  for(const projection of [null,{object,set:null,predicate:null,members:[],snapshot:null}])
+    assert.equal(parseMediaGroupAuthority({...authority,projection,policy:null},object,owner).policy,null);
+});
+test("atomic authority refuses extra parties, policy key mismatch and malformed direct history",()=>{
+  for(const bad of [null,{}, {...authority,extra:1},{...authority,owner:reader},{...authority,direct:null},
+    {...authority,direct:{entries:Array(65).fill(directEntry)}},{...authority,direct:{entries:{}}},
+    {...authority,bindings:null},{...authority,bindings:[]},{...authority,bindings:{}},
+    {...authority,bindings:{...authority.bindings,extra:authority.bindings[owner]}},
+    {...authority,policy:null},{...authority,projection:null},{...authority,policy:{extra:1}},
+    {...authority,policy:{...authority.policy,context:{...policyView.context,ownerPub:reader}}},
+    {...authority,direct:{entries:[directEntry,directEntry]}}])assert.throws(()=>parseMediaGroupAuthority(bad,object,owner));
+  assert.throws(()=>parseMediaGroupAuthority(authority,object,reader));
+  for(const patch of [{extra:1},{accessor:"bad"},{grantRevision:0},{grantRevision:1.5},{stated:2},{from:-1},{until:0},
+    {scope:"same-group"},{setId:set},{hamState:1}])
+    assert.throws(()=>parseMediaGroupAuthority({...authority,direct:{entries:[{...directEntry,...patch}]}},object,owner));
+  for(const patch of [{extra:1},{pub:"bad"},{pub:1},{epub:"bad"},{epub:1},{head:-1}])
+    assert.throws(()=>parseMediaGroupAuthority({...authority,bindings:{...authority.bindings,[reader]:{...authority.bindings[reader],...patch}}},object,owner));
+});
+test("atomic authority client and BFF keep fixed owner, freshness and session boundaries",async()=>{
+  const client=createPrivateMediaOwner(async(url,init)=>{
+    assert.ok(String(url).endsWith("group-authority-view"));assert.deepEqual(JSON.parse(String(init?.body)),{object});return Response.json(authority);
+  },()=>100);
+  assert.deepEqual(await client.groupAuthorityView(object,owner),authority);
+  await assert.rejects(client.groupAuthorityView("bad",owner));await assert.rejects(client.groupAuthorityView(object,"bad"));
+  await assert.rejects(client.groupAuthorityView(object,owner,AbortSignal.abort()));
+  let tick=0;const stale=createPrivateMediaOwner(async()=>Response.json(authority),()=>tick++*5);
+  await assert.rejects(stale.groupAuthorityView(object,owner),PrivateMediaConflict);
+  const service=createMediaOwnerService(config,"https://s3r.ch",async()=>owner,async(url,init)=>{
+    assert.ok(String(url).endsWith("group-authority-view"));assert.equal(new Headers(init?.headers).get("X-Api-Key"),"fixed-owner-key");return Response.json(authority);
+  },()=>100);
+  const result=await service("group-authority-view",request({object}));assert.equal(result.status,200);assert.deepEqual(await result.json(),authority);
+  assert.equal((await service("group-authority-view",request({object,owner}))).status,400);
+  const bad=createMediaOwnerService(config,"https://s3r.ch",async()=>owner,async()=>Response.json({...authority,bindings:{}}),()=>100);
+  assert.equal((await bad("group-authority-view",request({object}))).status,403);
+  let resolves=0;const changed=createMediaOwnerService(config,"https://s3r.ch",async()=>++resolves===1?owner:reader,async()=>Response.json(authority),()=>100);
+  assert.equal((await changed("group-authority-view",request({object}))).status,403);
 });

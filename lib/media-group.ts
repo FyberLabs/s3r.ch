@@ -75,3 +75,38 @@ export function parseMediaGroupPolicyView(input:unknown,scope:MediaGroupScope) {
   const config=v.config===null?null:parseMediaGroupPolicy(v.config,held);
   return {at:v.at,fence:v.fence,context:{owner:v.context.owner as string,ownerPub:v.context.ownerPub,setId:held.set,predicate:held.predicate},config};
 }
+
+/** Atomic preparation input. Direct grants stay distinct from group membership. */
+export function parseMediaGroupAuthority(input:unknown,object:string,owner:string) {
+  const v=structuredClone(input);
+  if(!exact(v,["at","fence","objectVersion","projection","direct","policy","owner","bindings"])||
+      v.owner!==owner||owner!==objectPrincipal(object)||!exact(v.direct,["entries"])||
+      !Array.isArray(v.direct.entries)||v.direct.entries.length>64||!v.bindings||typeof v.bindings!=="object"||Array.isArray(v.bindings))return fail();
+  const held=parseMediaGroupView({at:v.at,fence:v.fence,objectVersion:v.objectVersion,projection:v.projection},object);
+  const named=new Set([owner]);let previous="";
+  for(const e of v.direct.entries) {
+    if(!exact(e,["accessor","grantRevision","stated","from","until","scope","setId","hamState"])||
+        typeof e.accessor!=="string"||!isSeaPubkey(e.accessor)||e.accessor<=previous||!integer(e.grantRevision)||e.grantRevision<1||
+        (e.stated!==0&&e.stated!==1)||!integer(e.from)||!integer(e.until)||e.until<=e.from||
+        e.scope!=="direct"||e.setId!==""||e.hamState!==0)return fail();
+    previous=e.accessor;named.add(e.accessor);
+  }
+  let policy:ReturnType<typeof parseMediaGroupPolicyView>|null=null;
+  if(held.projection?.snapshot) {
+    const edge=held.projection.snapshot.objectSet;
+    if(!exact(v.policy,["context","config"]))return fail();
+    policy=parseMediaGroupPolicyView({at:v.at,fence:v.fence,...v.policy},{predicate:edge.predicate,set:edge.setId});
+    named.add(policy.context.owner);
+    for(const member of held.projection.snapshot.members)named.add(member.accessor);
+  }else if(v.policy!==null)return fail();
+  const bindings=v.bindings as Record<string,unknown>;
+  if(Object.keys(bindings).length!==named.size)return fail();
+  for(const who of named) {
+    const b=bindings[who];
+    if(!exact(b,["pub","epub","head"])||typeof b.pub!=="string"||!isSeaPubkey(b.pub)||
+        typeof b.epub!=="string"||!isSeaPubkey(b.epub)||!integer(b.head))return fail();
+  }
+  if(policy&&(bindings[policy.context.owner] as {pub:string}).pub!==policy.context.ownerPub)return fail();
+  return {...held,owner,direct:v.direct,policy:policy?{context:policy.context,config:policy.config}:null,
+    bindings:bindings as Record<string,{pub:string;epub:string;head:number}>};
+}

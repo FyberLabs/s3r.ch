@@ -11,3 +11,11 @@ the ACL source remains responsible for signatures and current enrolled history.
 A stale fence or lost response never triggers automatic replay. These helpers do
 not yet provide group membership editing, select group epochs, or deliver wraps.
 Older ACL sources refuse the new operations without affecting direct sharing.
+
+The owner client also reads `groupAuthorityView(object, owner)` through the
+fixed-session BFF. ACL returns the direct snapshot, all-scope group projection,
+selected set-owner policy and named current identity bindings from one protected
+transaction. The browser validates the exact owner, scope, policy key and named
+binding set while keeping direct cancellations separate from group membership.
+A missing policy remains null. This view is preparation input, not authorization
+to deliver a wrap; group epoch/status admission and delivery remain pending.
