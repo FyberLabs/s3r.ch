@@ -71,3 +71,27 @@ export function createRoomChatReceiveQueue(admission: RoomChatAdmission, room: s
     close() { active = false; pending.clear(); rejected.clear(); deferred.clear(); },
   };
 }
+
+
+/** Start cached-history delivery only after the first authenticated authority
+ * read. Routine refreshes resume the same queue rather than resubscribing. */
+export function createRoomChatSubscription(input: {
+  admission: RoomChatAdmission; room: string; receive(row: SignedRoomChat): void;
+  ready(): boolean;
+  observeAuthority(changed: () => void): () => void;
+  subscribe(receive: (row: unknown, key: unknown) => void): () => void;
+}) {
+  let active = true, queue: ReturnType<typeof createRoomChatReceiveQueue> | undefined;
+  let stopTransport: (() => void) | undefined;
+  function refresh(): Promise<void> {
+    if (!active) return Promise.resolve();
+    if (!queue && input.ready()) {
+      queue = createRoomChatReceiveQueue(input.admission, input.room, input.receive, input.ready);
+      stopTransport = input.subscribe((row, key) => { void queue?.enqueue(row, key); });
+    }
+    return queue?.resume() ?? Promise.resolve();
+  }
+  const stopAuthority = input.observeAuthority(() => { void refresh(); });
+  void refresh();
+  return { refresh, close() { active = false; stopAuthority(); stopTransport?.(); queue?.close(); } };
+}

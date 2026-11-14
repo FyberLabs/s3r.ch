@@ -1,7 +1,7 @@
 "use client";
 import { useRoomAuthority } from "./RoomAuthorityProvider";
 import { isForumObjectId } from "@/lib/identity/forum-check";
-import { createRoomChatReceiveQueue } from "@/lib/room-chat-receive-queue";
+import { createRoomChatSubscription } from "@/lib/room-chat-receive-queue";
 import PublicFeedMedia from "./PublicFeedMedia";
 import FeedConversation from "./FeedConversation";
 
@@ -142,7 +142,6 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
   openRoomId: string | null; setOpenRoomId: Dispatch<SetStateAction<string | null>>;
 }) {
   const { current: roomAuthority, revision: roomAuthorityRevision } = useRoomAuthority();
-  const roomReceiveQueue = useRef<ReturnType<typeof createRoomChatReceiveQueue> | null>(null);
   // Every private overlay, child draft, selection and subscription belongs to this
   // mount. A resolved owner change replaces it; a refresh retains but hides it.
   const session = identity ?? null;
@@ -510,26 +509,21 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     const gun = gunRef.current;
     if (!gun || !gunReady || !openRoomId || !openRoomIsPublic || !roomAuthority) return;
     const roomId = openRoomId;
-    const queue = createRoomChatReceiveQueue(roomAuthority.admission, roomId, message => {
-      // Fresh proof objects replace objects retained by a previous controller.
-      setGraphChat(prev => mergeChat([message], prev).slice(0, 8192));
-    }, () => !!roomAuthority.authority.graph.principalForKey(session?.owner ?? "", Math.floor(Date.now() / 1000)));
-    roomReceiveQueue.current = queue;
-    const listener = gun
-      .get("s3rch")
-      .get("rooms")
-      .get(encodeKey(roomId))
-      .get("chat")
-      .map()
-      .on((data, key) => { void queue.enqueue(data, key); });
-    return () => {
-      queue.close();
-      if (roomReceiveQueue.current === queue) roomReceiveQueue.current = null;
-      if (typeof listener?.off === "function") listener.off();
-    };
+    const subscription = createRoomChatSubscription({
+      admission: roomAuthority.admission, room: roomId,
+      receive: message => {
+        // Fresh proof objects replace objects retained by a previous controller.
+        setGraphChat(prev => mergeChat([message], prev).slice(0, 8192));
+      },
+      ready: () => !!roomAuthority.authority.graph.principalForKey(session?.owner ?? "", Math.floor(Date.now() / 1000)),
+      observeAuthority: roomAuthority.authority.subscribe,
+      subscribe: receive => {
+        const listener = gun.get("s3rch").get("rooms").get(encodeKey(roomId)).get("chat").map().on(receive);
+        return () => { if (typeof listener?.off === "function") listener.off(); };
+      },
+    });
+    return () => subscription.close();
   }, [gunReady, openRoomId, openRoomIsPublic, roomAuthority, session?.owner]);
-
-  useEffect(() => { void roomReceiveQueue.current?.resume(); }, [roomAuthorityRevision]);
 
   useEffect(() => {
     const gun = gunRef.current;

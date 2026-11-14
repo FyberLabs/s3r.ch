@@ -227,3 +227,22 @@ test("unknown-author flooding cannot displace authenticated late-grant retries",
  }
  f.restore();await queue.resume();assert.deepEqual(accepted,[row.body]);queue.close();
 });
+
+
+test("initial history waits for authority and later refreshes retain the subscription", async () => {
+ const {createRoomChatSubscription}=await import("./room-chat-receive-queue");
+ const f=await fixture(), rows=[];
+ for(let i=0;i<300;i++){const row=await f.admission.compose("room",`initial ${i}`,()=>f.alice);assert.ok(row);rows.push(row);}
+ let ready=false, subscriptions=0, stopped=0, changed=()=>{};
+ const accepted:string[]=[];
+ // Transport substitute replays cached history synchronously on subscription.
+ const subscription=createRoomChatSubscription({admission:f.admission,room:"room",receive:row=>accepted.push(row.id),ready:()=>ready,
+  observeAuthority:fn=>{changed=fn;return()=>{changed=()=>{};};},
+  subscribe:receive=>{subscriptions++;for(const row of rows)receive(row,encodeKey(row.id));return()=>{stopped++;};}});
+ assert.equal(subscriptions,0);assert.deepEqual(accepted,[]);
+ ready=true;changed();await subscription.refresh();
+ assert.equal(subscriptions,1);assert.equal(accepted.length,300);assert.equal(new Set(accepted).size,300);
+ ready=false;changed();ready=true;changed();await subscription.refresh();
+ assert.equal(subscriptions,1);assert.equal(accepted.length,300);
+ subscription.close();assert.equal(stopped,1);changed();await subscription.refresh();assert.equal(subscriptions,1);
+});
