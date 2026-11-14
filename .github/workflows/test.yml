@@ -50,6 +50,10 @@ jobs:
         run: node scripts/test-private-upload-browser.mjs
       - name: Captioned PNG private upload contract (CI only)
         run: S3RCH_UPLOAD_FIXTURE=meme node scripts/test-private-upload-browser.mjs
+      - name: Recorded audio and video private upload contracts (CI only)
+        run: |
+          S3RCH_UPLOAD_FIXTURE=audio node scripts/test-private-upload-browser.mjs
+          S3RCH_UPLOAD_FIXTURE=video node scripts/test-private-upload-browser.mjs
       - name: Room task browser contracts (CI only)
         run: node scripts/test-room-tasks.mjs
       - name: Recording browser contracts (CI only)

@@ -7,8 +7,9 @@ if(process.env.GITHUB_ACTIONS!=="true")throw Error("Private upload browser contr
 const pair={pub:"axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",priv:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE",
  epub:"EMvdmXTv89JPyMx5n3blU3L_D70U-6JoVaVzTvSzgYg.B_b0CP3o9X3I7tWrxA_F1VhXpjeMuIJCtQWnOh7LN5c",epriv:"6EXhKuFCyTddo7uvYddNjXON5iKEMV7v8bCol7XOHt8"};
 const tenant="11111111-1111-4111-8111-111111111111";
+const recording=["audio","video"].includes(process.env.S3RCH_UPLOAD_FIXTURE)?process.env.S3RCH_UPLOAD_FIXTURE:null;
 const meme=process.env.S3RCH_UPLOAD_FIXTURE==="meme";
-const result=await build({stdin:{contents:`import React from 'react'; import {createRoot} from 'react-dom/client'; import {PrivateMediaUpload} from './components/PrivateMediaUpload'; import {MemeEditor} from './components/MemeEditor'; import {openMediaFile} from './lib/media-file'; import {readMemePngTags} from './lib/meme-png-tags'; import {rememberUnlockedMeshPair} from './lib/identity/unlocked-mesh'; rememberUnlockedMeshPair('ci-fixture',${JSON.stringify(pair)}); window.verifyMeme=async(cipher,material,object)=>{const file=await openMediaFile(new Uint8Array(cipher),material.reference.sha256,material.wrap,${JSON.stringify(pair.epriv)},${JSON.stringify(pair.epub)},{tenant:'${tenant}',object},{epoch:material.wrap.epoch,object:material.wrap.object,revisionId:material.wrap.revisionId});return {bytes:Array.from(file.bytes),tags:readMemePngTags(file.bytes)};}; createRoot(document.getElementById('root')).render(${meme}? (location.pathname==='/resume'?<PrivateMediaUpload tenant="${tenant}"/>:<MemeEditor tenant="${tenant}"/>):<PrivateMediaUpload tenant="${tenant}"/>);`,resolveDir:process.cwd(),loader:"tsx"},bundle:true,write:false,platform:"browser",format:"iife",define:{"process.env.NODE_ENV":'"production"'}});
+const result=await build({stdin:{contents:`import React from 'react'; import {createRoot} from 'react-dom/client'; import {PrivateMediaUpload} from './components/PrivateMediaUpload'; import {MemeEditor} from './components/MemeEditor'; import {MediaRecorderDraft} from './components/MediaRecorderDraft'; import {openMediaFile} from './lib/media-file'; import {readMemePngTags} from './lib/meme-png-tags'; import {rememberUnlockedMeshPair} from './lib/identity/unlocked-mesh'; rememberUnlockedMeshPair('ci-fixture',${JSON.stringify(pair)}); window.verifyMeme=async(cipher,material,object)=>{const file=await openMediaFile(new Uint8Array(cipher),material.reference.sha256,material.wrap,${JSON.stringify(pair.epriv)},${JSON.stringify(pair.epub)},{tenant:'${tenant}',object},{epoch:material.wrap.epoch,object:material.wrap.object,revisionId:material.wrap.revisionId});return {bytes:Array.from(file.bytes),tags:readMemePngTags(file.bytes),description:file.description};}; createRoot(document.getElementById('root')).render(${JSON.stringify(recording)}&&location.pathname!=='/resume'?<MediaRecorderDraft tenant="${tenant}"/>:${meme}? (location.pathname==='/resume'?<PrivateMediaUpload tenant="${tenant}"/>:<MemeEditor tenant="${tenant}"/>):<PrivateMediaUpload tenant="${tenant}"/>);`,resolveDir:process.cwd(),loader:"tsx"},bundle:true,write:false,platform:"browser",format:"iife",define:{"process.env.NODE_ENV":'"production"'}});
 let object="",allocated=false,lost=false,storedCipher=null,storedMaterial=null;const applied=new Map(),writes=[];const errors=[];
 const server=createServer(async(req,res)=>{
  const json=(value,status=200)=>{res.writeHead(status,{"Content-Type":"application/json"});res.end(JSON.stringify(value));};
@@ -45,10 +46,18 @@ const server=createServer(async(req,res)=>{
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin=`http://127.0.0.1:${server.address().port}`;let browser;
 try {
- browser=await chromium.launch({headless:true});const page=await browser.newPage();const external=[];
+ browser=await chromium.launch({headless:true,args:["--use-fake-ui-for-media-stream","--use-fake-device-for-media-stream"]});const page=await browser.newPage();const external=[];
  page.on('request',request=>{if(!request.url().startsWith(origin)&&!request.url().startsWith('blob:'+origin))external.push(request.url());});
  await page.goto(origin);let rendered;
- if(meme){
+ if(recording){
+  await page.getByLabel('Recording type').selectOption(recording);
+  await page.getByRole('button',{name:`Start ${recording} recording`}).click();
+  await page.getByRole('button',{name:'Stop recording'}).waitFor();
+  await page.waitForTimeout(1200);await page.getByRole('button',{name:'Stop recording'}).click();
+  await page.getByRole('link',{name:'Save recording'}).waitFor();
+  rendered=await page.getByRole('link',{name:'Save recording'}).evaluate(async link=>Array.from(new Uint8Array(await(await fetch(link.href)).arrayBuffer())));
+  assert.ok(rendered.length>0);assert.deepEqual(writes,[]);
+ }else if(meme){
   await page.getByLabel('Top caption').fill('Private meme');
   await page.getByLabel('Tags (comma separated, up to 12)').fill('Team, demo');
   await page.getByRole('button',{name:'Prepare PNG'}).click();
@@ -63,18 +72,18 @@ try {
  await page.getByRole('button',{name:'Upload privately'}).click();
  await page.getByRole('status').filter({hasText:'Upload stopped.'}).waitFor();
  assert.deepEqual(writes,['allocate','grant','epoch']);
- if(meme)await page.goto(origin+'/resume');else await page.reload();
+ if(meme||recording)await page.goto(origin+'/resume');else await page.reload();
  await page.getByRole('button',{name:'Check pending upload'}).click();
- await page.getByText('Pending: '+(meme?'s3rch-meme.png':'private.png'),{exact:true}).waitFor();
+ await page.getByText('Pending: '+(recording?`s3rch-${recording}.webm`:meme?'s3rch-meme.png':'private.png'),{exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Discard local recovery draft'}).isDisabled(),true);
  await page.getByRole('button',{name:'Resume this upload'}).click();
  await page.getByRole('status').filter({hasText:'Upload complete.'}).waitFor();
  assert.deepEqual(writes,['allocate','grant','epoch','wrap','register','put']);
  await page.getByRole('button',{name:'Check pending upload'}).click();
  await page.getByRole('status').filter({hasText:'No pending upload'}).waitFor();
- if(meme){
+ if(meme||recording){
   const opened=await page.evaluate(async input=>window.verifyMeme(input.cipher,input.material,input.object),{cipher:storedCipher,material:storedMaterial,object});
-  assert.deepEqual(opened.bytes,rendered);assert.deepEqual(opened.tags,['team','demo']);
+  assert.deepEqual(opened.bytes,rendered);assert.deepEqual(opened.tags,meme?['team','demo']:[]);if(recording)assert.equal(opened.description.mediaType,`${recording}/webm`);
  }
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  console.log('Synthetic private upload reload/reconciliation/UI contract passed; hosted login/storage not qualified');
