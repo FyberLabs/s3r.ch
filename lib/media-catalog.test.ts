@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseMediaCatalogPage, isMediaCatalogPageNumber, parseMediaCleanupPage } from "./media-catalog";
+import { parseMediaGrantedPage, parseMediaCatalogPage, isMediaCatalogPageNumber, parseMediaCleanupPage } from "./media-catalog";
 const owner="axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
 const object="media_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_11111111111111111111111111111111";
 test("catalog fixed pagination and canonical owner scope",()=>{
@@ -27,4 +27,10 @@ test("cleanup pages preserve exact owner commands and reject malformed items",()
     {...value,objects:[value.objects[0],value.objects[0]]}])
     assert.throws(()=>parseMediaCleanupPage(bad,0,owner));
   assert.throws(()=>parseMediaCleanupPage(value,0,"other"));
+});
+
+test("granted catalogs exclude the reader's own objects",()=>{
+  const value={at:1,objects:[object],nextPage:1};
+  assert.throws(()=>parseMediaGrantedPage(value,0,owner));
+  assert.deepEqual(parseMediaGrantedPage(value,0,"other"),value);
 });

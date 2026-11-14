@@ -56,3 +56,29 @@ test("configuration rejects shared credentials, invalid tenant and unsafe origin
     {...config,readers:[{principal,apiKey:"key\n"}]},{...config,extra:true},null])
     assert.throws(()=>parseMediaReaderConfig(JSON.stringify(value)));
 });
+
+test("reader catalog shares fixed credentials and concurrency with wrap reads",async()=>{
+  let release!:()=>void;const waiting=new Promise<void>(resolve=>{release=resolve;});
+  const service=createMediaWrapService(config,"https://s3r.ch",async()=>principal,async(url,init)=>{
+    assert.equal(String(url),"https://gateway.example/api/v1/acl/sociacl/media/catalog");
+    assert.deepEqual(JSON.parse(String(init?.body)),{page:0});
+    assert.equal(new Headers(init?.headers).get("x-api-key"),"reader-one-key");
+    await waiting;return Response.json({at:100,objects:[],nextPage:1});
+  },()=>100);
+  const first=service(request({page:0}),"catalog");await new Promise(resolve=>setImmediate(resolve));
+  assert.equal((await service(request())).status,429);release();
+  const response=await first;assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{at:100,objects:[],nextPage:1,principal});
+  assert.equal(response.headers.get("cache-control"),"private, no-store");
+});
+test("reader catalog rejects client-selected readers, owned IDs and changed sessions",async()=>{
+  let calls=0;const service=createMediaWrapService(config,"https://s3r.ch",async()=>principal,async()=>{
+    calls++;return Response.json({at:100,objects:[object],nextPage:1});
+  },()=>100);
+  for(const body of [{page:true},{page:16},{page:0,reader:principal}])assert.equal((await service(request(body),"catalog")).status,400);
+  assert.equal(calls,0);assert.equal((await service(request({page:0}),"catalog")).status,503);
+  let resolves=0;
+  const changed=createMediaWrapService(config,"https://s3r.ch",async()=>++resolves===1?principal:null,
+    async()=>Response.json({at:100,objects:[],nextPage:1}),()=>100);
+  assert.equal((await changed(request({page:0}),"catalog")).status,403);
+});

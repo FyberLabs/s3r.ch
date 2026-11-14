@@ -162,7 +162,8 @@ jobs:
           --test-coverage-include=lib/media-wrap-service.ts
           --test-coverage-include=lib/media-wrap-client.ts
           --test-coverage-lines=90 --test-coverage-branches=80
-          lib/media-wrap-server.test.ts lib/media-wrap-client.test.ts
+          --test-coverage-include=lib/media-reader-catalog.ts
+          lib/media-reader-catalog.test.ts lib/media-wrap-server.test.ts lib/media-wrap-client.test.ts
 
       - name: Allocated media payload contracts and coverage (CI only)
         run: >-
