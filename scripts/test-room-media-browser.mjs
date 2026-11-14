@@ -26,7 +26,7 @@ if(kind!=='image'){
 const result=await build({stdin:{contents:`
 import React from 'react';
 import {createRoot} from 'react-dom/client';
-import {RoomMediaPanel} from './components/RoomMedia';
+import {RoomMediaPanel} from './components/RoomMediaPanel';
 import {composeRoomMedia} from './lib/room-media';
 import {sealMediaFile} from './lib/media-file';
 import {rememberUnlockedMeshPair} from './lib/identity/unlocked-mesh';
