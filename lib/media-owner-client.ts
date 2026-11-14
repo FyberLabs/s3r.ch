@@ -1,4 +1,4 @@
-import { parseMediaGroupPolicyView, parseMediaGroupPolicy, parseMediaGroupScope, parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
+import { parseMediaGroupAuthority, parseMediaGroupPolicyView, parseMediaGroupPolicy, parseMediaGroupScope, parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
 import { parseMediaSharePlan } from "./media-share";
 import { parseMediaDeletionDraft, parseMediaDeletionIntent, type MediaDeletionIntent } from "./media-deletion";
 import { parseForumObjectRecord, type UnverifiedObjectRecord } from "./identity/forum-object-record";
@@ -99,6 +99,11 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
       return hash;
     }
   return Object.freeze({
+    async groupAuthorityView(object:string,owner:string,signal?:AbortSignal) {
+      if(!objectOK(object)||!isSeaPubkey(owner))throw Error("Invalid media group owner");
+      const held=await request("group-authority-view",{object},signal??new AbortController().signal);
+      current(held);return parseMediaGroupAuthority(held,object,owner);
+    },
     async groupPolicyView(object:string,scope:unknown,signal?:AbortSignal) {
       if(!objectOK(object))throw Error("Invalid media group object");
       const heldScope=parseMediaGroupScope(scope),held=await request("group-policy-view",{object,...heldScope},signal??new AbortController().signal);

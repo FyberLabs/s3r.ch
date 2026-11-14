@@ -1,4 +1,4 @@
-import { parseMediaGroupPolicyView, parseMediaGroupPolicy, parseMediaGroupScope, parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
+import { parseMediaGroupAuthority, parseMediaGroupPolicyView, parseMediaGroupPolicy, parseMediaGroupScope, parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
 import { parseMediaSharePlan } from "./media-share";
 import { parseMediaDeletionDraft } from "./media-deletion";
 import { mediaRegistration } from "./media-registration-store";
@@ -24,7 +24,7 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
   const active = new Set<string>(); let preflights = 0, transports = 0;
   return async (action: string, request: Request) => {
     const reply = (status: number) => new Response(null, { status, headers });
-    if (!["allocate", "catalog", "cleanup-catalog", "view", "group-view", "group-policy-view", "epoch-view", "status-view", "share-view", "unshare-view", "cancel-view", "mutate", "group-append", "group-policy-append", "publish-wrap", "upload-state", "share-check", "delete-view", "delete", "cleanup", "registration"].includes(action)) return reply(404);
+    if (!["allocate", "catalog", "cleanup-catalog", "view", "group-view", "group-authority-view", "group-policy-view", "epoch-view", "status-view", "share-view", "unshare-view", "cancel-view", "mutate", "group-append", "group-policy-append", "publish-wrap", "upload-state", "share-check", "delete-view", "delete", "cleanup", "registration"].includes(action)) return reply(404);
     if (request.method !== "POST") return reply(405);
     if (!matchesBrowserOrigin(request, origin)) return reply(403);
     if (request.headers.get("content-type")?.split(";")[0] !== "application/json" ||
@@ -40,13 +40,13 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
       if (!principal || !credentials.has(principal)) return reply(403);
       if (active.has(principal)) return reply(429);
       active.add(principal); occupied = true;
-      const body = await readBoundedIdentityJson(new Response(request.body), action==="group-policy-append"?18432:action==="registration"?4096:["allocate", "catalog", "cleanup-catalog", "view", "group-view", "group-policy-view", "epoch-view", "status-view", "share-view", "unshare-view", "cancel-view", "delete-view", "cleanup"].includes(action) ? 2048 : action === "delete" ? 12288 : 100000,
+      const body = await readBoundedIdentityJson(new Response(request.body), action==="group-policy-append"?18432:action==="registration"?4096:["allocate", "catalog", "cleanup-catalog", "view", "group-view", "group-authority-view", "group-policy-view", "epoch-view", "status-view", "share-view", "unshare-view", "cancel-view", "delete-view", "cleanup"].includes(action) ? 2048 : action === "delete" ? 12288 : 100000,
         AbortSignal.any([signal, AbortSignal.timeout(1000)]));
-      const keys = action === "group-policy-view" ? ["object","predicate","set"] : action === "group-policy-append" ? ["object","at","fence","predicate","set","config"] : action === "group-append" ? ["object","at","fence","predicate","set","rows"] : action === "registration" ? ["object","record"] : action === "delete" ? ["object", "at", "proof"] : ["upload-state","share-check"].includes(action) ? ["object", "operation", "payload"] : action === "allocate" ? ["object", "owner", "issuedAt", "sig"] : ["catalog","cleanup-catalog"].includes(action) ? ["page"] : ["view", "group-view", "group-policy-view", "epoch-view", "delete-view", "cleanup"].includes(action) ? ["object"] : ["status-view", "share-view", "unshare-view", "cancel-view"].includes(action) ? ["object", "reader"] : action === "mutate" ?
+      const keys = action === "group-policy-view" ? ["object","predicate","set"] : action === "group-policy-append" ? ["object","at","fence","predicate","set","config"] : action === "group-append" ? ["object","at","fence","predicate","set","rows"] : action === "registration" ? ["object","record"] : action === "delete" ? ["object", "at", "proof"] : ["upload-state","share-check"].includes(action) ? ["object", "operation", "payload"] : action === "allocate" ? ["object", "owner", "issuedAt", "sig"] : ["catalog","cleanup-catalog"].includes(action) ? ["page"] : ["view", "group-view", "group-authority-view", "group-policy-view", "epoch-view", "delete-view", "cleanup"].includes(action) ? ["object"] : ["status-view", "share-view", "unshare-view", "cancel-view"].includes(action) ? ["object", "reader"] : action === "mutate" ?
         ["object", "at", "fence", "operation", "payload"] : ["object", "at", "fence", "metadata", "wrapBase64"];
       if (!exact(body, keys)) return reply(400);
       if (["catalog","cleanup-catalog"].includes(action) ? !isMediaCatalogPageNumber(body.page) : typeof body.object !== "string" || !body.object.startsWith("media_") || !isCanonicalObjectId(body.object)) return reply(400);
-      if (!["allocate", "catalog", "cleanup-catalog", "view", "group-view", "group-policy-view", "epoch-view", "status-view", "share-view", "unshare-view", "cancel-view", "upload-state", "share-check", "delete-view", "delete", "cleanup", "registration"].includes(action) && (!Number.isSafeInteger(body.at) || (body.at as number) < 0 || !digest(body.fence))) return reply(400);
+      if (!["allocate", "catalog", "cleanup-catalog", "view", "group-view", "group-authority-view", "group-policy-view", "epoch-view", "status-view", "share-view", "unshare-view", "cancel-view", "upload-state", "share-check", "delete-view", "delete", "cleanup", "registration"].includes(action) && (!Number.isSafeInteger(body.at) || (body.at as number) < 0 || !digest(body.fence))) return reply(400);
       if(action==="group-policy-view"||action==="group-policy-append") {
         try { const scope=parseMediaGroupScope({predicate:body.predicate,set:body.set});
           if(action==="group-policy-append")parseMediaGroupPolicy(body.config,scope);
@@ -83,7 +83,9 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
       }
       const result = await readBoundedIdentityJson(response, 262144, signal);
       let catalog: ReturnType<typeof parseMediaCatalogPage> | ReturnType<typeof parseMediaCleanupPage> | undefined;
-      if (action === "group-policy-view") {
+      if (action === "group-authority-view") {
+        try { parseMediaGroupAuthority(result,body.object as string,principal); } catch { return reply(403); }
+      } else if (action === "group-policy-view") {
         try { parseMediaGroupPolicyView(result,parseMediaGroupScope({predicate:body.predicate,set:body.set})); } catch { return reply(403); }
       } else if (action === "group-view") {
         try { parseMediaGroupView(result,body.object as string); } catch { return reply(403); }
