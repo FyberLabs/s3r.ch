@@ -193,3 +193,15 @@ test("cleanup catalog uses fixed subject and rejects foreign or malformed comman
     {...result,objects:[{object,command:"bad"}]},{...result,nextPage:null},{...result,extra:true}])
     assert.equal((await service(async()=>Response.json(bad))("cleanup-catalog",request({page:0}))).status,403);
 });
+
+test("registration forwards only the fixed owner's signed object record",async()=>{
+  const record={object,owner:principal,issuedAt:100,sig:"signed-record"};let calls=0;
+  const handle=service(async(url,init)=>{calls++;assert.ok(String(url).endsWith("/owner/registration"));
+    assert.deepEqual(JSON.parse(String(init?.body)),{object,record});return Response.json({accepted:true});});
+  assert.equal((await handle("registration",request({object,record}))).status,200);
+  for(const bad of [{object,record:{...record,owner:"other"}},{object,record:{...record,object:"other"}},{object,record:null}])
+    assert.equal((await handle("registration",request(bad))).status,400);
+  assert.equal(calls,1);
+  for(const result of [{accepted:false},{accepted:true,extra:"private"}])
+    assert.equal((await service(async()=>Response.json(result))("registration",request({object,record}))).status,403);
+});

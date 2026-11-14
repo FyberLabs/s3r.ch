@@ -171,3 +171,19 @@ Deploy (`.github/workflows/deploy.yml`) and the seed workflow use these settings
 | `NEXT_PUBLIC_WC_PROJECT_ID` | no | GitHub variable passed as a Docker build-arg. Empty leaves WalletConnect off. |
 
 Runtime settings are in [docs/configuration.md](docs/configuration.md). How to place them on one node, with production dependencies, or in the enterprise shape is [docs/deployment.md](docs/deployment.md). Core install steps are [docs/install-minimal.md](docs/install-minimal.md).
+
+
+Private media ciphertext can explicitly select
+`S3RCH_MEDIA_STORAGE_MODE=allocated-v1` after the storage tenant's
+PostgreSQL allocation registry, immutable provider locations and dedicated
+payload read/write credentials are staged. This mode resolves the ciphertext
+reference from the allocation and uses its object-bound payload routes. It
+does not read or charge the legacy shared ciphertext index. Current owner/read
+authorization still runs before and after storage access. There is no fallback
+to generic object storage and no automatic data import or activation.
+
+Unset mode preserves existing behavior. Ownership registration confirms the signed record against the existing protected
+allocation rather than writing a second registration index. The protected source
+still retains its own capacity limit, so this does not claim complete quota reclamation. Existing data needs explicit provider and
+reference reconciliation before selecting the new mode. ACL reader wraps must
+use the corresponding version-3 allocation-bound configuration.

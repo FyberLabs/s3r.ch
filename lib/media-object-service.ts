@@ -1,3 +1,4 @@
+import type { AllocatedMediaStore } from "./allocated-media-store-server";
 import { objectPrincipal } from "./identity/forum-authority-records";
 import { createHash } from "node:crypto";
 import { isCanonicalObjectId } from "./identity/object-id";
@@ -31,7 +32,7 @@ function index(bytes: Uint8Array): Entry[] {
  * retain their reservation for an identical retry, never silently free capacity.
  */
 export function createMediaObjectService(input: {
-  origin: string; records: RecordStore; objects: ObjectStore;
+  origin: string; records: RecordStore; objects: ObjectStore; allocated?: AllocatedMediaStore;
   authorize(request: Request, object: string, action: "read" | "write", signal: AbortSignal): Promise<boolean>;
 }) {
   const origin = new URL(input.origin);
@@ -67,10 +68,10 @@ export function createMediaObjectService(input: {
       active++; admitted = true;
       if (request.method === "PUT") { uploading.add(owner); upload = true; }
       if (request.method === "GET") {
-        const stored = await input.records.get("media", INDEX, signal);
-        const entry = stored && index(stored.bytes).find(row => row.object === object);
+        const stored = input.allocated ? null : await input.records.get("media", INDEX, signal);
+        const entry = input.allocated ? await input.allocated.reference(object,signal) : stored && index(stored.bytes).find(row => row.object === object);
         if (!entry) return reply(404);
-        const bytes = await input.objects.get(entry.digest, signal);
+        const bytes = input.allocated ? await input.allocated.get(object,entry.digest,signal) : await input.objects.get(entry.digest, signal);
         if (!bytes) return reply(404);
         if (bytes.length !== entry.length || hash(bytes) !== entry.digest) throw Error("Invalid ciphertext");
         if (!await allowed()) return reply(403);
@@ -94,6 +95,12 @@ export function createMediaObjectService(input: {
         }
       } finally { signal.removeEventListener("abort", abort); await reader.cancel().catch(() => {}); reader.releaseLock(); }
       if (offset !== bytes.length || hash(bytes) !== digest || bytes[0] !== 0x73 || bytes[1] !== 0x33 || bytes[2] !== 0x6d || bytes[3] !== 1) return reply(400);
+      if(input.allocated) {
+        if(!await allowed())return reply(403);
+        await input.allocated.put(object,digest,bytes,signal);
+        if(!await allowed())return reply(403);
+        return new Response(null,{status:201,headers:{...headers,ETag:`"${digest}"`}});
+      }
       let reserved = false;
       for (let attempt = 0; attempt < 3; attempt++) {
         const stored = await input.records.get("media", INDEX, signal), entries = stored ? index(stored.bytes) : [];

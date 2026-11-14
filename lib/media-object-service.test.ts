@@ -149,3 +149,23 @@ test("a stalled owner upload cannot block another owner's upload or reads", asyn
   controller.abort(); assert.equal((await pending).status, 503); assert.equal(cancelled, 1);
   assert.equal((await h.service(request("PUT"), object)).status, 201);
 });
+
+test("allocated mode bypasses legacy index and preserves before/after authorization",async()=>{
+  let allowed=true,reads=0,writes=0;const calls:string[]=[];
+  const allocated={
+    reference:async(held:string)=>{assert.equal(held,object);calls.push("reference");return {digest,length:bytes.length};},
+    get:async(held:string,hash:string)=>{assert.equal(held,object);assert.equal(hash,digest);reads++;return bytes;},
+    put:async(held:string,hash:string,data:Uint8Array)=>{assert.equal(held,object);assert.equal(hash,digest);assert.deepEqual(data,bytes);writes++;},
+  };
+  const forbidden=async()=>{throw Error("Legacy index must not be accessed");};
+  const service=createMediaObjectService({origin:"https://s3r.ch",allocated,
+    records:{get:forbidden,put:forbidden,delete:forbidden},objects:{get:forbidden,put:forbidden,delete:forbidden},
+    authorize:async()=>allowed});
+  assert.equal((await service(request("PUT"),object)).status,201);assert.equal(writes,1);
+  assert.equal((await service(request(),object)).status,200);assert.equal(reads,1);
+  allocated.get=async()=>{allowed=false;return bytes;};
+  assert.equal((await service(request(),object)).status,403);
+  allowed=true;allocated.put=async()=>{allowed=false;};
+  assert.equal((await service(request("PUT"),object)).status,403);
+  assert.deepEqual(calls,["reference","reference"]);
+});
