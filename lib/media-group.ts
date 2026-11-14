@@ -76,6 +76,8 @@ export function parseMediaGroupPolicyView(input:unknown,scope:MediaGroupScope) {
   return {at:v.at,fence:v.fence,context:{owner:v.context.owner as string,ownerPub:v.context.ownerPub,setId:held.set,predicate:held.predicate},config};
 }
 
+type DirectEntry={accessor:string;grantRevision:number;stated:0|1;from:number;until:number;scope:"direct";setId:"";hamState:0};
+
 /** Atomic preparation input. Direct grants stay distinct from group membership. */
 export function parseMediaGroupAuthority(input:unknown,object:string,owner:string) {
   const v=structuredClone(input);
@@ -107,6 +109,6 @@ export function parseMediaGroupAuthority(input:unknown,object:string,owner:strin
         typeof b.epub!=="string"||!isSeaPubkey(b.epub)||!integer(b.head))return fail();
   }
   if(policy&&(bindings[policy.context.owner] as {pub:string}).pub!==policy.context.ownerPub)return fail();
-  return {...held,owner,direct:v.direct,policy:policy?{context:policy.context,config:policy.config}:null,
+  return {...held,owner,direct:v.direct as {entries:DirectEntry[]},policy:policy?{context:policy.context,config:policy.config}:null,
     bindings:bindings as Record<string,{pub:string;epub:string;head:number}>};
 }
