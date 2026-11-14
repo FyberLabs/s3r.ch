@@ -447,3 +447,18 @@ statement timestamp; retries do not extend them.
 The CI browser contract uses isolated synthetic identities and the real browser
 WebCrypto signer, HTTP reader and protected admission handler. It does not stage
 storage credentials, enable a live namespace, or establish deployed acceptance.
+
+### Private media allocation consumer
+
+The current unlocked media session exposes `allocate(record)` for a canonical
+signed media ownership record. The browser sends only that record through the
+same-origin owner proxy. The proxy resolves the current stable principal, uses
+its fixed tenant/subject credential, and calls the protected ACL allocation
+route. Browser input cannot supply issuer, source, policy or storage keys.
+
+An accepted allocation is followed by a fresh protected owner view. It is not a
+reader grant or a published post. Identity changes abort completion; conflicts
+and lost responses require explicit reconciliation and never trigger automatic
+allocation retries. Hosted use still requires the private ACL allocation binding,
+Storage issuer configuration and controlled registry initialization. No such
+configuration or credentials are enabled by this consumer change.

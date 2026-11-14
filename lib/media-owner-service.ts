@@ -1,3 +1,4 @@
+import { mediaRegistration } from "./media-registration-store";
 import { isMediaCatalogPageNumber, parseMediaCatalogPage } from "./media-catalog";
 import { isSeaPubkey } from "./identity/forum-check";
 import { isCanonicalObjectId } from "./identity/object-id";
@@ -20,13 +21,13 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
   const active = new Set<string>(); let preflights = 0, transports = 0;
   return async (action: string, request: Request) => {
     const reply = (status: number) => new Response(null, { status, headers });
-    if (!["catalog", "view", "status-view", "cancel-view", "mutate", "publish-wrap"].includes(action)) return reply(404);
+    if (!["allocate", "catalog", "view", "status-view", "cancel-view", "mutate", "publish-wrap"].includes(action)) return reply(404);
     if (request.method !== "POST") return reply(405);
     if (!matchesBrowserOrigin(request, origin)) return reply(403);
     if (request.headers.get("content-type")?.split(";")[0] !== "application/json" ||
         ![null, "identity"].includes(request.headers.get("content-encoding"))) return reply(415);
-    const started = clock();
-    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(4000)]);
+    const started = clock(), limit = action === "allocate" ? 6 : 4;
+    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(limit * 1000)]);
     let principal: string | null = null, occupied = false, transport = false;
     try {
       if (preflights >= 2) return reply(429);
@@ -36,14 +37,15 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
       if (!principal || !credentials.has(principal)) return reply(403);
       if (active.has(principal)) return reply(429);
       active.add(principal); occupied = true;
-      const body = await readBoundedIdentityJson(new Response(request.body), ["catalog", "view", "status-view", "cancel-view"].includes(action) ? 2048 : 100000,
+      const body = await readBoundedIdentityJson(new Response(request.body), ["allocate", "catalog", "view", "status-view", "cancel-view"].includes(action) ? 2048 : 100000,
         AbortSignal.any([signal, AbortSignal.timeout(1000)]));
-      const keys = action === "catalog" ? ["page"] : action === "view" ? ["object"] : ["status-view", "cancel-view"].includes(action) ? ["object", "reader"] : action === "mutate" ?
+      const keys = action === "allocate" ? ["object", "owner", "issuedAt", "sig"] : action === "catalog" ? ["page"] : action === "view" ? ["object"] : ["status-view", "cancel-view"].includes(action) ? ["object", "reader"] : action === "mutate" ?
         ["object", "at", "fence", "operation", "payload"] : ["object", "at", "fence", "metadata", "wrapBase64"];
       if (!exact(body, keys)) return reply(400);
       if (action === "catalog" ? !isMediaCatalogPageNumber(body.page) : typeof body.object !== "string" || !body.object.startsWith("media_") || !isCanonicalObjectId(body.object)) return reply(400);
-      if (!["catalog", "view", "status-view", "cancel-view"].includes(action) && (!Number.isSafeInteger(body.at) || (body.at as number) < 0 || !digest(body.fence))) return reply(400);
+      if (!["allocate", "catalog", "view", "status-view", "cancel-view"].includes(action) && (!Number.isSafeInteger(body.at) || (body.at as number) < 0 || !digest(body.fence))) return reply(400);
       if (["status-view", "cancel-view"].includes(action) && (typeof body.reader!=="string" || !isSeaPubkey(body.reader))) return reply(400);
+      if (action === "allocate" && (!mediaRegistration(body) || body.owner !== principal)) return reply(403);
       if (action === "mutate" && (typeof body.operation !== "string" || !["grant", "epoch", "status", "wrap"].includes(body.operation) ||
           !body.payload || typeof body.payload !== "object" || Array.isArray(body.payload))) return reply(400);
       if (action === "publish-wrap" && (!body.metadata || typeof body.metadata !== "object" || Array.isArray(body.metadata) ||
@@ -51,7 +53,7 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
           !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.wrapBase64))) return reply(400);
       if (transports >= 2) return reply(429);
       transports++; transport = true;
-      const response = await fetcher(held.origin + "/api/v1/acl/sociacl/media/owner/" + action, {
+      const response = await fetcher(held.origin + "/api/v1/acl/sociacl/media/" + (action === "allocate" ? action : "owner/" + action), {
         method: "POST", credentials: "omit", redirect: "error", cache: "no-store", signal,
         headers: { "X-Api-Key": credentials.get(principal)!, "X-Tenant-ID": held.tenant,
           "Content-Type": "application/json", "Accept-Encoding": "identity" }, body: JSON.stringify(body) });
@@ -61,7 +63,9 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
       }
       const result = await readBoundedIdentityJson(response, 262144, signal);
       let catalog: ReturnType<typeof parseMediaCatalogPage> | undefined;
-      if (action === "catalog") {
+      if (action === "allocate") {
+        if (!exact(result, ["object", "accepted"]) || result.object !== body.object || result.accepted !== true) return reply(403);
+      } else if (action === "catalog") {
         try { catalog = parseMediaCatalogPage(result, body.page as number, principal); } catch { return reply(403); }
       } else if (action === "view") {
         if (!exact(result, ["at", "fence", "snapshot", "objectVersion", "owner", "bindings"]) || result.owner !== principal ||
@@ -95,7 +99,7 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
       if (await resolvePrincipal(request, signal) !== principal) return reply(403);
       signal.throwIfAborted();
       const elapsed = clock() - started;
-      if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 4) return reply(403);
+      if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= limit) return reply(403);
       return Response.json(catalog ? { ...catalog, principal } : result, { headers });
     } catch { return reply(503); }
     finally {

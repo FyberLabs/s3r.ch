@@ -1,3 +1,4 @@
+import type { UnverifiedObjectRecord } from "./identity/forum-object-record";
 import { createPrivateMediaOwner } from "./media-owner-client";
 import { createPrivateMediaReader } from "./media-wrap-client";
 import { readSingleUnlockedIdentity, subscribeUnlockedMeshPair } from "./identity/unlocked-mesh";
@@ -45,6 +46,9 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     },signal);
   }
   return Object.freeze({
+    allocate(record:UnverifiedObjectRecord,signal?:AbortSignal){
+      return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).allocate(record,deadline),signal);
+    },
     catalog(page:number,signal?:AbortSignal){
       return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).catalog(page,deadline),signal);
     },
