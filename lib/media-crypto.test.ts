@@ -53,3 +53,57 @@ test("media snapshots caller arrays and binding before yielding", async () => {
   bytes.fill(0); key.fill(0); readContext.tenant = "bad";
   assert.deepEqual(await opening, input);
 });
+
+test("temporary plaintext and decrypt keys are cleared without changing caller data", async (t) => {
+  const imports: Uint8Array[] = [], plaintext: Uint8Array[] = [];
+  const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+  const encrypt = crypto.subtle.encrypt.bind(crypto.subtle);
+  t.mock.method(crypto.subtle, "importKey", (...args: Parameters<typeof importKey>) => {
+    imports.push(args[1] as Uint8Array); return importKey(...args);
+  });
+  t.mock.method(crypto.subtle, "encrypt", (...args: Parameters<typeof encrypt>) => {
+    plaintext.push(args[2] as Uint8Array); return encrypt(...args);
+  });
+  const source = input.slice(), sealed = await sealMedia(source, binding), key = sealed.key.slice();
+  assert.deepEqual(source, input);
+  assert.ok(plaintext[0].every(byte => byte === 0));
+  assert.deepEqual(imports[0], key); // Successful sealing transfers this key to the caller.
+  assert.deepEqual(await openMedia(sealed.bytes, sealed.sha256, sealed.key, binding), input);
+  assert.ok(imports[1].every(byte => byte === 0));
+  assert.deepEqual(sealed.key, key);
+});
+
+for (const failure of ["importKey", "encrypt", "digest"] as const) {
+  test(`failed ${failure} clears the generated key and any submitted plaintext`, async (t) => {
+    let heldKey: Uint8Array | undefined, heldPlaintext: Uint8Array | undefined;
+    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+    const encrypt = crypto.subtle.encrypt.bind(crypto.subtle);
+    t.mock.method(crypto.subtle, "importKey", (...args: Parameters<typeof importKey>) => {
+      heldKey = args[1] as Uint8Array;
+      if (failure === "importKey") return Promise.reject(Error("crypto unavailable"));
+      return importKey(...args);
+    });
+    t.mock.method(crypto.subtle, "encrypt", (...args: Parameters<typeof encrypt>) => {
+      heldPlaintext = args[2] as Uint8Array;
+      if (failure === "encrypt") return Promise.reject(Error("crypto unavailable"));
+      return encrypt(...args);
+    });
+    if (failure === "digest") t.mock.method(crypto.subtle, "digest", () => Promise.reject(Error("crypto unavailable")));
+    await assert.rejects(sealMedia(input, binding), /crypto unavailable/);
+    assert.ok(heldKey && heldKey.every(byte => byte === 0));
+    if (failure !== "importKey") assert.ok(heldPlaintext && heldPlaintext.every(byte => byte === 0));
+    assert.deepEqual(input, new Uint8Array([0, 255, 128, 1, 0, 40]));
+  });
+}
+
+test("failed authentication clears the decrypt key copy but preserves the caller key", async (t) => {
+  const sealed = await sealMedia(input, binding), wrongKey = sealed.key.slice(); wrongKey[0] ^= 1;
+  const saved = wrongKey.slice(), importKey = crypto.subtle.importKey.bind(crypto.subtle);
+  let heldKey: Uint8Array | undefined;
+  t.mock.method(crypto.subtle, "importKey", (...args: Parameters<typeof importKey>) => {
+    heldKey = args[1] as Uint8Array; return importKey(...args);
+  });
+  await assert.rejects(openMedia(sealed.bytes, sealed.sha256, wrongKey, binding));
+  assert.ok(heldKey && heldKey.every(byte => byte === 0));
+  assert.deepEqual(wrongKey, saved);
+});
