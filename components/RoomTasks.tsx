@@ -82,7 +82,7 @@ function TaskEditor({ task, busy, send }: { task: RoomTask; busy: boolean; send:
   return <div className="mt-2 flex flex-wrap items-end gap-2">
     <label className="text-xs text-ink-muted">Status<select aria-label={`Status for ${task.title}`} className={`ml-2 ${field}`} disabled={busy} value={task.status}
       onChange={e => void send(["status", task.id, task.head, e.target.value as TaskStatus])}>{TASK_STATUSES.map(status => <option key={status} value={status}>{status}</option>)}</select></label>
-    <label className="min-w-0 text-xs text-ink-muted">Assignee address<input aria-label={`Assignee for ${task.title}`} className={`mt-1 block w-full ${field}`} maxLength={42} disabled={busy} value={assignee} onChange={e => setAssignee(e.target.value)} /></label>
+    <label className="min-w-0 text-xs text-ink-muted">Assignee identity<input aria-label={`Assignee for ${task.title}`} className={`mt-1 block w-full ${field}`} maxLength={87} disabled={busy} value={assignee} onChange={e => setAssignee(e.target.value)} /></label>
     <button type="button" className={btnPrimary} disabled={busy || assignee.trim() === (task.assignee ?? "")} onClick={() => void send(["assign", task.id, task.head, assignee.trim() || null])}>Set assignee</button>
     <span className="text-xs text-ink-muted">Assignment does not share access.</span>
   </div>;

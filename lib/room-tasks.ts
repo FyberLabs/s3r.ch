@@ -1,6 +1,8 @@
 /** Room tasks are projections of admitted chat, with the same persistence and
  * sharing boundary. Callers must supply room/message Check-filtered rows. */
 import { getAddress } from "viem";
+import { isSeaPubkey } from "./identity/forum-check";
+const taskPrincipal = (value: string): string => isSeaPubkey(value) ? value : getAddress(value);
 import { composeChat, shortChatEntropy, type ChatMessage } from "./chat";
 import { checkSee, roomSoul, type SeeAcl } from "./identity/check";
 
@@ -14,25 +16,25 @@ export type RoomTask = Readonly<{ id: string; room: string; owner: string; kind:
   title: string; visibility: "mine" | "room"; status: TaskStatus; assignee: string | null; head: string; created: number;
   events: readonly Readonly<{ name: "room.object.created" | "room.object.updated"; messageId: string }>[] }>;
 const idOK = (value: unknown): value is string => typeof value === "string" &&
-  /^s3rch:chat:0x[0-9a-fA-F]{40}:[0-9]{1,16}:[A-Za-z0-9_-]{1,32}$/.test(value);
+  /^s3rch:chat:(?:0x[0-9a-fA-F]{40}|[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}):[0-9]{1,16}:[A-Za-z0-9_-]{1,32}$/.test(value);
 const order = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 
 export function canUseRoomTasks(acl: SeeAcl, room: string, actor: string, now: number): boolean {
   return checkSee(acl, roomSoul(room), actor, now).allowed;
 }
 export function parseTaskAction(body: unknown): TaskAction | null {
-  if (typeof body !== "string" || body.length > 280 || !body.startsWith(PREFIX)) return null;
+  if (typeof body !== "string" || body.length > 512 || !body.startsWith(PREFIX)) return null;
   try {
     const row: unknown = JSON.parse(body.slice(PREFIX.length));
     if (!Array.isArray(row)) return null;
     if (row.length === 6 && row[0] === "create" && (row[1] === "task" || row[1] === "issue") &&
         typeof row[2] === "string" && row[2].length > 0 && row[2].length <= TASK_TITLE_MAX &&
         (row[3] === "mine" || row[3] === "room") && row[2].trim() === row[2] && !/[\x00-\x1f\x7f]/.test(row[2]) && TASK_STATUSES.includes(row[4]) && (row[5] === null || typeof row[5] === "string"))
-      return ["create", row[1], row[2], row[3], row[4], row[5] === null ? null : getAddress(row[5])];
+      return ["create", row[1], row[2], row[3], row[4], row[5] === null ? null : taskPrincipal(row[5])];
     if (row.length !== 4 || !idOK(row[1]) || !idOK(row[2])) return null;
     if (row[0] === "status" && TASK_STATUSES.includes(row[3])) return ["status", row[1], row[2], row[3]];
     if (row[0] === "assign" && (row[3] === null || typeof row[3] === "string"))
-      return ["assign", row[1], row[2], row[3] === null ? null : getAddress(row[3])];
+      return ["assign", row[1], row[2], row[3] === null ? null : taskPrincipal(row[3])];
   } catch { /* Unknown or malformed payloads stay ordinary chat text. */ }
   return null;
 }
@@ -61,7 +63,7 @@ export function roomTasks(messages: readonly ChatMessage[], room: string): RoomT
     if (message.room !== room || !idOK(message.id) || !Number.isSafeInteger(message.ts) || message.ts < 0 ||
         (message.v !== undefined && message.v !== 1)) continue;
     let author: string;
-    try { author = getAddress(message.author); } catch { continue; }
+    try { author = taskPrincipal(message.author); } catch { continue; }
     if (!message.id.startsWith(`s3rch:chat:${author}:${message.ts}:`)) continue;
     const action = parseTaskAction(message.body);
     if (!action) continue;

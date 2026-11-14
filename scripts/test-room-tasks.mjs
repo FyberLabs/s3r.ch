@@ -7,8 +7,8 @@ import { chromium } from "playwright-core";
 if (process.env.GITHUB_ACTIONS !== "true") throw Error("Room task browser contracts run in CI only");
 
 // Isolated component/browser contract. No shared TEST or external endpoints.
-const owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const other = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+const owner = "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
+const other = "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
 let actor = owner, browser;
 const bundle = await build({ entryPoints: ["scripts/fixtures/room-tasks.tsx"], bundle: true,
   write: false, platform: "browser", format: "esm", jsx: "automatic", define: { "process.env.NODE_ENV": '"test"' } });
@@ -18,7 +18,7 @@ const server = createServer((req, res) => {
   if (req.url === "/fixture/owner" && req.method === "POST") { actor = owner; res.writeHead(204).end(); return; }
   if (req.url === "/api/identity/session") {
     res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify({ address: actor, owner: actor, chainId: 1, expiresAt: Date.now() + 300_000 })); return;
+    res.end(JSON.stringify({ address: "", owner: actor, chainId: 1, expiresAt: Date.now() + 300_000 })); return;
   }
   if (req.url === "/fixture.js") { res.setHeader("content-type", "text/javascript"); res.end(bundle.outputFiles[0].contents); return; }
   if (req.url === "/") { res.setHeader("content-type", "text/html"); res.end('<!doctype html><html><body><div id="root"></div><script type="module" src="/fixture.js"></script></body></html>'); return; }

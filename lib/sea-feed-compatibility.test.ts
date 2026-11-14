@@ -30,3 +30,19 @@ test("credential confirmation controls and storage retain the confirming wallet"
   assert.match(source, /useHeldConfirms\(session\?\.address \|\| null\)/);
   assert.match(source, /<HeldConfirmControls\s+address=\{session.address\}/);
 });
+
+test("SEA room-task fixture supports creation, status and assignee without granting editing", async () => {
+  const { composeRoomTask, roomTasks } = await import("./room-tasks");
+  const created = composeRoomTask("room", alice, ["create", "task", "Work", "room", "open", null], 100);
+  assert.ok(created);
+  const status = composeRoomTask("room", alice, ["status", created.id, created.id, "doing"], 101);
+  assert.ok(status);
+  const assigned = composeRoomTask("room", alice, ["assign", created.id, status.id, bob], 102);
+  assert.ok(assigned);
+  const forged = composeRoomTask("room", bob, ["status", created.id, assigned.id, "done"], 103);
+  assert.ok(forged);
+  const [task] = roomTasks([created, status, assigned, forged], "room");
+  assert.equal(task.owner, alice);
+  assert.equal(task.status, "doing");
+  assert.equal(task.assignee, bob);
+});
