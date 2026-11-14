@@ -1,3 +1,4 @@
+import { RoomAuthorityProvider } from "@/components/RoomAuthorityProvider";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FeedStream } from "@/components/FeedStream";
@@ -32,7 +33,7 @@ export default function FeedPage() {
         <GunPeerProvider>
           <MeshAclSync />
 
-          <FeedStream />
+          <RoomAuthorityProvider><FeedStream /></RoomAuthorityProvider>
         </GunPeerProvider>
       </SeeAclProvider>
 

@@ -1,4 +1,8 @@
 "use client";
+import { useRoomAuthority } from "./RoomAuthorityProvider";
+import { isForumObjectId } from "@/lib/identity/forum-check";
+import { publishCurrentRoomChat, roomChatPublicationAllowed } from "@/lib/room-chat-publication";
+import { createRoomChatSubscription } from "@/lib/room-chat-receive-queue";
 import PublicFeedMedia from "./PublicFeedMedia";
 import FeedConversation from "./FeedConversation";
 
@@ -40,10 +44,7 @@ import {
   readUnshareId,
 } from "@/lib/unshare";
 import {
-  fromGunChatNode,
   mergeChat,
-  messagesInRoom,
-  preparePublishRoomChat,
   type ChatMessage,
 } from "@/lib/chat";
 import {
@@ -141,9 +142,11 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
   sharePeers: boolean; setSharePeers: Dispatch<SetStateAction<boolean>>;
   openRoomId: string | null; setOpenRoomId: Dispatch<SetStateAction<string | null>>;
 }) {
+  const { current: roomAuthority, revision: roomAuthorityRevision } = useRoomAuthority();
   // Every private overlay, child draft, selection and subscription belongs to this
   // mount. A resolved owner change replaces it; a refresh retains but hides it.
   const session = identity ?? null;
+  const roomPrincipal = session?.owner && roomAuthority?.authority.graph.principalForKey(session.owner, Math.floor(Date.now() / 1000)) || undefined;
   const sessionResolved = identity !== undefined;
   const active = useRef(true);
   useLayoutEffect(() => {
@@ -183,7 +186,10 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     null,
   );
   const [roomShareMessage, setRoomShareMessage] = useState<string | null>(null);
+  const roomPublicationEpoch = useRef(0);
+  const ownerConfirmedRoomShares = useRef(new Set<string>());
   const [overlayChat, setOverlayChat] = useState<ChatMessage[]>([]);
+  const overlayChatRef = useRef<ChatMessage[]>([]);
   const [graphChat, setGraphChat] = useState<ChatMessage[]>([]);
   const [overlayPresence, setOverlayPresence] = useState<PresenceEntry[]>([]);
   const [graphPresence, setGraphPresence] = useState<PresenceEntry[]>([]);
@@ -505,27 +511,23 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
 
   useEffect(() => {
     const gun = gunRef.current;
-    if (!gun || !gunReady || !openRoomId || !openRoomIsPublic) return;
+    if (!gun || !gunReady || !openRoomId || !openRoomIsPublic || !roomAuthority) return;
     const roomId = openRoomId;
-    let cancelled = false;
-    const listener = gun
-      .get("s3rch")
-      .get("rooms")
-      .get(encodeKey(roomId))
-      .get("chat")
-      .map()
-      .on((data) => {
-        const message = fromGunChatNode(
-          data as Parameters<typeof fromGunChatNode>[0],
-        );
-        if (!message || cancelled || message.room !== roomId) return;
-        setGraphChat((prev) => mergeChat(prev, [message]));
-      });
-    return () => {
-      cancelled = true;
-      if (typeof listener?.off === "function") listener.off();
-    };
-  }, [gunReady, openRoomId, openRoomIsPublic]);
+    const subscription = createRoomChatSubscription({
+      admission: roomAuthority.admission, room: roomId,
+      receive: message => {
+        // Fresh proof objects replace objects retained by a previous controller.
+        setGraphChat(prev => mergeChat([message], prev).slice(0, 8192));
+      },
+      ready: () => !!roomAuthority.authority.graph.principalForKey(session?.owner ?? "", Math.floor(Date.now() / 1000)),
+      observeAuthority: roomAuthority.authority.subscribe,
+      subscribe: receive => {
+        const listener = gun.get("s3rch").get("rooms").get(encodeKey(roomId)).get("chat").map().on(receive);
+        return () => { if (typeof listener?.off === "function") listener.off(); };
+      },
+    });
+    return () => subscription.close();
+  }, [gunReady, openRoomId, openRoomIsPublic, roomAuthority, session?.owner]);
 
   useEffect(() => {
     const gun = gunRef.current;
@@ -553,8 +555,8 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
 
   const openRoomChat = useMemo(() => {
     if (!openRoomId) return [];
-    return messagesInRoom(mergeChat(graphChat, overlayChat), openRoomId);
-  }, [openRoomId, graphChat, overlayChat]);
+    return roomAuthority?.admission.readable(mergeChat(graphChat, overlayChat), openRoomId) ?? [];
+  }, [openRoomId, graphChat, overlayChat, roomAuthority, roomAuthorityRevision]);
 
   const openRoomPresence = useMemo(() => {
     if (!openRoomId) return [];
@@ -566,6 +568,11 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
 
   const publishedRoomsRef = useRef(publishedRooms);
   publishedRoomsRef.current = publishedRooms;
+  const roomChatPublic = (room: string) => !!roomAuthority && roomChatPublicationAllowed({
+    room, readerKey: sessionRef.current?.owner ?? null, now: Math.floor(Date.now() / 1000),
+    graph: roomAuthority.authority.graph, publishedRooms: publishedRoomsRef.current,
+    ownerConfirmedShares: ownerConfirmedRoomShares.current,
+  });
 
   const announcePresence = useCallback(
     (entry: PresenceEntry, putOnGun: boolean) => {
@@ -690,9 +697,15 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     }
     if (confirmShareRoomId !== room.id) {
       setConfirmShareRoomId(room.id);
+      setRoomShareMessage("Sharing publishes this room and its chat for anyone to read and copy, even without signing in. Current forum members can participate in this app for one hour. Posts inside stay on Mine.");
       return;
     }
-    const prepared = prepareShareRoomIntoMesh(see.acl, room, objectOwner(session));
+    if (!roomAuthority) { setRoomShareMessage("Room access could not be shared."); return; }
+    const epoch = ++roomPublicationEpoch.current;
+    const admitted = await roomAuthority.admit(room, true);
+    if (!canMutate() || roomPublicationEpoch.current !== epoch) return;
+    if (!admitted) { setRoomShareMessage("Room access could not be shared."); return; }
+    const prepared = prepareShareRoomIntoMesh(see.acl, room, roomPrincipal ?? "");
     if ("denied" in prepared) {
       setRoomShareMessage("Could not share.");
       setConfirmShareRoomId(null);
@@ -703,30 +716,15 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
       setRoomShareMessage("Not ready yet.");
       return;
     }
+    ownerConfirmedRoomShares.current.add(room.id);
     gun.get("s3rch").get("rooms").get(prepared.key).put(prepared.node);
-    setSharedRoomIds((prev) =>
-      prev.includes(room.id) ? prev : [...prev, room.id],
-    );
-    const publicIds = new Set(publishedRooms);
+    const publicIds = new Set(publishedRoomsRef.current);
     publicIds.add(room.id);
-    for (const row of overlayChat) {
-      if (isRoomTaskBody(row.body)) continue;
-      if (row.room !== room.id) continue;
-      const preparedChat = preparePublishRoomChat(
-        see.acl,
-        row,
-        objectOwner(session),
-        publicIds,
-      );
-      if ("denied" in preparedChat) continue;
-      gun
-        .get("s3rch")
-        .get("rooms")
-        .get(preparedChat.roomKey)
-        .get("chat")
-        .get(preparedChat.key)
-        .put(preparedChat.node);
-    }
+    publishedRoomsRef.current = publicIds;
+    setSharedRoomIds((prev) => prev.includes(room.id) ? prev : [...prev, room.id]);
+    publishCurrentRoomChat({ room: room.id, currentRows: () => overlayChatRef.current,
+      publicRoom: () => canMutate() && roomChatPublic(room.id), admission: roomAuthority.admission,
+      publish: row => { gun.get("s3rch").get("rooms").get(encodeKey(room.id)).get("chat").get(encodeKey(row.id)).put(row); } });
     for (const row of overlayPresence) {
       if (row.room !== room.id) continue;
       const preparedPresence = preparePublishRoomPresence(
@@ -746,7 +744,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     }
     setConfirmShareRoomId(null);
     setRoomShareMessage(
-      "Published. Posts inside stay on Mine until you share them.",
+      "Room and chat published publicly. Copies may remain after unsharing. Posts inside stay on Mine.",
     );
     await see.persist();
   }
@@ -763,7 +761,10 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
       setConfirmShareRoomId(null);
       return;
     }
-    const prepared = prepareUnshareRoomIntoMesh(see.acl, room, objectOwner(session));
+    // A confirmed unshare wins over an earlier share/renewal still awaiting admission.
+    roomPublicationEpoch.current++;
+    ownerConfirmedRoomShares.current.delete(room.id);
+    const prepared = prepareUnshareRoomIntoMesh(see.acl, room, roomPrincipal ?? "");
     if ("denied" in prepared) {
       setRoomShareMessage("Could not unshare this room.");
       setConfirmUnshareRoomId(null);
@@ -775,6 +776,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
       return;
     }
     gun.get("s3rch").get("rooms").get(prepared.key).put(prepared.tombstone);
+    publishedRoomsRef.current = new Set([...publishedRoomsRef.current].filter(id => id !== room.id));
     setSharedRoomIds((prev) => prev.filter((id) => id !== room.id));
     setPublicRooms((prev) => dropRooms(prev, room.id));
     heardRoomsRef.current = dropRooms(heardRoomsRef.current, room.id);
@@ -782,11 +784,11 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     setGraphChat((prev) => prev.filter((row) => row.room !== room.id));
     setGraphPresence((prev) => prev.filter((row) => row.room !== room.id));
     setConfirmUnshareRoomId(null);
-    setRoomShareMessage("Unshare removes this room from public.");
+    setRoomShareMessage("The public room listing is removed. Published chat and copies may remain.");
   }
 
   const composeRoomId =
-    tab === "mine" && openRoom && ownsRoom(openRoom, session ? objectOwner(session) : undefined)
+    tab === "mine" && openRoom && ownsRoom(openRoom, roomPrincipal)
       ? openRoom.id
       : undefined;
 
@@ -908,12 +910,12 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
         mine={tab === "mine"}
         network={tab === "network"}
         granted={tab === "granted"}
-          owned={ownsRoom(openRoom, session ? objectOwner(session) : undefined)}
-          shared={publishedRooms.has(openRoom.id)}
+          owned={ownsRoom(openRoom, roomPrincipal)}
+          shared={ownsRoom(openRoom, roomPrincipal) ? ownerConfirmedRoomShares.current.has(openRoom.id) : publishedRooms.has(openRoom.id)}
           confirmShare={confirmShareRoomId === openRoom.id}
           confirmUnshare={confirmUnshareRoomId === openRoom.id}
           shareMessage={roomShareMessage}
-          sessionAddress={session ? objectOwner(session) : null}
+          sessionAddress={roomPrincipal ?? null}
           onClose={() => {
             setOpenRoomId(null);
             setRoomShareMessage(null);
@@ -940,29 +942,18 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
           roomId={openRoom.id}
           messages={openRoomChat}
           presence={openRoomPresence}
-          onPublicGraph={openRoomIsPublic}
+          onPublicGraph={roomChatPublic(openRoom.id)}
           seedWsUp={seedWsUp}
-          onComposed={(next, putOnGun) => {
-            if (!canMutate()) return;
-            if (isRoomTaskBody(next.body)) return;
-            setOverlayChat((prev) => mergeChat(prev, [next]));
-            if (!putOnGun || !see?.acl || !session) return;
+          onComposed={(next) => {
+            if (!canMutate() || !roomAuthority?.admission.valid(next) || isRoomTaskBody(next.body)) return;
+            overlayChatRef.current = mergeChat(overlayChatRef.current, [next]);
+            setOverlayChat(overlayChatRef.current);
+            if (!see?.acl || !session) return;
             const gun = gunRef.current;
             if (!gun) return;
-            const prepared = preparePublishRoomChat(
-              see.acl,
-              next,
-              objectOwner(session),
-              publishedRooms,
-            );
-            if ("denied" in prepared) return;
-            gun
-              .get("s3rch")
-              .get("rooms")
-              .get(prepared.roomKey)
-              .get("chat")
-              .get(prepared.key)
-              .put(prepared.node);
+            publishCurrentRoomChat({ room: next.room, currentRows: () => [next],
+              publicRoom: () => canMutate() && roomChatPublic(next.room), admission: roomAuthority.admission,
+              publish: row => { gun.get("s3rch").get("rooms").get(encodeKey(row.room)).get("chat").get(encodeKey(row.id)).put(row); } });
           }}
         />
       ) : null}
@@ -1129,12 +1120,12 @@ function RoomThreadHeader({
           Close thread
         </button>
       </div>
-      {mine && owned && sessionAddress ? (
+      {owned && sessionAddress && (mine || isForumObjectId(room.id, "room")) ? (
         <div className="mt-3 border-t border-rule pt-3">
           {shared ? (
             <>
               <p className="text-xs text-ink-muted">
-                This room is public.
+                This room listing is public.
               </p>
               <button
                 type="button"
@@ -1143,6 +1134,11 @@ function RoomThreadHeader({
               >
                 {confirmUnshare ? "Confirm unshare" : "Unshare from public"}
               </button>
+              {isForumObjectId(room.id, "room") ? (
+                <button type="button" onClick={onShare} className={`ml-2 mt-2 ${btnSecondary}`}>
+                  {confirmShare ? "Confirm renewal" : "Renew participation"}
+                </button>
+              ) : null}
             </>
           ) : (
             <>
@@ -1161,7 +1157,13 @@ function RoomThreadHeader({
           {shareMessage ? (
             <p className="mt-2 text-xs text-ink-muted">{shareMessage}</p>
           ) : null}
-          <RoomSeeGrantControls address={sessionAddress} room={room} />
+          {isForumObjectId(room.id, "room") ? (
+            <p className="mt-2 text-xs text-ink-muted">
+              Sharing publishes the room and its chat for anyone to read or copy.
+              Current forum members can participate in this app for one hour; renew participation to include new members.
+              Removing the listing does not erase published chat or copies.
+            </p>
+          ) : <RoomSeeGrantControls address={sessionAddress} room={room} />}
         </div>
       ) : null}
     </div>

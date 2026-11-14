@@ -1,3 +1,4 @@
+import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { configuredAclStatementSource, StatementSourceConflict } from "./acl-statement-source-server";
 import type { BotStatementSource } from "./forum-bot-statement-admission";
 import { configuredIdentityReplay, type IdentityReplay } from "./identity/spanopticon-replay-server";
@@ -27,7 +28,8 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
   const common = { squad: config.squad, origin: config.origin, config: config.authority, clock, authenticate };
   const services = Object.freeze({ authenticate,
     authority: createForumAuthorityService({ ...common, read: source.read }),
-    statements: createBotStatementAdmission({ ...common, source: statements }) });
+    statements: createBotStatementAdmission({ ...common, source: statements }),
+    rooms: createBotStatementAdmission({ ...common, source: statements, objectKind: "room" }) });
   return { backend: "acl" as const, config, source, services };
 }
 // No build-time or import-time secret/storage reads. Key Vault references are
@@ -63,7 +65,7 @@ export async function squadPilotReady(pilot: {
       const snapshot = await pilot.source.read(at, signal);
       const result = await authority.refresh(snapshot, at);
       signal.throwIfAborted();
-      if (result.diagnostics.length) return false;
+      if (roomAuthorityReadDiagnosticsBlock(result.diagnostics, snapshot)) return false;
       if (clock() === at) return result.ok && authority.graph.ownerOf(pilot.config.squad.forumId) === pilot.config.squad.owner;
       if (!result.ok && result.reason !== "superseded" && result.reason !== "incomplete-authority") return false;
     } catch (error) {

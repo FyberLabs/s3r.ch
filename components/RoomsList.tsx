@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRoomAuthority } from "./RoomAuthorityProvider";
+import { useLayoutEffect, useRef, useState } from "react";
 import { shortenOwner } from "@/lib/feed-discover";
 import { splitTags } from "@/lib/feed-types";
 import {
   admitComposedRoom,
-  composeRoom,
+  composeSignedRoom,
   ROOM_TITLE_MAX,
   type Room,
 } from "@/lib/rooms";
@@ -124,12 +125,17 @@ export function RoomsList({
 
 function NewRoomForm({ onCreated }: { onCreated: (room: Room) => void }) {
   const see = useSeeAcl();
+  const { current: roomAuthority } = useRoomAuthority();
   const [title, setTitle] = useState("");
   const [tagsInput, setTagsInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const identity = useIdentitySession();
   const session = identity ? objectOwner(identity) : null;
+  const mounted = useRef(true);
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const current = useRef({ session, roomAuthority, see });
+  current.current = { session, roomAuthority, see };
 
   async function submit() {
     setBusy(true);
@@ -139,9 +145,12 @@ function NewRoomForm({ onCreated }: { onCreated: (room: Room) => void }) {
         setMessage("Sign in to create a room.");
         return;
       }
-      const room = composeRoom({
+      const pair = roomAuthority?.pair();
+      const principal = pair && roomAuthority?.authority.graph.principalForKey(pair.pub, Math.floor(Date.now() / 1000));
+      if (!principal) { setMessage("Room access is unavailable. Sign in with your unlocked identity."); return; }
+      const room = composeSignedRoom({
         title,
-        address: session,
+        address: principal,
         tags: splitTags(tagsInput),
       });
       if (!room) {
@@ -152,7 +161,9 @@ function NewRoomForm({ onCreated }: { onCreated: (room: Room) => void }) {
         setMessage("Could not create this room.");
         return;
       }
-      const admitted = admitComposedRoom(see.acl, room, session);
+      if (!roomAuthority || !await roomAuthority.admit(room, false)) { setMessage("Could not create this room."); return; }
+      if (!mounted.current || current.current.session !== session || current.current.roomAuthority !== roomAuthority || current.current.see !== see) return;
+      const admitted = admitComposedRoom(see.acl, room, principal);
       if ("denied" in admitted) {
         setMessage("Could not create this room.");
         return;
