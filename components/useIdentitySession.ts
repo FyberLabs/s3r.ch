@@ -1,5 +1,6 @@
 "use client";
 
+import { isSeaPubkey } from "@/lib/identity/forum-check";
 import { useEffect } from "react";
 import { QueryClient, useQuery } from "@tanstack/react-query";
 
@@ -12,7 +13,7 @@ export type IdentitySession = {
 };
 
 export function objectOwner(session: IdentitySession): string {
-  return session.owner || session.address;
+  return isSeaPubkey(session.owner) ? session.owner : "";
 }
 
 const client = new QueryClient();
@@ -24,11 +25,11 @@ async function refresh({ signal }: { signal: AbortSignal }) {
   if (response.status === 401) return null;
   if (!response.ok) throw new Error("Identity service unavailable.");
   const payload = await response.json();
-  if (typeof payload.address !== "string" || !payload.address) return null;
+  if (!isSeaPubkey(payload.owner) && !payload.address) return null;
   return {
-    address: payload.address as string,
+    address: typeof payload.address === "string" ? payload.address : "",
     chainId: typeof payload.chainId === "number" ? payload.chainId : 1,
-    owner: typeof payload.owner === "string" && payload.owner ? payload.owner : payload.address as string,
+    owner: isSeaPubkey(payload.owner) ? payload.owner : "",
     expiresAt: typeof payload.expiresAt === "number" ? payload.expiresAt : Date.now() + 60_000,
   };
 }

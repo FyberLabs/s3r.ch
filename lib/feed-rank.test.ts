@@ -4,7 +4,7 @@ import { composeNativePost } from "./compose";
 import { rankFeedItems } from "./feed-rank";
 import type { FeedItem } from "./feed-types";
 
-const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+const ALICE = "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
 
 function item(overrides: Partial<FeedItem> & Pick<FeedItem, "id" | "ts" | "tags">): FeedItem {
   return {

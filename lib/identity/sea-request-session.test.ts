@@ -23,7 +23,7 @@ async function setup() {
 }
 test("TURN reads the existing issuer's SEA session without minting another token", async () => {
   const h = await setup();
-  assert.deepEqual(await readSeaRequestSession(request(h.token), env, () => now), { key: h.pair.pub });
+  assert.deepEqual(await readSeaRequestSession(request(h.token), env, () => now), { key: h.pair.pub, expiresAt: (now+300)*1000 });
   const reader = createIdentityTokenVerifier({ origin, secret, clock: () => now });
   assert.deepEqual(await reader.authenticate(h.token), { key: h.pair.pub });
   assert.ok(!("challenge" in reader) && !("exchange" in reader));

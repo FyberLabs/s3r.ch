@@ -17,6 +17,7 @@
 
 import { legacyUserSoul } from "./identity/legacy-user-soul";
 import { getAddress } from "viem";
+import { isSeaPubkey } from "./identity/forum-check";
 import { isNativePost } from "./compose";
 import {
   GUN_PROTOCOL_V,
@@ -181,7 +182,7 @@ export function checksumAccessor(accessor: string): string | null {
     ? trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length)
     : trimmed;
   try {
-    return getAddress(wallet);
+    return isSeaPubkey(wallet) ? wallet : getAddress(wallet);
   } catch {
     return null;
   }

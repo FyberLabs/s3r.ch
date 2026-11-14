@@ -125,6 +125,7 @@ export function FeedStream() {
   registerGunRef.current = registerGun;
   const [seed, setSeed] = useState<FeedItem[]>([]);
   const [overlay, setOverlay] = useState<FeedItem[]>([]);
+  useEffect(() => { setOverlay([]); }, [session?.owner]);
   const [meshItems, setMeshItems] = useState<FeedItem[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);

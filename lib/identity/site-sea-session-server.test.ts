@@ -35,7 +35,7 @@ test("site client establishes the existing SEA session without a Squad or Blob c
   const status = await request("/api/identity/sea/session");
   assert.deepEqual(await status.json(), { enabled: true, principal: pair.pub, expiresAt: (now+300)*1000 });
   assert.equal(status.headers.get("cache-control"), "private, no-store");
-  assert.deepEqual(await readSeaRequestSession(new Request(origin, { headers: { cookie: cookie() } }), env, () => now), { key: pair.pub });
+  assert.deepEqual(await readSeaRequestSession(new Request(origin, { headers: { cookie: cookie() } }), env, () => now), { key: pair.pub, expiresAt: (now+300)*1000 });
   now += 300;
   assert.deepEqual(await (await request("/api/identity/sea/session")).json(), { enabled: true, principal: null, expiresAt: null });
   assert.equal(await client.signIn(pair), true);

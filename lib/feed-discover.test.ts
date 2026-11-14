@@ -19,8 +19,8 @@ import {
   type Room,
 } from "./rooms";
 
-const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const BOB = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+const ALICE = "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
+const BOB = "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
 const NOW = 1_700_000_000;
 
 function item(
@@ -269,8 +269,8 @@ describe("discover tag query", () => {
 
 describe("shortenOwner", () => {
   it("truncates a checksummed address; leaves short values", () => {
-    assert.equal(shortenOwner(ALICE), "0xf39F…2266");
-    assert.equal(shortenOwner(BOB), "0x7099…79C8");
+    assert.equal(shortenOwner(ALICE), "axfR8u…_UfU");
+    assert.equal(shortenOwner(BOB), `${BOB.slice(0,6)}…${BOB.slice(-4)}`);
     assert.equal(shortenOwner("lab"), "lab");
   });
 });

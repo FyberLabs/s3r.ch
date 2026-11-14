@@ -424,6 +424,7 @@ export function grantNamesObject(
 export function userObjectId(claimId: string): CheckObjectId | undefined {
   const trimmed = claimId.trim();
   if (!trimmed) return undefined;
+  if (isSeaPubkey(trimmed)) return `${S3RCH_ROOT}/${S3RCH_USERS}/${trimmed}`;
   if (trimmed.startsWith(`${S3RCH_ROOT}/${S3RCH_USERS}/`)) return legacyUserSoul(
     trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length),
   );
@@ -609,7 +610,7 @@ function userNodeAdmitted(node: GunUserNode): string | null {
   if (typeof node.id !== "string" || !node.id.trim()) return null;
   if (protocolVersionOf(node.v) === null) return null;
   try {
-    return getAddress(node.id);
+    return isSeaPubkey(node.id) ? node.id : null;
   } catch {
     return null;
   }
@@ -793,10 +794,10 @@ export function admitUserNode(
   if (!dest || !admitted) {
     return { denied: true };
   }
-  if (!samePresenceOwner(dest, admitted)) {
+  if (!isSeaPubkey(dest) || dest !== admitted) {
     return { denied: true };
   }
-  const object = legacyUserSoul(admitted);
+  const object = `s3rch/users/${admitted}`;
   if (isMetaId(object) || isUrlLeafId(object)) {
     return { denied: true };
   }
