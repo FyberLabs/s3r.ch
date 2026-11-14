@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
 import { createRoomChatAdmission } from "./room-chat-admission";
+import { signForumRecord } from "./forum-sign";
 import { admittedRoomTasks } from "./room-tasks";
 import { encodeKey } from "./identity/check";
 import type { ForumAuthorityGraph } from "./identity/forum-authority";
@@ -38,4 +39,15 @@ test("rotation and reset invalidate retained signatures",async()=>{
  const f=await fixture();const row=await f.admission.compose("room","hello",()=>f.alice);assert.ok(row);
  f.keys.delete(f.alice.pub);assert.equal(f.admission.valid(row),false);
  f.keys.add(f.alice.pub);f.admission.reset();assert.equal(f.admission.valid(row),false);
+});
+
+test("an authorized signer cannot preempt another author's message or task ID", async () => {
+ const f = await fixture();
+ const created = await f.admission.compose("room", TASK_PREFIX + JSON.stringify(["create", "task", "Review", "room", "open", null]), () => f.alice);
+ assert.ok(created);
+ const { sig: ignored, ...fields } = created;
+ const forged = { ...fields, author: f.bob.pub };
+ const sig = await signForumRecord({ domain: "s3rch-room-chat/v1", ...forged }, f.bob);
+ assert.ok(sig);
+ assert.equal(await f.admission.receive({ ...forged, sig }, "room", encodeKey(created.id)), null);
 });

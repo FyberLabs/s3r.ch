@@ -15,7 +15,8 @@ export type BotStatementSource = Readonly<{
  * source; no missing provider falls back to the legacy assignment journal.
  */
 export function createBotStatementAdmission(input: { origin: string; squad: LiveSquadSpec; config: ForumAuthorityConfig;
-  authenticate(request: Request): Promise<{ key: string } | null>; source: BotStatementSource; clock?: () => number }) {
+  authenticate(request: Request): Promise<{ key: string } | null>; source: BotStatementSource; clock?: () => number; objectKind?: "stmt" | "room" }) {
+  const objectKind = input.objectKind ?? "stmt";
   const origin = new URL(input.origin), spec = Object.freeze({ ...input.squad }), config = structuredClone(input.config);
   if (origin.origin !== input.origin || origin.protocol !== "https:") throw Error("HTTPS statement origin required");
   const { authenticate, source } = input, clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
@@ -63,13 +64,13 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       const parsed = body.rows.map((row: any) => {
         if (!row || Object.keys(row).sort().join() !== "kind,record,soul") throw Error("Invalid authority envelope");
         const value = parseForumAuthority(row.kind, row.record);
-        if (!value || value.soul !== row.soul || !["object", "see"].includes(value.kind)) throw Error("Invalid statement authority");
+        if (!value || value.soul !== row.soul || !(objectKind === "room" ? ["object", "see", "post"] : ["object", "see"]).includes(value.kind)) throw Error("Invalid statement authority");
         return value;
       });
       const objects = new Set(parsed.map((p: any) => p.row.object));
       if (objects.size !== 1) return reply(400);
       const object = [...objects][0];
-      if (typeof object !== "string" || !isForumObjectId(object, "stmt") || !sameEmbeddedPrincipal(principal, object)) return reply(403);
+      if (typeof object !== "string" || !isForumObjectId(object, objectKind) || !sameEmbeddedPrincipal(principal, object)) return reply(403);
       for (const p of parsed) {
         const row = p.row;
         if (row.owner !== principal || row.issuedAt > at) return reply(403);
@@ -77,8 +78,9 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
         // Verify retries without adding duplicate rows to a full snapshot.
         const key = authority.graph.writerKey(principal, row.issuedAt, at);
         if (!key || !verifyForumKeySignature(key, row.sig, p.bytes)) return reply(403);
-        if (p.kind === "see" && (p.row.until > at + 3600 || (p.row.stated === 1 &&
-            !authority.graph.checkForumSee(spec.forumId, p.row.accessor, at).allowed))) return reply(403);
+        if ((p.kind === "see" || p.kind === "post") && (p.row.until > at + 3600 || (p.row.stated === 1 &&
+            (!authority.graph.checkForumSee(spec.forumId, p.row.accessor, at).allowed ||
+             (p.kind === "post" && !authority.graph.checkPost(spec.forumId, p.row.accessor, at).allowed))))) return reply(403);
       }
       // Canonical signed meaning, not object key order or signature encoding,
       // identifies a retained row. Verify supplied signatures even on retries.
@@ -102,9 +104,10 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       const byteQuota = Math.min(256 * 1024, Math.floor(2 * 1024 * 1024 / principals.size));
       const owned = nextSnapshot.rows.filter(envelope => {
         const value = parseForumAuthority(envelope.kind, envelope.record);
-        return value && (value.kind === "object" || value.kind === "see") &&
-          value.row.owner === principal && isForumObjectId(value.row.object, "stmt");
+        return value && (value.kind === "object" || value.kind === "see" || value.kind === "post") &&
+          value.row.owner === principal && (isForumObjectId(value.row.object, "room") || (value.kind !== "post" && isForumObjectId(value.row.object, "stmt")));
       });
+      if (new Set(owned.filter(row => row.kind === "object" && isForumObjectId((row.record as { object: string }).object, "room")).map(row => row.soul)).size > 32) return reply(507);
       if (additions.length && (owned.length > rowQuota || Buffer.byteLength(JSON.stringify(owned), "utf8") > byteQuota)) return reply(507);
       const candidate = createForumAuthority(config, clock);
       const result = await candidate.refresh(nextSnapshot, at);
