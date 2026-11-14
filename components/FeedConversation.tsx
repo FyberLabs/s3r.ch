@@ -4,9 +4,10 @@ import {fromGunNode,type FeedItem} from "@/lib/feed-types";
 import {parseFeedReference} from "@/lib/feed-reply";
 import {publicMediaUrl} from "@/lib/feed-media";
 import type {FeedConversation as Conversation} from "@/lib/feed-conversation";
+import {parseConversationTickets} from "@/lib/conversation-media-tickets";
 import PublicFeedMedia from "./PublicFeedMedia";
 export function ConversationView({conversation}:{conversation:Conversation}){
- const card=(item:FeedItem)=><article key={item.id} className="my-2 border border-rule p-3"><p className="text-xs">{item.author}</p><p>{item.body}</p><PublicFeedMedia media={item.media}/>{publicMediaUrl(item.permalink)?<a href={item.permalink} target="_blank" rel="noopener noreferrer">Original</a>:null}</article>;
+ const card=(item:FeedItem)=><article key={item.id} className="my-2 border border-rule p-3"><p className="text-xs">{item.author}</p><p>{item.body}</p><PublicFeedMedia media={item.media} tickets={conversation.mediaTickets}/>{publicMediaUrl(item.permalink)?<a href={item.permalink} target="_blank" rel="noopener noreferrer">Original</a>:null}</article>;
  return <div>{conversation.missingParent?<p>Post unavailable</p>:null}{conversation.items.map(card)}{conversation.replies.length?<p>Direct replies</p>:null}{conversation.replies.map(card)}{conversation.truncated?<p>Conversation limit reached.</p>:null}</div>;
 }
 export default function FeedConversation({item}:{item:FeedItem}){
@@ -27,7 +28,7 @@ export default function FeedConversation({item}:{item:FeedItem}){
    if(!Array.isArray(value.items)||value.items.length>9||!Array.isArray(value.replies)||value.replies.length>16)throw Error();
    const items=value.items.map(fromGunNode),replies=value.replies.map(fromGunNode);
    if([...items,...replies].some(entry=>!entry||entry.source!==item.source))throw Error();
-   if(!current.signal.aborted)setConversation({items,replies,missingParent:parseFeedReference(value.missingParent),truncated:value.truncated===true});
+   if(!current.signal.aborted)setConversation({items,replies,missingParent:parseFeedReference(value.missingParent),truncated:value.truncated===true,mediaTickets:parseConversationTickets(value.mediaTickets)});
   }catch{if(!current.signal.aborted)setError(true);}
  }
  return <div className="my-2 text-sm"><a href={parent.permalink} target="_blank" rel="noopener noreferrer">Replying to {parent.author?`@${parent.author}`:"a post"}</a><button type="button" className="ml-3" aria-expanded={open} onClick={()=>void toggle()}>{open?"Hide conversation":"Show conversation"}</button>{open?(error?<p>Post unavailable</p>:conversation?<ConversationView conversation={conversation}/>:<p>Loading conversation…</p>):null}</div>;

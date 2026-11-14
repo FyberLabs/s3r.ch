@@ -1,7 +1,7 @@
 import type {FeedItem,FeedSource} from "./feed-types";
 import type {FeedReference} from "./feed-reply";
 export const CONVERSATION_DEPTH=8,CONVERSATION_REPLIES=16;
-export type FeedConversation={items:FeedItem[];replies:FeedItem[];missingParent:FeedReference|null;truncated:boolean};
+export type FeedConversation={items:FeedItem[];replies:FeedItem[];missingParent:FeedReference|null;truncated:boolean;mediaTickets?:Record<string,string>};
 export function cachedConversation(rows:readonly FeedItem[],source:FeedSource,id:string):FeedConversation|null {
  const map=new Map(rows.filter(item=>item.source===source).map(item=>[item.id,item]));
  const current=map.get(id);if(!current)return null;
@@ -18,3 +18,4 @@ export function cachedConversation(rows:readonly FeedItem[],source:FeedSource,id
  return {items:chain.reverse().map(bounded),replies:direct.slice(0,CONVERSATION_REPLIES).map(bounded),missingParent,
   truncated:truncated||direct.length>CONVERSATION_REPLIES};
 }
+
