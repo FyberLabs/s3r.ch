@@ -182,8 +182,8 @@ does not read or charge the legacy shared ciphertext index. Current owner/read
 authorization still runs before and after storage access. There is no fallback
 to generic object storage and no automatic data import or activation.
 
-Unset mode preserves existing behavior. Ownership registration remains on its
-existing record path and retains its separate capacity limit; this change does
-not claim complete quota reclamation. Existing data needs explicit provider and
+Unset mode preserves existing behavior. Ownership registration confirms the signed record against the existing protected
+allocation rather than writing a second registration index. The protected source
+still retains its own capacity limit, so this does not claim complete quota reclamation. Existing data needs explicit provider and
 reference reconciliation before selecting the new mode. ACL reader wraps must
 use the corresponding version-3 allocation-bound configuration.

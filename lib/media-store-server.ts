@@ -1,3 +1,4 @@
+import { createAllocatedMediaService } from "./allocated-media-service";
 import { createAllocatedMediaStore } from "./allocated-media-store-server";
 import { createMediaRegistrationStore } from "./media-registration-store";
 import { createMediaRegistrationService } from "./media-registration-service";
@@ -6,7 +7,7 @@ import { createSpanopticonObjectStore } from "./spanopticon-object-store-server"
 import { createSpanopticonRecordStore } from "./spanopticon-record-store-server";
 import { createMediaObjectService } from "./media-object-service";
 import { createMediaAuthority } from "./media-authority-server";
-import { getMediaWrapService } from "./media-wrap-server";
+import { getMediaWrapService, getMediaOwnerService } from "./media-wrap-server";
 
 let cached: { identity: string; pilot: unknown; service: ReturnType<typeof createMediaObjectService> } | undefined;
 /** Disabled until deployment stages a dedicated media credential. Never reuse
@@ -24,6 +25,11 @@ export function getMediaObjectService() {
   if (cached?.identity === identity && cached.pilot === pilot) return cached.service;
   cached = undefined;
   const config = { origin, tenant, apiKey };
+  if(mode==="allocated-v1") {
+    const service=createAllocatedMediaService({origin:pilot.config.origin,allocated:createAllocatedMediaStore(config),
+      owner:getMediaOwnerService,wrap:getMediaWrapService});
+    cached={identity,pilot,service};return service;
+  }
   const records = createSpanopticonRecordStore(config), registrations = createMediaRegistrationStore(records);
   const ownerAuthority = createMediaAuthority({ config: pilot.config.authority, authenticate: pilot.services.authenticate,
     read: pilot.source.read, registration: registrations.get });
@@ -42,7 +48,7 @@ export function getMediaObjectService() {
     try { signal.throwIfAborted(); return response.status === 200; }
     finally { await response.body?.cancel().catch(() => {}); }
   };
-  const objects = createMediaObjectService({ origin: pilot.config.origin, objects: createSpanopticonObjectStore(config), records, authorize, ...(mode==="allocated-v1"?{allocated:createAllocatedMediaStore(config)}:{}) });
+  const objects = createMediaObjectService({ origin: pilot.config.origin, objects: createSpanopticonObjectStore(config), records, authorize });
   const register = createMediaRegistrationService({ origin: pilot.config.origin, store: registrations, authorize,
     preflight: (request, object, signal) => authorize(request, object, "register", signal) });
   const service = (request: Request, object: string) => ["POST", "DELETE"].includes(request.method) ? register(request, object) : objects(request, object);
