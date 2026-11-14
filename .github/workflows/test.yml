@@ -141,6 +141,12 @@ jobs:
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/feed-media-adapters.test.ts
 
+      - name: Media crypto buffer cleanup coverage (CI only)
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/media-crypto.ts
+          --test-coverage-lines=95 --test-coverage-branches=90
+          lib/media-crypto.test.ts
       - name: Private media consumer contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
