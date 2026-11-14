@@ -33,7 +33,7 @@ const server=createServer(async(req,res)=>{
   if(action==='share-view'){json({at,fence,owner,ownerPub:owner,reader,previousEpoch:1,previousFinalizationId:'d'.repeat(64),grants:grants(),snapshot:snapshot(),bindings});return;}
   if(action==='read-wrap'){json({context,readerEpub:pair.epub,expiresAt:Date.now()/1000+2,wrapBase64:Buffer.from(JSON.stringify({wrap:seed.wraps[0],reference:{sha256:seed.sha256,length:seed.bytes.length}})).toString('base64')});return;}
   if(req.method==='GET'&&decodeURIComponent(req.url)==='/api/media/'+object){res.writeHead(200,{'content-type':'application/octet-stream','content-length':seed.bytes.length,etag:'"'+seed.sha256+'"'});res.end(Buffer.from(seed.bytes));return;}
-  if(action==='share-state'){const held=applied.get(label(body.operation,body.payload));json({at,state:held?JSON.stringify(held)===JSON.stringify(body.payload)?'applied':'conflict':'absent'});return;}
+  if(action==='share-check'){const held=applied.get(label(body.operation,body.payload));json({at,fence,state:held?JSON.stringify(held)===JSON.stringify(body.payload)?'applied':'conflict':'absent'});return;}
   if(action==='mutate'&&body.operation==='status'){json({accepted:true});return;}
   const op=action==='publish-wrap'?'wrap':body.operation,p=op==='wrap'?body.metadata:body.payload;
   const k=label(op,p);writes.push(k);applied.set(k,p);

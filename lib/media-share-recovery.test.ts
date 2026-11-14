@@ -37,9 +37,9 @@ async function fixture(lost="") {
         accessor:body.reader,grantRevision:2,stated:1,signedAt:100000,maxAgeMs:60000,zookie:{object,objectVersion:1,snapshotHash:"c".repeat(64)}}});
     }
     if(action==="view")return Response.json({at:100,fence:plan.fence,objectVersion:1,owner,snapshot,bindings});
-    if(action==="share-state"){
+    if(action==="share-check"){
       const key=label(body.operation,body.payload),held=applied.get(key);
-      return Response.json({at:100,state:conflict?"conflict":held?JSON.stringify(held)===JSON.stringify(body.payload)?"applied":"conflict":"absent"});
+      return Response.json({at:100,fence:plan.fence,state:conflict?"conflict":held?JSON.stringify(held)===JSON.stringify(body.payload)?"applied":"conflict":"absent"});
     }
     if(action==="mutate"&&body.operation==="status")return Response.json({accepted:true});
     assert.ok(await journal.read(signal),"recovery must precede every sharing mutation");

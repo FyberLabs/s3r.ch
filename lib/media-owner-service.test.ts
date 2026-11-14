@@ -247,9 +247,9 @@ test("share proxy binds owner and recipient and checks the projected snapshot",a
 
 test("share reconciliation proxy keeps caller scope and bounded state responses",async()=>{
   const body={object,operation:"grant",payload:{claims:{}}};let calls=0;
-  const handle=service(async(url,init)=>{calls++;assert.ok(String(url).endsWith("/share-state"));assert.deepEqual(JSON.parse(String(init?.body)),body);return Response.json({at:100,state:"absent"});});
-  assert.equal((await handle("share-state",request(body))).status,200);
-  for(const bad of [{...body,owner:principal},{...body,operation:"policy"},{...body,payload:[]}])assert.equal((await handle("share-state",request(bad))).status,400);
+  const handle=service(async(url,init)=>{calls++;assert.ok(String(url).endsWith("/share-check"));assert.deepEqual(JSON.parse(String(init?.body)),body);return Response.json({at:100,state:"absent",fence:view.fence});});
+  assert.equal((await handle("share-check",request(body))).status,200);
+  for(const bad of [{...body,owner:principal},{...body,operation:"policy"},{...body,payload:[]}])assert.equal((await handle("share-check",request(bad))).status,400);
   assert.equal(calls,1);
-  assert.equal((await service(async()=>Response.json({at:100,state:"write-now"}))("share-state",request(body))).status,403);
+  assert.equal((await service(async()=>Response.json({at:100,state:"write-now"}))("share-check",request(body))).status,403);
 });

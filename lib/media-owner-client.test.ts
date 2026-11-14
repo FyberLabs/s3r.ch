@@ -341,3 +341,17 @@ test("share parser refuses inconsistent bindings, omitted recipients and malform
   assert.throws(()=>parseMediaSharePlan({...v,snapshot:{entries:[...v.snapshot.entries,{...v.snapshot.entries[0],accessor:third}]}},object,owner,other));
   assert.throws(()=>parseMediaSharePlan(null,object,owner,other));
 });
+
+test("sharing commits use the comparison fence without refreshing the owner view",async()=>{
+  const calls:string[]=[];const fence="e".repeat(64),signal=new AbortController().signal;
+  const client=createPrivateMediaOwner(async(url,init)=>{
+    calls.push(action(url)!);const body=JSON.parse(String(init?.body));
+    if(action(url)==="share-check")return Response.json({at:100,state:"absent",fence});
+    assert.equal(action(url),"mutate");assert.equal(body.fence,fence);assert.equal(body.at,100);
+    return new Response(null,{status:409});
+  },()=>100);
+  const held=await client.shareCheck(object,"grant",grant,signal);
+  await assert.rejects(client.commitShareIntent(object,held,"grant",grant,signal),PrivateMediaConflict);
+  assert.deepEqual(calls,["share-check","mutate"]);
+  await assert.rejects(client.commitShareIntent(object,{...held},"grant",grant,signal),PrivateMediaConflict);
+});

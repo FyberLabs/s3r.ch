@@ -2,7 +2,7 @@ import type { SeaPair } from "./identity/sea";
 import { createPrivateMediaOwner, PrivateMediaConflict } from "./media-owner-client";
 import { createPrivateMediaReader } from "./media-wrap-client";
 import { parseMediaSharePlan } from "./media-share";
-import { decryptShareJournal, encryptShareJournal, shareDigest, type ShareJournal, type ShareEntry } from "./media-share-journal";
+import { decryptShareJournal, encryptShareJournal, type ShareJournal, type ShareEntry } from "./media-share-journal";
 
 export type PendingShare=Readonly<{object:string;reader:string;token:string}>;
 type SignedPlan=Awaited<ReturnType<ReturnType<typeof createPrivateMediaOwner>["prepareShare"]>>;
@@ -65,23 +65,17 @@ export async function shareMedia(input:{tenant:string;pair:SeaPair;fetcher:typeo
     }
     const d=draft;
     async function apply(operation:"grant"|"epoch",payload:unknown) {
-      const state=await client.shareState(d.object,operation,payload,signal);
-      if(state==="conflict")throw new PrivateMediaConflict();
-      if(state==="absent")await client.commitUploadIntent(d.object,d.owner,operation,payload,signal);
+      const held=await client.shareCheck(d.object,operation,payload,signal);
+      if(held.state==="conflict")throw new PrivateMediaConflict();
+      if(held.state==="absent")await client.commitShareIntent(d.object,held,operation,payload,signal);
     }
     for(const grant of d.grants)await apply("grant",grant);
     await apply("epoch",{document:d.prepared.document,finalization:d.prepared.finalization});
     let pending=false;
     for(const grant of d.plan.grants) {
       const wrap=d.prepared.wraps.find(w=>w.targetId===d.plan.bindings[grant.accessor].epub)!;
-      const record=await shareDigest(new TextEncoder().encode(JSON.stringify({wrap,reference:d.prepared.reference})));
-      const metadata={reader:grant.accessor,record,digest:record,epoch:wrap.epoch,revisionId:wrap.revisionId,
-        readerEpub:wrap.targetId,itemDigest:d.prepared.reference.sha256};
-      const state=await client.shareState(d.object,"wrap",metadata,signal);
-      if(state==="conflict")throw new PrivateMediaConflict();
       try {
-        if(state==="absent")await client.publishWrap(d.object,d.owner,grant.accessor,wrap,d.prepared.reference,signal);
-
+        await client.publishShareWrap(d.object,d.owner,grant.accessor,wrap,d.prepared.reference,signal);
       } catch(error) {
         signal.throwIfAborted();if(error instanceof PrivateMediaConflict)throw error;
         // A future grant or unsettled epoch can defer this recipient. Keep the

@@ -251,3 +251,7 @@ before access changes are submitted. Resume compares exact retained values throu
 as pending, including during the one-hour epoch settlement or a future grant.
 Closing the page does not undo accepted changes. Recovery stores no plaintext
 file or raw file key; identity changes clear the visible sharing controls.
+
+Sharing publication uses `share-check` and retains the exact returned fence for
+the following write. It never refreshes the owner view between comparison and
+publication. Concurrent state changes refuse instead of rewriting a stale plan.
