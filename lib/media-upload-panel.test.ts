@@ -46,3 +46,11 @@ test("bad sessions refuse and identity changes suppress a late result",async()=>
   rememberUnlockedMeshPair("switch",{pub,priv:"key",epub:pub,epriv:"key"});release();await pending;
   assert.equal(f.state().pending,null);assert.equal(f.state().busy,false);f.panel.dispose();await f.panel.resume();
 });
+
+test("session expiry removes the decrypted pending filename",async(t)=>{
+  t.mock.timers.enable({apis:["setTimeout"]});
+  const f=setup();try {
+    await f.panel.inspect();assert.equal(f.state().pending?.name,"private.png");
+    t.mock.timers.tick(1001);assert.equal(f.state().pending,null);assert.equal(f.state().busy,false);
+  } finally {f.panel.dispose();}
+});

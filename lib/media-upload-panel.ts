@@ -7,10 +7,11 @@ export type UploadPanelState={busy:boolean;message:string;pending:{object:string
 export function createMediaUploadPanel(tenant:string,changed:(state:UploadPanelState)=>void,options:{fetcher?:typeof fetch;browser?:typeof createPrivateMediaBrowser;clock?:()=>number}={}) {
   const fetcher=options.fetcher??fetch,clock=options.clock??Date.now;
   let key:string|null=null,expires=0,generation=0,disposed=false,controller:AbortController|null=null;
+  let expiry:ReturnType<typeof setTimeout>|undefined;
   let state:UploadPanelState={busy:false,message:"",pending:null};
   const browser=(options.browser??createPrivateMediaBrowser)(()=>clock()<expires?key:null,fetcher);
   const publish=(next:UploadPanelState)=>{state=next;if(!disposed)changed(next);};
-  function reset(){generation++;controller?.abort();controller=null;key=null;expires=0;publish({busy:false,message:"Upload stopped. Unlock the original identity to resume its encrypted draft.",pending:null});}
+  function reset(){if(expiry)clearTimeout(expiry);expiry=undefined;generation++;controller?.abort();controller=null;key=null;expires=0;publish({busy:false,message:"Upload stopped. Unlock the original identity to resume its encrypted draft.",pending:null});}
   const unsubscribe=subscribeUnlockedMeshPair(reset);
   async function operation(work:(signal:AbortSignal,progress:(message:string)=>void)=>Promise<void>) {
     if(disposed||state.busy)return;
@@ -28,6 +29,7 @@ export function createMediaUploadPanel(tenant:string,changed:(state:UploadPanelS
       if(!session||session.enabled!==true||typeof session.principal!=="string"||!isSeaPubkey(session.principal)||
           !Number.isSafeInteger(session.expiresAt)||(session.expiresAt as number)<=clock()||(session.expiresAt as number)>clock()+300000)throw Error("Identity unavailable");
       signal.throwIfAborted();if(!current())return;key=session.principal;expires=session.expiresAt as number;
+      if(expiry)clearTimeout(expiry);expiry=setTimeout(reset,Math.max(0,expires-clock()));
       await work(signal,progress);
     } catch {
       if(current())publish({...state,message:"Upload stopped. Your encrypted recovery draft is retained if it was saved. Unlock the same identity and check the pending upload before retrying."});

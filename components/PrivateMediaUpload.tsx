@@ -25,12 +25,12 @@ export function PrivateMediaUpload({tenant}:{tenant:string}) {
     </label>
     <div className="flex flex-wrap gap-4">
       <button type="button" className="underline disabled:opacity-50" disabled={state.busy||!file||!!state.pending}
-        onClick={()=>{if(file)void panel.current?.upload(file);}}>Upload privately</button>
-      <button type="button" className="underline disabled:opacity-50" disabled={state.busy} onClick={()=>void panel.current?.inspect()}>Check pending upload</button>
+        onClick={()=>{if(file){const selected=file;setFile(null);setDiscard(false);if(input.current)input.current.value="";void panel.current?.upload(selected);}}}>Upload privately</button>
+      <button type="button" className="underline disabled:opacity-50" disabled={state.busy} onClick={()=>{setDiscard(false);void panel.current?.inspect();}}>Check pending upload</button>
     </div>
     {state.pending&&<div className="space-y-2">
       <p className="break-all">Pending: {state.pending.name}</p>
-      <button type="button" className="underline disabled:opacity-50" disabled={state.busy} onClick={()=>void panel.current?.resume()}>Resume this upload</button>
+      <button type="button" className="underline disabled:opacity-50" disabled={state.busy} onClick={()=>{setDiscard(false);void panel.current?.resume();}}>Resume this upload</button>
       <label className="block text-sm"><input type="checkbox" disabled={state.busy} checked={discard} onChange={event=>setDiscard(event.target.checked)} /> Discarding this browser’s recovery draft may make an unfinished upload unrecoverable. It does not delete uploaded data.</label>
       <button type="button" className="underline disabled:opacity-50" disabled={state.busy||!discard} onClick={()=>{setDiscard(false);void panel.current?.discard();}}>Discard local recovery draft</button>
     </div>}
