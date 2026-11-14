@@ -250,3 +250,42 @@ test("revoked granted delivery clears the catalog and old previews",async()=>{
     assert.match(item.state().message,/unavailable/);
   } finally {item.library.dispose();}
 });
+
+
+test("sharing UI scopes targets to owned selection and resumes only saved changes",async()=>{
+  const reader="fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
+  const calls:unknown[]=[];let waiting=true;
+  const f=setup({browser:()=>({catalog:async()=>({at:1,objects:["owned"],nextPage:1,principal:key}),
+    recipients:async()=>[],pendingShare:async()=>waiting?{object:"owned",reader,token:"token"}:null,
+    share:async(_tenant:string,target:unknown)=>{calls.push(target);return {object:"owned",reader,token:"token",pending:waiting};},
+    resumeShare:async(_tenant:string,expected:unknown)=>{calls.push(expected);return {object:"owned",reader,token:"token",pending:waiting};},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    await f.library.load();await f.library.share("tenant","owned",reader);assert.equal(calls.length,0);
+    await f.library.recipients("owned");await f.library.share("tenant","owned","bad");assert.equal(calls.length,0);
+    await f.library.share("tenant","owned",reader);assert.deepEqual(calls,[{object:"owned",owner:key,reader}]);
+    assert.equal(f.state().sharing?.reader,reader);assert.match(f.state().message,/not yet confirmed/);
+    waiting=false;await f.library.resumeSharing("tenant");assert.deepEqual(calls[1],{object:"owned",reader,token:"token"});assert.equal(f.state().sharing,null);
+    await f.library.inspectSharing("tenant");assert.match(f.state().message,/No pending/);
+    waiting=true;await f.library.inspectSharing("tenant");assert.equal(f.state().sharing?.reader,reader);
+    f.library.reset();assert.equal(f.state().sharing,null);
+  } finally {f.library.dispose();}
+});
+
+test("failed new sharing cannot label or resume a different saved recipient",async()=>{
+  const saved={object:"older-file",reader:key,token:"saved-token"};const calls:unknown[]=[];
+  const recipient="fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
+  const f=setup({browser:()=>({catalog:async()=>({at:1,objects:["owned"],nextPage:1,principal:key}),recipients:async()=>[],
+    share:async()=>{throw Error("existing draft");},pendingShare:async()=>saved,
+    resumeShare:async(_tenant:string,expected:unknown)=>{calls.push(expected);return {...saved,pending:true};},
+    abandonShare:async(_tenant:string,expected:unknown)=>{calls.push(expected);},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    await f.library.load();await f.library.recipients("owned");await f.library.share("tenant","owned",recipient);
+    assert.equal(f.state().sharing,null);await f.library.resumeSharing("tenant");assert.equal(calls.length,0);
+    await f.library.inspectSharing("tenant");assert.deepEqual(f.state().sharing,saved);
+    await f.library.resumeSharing("tenant");assert.deepEqual(calls[0],saved);
+    await f.library.abandonSharing("tenant");assert.deepEqual(calls[1],saved);assert.equal(f.state().sharing,null);
+    assert.match(f.state().message,/not undone/);
+  } finally {f.library.dispose();}
+});

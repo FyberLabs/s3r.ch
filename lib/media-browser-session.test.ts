@@ -221,3 +221,24 @@ test("sharing preparation requires held identity throughout the request",async()
   const changed=createPrivateMediaBrowser(()=>owner,async()=>{forgetUnlockedMeshPair();return Response.json(context);});
   await assert.rejects(changed.prepareShare(object,owner,reader));
 });
+
+test("sharing recovery uses a separate exclusive lock and refuses session changes",async()=>{
+  const {IDBFactory}=await import("fake-indexeddb");
+  const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,"navigator"),oldDb=Object.getOwnPropertyDescriptor(globalThis,"indexedDB");
+  const names:string[]=[],expected={object,reader:other,token:"a".repeat(64)};let calls=0;
+  try {
+    Object.defineProperty(globalThis,"indexedDB",{configurable:true,value:new IDBFactory()});
+    Object.defineProperty(globalThis,"navigator",{configurable:true,value:{locks:{request:async(name:string,_options:unknown,work:(lock:unknown)=>unknown)=>{names.push(name);return work({});}}}});
+    unlock();const browser=createPrivateMediaBrowser(()=>owner,async()=>{calls++;forgetUnlockedMeshPair();return Response.json(view);});
+    assert.equal(await browser.pendingShare(tenant),null);
+    await browser.abandonShare(tenant,expected);
+    await assert.rejects(browser.resumeShare(tenant,expected),/No pending/);
+    await assert.rejects(browser.share(tenant,{object,owner,reader:other}));assert.equal(calls,1);
+    assert.deepEqual(names,Array(3).fill("s3rch-private-share-v1"));
+    unlock();Object.defineProperty(globalThis,"navigator",{configurable:true,value:{locks:{request:async(_name:unknown,_options:unknown,work:(lock:unknown)=>unknown)=>work(null)}}});
+    await assert.rejects(browser.resumeShare(tenant,expected),/another tab/);assert.equal(calls,1);
+  } finally {
+    if(oldNavigator)Object.defineProperty(globalThis,"navigator",oldNavigator);else Reflect.deleteProperty(globalThis,"navigator");
+    if(oldDb)Object.defineProperty(globalThis,"indexedDB",oldDb);else Reflect.deleteProperty(globalThis,"indexedDB");
+  }
+});

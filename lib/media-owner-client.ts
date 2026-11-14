@@ -68,6 +68,35 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
     try { deadline.throwIfAborted();return await operation(held,deadline); }
     finally { held.fill(0); }
   }
+  async function publish(object: string, owner: string, reader: string, wrap: ItemReaderWrap,
+      reference: MediaCiphertextReference, signal?: AbortSignal, sharing=false) {
+      if(!exact(wrap,["object","epoch","revisionId","scope","target","targetId","wrappedKey"]) ||
+          !exact(reference,["sha256","length"]) || wrap.scope!=="item-dek" || wrap.target!=="reader-epub" ||
+          typeof wrap.wrappedKey!=="string" || wrap.wrappedKey.length>60000 || !/^(?:[a-f0-9]{2})+$/.test(wrap.wrappedKey) ||
+          !Number.isSafeInteger(wrap.epoch) || wrap.epoch<1 || !digest(wrap.revisionId))throw Error("Invalid private media wrap material");
+      const material=structuredClone({wrap,reference});
+      if(!objectOK(object) || !isSeaPubkey(reader) || material.wrap.object!==object || !isSeaPubkey(material.wrap.targetId) ||
+          !digest(material.reference.sha256) || !Number.isSafeInteger(material.reference.length) || material.reference.length<33 || material.reference.length>MEDIA_STORED_MAX)
+        throw Error("Invalid private media wrap material");
+      const bytes=new TextEncoder().encode(JSON.stringify(material));
+      if(!bytes.length || bytes.length>65536)throw Error("Private media wrap too large");
+      const deadline=AbortSignal.any([...(signal?[signal]:[]),AbortSignal.timeout(10000)]);
+      const hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes)),b=>b.toString(16).padStart(2,"0")).join("");
+      const metadata={reader,record:hash,digest:hash,epoch:material.wrap.epoch,revisionId:material.wrap.revisionId,
+        readerEpub:material.wrap.targetId,itemDigest:material.reference.sha256};
+      const held=sharing?await request("share-check",{object,operation:"wrap",payload:metadata},deadline):await view(object,owner,deadline);
+      current(held);
+      if(sharing) {
+        if(!exact(held,["at","state","fence"])||!["absent","applied","conflict"].includes(held.state as string))throw new PrivateMediaConflict();
+        if(held.state==="conflict")throw new PrivateMediaConflict();
+        if(held.state==="applied")return hash;
+      }
+      const result=await request("publish-wrap",{object,at:held.at,fence:held.fence,
+        metadata,
+        wrapBase64:btoa(Array.from(bytes,b=>String.fromCharCode(b)).join(""))},deadline);
+      if(!exact(result,["record","digest"]) || result.record!==hash || result.digest!==hash)throw Error("Private media publication refused");
+      return hash;
+    }
   return Object.freeze({
     async prepareDeletion(tenant:string,object:string,owner:string,scalar:Uint8Array,signal?:AbortSignal):Promise<MediaDeletionIntent> {
       return withKey(scalar,signal,async(key,deadline)=>{
@@ -160,6 +189,19 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
           !Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 4 ||
           !["absent", "applied", "conflict"].includes(result.state as string)) throw new PrivateMediaConflict();
       return result.state as "absent" | "applied" | "conflict";
+    },
+    async shareCheck(object: string, operation: "grant" | "epoch" | "wrap", payload: unknown, signal: AbortSignal) {
+      if (!objectOK(object)) throw Error("Invalid media upload");
+      const result = await request("share-check", { object, operation, payload }, signal);
+      const started = fetchedAt.get(result), elapsed = started === undefined ? NaN : clock() - started;
+      if (!exact(result, ["at", "state", "fence"]) || !digest(result.fence) || !Number.isSafeInteger(result.at) || (result.at as number) < 0 ||
+          !Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 4 ||
+          !["absent", "applied", "conflict"].includes(result.state as string)) throw new PrivateMediaConflict();
+      return result as {at:number;fence:string;state:"absent"|"applied"|"conflict"};
+    },
+    async commitShareIntent(object:string,held:Record<string,unknown>,operation:"grant"|"epoch",payload:unknown,signal:AbortSignal) {
+      if(!objectOK(object)||held.state!=="absent")throw new PrivateMediaConflict();
+      await mutate(object,held,operation,structuredClone(payload),signal);
     },
     async commitUploadIntent(object: string, owner: string, operation: "grant" | "epoch", payload: unknown, signal: AbortSignal) {
       const input = structuredClone(payload), held = await view(object, owner, signal);
@@ -271,27 +313,11 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
         await mutate(object,held,"status",signed,deadline);
       });
     },
-    async publishWrap(object: string, owner: string, reader: string, wrap: ItemReaderWrap,
-      reference: MediaCiphertextReference, signal?: AbortSignal) {
-      if(!exact(wrap,["object","epoch","revisionId","scope","target","targetId","wrappedKey"]) ||
-          !exact(reference,["sha256","length"]) || wrap.scope!=="item-dek" || wrap.target!=="reader-epub" ||
-          typeof wrap.wrappedKey!=="string" || wrap.wrappedKey.length>60000 || !/^(?:[a-f0-9]{2})+$/.test(wrap.wrappedKey) ||
-          !Number.isSafeInteger(wrap.epoch) || wrap.epoch<1 || !digest(wrap.revisionId))throw Error("Invalid private media wrap material");
-      const material=structuredClone({wrap,reference});
-      if(!objectOK(object) || !isSeaPubkey(reader) || material.wrap.object!==object || !isSeaPubkey(material.wrap.targetId) ||
-          !digest(material.reference.sha256) || !Number.isSafeInteger(material.reference.length) || material.reference.length<33 || material.reference.length>MEDIA_STORED_MAX)
-        throw Error("Invalid private media wrap material");
-      const bytes=new TextEncoder().encode(JSON.stringify(material));
-      if(!bytes.length || bytes.length>65536)throw Error("Private media wrap too large");
-      const deadline=AbortSignal.any([...(signal?[signal]:[]),AbortSignal.timeout(10000)]);
-      const hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes)),b=>b.toString(16).padStart(2,"0")).join("");
-      const held=await view(object,owner,deadline);current(held);
-      const result=await request("publish-wrap",{object,at:held.at,fence:held.fence,
-        metadata:{reader,record:hash,digest:hash,epoch:material.wrap.epoch,revisionId:material.wrap.revisionId,
-          readerEpub:material.wrap.targetId,itemDigest:material.reference.sha256},
-        wrapBase64:btoa(Array.from(bytes,b=>String.fromCharCode(b)).join(""))},deadline);
-      if(!exact(result,["record","digest"]) || result.record!==hash || result.digest!==hash)throw Error("Private media publication refused");
-      return hash;
+    publishWrap(object:string,owner:string,reader:string,wrap:ItemReaderWrap,reference:MediaCiphertextReference,signal?:AbortSignal) {
+      return publish(object,owner,reader,wrap,reference,signal);
+    },
+    publishShareWrap(object:string,owner:string,reader:string,wrap:ItemReaderWrap,reference:MediaCiphertextReference,signal:AbortSignal) {
+      return publish(object,owner,reader,wrap,reference,signal,true);
     },
   });
 }

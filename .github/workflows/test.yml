@@ -163,7 +163,7 @@ jobs:
           --test-coverage-include=lib/media-wrap-client.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           --test-coverage-include=lib/media-reader-catalog.ts
-          lib/media-reader-catalog.test.ts lib/media-wrap-server.test.ts lib/media-wrap-client.test.ts
+          lib/media-reader-catalog.test.ts lib/media-wrap-server.test.ts lib/media-wrap-client.test.ts lib/media-share-recovery.test.ts
 
       - name: Allocated media payload contracts and coverage (CI only)
         run: >-
@@ -173,6 +173,8 @@ jobs:
           --test-coverage-include=lib/media-object-service.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/allocated-media-store-server.test.ts lib/allocated-media-service.test.ts lib/media-object-service.test.ts
+      - name: Private sharing browser recovery contract (CI only)
+        run: node scripts/test-private-sharing-browser.mjs
       - name: Private media owner contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
@@ -182,7 +184,14 @@ jobs:
           --test-coverage-include=lib/media-deletion.ts
           --test-coverage-include=lib/media-catalog.ts
           --test-coverage-lines=90 --test-coverage-branches=80
-          lib/media-owner-service.test.ts lib/media-owner-client.test.ts lib/media-deletion.test.ts lib/media-catalog.test.ts lib/media-upload.test.ts
+          lib/media-owner-service.test.ts lib/media-owner-client.test.ts lib/media-deletion.test.ts lib/media-catalog.test.ts lib/media-upload.test.ts lib/media-share-recovery.test.ts
+      - name: Private sharing recovery contracts and coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-share-recovery.ts
+          --test-coverage-include=lib/media-share-journal.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-share-recovery.test.ts
       - name: Unlocked media identity contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
