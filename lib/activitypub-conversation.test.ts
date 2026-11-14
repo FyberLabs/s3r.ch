@@ -17,7 +17,7 @@ test("objects require public audience, matching identity and their own author au
  for(const raw of [null,[],{...note("child"),id:id("other")},{...note("child"),type:"Tombstone"},{...note("child"),to:[]},{...note("child"),attributedTo:"https://foreign.example/user"},{...note("child"),attributedTo:null}])assert.deepEqual((await fetchActivityPubConversation(anchor,async()=>raw)).rows,[]);
  const cc={...note("child"),to:undefined,cc:"https://www.w3.org/ns/activitystreams#Public"};assert.equal((await fetchActivityPubConversation(anchor,async()=>cc)).rows.length,1);
  for(const invalid of [{...anchor,source:"nostr" as const},{...anchor,id:"http://127.0.0.1/private"},{...anchor,id:"x".repeat(2049)}])await fetchActivityPubConversation(invalid,async()=>{assert.fail("must not fetch");});
- assert.deepEqual((await fetchActivityPubConversation(anchor,async()=>{throw Error("offline");})).rows,[]);
+ await assert.rejects(fetchActivityPubConversation(anchor,async()=>{throw Error("offline");}));
  const missing=await fetchActivityPubConversation(anchor,async url=>url===anchor.id?note("child","parent"):{});assert.equal(missing.rows.length,1);
  const failed=await fetchActivityPubConversation(anchor,async url=>{if(url!==anchor.id)throw Error("private");return note("child","parent");});assert.equal(failed.rows.length,1);
 });

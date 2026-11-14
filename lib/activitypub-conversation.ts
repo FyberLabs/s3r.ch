@@ -21,7 +21,7 @@ export async function fetchActivityPubConversation(anchor:FeedItem,pull=fetchAct
   if(!publicUrl(id)||seen.has(id))return null;
   if(requests>=26||clock()-started>=15_000){truncated=true;return null;}
   seen.add(id);requests++;
-  try{return record(await pull(id));}catch{return null;}
+  try{return record(await pull(id));}catch(error){if(id===anchor.id)throw error;return null;}
  };
  const project=(raw:Record<string,unknown>,id:string)=>{
   if(raw.id!==id||!["Note","Article"].includes(String(raw.type)))return null;
