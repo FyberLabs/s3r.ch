@@ -100,6 +100,9 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     grant(object:string,owner:string,draft:unknown,signal?:AbortSignal){
       return signed((client,key,deadline)=>client.grant(object,owner,draft,key,deadline),signal);
     },
+    prepareShare(object:string,owner:string,reader:string,signal?:AbortSignal){
+      return signed((client,key,deadline)=>client.prepareShare(object,owner,reader,key,deadline),signal);
+    },
     prepareNextEpoch(object:string,owner:string,draft:unknown,signal?:AbortSignal){
       return signed((client,key,deadline)=>client.prepareNextEpoch(object,owner,draft,key,deadline),signal);
     },

@@ -205,3 +205,19 @@ test("next epoch preparation uses held identity and aborts on lock",async()=>{
   const changing=createPrivateMediaBrowser(()=>owner,async()=>{forgetUnlockedMeshPair();return Response.json(context);});
   await assert.rejects(changing.prepareNextEpoch(object,owner,input));
 });
+
+const shareContext=(owner:string,reader:string,object:string)=>{
+  const grants=[owner,reader].map(accessor=>({object,owner,accessor,from:100000,until:200000,stated:1,epoch:2,grantRevision:2,itemCiphertextDigest:"b".repeat(64)}));
+  return {at:100,fence:"a".repeat(64),owner,ownerPub:owner,reader,previousEpoch:1,previousFinalizationId:"d".repeat(64),grants,
+    snapshot:{entries:grants.map(g=>({accessor:g.accessor,grantRevision:g.grantRevision,stated:1,from:g.from,until:g.until,scope:"direct",setId:"",hamState:0}))},
+    bindings:{[owner]:{pub:owner,epub:owner,head:0},[reader]:{pub:reader,epub:reader,head:0}}};
+};
+
+test("sharing preparation requires held identity throughout the request",async()=>{
+  unlock();const reader="fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
+  const context=shareContext(owner,reader,object);
+  const browser=createPrivateMediaBrowser(()=>owner,async()=>Response.json(context));
+  assert.equal((await browser.prepareShare(object,owner,reader)).grants.length,2);
+  const changed=createPrivateMediaBrowser(()=>owner,async()=>{forgetUnlockedMeshPair();return Response.json(context);});
+  await assert.rejects(changed.prepareShare(object,owner,reader));
+});
