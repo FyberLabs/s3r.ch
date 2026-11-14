@@ -1,3 +1,4 @@
+import { parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
 import { parseMediaSharePlan } from "./media-share";
 import { parseMediaDeletionDraft, parseMediaDeletionIntent, type MediaDeletionIntent } from "./media-deletion";
 import { parseForumObjectRecord, type UnverifiedObjectRecord } from "./identity/forum-object-record";
@@ -98,6 +99,18 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
       return hash;
     }
   return Object.freeze({
+    async groupView(object:string,signal?:AbortSignal) {
+      const held=await request("group-view",{object},signal??new AbortController().signal);current(held);
+      return parseMediaGroupView(held,object);
+    },
+    async appendGroupRows(object:string,input:unknown,signal?:AbortSignal) {
+      if(!objectOK(object))throw Error("Invalid media group object");
+      const draft=parseMediaGroupAppend(input),deadline=signal??new AbortController().signal;
+      const held=await request("group-view",{object},deadline);
+      parseMediaGroupView(held,object);current(held);deadline.throwIfAborted();
+      const result=await request("group-append",{object,at:held.at,fence:held.fence,...draft},deadline);
+      if(!exact(result,["accepted"])||result.accepted!==true)throw Error("Media group append refused");
+    },
     async prepareDeletion(tenant:string,object:string,owner:string,scalar:Uint8Array,signal?:AbortSignal):Promise<MediaDeletionIntent> {
       return withKey(scalar,signal,async(key,deadline)=>{
         if(!objectOK(object)||!isSeaPubkey(owner))throw Error("Invalid media deletion owner");
