@@ -11,7 +11,7 @@ class SessionUnavailable extends Error {}
 
 export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly string[]; page: number;
   nextPage: number | null; loaded: boolean; message: string;
-  sharing: Readonly<{object:string;reader:string}> | null;
+  sharing: Readonly<{object:string;reader:string;token:string}> | null;
   granted: Readonly<{objects:readonly string[];page:number;nextPage:number|null}> | null;
   cleanup: Readonly<{objects:readonly MediaCleanupItem[];page:number;nextPage:number|null}> | null;
   deletion: Readonly<{object:string;prepared:boolean}> | null;
@@ -151,17 +151,26 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       const principal=owner;
       return operation(async(signal,current)=>{
         const result=await browser.share(tenant,{object,owner:principal,reader},signal);
-        if(current())publish({...state,audience:null,sharing:result.pending?{object,reader}:null,
+        if(current())publish({...state,audience:null,sharing:result.pending?{object,reader,token:result.token}:null,
           message:result.pending?"Sharing is saved but not yet confirmed. Resume after the access update settles.":"Sharing confirmed. Recipient access uses fresh authorization."});
-      },()=>publish({...state,sharing:{object,reader},message:"Sharing could not be confirmed. Check saved sharing before retrying; accepted changes are not undone."}));
+      },()=>publish({...state,sharing:null,message:"Sharing could not be confirmed. Check saved sharing before retrying; accepted changes are not undone."}));
     },
     resumeSharing(tenant:string) {
       if(state.deletion||!state.sharing)return Promise.resolve();
+      const selected={...state.sharing};
       return operation(async(signal,current)=>{
-        const result=await browser.share(tenant,undefined,signal);
-        if(current())publish({...state,audience:null,sharing:result.pending?{object:result.object,reader:result.reader}:null,
+        const result=await browser.resumeShare(tenant,selected,signal);
+        if(current())publish({...state,audience:null,sharing:result.pending?{object:result.object,reader:result.reader,token:result.token}:null,
           message:result.pending?"Sharing is still pending. Future access times and settlement can delay completion.":"Sharing confirmed."});
       },()=>publish({...state,message:"Sharing could not be confirmed. The saved change is retained; check access and retry."}));
+    },
+    abandonSharing(tenant:string) {
+      if(state.deletion||!state.sharing)return Promise.resolve();
+      const selected={...state.sharing};
+      return operation(async(signal,current)=>{
+        await browser.abandonShare(tenant,selected,signal);
+        if(current())publish({...state,sharing:null,message:"Local sharing recovery forgotten. Accepted access changes were not undone; inspect this file's sharing."});
+      },()=>publish({...state,message:"Saved sharing changed or could not be removed. Inspect it again before forgetting it."}));
     },
     recipients(object: string) {
       if(state.deletion || !state.objects.includes(object) || !owner)return Promise.resolve();

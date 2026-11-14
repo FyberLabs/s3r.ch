@@ -73,6 +73,7 @@ export function createPrivateMediaReader(fetcher: typeof fetch = fetch, clock = 
         const current=await delivery(object,epub,signal);
         if(current.encoded!==initial.encoded||current.context.epoch!==plan.previousEpoch||
             plan.grants.some(g=>g.itemCiphertextDigest!==current.reference.sha256))throw Error("Private media changed");
+        if(clock()>=current.expiresAt)throw Error("Private media expired");
         const opened=await openItemDekReaderWrap(current.wrap,epriv,epub,current.context);
         if(!opened.ok)throw Error("Private wrapping refused");dek=opened.value;
         const plaintext=await openMedia(stored,current.reference.sha256,dek,{tenant,object});plaintext.fill(0);
@@ -87,6 +88,7 @@ export function createPrivateMediaReader(fetcher: typeof fetch = fetch, clock = 
           pub:plan.bindings[g.accessor].pub,epub:plan.bindings[g.accessor].epub}));
         const wrapped=await wrapItemDekToReaders(dek,{object,epoch,revisionId},readers,plan.grants.map(g=>g.accessor));
         if(!wrapped.ok)throw Error("Private wrapping refused");
+        if(clock()>=current.expiresAt)throw Error("Private media expired");
         const final=await delivery(object,epub,signal);
         if(final.encoded!==current.encoded||final.context.epoch!==current.context.epoch||final.context.revisionId!==current.context.revisionId||clock()>=final.expiresAt)
           throw Error("Private media changed");

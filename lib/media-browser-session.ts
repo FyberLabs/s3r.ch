@@ -1,5 +1,5 @@
 import { createShareJournal } from "./media-share-journal";
-import { shareMedia, pendingMediaShare } from "./media-share-recovery";
+import { shareMedia, pendingMediaShare, abandonMediaShare, type PendingShare } from "./media-share-recovery";
 import { readGrantedMedia } from "./media-reader-catalog";
 import { parseMediaDeletionIntent, type MediaDeletionIntent } from "./media-deletion";
 import { createUploadJournal } from "./media-upload-journal";
@@ -59,8 +59,16 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     });
   }
   return Object.freeze({
-    share(tenant:string,target?:{object:string;owner:string;reader:string},signal?:AbortSignal){
+    share(tenant:string,target:{object:string;owner:string;reader:string},signal?:AbortSignal){
       return locked(()=>run((pair,transport,deadline)=>shareMedia({tenant,pair,fetcher:transport,signal:deadline,journal:createShareJournal(),target}),signal),"s3rch-private-share-v1");
+    },
+    resumeShare(tenant:string,expected:PendingShare,signal?:AbortSignal){
+      const held={...expected};
+      return locked(()=>run((pair,transport,deadline)=>shareMedia({tenant,pair,fetcher:transport,signal:deadline,journal:createShareJournal(),expected:held}),signal),"s3rch-private-share-v1");
+    },
+    abandonShare(tenant:string,expected:PendingShare,signal?:AbortSignal){
+      const held={...expected};
+      return locked(()=>run((pair,_transport,deadline)=>abandonMediaShare(createShareJournal(),tenant,held,pair,deadline),signal),"s3rch-private-share-v1");
     },
     pendingShare(tenant:string,signal?:AbortSignal){
       return run((pair,_transport,deadline)=>pendingMediaShare(createShareJournal(),tenant,pair,deadline),signal);

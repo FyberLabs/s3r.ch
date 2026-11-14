@@ -4,6 +4,7 @@ import { createPrivateMediaReader } from "./media-wrap-client";
 import { parseMediaSharePlan } from "./media-share";
 import { decryptShareJournal, encryptShareJournal, shareDigest, type ShareJournal, type ShareEntry } from "./media-share-journal";
 
+export type PendingShare=Readonly<{object:string;reader:string;token:string}>;
 type SignedPlan=Awaited<ReturnType<ReturnType<typeof createPrivateMediaOwner>["prepareShare"]>>;
 type Prepared=Awaited<ReturnType<ReturnType<typeof createPrivateMediaReader>["prepareSharing"]>>;
 type Draft={version:1;tenant:string;object:string;owner:string;reader:string;plan:ReturnType<typeof parseMediaSharePlan>;grants:SignedPlan["grants"];prepared:Prepared};
@@ -25,11 +26,17 @@ function parse(value:unknown,entry:ShareEntry,tenant:string,pair:SeaPair):Draft 
 export async function pendingMediaShare(journal:ShareJournal,tenant:string,pair:SeaPair,signal:AbortSignal) {
   const entry=await journal.read(signal);signal.throwIfAborted();if(!entry)return null;
   const draft=parse(await decryptShareJournal(entry,tenant,pair),entry,tenant,pair);
-  signal.throwIfAborted();return {object:draft.object,reader:draft.reader};
+  signal.throwIfAborted();return {object:draft.object,reader:draft.reader,token:entry.sha256};
+}
+export async function abandonMediaShare(journal:ShareJournal,tenant:string,expected:PendingShare,pair:SeaPair,signal:AbortSignal) {
+  const entry=await journal.read(signal);signal.throwIfAborted();if(!entry)return;
+  const draft=parse(await decryptShareJournal(entry,tenant,pair),entry,tenant,pair);
+  if(expected.object!==draft.object||expected.reader!==draft.reader||expected.token!==entry.sha256)throw Error("Saved sharing changed; inspect it again");
+  signal.throwIfAborted();await journal.remove(entry.revision,signal);
 }
 /** Save all signatures and opaque wraps before publishing; resume never re-signs them. */
 export async function shareMedia(input:{tenant:string;pair:SeaPair;fetcher:typeof fetch;signal:AbortSignal;journal:ShareJournal;
-  target?:{object:string;owner:string;reader:string}}) {
+  target?:{object:string;owner:string;reader:string};expected?:PendingShare}) {
   const {tenant,pair,fetcher,signal,journal}=input,client=createPrivateMediaOwner(fetcher);
   let entry=await journal.read(signal),draft:Draft;
   if(!/^[A-Za-z0-9_-]{43}$/.test(pair.priv))throw Error("Invalid signing key");
@@ -38,6 +45,8 @@ export async function shareMedia(input:{tenant:string;pair:SeaPair;fetcher:typeo
     if(entry) {
       if(input.target)throw Error("Resume the existing sharing change first");
       draft=parse(await decryptShareJournal(entry,tenant,pair),entry,tenant,pair);
+      if(!input.expected||input.expected.object!==draft.object||input.expected.reader!==draft.reader||input.expected.token!==entry.sha256)
+        throw Error("Saved sharing changed; inspect it before resuming");
     } else {
       if(!input.target)throw Error("No pending sharing change");
       const {object,owner,reader}=input.target;
@@ -85,6 +94,6 @@ export async function shareMedia(input:{tenant:string;pair:SeaPair;fetcher:typeo
     }
     signal.throwIfAborted();
     if(!pending)await journal.remove(entry.revision,signal);
-    return {object:d.object,reader:d.reader,pending};
+    return {object:d.object,reader:d.reader,token:entry.sha256,pending};
   } finally {scalar.fill(0);}
 }

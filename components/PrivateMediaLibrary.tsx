@@ -8,6 +8,8 @@ import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
   const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null});
+  const [abandon,setAbandon]=useState(false);
+  useEffect(()=>{setAbandon(false);},[state.sharing?.token]);
   const [recipient,setRecipient]=useState("");
   useEffect(()=>{setRecipient("");},[state.audience?.object,state.loaded]);
   const library=useRef<ReturnType<typeof createMediaLibrary>|null>(null);
@@ -80,6 +82,8 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
           <p className="break-all">Pending sharing with {state.sharing.reader}</p>
           <p>Resume uses the saved request. Sharing may wait for the access update to settle; closing this page does not undo accepted changes.</p>
           <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeSharing(tenant)}>Resume sharing</button>
+          <label className="block"><input type="checkbox" checked={abandon} onChange={event=>setAbandon(event.target.checked)} disabled={state.busy}/> I understand that forgetting recovery does not undo accepted access changes.</label>
+          <button type="button" disabled={state.busy||!!state.deletion||!abandon} className="underline disabled:opacity-50" onClick={()=>void library.current?.abandonSharing(tenant)}>Forget saved sharing</button>
         </>}
       </section>
       {state.audience && <section className="space-y-2" aria-label="File sharing">

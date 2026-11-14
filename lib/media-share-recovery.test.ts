@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { IDBFactory } from "fake-indexeddb";
 import { sealMediaFile } from "./media-file";
 import { createShareJournal, decryptShareJournal } from "./media-share-journal";
-import { shareMedia, pendingMediaShare } from "./media-share-recovery";
+import { shareMedia, pendingMediaShare, abandonMediaShare } from "./media-share-recovery";
 const owner="axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
 const reader="fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
 const pair={pub:owner,priv:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE",
@@ -60,17 +60,17 @@ for(const lost of ["grant","epoch","wrap"])test(`lost ${lost} response reconcile
   else await assert.rejects(shareMedia({tenant,pair,signal,...f,target}));
   const entry=(await f.journal.read(signal))!;assert.ok(entry);
   assert.ok(!new TextDecoder().decode(entry.encrypted).includes(reader));
-  assert.deepEqual(await pendingMediaShare(f.journal,tenant,pair,signal),{object,reader});
+  assert.deepEqual(await pendingMediaShare(f.journal,tenant,pair,signal),{object,reader,token:entry.sha256});
   const saved=await decryptShareJournal(entry,tenant,pair);assert.ok(!JSON.stringify(saved).includes(pair.epriv));
   await assert.rejects(shareMedia({tenant,pair,signal,...f,target}),/Resume/);
-  assert.equal((await shareMedia({tenant,pair,signal,...f})).pending,false);
+  assert.equal((await shareMedia({tenant,pair,signal,...f,expected:(await pendingMediaShare(f.journal,tenant,pair,signal))??undefined})).pending,false);
   assert.equal(new Set(f.writes).size,f.writes.length);assert.equal(await f.journal.read(signal),null);
 });
 test("unsettled sharing remains recoverable and conflicts never replace signed changes",async()=>{
   const f=await fixture();f.delay(true);
   assert.equal((await shareMedia({tenant,pair,signal,...f,target})).pending,true);
   const count=f.writes.length;f.delay(false);f.conflict();
-  await assert.rejects(shareMedia({tenant,pair,signal,...f}));assert.equal(f.writes.length,count);
+  await assert.rejects(shareMedia({tenant,pair,signal,...f,expected:(await pendingMediaShare(f.journal,tenant,pair,signal))??undefined}));assert.equal(f.writes.length,count);
   await assert.rejects(pendingMediaShare(f.journal,tenant,{...pair,epriv:pair.priv},signal));
   const entry=(await f.journal.read(signal))!;
   await assert.rejects(f.journal.write(entry,null,signal));await assert.rejects(f.journal.remove(entry.revision+1,signal));
@@ -80,5 +80,17 @@ test("journal refusal prevents grant, epoch and wrap publication",async()=>{
   const f=await fixture();const journal={...f.journal,write:async()=>{throw Error("storage full");}};
   await assert.rejects(shareMedia({tenant,pair,signal,fetcher:f.fetcher,journal,target}));assert.deepEqual(f.writes,[]);
   assert.equal(await pendingMediaShare(f.journal,tenant,pair,signal),null);
-  await assert.rejects(shareMedia({tenant,pair,signal,...f}),/No pending/);
+  await assert.rejects(shareMedia({tenant,pair,signal,...f,expected:(await pendingMediaShare(f.journal,tenant,pair,signal))??undefined}),/No pending/);
+});
+
+test("resume and abandonment bind the inspected draft, while abandonment leaves remote changes intact",async()=>{
+  const f=await fixture("epoch");await assert.rejects(shareMedia({tenant,pair,signal,...f,target}));
+  const expected=(await pendingMediaShare(f.journal,tenant,pair,signal))!,count=f.writes.length;
+  for(const changed of [{...expected,reader:owner},{...expected,object:"other"},{...expected,token:"0".repeat(64)}]) {
+    await assert.rejects(shareMedia({tenant,pair,signal,...f,expected:changed}));
+    await assert.rejects(abandonMediaShare(f.journal,tenant,changed,pair,signal));
+  }
+  await assert.rejects(shareMedia({tenant,pair,signal,...f}));
+  await abandonMediaShare(f.journal,tenant,expected,pair,signal);
+  assert.equal(await f.journal.read(signal),null);assert.equal(f.writes.length,count);
 });
