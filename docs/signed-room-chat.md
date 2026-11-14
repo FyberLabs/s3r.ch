@@ -1,0 +1,109 @@
+# Signed ordinary-room chat
+
+The feed remains statically exported. After authentication, its browser provider
+fetches a bounded public configuration projection from the same-origin runtime
+API. Configuration discovery does not establish source readiness or room rights.
+
+New rooms use canonical `room_<principal>_<nonce>` IDs. The browser signs room
+ownership with its unlocked SEA key and submits it to the protected owner source
+before saving the room locally. The source uses the already provisioned forum
+namespace; creating a room never creates a tenant, account, namespace or parent
+grant. Missing namespace configuration or identity history refuses creation.
+
+Mine rooms initially admit only their owner. Explicit room sharing publishes the
+room listing and chat publicly, and signs see grants for current parent-forum readers, plus post
+grants for its current writers. These app-admission grants last at most one hour. They do not encrypt the
+public transport. The interface discloses public publication of the room and
+its chat before confirmation. Retrying a failed operation requires
+another explicit user action; writes are not automatically retried. Unsharing a
+listing retains its existing meaning: it retracts discovery, not signed grants.
+
+Every message signs its room, ID, author, body, timestamp and protocol version.
+The ID includes a SHA-256-derived author prefix, so another authorized writer
+cannot preempt a creator's task ID. The receive path binds the actual Gun child
+key and room, verifies the current signing key, and checks current parent and
+room see/post permission. Rendered rows retain immutable signature checks and
+are filtered again when authority changes. Unsigned legacy rows are omitted.
+The current session's SEA key selects an existing principal; no wallet fallback
+or key generation is used by this path. Locked or changed keys cancel signing.
+
+Task projection uses only admitted messages; a noncreator's signed update has
+no effect. The task editor remains outside this slice. Legacy room metadata can
+still be read, but it cannot establish signed chat authority.
+
+The owner dependency is the ACL service's bounded signed-room extension to its
+protected statement source. Each principal's rooms and statements share retained
+row/byte quotas, with at most 32 room objects. No running service revision match
+is required; the consumer refuses unsupported owner operations.
+
+`test-room-chat-browser.ts` is a scheduled, isolated two-browser scenario for the
+bundled signing/admission client. It uses synthetic identities, an in-memory
+protected-source substitute, and a loopback server with browser/server cleanup.
+It covers two-way signed messages, author/ID forgery, unsigned rows and signed
+parent cancellation. It is not a deployed owner-source or React UI acceptance
+claim. Its executable registration belongs to Infra's nightly browser adapter.
+
+A rotated signing key resolves to the same stable room principal. Explicit
+sharing can refresh an older ownership record with a current signature and
+current issuance time while preserving the room's display creation time and all
+retained rows. Protected reads may return retired-key ownership rows as history;
+those rows cannot establish ownership. Parent ownership and reader access must
+still be current. Writes require independently verified current replacement
+ownership bound to the authenticated stable owner.
+
+This ownership refresh does not migrate grants after key rotation. Retired-key
+see/post or cancellation diagnostics still refuse the operation, even if newer
+grants are present. Previously shared rooms or parent grant histories may therefore
+remain unavailable after their issuer rotates. No automatic grant renewal or
+history removal is performed.
+
+
+## Bounded transport and overload
+
+Signature admission does not promise lossless history delivery under overload.
+The receive path keeps at most 8192 unverified pending transport envelopes plus
+one in-flight verifier. It uses asynchronous WebCrypto and yields between
+batches. On ingress overflow it retains fresh candidates while the in-flight
+candidate progresses; an unverified candidate within a larger burst can be lost
+before authentication. Authority refresh does not automatically recover that
+candidate. Reopening a room retries the transport subscription, but does not
+guarantee recovery while the source remains overloaded or unavailable.
+
+Authenticated pending work has a separate 8192-row bound. Authenticated retries
+and unknown-author deferred input each have separate 256-row caches. Unknown
+input cannot consume authenticated retry capacity. Every delivery still requires
+current identity, signing key, and parent/room access; cached queue priority never
+establishes display authority. The visible history is also capped at 8192 rows.
+
+Bounded paging or resumable history recovery is tracked in
+[#485](https://github.com/FyberLabs/s3r.ch/issues/485). It requires transport
+progress semantics in addition to #445's signature and access checks; increasing
+an in-memory limit or retaining an unbounded promise backlog is not a substitute.
+
+
+## Public chat and confidentiality
+
+Shared ordinary-room chat retains the public transport contract in
+[ARCHITECTURE.md](ARCHITECTURE.md#item-identity-and-merge): anyone can read or
+copy the plaintext Gun rows without an identity session. The share action
+publishes Mine-only chat alongside the room listing and explicitly discloses
+that audience. The composer repeats that shared chat is public. Unsharing a
+listing, grant expiry, and Check refusal cannot erase those published bytes or
+copies already received.
+
+SEA signatures and current Check admission protect authorship and the official
+app's accepted message/task projection. They do not establish confidentiality.
+#445 implements that signed admission boundary; it does not introduce private
+room chat. Private media uses its separate encrypted storage and grants. A future
+private chat transport would need authenticated recipient encryption or an
+access-controlled source before publishing any private message.
+
+
+Owner publication consent is separate from mesh visibility. The browser records
+consent only after its explicit, confirmed share completes signed owner admission.
+A peer's unsigned room listing cannot turn the owner's Mine-only chat into a
+public write. Confirmed unshare clears this local consent immediately, even if
+an older share request is still completing. Consent is scoped to the current
+identity mount; after a new session/page, owners must confirm public sharing again
+using the room controls (also available on their signed rooms outside Mine).
+Previously published copies remain public; this only controls new local writes.
