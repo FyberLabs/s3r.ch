@@ -49,10 +49,11 @@ export function createMediaUploadPanel(tenant:string,changed:(state:UploadPanelS
       await browser.upload(tenant,undefined,signal,progress);signal.throwIfAborted();publish({...state,pending:null});
       progress("Upload complete. Refresh My media. New files open after the one-hour settlement period.");
     }),
-    discard:()=>operation(async(signal,progress)=>{
-      await browser.discardUpload(tenant,signal);signal.throwIfAborted();publish({...state,pending:null});
+    discard:()=>{const expectedObject=state.pending?.object;return operation(async(signal,progress)=>{
+      if(!expectedObject)throw Error("Inspect the pending upload first");
+      await browser.discardUpload(tenant,expectedObject,signal);signal.throwIfAborted();publish({...state,pending:null});
       progress("Local recovery draft discarded. This does not delete uploaded data or release server reservations.");
-    }),
+    });},
     dispose(){disposed=true;unsubscribe();reset();},
   });
 }

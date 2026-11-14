@@ -64,12 +64,12 @@ test("conflict, corrupt ciphertext and a foreign identity preserve recovery and 
   const f=fixture("grant");await assert.rejects(uploadMedia({tenant,pair,signal,...f,file:file()}));
   const count=f.writes.length;f.conflict();await assert.rejects(uploadMedia({tenant,pair,signal,...f}));assert.equal(f.writes.length,count);
   await assert.rejects(pendingMediaUpload(f.journal,tenant,{...pair,epriv:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE"},signal));
-  await assert.rejects(discardMediaUpload(f.journal,"22222222-2222-4222-8222-222222222222",pair,signal));
+  await assert.rejects(discardMediaUpload(f.journal,"22222222-2222-4222-8222-222222222222",(await f.journal.read(signal))!.object,pair,signal));
   const entry=(await f.journal.read(signal))!;entry.ciphertext[20]^=1;
   await f.journal.write(entry,entry.revision,signal);
   await assert.rejects(uploadMedia({tenant,pair,signal,...f}),/ciphertext changed/);assert.equal(f.writes.length,count);
-  await discardMediaUpload(f.journal,tenant,pair,signal);assert.equal(await f.journal.read(signal),null);
-  await discardMediaUpload(f.journal,tenant,pair,signal);assert.equal(await pendingMediaUpload(f.journal,tenant,pair,signal),null);
+  await discardMediaUpload(f.journal,tenant,entry.object,pair,signal);assert.equal(await f.journal.read(signal),null);
+  await discardMediaUpload(f.journal,tenant,entry.object,pair,signal);assert.equal(await pendingMediaUpload(f.journal,tenant,pair,signal),null);
   await assert.rejects(uploadMedia({tenant,pair,signal,...f}),/No pending/);
 });
 test("storage refusal and cancellation prevent remote mutation",async()=>{
@@ -85,4 +85,19 @@ test("journal compare-and-swap prevents cross-tab overwrites and removes only th
   const entry=(await f.journal.read(signal))!;
   await assert.rejects(f.journal.write(entry,null,signal));await assert.rejects(f.journal.remove(entry.revision+1,signal));
   await assert.rejects(f.journal.read(AbortSignal.abort()));assert.equal((await f.journal.read(signal))?.revision,entry.revision);
+});
+
+test("a stale discard confirmation cannot remove another window's newer draft",async()=>{
+  const f=fixture("grant");await assert.rejects(uploadMedia({tenant,pair,signal,...f,file:file()}));
+  const inspected=(await pendingMediaUpload(f.journal,tenant,pair,signal))!;
+  await uploadMedia({tenant,pair,signal,...f});
+  const abort=new AbortController();
+  await assert.rejects(uploadMedia({tenant,pair,signal:abort.signal,...f,file:file(),progress:message=>{
+    if(message.startsWith("Confirming"))abort.abort();
+  }}));
+  const replacement=(await f.journal.read(signal))!;assert.notEqual(replacement.object,inspected.object);
+  await assert.rejects(discardMediaUpload(f.journal,tenant,inspected.object,pair,signal),/Pending upload changed/);
+  assert.equal((await f.journal.read(signal))!.revision,replacement.revision);
+  await discardMediaUpload(f.journal,tenant,replacement.object,pair,signal);
+  assert.equal(await f.journal.read(signal),null);
 });

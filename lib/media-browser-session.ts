@@ -61,8 +61,8 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     pendingUpload(tenant:string,signal?:AbortSignal){
       return run((pair,_transport,deadline)=>pendingMediaUpload(createUploadJournal(),tenant,pair,deadline),signal);
     },
-    discardUpload(tenant:string,signal?:AbortSignal){
-      return locked(()=>run((pair,_transport,deadline)=>discardMediaUpload(createUploadJournal(),tenant,pair,deadline),signal));
+    discardUpload(tenant:string,expectedObject:string,signal?:AbortSignal){
+      return locked(()=>run((pair,_transport,deadline)=>discardMediaUpload(createUploadJournal(),tenant,expectedObject,pair,deadline),signal));
     },
     allocate(record:UnverifiedObjectRecord,signal?:AbortSignal){
       return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).allocate(record,deadline),signal);

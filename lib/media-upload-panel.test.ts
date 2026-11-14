@@ -9,7 +9,7 @@ const tenant="11111111-1111-4111-8111-111111111111";
 function setup(extra:{fetcher?:typeof fetch;upload?:(...args:unknown[])=>Promise<unknown>}={}) {
   let state:UploadPanelState|undefined,held:Uint8Array|undefined;const calls:string[]=[];
   const browser:typeof createPrivateMediaBrowser=()=>({
-    pendingUpload:async()=>({object:"object",name:"private.png"}),discardUpload:async()=>{calls.push("discard");},
+    pendingUpload:async()=>({object:"object",name:"private.png"}),discardUpload:async(_tenant:string,object:string)=>{assert.equal(object,"object");calls.push("discard");},
     upload:async(...args:unknown[])=>{calls.push("upload");held=(args[1] as {bytes:Uint8Array}|undefined)?.bytes;
       if(extra.upload)return extra.upload(...args);(args[3] as (message:string)=>void)("Uploading…");return {object:"object"};},
   } as unknown as ReturnType<typeof createPrivateMediaBrowser>);
@@ -53,4 +53,8 @@ test("session expiry removes the decrypted pending filename",async(t)=>{
     await f.panel.inspect();assert.equal(f.state().pending?.name,"private.png");
     t.mock.timers.tick(1001);assert.equal(f.state().pending,null);assert.equal(f.state().busy,false);
   } finally {f.panel.dispose();}
+});
+
+test("discard requires an inspected draft",async()=>{
+  const f=setup();try {await f.panel.discard();assert.deepEqual(f.calls,[]);}finally{f.panel.dispose();}
 });

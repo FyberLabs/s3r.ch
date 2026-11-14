@@ -155,10 +155,10 @@ test("upload recovery wrappers require one unlocked identity and an exclusive br
     Object.defineProperty(globalThis,"indexedDB",{configurable:true,value:new IDBFactory()});
     Object.defineProperty(globalThis,"navigator",{configurable:true,value:{locks:{request:async(_name:unknown,_options:unknown,work:(lock:unknown)=>unknown)=>work({})}}});
     unlock();const browser=createPrivateMediaBrowser(()=>owner);
-    assert.equal(await browser.pendingUpload(tenant),null);await browser.discardUpload(tenant);
+    assert.equal(await browser.pendingUpload(tenant),null);await browser.discardUpload(tenant,"inspected-object");
     await assert.rejects(browser.upload(tenant),/No pending/);
     Object.defineProperty(globalThis,"navigator",{configurable:true,value:{locks:{request:async(_name:unknown,_options:unknown,work:(lock:unknown)=>unknown)=>work(null)}}});
-    await assert.rejects(browser.discardUpload(tenant),/another tab/);
+    await assert.rejects(browser.discardUpload(tenant,"inspected-object"),/another tab/);
     Object.defineProperty(globalThis,"navigator",{configurable:true,value:{}});
     await assert.rejects(browser.upload(tenant),/cannot safely resume/);
   } finally {
