@@ -38,7 +38,7 @@ function controller(config: Config, session: () => string | null) {
           fetch, signal: pending.signal });
         if (!active || epoch !== generation || signer.current() !== pair) return false;
         const refreshed = await authority.refresh(result.snapshot, result.at);
-        return active && epoch === generation && signer.current() === pair && refreshed.ok && !roomAuthorityDiagnosticsBlock(refreshed.diagnostics, result.snapshot, authority.graph);
+        return active && epoch === generation && signer.current() === pair && refreshed.ok && !roomAuthorityDiagnosticsBlock(refreshed.diagnostics, result.snapshot, authority.graph, room.id);
       } catch { return false; }
     },
     close() { active = false; generation++; pending.abort(); signer.stop(); unsubscribe(); browser.dispose(); authority.invalidate(); admission.reset(); },

@@ -42,7 +42,8 @@ test("old room sharing signs refreshed ownership with the current key and admiss
  const {admitBrowserRoom} = await import("./room-authority-browser");
  const room = `room_${seaToPrincipalKey(owner)}_${"2".repeat(32)}`;
  const retained = signed("object",{object:room,owner},1,time-40);
- let held = snapshot([old,fresh,retained]), posted: ForumAuthoritySnapshot["rows"] = [];
+ const otherRoom=room.replace("2".repeat(32),"6".repeat(32)), otherRetained=signed("object",{object:otherRoom,owner},1,time-40);
+ let held = snapshot([old,fresh,retained,otherRetained]), posted: ForumAuthoritySnapshot["rows"] = [];
  const pair = {pub:key(2),priv:Buffer.from(secret(2)).toString("base64url"),epub:key(2),epriv:Buffer.from(secret(2)).toString("base64url")};
  const input = {item:{id:room,author:owner,ts:time-40},share:true,pair,config,
   squad:{forumId:forum,owner,label:"Rotation unit"},endpoint:"/room",clock:()=>time,signal:new AbortController().signal,
@@ -51,12 +52,17 @@ test("old room sharing signs refreshed ownership with the current key and admiss
    assert.equal((posted[0].record as {issuedAt:number}).issuedAt,time);
    const candidate={...held,rows:[...held.rows,...posted]},authority=createForumAuthority(config,()=>time);
    const result=await authority.refresh(candidate,time); assert.ok(result.ok);
-   assert.equal(roomAuthorityDiagnosticsBlock(result.diagnostics,candidate,authority.graph),false);
+   assert.equal(roomAuthorityDiagnosticsBlock(result.diagnostics,candidate,authority.graph,(posted[0].record as {object:string}).object),false);
    held=candidate; return Response.json({ok:true});
   }) as typeof fetch};
  const result=await admitBrowserRoom(input);
- assert.equal(posted.length,1); assert.equal(result.snapshot.rows.length,4);
+ assert.equal(posted.length,1); assert.equal(result.snapshot.rows.length,5);
  assert.equal(result.snapshot.rows[2],retained); // history remains append-only
+ const view=createForumAuthority(config,()=>time); await view.refresh(result.snapshot,time);
+ assert.equal(view.graph.ownerOf(room),owner); assert.equal(view.graph.ownerOf(otherRoom),undefined);
+ const second=await admitBrowserRoom({...input,item:{...input.item,id:otherRoom}});
+ assert.equal(second.snapshot.rows.length,6); await view.refresh(second.snapshot,time);
+ assert.equal(view.graph.ownerOf(room),owner); assert.equal(view.graph.ownerOf(otherRoom),owner);
  held=snapshot([old,retained]); posted=[];
  await assert.rejects(admitBrowserRoom(input),/denied/); assert.equal(posted.length,0);
  held=snapshot([fresh,{...retained,record:{...retained.record as object,sig:"forged"}}]);
@@ -95,8 +101,9 @@ test("room append requires the authenticated stable owner and current replacemen
  const {createBotStatementAdmission} = await import("./forum-bot-statement-admission");
  const room = `room_${seaToPrincipalKey(owner)}_${"4".repeat(32)}`;
  const oldRoom=signed("object",{object:room,owner},1,time-40),newRoom=signed("object",{object:room,owner},2,time);
+ const other=room.replace("4".repeat(32),"7".repeat(32)),oldOther=signed("object",{object:other,owner},1,time-40);
  const rights=(["see","post"] as const).map(kind=>signed(kind,{object:forum,owner,accessor:key(3),stated:1,from:0,until:time+60,hamState:1},2,time-10));
- let held=snapshot([old,fresh,oldRoom,...rights]),reader=key(3),appends=0;
+ let held=snapshot([old,fresh,oldRoom,oldOther,...rights]),reader=key(3),appends=0;
  held={...held,history:{...held.history,accounts:[...held.history.accounts,{principal:key(3),rotations:[],revocations:[],genesisEpubBindings:[]}]}};
  const service=createBotStatementAdmission({squad:{forumId:forum,owner,label:"Append unit"},origin:"https://room.test",config,
   clock:()=>time,objectKind:"room",authenticate:async()=>({key:reader}),source:{read:async()=>({snapshot:held,fence:"held"}),
@@ -106,5 +113,27 @@ test("room append requires the authenticated stable owner and current replacemen
  assert.equal((await service(request([newRoom]))).status,403); assert.equal(appends,0);
  reader=key(2); assert.equal((await service(request([oldRoom]))).status,403); assert.equal(appends,0);
  assert.equal((await service(request([newRoom]))).status,200); assert.equal(appends,1);
- assert.equal(held.rows.includes(oldRoom),true); assert.equal(held.rows.length,6);
+ assert.equal(held.rows.includes(oldRoom),true); assert.equal(held.rows.length,7);
+ const view=createForumAuthority(config,()=>time); await view.refresh(held,time);
+ assert.equal(view.graph.ownerOf(other),undefined);
+ assert.equal((await service(request([signed("object",{object:other,owner},2,time)]))).status,200);
+ await view.refresh(held,time); assert.equal(view.graph.ownerOf(other),owner); assert.equal(appends,2);
+});
+
+
+test("room readiness rejects grant, cancellation and malformed diagnostics", async () => {
+ const {createBotStatementAdmission}=await import("./forum-bot-statement-admission");
+ let held=snapshot([old,fresh]);
+ const service=createBotStatementAdmission({squad:{forumId:forum,owner,label:"Readiness unit"},origin:"https://room.test",config,
+  clock:()=>time,objectKind:"room",authenticate:async()=>({key:key(2)}),source:{read:async()=>({snapshot:held,fence:"held"}),
+   append:async()=>{throw Error("readiness cannot append");}}});
+ const request=()=>new Request("https://room.test/room",{method:"POST",headers:{Origin:"https://room.test","Content-Type":"application/json"},
+  body:JSON.stringify({version:1,forumId:forum,owner,evaluatedAt:time,rows:[]})});
+ assert.equal((await service(request())).status,200);
+ for (const stated of [0,1]) {
+  held=snapshot([fresh,signed("see",{object:forum,owner,accessor:owner,stated,from:0,until:time+60,hamState:1},1,time-40)]);
+  assert.equal((await service(request())).status,403);
+ }
+ held=snapshot([fresh,{...old,record:{bad:true}}]); assert.equal((await service(request())).status,403);
+ held=snapshot([old]); assert.equal((await service(request())).status,403);
 });
