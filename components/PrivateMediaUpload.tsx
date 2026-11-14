@@ -3,9 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { subscribeUnlockedMeshPair } from "@/lib/identity/unlocked-mesh";
 import { createMediaUploadPanel, type UploadPanelState } from "@/lib/media-upload-panel";
 
-export function PrivateMediaUpload({tenant}:{tenant:string}) {
+export function PrivateMediaUpload({tenant,preparedFile}:{tenant:string;preparedFile?:File}) {
   const [state,setState]=useState<UploadPanelState>({busy:false,message:"",allocationConfirmed:false,pending:null});
-  const [file,setFile]=useState<File|null>(null),[discard,setDiscard]=useState(false);
+  const [file,setFile]=useState<File|null>(preparedFile??null),[discard,setDiscard]=useState(false);
   const input=useRef<HTMLInputElement|null>(null);
   const panel=useRef<ReturnType<typeof createMediaUploadPanel>|null>(null);
   useEffect(()=>{
@@ -19,10 +19,10 @@ export function PrivateMediaUpload({tenant}:{tenant:string}) {
   return <section aria-label="Private upload" className="space-y-3 rounded border p-4">
     <h2 className="font-semibold">Upload a private file</h2>
     <p className="text-sm text-ink-muted">Only you receive access. New files open after a one-hour settlement period. An encrypted recovery draft stays in this browser until upload completes.</p>
-    <label className="block">Image, audio or video (up to 63 MiB)
+    {preparedFile ? <p>Prepared image: {preparedFile.name}</p> : <label className="block">Image, audio or video (up to 63 MiB)
       <input ref={input} type="file" disabled={state.busy} className="block max-w-full" accept="image/png,image/jpeg,image/gif,image/webp,image/avif,audio/mpeg,audio/ogg,audio/wav,audio/webm,audio/mp4,video/mp4,video/webm,video/ogg"
         onChange={event=>setFile(event.target.files?.[0]??null)} />
-    </label>
+    </label>}
     <div className="flex flex-wrap gap-4">
       <button type="button" className="underline disabled:opacity-50" disabled={state.busy||!file||!!state.pending}
         onClick={()=>{if(file){const selected=file;setFile(null);setDiscard(false);if(input.current)input.current.value="";void panel.current?.upload(selected);}}}>Upload privately</button>

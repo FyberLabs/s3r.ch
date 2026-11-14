@@ -48,6 +48,12 @@ jobs:
         run: node scripts/test-public-media-browser.mjs
       - name: Private upload browser recovery contract (CI only)
         run: node scripts/test-private-upload-browser.mjs
+      - name: Captioned PNG private upload contract (CI only)
+        run: S3RCH_UPLOAD_FIXTURE=meme node scripts/test-private-upload-browser.mjs
+      - name: Recorded audio and video private upload contracts (CI only)
+        run: |
+          S3RCH_UPLOAD_FIXTURE=audio node scripts/test-private-upload-browser.mjs
+          S3RCH_UPLOAD_FIXTURE=video node scripts/test-private-upload-browser.mjs
       - name: Room task browser contracts (CI only)
         run: node scripts/test-room-tasks.mjs
       - name: Recording browser contracts (CI only)
@@ -64,8 +70,9 @@ jobs:
         run: >-
           node --import tsx --test --experimental-test-coverage
           --test-coverage-include=lib/meme-image.ts
+          --test-coverage-include=lib/meme-png-tags.ts
           --test-coverage-lines=90 --test-coverage-branches=80
-          lib/meme-image.test.ts
+          lib/meme-image.test.ts lib/meme-png-tags.test.ts
 
       - name: Nostr source and bounded relay coverage
         run: >-
@@ -162,9 +169,10 @@ jobs:
           node --import tsx --test --test-isolation=none --experimental-test-coverage
           --test-coverage-include=lib/media-owner-service.ts
           --test-coverage-include=lib/media-owner-client.ts
+          --test-coverage-include=lib/media-deletion.ts
           --test-coverage-include=lib/media-catalog.ts
           --test-coverage-lines=90 --test-coverage-branches=80
-          lib/media-owner-service.test.ts lib/media-owner-client.test.ts lib/media-catalog.test.ts lib/media-upload.test.ts
+          lib/media-owner-service.test.ts lib/media-owner-client.test.ts lib/media-deletion.test.ts lib/media-catalog.test.ts lib/media-upload.test.ts
       - name: Unlocked media identity contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage

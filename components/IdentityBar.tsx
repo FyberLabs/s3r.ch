@@ -1,5 +1,6 @@
 "use client";
 
+import { exportOwnerLinkEvidence } from "@/lib/identity/owner-link-evidence";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useConnect,
@@ -109,6 +110,8 @@ function IdentityBarInner() {
   const { mutateAsync: signMessageAsync } = useSignMessage();
 
   const session = useIdentitySession();
+  const evidenceSession = useRef(session?.address);
+  evidenceSession.current = session?.address;
   const hadSession = useRef(false);
   const walletAttempt = useRef(walletAgeAttempt());
   useEffect(() => { walletAttempt.current.clear(); }, [address, chainId]);
@@ -703,6 +706,35 @@ function IdentityBarInner() {
     }
   }
 
+  async function onExportOwnerEvidence() {
+    const wallet = session?.address;
+    if (!wallet) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const record = await getMeshKey(wallet);
+      const evidence = await exportOwnerLinkEvidence(record, wallet, window.location.origin);
+      const current = await getMeshKey(wallet);
+      if (evidenceSession.current !== wallet || !current || !record ||
+          current.seaPub !== record.seaPub || current.signedPayload !== record.signedPayload ||
+          current.walletSignature !== record.walletSignature) throw new Error();
+      const url = URL.createObjectURL(new Blob([evidence], {type: "application/json"}));
+      try {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "s3rch-wallet-link-evidence.json";
+        link.click();
+      } finally {
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      setMessage("Wallet-link evidence downloaded. Keep it private; it does not grant access.");
+    } catch {
+      setMessage("Existing wallet link could not be verified. No evidence exported.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onExportPaperBackup() {
     if (!session) return;
     if (prfAvailable === false) {
@@ -855,6 +887,9 @@ function IdentityBarInner() {
               className={btnPrimary}
             >
               Sign out
+            </button>
+            <button type="button" disabled={busy} onClick={() => void onExportOwnerEvidence()} className={btnSecondary}>
+              Export wallet-link evidence
             </button>
             {showWrap ? (
               <button

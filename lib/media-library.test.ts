@@ -1,6 +1,7 @@
 // Session HTTP and browser state contracts: CI only.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { tagMemePng } from "./meme-png-tags";
 import { createMediaLibrary, type MediaLibraryState } from "./media-library";
 import { createPrivateMediaBrowser } from "./media-browser-session";
 import { rememberUnlockedMeshPair, forgetUnlockedMeshPair } from "./identity/unlocked-mesh";
@@ -26,7 +27,7 @@ test("catalog pagination and image bytes stay in temporary browser state",async(
     await item.library.open("unknown","tenant");assert.deepEqual(item.pages,[]);
     await item.library.load();assert.deepEqual(item.state().objects,["owned"]);assert.equal(item.state().nextPage,1);
     await item.library.open("owned","tenant");assert.deepEqual([...item.bytes],[0,0,0]);
-    assert.deepEqual(item.state().preview,{url:"blob:private",name:"image.png",mediaType:"image/png"});
+    assert.deepEqual(item.state().preview,{url:"blob:private",name:"image.png",mediaType:"image/png",tags:[]});
     await item.library.load(15);assert.deepEqual(item.revoked,["blob:private"]);assert.equal(item.state().nextPage,null);
     item.library.reset();assert.equal(item.state().loaded,false);assert.deepEqual(item.state().objects,[]);
   } finally {item.library.dispose();}
@@ -118,4 +119,79 @@ test("audio and video previews use temporary URLs and zero plaintext",async()=>{
       assert.equal(item.state().preview?.mediaType,mediaType);item.library.reset();assert.deepEqual(item.revoked,["blob:clip"]);
     } finally {item.library.dispose();}
   }
+});
+
+test("decrypted PNG tags live only with the preview and clear on identity change",async()=>{
+  const bytes=tagMemePng(new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jp1sAAAAASUVORK5CYII=","base64")),[" Team ","demo"]);
+  const item=setup({browser:()=>({
+    catalog:async()=>({at:1,objects:["owned"],nextPage:null,principal:key}),
+    status:async()=>{},open:async()=>({description:{name:"meme.png",mediaType:"image/png"},bytes}),
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    await item.library.load();await item.library.open("owned","tenant");
+    assert.deepEqual(item.state().preview?.tags,["team","demo"]);
+    assert.ok(bytes.every(value=>value===0));
+    rememberUnlockedMeshPair("test",pair);
+    assert.equal(item.state().preview,null);assert.deepEqual(item.revoked,["blob:private"]);
+  }finally{item.library.dispose();}
+});
+
+test("deletion requires confirmation and retries the same prepared intent",async()=>{
+  let prepared=0,submitted=0;const intent={object:"owned"};
+  const item=setup({browser:()=>({
+    catalog:async()=>({at:1,objects:["owned"],nextPage:null,principal:key}),
+    prepareDeletion:async()=>{prepared++;return intent;},
+    submitDeletion:async(value:unknown)=>{assert.equal(value,intent);if(++submitted===1)throw Error("lost response");},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    item.library.requestDeletion("unknown");await item.library.confirmDeletion("tenant");assert.equal(prepared,0);
+    await item.library.load();item.library.requestDeletion("owned");assert.equal(prepared,0);
+    await item.library.load();await item.library.open("owned","tenant");assert.deepEqual(item.state().objects,["owned"]);
+    item.library.cancelDeletion();assert.equal(item.state().deletion,null);assert.equal(submitted,0);
+    item.library.requestDeletion("owned");await item.library.confirmDeletion("tenant");
+    assert.equal(item.state().deletion?.prepared,true);assert.match(item.state().message,/same request/);
+    await item.library.confirmDeletion("tenant");assert.equal(prepared,1);assert.equal(submitted,2);
+    assert.deepEqual(item.state().objects,[]);assert.equal(item.state().deletion,null);
+    assert.match(item.state().message,/cleanup is pending/);
+  }finally{item.library.dispose();}
+});
+
+test("identity reset discards an in-flight deletion without submitting it",async()=>{
+  let release!:(value:unknown)=>void,started!:()=>void,submitted=0;
+  const pending=new Promise(resolve=>{release=resolve;}),began=new Promise<void>(resolve=>{started=resolve;});
+  const item=setup({browser:()=>({
+    catalog:async()=>({at:1,objects:["owned"],nextPage:null,principal:key}),
+    prepareDeletion:async()=>{started();return pending;},submitDeletion:async()=>{submitted++;},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    await item.library.load();item.library.requestDeletion("owned");const deleting=item.library.confirmDeletion("tenant");
+    await began;item.library.reset();release({object:"owned"});await deleting;
+    assert.equal(submitted,0);assert.equal(item.state().deletion,null);assert.deepEqual(item.state().objects,[]);
+  }finally{release({});item.library.dispose();}
+});
+
+test("deletion preparation failure permits retry without claiming acceptance",async()=>{
+  const item=setup({browser:()=>({catalog:async()=>({at:1,objects:["owned"],nextPage:null,principal:key}),
+    prepareDeletion:async()=>{throw Error("denied");},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {await item.library.load();item.library.requestDeletion("owned");await item.library.confirmDeletion("tenant");
+    assert.equal(item.state().deletion?.prepared,false);assert.match(item.state().message,/could not be prepared/);
+  }finally{item.library.dispose();}
+});
+
+test("temporary session failure retains the original deletion intent without submitting",async()=>{
+  let requests=0,prepared=0,submitted=0;const intent={object:"owned"};
+  const item=setup({fetcher:async()=>{
+    requests++;if(requests===3)return new Response("unavailable",{status:503});
+    if(requests===4)return new Response(new ReadableStream({start(controller){controller.error(Error("connection lost"));}}),{headers:{"content-type":"application/json"}});
+    return Response.json({enabled:true,principal:key,expiresAt:100000});
+  },browser:()=>({catalog:async()=>({at:1,objects:["owned"],nextPage:null,principal:key}),
+    prepareDeletion:async()=>{prepared++;return intent;},
+    submitDeletion:async(value:unknown)=>{assert.equal(value,intent);if(++submitted===1)throw Error("lost");},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {await item.library.load();item.library.requestDeletion("owned");await item.library.confirmDeletion("tenant");
+    await item.library.confirmDeletion("tenant");assert.equal(submitted,1);assert.equal(item.state().deletion?.prepared,true);
+    await item.library.confirmDeletion("tenant");assert.equal(submitted,1);assert.equal(item.state().deletion?.prepared,true);
+    await item.library.confirmDeletion("tenant");assert.equal(submitted,2);assert.equal(prepared,1);
+  }finally{item.library.dispose();}
 });

@@ -10,8 +10,8 @@ function setup(){let stops=0,revoked=0,blob:Blob|null=null,timer:(()=>void)|null
 test("capture is explicit, bounded and exported without upload",async()=>{
  for(const mode of ["audio","video"] as const){const h=setup();let constraints:MediaStreamConstraints|undefined;h.deps.getUserMedia=async c=>{constraints=c;return h.stream;};await h.draft.start(mode);
  assert.equal(h.draft.getState().phase,"recording");assert.equal(constraints?.audio,true);assert.equal(!!constraints?.video,mode==="video");
- h.data(0);h.data();h.draft.stop();assert.equal(h.draft.getState().phase,"stopping");assert.ok(h.stops>0);h.finish();assert.equal(h.draft.getState().phase,"ready");assert.equal(h.blob?.size,3);assert.equal(h.blob?.type,`${mode}/webm`);assert.equal(h.draft.getState().name,`s3rch-${mode}.webm`);
- h.draft.clear();assert.equal(h.revoked,1);assert.equal(h.draft.getState().url,null);h.draft.stop();}
+ h.data(0);h.data();h.draft.stop();assert.equal(h.draft.getState().phase,"stopping");assert.ok(h.stops>0);h.finish();assert.equal(h.draft.getState().phase,"ready");assert.equal(h.draft.getState().blob,h.blob);assert.equal(h.blob?.size,3);assert.equal(h.blob?.type,`${mode}/webm`);assert.equal(h.draft.getState().name,`s3rch-${mode}.webm`);
+ h.draft.clear();assert.equal(h.revoked,1);assert.equal(h.draft.getState().url,null);assert.equal(h.draft.getState().blob,null);h.draft.stop();}
  assert.equal(RECORDING_MS_MAX,120000);
 });
 test("duration stops capture; oversize, empty and recorder errors discard it",async()=>{
