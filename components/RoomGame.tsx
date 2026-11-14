@@ -5,7 +5,7 @@ import { type ChatMessage } from "@/lib/chat";
 import { admittedRoomGames, type RoomGameAction } from "@/lib/room-game";
 import { isPresenceLive, shortPresenceAddress, type PresenceEntry } from "@/lib/presence";
 import { useRoomAuthority } from "./RoomAuthorityProvider";
-import { objectOwner, useIdentitySession } from "./useIdentitySession";
+import { useIdentitySession } from "./useIdentitySession";
 import { btnPrimary, field } from "@/lib/brand-ui";
 
 export function RoomGame({ roomId, messages, presence, onPublicGraph, seedWsUp, onComposed }: {
@@ -14,7 +14,7 @@ export function RoomGame({ roomId, messages, presence, onPublicGraph, seedWsUp, 
 }) {
   const session = useIdentitySession();
   const { current: authority } = useRoomAuthority();
-  const actor = session ? objectOwner(session) : null;
+  const actor = session?.owner && authority?.authority.graph.principalForKey(session.owner, Math.floor(Date.now() / 1000)) || null;
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const current = useRef({ actor, roomId, authority, onPublicGraph });

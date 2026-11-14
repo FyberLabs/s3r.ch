@@ -143,6 +143,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
   // Every private overlay, child draft, selection and subscription belongs to this
   // mount. A resolved owner change replaces it; a refresh retains but hides it.
   const session = identity ?? null;
+  const roomPrincipal = session?.owner && roomAuthority?.authority.graph.principalForKey(session.owner, Math.floor(Date.now() / 1000)) || undefined;
   const sessionResolved = identity !== undefined;
   const active = useRef(true);
   useLayoutEffect(() => {
@@ -697,7 +698,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
       setRoomShareMessage("Room access could not be shared."); return;
     }
     if (!canMutate()) return;
-    const prepared = prepareShareRoomIntoMesh(see.acl, room, objectOwner(session));
+    const prepared = prepareShareRoomIntoMesh(see.acl, room, roomPrincipal ?? "");
     if ("denied" in prepared) {
       setRoomShareMessage("Could not share.");
       setConfirmShareRoomId(null);
@@ -756,7 +757,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
       setConfirmShareRoomId(null);
       return;
     }
-    const prepared = prepareUnshareRoomIntoMesh(see.acl, room, objectOwner(session));
+    const prepared = prepareUnshareRoomIntoMesh(see.acl, room, roomPrincipal ?? "");
     if ("denied" in prepared) {
       setRoomShareMessage("Could not unshare this room.");
       setConfirmUnshareRoomId(null);
@@ -779,7 +780,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
   }
 
   const composeRoomId =
-    tab === "mine" && openRoom && ownsRoom(openRoom, session ? objectOwner(session) : undefined)
+    tab === "mine" && openRoom && ownsRoom(openRoom, roomPrincipal)
       ? openRoom.id
       : undefined;
 
@@ -901,12 +902,12 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
         mine={tab === "mine"}
         network={tab === "network"}
         granted={tab === "granted"}
-          owned={ownsRoom(openRoom, session ? objectOwner(session) : undefined)}
+          owned={ownsRoom(openRoom, roomPrincipal)}
           shared={publishedRooms.has(openRoom.id)}
           confirmShare={confirmShareRoomId === openRoom.id}
           confirmUnshare={confirmUnshareRoomId === openRoom.id}
           shareMessage={roomShareMessage}
-          sessionAddress={session ? objectOwner(session) : null}
+          sessionAddress={roomPrincipal ?? null}
           onClose={() => {
             setOpenRoomId(null);
             setRoomShareMessage(null);
