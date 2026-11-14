@@ -33,7 +33,7 @@ No such hosted source is currently installed. The #440 read-only resolver and
 #464 local link export do not prove global completeness. OIDC additionally needs
 an owning fresh-login flow supplying the challenge nonce, configured client and
 exact tenant claim. Startup metadata cookies are not signed-link proofs. Browser
-integration with real wallets/Keycloak, actual source deployment, and any lost-key
+provider/UI integration with real wallets/Keycloak, actual source deployment, and any lost-key
 recovery remain outstanding; #444 must stay open for them.
 
 This is login to a resolved existing identity, not reconstruction of a private
@@ -63,3 +63,34 @@ prints proofs, cookies, credential values or signed records. Every context and
 browser closes in `finally`; no shared service or persistent fixture is mutated.
 The isolated result does not establish hosted identity readiness. The existing
 startup linked-login scenario still covers the separate metadata/existing-key UI.
+
+## Linked wallet browser controller
+
+`createLinkedWalletClient` in `lib/identity/linked-wallet-client.ts` is a browser
+controller for the linked endpoints. It asks for a challenge before invoking the
+signer, so the current hosted `503` response produces no wallet prompt. It checks
+the exact challenge type, origin, lifetime, wallet credential, SEA subject and
+link identifier, then constructs SIWE over the challenge hash and nonce. Decoding
+checks signing intent only; it does not verify the issuer MAC or establish trust.
+
+Callers provide the selected checksummed wallet address, decimal chain ID, and
+monotonic wallet/session revisions. Increase revisions for every account, chain,
+connection or session change (including away-and-back changes), call `cancel()`
+on those events and unmount, and pass the selected account explicitly to the
+wallet signer. The controller checks selection around every await, refuses
+concurrent attempts, bounds response bodies to 8 KiB, and aborts after 30 seconds.
+Late signing results cannot start an exchange. Cancellation cannot undo an
+exchange the server already accepted or retract an in-flight Set-Cookie response;
+the owning session lifecycle must serialize logout/account switching with session
+refresh before publishing authority. After a true result, refresh the existing server session and publish identity only
+if the same revisions still apply. This controller does not call
+`identitySessionChanged` or provide that UI orchestration. A false result must never
+update UI identity.
+
+No UI button or capability flag is added: the production route still has no
+trusted source. OIDC flow, provider event wiring, session lifecycle integration,
+and lost-key recovery remain separate owning work. The existing nightly
+`wallet-linked-session` case now bundles this controller in Chromium, first
+exercises the actual unconfigured route with zero signing calls, then admits
+against the explicitly synthetic source and signer. It does not test a real wallet
+extension or make a deployed-readiness claim.
