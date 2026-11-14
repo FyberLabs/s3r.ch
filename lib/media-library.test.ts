@@ -289,3 +289,17 @@ test("failed new sharing cannot label or resume a different saved recipient",asy
     assert.match(f.state().message,/not undone/);
   } finally {f.library.dispose();}
 });
+
+test("unshare UI uses recoverable removal and preserves the selected operation",async()=>{
+  const reader="fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
+  const calls:unknown[]=[];
+  const f=setup({browser:()=>({catalog:async()=>({at:1,objects:["owned"],nextPage:1,principal:key}),recipients:async()=>[reader],
+    share:async(_tenant:string,target:unknown)=>{calls.push(target);return {object:"owned",reader,token:"saved",remove:true,pending:true};},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    await f.library.load();await f.library.unshare("tenant","owned",reader);assert.equal(calls.length,0);
+    await f.library.recipients("owned");await f.library.unshare("tenant","owned",reader);
+    assert.deepEqual(calls,[{object:"owned",owner:key,reader,remove:true}]);assert.equal(f.state().sharing?.remove,true);
+    assert.match(f.state().message,/Removal is saved/);
+  } finally {f.library.dispose();}
+});

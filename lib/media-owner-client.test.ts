@@ -355,3 +355,13 @@ test("sharing commits use the comparison fence without refreshing the owner view
   assert.deepEqual(calls,["share-check","mutate"]);
   await assert.rejects(client.commitShareIntent(object,{...held},"grant",grant,signal),PrivateMediaConflict);
 });
+
+test("unshare preparation cancels only the selected reader and omits its wrap binding",async()=>{
+  const context=shareContext(owner,other,object);context.grants[1].stated=0;context.snapshot.entries[1].stated=0;
+  Reflect.deleteProperty(context.bindings,other);let calls=0;
+  const client=createPrivateMediaOwner(async(url)=>{calls++;assert.equal(action(url),"unshare-view");return Response.json(context);},()=>100);
+  const plan=await client.prepareUnshare(object,owner,other,key());
+  assert.equal(plan.grants[1].claims.stated,0);assert.deepEqual(Object.keys(plan.bindings),[owner]);assert.equal(calls,1);
+  assert.throws(()=>parseMediaSharePlan(context,object,owner,other));
+  assert.throws(()=>parseMediaSharePlan({...context,bindings:{...context.bindings,[other]:{pub:other,epub:other,head:0}}},object,owner,other,true));
+});

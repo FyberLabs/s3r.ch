@@ -64,8 +64,8 @@ export function createPrivateMediaReader(fetcher: typeof fetch = fetch, clock = 
       wrap: material.wrap as ItemReaderWrap, reference: material.reference as MediaCiphertextReference, encoded: data.wrapBase64 });
   }
   return Object.freeze({
-    async prepareSharing(object:string,tenant:string,epriv:string,epub:string,planInput:unknown,owner:string,recipient:string,scalar:Uint8Array,signal:AbortSignal) {
-      const plan=parseMediaSharePlan(planInput,object,owner,recipient),key=new Uint8Array(scalar);
+    async prepareSharing(object:string,tenant:string,epriv:string,epub:string,planInput:unknown,owner:string,recipient:string,scalar:Uint8Array,signal:AbortSignal,remove=false) {
+      const plan=parseMediaSharePlan(planInput,object,owner,recipient,remove),key=new Uint8Array(scalar);
       let dek:Uint8Array|undefined;
       try {
         signal.throwIfAborted();
@@ -84,9 +84,10 @@ export function createPrivateMediaReader(fetcher: typeof fetch = fetch, clock = 
         const revisionId=document.manifest.revisionId;
         const finalization=signPrivateMediaFinalization({object,previousEpoch:plan.previousEpoch,epoch,revisionId,
           candidateRevisionIds:[revisionId],previousFinalizationId:plan.previousFinalizationId},key,plan.ownerPub);
-        const readers=plan.grants.map(g=>({account:g.accessor,identityPub:plan.bindings[g.accessor].pub,
+        const active=plan.grants.filter(g=>g.stated===1);
+        const readers=active.map(g=>({account:g.accessor,identityPub:plan.bindings[g.accessor].pub,
           pub:plan.bindings[g.accessor].pub,epub:plan.bindings[g.accessor].epub}));
-        const wrapped=await wrapItemDekToReaders(dek,{object,epoch,revisionId},readers,plan.grants.map(g=>g.accessor));
+        const wrapped=await wrapItemDekToReaders(dek,{object,epoch,revisionId},readers,active.map(g=>g.accessor));
         if(!wrapped.ok)throw Error("Private wrapping refused");
         if(clock()>=current.expiresAt)throw Error("Private media expired");
         const final=await delivery(object,epub,signal);

@@ -255,3 +255,8 @@ file or raw file key; identity changes clear the visible sharing controls.
 Sharing publication uses `share-check` and retains the exact returned fence for
 the following write. It never refreshes the owner view between comparison and
 publication. Concurrent state changes refuse instead of rewriting a stale plan.
+
+Stop sharing also uses encrypted recovery: `unshare-view` cancels the selected
+recipient while preparing the remaining readers for the next epoch. The removed
+reader receives no new wrap. The cancellation can take effect before settlement;
+remaining access can be pending until the saved epoch and statuses are ready.

@@ -59,7 +59,7 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     });
   }
   return Object.freeze({
-    share(tenant:string,target:{object:string;owner:string;reader:string},signal?:AbortSignal){
+    share(tenant:string,target:{object:string;owner:string;reader:string;remove?:boolean},signal?:AbortSignal){
       return locked(()=>run((pair,transport,deadline)=>shareMedia({tenant,pair,fetcher:transport,signal:deadline,journal:createShareJournal(),target}),signal),"s3rch-private-share-v1");
     },
     resumeShare(tenant:string,expected:PendingShare,signal?:AbortSignal){

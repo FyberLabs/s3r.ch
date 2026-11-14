@@ -253,3 +253,10 @@ test("share reconciliation proxy keeps caller scope and bounded state responses"
   assert.equal(calls,1);
   assert.equal((await service(async()=>Response.json({at:100,state:"write-now"}))("share-check",request(body))).status,403);
 });
+
+test("unshare proxy verifies the cancellation projection without a removed-reader binding",async()=>{
+  const reader="fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
+  const context=shareContext(principal,reader,object);context.grants[1].stated=0;context.snapshot.entries[1].stated=0;Reflect.deleteProperty(context.bindings,reader);
+  assert.equal((await service(async()=>Response.json(context))("unshare-view",request({object,reader}))).status,200);
+  assert.equal((await service(async()=>Response.json(context))("share-view",request({object,reader}))).status,403);
+});
