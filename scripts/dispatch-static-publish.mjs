@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 
@@ -8,28 +9,30 @@ export const INTERVAL_MS = 5_000;
 const SHA = /^[0-9a-f]{40}$/;
 const RUN = /^[1-9]\d{0,18}$/;
 const TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const NONCE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const WORKFLOWS = {
   test: 's3rch-test-static.yml',
   release: 's3rch-prod-static.yml',
 };
 
-export function requestFor(kind, env) {
+export function requestFor(kind, env, nonce = randomUUID()) {
   const runId = env.DISPATCH_RUN_ID ?? '';
   if (!RUN.test(runId)) throw Error('Dispatch run id is required');
+  if (!NONCE.test(nonce)) throw Error('Dispatch nonce is required');
   if (kind === 'test') {
     const revision = env.DISPATCH_REVISION ?? '';
     if (!SHA.test(revision)) throw Error('Deployed revision is required');
-    const title = `static-test-${runId}`;
+    const title = `static-test-${runId}-${nonce}`;
     return { workflow: WORKFLOWS.test, title, inputs: { revision, source_run_id: runId, dispatch_title: title } };
   }
   if (kind === 'release') {
     const tag = env.DISPATCH_TAG ?? '';
     if (!TAG.test(tag)) throw Error('Stable release tag is required');
-    const title = `static-release-${tag}-${runId}`;
+    const title = `static-release-${tag}-${runId}-${nonce}`;
     return { workflow: WORKFLOWS.release, title, inputs: { tag, source_run_id: runId, dispatch_title: title } };
   }
   if (kind === 'reconcile') {
-    const title = `static-reconcile-${runId}`;
+    const title = `static-reconcile-${runId}-${nonce}`;
     return { workflow: WORKFLOWS.test, title, inputs: { revision: '', source_run_id: '', dispatch_title: title } };
   }
   throw Error('Unknown static publish');

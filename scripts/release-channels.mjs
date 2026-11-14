@@ -164,7 +164,9 @@ async function main() {
   requireStableTag({ repository, channel: 'prod', tag: stableTag, revision });
   // A tag can arrive while merge-to-test is still running. Wait for its exact
   // successful deployment manifest, never fall back to a newer :test alias.
-  const deadline = Date.now() + 35 * 60 * 1000;
+  // The deploy job publishes that manifest, then the static job may use its
+  // full 45 minute limit before the workflow can complete.
+  const deadline = Date.now() + (35 + 45) * 60 * 1000;
   let candidate;
   while (!(candidate = download(repository, tag, 'test', revision))) {
     if (Date.now() >= deadline) throw Error('Exact revision has no successful test release');
