@@ -10,6 +10,17 @@ import { parseForumAuthority } from "../lib/identity/forum-authority-records";
 import { seaToPrincipalKey } from "../lib/identity/forum-check";
 import type { SeaPair } from "../lib/identity/sea";
 if (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_EVENT_NAME !== "schedule") throw Error("Room browser scenario runs only in the scheduled nightly batch");
+const caseNames = ["room-create-share", "writer-to-owner", "forged-author", "forged-id", "unsigned", "owner-to-writer", "parent-revocation"] as const;
+const outcomes = new Map<string, "pass" | "fail" | "blocked">();
+function report(name: string, result: "pass" | "fail" | "blocked", blockedBy?: string[]) {
+  outcomes.set(name, result);
+  console.log(JSON.stringify({ scenario: "signed-room-chat", case: name, result, ...(blockedBy ? { blockedBy } : {}) }));
+}
+async function runCase(name: string, requires: string[], perform: () => Promise<void>) {
+  const blockedBy = requires.filter(dependency => outcomes.get(dependency) !== "pass");
+  if (blockedBy.length) { report(name, "blocked", blockedBy); return; }
+  try { await perform(); report(name, "pass"); } catch { report(name, "fail"); }
+}
 async function main() {
 const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
 const [owner, writer] = await Promise.all([sea.pair(), sea.pair()]);
@@ -71,20 +82,36 @@ try {
   const url = `http://127.0.0.1:${address.port}`;
   await Promise.all([first.goto(url),second.goto(url)]);
   const item = {id:`room_${seaToPrincipalKey(writer.pub)}_${"b".repeat(32)}`,author:writer.pub,ts:at};
-  await first.evaluate(f => (window as any).initialize(f), {pair:writer,squad,config,item,at,create:true});
-  await second.evaluate(f => (window as any).initialize(f), {pair:owner,squad,config,item,at,create:false});
-  const row = await first.evaluate(() => (window as any).send("signed hello")); assert.ok(row);
-  assert.deepEqual(await second.evaluate(value => (window as any).receive(value),row),{author:writer.pub,body:"signed hello"});
-  for (const forged of [{...row,author:owner.pub},{...row,id:"s3rch:chat:"+"a".repeat(64)},{...row,sig:undefined}])
-    assert.equal(await second.evaluate(value => (window as any).receive(value),forged),null);
-  const reply = await second.evaluate(() => (window as any).send("signed reply")); assert.ok(reply);
-  assert.deepEqual(await first.evaluate(value => (window as any).receive(value),reply),{author:owner.pub,body:"signed reply"});
-  revoked = true;
-  assert.equal(await first.evaluate(value => (window as any).receive(value),reply),null);
-  assert.equal(await second.evaluate(value => (window as any).receive(value),row),null);
-  assert.equal(posts,1); assert.equal(revision,1); assert.deepEqual(errors,[]);
-  console.log("PASS two-identity room chat, signed author/ID binding, unsigned refusal and parent revocation");
+  let row: any, reply: any;
+  await runCase("room-create-share", [], async () => {
+    await first.evaluate(f => (window as any).initialize(f), {pair:writer,squad,config,item,at,create:true});
+    await second.evaluate(f => (window as any).initialize(f), {pair:owner,squad,config,item,at,create:false});
+    assert.equal(posts,1); assert.equal(revision,1);
+  });
+  await runCase("writer-to-owner", ["room-create-share"], async () => {
+    row = await first.evaluate(() => (window as any).send("signed hello")); assert.ok(row);
+    assert.deepEqual(await second.evaluate(value => (window as any).receive(value),row),{author:writer.pub,body:"signed hello"});
+  });
+  for (const [name, patch] of [["forged-author",{author:owner.pub}], ["forged-id",{id:"s3rch:chat:"+"a".repeat(64)}], ["unsigned",{sig:undefined}]] as const)
+    await runCase(name,["writer-to-owner"],async()=>{
+      assert.equal(await second.evaluate(value => (window as any).receive(value),{...row,...patch}),null);
+    });
+  await runCase("owner-to-writer",["room-create-share"],async()=>{
+    reply = await second.evaluate(() => (window as any).send("signed reply")); assert.ok(reply);
+    assert.deepEqual(await first.evaluate(value => (window as any).receive(value),reply),{author:owner.pub,body:"signed reply"});
+  });
+  await runCase("parent-revocation",["writer-to-owner","owner-to-writer"],async()=>{
+    revoked = true;
+    assert.equal(await first.evaluate(value => (window as any).receive(value),reply),null);
+    assert.equal(await second.evaluate(value => (window as any).receive(value),row),null);
+    assert.deepEqual(errors,[]);
+  });
+  if (caseNames.some(name=>outcomes.get(name)!=="pass")) process.exitCode = 1;
 } finally { await browser?.close(); server.close(); }
 
 }
-void main().catch(error => { console.error(error); process.exitCode = 1; });
+void main().catch(() => {
+  if (!outcomes.has("room-create-share")) report("room-create-share", "fail");
+  for (const name of caseNames) if (!outcomes.has(name)) report(name, "blocked", ["room-create-share"]);
+  console.error("Signed room scenario setup or cleanup failed."); process.exitCode = 1;
+});
