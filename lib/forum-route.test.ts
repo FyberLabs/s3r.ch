@@ -57,6 +57,18 @@ test("forum grants and revocation use the SEA principal across credential metada
     assert.equal((await post(alice, { action: "uninvite", guest: BOB })).status, 200);
     assert.deepEqual((await read(bob)).body.shared, []);
     assert.equal((await post(alice, { action: "invite", guest: "0x" + "a".repeat(40) })).status, 400);
+    const desktop = await post(alice, { action: "desktop", session: "11111111-1111-4111-8111-111111111111",
+      snapshot: { handle: "abc123def0", mime: "image/png", seq: 2 }, thinking: [], files: [], secrets: [],
+      png_base64: Buffer.from("private snapshot unit fixture").toString("base64") });
+    assert.equal(desktop.status, 200);
+    const shot = origin + "/api/forum?snapshot=abc123def0";
+    assert.equal((await GET(new Request(shot))).status, 401);
+    assert.equal((await GET(new Request(shot, { headers: { cookie: bob } }))).status, 404);
+    const ownerShot = await GET(new Request(shot, { headers: { cookie: linked } }));
+    assert.equal(ownerShot.status, 200);
+    assert.equal(ownerShot.headers.get("content-type"), "image/png");
+    assert.equal(ownerShot.headers.get("cache-control"), "private, no-store");
+    assert.equal(await ownerShot.text(), "private snapshot unit fixture");
     assert.equal((await post(alice, { action: "token" })).status, 410);
     const malformed = await POST(new Request(origin + "/api/forum", { method: "POST", headers: { cookie: alice }, body: "{" }));
     assert.equal(malformed.status, 400);
