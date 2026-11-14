@@ -12,8 +12,7 @@ export function PrivateMediaPreview({preview}: {preview:{url:string;name:string;
       // Decrypted bytes stay in a temporary browser URL, never an image optimizer.
       // eslint-disable-next-line @next/next/no-img-element
       <img src={preview.url} alt={preview.name} className="max-h-[70vh] max-w-full object-contain" /> :
-      kind==="audio" ? <audio controls preload="metadata" src={preview.url} aria-label={preview.name} className="w-full" /> :
-      <video controls playsInline preload="metadata" src={preview.url} aria-label={preview.name} className="max-h-[70vh] max-w-full" />}
+      <PrivateMediaPlayer key={preview.url} kind={kind} url={preview.url} name={preview.name}/> }
     <figcaption>{preview.name}</figcaption>
     </figure>
     </PostContent>
