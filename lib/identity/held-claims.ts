@@ -6,6 +6,7 @@
  */
 
 import { getAddress } from "viem";
+import { isSeaPubkey } from "./forum-check";
 
 export type HeldClaimOption = {
   id: string;
@@ -209,12 +210,12 @@ export function heldClaimOptionsFromIndicators(
 ): HeldClaimOption[] {
   let checksum: string;
   try {
-    checksum = getAddress(address);
+    checksum = isSeaPubkey(address) ? address : getAddress(address);
   } catch {
     return [];
   }
   const options: HeldClaimOption[] = [
-    { id: walletClaimId(checksum), label: checksum },
+    { id: isSeaPubkey(checksum) ? checksum : walletClaimId(checksum), label: checksum },
   ];
   const seen = new Set<string>([checksum.toLowerCase()]);
   for (const raw of indicators) {

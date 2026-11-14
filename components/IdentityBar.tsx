@@ -346,7 +346,8 @@ function IdentityBarInner() {
     ],
   );
   const objectOwner = session?.owner || null;
-  const confirms = useHeldConfirms(objectOwner);
+  // Confirmation proofs remain bound to the credential that confirmed them.
+  const confirms = useHeldConfirms(session?.address || null);
   const overlayLookups = useMemo(
     () => ({
       ...heldLookups,
@@ -1005,11 +1006,11 @@ function IdentityBarInner() {
       {meshLine ? <p className="mt-3 text-xs text-ink-muted">{meshLine}</p> : null}
       {session ? (
         <>
-          <HeldConfirmControls
-            address={session.owner}
+          {session.address && <HeldConfirmControls
+            address={session.address}
             proofs={confirms.proofs}
             onHeld={confirms.putProof}
-          />
+          />}
           <UserNodeControls
             address={session.owner}
             overlay={mineUser.overlay}

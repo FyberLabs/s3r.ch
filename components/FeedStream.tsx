@@ -73,6 +73,7 @@ import { RoomsList } from "@/components/RoomsList";
 import { TagChips } from "@/components/TagChips";
 import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
+import { mineOwnerChanged } from "@/lib/mine-session";
 import { objectOwner, useIdentitySessionState } from "@/components/useIdentitySession";
 import { acquireBrowserGun } from "@/lib/browser-gun";
 import {
@@ -125,7 +126,12 @@ export function FeedStream() {
   registerGunRef.current = registerGun;
   const [seed, setSeed] = useState<FeedItem[]>([]);
   const [overlay, setOverlay] = useState<FeedItem[]>([]);
-  useEffect(() => { setOverlay([]); }, [session?.owner]);
+  const overlayOwner = useRef<string | null>(null);
+  const observedOwner = identity === undefined ? undefined : identity?.owner || null;
+  useEffect(() => {
+    if (mineOwnerChanged(overlayOwner.current, observedOwner)) setOverlay([]);
+    if (observedOwner !== undefined) overlayOwner.current = observedOwner;
+  }, [observedOwner]);
   const [meshItems, setMeshItems] = useState<FeedItem[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);

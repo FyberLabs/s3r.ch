@@ -686,7 +686,7 @@ function presenceNodeAdmitted(
   if (protocolVersionOf(node.v) === null) return null;
   let address: string;
   try {
-    address = getAddress(node.address);
+    address = isSeaPubkey(node.address) ? node.address : getAddress(node.address);
   } catch {
     return null;
   }
