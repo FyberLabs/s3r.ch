@@ -31,5 +31,9 @@ state) and the listener on success or failure. Runner termination reclaims proce
 memory and the loopback socket after an interrupted run. Package installation and
 browser availability use the nightly runner's existing setup.
 
-The JSON report lists each named case as passed, failed or blocked. Failure output
+The JSON report lists each named case as passed, failed or blocked. The shared
+`nightly-case-results.mjs` writer also saves `sea-grants.xml` under
+`TEST_EVIDENCE_DIR` for the Infra JUnit collector; blocked cases become skipped.
+Missing, duplicate or unknown cases block the expected cases and add a fixed
+report-validation failure. Failure output
 contains static status only, never browser error details or captured URLs.
