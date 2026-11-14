@@ -60,7 +60,8 @@ for (const kind of ["wallet", "oidc"] as const) {
 }
 test("OIDC fresh login binds nonce, tenant, authentication time and issuer-configured audience", async () => {
   const h = await linkedSessionFixture("oidc"), challenge = (await h.sessions.linkedChallenge(h.credential))!;
-  for (const override of [{ nonce: "wrong" }, { tenant_id: "other" }, { auth_time: 199 }, { auth_time: 201 }])
+  for (const override of [{ nonce: "wrong" }, { tenant_id: "other" }, { auth_time: 199 }, { auth_time: 201 },
+    { sub: "another-person" }, { iss: "https://other.example" }, { aud: "another-client" }, { aud: ["site", "another-client"] }, { azp: "another-client" }])
     assert.equal(await h.sessions.exchangeLinked(challenge, await h.proof(challenge, override)), null);
 });
 test("linked HTTP challenge is same-origin and cookie-bound; hosted source absence refuses without IO", async () => {

@@ -96,7 +96,8 @@ export function createLinkedSessionAdmission(input: { source: LinkedSessionSourc
           algorithms: ["RS256", "PS256", "ES256"], issuer: provider.issuer, audience: provider.clientId,
           currentDate: new Date(now * 1000), requiredClaims: ["sub", "iat", "exp", "nonce", "auth_time"],
         });
-        return payload.sub === credential.sub && payload[provider.tenantClaim] === credential.tenant && payload.nonce === challenge.id &&
+        return (payload.aud === provider.clientId || (Array.isArray(payload.aud) && payload.aud.length === 1 && payload.aud[0] === provider.clientId)) &&
+          payload.sub === credential.sub && payload[provider.tenantClaim] === credential.tenant && payload.nonce === challenge.id &&
           (payload.azp === undefined || payload.azp === provider.clientId) &&
           Number.isSafeInteger(payload.iat) && payload.iat! >= challenge.issuedAt && payload.iat! <= now &&
           Number.isSafeInteger(payload.exp) && payload.exp! > now &&

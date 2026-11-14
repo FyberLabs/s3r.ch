@@ -62,8 +62,8 @@ export async function linkedSessionFixture(kind: "wallet" | "oidc") {
   async function proof(challenge: string, overrides: Record<string, unknown> = {}) {
     const c = decodeJwt(challenge);
     if (kind === "wallet") return siwe(new TextEncoder().encode(challenge), c.iat!, c.jti!, origin + "/api/identity/sea/linked-exchange");
-    return { idToken: await new SignJWT({ tenant_id: tenant, nonce: c.jti, auth_time: now, ...overrides }).setSubject("person")
-      .setIssuer(issuer).setAudience("site").setIssuedAt(now).setExpirationTime(now + 60).setProtectedHeader({ alg: "ES256" }).sign(key) };
+    return { idToken: await new SignJWT({ sub: "person", iss: issuer, aud: "site", tenant_id: tenant, nonce: c.jti, auth_time: now, ...overrides })
+      .setIssuedAt(now).setExpirationTime(now + 60).setProtectedHeader({ alg: "ES256" }).sign(key) };
   }
   function revoke() {
     const row = { v: 1 as const, kind: "revoke" as const, principal, linkId: id, issuedAt: now, keySig: "pending" };
