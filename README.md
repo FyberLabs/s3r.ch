@@ -187,3 +187,9 @@ allocation rather than writing a second registration index. The protected source
 still retains its own capacity limit, so this does not claim complete quota reclamation. Existing data needs explicit provider and
 reference reconciliation before selecting the new mode. ACL reader wraps must
 use the corresponding version-3 allocation-bound configuration.
+
+Granted media navigation uses the protected reader catalog and keeps results in
+browser memory. Only currently authorized shared files appear; opening one
+performs fresh delivery checks. Catalog entries never enable owner deletion or
+sharing controls. Session changes clear both entries and previews. This adds no
+new credentials or storage activation.

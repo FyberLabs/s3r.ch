@@ -1,3 +1,4 @@
+import { readGrantedMedia } from "./media-reader-catalog";
 import { parseMediaDeletionIntent, type MediaDeletionIntent } from "./media-deletion";
 import { createUploadJournal } from "./media-upload-journal";
 import { uploadMedia, pendingMediaUpload, discardMediaUpload } from "./media-upload";
@@ -70,6 +71,9 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     },
     catalog(page:number,signal?:AbortSignal){
       return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).catalog(page,deadline),signal);
+    },
+    grantedCatalog(page:number,signal?:AbortSignal){
+      return run((_pair,transport,deadline)=>readGrantedMedia(page,transport,deadline),signal);
     },
     recipients(object:string,owner:string,signal?:AbortSignal){
       return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).recipients(object,owner,deadline),signal);
