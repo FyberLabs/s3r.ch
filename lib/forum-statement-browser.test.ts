@@ -17,7 +17,8 @@ async function setup(t: test.TestContext) {
       append: async (fence, additions, guard) => { guard(); if (fence !== String(revision)) return false; rows.push(...additions); revision++; return true; } } });
   const input = { item: { id: `stmt_${seaToPrincipalKey(f.a.pub)}_${"b".repeat(32)}`, author: f.a.pub, ts: f.now() },
     pair: f.a, squad, config, endpoint: "/api/squad/pilot/statement", signal: new AbortController().signal, clock: f.now,
-    read: async () => snapshot(), fetch: (async (url, init) => {
+    read: async () => snapshot(), fetch: (async function (this: unknown, url, init) {
+      assert.equal(this, undefined);
       calls++; posted = String(init?.body);
       assert.equal(init?.redirect, "error"); assert.equal(init?.credentials, "same-origin");
       assert.ok(!posted.includes(f.a.priv));

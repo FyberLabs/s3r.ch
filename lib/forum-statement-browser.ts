@@ -51,7 +51,8 @@ export async function admitBrowserStatement(input: {
   for (const accessor of readers) rows.push(await sign("see", { object: item.id, owner: item.author, accessor,
     from: item.ts, until: item.ts + 3600, stated: 1, hamState: item.ts, issuedAt: item.ts }));
   current();
-  const response = await input.fetch(input.endpoint, { method: "POST", mode: "same-origin", credentials: "same-origin", redirect: "error", cache: "no-store", signal,
+  const fetcher = input.fetch;
+  const response = await fetcher(input.endpoint, { method: "POST", mode: "same-origin", credentials: "same-origin", redirect: "error", cache: "no-store", signal,
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ version: 1, forumId: squad.forumId, owner: squad.owner, evaluatedAt: at, rows }) });
   // No response body is needed: read the authoritative history independently.
