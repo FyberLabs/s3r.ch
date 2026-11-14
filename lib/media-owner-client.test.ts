@@ -252,3 +252,18 @@ test("cleanup accepts only completion of the accepted command and never retries"
     await assert.rejects(invalid.cleanup(object,command));assert.equal(requests,1);
   }
 });
+
+test("cleanup catalog binds owner, exact commands, pages and response age",async()=>{
+  const result={at:100,objects:[{object,command:"a".repeat(64)}],nextPage:1,principal:owner};
+  const client=createPrivateMediaOwner(async(url,init)=>{
+    assert.equal(action(url),"cleanup-catalog");assert.deepEqual(JSON.parse(String(init?.body)),{page:0});return Response.json(result);
+  },()=>100);
+  assert.deepEqual(await client.cleanupCatalog(0),result);
+  await assert.rejects(client.cleanupCatalog(16));
+  for(const bad of [null,{...result,principal:other},{...result,nextPage:null},
+    {...result,objects:[{object,command:"bad"}]},{...result,objects:[result.objects[0],result.objects[0]]},
+    {...result,objects:[{object,command:"a".repeat(64),owner}]},{...result,objects:["bad"]}])
+    await assert.rejects(createPrivateMediaOwner(async()=>Response.json(bad),()=>100).cleanupCatalog(0));
+  let now=100;
+  await assert.rejects(createPrivateMediaOwner(async()=>{now=104;return Response.json(result);},()=>now).cleanupCatalog(0),PrivateMediaConflict);
+});

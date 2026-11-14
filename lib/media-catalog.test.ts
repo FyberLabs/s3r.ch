@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseMediaCatalogPage, isMediaCatalogPageNumber } from "./media-catalog";
+import { parseMediaCatalogPage, isMediaCatalogPageNumber, parseMediaCleanupPage } from "./media-catalog";
 const owner="axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
 const object="media_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_11111111111111111111111111111111";
 test("catalog fixed pagination and canonical owner scope",()=>{
@@ -15,4 +15,16 @@ test("catalog fixed pagination and canonical owner scope",()=>{
   assert.throws(()=>parseMediaCatalogPage(value,16,owner));
   assert.throws(()=>parseMediaCatalogPage(value,0,"other"));
   const copy=parseMediaCatalogPage(value,0,owner);copy.objects.length=0;assert.equal(value.objects.length,1);
+});
+
+test("cleanup pages preserve exact owner commands and reject malformed items",()=>{
+  const value={at:1,objects:[{object,command:"a".repeat(64)}],nextPage:1};
+  const copy=parseMediaCleanupPage(value,0,owner);
+  assert.deepEqual(copy,value);assert.notEqual(copy.objects,value.objects);assert.ok(Object.isFrozen(copy.objects[0]));
+  for(const bad of [null,[],{}, {...value,objects:null}, {...value,objects:[null]}, {...value,objects:[[]]},
+    {...value,objects:[1]}, {...value,objects:[{object,command:3}]},
+    {...value,objects:[{object,command:"bad"}]}, {...value,objects:[{object,command:"a".repeat(64),extra:true}]},
+    {...value,objects:[value.objects[0],value.objects[0]]}])
+    assert.throws(()=>parseMediaCleanupPage(bad,0,owner));
+  assert.throws(()=>parseMediaCleanupPage(value,0,"other"));
 });

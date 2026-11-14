@@ -84,6 +84,9 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
         return createPrivateMediaOwner(transport).submitDeletion(intent,deadline);
       },signal);
     },
+    cleanupCatalog(page:number,signal?:AbortSignal){
+      return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).cleanupCatalog(page,deadline),signal);
+    },
     cleanup(object:string,command:string,signal?:AbortSignal){
       return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).cleanup(object,command,deadline),signal);
     },

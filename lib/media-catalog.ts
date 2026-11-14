@@ -15,3 +15,14 @@ export function parseMediaCatalogPage(value: unknown, page: number, principal: s
         !object.startsWith("media_") || !isCanonicalObjectId(object) || objectPrincipal(object) !== principal)) throw Error("Invalid media catalog");
   return { at: row.at as number, objects: [...row.objects] as string[], nextPage: row.nextPage as number | null };
 }
+
+export type MediaCleanupItem = Readonly<{object:string;command:string}>;
+export function parseMediaCleanupPage(value:unknown,page:number,principal:string) {
+  if(!value || typeof value!=="object" || Array.isArray(value))throw Error("Invalid cleanup catalog");
+  const row=value as Record<string,unknown>;
+  if(!Array.isArray(row.objects) || row.objects.some(item=>!item || typeof item!=="object" || Array.isArray(item) ||
+    Object.keys(item).sort().join()!=="command,object" || typeof item.command!=="string" || !/^[0-9a-f]{64}$/.test(item.command)))
+    throw Error("Invalid cleanup catalog");
+  const parsed=parseMediaCatalogPage({...row,objects:row.objects.map(item=>item.object)},page,principal);
+  return {...parsed,objects:row.objects.map(item=>Object.freeze({object:item.object as string,command:item.command as string}))};
+}
