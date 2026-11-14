@@ -10,6 +10,7 @@ import { parseForumAuthority } from "../lib/identity/forum-authority-records";
 import { seaToPrincipalKey } from "../lib/identity/forum-check";
 import type { SeaPair } from "../lib/identity/sea";
 if (process.env.GITHUB_ACTIONS !== "true") throw Error("Forum browser contracts run in CI only");
+async function main() {
 const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
 const [owner, writer] = await Promise.all([sea.pair(), sea.pair()]);
 const at = 1700000060, config = { keys: [], pinnedIssuers: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] } };
@@ -67,3 +68,6 @@ try {
   assert.deepEqual(result, { allowed: true, denied: true }); assert.equal(posts, 2); assert.equal(revision, 1); assert.deepEqual(errors, []);
   console.log("PASS browser statement signing, protected admission/readback, idempotent retry and cancellation");
 } finally { await browser?.close(); server.close(); }
+
+}
+void main().catch(error => { console.error(error); process.exitCode = 1; });
