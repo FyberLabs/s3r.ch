@@ -55,3 +55,26 @@ see/post or cancellation diagnostics still refuse the operation, even if newer
 grants are present. Previously shared rooms or parent grant histories may therefore
 remain unavailable after their issuer rotates. No automatic grant renewal or
 history removal is performed.
+
+
+## Bounded transport and overload
+
+Signature admission does not promise lossless history delivery under overload.
+The receive path keeps at most 8192 unverified pending transport envelopes plus
+one in-flight verifier. It uses asynchronous WebCrypto and yields between
+batches. On ingress overflow it retains fresh candidates while the in-flight
+candidate progresses; an unverified candidate within a larger burst can be lost
+before authentication. Authority refresh does not automatically recover that
+candidate. Reopening a room retries the transport subscription, but does not
+guarantee recovery while the source remains overloaded or unavailable.
+
+Authenticated pending work has a separate 8192-row bound. Authenticated retries
+and unknown-author deferred input each have separate 256-row caches. Unknown
+input cannot consume authenticated retry capacity. Every delivery still requires
+current identity, signing key, and parent/room access; cached queue priority never
+establishes display authority. The visible history is also capped at 8192 rows.
+
+Bounded paging or resumable history recovery is tracked in
+[#485](https://github.com/FyberLabs/s3r.ch/issues/485). It requires transport
+progress semantics in addition to #445's signature and access checks; increasing
+an in-memory limit or retaining an unbounded promise backlog is not a substitute.
