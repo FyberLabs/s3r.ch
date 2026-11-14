@@ -10,15 +10,15 @@ function signed(overrides:Record<string,unknown>={}){
  const hash=createHash("sha256").update(JSON.stringify([0,e.pubkey,e.created_at,e.kind,e.tags,e.content])).digest();
  return {...e,id:hash.toString("hex"),sig:Buffer.from(schnorr.sign(hash,key,new Uint8Array(32))).toString("hex")};
 }
-test("only bounded authenticated events from followed publishers are admitted",()=>{
- const valid=signed();assert.ok(verifiedLiveEvent(valid,[author],now));
+test("only bounded authenticated events from followed publishers are admitted",async()=>{
+ const valid=signed();assert.ok(await verifiedLiveEvent(valid,[author],now));
  for(const raw of [null,[],{}, {...valid,kind:1},{...valid,pubkey:"b".repeat(64)},{...valid,id:"bad"},{...valid,sig:"bad"},{...valid,sig:"0".repeat(128)},
  {...valid,created_at:now-LIVE_MAX_AGE},{...valid,created_at:now+61},{...valid,created_at:1.5},{...valid,content:"changed"},{...valid,content:"x".repeat(16385)},
- {...valid,content:"\ud800"},{...valid,tags:null},{...valid,tags:Array(129).fill(["d","x"])},{...valid,tags:[[]]},{...valid,tags:[["x",3]]},{...valid,tags:[["x","y".repeat(2049)]]},{...valid,tags:[Array(9).fill("x")]}])assert.equal(verifiedLiveEvent(raw,[author],now),null);
- assert.equal(verifiedLiveEvent(valid,[],now),null);
+ {...valid,content:"\ud800"},{...valid,tags:null},{...valid,tags:Array(129).fill(["d","x"])},{...valid,tags:[[]]},{...valid,tags:[["x",3]]},{...valid,tags:[["x","y".repeat(2049)]]},{...valid,tags:[Array(9).fill("x")]}])assert.equal(await verifiedLiveEvent(raw,[author],now),null);
+ assert.equal(await verifiedLiveEvent(valid,[],now),null);
 });
-test("live projection bounds status, time, URLs and optional metadata",()=>{
- const e=verifiedLiveEvent(signed(),[author],now)!;
+test("live projection bounds status, time, URLs and optional metadata",async()=>{
+ const e=(await verifiedLiveEvent(signed(),[author],now))!;
  assert.equal(liveProjection(e,now)?.participants,12);assert.equal(liveProjection(e,now)?.thumbnail,"https://example.com/poster.png");
  for(const tags of [[ ["d","show"],["status","ended"] ],[["status","live"]],[["d","show"],["d","other"]]])assert.equal(liveProjection({...e,tags},now),null);
  assert.equal(liveAddress({...e,tags:[["d","x".repeat(257)]]}),null);

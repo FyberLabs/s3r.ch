@@ -44,3 +44,10 @@ real provider availability or room/private-stream acceptance.
 Protocol references:
 - [NIP-01 event signing and replacement](https://github.com/nostr-protocol/nips/blob/master/01.md)
 - [NIP-53 live streaming](https://github.com/nostr-protocol/nips/blob/master/53.md)
+
+The same bounded NIP-01 verifier also authenticates ordinary public kind-1 notes
+before a relay window enters the feed cache. A forged or unsigned note fails the
+whole source window, preserving the previous successful window rather than
+publishing a partial prefix or treating the failure as an empty success. Kind-1
+notes do not inherit the live directory's one-hour expiry. The shared verifier
+uses WebCrypto hashing and is covered by a CI-only real-browser signature fixture.

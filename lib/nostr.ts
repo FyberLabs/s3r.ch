@@ -1,3 +1,4 @@
+import { verifiedNostrEvent } from "./nostr-event";
 import { nostrReply } from "./feed-reply";
 import { mediaFields, nostrMedia } from "./feed-media-adapters";
 import { collectSourceWindows } from "./source-windows";
@@ -92,9 +93,11 @@ export function normalizeNostrEvent(
   };
 }
 
-export async function fetchPublicNostr(): Promise<SourcePull> {
+export async function fetchPublicNostr(authors: readonly string[] = PUBLIC_NOSTR_PUBKEYS): Promise<SourcePull> {
+  if (!authors.length || authors.length > 16 || authors.some(key => typeof key !== "string" || !HEX64.test(key))) throw Error("Invalid Nostr authors");
+  const followed = [...new Set(authors.map(key => key.toLowerCase()))];
   return collectSourceWindows(
-    PUBLIC_NOSTR_PUBKEYS.map(pubkey => ({ key: nostrProvenance(NOSTR_RELAY_URL, pubkey), pull: () => pullPubkey(pubkey) })),
+    followed.map(pubkey => ({ key: nostrProvenance(NOSTR_RELAY_URL, pubkey), pull: () => pullPubkey(pubkey) })),
     ["nostr"],
     "Nostr relay did not return kind 1 notes.",
   );
@@ -108,8 +111,11 @@ async function pullPubkey(pubkey: string): Promise<FeedItem[]> {
   const provenance = nostrProvenance(NOSTR_RELAY_URL, pubkey);
   const events = await queryRelay(NOSTR_RELAY_URL, kind1Filter(pubkey));
   const items: FeedItem[] = [];
+  const now = Math.floor(Date.now() / 1000);
   for (const event of events) {
-    const item = normalizeNostrEvent(event, provenance);
+    const verified = await verifiedNostrEvent(event, [pubkey], 1, now);
+    if (!verified) throw Error("Nostr source returned an unauthenticated event.");
+    const item = normalizeNostrEvent(verified, provenance);
     if (item) items.push(item);
   }
   return items;
