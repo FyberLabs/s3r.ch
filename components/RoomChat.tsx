@@ -1,7 +1,7 @@
 "use client";
 
 import { useRoomAuthority } from "./RoomAuthorityProvider";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { RoomGame } from "./RoomGame";
 import { isRoomTaskBody } from "@/lib/room-tasks";
 import { roomGameChatText } from "@/lib/room-game";
@@ -107,6 +107,10 @@ function ChatCompose({
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const mounted = useRef(true);
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const current = useRef({ owner: session?.owner, roomId, roomAuthority });
+  current.current = { owner: session?.owner, roomId, roomAuthority };
 
   if (!session) {
     return (
@@ -123,6 +127,7 @@ function ChatCompose({
     try {
       if (!roomAuthority) { setMessage("Room access is unavailable."); return; }
       const next = await roomAuthority.admission.compose(roomId, body, roomAuthority.pair);
+      if (!mounted.current || current.current.owner !== session?.owner || current.current.roomId !== roomId || current.current.roomAuthority !== roomAuthority) return;
       if (!next || !roomAuthority.admission.valid(next)) {
         setMessage("Could not send. Unlock your identity and check room access."); return;
       }
