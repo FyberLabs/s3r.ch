@@ -1,40 +1,71 @@
-# s3r.ch OAuth IdP (backup)
+# Keycloak credentials and SEA identity
 
-Status: start, callback, secondary Continue, and two-way SIWE link ship. 2026-09-26.
-Wallet / SIWE stays **primary**. OAuth through Panopticon Keycloak is **backup**.
-Parent: [identity.md](identity.md). Hypermesh plane: [auth-kit](https://github.com/FyberLabs/hypermesh-docs/blob/main/auth-kit.md), [customer-interfaces](https://github.com/FyberLabs/hypermesh-docs/blob/main/customer-interfaces.md). Brokers: [panopticon Keycloak README](https://github.com/FyberLabs/panopticon/blob/main/infra/keycloak/README.md).
+A person has one SEA principal. Wallet addresses and Keycloak accounts are
+credentials linked to that identity; neither a checksummed wallet address nor a
+Keycloak subject is a Check owner. Feed ownership, grants and authenticated forum
+operations use the SEA identity described in [identity.md](identity.md#current-ownership-model-277-443-444).
+Changing a credential must not create an identity or merge two existing identities.
 
-## Decision
+## Current implementation
 
-| Rule | Meaning |
-| --- | --- |
-| Wallet first | Default CTA is connect wallet → SIWE. Gun and Check object owner, and the AI forum actor, are the sociacl checksummed address after link. The Gun mesh key stays on the wallet that signed. |
-| OAuth backup | Panopticon Keycloak OIDC is allowed when the renter cannot SIWE yet, or prefers the same Microsoft / GitHub / Google account used on Hypermesh. |
-| Same IdP plane | No second IdP stack on s3r.ch Azure. Same `controlplane` realm as Hypermesh portal / CLI / visor. |
-| Same brokers | `microsoft` (Entra), `github`, `google`. Reuse Keycloak’s existing apps. Do not register s3r.ch-only OAuth apps that skip Keycloak. |
-| No Keycloak `sub` as Gun owner | Wallet and Keycloak `sub` are handles on one sociacl owner (the checksummed address). Forum channel stays `s3rch:forum:<address>`. |
-| No email-as-IdP | Magic link, Privy, Dynamic, Web3Auth, CDP embedded email stay out. Smart Wallet remains an onramp to an address, then SIWE. |
-| hyperme.sh wallet handoff | When `GET /auth/siwe/me` returns a bound address, ask to connect that wallet. Yes is SIWE for that address, then the existing link. No leaves OAuth-only. No bound wallet keeps create-or-connect. Do not mint a key. |
+The existing `/api/identity/oauth/start` and `/api/identity/oauth/callback` routes
+provide the backup OAuth credential flow. They use the configured provider,
+PKCE, state and an exact registered callback URI. The backup cookie contains
+credential metadata, not provider tokens or SEA authority. Existing wallet-handoff
+and legacy handle-link records do not establish a signed SociACL link or grant
+access to an owner's objects. An unlinked OAuth account is not an owner.
 
-This replaces “s3r.ch does not use Keycloak as an IdP” for the backup door only. Keycloak is not the primary login CTA.
+The startup callback is a separate flow for an independently declared existing
+SEA identity. Its mapping and broker metadata are not general signed-link login
+proofs. The operator's reciprocal wallet/SEA declaration likewise establishes
+only its fixed startup binding; it does not admit a Keycloak login or enroll an
+account into an ACL history source.
 
-## Brokers (shared with Hypermesh)
+## Signed-link login (#444)
 
-| Alias | Provider |
-| --- | --- |
-| `microsoft` | Microsoft Entra OIDC |
-| `github` | GitHub |
-| `google` | Google |
+`createIdentitySessions` is the single SEA-session issuer. Its
+`/api/identity/sea/linked-challenge` and `linked-exchange` handlers verify the
+SociACL signed-link contract and issue the same five-minute SEA-subject session
+used by existing-key login. Credential cookies cannot substitute for this session.
 
-Broker callbacks stay on the Keycloak host. s3r.ch is a Keycloak **client** with its own redirect URI.
+OIDC admission requires all of the following:
 
-## Slices
+- A trusted source enumerating every eligible link for the exact issuer, tenant
+  and subject, with authenticated current histories and revocations. Zero or
+  multiple eligible identities refuse login.
+- A fresh ID token from the configured issuer and verification key resolver,
+  with the exact client audience, tenant claim and subject. Email and display
+  names are not account selectors.
+- The linked challenge nonce and an `auth_time` no earlier than that challenge,
+  plus the matching browser challenge cookie and origin. Replay, expiry,
+  revocation and key changes are checked by the issuer.
 
-1. Keycloak client `s3rch-web` on `controlplane` (Panopticon realm import + live upsert). Public PKCE. Exact callback URIs. No new brokers.
-2. Start + callback routes; backup session cookie; tokens never stored and never on Gun. Missing issuer fails closed.
-3. Two-way link. OAuth then SIWE, or SIWE then OAuth, writes both handles onto one sociacl owner in the identity document (development default `data/identity-links.json`; production is one private Azure Blob). The first linked wallet is the owner. A later wallet is another handle. Two existing owners do not merge (`already-linked`). Unlinked OAuth is not an owner. The document is not Gun and stores no provider tokens. An unavailable identity store refuses linking; in production it also refuses wallet owner resolution. Startup checks the blob. See [identity-storage.md](identity-storage.md).
-4. UI: primary Connect wallet / Sign in with wallet. Secondary Continue with Microsoft / GitHub / Google, or Hypermesh account, hitting the start route. Callback reads Panopticon `GET /auth/siwe/me` with the access token, then drops the token. A bound address is the hyperme.sh wallet handoff. Yes connects it by SIWE. No does not.
+The hosted linked endpoints currently return `503 linked-identity-unavailable`:
+no complete owning credential/history source is installed. The existing backup
+OAuth callback does not yet orchestrate this fresh challenge-bound OIDC exchange.
+A historical local wallet export, a startup mapping or a boolean configuration
+flag cannot fill either gap. The linked-wallet browser controller is implemented,
+but provider event wiring and session UI integration remain separate work.
 
-## Renter how-to
+See [signed-link admission](linked-session-admission.md) for the implemented
+verifier, browser controller, source bounds and isolated CI coverage. Lost-key
+recovery additionally needs the shared recovery policy and authenticated rotation
+publication contract; login does not reconstruct private keys. #444 remains open
+until its remaining source, provider and recovery integration is implemented.
 
-Product how-tos live with the Hypermesh project notes (account setup + AI forum). This file is the identity design for implementers.
+## Keycloak client and brokers
+
+The default backup provider uses Panopticon Keycloak's `controlplane` realm and
+the public PKCE client `s3rch-web`. s3r.ch is a client of that IdP, not a second
+Keycloak deployment. The existing broker aliases are `microsoft`, `github` and
+`google`; their upstream callbacks remain on the Keycloak host.
+
+The application's exact callback URIs are declared in
+`lib/identity/config.ts` as `OAUTH_REDIRECT_URIS`. Keep the Keycloak client
+registration consistent with that list. A missing or invalid provider
+configuration refuses the OAuth flow. Tokens must not be published to Gun or
+persisted in the credential cookie.
+
+The Hypermesh wallet handoff can suggest connecting an already bound wallet.
+It is credential coordination only: accepting or declining that suggestion does
+not create a SEA key, establish signed-link authority or change object ownership.
