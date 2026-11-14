@@ -1,3 +1,4 @@
+import {snapshotOwnerGroupDraft,signOwnerGroupRow,type OwnerGroupRowKind} from "./media-group-signing";
 import { parseMediaGroupAuthority, parseMediaGroupPolicyView, parseMediaGroupPolicy, parseMediaGroupScope, parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
 import { parseMediaSharePlan } from "./media-share";
 import { parseMediaDeletionDraft, parseMediaDeletionIntent, type MediaDeletionIntent } from "./media-deletion";
@@ -99,6 +100,14 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
       return hash;
     }
   return Object.freeze({
+    async prepareGroupRow(object:string,scope:unknown,kind:OwnerGroupRowKind,input:unknown,owner:string,scalar:Uint8Array,signal?:AbortSignal) {
+      const heldScope=parseMediaGroupScope(scope),draft=snapshotOwnerGroupDraft(input);
+      return withKey(scalar,signal,async(key,deadline)=>{
+        const held=await view(object,owner,deadline);
+        const row=signOwnerGroupRow(kind,draft,heldScope,object,owner,held.at as number,key,held.key);
+        current(held);deadline.throwIfAborted();return row;
+      });
+    },
     async groupAuthorityView(object:string,owner:string,signal?:AbortSignal) {
       if(!objectOK(object)||!isSeaPubkey(owner))throw Error("Invalid media group owner");
       const held=await request("group-authority-view",{object},signal??new AbortController().signal);
