@@ -22,7 +22,7 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
   const active = new Set<string>(); let preflights = 0, transports = 0;
   return async (action: string, request: Request) => {
     const reply = (status: number) => new Response(null, { status, headers });
-    if (!["allocate", "catalog", "cleanup-catalog", "view", "status-view", "cancel-view", "mutate", "publish-wrap", "upload-state", "delete-view", "delete", "cleanup"].includes(action)) return reply(404);
+    if (!["allocate", "catalog", "cleanup-catalog", "view", "status-view", "cancel-view", "mutate", "publish-wrap", "upload-state", "delete-view", "delete", "cleanup", "registration"].includes(action)) return reply(404);
     if (request.method !== "POST") return reply(405);
     if (!matchesBrowserOrigin(request, origin)) return reply(403);
     if (request.headers.get("content-type")?.split(";")[0] !== "application/json" ||
@@ -38,13 +38,17 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
       if (!principal || !credentials.has(principal)) return reply(403);
       if (active.has(principal)) return reply(429);
       active.add(principal); occupied = true;
-      const body = await readBoundedIdentityJson(new Response(request.body), ["allocate", "catalog", "cleanup-catalog", "view", "status-view", "cancel-view", "delete-view", "cleanup"].includes(action) ? 2048 : action === "delete" ? 12288 : 100000,
+      const body = await readBoundedIdentityJson(new Response(request.body), action==="registration"?4096:["allocate", "catalog", "cleanup-catalog", "view", "status-view", "cancel-view", "delete-view", "cleanup"].includes(action) ? 2048 : action === "delete" ? 12288 : 100000,
         AbortSignal.any([signal, AbortSignal.timeout(1000)]));
-      const keys = action === "delete" ? ["object", "at", "proof"] : action === "upload-state" ? ["object", "operation", "payload"] : action === "allocate" ? ["object", "owner", "issuedAt", "sig"] : ["catalog","cleanup-catalog"].includes(action) ? ["page"] : ["view", "delete-view", "cleanup"].includes(action) ? ["object"] : ["status-view", "cancel-view"].includes(action) ? ["object", "reader"] : action === "mutate" ?
+      const keys = action === "registration" ? ["object","record"] : action === "delete" ? ["object", "at", "proof"] : action === "upload-state" ? ["object", "operation", "payload"] : action === "allocate" ? ["object", "owner", "issuedAt", "sig"] : ["catalog","cleanup-catalog"].includes(action) ? ["page"] : ["view", "delete-view", "cleanup"].includes(action) ? ["object"] : ["status-view", "cancel-view"].includes(action) ? ["object", "reader"] : action === "mutate" ?
         ["object", "at", "fence", "operation", "payload"] : ["object", "at", "fence", "metadata", "wrapBase64"];
       if (!exact(body, keys)) return reply(400);
       if (["catalog","cleanup-catalog"].includes(action) ? !isMediaCatalogPageNumber(body.page) : typeof body.object !== "string" || !body.object.startsWith("media_") || !isCanonicalObjectId(body.object)) return reply(400);
-      if (!["allocate", "catalog", "cleanup-catalog", "view", "status-view", "cancel-view", "upload-state", "delete-view", "delete", "cleanup"].includes(action) && (!Number.isSafeInteger(body.at) || (body.at as number) < 0 || !digest(body.fence))) return reply(400);
+      if (!["allocate", "catalog", "cleanup-catalog", "view", "status-view", "cancel-view", "upload-state", "delete-view", "delete", "cleanup", "registration"].includes(action) && (!Number.isSafeInteger(body.at) || (body.at as number) < 0 || !digest(body.fence))) return reply(400);
+      if(action==="registration") {
+        const record=mediaRegistration(body.record);
+        if(!record || record.object!==body.object || record.owner!==principal)return reply(400);
+      }
       if (["status-view", "cancel-view"].includes(action) && (typeof body.reader!=="string" || !isSeaPubkey(body.reader))) return reply(400);
       if (action === "delete" && (!Number.isSafeInteger(body.at) || (body.at as number)<0 ||
           !exact(body.proof,["deletionBytes","signature"]) || typeof body.proof.deletionBytes!=="string" || body.proof.deletionBytes.length>4096 ||
@@ -109,7 +113,7 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
             (status.maxAgeMs as number)<1 || (status.maxAgeMs as number)>60000 || !exact(status.zookie,["object","objectVersion","snapshotHash"]) ||
             status.zookie.object!==body.object || !Number.isSafeInteger(status.zookie.objectVersion) || (status.zookie.objectVersion as number)<0 ||
             !digest(status.zookie.snapshotHash)) return reply(403);
-      } else if (action === "mutate") {
+      } else if (action === "mutate" || action === "registration") {
         if (!exact(result, ["accepted"]) || result.accepted !== true) return reply(403);
       } else if (!exact(result, ["record", "digest"]) || !digest(result.digest) || result.record !== result.digest ||
           result.digest !== (body.metadata as Record<string, unknown>).digest) return reply(403);
