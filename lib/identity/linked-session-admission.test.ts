@@ -19,6 +19,12 @@ for (const kind of ["wallet", "oidc"] as const) {
     const h = await linkedSessionFixture(kind); await h.conflict();
     assert.equal(await h.sessions.linkedChallenge(h.credential), null);
   });
+  test(`${kind}: replacement link cannot reuse a challenge bound to the old link`, async () => {
+    const h = await linkedSessionFixture(kind), challenge = (await h.sessions.linkedChallenge(h.credential))!;
+    const proof = await h.proof(challenge); await h.replace();
+    assert.ok(await h.sessions.linkedChallenge(h.credential));
+    assert.equal(await h.sessions.exchangeLinked(challenge, proof), null);
+  });
   test(`${kind}: replay storage failure cannot issue a session`, async () => {
     const h = await linkedSessionFixture(kind), challenge = (await h.sessions.linkedChallenge(h.credential))!;
     const proof = await h.proof(challenge);

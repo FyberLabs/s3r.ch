@@ -70,7 +70,7 @@ async function main() {
       finally { await context.close(); }
     }
     report("passed");
-  } catch { report("failed", "isolated-browser-unavailable-or-failed"); process.exitCode = 1; }
+  } catch { report(browser ? "failed" : "blocked", browser ? "admission-contract-failed" : "browser-unavailable"); process.exitCode = 1; }
   finally { await browser?.close(); }
 }
 void main();

@@ -69,16 +69,16 @@ export async function linkedSessionFixture(kind: "wallet" | "oidc") {
     const row = { v: 1 as const, kind: "revoke" as const, principal, linkId: id, issuedAt: now, keySig: "pending" };
     row.keySig = sign(parseForumRevoke(row)!.bytes, 101); revocations = [row];
   }
-  async function conflict() {
-    const other = { ...link, principal: pub(102), issuedAt: 101, nonce: "otherNonce123", keySig: "pending", attest: "pending" };
+  async function conflict(replace = false) {
+    const other = { ...link, principal: replace ? principal : pub(102), issuedAt: 101, nonce: "otherNonce123", keySig: "pending", attest: "pending" };
     const bytes = kind === "wallet" ? parseForumWalletLinkRecord(other)!.bytes : parseForumRecoveryRecord(other)!.bytes;
-    const otherId = await recoveryId(bytes); other.keySig = sign(bytes, 102);
+    const otherId = await recoveryId(bytes); other.keySig = sign(bytes, replace ? 101 : 102);
     if (kind === "wallet") (other as Record<string, unknown>).siwe = await siwe(bytes, 101, "otherNonce123");
     other.attest = witness({ typ: kind === "wallet" ? "sociacl-wallet-attest-v1" : "sociacl-oidc-attest-v1", principal: other.principal,
       ...(kind === "wallet" ? { linkId: otherId } : { iss: issuer, tenant, sub: "person", nonce: "otherNonce123" }), iat: 101, exp: 900 });
-    links = [link, other];
+    links = replace ? [other] : [link, other];
   }
-  return { conflict, rotate: () => { rotated = true; }, credential, principal, sessions, options, proof, revoke, source, used, admission,
+  return { conflict: () => conflict(), replace: () => conflict(true), rotate: () => { rotated = true; }, credential, principal, sessions, options, proof, revoke, source, used, admission,
     advance: () => { now += 60; }, unavailable: () => { available = false; }, stale: () => { stale = true; },
     missing: () => { links = []; }, badHistory: () => { missingHistory = true; }, tamper: () => { links = [{ ...link, keySig: "invalid" }]; },
     onConsume: (fn: () => void) => { afterConsume = fn; } };
