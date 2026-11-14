@@ -1,5 +1,7 @@
 "use client";
 
+import { exportOperatorBinding } from "@/lib/identity/operator-binding-export";
+import { readUnlockedMeshPair, readUnlockedMeshRevision } from "@/lib/identity/unlocked-mesh";
 import { exportOwnerLinkEvidence } from "@/lib/identity/owner-link-evidence";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -112,6 +114,8 @@ function IdentityBarInner() {
   const session = useIdentitySession();
   const evidenceSession = useRef(session?.address);
   evidenceSession.current = session?.address;
+  const bindingContext = useRef({session, address});
+  bindingContext.current = {session, address};
   const hadSession = useRef(false);
   const walletAttempt = useRef(walletAgeAttempt());
   useEffect(() => { walletAttempt.current.clear(); }, [address, chainId]);
@@ -707,6 +711,34 @@ function IdentityBarInner() {
     }
   }
 
+  async function onExportOperatorBinding() {
+    const wallet = session?.address;
+    const pair = wallet ? readUnlockedMeshPair(wallet) : null;
+    if (!wallet || !pair || address !== wallet) {
+      setMessage("Connect the declared wallet and unlock your existing SEA identity first.");
+      return;
+    }
+    if (!window.confirm("Sign a public TEST account binding with your connected wallet and unlocked SEA identity? Only public keys and signatures will be downloaded. Nothing is installed or activated.")) return;
+    const revision = readUnlockedMeshRevision();
+    const selectedSession = session;
+    const current = () => bindingContext.current.session === selectedSession &&
+      bindingContext.current.address === wallet && readUnlockedMeshRevision() === revision && readUnlockedMeshPair(wallet) === pair;
+    setBusy(true); setMessage(null);
+    try {
+      const result = await exportOperatorBinding({address: wallet, origin: window.location.origin, pair, current,
+        signWallet: message => signMessageAsync({message}), timestamp: Math.floor(Date.now()/1000)});
+      if (!current()) throw Error();
+      const url = URL.createObjectURL(new Blob([result], {type:"application/json"}));
+      try {
+        const link = document.createElement("a"); link.href=url;
+        link.download="s3rch-operator-binding.json"; link.click();
+      } finally { setTimeout(() => URL.revokeObjectURL(url),1000); }
+      setMessage("Public operator binding downloaded. Installation and activation remain off.");
+    } catch {
+      setMessage("Operator binding was not exported. Unlock the existing identity and retry.");
+    } finally { setBusy(false); }
+  }
+
   async function onExportOwnerEvidence() {
     const wallet = session?.address;
     if (!wallet) return;
@@ -889,6 +921,11 @@ function IdentityBarInner() {
             >
               Sign out
             </button>
+            {session.address === "0x4C8d36f87287e75D3D84F1aeD72655ecCbC7A1A7" && (
+              <button type="button" disabled={busy} onClick={() => void onExportOperatorBinding()} className={btnSecondary}>
+                Sign and export TEST operator binding
+              </button>
+            )}
             <button type="button" disabled={busy} onClick={() => void onExportOwnerEvidence()} className={btnSecondary}>
               Export wallet-link evidence
             </button>
