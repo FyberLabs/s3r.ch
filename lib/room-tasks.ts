@@ -2,7 +2,8 @@
  * sharing boundary. Callers must supply room/message Check-filtered rows. */
 import { getAddress } from "viem";
 import { isSeaPubkey } from "./identity/forum-check";
-import { signedRoomMessageId, type RoomChatAdmission } from "./room-chat-admission";
+import type { RoomChatAdmission } from "./room-chat-admission";
+import { signedRoomMessageId } from "./room-message-id";
 import { composeChat, shortChatEntropy, type ChatMessage } from "./chat";
 import { checkSee, roomSoul, type SeeAcl } from "./identity/check";
 

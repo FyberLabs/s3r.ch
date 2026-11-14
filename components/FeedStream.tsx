@@ -1,5 +1,6 @@
 "use client";
 import { useRoomAuthority } from "./RoomAuthorityProvider";
+import { createRoomChatReceiveQueue } from "@/lib/room-chat-receive-queue";
 import PublicFeedMedia from "./PublicFeedMedia";
 import FeedConversation from "./FeedConversation";
 
@@ -505,25 +506,21 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
 
   useEffect(() => {
     const gun = gunRef.current;
-    if (!gun || !gunReady || !openRoomId || !openRoomIsPublic) return;
+    if (!gun || !gunReady || !openRoomId || !openRoomIsPublic || !roomAuthority) return;
     const roomId = openRoomId;
-    let cancelled = false;
+    const queue = createRoomChatReceiveQueue(roomAuthority.admission, roomId, message => {
+      // Fresh proof objects replace objects retained by a previous controller.
+      setGraphChat(prev => mergeChat([message], prev).slice(0, 8192));
+    });
     const listener = gun
       .get("s3rch")
       .get("rooms")
       .get(encodeKey(roomId))
       .get("chat")
       .map()
-      .on((data, key) => {
-        if (!roomAuthority || cancelled || typeof key !== "string") return;
-        void roomAuthority.admission.receive(data, roomId, key).then(message => {
-          if (!message || cancelled || !roomAuthority.admission.valid(message)) return;
-          // Prefer the freshly admitted object: prior controllers cannot lend proofs.
-          setGraphChat(prev => mergeChat([message], prev).slice(0, 8192));
-        });
-      });
+      .on((data, key) => { void queue.enqueue(data, key); });
     return () => {
-      cancelled = true;
+      queue.close();
       if (typeof listener?.off === "function") listener.off();
     };
   }, [gunReady, openRoomId, openRoomIsPublic, roomAuthority, roomAuthorityRevision]);

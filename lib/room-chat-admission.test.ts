@@ -96,3 +96,29 @@ test("readmitting cached history replaces invalidated objects with fresh proofs"
  assert.equal(cache.length, 1); assert.equal(cache[0], refreshed);
  assert.deepEqual(f.admission.readable(cache, "room"), [refreshed]);
 });
+
+test("queued history admits a forty-message burst using immutable envelopes", async () => {
+ const {createRoomChatReceiveQueue} = await import("./room-chat-receive-queue");
+ const f=await fixture(), rows=[];
+ for(let i=0;i<40;i++) { const row=await f.admission.compose("room",`message ${i}`,()=>f.alice); assert.ok(row); rows.push(row); }
+ f.admission.reset();
+ const accepted: string[]=[];
+ const queue=createRoomChatReceiveQueue(f.admission,"room",row=>accepted.push(row.body));
+ const tasks=rows.map(row=>{const transport={...row};const done=queue.enqueue(transport,encodeKey(row.id));transport.body="mutated";return done;});
+ await Promise.all(tasks);
+ assert.deepEqual(accepted,rows.map(row=>row.body));
+ queue.close();
+ await queue.enqueue(rows[0],encodeKey(rows[0].id));assert.equal(accepted.length,40);
+});
+
+test("closing a receive queue fences in-flight and pending messages", async () => {
+ const {createRoomChatReceiveQueue} = await import("./room-chat-receive-queue");
+ const f=await fixture();const row=await f.admission.compose("room","pending",()=>f.alice);assert.ok(row);
+ let release!:()=>void, entered!:()=>void, accepted=0, calls=0;
+ const gate=new Promise<void>(resolve=>{release=resolve;});const started=new Promise<void>(resolve=>{entered=resolve;});
+ const admission={...f.admission,receive:async(...args:Parameters<typeof f.admission.receive>)=>{calls++;entered();await gate;return f.admission.receive(...args);}};
+ const queue=createRoomChatReceiveQueue(admission,"room",()=>accepted++);
+ const done=queue.enqueue(row,encodeKey(row.id));await started;
+ void queue.enqueue(row,encodeKey(row.id));queue.close();release();await done;
+ assert.equal(calls,1);assert.equal(accepted,0);
+});

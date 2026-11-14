@@ -2,7 +2,8 @@
  * Callers must apply the same room/message Check used by chat before projecting.
  * Presence is display-only; a heartbeat never selects a player or grants access. */
 import { checkSee, roomSoul, type SeeAcl } from "./identity/check";
-import { signedRoomMessageId, type RoomChatAdmission } from "./room-chat-admission";
+import type { RoomChatAdmission } from "./room-chat-admission";
+import { signedRoomMessageId } from "./room-message-id";
 import { isSeaPubkey } from "./identity/forum-check";
 import { getAddress } from "viem";
 import { composeChat, shortChatEntropy, type ChatMessage } from "./chat";

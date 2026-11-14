@@ -10,8 +10,8 @@ import type { SeaPair } from "./identity/sea";
 
 export type SignedRoomChat = Readonly<ChatMessage & { v: 1; sig: string }>;
 const domain = "s3rch-room-chat/v1";
-export const signedRoomMessageId = (id: unknown): id is string =>
-  typeof id === "string" && /^s3rch:chat:[0-9a-f]{64}$/.test(id);
+import { signedRoomMessageId } from "./room-message-id";
+export { signedRoomMessageId } from "./room-message-id";
 async function principalPrefix(author: string): Promise<string> {
   const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(author)));
   return Array.from(bytes.slice(0, 16), byte => byte.toString(16).padStart(2, "0")).join("");
@@ -28,6 +28,15 @@ function payload(input: unknown): ChatMessage | null {
         !integer(v.ts) || v.v !== 1) return null;
     return Object.freeze({ id: v.id, room: v.room, author: v.author, body: v.body, ts: v.ts, v: 1 });
   } catch { return null; }
+}
+
+/** Shape-only immutable transport snapshot; this does not authenticate the row. */
+export function snapshotRoomChatEnvelope(input: unknown): SignedRoomChat | null {
+  const parsed = payload(input);
+  if (!parsed) return null;
+  const descriptor = Object.getOwnPropertyDescriptor(input, "sig");
+  const sig = descriptor && "value" in descriptor ? descriptor.value : null;
+  return typeof sig === "string" && sig.length <= 8192 ? Object.freeze({ ...parsed, v: 1 as const, sig }) : null;
 }
 
 export function createRoomChatAdmission(input: {
@@ -53,11 +62,9 @@ export function createRoomChatAdmission(input: {
       graph.checkForumSee(row.room, row.author, at).allowed && graph.checkPost(row.room, row.author, at).allowed;
   }
   async function receive(input: unknown, room: string, transportKey: string): Promise<SignedRoomChat | null> {
-    const parsed = payload(input);
-    if (!parsed || parsed.room !== room || encodeKey(parsed.id) !== transportKey) return null;
-    const descriptor = Object.getOwnPropertyDescriptor(input, "sig");
-    const sig = descriptor && "value" in descriptor ? descriptor.value : null;
-    if (typeof sig !== "string" || sig.length > 8192) return null;
+    const envelope = snapshotRoomChatEnvelope(input), parsed = payload(envelope);
+    if (!envelope || !parsed || parsed.room !== room || encodeKey(parsed.id) !== transportKey) return null;
+    const sig = envelope.sig;
     const at = clock(), key = graph.writerKey(parsed.author, parsed.ts, at);
     if (!key || !allowed(parsed, key) || !parsed.id.startsWith(`s3rch:chat:${await principalPrefix(parsed.author)}`)) return null;
     const proof = proofs.begin();
