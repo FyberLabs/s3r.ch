@@ -1,5 +1,6 @@
 "use client";
 import { useRoomAuthority } from "./RoomAuthorityProvider";
+import { isForumObjectId } from "@/lib/identity/forum-check";
 import { createRoomChatReceiveQueue } from "@/lib/room-chat-receive-queue";
 import PublicFeedMedia from "./PublicFeedMedia";
 import FeedConversation from "./FeedConversation";
@@ -1117,7 +1118,7 @@ function RoomThreadHeader({
           {shared ? (
             <>
               <p className="text-xs text-ink-muted">
-                This room is public.
+                This room listing is public.
               </p>
               <button
                 type="button"
@@ -1126,6 +1127,11 @@ function RoomThreadHeader({
               >
                 {confirmUnshare ? "Confirm unshare" : "Unshare from public"}
               </button>
+              {isForumObjectId(room.id, "room") ? (
+                <button type="button" onClick={onShare} className={`ml-2 mt-2 ${btnSecondary}`}>
+                  {confirmShare ? "Confirm renewal" : "Renew chat access"}
+                </button>
+              ) : null}
             </>
           ) : (
             <>
@@ -1144,7 +1150,12 @@ function RoomThreadHeader({
           {shareMessage ? (
             <p className="mt-2 text-xs text-ink-muted">{shareMessage}</p>
           ) : null}
-          <RoomSeeGrantControls address={sessionAddress} room={room} />
+          {isForumObjectId(room.id, "room") ? (
+            <p className="mt-2 text-xs text-ink-muted">
+              Sharing grants chat access to current forum members for one hour.
+              Renew access to include new members. Removing the public listing does not revoke existing chat access.
+            </p>
+          ) : <RoomSeeGrantControls address={sessionAddress} room={room} />}
         </div>
       ) : null}
     </div>
@@ -1340,6 +1351,11 @@ function FeedCard({
               >
                 {confirmUnshare ? "Confirm unshare" : "Unshare from public"}
               </button>
+              {isForumObjectId(room.id, "room") ? (
+                <button type="button" onClick={onShare} className={`ml-2 mt-2 ${btnSecondary}`}>
+                  {confirmShare ? "Confirm renewal" : "Renew chat access"}
+                </button>
+              ) : null}
             </>
           ) : (
             <>
