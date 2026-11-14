@@ -19,8 +19,17 @@ share the object authority. Objects without the full ActivityStreams Public
 audience URI are omitted. No signed GET or provider credential is sent.
 Cross-authority redirects are refused. Each conversation starts at most 26
 requests and stops starting requests after 15 seconds; the existing per-request
-timeout bounds an already running request. Other sources retain the cached
-fallback; their provider adapters remain #409 work.
+timeout bounds an already running request.
+
+Nostr uses only the configured relay. Exact event-ID queries fetch the anchor and
+up to eight connected ancestors; one event-reference query requests up to 17
+reply candidates, with at most 16 displayed. Every admitted kind-1 note passes
+NIP-01 event-hash and Schnorr verification before projection. Unrelated, forged,
+duplicate and malformed events are omitted. Relay hints in event tags never
+choose an endpoint. Existing relay frame/window byte, count, timeout and EOSE
+requirements apply to every request. No new request starts after 15 seconds,
+with at most ten relay windows per conversation. Farcaster retains the cached
+fallback pending its provider adapter.
 
 Successful provider responses have a 60-second in-process cache; failures have a
 15-second negative cache. The cache holds at most 64 keys with four concurrent
@@ -45,7 +54,7 @@ conversation reads retain the cached-only behavior.
 
 CI covers traversal and count limits, source failures, cache expiry/overload,
 forged media roots, expiry, child URLs and anchor removal. The CI-only browser
-fixture runs the actual Bluesky and ActivityPub provider adapters, conversation component and media
+fixture runs the actual Bluesky, ActivityPub and Nostr provider adapters, conversation component and media
 admission path to check parent/reply order, a ticketed image, a blocked-parent
 placeholder and denial after anchor removal. No shared TEST data is involved.
 

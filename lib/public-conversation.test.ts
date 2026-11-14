@@ -10,7 +10,7 @@ test("only visible anchors fetch; cache and single-flight remain bounded and ref
  const [a,b]=await Promise.all([load(rows,"atproto","child"),load(rows,"atproto","child")]);assert.equal(calls,1);assert.deepEqual(a,b);assert.equal(a?.missingParent,null);assert.deepEqual(a?.items.map(i=>i.id),["parent","child"]);assert.equal(a?.replies.length,1);
  await load(rows,"atproto","child");assert.equal(calls,1);now=60_001;await load(rows,"atproto","child");assert.equal(calls,2);
  assert.equal(await load([],"atproto","child"),null);
- const other={...rows[0],source:"nostr" as const};assert.ok(await load([other],"nostr","child"));assert.equal(calls,2);
+ const other={...rows[0],source:"rss" as const};assert.ok(await load([other],"rss","child"));assert.equal(calls,2);
 });
 test("provider failures preserve placeholders and use a short negative cache",async()=>{
  let now=0,calls=0;const rows=[item("child","missing")];
