@@ -54,6 +54,10 @@ jobs:
         run: |
           S3RCH_UPLOAD_FIXTURE=audio node scripts/test-private-upload-browser.mjs
           S3RCH_UPLOAD_FIXTURE=video node scripts/test-private-upload-browser.mjs
+      - name: Private room audio and video browser contracts (CI only)
+        run: |
+          S3RCH_ROOM_MEDIA_FIXTURE=audio node scripts/test-room-media-browser.mjs
+          S3RCH_ROOM_MEDIA_FIXTURE=video node scripts/test-room-media-browser.mjs
       - name: Room task browser contracts (CI only)
         run: node scripts/test-room-tasks.mjs
       - name: Recording browser contracts (CI only)

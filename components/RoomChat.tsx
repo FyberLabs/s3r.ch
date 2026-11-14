@@ -2,6 +2,8 @@
 
 import { useRoomAuthority } from "./RoomAuthorityProvider";
 import { useLayoutEffect, useRef, useState } from "react";
+import { RoomMedia } from "./RoomMedia";
+import { roomMediaText } from "@/lib/room-media";
 import { RoomGame } from "./RoomGame";
 import { isRoomTaskBody } from "@/lib/room-tasks";
 import { roomGameChatText } from "@/lib/room-game";
@@ -64,7 +66,7 @@ export function RoomChat({
                 {listed.map((row) => (
                   <tr key={row.id}>
                     <td className="font-data">{shortAuthor(row.author)}</td>
-                    <td className="whitespace-normal">{roomGameChatText(row.body)}</td>
+                    <td className="whitespace-normal">{roomMediaText(roomGameChatText(row.body))}</td>
                     <td className="font-data">
                       {row.ts
                         ? new Date(row.ts * 1000).toISOString().replace(".000Z", "Z")
@@ -79,7 +81,7 @@ export function RoomChat({
           <ul className="mt-3 space-y-2">
             {listed.map((row) => (
               <li key={row.id} className="border border-rule bg-ground px-3 py-2">
-                <p className="text-sm text-ink">{roomGameChatText(row.body)}</p>
+                <p className="text-sm text-ink">{roomMediaText(roomGameChatText(row.body))}</p>
                 <p className="mt-1 text-xs text-ink-muted">
                   {shortAuthor(row.author)}
                   {row.ts
@@ -92,6 +94,7 @@ export function RoomChat({
         )
       )}
       <RoomGame roomId={roomId} messages={verified} presence={presence} onPublicGraph={onPublicGraph} seedWsUp={seedWsUp} onComposed={onComposed} />
+      <RoomMedia roomId={roomId} messages={verified} onPublicGraph={onPublicGraph} onComposed={onComposed} />
       <ChatCompose roomId={roomId} onPublicGraph={onPublicGraph} onComposed={onComposed} />
     </div>
   );
