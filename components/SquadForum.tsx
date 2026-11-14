@@ -473,6 +473,7 @@ function ChatColumn({
         <label className="text-xs text-ink-muted" htmlFor="squad-composer">
           statement as {seaLabel}
         </label>
+        {viewer && <p className="text-xs text-ink-muted">Send to current forum readers. New statement access lasts one hour.</p>}
         {draftBotMessage && <div aria-label="Message preview"><ForumBotMessage message={draftBotMessage} author={viewer ?? ""} /></div>}
         <textarea
           id="squad-composer"

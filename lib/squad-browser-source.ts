@@ -1,3 +1,4 @@
+import type { StatementAdmissionRequest } from "./forum-statement-browser";
 import type { AssignmentSigningRequest } from "./assignment-browser-sign";
 import type { ForumAuthorityReader } from "./forum-authority-source";
 import { createForumAuthoritySource, type ForumAuthoritySource } from "./forum-authority-source";
@@ -10,7 +11,8 @@ import { squadView, type LiveSquadSpec } from "./squad-view";
  * deactivate synchronously on logout/key change. Enabling is transport permission,
  * never proof of authority; server and provider still verify each request/record. */
 export function createSquadBrowserSource(input: {
-  squad: LiveSquadSpec; config: ForumAuthorityConfig; authorityEndpoint: string; assignmentBase?: string; fetch?: typeof fetch;
+  squad: LiveSquadSpec; config: ForumAuthorityConfig; authorityEndpoint: string; assignmentBase?: string; statementEndpoint?: string; fetch?: typeof fetch;
+  signStatement?: (item: StatementAdmissionRequest, context: { read: ForumAuthorityReader; signal: AbortSignal; fetch: typeof fetch }) => ReturnType<NonNullable<ForumAuthoritySource["admitStatement"]>>;
   signPlan?: (plan: unknown, requested: AssignmentSigningRequest, context: { read: ForumAuthorityReader; signal: AbortSignal }) => Promise<unknown>;
 }) {
   const view = squadView(input.squad);
@@ -56,6 +58,13 @@ export function createSquadBrowserSource(input: {
     for (const sub of subscriptions) { sub.stop?.(); sub.stop = undefined; sub.receive(null, Math.floor(Date.now() / 1000)); }
   }
   const source: ForumAuthoritySource = Object.freeze({ config: upstream.config, assignments,
+    admitStatement: input.statementEndpoint && input.signStatement ? async item => {
+      if (!enabled || disposed) throw Error("Squad session inactive");
+      const epoch = generation;
+      const result = await input.signStatement!(item, { read, signal: controller.signal, fetch: transport });
+      if (!enabled || disposed || generation !== epoch) throw Error("Squad session changed");
+      return result;
+    } : undefined,
     subscribe(receive) {
       const sub: { receive: typeof receive; stop?: () => void } = { receive };
       receive(null, Math.floor(Date.now() / 1000));

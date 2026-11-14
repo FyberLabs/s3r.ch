@@ -68,3 +68,15 @@ test("read-only owner source has no assignment client or assignment requests", a
   assert.deepEqual(urls,[options.authorityEndpoint]);
   browser.dispose();
 });
+
+test("statement admission requires an active session and discards a late result after reconnect", async () => {
+  let release!: (value: { snapshot: any; at: number }) => void, signal: AbortSignal | undefined;
+  const browser = createSquadBrowserSource({ ...options, statementEndpoint: "/api/squad/statement",
+    signStatement: async (_item, context) => { signal = context.signal; return new Promise(resolve => { release = resolve; }); } });
+  const item = { id: "statement", author: owner, ts: 100 };
+  await assert.rejects(browser.source.admitStatement!(item), /inactive/);
+  browser.activate(); const pending = browser.source.admitStatement!(item);
+  browser.deactivate(); browser.activate(); assert.equal(signal?.aborted, true);
+  release({ snapshot: { rows: [] }, at: 100 }); await assert.rejects(pending, /changed/);
+  browser.dispose();
+});

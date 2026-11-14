@@ -16,7 +16,7 @@ export function LiveSquadForum(props: Props) {
   const view = squadView(props.squad);
   if (!view.live) throw Error("Live Squad required");
   const identity = JSON.stringify([view.key, props.origin, props.sessionBase,
-    props.authorityEndpoint, props.assignmentBase, props.config, props.reportParents]);
+    props.authorityEndpoint, props.statementEndpoint, props.assignmentBase, props.config, props.reportParents]);
   return <ConnectedSquad key={identity} {...props} />;
 }
 function ConnectedSquad(props: Props) {
@@ -24,7 +24,7 @@ function ConnectedSquad(props: Props) {
   const [state, setState] = useState<SquadConnectionState>("disconnected");
   useLayoutEffect(() => {
     let active = true;
-    const current = createSquadConnection({ squad: props.squad, config: props.config, origin: props.origin, sessionBase: props.sessionBase, authorityEndpoint: props.authorityEndpoint, assignmentBase: props.assignmentBase,
+    const current = createSquadConnection({ squad: props.squad, config: props.config, origin: props.origin, sessionBase: props.sessionBase, authorityEndpoint: props.authorityEndpoint, statementEndpoint: props.statementEndpoint, assignmentBase: props.assignmentBase,
       approveAssignment: async preview => window.confirm(`Sign access changes for ${preview.destinations.length} objects?\n\nRemove access from: ${preview.previous}\nGrant access to: ${preview.replacement}\n\nObjects:\n${preview.destinations.join("\n")}${preview.groupMemberships.length ? `\n\nRemove memberships:\n${preview.groupMemberships.join("\n")}\nThis also removes access wherever these groups are used.` : ""}\n\nExisting cancellations remain in effect if this change is later canceled.`),
       onState: value => { if (active) setState(value); } });
     setConnection(current);

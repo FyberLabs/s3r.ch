@@ -73,6 +73,13 @@ jobs:
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/nostr.test.ts lib/nostr-window.test.ts lib/nostr-filter.test.ts
 
+      - name: Native forum browser statement coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/forum-statement-browser.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/forum-statement-browser.test.ts lib/squad-browser-source.test.ts
+
       - name: Nostr signature browser contracts (CI only)
         run: node scripts/test-nostr-signatures.mjs
       - name: Public live directory browser contracts (CI only)

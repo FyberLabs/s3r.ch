@@ -1,9 +1,11 @@
+import type { StatementAdmission } from "./forum-statement-browser";
 import type { AssignmentClient } from "./assignment-client";
 import type { ForumAuthorityConfig, ForumAuthoritySnapshot } from "./identity/forum-authority";
 
 export type ForumAuthoritySource = Readonly<{
   config: ForumAuthorityConfig;
   assignments?: AssignmentClient;
+  admitStatement?: StatementAdmission;
   subscribe(receive: (snapshot: ForumAuthoritySnapshot | null, at: number) => void): () => void;
 }>;
 

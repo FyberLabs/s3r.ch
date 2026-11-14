@@ -1,3 +1,4 @@
+import { admitBrowserStatement } from "./forum-statement-browser";
 import { signBrowserAssignment, type AssignmentSigningApproval } from "./assignment-browser-sign";
 import { createSquadBrowserSource } from "./squad-browser-source";
 import { createSquadSessionClient } from "./squad-session-client";
@@ -7,11 +8,14 @@ export type SquadConnectionState = "disconnected" | "connecting" | "connected";
 /** Own one connection per mounted Squad/key selection. Session operations are
  * serialized so an earlier exchange cannot install its cookie after a logout.
  * Authority is disabled synchronously, before waiting on any network operation. */
-export function createSquadConnection(input: Omit<Parameters<typeof createSquadBrowserSource>[0], "signPlan"> & {
+export function createSquadConnection(input: Omit<Parameters<typeof createSquadBrowserSource>[0], "signPlan" | "signStatement"> & {
   origin: string; sessionBase: string; approveAssignment?: (preview: AssignmentSigningApproval) => Promise<boolean>; onState?: (state: SquadConnectionState) => void;
 }) {
   let signingPair: SeaPair | null = null;
-  const browser = createSquadBrowserSource({ ...input, async signPlan(plan, requested, context) {
+  const browser = createSquadBrowserSource({ ...input, async signStatement(item, context) {
+    if (!signingPair || !authenticated || Date.now() >= authenticated.until || !input.statementEndpoint) throw Error("Squad signing key unavailable");
+    return admitBrowserStatement({ item, pair: signingPair, squad: input.squad, config: input.config, endpoint: input.statementEndpoint, ...context });
+  }, async signPlan(plan, requested, context) {
     if (!signingPair || !authenticated || Date.now() >= authenticated.until) throw Error("Squad signing key unavailable");
     return signBrowserAssignment({ plan, requested, pair: signingPair, config: input.config, ...context,
       approve: input.approveAssignment ?? (async () => false) });
