@@ -10,6 +10,7 @@ import {conversationMediaTickets} from "../lib/conversation-media";
 import {publicMediaSourceAdmission} from "../lib/public-media-sources";
 import {threadAnchor,providerThread} from "./fixtures/provider-thread-data";
 if(process.env.GITHUB_ACTIONS!=="true")throw Error("Provider conversation browser contracts run in CI only");
+async function main(){
 const bundle=await build({entryPoints:["scripts/fixtures/provider-conversation.tsx"],bundle:true,write:false,platform:"browser",format:"esm",jsx:"automatic",define:{"process.env.NODE_ENV":'"test"'}});
 const key="fixture-only-key-".repeat(3);let rows=[threadAnchor],blocked=false,now=Date.now(),browser:Browser|undefined;
 const load=createPublicConversations(anchor=>fetchAtprotoConversation(anchor,async()=>blocked?{thread:{$type:"app.bsky.feed.defs#blockedPost"}}:providerThread),()=>now);
@@ -47,3 +48,6 @@ try{
  await page.request.post(origin+"/fixture/remove");assert.equal((await page.request.get(origin+media)).status(),403);
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);console.log("PASS provider parent/reply order, proxied ticketed image, blocked placeholder and anchor removal");
 }finally{await browser?.close();server.close();}
+
+}
+void main().catch(error=>{console.error(error);process.exitCode=1;});
