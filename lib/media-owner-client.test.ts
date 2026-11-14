@@ -1,3 +1,4 @@
+import { parseMediaSharePlan } from "./media-share";
 // Browser HTTP/signature contracts: executed in CI only.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -293,4 +294,50 @@ test("next epoch preparation derives parent and signatures without sending a mut
   let now=0;
   await assert.rejects(createPrivateMediaOwner(async()=>{now=5;return Response.json(context);},()=>now)
     .prepareNextEpoch(object,owner,input,key()),PrivateMediaConflict);
+});
+
+
+const shareContext=(owner:string,reader:string,object:string)=>{
+  const grants=[owner,reader].map(accessor=>({object,owner,accessor,from:100000,until:200000,stated:1,epoch:2,grantRevision:2,itemCiphertextDigest:"b".repeat(64)}));
+  return {at:100,fence:"a".repeat(64),owner,ownerPub:owner,reader,previousEpoch:1,previousFinalizationId:"d".repeat(64),grants,
+    snapshot:{entries:grants.map(g=>({accessor:g.accessor,grantRevision:g.grantRevision,stated:1,from:g.from,until:g.until,scope:"direct",setId:"",hamState:0}))},
+    bindings:{[owner]:{pub:owner,epub:owner,head:0},[reader]:{pub:reader,epub:reader,head:0}}};
+};
+
+test("sharing preparation signs a detached protected plan without writes",async()=>{
+  const context=shareContext(owner,other,object);let calls=0;
+  const client=createPrivateMediaOwner(async(url,init)=>{calls++;assert.equal(action(url),"share-view");
+    assert.deepEqual(JSON.parse(String(init?.body)),{object,reader:other});return Response.json(context);},()=>100);
+  const plan=await client.prepareShare(object,owner,other,key());
+  assert.equal(calls,1);assert.equal(plan.grants.length,2);
+  assert.deepEqual(plan.grants[0],signPrivateMediaGrant(context.grants[0],key(),owner));
+  for(const changes of [{reader:owner},{owner:other},{ownerPub:other},{previousEpoch:0},{fence:"bad"},{grants:[]},
+    {grants:[context.grants[0],context.grants[0]]},{bindings:{}},{snapshot:{entries:[]}},
+    {grants:[context.grants[0],{...context.grants[1],epoch:3}]},
+    {grants:[context.grants[0],{...context.grants[1],itemCiphertextDigest:"e".repeat(64)}]}])
+    await assert.rejects(createPrivateMediaOwner(async()=>Response.json({...context,...changes}),()=>100).prepareShare(object,owner,other,key()));
+  await assert.rejects(client.prepareShare(object,owner,owner,key()));
+  let now=0;
+  await assert.rejects(createPrivateMediaOwner(async()=>{now=5;return Response.json(context);},()=>now).prepareShare(object,owner,other,key()),PrivateMediaConflict);
+});
+
+test("share parser refuses inconsistent bindings, omitted recipients and malformed snapshots",()=>{
+  const valid=shareContext(owner,other,object);
+  const parsed=parseMediaSharePlan(valid,object,owner,other);
+  valid.grants[0].from=110000;assert.equal(parsed.grants[0].from,100000);
+  const changes:Array<(v:ReturnType<typeof shareContext>)=>void>=[
+    v=>{v.bindings[other].epub="bad";},v=>{v.bindings[other].head=-1;},
+    v=>{v.grants[1].until=100000;},v=>{v.grants[1].grantRevision=0;},
+    v=>{v.snapshot.entries[1].from=99999;},v=>{v.snapshot.entries[1].scope="group";},
+    v=>{v.snapshot.entries[1].accessor="bad";},v=>{v.snapshot.entries.push(v.snapshot.entries[0]);},
+    v=>{v.snapshot.entries[1].hamState=1;},v=>{v.snapshot.entries[1].stated=2;},
+    v=>{v.snapshot.entries[1].until=0;},v=>{v.snapshot.entries[1].grantRevision=0;},
+    v=>{v.at=Number.MAX_SAFE_INTEGER;},v=>{v.previousFinalizationId="bad";},
+  ];
+  for(const change of changes){const v=shareContext(owner,other,object);change(v);assert.throws(()=>parseMediaSharePlan(v,object,owner,other));}
+  const third=owner.split(".").reverse().join(".");
+  const v=shareContext(owner,other,object);
+  assert.throws(()=>parseMediaSharePlan({...v,bindings:{...v.bindings,[third]:v.bindings[owner]}},object,owner,other));
+  assert.throws(()=>parseMediaSharePlan({...v,snapshot:{entries:[...v.snapshot.entries,{...v.snapshot.entries[0],accessor:third}]}},object,owner,other));
+  assert.throws(()=>parseMediaSharePlan(null,object,owner,other));
 });
