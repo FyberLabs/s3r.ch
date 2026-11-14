@@ -1,291 +1,88 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { Buffer } from "node:buffer";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
-import { GET, POST } from "../app/api/forum/route";
-import { GET as sessionGET } from "../app/api/identity/session/route";
-import { oauthSessionCookieName, sessionCookieName } from "./identity/cookies";
-import { linkLoginPaths, useLinkStore, unavailableLinkStore } from "./identity/link";
-import { signBackupSession } from "./identity/oauth";
+import test from "node:test";
+import { createECDH } from "node:crypto";
 import { SignJWT } from "jose";
-import { secretKey } from "./identity/secret";
-import { getIdentitySecret } from "./identity/secret";
+import { GET, POST } from "../app/api/forum/route";
 import { signSessionToken } from "./identity/session";
-
-const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const BOB = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
-const CAROL = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
-const DAVE = "0x90F79bf6EB2c4f870365E785982E1f101E93b906";
-const EVE = "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65";
-const CHANNEL = `s3rch:forum:${ALICE}`;
-
-describe("forum route resolves a login, then honors invites", { concurrency: 1 }, () => {
-  it("uses the sociacl owner for invite and group checks", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "s3rch-forum-route-"));
-    const previousForum = process.env.S3RCH_FORUM;
-    const previousLinks = process.env.S3RCH_IDENTITY_LINKS;
-    process.env.S3RCH_FORUM = join(dir, "forum.json");
-    process.env.S3RCH_IDENTITY_LINKS = join(dir, "identity-links.json");
-    try {
-      const secret = getIdentitySecret();
-      linkLoginPaths({ wallet: ALICE, sub: "kc-alice", idp: "github" });
-      linkLoginPaths({ wallet: BOB, sub: "kc-alice", idp: "github" });
-      linkLoginPaths({ wallet: CAROL, sub: "kc-carol", idp: "google" });
-      linkLoginPaths({ wallet: EVE, sub: "kc-carol", idp: "google" });
-
-      const alice = await siweCookie(ALICE, secret);
-      const bob = await siweCookie(BOB, secret);
-      const dave = await siweCookie(DAVE, secret);
-      const eve = await siweCookie(EVE, secret);
-      const carol = await oauthCookie("kc-carol", secret);
-      const stranger = await oauthCookie("kc-stranger", secret);
-
-      assert.equal((await GET(req(stranger))).status, 401);
-      assert.equal((await GET(req())).status, 401);
-
-      const registered = await post(alice, {
-        action: "register",
-        label: "ledger",
-        entropy: "rt01",
-      });
-      assert.equal(registered.status, 200);
-      const aliceBot = (registered.body.bot as { id: string }).id;
-      assert.match(aliceBot, new RegExp(`^s3rch:bot:${ALICE}:`));
-      assert.equal(
-        (
-          await post(alice, {
-            action: "post",
-            botId: aliceBot,
-            body: "alice only",
-            entropy: "rt02",
-            nowSeconds: 1_700_000_001,
-          })
-        ).status,
-        200,
-      );
-
-      const asBob = await read(bob);
-      assert.equal(asBob.status, 200);
-      assert.equal((asBob.body.channel as { owner: string }).owner, ALICE);
-      assert.deepEqual(
-        (asBob.body.messages as { body: string }[]).map((row) => row.body),
-        ["alice only"],
-      );
-      assert.deepEqual(asBob.body.shared, []);
-
-      const asCarol = await read(carol);
-      assert.equal(asCarol.status, 200);
-      assert.deepEqual(asCarol.body.messages, []);
-      assert.deepEqual(asCarol.body.shared, []);
-      const asDave = await read(dave);
-      assert.deepEqual(asDave.body.messages, []);
-      assert.deepEqual(asDave.body.shared, []);
-
-      assert.equal((await post(bob, { action: "invite", guest: CAROL, owner: DAVE })).status, 200);
-      const invited = await read(carol);
-      assert.equal((invited.body.shared as { channel: { owner: string } }[])[0]?.channel.owner, ALICE);
-
-      const carolBot = await post(carol, { action: "register", label: "ledger", entropy: "rt03" });
-      assert.equal(carolBot.status, 200);
-      const botId = (carolBot.body.bot as { id: string }).id;
-      assert.match(botId, new RegExp(`^s3rch:bot:${CAROL}:`));
-      const guestPost = await post(carol, {
-        action: "post",
-        botId,
-        body: "from carol",
-        channel: CHANNEL,
-        owner: ALICE,
-        entropy: "rt04",
-        nowSeconds: 1_700_000_002,
-      });
-      assert.equal(guestPost.status, 200);
-      const message = guestPost.body.message as { owner: string; channel: string };
-      assert.equal(message.owner, CAROL);
-      assert.equal(message.channel, CHANNEL);
-
-      const aliceView = await read(alice);
-      assert.deepEqual(
-        (aliceView.body.messages as { body: string }[]).map((row) => row.body),
-        ["alice only", "from carol"],
-      );
-
-      assert.equal((await post(alice, { action: "uninvite", guest: CAROL })).status, 200);
-      const afterUninvite = await read(carol);
-      assert.deepEqual(afterUninvite.body.shared, []);
-      assert.deepEqual((await read(eve)).body.shared, []);
-
-      const grouped = await post(alice, { action: "group", label: "crew", entropy: "rt05" });
-      assert.equal(grouped.status, 200);
-      const groupId = (grouped.body.group as { id: string }).id;
-      assert.equal((await post(alice, { action: "group-add", groupId, member: CAROL })).status, 200);
-      const marker = "VISORPNGMARKER";
-      const desktop = await post(alice, {
-        action: "desktop",
-        session: "11111111-1111-4111-8111-111111111111",
-        snapshot: { handle: "abc123def0", mime: "image/png", seq: 2 },
-        png_base64: Buffer.from(marker, "utf8").toString("base64"),
-        thinking: [
-          { kind: "type", text: "cargo test --locked" },
-          { kind: "prompt", text: "count the sheep" },
-        ],
-        files: [{ handle: "notes.txt" }],
-        secrets: [{ handle: "password", value: "hunter2" }],
-      });
-      assert.equal(desktop.status, 200);
-      const ledger = readFileSync(process.env.S3RCH_FORUM!, "utf8");
-      assert.equal(ledger.includes(marker), false);
-      assert.equal(ledger.includes("hunter2"), false);
-      assert.equal(ledger.includes("abc123def0"), true);
-      const shot = "http://localhost/api/forum?snapshot=abc123def0";
-      assert.equal((await GET(new Request(shot))).status, 401);
-      assert.equal((await GET(new Request(shot, { headers: { cookie: dave } }))).status, 404);
-      const eveShot = await GET(new Request(shot, { headers: { cookie: eve } }));
-      assert.equal(eveShot.status, 200);
-      assert.equal(eveShot.headers.get("content-type"), "image/png");
-      assert.equal(Buffer.from(await eveShot.arrayBuffer()).toString("utf8"), marker);
-      const eveDesk = await read(eve);
-      const sharedDesk = (
-        eveDesk.body.shared as { desktop: { thinking: { text: string }[]; secrets: { handle: string }[] } }[]
-      )[0]?.desktop;
-      assert.equal(sharedDesk.thinking.some((row) => row.text === "cargo test --locked"), true);
-      assert.deepEqual(sharedDesk.secrets, [{ handle: "password" }]);
-      assert.equal(JSON.stringify(eveDesk.body).includes("hunter2"), false);
-      assert.deepEqual((await read(dave)).body.shared, []);
-      const viaGroup = await read(eve);
-      assert.equal((viaGroup.body.shared as unknown[]).length, 1);
-      assert.deepEqual((await read(dave)).body.shared, []);
-
-      const both = new Request("http://localhost/api/forum", {
-        headers: { cookie: `${bob}; ${stranger}` },
-      });
-      assert.equal((await GET(both)).status, 200);
-      assert.equal((await GET(req(stranger))).status, 401);
-
-      const bobSession = await sessionGET(sessionReq(bob));
-      assert.equal(bobSession.status, 200);
-      const bobBody = (await bobSession.json()) as { address: string; owner: string };
-      assert.equal(bobBody.address, BOB);
-      assert.equal(bobBody.owner, "");
-      const daveSession = await sessionGET(sessionReq(dave));
-      const daveBody = (await daveSession.json()) as { address: string; owner: string };
-      assert.equal(daveBody.address, DAVE);
-      assert.equal(daveBody.owner, "");
-      assert.equal((await sessionGET(sessionReq(carol))).status, 401);
-
-      const malformed = await POST(new Request("http://localhost/api/forum",{
-        method:"POST",headers:{cookie:bob,"content-type":"application/json"},body:"{",
-      }));
-      assert.equal(malformed.status,400);
-      for (const cookie of [sessionCookieName(false)+"=invalid",oauthSessionCookieName(false)+"=invalid"]) {
-        assert.equal((await GET(req(cookie))).status,401);
-        assert.equal((await post(cookie,{action:"token"})).status,401);
-      }
-
-      const minted = await post(bob, { action: "token" });
-      assert.equal(minted.status, 410);
-      assert.equal(minted.body.error, "owner-bot-token-retired");
-      assert.equal(minted.body.token, undefined);
-      const forumToken = await new SignJWT({kind:"forum-bot",owner:ALICE})
-        .setProtectedHeader({alg:"HS256",typ:"JWT"}).setSubject(ALICE)
-        .setIssuedAt().setExpirationTime("1h").sign(secretKey(secret));
-      const credentials: Record<string,string>[] = [
-        {"x-s3rch-forum-token":forumToken},
-        {"x-s3rch-forum-token":forumToken,cookie:bob},
-        {"x-s3rch-forum-token":"",cookie:bob},
-        {authorization:"Bearer "+forumToken,cookie:bob},
-      ];
-      for (const headers of credentials) {
-        const read = await GET(new Request("http://localhost/api/forum",{headers}));
-        assert.equal(read.status,401);
-        assert.equal(read.headers.get("cache-control"),"private, no-store");
-        for (const action of ["token","post","invite","desktop"]) {
-          const result = await POST(new Request("http://localhost/api/forum",{
-            method:"POST",headers:{...headers,"content-type":"application/json"},
-            body:JSON.stringify({action,body:"must not act as owner"}),
-          }));
-          assert.equal(result.status,401);
-        }
-      }
-
-      const oldEnv = process.env.NODE_ENV;
-      const oldSecret = process.env.IDENTITY_SESSION_SECRET;
-      try {
-        Object.assign(process.env, { NODE_ENV: "production" });
-        delete process.env.IDENTITY_SESSION_SECRET;
-        assert.equal((await GET(req(bob))).status,500);
-        assert.equal((await post(bob,{action:"token"})).status,500);
-        Object.assign(process.env, { NODE_ENV: "production", IDENTITY_SESSION_SECRET: secret });
-        useLinkStore(unavailableLinkStore);
-        for (const cookie of [bob, carol]) {
-          const unavailable = await GET(req(cookie));
-          assert.equal(unavailable.status, 503);
-          assert.equal(unavailable.headers.get("retry-after"), "60");
-        }
-        assert.equal((await GET(req())).status, 401);
-      } finally {
-        useLinkStore(null);
-        if (oldEnv === undefined) Reflect.deleteProperty(process.env, "NODE_ENV");
-        else Object.assign(process.env, { NODE_ENV: oldEnv });
-        if (oldSecret === undefined) delete process.env.IDENTITY_SESSION_SECRET;
-        else process.env.IDENTITY_SESSION_SECRET = oldSecret;
-      }
-      assert.equal((await GET(req(bob))).status, 200);
-      assert.equal((await GET(req(carol))).status, 200);
-
-      const sessionRoute = readFileSync(
-        fileURLToPath(new URL("../app/api/identity/session/route.ts", import.meta.url)),
-        "utf8",
-      );
-      assert.equal(sessionRoute.includes("ownerForWallet"), false);
-      assert.equal(sessionRoute.includes("address: session.address"), true);
-      assert.equal(sessionRoute.includes("ownerForOAuth"), false);
-    } finally {
-      if (previousForum === undefined) delete process.env.S3RCH_FORUM;
-      else process.env.S3RCH_FORUM = previousForum;
-      if (previousLinks === undefined) delete process.env.S3RCH_IDENTITY_LINKS;
-      else process.env.S3RCH_IDENTITY_LINKS = previousLinks;
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-function req(cookie?: string): Request {
-  return new Request("http://localhost/api/forum", {
-    headers: cookie ? { cookie } : {},
-  });
+import { signBackupSession } from "./identity/oauth";
+function principal(scalar: number) {
+  const ecdh = createECDH("prime256v1"), bytes = Buffer.alloc(32); bytes[31] = scalar;
+  ecdh.setPrivateKey(bytes); const pub = ecdh.getPublicKey();
+  return `${pub.subarray(1, 33).toString("base64url")}.${pub.subarray(33).toString("base64url")}`;
 }
-
-function sessionReq(cookie: string): Request {
-  return new Request("http://localhost/api/identity/session", {
-    headers: { cookie },
-  });
+const ALICE = principal(121), BOB = principal(122);
+const secret = "forum-route-unit-secret-".repeat(3);
+const origin = "https://s3r.ch";
+async function cookie(principal: string, credential: string) {
+  const now = Math.floor(Date.now() / 1000);
+  const token = await new SignJWT({ sub: principal, iss: origin, aud: origin, iat: now, exp: now + 300, jti: "a".repeat(64) })
+    .setProtectedHeader({ alg: "HS256", typ: "s3rch-identity-session-v1" }).sign(new TextEncoder().encode(secret));
+  return `__Host-s3rch-squad-session=${token}; credential-metadata=${credential}`;
 }
-
-async function post(cookie: string, body: Record<string, unknown>) {
-  const response = await POST(
-    new Request("http://localhost/api/forum", {
-      method: "POST",
-      headers: { cookie, "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  );
-  return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+function req(cookie = "", headers: Record<string, string> = {}) {
+  return new Request(origin + "/api/forum", { headers: { cookie, ...headers } });
 }
-
+async function post(cookie: string, body: unknown, headers: Record<string, string> = {}) {
+  const response = await POST(new Request(origin + "/api/forum", { method: "POST", headers: { cookie, "content-type": "application/json", ...headers }, body: JSON.stringify(body) }));
+  return { status: response.status, body: await response.json() };
+}
 async function read(cookie: string) {
   const response = await GET(req(cookie));
-  return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+  return { status: response.status, body: await response.json() };
 }
-
-async function siweCookie(address: string, secret: string): Promise<string> {
-  const token = await signSessionToken({ address, chainId: 1 }, secret);
-  return `${sessionCookieName(false)}=${token}`;
-}
-
-async function oauthCookie(sub: string, secret: string): Promise<string> {
-  const token = await signBackupSession({ sub, idp: "github" }, secret);
-  return `${oauthSessionCookieName(false)}=${token}`;
-}
+test("forum grants and revocation use the SEA principal across credential metadata", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "s3rch-forum-route-"));
+  const before = { forum: process.env.S3RCH_FORUM, secret: process.env.IDENTITY_SESSION_SECRET };
+  process.env.S3RCH_FORUM = join(dir, "forum.json"); process.env.IDENTITY_SESSION_SECRET = secret;
+  try {
+    const alice = await cookie(ALICE, "wallet-a"), linked = await cookie(ALICE, "oidc-b"), bob = await cookie(BOB, "wallet-c");
+    assert.equal((await GET(req())).status, 401);
+    for (const credential of [
+      `s3rch-session=${await signSessionToken({ address: "0x" + "a".repeat(40), chainId: 1 }, secret)}`,
+      `s3rch-oauth-session=${await signBackupSession({ sub: "oidc-subject", idp: "github" }, secret)}`,
+      "__Host-s3rch-squad-session=invalid",
+    ]) assert.equal((await GET(req(credential))).status, 401);
+    const registered = await post(alice, { action: "register", label: "ledger", entropy: "rt01" });
+    assert.equal(registered.status, 200);
+    const botId = registered.body.bot.id;
+    assert.ok(botId.startsWith(`s3rch:bot:${ALICE}:`));
+    assert.equal((await post(linked, { action: "post", botId, body: "private", entropy: "rt02", nowSeconds: 1700000001 })).status, 200);
+    assert.equal((await read(linked)).body.channel.owner, ALICE);
+    assert.equal((await read(bob)).body.messages.length, 0);
+    assert.equal((await post(linked, { action: "invite", guest: BOB })).status, 200);
+    assert.equal((await read(bob)).body.shared[0].channel.owner, ALICE);
+    assert.equal((await post(alice, { action: "uninvite", guest: BOB })).status, 200);
+    assert.deepEqual((await read(bob)).body.shared, []);
+    assert.equal((await post(alice, { action: "invite", guest: "0x" + "a".repeat(40) })).status, 400);
+    const desktop = await post(alice, { action: "desktop", session: "11111111-1111-4111-8111-111111111111",
+      snapshot: { handle: "abc123def0", mime: "image/png", seq: 2 }, thinking: [], files: [], secrets: [],
+      png_base64: Buffer.from("private snapshot unit fixture").toString("base64") });
+    assert.equal(desktop.status, 200);
+    const shot = origin + "/api/forum?snapshot=abc123def0";
+    assert.equal((await GET(new Request(shot))).status, 401);
+    assert.equal((await GET(new Request(shot, { headers: { cookie: bob } }))).status, 404);
+    const ownerShot = await GET(new Request(shot, { headers: { cookie: linked } }));
+    assert.equal(ownerShot.status, 200);
+    assert.equal(ownerShot.headers.get("content-type"), "image/png");
+    assert.equal(ownerShot.headers.get("cache-control"), "private, no-store");
+    assert.equal(await ownerShot.text(), "private snapshot unit fixture");
+    assert.equal((await post(alice, { action: "token" })).status, 410);
+    const malformed = await POST(new Request(origin + "/api/forum", { method: "POST", headers: { cookie: alice }, body: "{" }));
+    assert.equal(malformed.status, 400);
+    const delegatedHeaders: Record<string, string>[] = [{ authorization: "Bearer agent-token" }, { "x-s3rch-forum-token": "agent-token" }, { "x-s3rch-forum-token": "" }];
+    for (const headers of delegatedHeaders) {
+      assert.equal((await GET(req(alice, headers))).status, 401);
+      for (const action of ["post", "invite", "token", "desktop"])
+        assert.equal((await post(alice, { action }, headers)).status, 401);
+    }
+    process.env.IDENTITY_SESSION_SECRET = "wrong-secret-".repeat(4);
+    assert.equal((await GET(req(alice))).status, 401);
+  } finally {
+    if (before.forum === undefined) delete process.env.S3RCH_FORUM; else process.env.S3RCH_FORUM = before.forum;
+    if (before.secret === undefined) delete process.env.IDENTITY_SESSION_SECRET; else process.env.IDENTITY_SESSION_SECRET = before.secret;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

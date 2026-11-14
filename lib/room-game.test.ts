@@ -6,9 +6,9 @@ import { applySeeGrant, roomSoul } from "./identity/check";
 import { createMemorySeeAcl } from "./identity/see-acl";
 import { composeRoom } from "./rooms";
 
-const X = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const O = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
-const OTHER = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+const X = "PtETt4g7TFkGODedsMIc2hZ0LtAlUEi_QzOR03S8IdE.kJkgmszEyKIkyEOvpPTGigkNBNpemIna4vju_OgqN0A";
+const O = "dB3VvagX2V5GJlNzIOXVUXmYMCiy-CyZ1QDF7oYk48Q.B3C0apw4X9xWc4NVSIexVI7rkSw1ulynGZX_Is1EgdM";
+const OTHER = "F3yDeuCsSVphgF3y2F7i_HkuKEtl6tWKmOFdnUYHLAE.Y7tYzU6-pViiQJGttA9OcibuFMOh-03znEO74u_Hv9g";
 const room = composeRoom({title:"Game room",address:X,nowSeconds:100,entropy:"aabb"})!.id;
 function event(author: string, action: RoomGameAction, at=100): ChatMessage {
   const message=composeRoomGame(room,author,action,at); assert.ok(message); return message;
@@ -70,7 +70,7 @@ describe("Room game chat protocol",()=>{
   });
   it("keeps messages bounded and renders understandable chat summaries",()=>{
     const h=setup();h.move(X,0);
-    for(const row of h.rows){assert.ok(row.body.length<=280);assert.ok(parseRoomGameAction(row.body));}
+    for(const row of h.rows){assert.ok(row.body.length<=512);assert.ok(parseRoomGameAction(row.body));}
     assert.equal(roomGameChatText(h.rows[0].body),"Started a tic-tac-toe game.");
     assert.equal(roomGameChatText(h.rows[1].body),"Joined a tic-tac-toe game.");
     assert.equal(roomGameChatText(h.rows[2].body),"Tic-tac-toe move: square 1.");

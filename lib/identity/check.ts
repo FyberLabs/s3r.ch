@@ -396,10 +396,7 @@ export function sameAccessor(
   left: AccessorId | undefined,
   right: AccessorId | undefined,
 ): boolean {
-  if (!left || !right) return false;
-  if (isSeaPubkey(left) || isSeaPubkey(right)) return left === right;
-  const rightAliases = new Set(accessorAliases(right));
-  return accessorAliases(left).some((alias) => rightAliases.has(alias));
+  return !!left && !!right && isSeaPubkey(left) && left === right;
 }
 
 export function grantNamesObject(
@@ -448,6 +445,7 @@ export function ownerOwnsObject(
   owner: AccessorId,
   object: CheckObjectId,
 ): boolean {
+  if (!isSeaPubkey(owner)) return false;
   if (usesCanonicalObjectNamespace(object)) return isCanonicalObjectId(object) && isSeaPubkey(owner) && acl.ownerOf(object) === owner;
   if (sameAccessor(acl.ownerOf(object), owner)) return true;
   if (sameAccessor(acl.ownerOf(itemSoul(object)), owner)) return true;
@@ -479,6 +477,7 @@ function canonicalCheckBoundary(graph: SeeGraph, object: string, accessor: strin
 /** Forum-specific read gate. Legacy/sample graphs remain direct-only. */
 export function checkForumSee(graph: SeeGraph, object: string, accessor: string, now: number): CheckResult {
   if (!validCheckTime(now)) return { allowed: false, reason: "unknown" };
+  if (!isSeaPubkey(accessor)) return { allowed: false, reason: "bad-principal" };
   const boundary = canonicalCheckBoundary(graph, object, accessor);
   if (boundary) return boundary;
   return graph.checkForumSee ? graph.checkForumSee(object, accessor, now) : checkSee(graph, object, accessor, now);
@@ -504,6 +503,7 @@ export function checkSee(
   void hint;
   void hop;
   if (!validCheckTime(now)) return { allowed: false, reason: "unknown" };
+  if (!isSeaPubkey(accessor)) return { allowed: false, reason: "bad-principal" };
   const boundary = canonicalCheckBoundary(graph, object, accessor);
   if (boundary) return boundary;
   if (graph.checkDirectSee) return graph.checkDirectSee(object, accessor, now);
@@ -835,6 +835,7 @@ export function applySeeGrant(
   owner: AccessorId,
   grant: IdentitySeeGrant,
 ): void {
+  if (!isSeaPubkey(owner) || !isSeaPubkey(grant.accessor)) return;
   const object = resolveGrantObject(acl, grant);
   if (!object) return;
   if (!sameAccessor(acl.ownerOf(object), owner)) return;
@@ -849,7 +850,7 @@ export function cancelSee(
   accessor: AccessorId,
   object: CheckObjectId,
 ): void {
-  if (!ownerOwnsObject(acl, owner, object)) return;
+  if (!isSeaPubkey(accessor) || !ownerOwnsObject(acl, owner, object)) return;
   acl.unstateSeeGrant(owner, accessor, object);
 }
 

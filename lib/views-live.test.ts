@@ -38,8 +38,8 @@ import { labelFor } from "./views-picker";
 import { buildBrowseTree } from "./views-picker";
 import type { View } from "./views-window";
 
-const ME = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const ORG = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+const ME = "PtETt4g7TFkGODedsMIc2hZ0LtAlUEi_QzOR03S8IdE.kJkgmszEyKIkyEOvpPTGigkNBNpemIna4vju_OgqN0A";
+const ORG = "dB3VvagX2V5GJlNzIOXVUXmYMCiy-CyZ1QDF7oYk48Q.B3C0apw4X9xWc4NVSIexVI7rkSw1ulynGZX_Is1EgdM";
 const LAB = `s3rch:https://lab.fyberlabs.com:443;key=${"b".repeat(64)}`;
 const NOW = 1_700_000_000;
 
@@ -179,7 +179,7 @@ describe("first-seen rows", () => {
     const prefix = `${formatCanonical(ref)}#`;
     const stored = parseObserved(JSON.stringify(retainObserved(Object.create(null), first, prefix)));
     assert.equal(stored[`${prefix}m1`], 900);
-    assert.equal(observedStorageKey(ME, "v"), `s3rch-views-observed:${ME.toLowerCase()}:v`);
+    assert.equal(observedStorageKey(ME, "v"), `s3rch-views-observed:${ME}:v`);
     assert.deepEqual({ ...parseObserved('{"__proto__":1,"nope":2}') }, {});
 
     const againIncoming = rowsForChat(ref, [message("m1", 10), message("m2", 40)]);
@@ -328,7 +328,7 @@ describe("browse catalog", () => {
     const ownForum = sources.find((source) => source.ref.kind === "forum" && source.ref.source === "c1");
     const rss = sources.find((source) => source.ref.network === "rss" && source.ref.source.endsWith("/feed.xml"));
     assert.equal(room && labelFor(room.ref, sources), "# ops");
-    assert.equal(ownForum?.label, "Forum · 0xf3…66");
+    assert.equal(ownForum?.label, "Forum · PtETt4g7TFkGODedsMIc2hZ…");
     assert.equal(rss?.label, "blog.ethereum.org");
     assert.equal(rss?.ref.owner, "https://blog.ethereum.org");
     assert.ok(sources.some((source) => source.ref.network === "farcaster" && source.ref.owner === "3" && source.label === "dwr"));

@@ -7,7 +7,7 @@ import { preparePublishRoomChat, type ChatMessage } from "./chat";
 import { applySeeGrant, roomSoul } from "./identity/check";
 import { createMemorySeeAcl } from "./identity/see-acl";
 import { composeRoom } from "./rooms";
-const owner = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", other = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+const owner = "PtETt4g7TFkGODedsMIc2hZ0LtAlUEi_QzOR03S8IdE.kJkgmszEyKIkyEOvpPTGigkNBNpemIna4vju_OgqN0A", other = "dB3VvagX2V5GJlNzIOXVUXmYMCiy-CyZ1QDF7oYk48Q.B3C0apw4X9xWc4NVSIexVI7rkSw1ulynGZX_Is1EgdM";
 const room = composeRoom({ title: "Work room", address: owner, nowSeconds: 100, entropy: "work" })!.id;
 function event(action: TaskAction, author = owner, at = 100): ChatMessage {
   const row = composeRoomTask(room, author, action, at); assert.ok(row); return row;

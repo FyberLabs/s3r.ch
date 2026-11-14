@@ -1,3 +1,4 @@
+import { seaToPrincipalKey } from "./forum-check";
 import { legacyUserSoul } from "./legacy-user-soul";
 import { legacyAclKey, legacyAclPrincipalKey, legacyAclSoul, legacyGrantSoul } from "./legacy-acl-souls";
 import assert from "node:assert/strict";
@@ -29,9 +30,9 @@ import {
 } from "./check";
 import { createMemorySeeAcl } from "./see-acl";
 
-const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const BOB = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
-const CAROL = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+const ALICE = "PtETt4g7TFkGODedsMIc2hZ0LtAlUEi_QzOR03S8IdE.kJkgmszEyKIkyEOvpPTGigkNBNpemIna4vju_OgqN0A";
+const BOB = "dB3VvagX2V5GJlNzIOXVUXmYMCiy-CyZ1QDF7oYk48Q.B3C0apw4X9xWc4NVSIexVI7rkSw1ulynGZX_Is1EgdM";
+const CAROL = "F3yDeuCsSVphgF3y2F7i_HkuKEtl6tWKmOFdnUYHLAE.Y7tYzU6-pViiQJGttA9OcibuFMOh-03znEO74u_Hv9g";
 const CLAIM = "ens:vitalik.eth";
 const NOW = 1_000;
 
@@ -113,22 +114,22 @@ describe("locked Gun souls", () => {
     );
     assert.equal(
       presenceSoul("s3rch:room:0xabc:1:aa", ALICE),
-      `s3rch/rooms/s3rch:room:0xabc:1:aa/presence/${ALICE}`,
+      `s3rch/rooms/s3rch:room:0xabc:1:aa/presence/${encodeKey(ALICE)}`,
     );
     assert.equal(metaSoul(), "s3rch/meta");
     assert.equal(legacyAclKey("rss3:act/1#x"), "rss3:act_1_x");
     assert.equal(legacyAclKey("ens:alice.eth"), "ens:alice_eth");
     assert.equal(legacyAclKey(itemSoul("rss3:act/1#x")), "s3rch_items_rss3:act_1_x");
-    assert.equal(legacyAclPrincipalKey(legacyUserSoul(ALICE)), ALICE);
-    assert.equal(legacyAclPrincipalKey(ALICE.toLowerCase()), ALICE);
-    assert.equal(legacyAclSoul(ALICE), `s3rch/acl/${ALICE}`);
+    assert.throws(() => legacyAclPrincipalKey(legacyUserSoul(ALICE)), /SEA principal/);
+    assert.equal(legacyAclPrincipalKey(ALICE), seaToPrincipalKey(ALICE));
+    assert.equal(legacyAclSoul(ALICE), `s3rch/acl/${seaToPrincipalKey(ALICE)}`);
     assert.equal(
       legacyGrantSoul(ALICE, "rss3:act/1#x", BOB),
-      `s3rch/acl/${ALICE}/rss3:act_1_x/${BOB}`,
+      `s3rch/acl/${seaToPrincipalKey(ALICE)}/rss3:act_1_x/${seaToPrincipalKey(BOB)}`,
     );
     assert.equal(
-      legacyGrantSoul(ALICE, "ens:alice.eth", legacyUserSoul(BOB)),
-      `s3rch/acl/${ALICE}/ens:alice_eth/${BOB}`,
+      legacyGrantSoul(ALICE, "ens:alice.eth", BOB),
+      `s3rch/acl/${seaToPrincipalKey(ALICE)}/ens:alice_eth/${seaToPrincipalKey(BOB)}`,
     );
     assert.equal(
       legacyGrantSoul(ALICE, itemSoul("rss3:act/1#x"), BOB).split("/").length,
@@ -152,7 +153,7 @@ describe("CHECK(see, object, accessor) consume laws", () => {
     const result = checkSee(acl, CLAIM, ALICE, NOW);
     assert.equal(result.allowed, true);
     assert.equal(result.reason, "owner");
-    assert.equal(checkSee(acl, CLAIM, legacyUserSoul(ALICE), NOW).allowed, true);
+    assert.equal(checkSee(acl, CLAIM, legacyUserSoul(ALICE), NOW).allowed, false);
   });
 
   it("invalid clocks deny owners and delegates before graph access", () => {
@@ -516,7 +517,7 @@ describe("CHECK(see, object, accessor) consume laws", () => {
     assert.equal(grantLiveAt(grant, 0), true);
     assert.equal(grantLiveAt(grant, 80), false);
     assert.equal(checkSee(acl, CLAIM, BOB, 0).allowed, true);
-    assert.equal(checkSeeGrant(acl, grant, CLAIM, legacyUserSoul(BOB), 0).allowed, true);
+    assert.equal(checkSeeGrant(acl, grant, CLAIM, legacyUserSoul(BOB), 0).allowed, false);
     assert.equal(checkSee(acl, CLAIM, BOB, 80).allowed, false);
   });
 });

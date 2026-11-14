@@ -12,8 +12,8 @@ import {
   type Forum,
 } from "./forum";
 
-const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const BOB = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+const ALICE = "PtETt4g7TFkGODedsMIc2hZ0LtAlUEi_QzOR03S8IdE.kJkgmszEyKIkyEOvpPTGigkNBNpemIna4vju_OgqN0A";
+const BOB = "dB3VvagX2V5GJlNzIOXVUXmYMCiy-CyZ1QDF7oYk48Q.B3C0apw4X9xWc4NVSIexVI7rkSw1ulynGZX_Is1EgdM";
 const NOW = 1_700_000_000;
 
 function tempFile(): { dir: string; file: string } {
@@ -31,7 +31,7 @@ describe("AI forum ledger", () => {
     try {
       const first = openAt(file);
       const registered = first.registerBot({
-        owner: ALICE.toLowerCase(),
+        owner: ALICE,
         label: "ledger",
         nowSeconds: NOW,
         entropy: "aa11",
@@ -341,7 +341,7 @@ describe("AI forum ledger", () => {
 });
 
 describe("forum invites and groups", () => {
-  const CAROL = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+  const CAROL = "F3yDeuCsSVphgF3y2F7i_HkuKEtl6tWKmOFdnUYHLAE.Y7tYzU6-pViiQJGttA9OcibuFMOh-03znEO74u_Hv9g";
 
   function register(chat: Forum, owner: string, entropy: string) {
     const registered = chat.registerBot({
@@ -388,7 +388,7 @@ describe("forum invites and groups", () => {
 
       const invited = handleForumPost(chat, ALICE, {
         action: "invite",
-        guest: BOB.toLowerCase(),
+        guest: BOB,
         owner: BOB,
         nowSeconds: NOW + 3,
       });
@@ -553,7 +553,7 @@ describe("forum invites and groups", () => {
 });
 
 describe("forum desktop feed", () => {
-  const CAROL = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+  const CAROL = "F3yDeuCsSVphgF3y2F7i_HkuKEtl6tWKmOFdnUYHLAE.Y7tYzU6-pViiQJGttA9OcibuFMOh-03znEO74u_Hv9g";
   const SESSION = "11111111-1111-4111-8111-111111111111";
   const HANDLE = "abc123def0";
   const MARKER = "VISORPNGMARKER";
@@ -657,15 +657,15 @@ describe("forum desktop feed", () => {
 });
 
 describe("forum route", () => {
-  it("uses the SIWE session and does not invent an API key", () => {
+  it("uses the SEA session and does not invent an API key", () => {
     const route = readFileSync(
       fileURLToPath(new URL("../app/api/forum/route.ts", import.meta.url)),
       "utf8",
     );
-    assert.equal(route.includes("readSessionToken"), true);
+    assert.equal(route.includes("readSeaRequestSession"), true);
     assert.equal(route.includes("session.address"), true);
-    assert.equal(route.includes("ownerForWallet"), true);
-    assert.equal(route.includes("ownerForOAuth"), true);
+    assert.equal(route.includes("ownerForWallet"), false);
+    assert.equal(route.includes("ownerForOAuth"), false);
     assert.equal(route.includes("readForumBotToken"), false);
     assert.equal(route.includes("x-s3rch-forum-token"), true);
     assert.equal(route.includes("X-Api-Key"), false);
