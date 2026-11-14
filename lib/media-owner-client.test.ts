@@ -240,3 +240,15 @@ test("deletion refuses stale or foreign drafts and never treats pending cleanup 
   const intent=await client.prepareDeletion(tenant,object,owner,key());await assert.rejects(client.submitDeletion(intent));
   await assert.rejects(client.prepareDeletion(tenant,"bad",owner,key()));
 });
+
+test("cleanup accepts only completion of the accepted command and never retries",async()=>{
+  const command="a".repeat(64);let calls=0;
+  const client=createPrivateMediaOwner(async(url,init)=>{calls++;assert.equal(action(url),"cleanup");
+    assert.deepEqual(JSON.parse(String(init?.body)),{object});return Response.json({accepted:true,command,cleanup:"complete"});});
+  assert.deepEqual(await client.cleanup(object,command),{command,cleanup:"complete"});assert.equal(calls,1);
+  await assert.rejects(client.cleanup("bad",command));await assert.rejects(client.cleanup(object,"bad"));assert.equal(calls,1);
+  for(const reply of [{accepted:true,command,cleanup:"pending"},{accepted:true,command:"b".repeat(64),cleanup:"complete"},{accepted:false,command,cleanup:"complete"}]) {
+    let requests=0;const invalid=createPrivateMediaOwner(async()=>{requests++;return Response.json(reply);});
+    await assert.rejects(invalid.cleanup(object,command));assert.equal(requests,1);
+  }
+});
