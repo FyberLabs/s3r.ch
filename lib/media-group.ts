@@ -52,3 +52,26 @@ export function parseMediaGroupAppend(input:unknown) {
       typeof row.soul!=="string"||!row.soul.length||!row.record||typeof row.record!=="object"||Array.isArray(row.record))return fail();
   return {predicate:v.predicate,set:v.set,rows:v.rows};
 }
+
+export type MediaGroupScope={predicate:"same-group"|"named-circle";set:string};
+export type MediaGroupPolicy={owner:string;setId:string;predicate:"same-group"|"named-circle";settleWindowMs:number;configRevision:number;signature:string};
+export function parseMediaGroupScope(input:unknown):MediaGroupScope {
+  const v=structuredClone(input);
+  if(!exact(v,["predicate","set"])||!predicate(v.predicate)||!setId(v.set))return fail();
+  return v as MediaGroupScope;
+}
+export function parseMediaGroupPolicy(input:unknown,scope:MediaGroupScope):MediaGroupPolicy {
+  const v=structuredClone(input),held=parseMediaGroupScope(scope);
+  if(!exact(v,["owner","setId","predicate","settleWindowMs","configRevision","signature"])||v.owner!==objectPrincipal(held.set)||
+      v.setId!==held.set||v.predicate!==held.predicate||!integer(v.configRevision)||!integer(v.settleWindowMs)||
+      v.settleWindowMs<3600000||v.settleWindowMs>259200000||typeof v.signature!=="string"||!/^[a-f0-9]{128}$/.test(v.signature))return fail();
+  return v as MediaGroupPolicy;
+}
+export function parseMediaGroupPolicyView(input:unknown,scope:MediaGroupScope) {
+  const v=structuredClone(input),held=parseMediaGroupScope(scope);
+  if(!exact(v,["at","fence","context","config"])||!integer(v.at)||typeof v.fence!=="string"||!/^[a-f0-9]{64}$/.test(v.fence)||
+      !exact(v.context,["owner","ownerPub","setId","predicate"])||v.context.owner!==objectPrincipal(held.set)||
+      v.context.setId!==held.set||v.context.predicate!==held.predicate||typeof v.context.ownerPub!=="string"||!isSeaPubkey(v.context.ownerPub))return fail();
+  const config=v.config===null?null:parseMediaGroupPolicy(v.config,held);
+  return {at:v.at,fence:v.fence,context:{owner:v.context.owner as string,ownerPub:v.context.ownerPub,setId:held.set,predicate:held.predicate},config};
+}
