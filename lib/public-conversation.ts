@@ -1,9 +1,10 @@
 import {cachedConversation} from "./feed-conversation";
 import type {FeedItem,FeedSource} from "./feed-types";
 import {fetchAtprotoConversation} from "./atproto-conversation";
+import {fetchFarcasterConversation} from "./farcaster-conversation";
 import {fetchNostrConversation} from "./nostr-conversation";
 import {fetchActivityPubConversation} from "./activitypub-conversation";
-const fetchConversation=(anchor:FeedItem)=>anchor.source==="nostr"?fetchNostrConversation(anchor):anchor.source==="activitypub"?fetchActivityPubConversation(anchor):fetchAtprotoConversation(anchor);
+const fetchConversation=(anchor:FeedItem)=>anchor.source==="farcaster"?fetchFarcasterConversation(anchor):anchor.source==="nostr"?fetchNostrConversation(anchor):anchor.source==="activitypub"?fetchActivityPubConversation(anchor):fetchAtprotoConversation(anchor);
 /** Small transient public-response cache; durable product storage remains tenant-owned. */
 export function createPublicConversations(pull=fetchConversation,clock=Date.now){
  type Entry={until:number;rows:FeedItem[];truncated:boolean};
@@ -11,7 +12,7 @@ export function createPublicConversations(pull=fetchConversation,clock=Date.now)
  const cache=new Map<string,Entry>(),pending=new Map<string,Promise<Entry>>();
  return async(rows:readonly FeedItem[],source:FeedSource,id:string)=>{
   const anchor=rows.find(row=>row.source===source&&row.id===id);if(!anchor)return null;
-  if(source!=="atproto"&&source!=="activitypub"&&source!=="nostr")return cachedConversation(rows,source,id);
+  if(source!=="atproto"&&source!=="activitypub"&&source!=="nostr"&&source!=="farcaster")return cachedConversation(rows,source,id);
   const key=JSON.stringify([source,id,anchor.replyTo?.id,anchor.root?.id]);
   let entry=cache.get(key);
   if(!entry||entry.until<=clock()){
