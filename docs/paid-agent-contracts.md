@@ -106,9 +106,13 @@ granted inputs/outputs necessary to apply its criteria.
 
 Buyer silence does not invent acceptance: after the signed review duration,
 open the pre-agreed dispute path. Late or missing delivery goes to the same path.
-If the mediator declines, becomes unavailable, loses its grant, or misses its
+If the mediator independently declines, becomes unavailable, or misses its
 signed decision deadline, stop work and require a full refund under the agreed
-fallback. A replacement mediator requires a fresh agreement by both parties;
+fallback. A party revoking required data access pauses work but does not itself
+select that remedy: the signed cancellation schedule must distinguish which
+party withdrew access and at which admitted work stage. Unknown or disputed
+causes remain disputed; a browser assertion cannot establish mediator failure,
+a deadline, a completed stage or a refund entitlement. A replacement mediator requires a fresh agreement by both parties;
 no platform or agent chooses one after the fact. Conflicting authenticated
 outcomes remain paused until reconciled through that same path.
 
