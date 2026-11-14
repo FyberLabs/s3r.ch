@@ -49,7 +49,11 @@ export function createLinkedWalletClient(input: {
         const bounded = async <T>(operation: Promise<T>): Promise<T> => {
           let stop: () => void = () => {};
           const cancelled = new Promise<never>((_, reject) => { stop = () => reject(Error("Cancelled")); controller.signal.addEventListener("abort", stop, { once: true }); });
-          try { controller.signal.throwIfAborted(); return await Promise.race([operation, cancelled]); }
+          try {
+            const result = Promise.race([operation, cancelled]);
+            if (controller.signal.aborted) stop();
+            return await result;
+          }
           finally { controller.signal.removeEventListener("abort", stop); }
         };
         const post = async (action: string, body: object) => {

@@ -78,3 +78,11 @@ test("delayed challenge and signer expiry stop before signing or exchanging", as
   const t = await setup(); t.afterSign(() => t.setTime(260));
   assert.equal(await t.client.signIn(), false); assert.deepEqual(t.counts(), [1, 0]);
 });
+
+test("synchronous transport cancellation handles its subsequent rejection", async () => {
+  const client = createLinkedWalletClient({ origin: "https://s3r.ch", current: () => ({ address: wallet.address, chainId: "1", walletRevision: 0, sessionRevision: 0 }),
+    signMessage: async () => { throw Error("must not sign"); },
+    fetch: () => { client.cancel(); return Promise.reject(Error("transport cancelled")); } });
+  assert.equal(await client.signIn(), false);
+  await new Promise(resolve => setImmediate(resolve));
+});
