@@ -14,7 +14,7 @@ import { putMineUserOverlay } from "@/lib/identity/user-overlay";
 import {
   claimIsShared,
   fromGunUserNode,
-  isWalletClaimId,
+  isUserIdentityClaimId,
   prepareShareClaimIntoMesh,
   prepareShareUserIntoMesh,
   prepareUnshareClaimFromMesh,
@@ -195,7 +195,7 @@ export function UserNodeControls({
     gun.get("s3rch").get("users").get(prepared.key).put(prepared.node);
     setPublished(true);
     setSharedIndicators(
-      isWalletClaimId(claimId, address)
+      isUserIdentityClaimId(claimId, address)
         ? sharedIndicators
         : [...sharedIndicators, claimId],
     );

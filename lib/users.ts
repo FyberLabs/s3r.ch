@@ -341,7 +341,7 @@ export function prepareShareClaimIntoMesh(
   const claim = claimId.trim();
   if (!claim) return { denied: true };
 
-  const walletClaim = isSeaPubkey(claim) && claim === user.id;
+  const walletClaim = isUserIdentityClaimId(claim, user.id);
 
   if (!walletClaim) {
     const held = user.indicators.some(
@@ -403,7 +403,7 @@ export function prepareUnshareClaimFromMesh(
   if (!claim) return { denied: true };
   if (!ownsUser(user, owner)) return { denied: true };
 
-  if (claim === user.id && isSeaPubkey(claim)) {
+  if (isUserIdentityClaimId(claim, user.id)) {
     return prepareUnshareUserFromMesh(acl, user, owner, nowSeconds);
   }
 
@@ -429,6 +429,10 @@ export function ownsUser(
 ): boolean {
   if (!address) return false;
   return isSeaPubkey(address) && user.id === address;
+}
+
+export function isUserIdentityClaimId(claimId: string, principal: string): boolean {
+  return isSeaPubkey(principal) && claimId === principal;
 }
 
 export function isWalletClaimId(claimId: string, wallet: string): boolean {

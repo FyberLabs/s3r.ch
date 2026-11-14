@@ -59,7 +59,7 @@ import {
 import {
   composeUser,
   fromGunUserNode,
-  isWalletClaimId,
+  isUserIdentityClaimId,
   toGunUserNode,
   userNodeHasForbiddenSecrets,
   type User,
@@ -428,7 +428,7 @@ export function prepareGrantUserDelivery(
   const object = requireLiveGrant(acl, dest, accessor, "user", claimId, now);
   if (!object) return { denied: true, reason: "check" };
 
-  const walletClaim = isWalletClaimId(claimId, user.id);
+  const walletClaim = isUserIdentityClaimId(claimId, user.id);
   const held = user.indicators.some(
     (row) => row.toLowerCase() === claimId.toLowerCase(),
   );

@@ -64,3 +64,22 @@ test("identity refresh marks cached observation unresolved rather than signed ou
   assert.doesNotMatch(source, /setQueryData\(key, null\)/);
   assert.match(source, /session === UNRESOLVED_SESSION\) return query.isError \? null : undefined/);
 });
+
+test("granting a SEA user identity delivers its record without private held claims", async () => {
+  const { composeUser, admitComposedUser, isUserIdentityClaimId } = await import("./users");
+  const { applySeeGrant } = await import("./identity/check");
+  const { prepareGrantUserDelivery } = await import("./grant-delivery");
+  const acl = createMemorySeeAcl();
+  const user = composeUser({ address: alice, indicators: ["email:private@example.test"], nowSeconds: 100 });
+  assert.ok(user);
+  assert.ok(!("denied" in admitComposedUser(acl, user, alice)));
+  const grant = { claimId: alice, accessor: bob, from: 0, until: 200 };
+  applySeeGrant(acl, alice, grant);
+  const prepared = prepareGrantUserDelivery(acl, user, alice, grant, 100);
+  assert.ok(!("denied" in prepared));
+  assert.ok(!("retracted" in prepared.node));
+  assert.equal(JSON.parse(prepared.node.payload).id, alice);
+  assert.equal(JSON.parse(prepared.node.payload).indicators, "");
+  assert.equal(isUserIdentityClaimId(alice, alice), true);
+  assert.equal(isUserIdentityClaimId(bob, alice), false);
+});
