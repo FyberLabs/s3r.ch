@@ -1,7 +1,7 @@
 /**
  * AI forum for humans, bots, and cloud agents.
  *
- * A signed-in owner (SIWE address) gets one forum channel. Bots and agents
+ * A signed-in owner (SEA principal) gets one forum channel. Bots and agents
  * are rows in that ledger. Restart looks the row up again. Copy mints a new
  * id and does not join. Archive keeps the row and the messages.
  *
@@ -16,6 +16,7 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { getAddress } from "viem";
 import { isSeaPubkey } from "./identity/forum-check";
 import { CHAT_BODY_MAX } from "./chat";
 
@@ -1025,7 +1026,7 @@ function fileIsConsistent(file: ForumFile): boolean {
 
 function asChannel(value: unknown): ForumChannel | null {
   if (!isRecord(value)) return null;
-  const owner = checksumOwner(value.owner);
+  const owner = storedOwner(value.owner);
   if (!owner || value.id !== channelIdFor(owner)) return null;
   if (!isProtocolV(value.v) || !isTime(value.created)) return null;
   return { id: channelIdFor(owner), owner, created: value.created, v: FORUM_FILE_V };
@@ -1033,7 +1034,7 @@ function asChannel(value: unknown): ForumChannel | null {
 
 function asBot(value: unknown): ForumBot | null {
   if (!isRecord(value)) return null;
-  const owner = checksumOwner(value.owner);
+  const owner = storedOwner(value.owner);
   const label = typeof value.label === "string" ? cleanLabel(value.label) : null;
   if (!owner || !label || value.label !== label) return null;
   if (value.kind !== "bot" && value.kind !== "cloud-agent") return null;
@@ -1062,14 +1063,14 @@ function asBot(value: unknown): ForumBot | null {
 
 function asInvite(value: unknown): ForumInvite | null {
   if (!isRecord(value)) return null;
-  const guest = checksumOwner(value.guest);
+  const guest = storedOwner(value.guest);
   if (!guest || typeof value.channel !== "string" || !isTime(value.created)) return null;
   return { channel: value.channel, guest, created: value.created };
 }
 
 function asGroup(value: unknown): ForumGroup | null {
   if (!isRecord(value)) return null;
-  const owner = checksumOwner(value.owner);
+  const owner = storedOwner(value.owner);
   const label = typeof value.label === "string" ? cleanLabel(value.label) : null;
   if (!owner || !label || value.label !== label) return null;
   if (typeof value.id !== "string" || typeof value.channel !== "string") return null;
@@ -1079,14 +1080,14 @@ function asGroup(value: unknown): ForumGroup | null {
 
 function asGroupMember(value: unknown): ForumGroupMember | null {
   if (!isRecord(value)) return null;
-  const member = checksumOwner(value.member);
+  const member = storedOwner(value.member);
   if (!member || typeof value.group !== "string" || !isTime(value.joined)) return null;
   return { group: value.group, member, joined: value.joined };
 }
 
 function asMembership(value: unknown): ForumMembership | null {
   if (!isRecord(value)) return null;
-  const owner = checksumOwner(value.owner);
+  const owner = storedOwner(value.owner);
   if (!owner || typeof value.channel !== "string" || typeof value.bot !== "string") return null;
   if (!isTime(value.joined)) return null;
   return { channel: value.channel, bot: value.bot, owner, joined: value.joined };
@@ -1094,7 +1095,7 @@ function asMembership(value: unknown): ForumMembership | null {
 
 function asMessage(value: unknown): ForumMessage | null {
   if (!isRecord(value)) return null;
-  const owner = checksumOwner(value.owner);
+  const owner = storedOwner(value.owner);
   if (!owner || typeof value.id !== "string" || !value.id.trim()) return null;
   if (typeof value.channel !== "string" || typeof value.bot !== "string") return null;
   if (typeof value.body !== "string" || !value.body.trim() || value.body.length > CHAT_BODY_MAX) {
@@ -1392,6 +1393,14 @@ function parseDesktopPost(
     secrets,
     nowSeconds: asSeconds(record.nowSeconds),
   };
+}
+
+/** Preserve wallet-era ledger rows without making their credentials owners.
+ * Only persisted decoders use this helper; all operations require SEA below. */
+function storedOwner(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  if (isSeaPubkey(value)) return value;
+  try { return getAddress(value); } catch { return null; }
 }
 
 function checksumOwner(value: unknown): string | null {

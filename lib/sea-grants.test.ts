@@ -35,3 +35,24 @@ test("mesh grant decoding binds canonical SEA principal path keys", () => {
   assert.equal(fromGunAclNode(gunAclWireNode(edge), "wallet-owner", parts[3], parts[4]), null);
   assert.equal(fromGunAclNode(gunAclWireNode(edge), parts[2], parts[3], "wallet-accessor"), null);
 });
+
+
+test("mixed legacy and SEA forum storage preserves old rows without wallet authority", async () => {
+  const { mkdtempSync, readFileSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { emptyForumFile, FileForumStore, openForum, handleForumGet, handleForumPost } = await import("./forum");
+  const dir = mkdtempSync(join(tmpdir(), "sea-forum-mixed-")), file = join(dir, "forum.json");
+  const wallet = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+  const oldChannel = { id: `s3rch:forum:${wallet}`, owner: wallet, created: 100, v: 1 };
+  try {
+    writeFileSync(file, JSON.stringify({ ...emptyForumFile(), channels: [oldChannel] }));
+    const forum = openForum(new FileForumStore(file));
+    assert.equal(handleForumPost(forum, owner, { action: "register", label: "new", entropy: "abcd" }).status, 200);
+    assert.equal(handleForumGet(forum, wallet).status, 400);
+    assert.equal(handleForumPost(forum, wallet, { action: "register", label: "legacy", entropy: "bcde" }).status, 400);
+    const reopened = openForum(new FileForumStore(file));
+    assert.equal(handleForumGet(reopened, owner).status, 200);
+    assert.deepEqual(JSON.parse(readFileSync(file, "utf8")).channels.find((row: {owner:string}) => row.owner === wallet), oldChannel);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
