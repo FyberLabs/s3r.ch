@@ -61,6 +61,9 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     grant(object:string,owner:string,draft:unknown,signal?:AbortSignal){
       return signed((client,key,deadline)=>client.grant(object,owner,draft,key,deadline),signal);
     },
+    initialEpoch(object:string,owner:string,draft:unknown,signal?:AbortSignal){
+      return signed((client,key,deadline)=>client.initialEpoch(object,owner,draft,key,deadline),signal);
+    },
     epoch(object:string,owner:string,draft:unknown,finalization:unknown,signal?:AbortSignal){
       return signed((client,key,deadline)=>client.epoch(object,owner,draft,finalization,key,deadline),signal);
     },
