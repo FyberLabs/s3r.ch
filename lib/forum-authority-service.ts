@@ -1,3 +1,4 @@
+import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { matchesBrowserOrigin } from "./request-origin";
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { squadView, isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
@@ -70,7 +71,7 @@ export function createForumAuthorityService(input: {
       const result = await authority.refresh(snapshot, at);
       request.signal.throwIfAborted();
       const principal = authority.graph.principalForKey(key, at);
-      if (!result.ok || result.diagnostics.length || clock() !== at || authority.graph.ownerOf(view.forumId) !== view.owner)
+      if (!result.ok || roomAuthorityReadDiagnosticsBlock(result.diagnostics, snapshot) || clock() !== at || authority.graph.ownerOf(view.forumId) !== view.owner)
         return reply(503, { error: "authority-unavailable" });
       if (!principal || isPublicSquadPrincipal(principal) || !authority.graph.checkForumSee(view.forumId, principal, at).allowed)
         return reply(403, { error: "access" });

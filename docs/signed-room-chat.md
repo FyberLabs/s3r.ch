@@ -37,3 +37,17 @@ protected-source substitute, and a loopback server with browser/server cleanup.
 It covers two-way signed messages, author/ID forgery, unsigned rows and signed
 parent cancellation. It is not a deployed owner-source or React UI acceptance
 claim. Its executable registration belongs to Infra's nightly browser adapter.
+
+A rotated signing key resolves to the same stable room principal. Explicit
+sharing can refresh an older ownership record with a current signature and
+current issuance time while preserving the room's display creation time and all
+retained rows. Protected reads may return retired-key ownership rows as history;
+those rows cannot establish ownership. Parent ownership and reader access must
+still be current. Writes require independently verified current replacement
+ownership bound to the authenticated stable owner.
+
+This ownership refresh does not migrate grants after key rotation. Retired-key
+see/post or cancellation diagnostics still refuse the operation, even if newer
+grants are present. Previously shared rooms or parent grant histories may therefore
+remain unavailable after their issuer rotates. No automatic grant renewal or
+history removal is performed.
