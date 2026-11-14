@@ -2,7 +2,7 @@
  * sharing boundary. Callers must supply room/message Check-filtered rows. */
 import { getAddress } from "viem";
 import { isSeaPubkey } from "./identity/forum-check";
-const taskPrincipal = (value: string): string => isSeaPubkey(value) ? value : getAddress(value);
+import { signedRoomMessageId, type RoomChatAdmission } from "./room-chat-admission";
 import { composeChat, shortChatEntropy, type ChatMessage } from "./chat";
 import { checkSee, roomSoul, type SeeAcl } from "./identity/check";
 
@@ -16,8 +16,10 @@ export type RoomTask = Readonly<{ id: string; room: string; owner: string; kind:
   title: string; visibility: "mine" | "room"; status: TaskStatus; assignee: string | null; head: string; created: number;
   events: readonly Readonly<{ name: "room.object.created" | "room.object.updated"; messageId: string }>[] }>;
 const idOK = (value: unknown): value is string => typeof value === "string" &&
-  /^s3rch:chat:(?:0x[0-9a-fA-F]{40}|[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}):[0-9]{1,16}:[A-Za-z0-9_-]{1,32}$/.test(value);
+  (/^s3rch:chat:(?:0x[0-9a-fA-F]{40}|[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}):[0-9]{1,16}:[A-Za-z0-9_-]{1,32}$/.test(value) || signedRoomMessageId(value));
 const order = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
+
+function taskPrincipal(value: string): string { return isSeaPubkey(value) ? value : getAddress(value); }
 
 export function canUseRoomTasks(acl: SeeAcl, room: string, actor: string, now: number): boolean {
   return checkSee(acl, roomSoul(room), actor, now).allowed;
@@ -56,6 +58,16 @@ export function roomTaskChatText(body: string): string {
  * Missing parents wait. Bounds prevent untrusted room history from monopolizing
  * a render. This projection does not authenticate raw remote chat records. */
 export function roomTasks(messages: readonly ChatMessage[], room: string): RoomTask[] {
+  return projectRoomTasks(messages, room, false);
+}
+
+/** Production projection: only live signature receipts can supply a creator.
+ * Serialization, copying, revocation or identity changes invalidate admission. */
+export function admittedRoomTasks(messages: readonly ChatMessage[], room: string, admission: RoomChatAdmission): RoomTask[] {
+  return projectRoomTasks(admission.readable(messages, room), room, true);
+}
+
+function projectRoomTasks(messages: readonly ChatMessage[], room: string, signed: boolean): RoomTask[] {
   if (messages.length > 8192) return [];
   const rows = new Map<string, { message: ChatMessage; action: TaskAction }>();
   const conflicts = new Set<string>();
@@ -64,7 +76,7 @@ export function roomTasks(messages: readonly ChatMessage[], room: string): RoomT
         (message.v !== undefined && message.v !== 1)) continue;
     let author: string;
     try { author = taskPrincipal(message.author); } catch { continue; }
-    if (!message.id.startsWith(`s3rch:chat:${author}:${message.ts}:`)) continue;
+    if (signed ? !signedRoomMessageId(message.id) : !message.id.startsWith(`s3rch:chat:${author}:${message.ts}:`)) continue;
     const action = parseTaskAction(message.body);
     if (!action) continue;
     const held = rows.get(message.id);
