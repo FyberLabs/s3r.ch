@@ -6,6 +6,8 @@ import { readBoundedIdentityJson } from "./identity/bounded-json";
 import { isSeaPubkey } from "./identity/forum-check";
 import { subscribeUnlockedMeshPair } from "./identity/unlocked-mesh";
 
+class SessionUnavailable extends Error {}
+
 export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly string[]; page: number;
   nextPage: number | null; loaded: boolean; message: string;
   deletion: Readonly<{object:string;prepared:boolean}> | null;
@@ -33,7 +35,12 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
   }
   const unsubscribe=subscribeUnlockedMeshPair(()=>reset("Identity changed. Refresh your media."));
   async function session(signal: AbortSignal) {
-    const response=await fetcher("/api/identity/sea/session",{credentials:"same-origin",cache:"no-store",redirect:"error",signal});
+    let response:Response;
+    try {response=await fetcher("/api/identity/sea/session",{credentials:"same-origin",cache:"no-store",redirect:"error",signal});}
+    catch {throw new SessionUnavailable();}
+    if(response.status>=500 || response.status===429) {
+      await response.body?.cancel().catch(()=>{});throw new SessionUnavailable();
+    }
     if(!response.ok || response.headers.get("content-type")?.split(";")[0]!=="application/json") {
       await response.body?.cancel().catch(()=>{});throw Error("Sign in with your saved identity to view media.");
     }
@@ -58,9 +65,9 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       await session(signal);
       if(!current())return;
       started=true;await work(signal,current);
-    } catch {
+    } catch(error) {
       if(!disposed && attempt===generation) {
-        if(started && current() && failed)failed();
+        if((started || (error instanceof SessionUnavailable && deletionIntent)) && current() && failed)failed();
         else reset("Media is unavailable. Check your identity session and access, then retry.");
       }
     } finally {
