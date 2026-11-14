@@ -124,6 +124,21 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
         await mutate(object,held,"grant",signed,deadline);
       });
     },
+    /** First candidate only, from the same protected snapshot used to sign its
+     * finalization. This does not settle the epoch or authorize delivery. */
+    async initialEpoch(object: string, owner: string, draft: unknown, scalar: Uint8Array, signal?: AbortSignal) {
+      const input = structuredClone(draft);
+      if (!exact(input, ["deviceId", "keyCommitment", "settleWindowMs"])) throw Error("Invalid initial media epoch");
+      return withKey(scalar, signal, async (key, deadline) => {
+        const held = await view(object, owner, deadline);
+        const document = signPrivateMediaEpoch({ ...input, object, previousEpoch: 0, epoch: 1 }, held.snapshot, key, held.key);
+        const revisionId = document.manifest.revisionId;
+        const finalization = signPrivateMediaFinalization({ object, previousEpoch: 0, epoch: 1, revisionId,
+          candidateRevisionIds: [revisionId], previousFinalizationId: "" }, key, held.key);
+        await mutate(object, held, "epoch", { document, finalization }, deadline);
+        return { object, epoch: 1, revisionId };
+      });
+    },
     async epoch(object: string, owner: string, draft: unknown, finalizationDraft: unknown,
       scalar: Uint8Array, signal?: AbortSignal) {
       const input=structuredClone(draft), finalInput=structuredClone(finalizationDraft);

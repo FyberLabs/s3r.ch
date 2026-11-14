@@ -128,3 +128,22 @@ test("allocation requires the unlocked session and refuses identity changes befo
   });
   await assert.rejects(changing.allocate(record));assert.equal(changedCalls,1);
 });
+
+test("initial epoch uses the unlocked session and stops on identity replacement", async () => {
+  unlock(); let calls = 0;
+  const input = { deviceId: "browser", keyCommitment: "c".repeat(64), settleWindowMs: 3600000 };
+  const browser = createPrivateMediaBrowser(() => owner, async (url, init) => {
+    calls++;
+    assert.ok(!String(init?.body).includes(pair.priv)); assert.ok(!String(init?.body).includes(pair.epriv));
+    if (String(url).endsWith("/view")) return Response.json(view);
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.payload.finalization.revisionId, body.payload.document.manifest.revisionId);
+    return Response.json({ accepted: true });
+  });
+  assert.equal((await browser.initialEpoch(object, owner, input)).epoch, 1); assert.equal(calls, 2);
+  calls = 0;
+  const changing = createPrivateMediaBrowser(() => owner, async () => {
+    calls++; forgetUnlockedMeshPair(); return Response.json(view);
+  });
+  await assert.rejects(changing.initialEpoch(object, owner, input)); assert.equal(calls, 1);
+});

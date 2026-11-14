@@ -1,7 +1,7 @@
 // Browser HTTP/signature contracts: executed in CI only.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { signPrivateMediaGrant, signPrivateMediaEpoch } from "sociacl-ids/private-media";
+import { signPrivateMediaGrant, signPrivateMediaEpoch, signPrivateMediaFinalization } from "sociacl-ids/private-media";
 import { createPrivateMediaOwner, PrivateMediaConflict } from "./media-owner-client";
 import type { ItemReaderWrap } from "sociacl-ids";
 const owner="axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
@@ -166,4 +166,35 @@ test("allocation snapshots only signed ownership and confirms a fresh protected 
     await assert.rejects(createPrivateMediaOwner(async()=>Response.json(response)).allocate(record));
   }
   await assert.rejects(createPrivateMediaOwner(async(url)=>action(url)==="allocate" ? Response.json({object,accepted:true}) : new Response(null,{status:403})).allocate(record));
+});
+
+test("initial epoch derives its finalization from the fresh protected snapshot", async () => {
+  const snapshot = { entries: [{ accessor: owner, grantRevision: 1, stated: 1, from: 0, until: 200000,
+    scope: "direct", setId: "", hamState: 0 }] };
+  const document = signPrivateMediaEpoch(epoch, snapshot, key(), owner), revisionId = document.manifest.revisionId;
+  const finalization = signPrivateMediaFinalization({ object, previousEpoch: 0, epoch: 1, revisionId,
+    candidateRevisionIds: [revisionId], previousFinalizationId: "" }, key(), owner);
+  const input = { deviceId: "browser", keyCommitment: "c".repeat(64), settleWindowMs: 3600000 };
+  let calls = 0;
+  const client = createPrivateMediaOwner(async (url, init) => {
+    calls++;
+    if (action(url) === "view") { input.keyCommitment = "d".repeat(64); return Response.json({ ...view, snapshot }); }
+    assert.deepEqual(JSON.parse(String(init?.body)), { object, at: 100, fence: view.fence, operation: "epoch", payload: { document, finalization } });
+    return Response.json({ accepted: true });
+  }, () => 100);
+  assert.deepEqual(await client.initialEpoch(object, owner, input, key()), { object, epoch: 1, revisionId });
+  assert.equal(calls, 2);
+});
+
+test("initial epoch refuses caller finalization fields and never retries a conflict", async () => {
+  const input = { deviceId: "browser", keyCommitment: "c".repeat(64), settleWindowMs: 3600000 };
+  let calls = 0;
+  const client = createPrivateMediaOwner(async (url) => {
+    calls++; return action(url) === "view" ? Response.json(view) : new Response(null, { status: 409 });
+  }, () => 100);
+  for (const extra of [{ epoch: 2 }, { previousEpoch: 1 }, { revisionId: "a".repeat(64) }, { snapshot: { entries: [] } }])
+    await assert.rejects(client.initialEpoch(object, owner, { ...input, ...extra }, key()));
+  assert.equal(calls, 0);
+  await assert.rejects(client.initialEpoch(object, owner, input, key()), PrivateMediaConflict);
+  assert.equal(calls, 2);
 });
