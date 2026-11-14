@@ -4,7 +4,7 @@ import { subscribeUnlockedMeshPair } from "@/lib/identity/unlocked-mesh";
 import { createMediaUploadPanel, type UploadPanelState } from "@/lib/media-upload-panel";
 
 export function PrivateMediaUpload({tenant}:{tenant:string}) {
-  const [state,setState]=useState<UploadPanelState>({busy:false,message:"",pending:null});
+  const [state,setState]=useState<UploadPanelState>({busy:false,message:"",allocationConfirmed:false,pending:null});
   const [file,setFile]=useState<File|null>(null),[discard,setDiscard]=useState(false);
   const input=useRef<HTMLInputElement|null>(null);
   const panel=useRef<ReturnType<typeof createMediaUploadPanel>|null>(null);
@@ -34,6 +34,7 @@ export function PrivateMediaUpload({tenant}:{tenant:string}) {
       <label className="block text-sm"><input type="checkbox" disabled={state.busy} checked={discard} onChange={event=>setDiscard(event.target.checked)} /> Discarding this browser’s recovery draft may make an unfinished upload unrecoverable. It does not delete uploaded data.</label>
       <button type="button" className="underline disabled:opacity-50" disabled={state.busy||!discard} onClick={()=>{setDiscard(false);void panel.current?.discard();}}>Discard local recovery draft</button>
     </div>}
+    {state.allocationConfirmed&&<p className="text-sm">One private-media allocation is confirmed for this upload. Discarding its local draft does not release that reservation.</p>}
     <p role="status" aria-live="polite">{state.message}</p>
   </section>;
 }

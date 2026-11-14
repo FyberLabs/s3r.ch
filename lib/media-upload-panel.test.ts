@@ -12,7 +12,7 @@ function setup(extra:{fetcher?:typeof fetch;upload?:(...args:unknown[])=>Promise
   const browser:typeof createPrivateMediaBrowser=()=>({
     pendingUpload:async()=>({object:"object",name:"private.png"}),discardUpload:async(_tenant:string,object:string)=>{assert.equal(object,"object");calls.push("discard");},
     upload:async(...args:unknown[])=>{calls.push("upload");held=(args[1] as {bytes:Uint8Array}|undefined)?.bytes;
-      if(extra.upload)return extra.upload(...args);(args[3] as (message:string)=>void)("Uploading…");return {object:"object"};},
+      if(extra.upload)return extra.upload(...args);(args[4] as ()=>void)();(args[3] as (message:string)=>void)("Uploading…");return {object:"object"};},
   } as unknown as ReturnType<typeof createPrivateMediaBrowser>);
   const panel=createMediaUploadPanel(tenant,next=>{state=next;},{browser,clock:()=>0,
     fetcher:extra.fetcher??(async()=>Response.json({enabled:true,principal:pub,expiresAt:1000}))});
@@ -22,7 +22,7 @@ test.afterEach(()=>forgetUnlockedMeshPair());
 test("upload, inspect, explicit resume and discard preserve bounded private UI state",async()=>{
   const f=setup();try {
     await f.panel.upload(new File([new Uint8Array([1,2,3])],"x.png",{type:"image/png"}));
-    assert.deepEqual(Array.from(f.held()!),[0,0,0]);assert.match(f.state().message,/one-hour/);
+    assert.deepEqual(Array.from(f.held()!),[0,0,0]);assert.match(f.state().message,/one-hour/);assert.equal(f.state().allocationConfirmed,true);
     await f.panel.inspect();assert.equal(f.state().pending?.name,"private.png");
     await f.panel.resume();assert.equal(f.state().pending,null);
     await f.panel.inspect();await f.panel.discard();assert.equal(f.state().pending,null);
@@ -58,6 +58,17 @@ test("session expiry removes the decrypted pending filename",async(t)=>{
 
 test("discard requires an inspected draft",async()=>{
   const f=setup();try {await f.panel.discard();assert.deepEqual(f.calls,[]);}finally{f.panel.dispose();}
+});
+
+test("reservation confirmation survives a later failure but is cleared with the session",async()=>{
+  const f=setup({upload:async(...args)=>{(args[4] as ()=>void)();throw Error("upload interrupted");}});
+  try {
+    await f.panel.upload(new File([new Uint8Array([1])],"x.png",{type:"image/png"}));
+    assert.equal(f.state().allocationConfirmed,true);assert.match(f.state().message,/retained/);
+    f.panel.reset();assert.equal(f.state().allocationConfirmed,false);
+  }finally{f.panel.dispose();}
+  const refused=setup({upload:async()=>{throw Error("allocation refused");}});
+  try {await refused.panel.resume();assert.equal(refused.state().allocationConfirmed,false);}finally{refused.panel.dispose();}
 });
 
 test("quota refusal preserves pending recovery, clears plaintext and reports no success", async () => {
