@@ -31,3 +31,16 @@ test("SEA owners retain isolated view storage and native feed source identity", 
   const post = composeNativePost({ address: alice, body: "post", entropy: "abcd", nowSeconds: 100 }); assert.ok(post);
   assert.equal(feedSourceOf(post, network)?.ref.owner, alice);
 });
+
+
+test("SEA view unread storage and picker ownership preserve case", async () => {
+  const { seenStorageKey } = await import("./views-layout");
+  const { buildBrowseTree } = await import("./views-picker");
+  assert.equal(seenStorageKey(alice, "view"), `s3rch-views-seen:${alice}:view`);
+  assert.notEqual(seenStorageKey(alice, "view"), seenStorageKey(alice.toLowerCase(), "view"));
+  const source = { ref: { network: DEPLOYMENT_SELF_NETWORK, owner: alice, kind: "feed" as const, id: "home" }, label: "Feed" };
+  const own = JSON.stringify(buildBrowseTree([source], DEPLOYMENT_SELF_NETWORK, alice));
+  const other = JSON.stringify(buildBrowseTree([source], DEPLOYMENT_SELF_NETWORK, alice.toLowerCase()));
+  assert.match(own, /Me \(/);
+  assert.doesNotMatch(other, /Me \(/);
+});

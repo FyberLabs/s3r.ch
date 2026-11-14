@@ -17,9 +17,11 @@ import { objectOwner, useIdentitySession } from "@/components/useIdentitySession
 
 export function IngestForm({
   onItems,
+  isCurrent,
   onShareIntoMesh,
 }: {
   onItems: (items: FeedItem[]) => void;
+  isCurrent: () => boolean;
   onShareIntoMesh?: (items: FeedItem[]) => void | Promise<void>;
 }) {
   const session = useIdentitySession();
@@ -72,6 +74,7 @@ export function IngestForm({
           ? { rssUrl: rssUrl.trim() }
           : { rss3Account: rss3Account.trim() };
       const payload = await ingestJson(body);
+      if (!isCurrent()) return;
       const items = payload.items;
       if (items.length) {
         onItems(items);
@@ -97,6 +100,7 @@ export function IngestForm({
         return;
       }
       const payload = await ingestJson({ allowedSource });
+      if (!isCurrent()) return;
       const items = payload.items;
       if (!items.length) {
         setMessage(payload.error || "Nothing to pull.");

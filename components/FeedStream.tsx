@@ -2,7 +2,7 @@
 import PublicFeedMedia from "./PublicFeedMedia";
 import FeedConversation from "./FeedConversation";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { FeedItem, FeedSnapshot, FeedTab } from "@/lib/feed-types";
 import { fromGunNode } from "@/lib/feed-types";
 import { isRoomTaskBody } from "@/lib/room-tasks";
@@ -74,7 +74,7 @@ import { TagChips } from "@/components/TagChips";
 import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { mineOwnerChanged } from "@/lib/mine-session";
-import { objectOwner, useIdentitySessionState } from "@/components/useIdentitySession";
+import { objectOwner, useIdentitySessionState, type IdentitySession } from "@/components/useIdentitySession";
 import { acquireBrowserGun } from "@/lib/browser-gun";
 import {
   btnSecondary,
@@ -111,9 +111,45 @@ export function FeedStream() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [sharePeers, setSharePeers] = useState(false);
   const [openRoomId, setOpenRoomId] = useState<string | null>(null);
-  const identity = useIdentitySessionState(tab !== "public" || accountOpen || openRoomId !== null);
+  const observingIdentity = tab !== "public" || accountOpen || openRoomId !== null;
+  const identity = useIdentitySessionState(observingIdentity);
+  const [owner, setOwner] = useState<string | null>(null);
+  const observedOwner = identity === undefined ? undefined : identity?.owner || null;
+  if (mineOwnerChanged(owner, observedOwner)) {
+    setOwner(observedOwner!);
+    setOpenRoomId(null);
+    setSharePeers(false);
+  }
+  return <div>
+      {accountOpen || tab !== "public" ? <IdentityBar /> : (
+        <button type="button" className={btnSecondary} onClick={() => setAccountOpen(true)}>Account and posting</button>
+      )}
+    <div hidden={observingIdentity && identity === undefined && owner !== null}>
+    <FeedStreamBody key={owner ?? "signed-out"} identity={identity}
+      tab={tab} setTab={setTab} accountOpen={accountOpen} setAccountOpen={setAccountOpen}
+      sharePeers={sharePeers} setSharePeers={setSharePeers}
+      openRoomId={openRoomId} setOpenRoomId={setOpenRoomId} />
+    </div>
+  </div>;
+}
+
+function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
+  sharePeers, setSharePeers, openRoomId, setOpenRoomId }: {
+  identity: IdentitySession | null | undefined;
+  tab: FeedTab; setTab: Dispatch<SetStateAction<FeedTab>>;
+  accountOpen: boolean; setAccountOpen: Dispatch<SetStateAction<boolean>>;
+  sharePeers: boolean; setSharePeers: Dispatch<SetStateAction<boolean>>;
+  openRoomId: string | null; setOpenRoomId: Dispatch<SetStateAction<string | null>>;
+}) {
+  // Every private overlay, child draft, selection and subscription belongs to this
+  // mount. A resolved owner change replaces it; a refresh retains but hides it.
   const session = identity ?? null;
   const sessionResolved = identity !== undefined;
+  const active = useRef(true);
+  useLayoutEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
   const see = useSeeAcl();
   const gunPeer = useGunPeer();
   const registerGun = gunPeer?.register;
@@ -122,16 +158,13 @@ export function FeedStream() {
   seeRef.current = see;
   const sessionRef = useRef(session);
   sessionRef.current = session;
+  const mutationOwner = session?.owner;
+  const canMutate = () => active.current && Boolean(mutationOwner) &&
+    sessionRef.current?.owner === mutationOwner;
   const registerGunRef = useRef(registerGun);
   registerGunRef.current = registerGun;
   const [seed, setSeed] = useState<FeedItem[]>([]);
   const [overlay, setOverlay] = useState<FeedItem[]>([]);
-  const overlayOwner = useRef<string | null>(null);
-  const observedOwner = identity === undefined ? undefined : identity?.owner || null;
-  useEffect(() => {
-    if (mineOwnerChanged(overlayOwner.current, observedOwner)) setOverlay([]);
-    if (observedOwner !== undefined) overlayOwner.current = observedOwner;
-  }, [observedOwner]);
   const [meshItems, setMeshItems] = useState<FeedItem[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
@@ -331,7 +364,7 @@ export function FeedStream() {
     const ingest = (kind: GrantInboxKind, data: unknown, key: string) => {
       const acl = seeRef.current?.acl;
       const who = sessionRef.current ? objectOwner(sessionRef.current) : undefined;
-      if (!acl || !who || cancelled) return;
+      if (!active.current || !acl || !who || who !== address || cancelled) return;
       const now = Math.floor(Date.now() / 1000);
       if (data == null) {
         if (kind === "items") {
@@ -536,6 +569,7 @@ export function FeedStream() {
 
   const announcePresence = useCallback(
     (entry: PresenceEntry, putOnGun: boolean) => {
+      if (!active.current || !sessionRef.current?.owner || entry.address !== sessionRef.current.owner) return;
       setOverlayPresence((prev) => mergePresence(prev, [entry]));
       if (!putOnGun) return;
       const acl = seeRef.current?.acl;
@@ -586,6 +620,7 @@ export function FeedStream() {
   }
 
   async function shareToPublic(item: FeedItem) {
+    if (!canMutate()) return;
     setShareMessage(null);
     if (!session || !see?.acl) {
       setShareMessage("Could not share this post.");
@@ -614,6 +649,7 @@ export function FeedStream() {
   }
 
   async function unshareFromPublic(item: FeedItem) {
+    if (!canMutate()) return;
     setShareMessage(null);
     if (!session || !see?.acl) {
       setShareMessage("Could not unshare this post.");
@@ -646,6 +682,7 @@ export function FeedStream() {
   }
 
   async function shareRoomToPublic(room: Room) {
+    if (!canMutate()) return;
     setRoomShareMessage(null);
     if (!session || !see?.acl) {
       setRoomShareMessage("Could not share this room.");
@@ -715,6 +752,7 @@ export function FeedStream() {
   }
 
   async function unshareRoomFromPublic(room: Room) {
+    if (!canMutate()) return;
     setRoomShareMessage(null);
     if (!session || !see?.acl) {
       setRoomShareMessage("Could not unshare this room.");
@@ -754,9 +792,7 @@ export function FeedStream() {
 
   return (
     <div>
-      {accountOpen || tab !== "public" ? <IdentityBar /> : (
-        <button type="button" className={btnSecondary} onClick={() => setAccountOpen(true)}>Account and posting</button>
-      )}
+
       {(tab === "mine" || accountOpen) && session && !live ? (
         <button type="button" className={btnSecondary} onClick={() => setSharePeers(true)}>Connect to peers for sharing</button>
       ) : null}
@@ -769,7 +805,7 @@ export function FeedStream() {
 
       {(tab === "mine" || (tab === "public" && accountOpen)) && !composeRoomId ? (
         <ComposeForm
-          onItem={(next) => setOverlay((prev) => mergeItems(prev, [next]))}
+          onItem={(next) => { if (canMutate()) setOverlay((prev) => mergeItems(prev, [next])); }}
         />
       ) : null}
 
@@ -860,6 +896,7 @@ export function FeedStream() {
         }
         showOwner={tab === "public" || tab === "network" || tab === "granted"}
         onCreated={(room) => {
+          if (!canMutate()) return;
           setMineRooms((prev) => mergeRooms(prev, [room]));
           setOpenRoomId(room.id);
         }}
@@ -906,6 +943,7 @@ export function FeedStream() {
           onPublicGraph={openRoomIsPublic}
           seedWsUp={seedWsUp}
           onComposed={(next, putOnGun) => {
+            if (!canMutate()) return;
             if (isRoomTaskBody(next.body)) return;
             setOverlayChat((prev) => mergeChat(prev, [next]));
             if (!putOnGun || !see?.acl || !session) return;
@@ -932,7 +970,7 @@ export function FeedStream() {
       {composeRoomId ? (
         <ComposeForm
           roomId={composeRoomId}
-          onItem={(next) => setOverlay((prev) => mergeItems(prev, [next]))}
+          onItem={(next) => { if (canMutate()) setOverlay((prev) => mergeItems(prev, [next])); }}
         />
       ) : null}
 
@@ -971,8 +1009,10 @@ export function FeedStream() {
 
       {tab === "mine" ? (
         <IngestForm
-          onItems={(next) => setOverlay((prev) => mergeItems(prev, next))}
+          isCurrent={canMutate}
+          onItems={(next) => { if (canMutate()) setOverlay((prev) => mergeItems(prev, next)); }}
           onShareIntoMesh={async (items) => {
+            if (!canMutate()) throw new Error("Identity changed.");
             if (!session || !see?.acl) {
               throw new Error("Sign in to share.");
             }

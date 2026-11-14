@@ -101,10 +101,22 @@ if (!scheduledStartupBrowser(process.env)) {
       await seaSession.getByText("Identity session ready.", { exact: true }).waitFor();
       await page.getByText(body, { exact: true }).waitFor();
       cases.push({ name: "sea-sign-in-post-mine", status: "passed" });
-      // Mine is browser-local. Sign-out must remove the row; never share it.
+      const roomTitle = "Scheduled private room ownership check";
+      await page.getByRole("textbox", { name: "New room", exact: true }).fill(roomTitle);
+      await page.getByRole("button", { name: "New room", exact: true }).click();
+      await page.getByRole("button", { name: roomTitle, exact: true }).waitFor();
+      await page.getByRole("textbox", { name: "Body", exact: true }).fill("Private draft from the previous session");
+      // Mine is browser-local. Sign-out must remove rows, rooms and drafts; never share them.
       await seaSession.getByRole("button", { name: "Sign out identity", exact: true }).click();
       await seaSession.getByText("Identity session cleared.", { exact: true }).waitFor();
       await page.getByText(body, { exact: true }).waitFor({ state: "hidden" });
+      await page.getByRole("button", { name: roomTitle, exact: true }).waitFor({ state: "hidden" });
+      await seaSession.getByRole("button", { name: "Use saved identity", exact: true }).click();
+      await seaSession.getByText("Identity session ready.", { exact: true }).waitFor();
+      await page.getByRole("textbox", { name: "Body", exact: true }).waitFor();
+      assert.equal(await page.getByRole("textbox", { name: "Body", exact: true }).inputValue(), "");
+      assert.equal(await page.getByText(body, { exact: true }).count(), 0);
+      assert.equal(await page.getByRole("button", { name: roomTitle, exact: true }).count(), 0);
       cases.push({ name: "sea-sign-out-clears-mine", status: "passed" });
       report("passed");
     }
