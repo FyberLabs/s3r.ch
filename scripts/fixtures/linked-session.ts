@@ -78,7 +78,7 @@ export async function linkedSessionFixture(kind: "wallet" | "oidc") {
       ...(kind === "wallet" ? { linkId: otherId } : { iss: issuer, tenant, sub: "person", nonce: "otherNonce123" }), iat: 101, exp: 900 });
     links = replace ? [other] : [link, other];
   }
-  return { conflict: () => conflict(), replace: () => conflict(true), rotate: () => { rotated = true; }, credential, principal, sessions, options, proof, revoke, source, used, admission,
+  return { signWalletMessage: (message: string) => wallet.signMessage({ message }), conflict: () => conflict(), replace: () => conflict(true), rotate: () => { rotated = true; }, credential, principal, sessions, options, proof, revoke, source, used, admission,
     advance: () => { now += 60; }, unavailable: () => { available = false; }, stale: () => { stale = true; },
     missing: () => { links = []; }, badHistory: () => { missingHistory = true; }, tamper: () => { links = [{ ...link, keySig: "invalid" }]; },
     onConsume: (fn: () => void) => { afterConsume = fn; } };
