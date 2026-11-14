@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
+import { mergeChat } from "./chat";
 import { createRoomChatAdmission } from "./room-chat-admission";
 import { signForumRecord } from "./forum-sign";
 import { admittedRoomGames, roomGames } from "./room-game";
@@ -82,4 +83,16 @@ test("signed games use admitted compact predecessors and lose visibility on revo
  assert.deepEqual(admittedRoomGames(rows.map(row => ({...row})), "room", f.admission), []);
  f.revoke(); assert.equal(f.admission.canCompose("room", () => f.alice), false);
  assert.deepEqual(admittedRoomGames(rows, "room", f.admission), []);
+});
+
+
+test("readmitting cached history replaces invalidated objects with fresh proofs", async () => {
+ const f = await fixture();
+ const original = await f.admission.compose("room", "retained history", () => f.alice); assert.ok(original);
+ f.admission.reset(); assert.equal(f.admission.valid(original), false);
+ const refreshed = await f.admission.receive(original, "room", encodeKey(original.id)); assert.ok(refreshed);
+ assert.notEqual(refreshed, original);
+ const cache = mergeChat([refreshed], [original]);
+ assert.equal(cache.length, 1); assert.equal(cache[0], refreshed);
+ assert.deepEqual(f.admission.readable(cache, "room"), [refreshed]);
 });
