@@ -46,6 +46,8 @@ jobs:
           sudo apt-get install -y ffmpeg
       - name: Public media browser contracts (CI only)
         run: node scripts/test-public-media-browser.mjs
+      - name: Private upload browser recovery contract (CI only)
+        run: node scripts/test-private-upload-browser.mjs
       - name: Room task browser contracts (CI only)
         run: node scripts/test-room-tasks.mjs
       - name: Recording browser contracts (CI only)
