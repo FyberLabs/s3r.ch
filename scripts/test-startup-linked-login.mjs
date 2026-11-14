@@ -97,6 +97,9 @@ if (!scheduledStartupBrowser(process.env)) {
       await page.getByRole("button", { name: "Public", exact: true }).click();
       await page.getByRole("button", { name: "Mine", exact: true }).click();
       await page.getByText(body, { exact: true }).waitFor();
+      await seaSession.getByRole("button", { name: "Refresh identity session", exact: true }).click();
+      await seaSession.getByText("Identity session ready.", { exact: true }).waitFor();
+      await page.getByText(body, { exact: true }).waitFor();
       cases.push({ name: "sea-sign-in-post-mine", status: "passed" });
       // Mine is browser-local. Sign-out must remove the row; never share it.
       await seaSession.getByRole("button", { name: "Sign out identity", exact: true }).click();

@@ -16,6 +16,7 @@ export function objectOwner(session: IdentitySession): string {
   return isSeaPubkey(session.owner) ? session.owner : "";
 }
 
+const UNRESOLVED_SESSION = Symbol("unresolved identity session");
 const client = new QueryClient();
 const key = ["identity-session"] as const;
 const changeKey = "s3rch-session-changed";
@@ -36,7 +37,7 @@ async function refresh({ signal }: { signal: AbortSignal }) {
 
 function invalidate() {
   void client.cancelQueries({ queryKey: key });
-  client.setQueryData(key, null);
+  client.setQueryData(key, UNRESOLVED_SESSION);
   window.dispatchEvent(new Event(changeKey));
   void client.invalidateQueries({ queryKey: key });
 }
@@ -68,17 +69,18 @@ export function useIdentitySessionState(enabled = true): IdentitySession | null 
     };
   }, [enabled]);
 
-  const query = useQuery({
+  const query = useQuery<Awaited<ReturnType<typeof refresh>> | typeof UNRESOLVED_SESSION>({
     queryKey: key, queryFn: refresh, enabled,
     retry: false, gcTime: 0, staleTime: 0,
     refetchOnWindowFocus: "always",
     refetchInterval: query => {
       if (query.state.status === "error") return 30_000;
-      return query.state.data ? Math.max(1000, query.state.data.expiresAt - Date.now()) : false;
+      return query.state.data && query.state.data !== UNRESOLVED_SESSION ? Math.max(1000, query.state.data.expiresAt - Date.now()) : false;
     },
   }, client);
   if (!enabled || query.isPending) return undefined;
   const session = query.data;
+  if (session === UNRESOLVED_SESSION) return query.isError ? null : undefined;
   return enabled && !query.isError && session && session.expiresAt > Date.now() ? session : null;
 }
 

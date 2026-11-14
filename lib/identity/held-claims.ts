@@ -231,11 +231,8 @@ export function heldClaimOptionsFromIndicators(
 }
 
 export function parseGrantAccessor(value: string): string | null {
-  try {
-    return getAddress(value.trim());
-  } catch {
-    return null;
-  }
+  const principal = value.trim();
+  return isSeaPubkey(principal) ? principal : null;
 }
 
 export function grantWindowFromHours(
