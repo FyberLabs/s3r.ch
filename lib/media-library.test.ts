@@ -135,3 +135,63 @@ test("decrypted PNG tags live only with the preview and clear on identity change
     assert.equal(item.state().preview,null);assert.deepEqual(item.revoked,["blob:private"]);
   }finally{item.library.dispose();}
 });
+
+test("deletion requires confirmation and retries the same prepared intent",async()=>{
+  let prepared=0,submitted=0;const intent={object:"owned"};
+  const item=setup({browser:()=>({
+    catalog:async()=>({at:1,objects:["owned"],nextPage:null,principal:key}),
+    prepareDeletion:async()=>{prepared++;return intent;},
+    submitDeletion:async(value:unknown)=>{assert.equal(value,intent);if(++submitted===1)throw Error("lost response");},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    item.library.requestDeletion("unknown");await item.library.confirmDeletion("tenant");assert.equal(prepared,0);
+    await item.library.load();item.library.requestDeletion("owned");assert.equal(prepared,0);
+    await item.library.load();await item.library.open("owned","tenant");assert.deepEqual(item.state().objects,["owned"]);
+    item.library.cancelDeletion();assert.equal(item.state().deletion,null);assert.equal(submitted,0);
+    item.library.requestDeletion("owned");await item.library.confirmDeletion("tenant");
+    assert.equal(item.state().deletion?.prepared,true);assert.match(item.state().message,/same request/);
+    await item.library.confirmDeletion("tenant");assert.equal(prepared,1);assert.equal(submitted,2);
+    assert.deepEqual(item.state().objects,[]);assert.equal(item.state().deletion,null);
+    assert.match(item.state().message,/cleanup is pending/);
+  }finally{item.library.dispose();}
+});
+
+test("identity reset discards an in-flight deletion without submitting it",async()=>{
+  let release!:(value:unknown)=>void,started!:()=>void,submitted=0;
+  const pending=new Promise(resolve=>{release=resolve;}),began=new Promise<void>(resolve=>{started=resolve;});
+  const item=setup({browser:()=>({
+    catalog:async()=>({at:1,objects:["owned"],nextPage:null,principal:key}),
+    prepareDeletion:async()=>{started();return pending;},submitDeletion:async()=>{submitted++;},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    await item.library.load();item.library.requestDeletion("owned");const deleting=item.library.confirmDeletion("tenant");
+    await began;item.library.reset();release({object:"owned"});await deleting;
+    assert.equal(submitted,0);assert.equal(item.state().deletion,null);assert.deepEqual(item.state().objects,[]);
+  }finally{release({});item.library.dispose();}
+});
+
+test("deletion preparation failure permits retry without claiming acceptance",async()=>{
+  const item=setup({browser:()=>({catalog:async()=>({at:1,objects:["owned"],nextPage:null,principal:key}),
+    prepareDeletion:async()=>{throw Error("denied");},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {await item.library.load();item.library.requestDeletion("owned");await item.library.confirmDeletion("tenant");
+    assert.equal(item.state().deletion?.prepared,false);assert.match(item.state().message,/could not be prepared/);
+  }finally{item.library.dispose();}
+});
+
+test("temporary session failure retains the original deletion intent without submitting",async()=>{
+  let requests=0,prepared=0,submitted=0;const intent={object:"owned"};
+  const item=setup({fetcher:async()=>{
+    requests++;if(requests===3)return new Response("unavailable",{status:503});
+    if(requests===4)return new Response(new ReadableStream({start(controller){controller.error(Error("connection lost"));}}),{headers:{"content-type":"application/json"}});
+    return Response.json({enabled:true,principal:key,expiresAt:100000});
+  },browser:()=>({catalog:async()=>({at:1,objects:["owned"],nextPage:null,principal:key}),
+    prepareDeletion:async()=>{prepared++;return intent;},
+    submitDeletion:async(value:unknown)=>{assert.equal(value,intent);if(++submitted===1)throw Error("lost");},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {await item.library.load();item.library.requestDeletion("owned");await item.library.confirmDeletion("tenant");
+    await item.library.confirmDeletion("tenant");assert.equal(submitted,1);assert.equal(item.state().deletion?.prepared,true);
+    await item.library.confirmDeletion("tenant");assert.equal(submitted,1);assert.equal(item.state().deletion?.prepared,true);
+    await item.library.confirmDeletion("tenant");assert.equal(submitted,2);assert.equal(prepared,1);
+  }finally{item.library.dispose();}
+});
