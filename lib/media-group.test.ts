@@ -1,7 +1,7 @@
 // HTTP and protected projection contracts run in CI only.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
+import { parseMediaGroupPolicyView, parseMediaGroupPolicy, parseMediaGroupScope, parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
 import { createPrivateMediaOwner, PrivateMediaConflict } from "./media-owner-client";
 import { createMediaOwnerService } from "./media-owner-service";
 const owner="axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
@@ -100,4 +100,75 @@ test("BFF refuses malformed group requests, projections, session changes and con
   assert.equal((await changed("group-view",request({object}))).status,403);
   const conflict=createMediaOwnerService(config,"https://s3r.ch",async()=>owner,async()=>new Response(null,{status:409}),()=>100);
   assert.equal((await conflict("group-append",request(write))).status,409);
+});
+
+const policyScope={predicate:"same-group" as const,set};
+const policy={owner,setId:set,predicate:"same-group" as const,settleWindowMs:3600000,configRevision:1,signature:"b".repeat(128)};
+const policyView={at:100,fence:view.fence,context:{owner,ownerPub:owner,setId:set,predicate:"same-group"},config:policy};
+test("group policy parsers bind canonical scope and independently resolved set owner",()=>{
+  assert.deepEqual(parseMediaGroupPolicyView(policyView,policyScope),policyView);
+  assert.equal(parseMediaGroupPolicyView({...policyView,config:null},policyScope).config,null);
+  for(const bad of [null,{}, {...policyScope,predicate:"direct"},{...policyScope,set:"set_bad"}])assert.throws(()=>parseMediaGroupScope(bad));
+  for(const bad of [null,{...policy,extra:1},{...policy,owner:reader},{...policy,setId:object},{...policy,predicate:"named-circle"},
+    {...policy,settleWindowMs:3599999},{...policy,settleWindowMs:259200001},{...policy,settleWindowMs:NaN},
+    {...policy,configRevision:-1},{...policy,signature:"bad"}])assert.throws(()=>parseMediaGroupPolicy(bad,policyScope));
+  for(const bad of [null,{...policyView,at:-1},{...policyView,fence:"bad"},{...policyView,extra:1},
+    {...policyView,context:{...policyView.context,owner:reader}},{...policyView,context:{...policyView.context,ownerPub:"bad"}},
+    {...policyView,context:{...policyView.context,setId:object}},{...policyView,context:{...policyView.context,predicate:"named-circle"}}])
+    assert.throws(()=>parseMediaGroupPolicyView(bad,policyScope));
+});
+test("group policy signer uses packed shared producer and holds only a key copy",async()=>{
+  const key=new Uint8Array(32);key[31]=1;
+  const client=createPrivateMediaOwner(async()=>{key.fill(0);return Response.json(policyView);},()=>100);
+  const signed=await client.prepareGroupPolicy(object,policyScope,7200000,owner,key);
+  assert.equal(signed.configRevision,2);assert.equal(signed.settleWindowMs,7200000);
+  assert.equal(signed.owner,owner);assert.match(signed.signature,/^[a-f0-9]{128}$/);
+  const scalar=()=>{const key=new Uint8Array(32);key[31]=1;return key;};
+  const bad=createPrivateMediaOwner(async()=>Response.json({...policyView,context:{...policyView.context,ownerPub:reader}}),()=>100);
+  await assert.rejects(bad.prepareGroupPolicy(object,policyScope,3600000,owner,scalar()));
+  await assert.rejects(client.prepareGroupPolicy(object,policyScope,3600000,reader,scalar()));
+  await assert.rejects(client.prepareGroupPolicy("bad",policyScope,3600000,owner,scalar()));
+  const exhausted=createPrivateMediaOwner(async()=>Response.json({...policyView,config:{...policy,configRevision:Number.MAX_SAFE_INTEGER}}),()=>100);
+  await assert.rejects(exhausted.prepareGroupPolicy(object,policyScope,3600000,owner,scalar()));
+  const empty=createPrivateMediaOwner(async()=>Response.json({...policyView,config:null}),()=>100);
+  assert.equal((await empty.prepareGroupPolicy(object,policyScope,3600000,owner,scalar())).configRevision,1);
+});
+test("group policy append detaches signed material and never retries lost or stale writes",async()=>{
+  const signed={...policy};let sent:unknown;
+  const client=createPrivateMediaOwner(async(url,init)=>{
+    if(String(url).endsWith("group-policy-view")){signed.signature="c".repeat(128);return Response.json(policyView);}
+    sent=JSON.parse(String(init?.body));return Response.json({accepted:true});
+  },()=>100);
+  assert.deepEqual(await client.groupPolicyView(object,policyScope),policyView);
+  signed.signature=policy.signature;await client.appendGroupPolicy(object,policyScope,signed);
+  assert.deepEqual(sent,{object,at:100,fence:view.fence,...policyScope,config:policy});
+  for(const code of [409,500,200]){
+    let calls=0;const failed=createPrivateMediaOwner(async()=>++calls===1?Response.json(policyView):code===200?Response.json({accepted:false}):new Response(null,{status:code}),()=>100);
+    await assert.rejects(failed.appendGroupPolicy(object,policyScope,policy),code===409?PrivateMediaConflict:Error);assert.equal(calls,2);
+  }
+  let calls=0;const lost=createPrivateMediaOwner(async()=>{if(++calls===1)return Response.json(policyView);throw Error("lost");},()=>100);
+  await assert.rejects(lost.appendGroupPolicy(object,policyScope,policy));assert.equal(calls,2);
+  let tick=0;const stale=createPrivateMediaOwner(async()=>Response.json(policyView),()=>tick++*5);
+  await assert.rejects(stale.appendGroupPolicy(object,policyScope,policy),PrivateMediaConflict);
+  await assert.rejects(client.appendGroupPolicy("bad",policyScope,policy));
+  await assert.rejects(client.groupPolicyView("bad",policyScope));
+});
+test("group policy BFF validates fixed-session requests and returned signing context",async()=>{
+  const write={object,at:100,fence:view.fence,...policyScope,config:policy};
+  for(const [action,body,result] of [["group-policy-view",{object,...policyScope},policyView],["group-policy-append",write,{accepted:true}]] as const){
+    const service=createMediaOwnerService(config,"https://s3r.ch",async()=>owner,async(url,init)=>{
+      assert.equal(String(url),config.origin+"/api/v1/acl/sociacl/media/owner/"+action);
+      assert.equal(new Headers(init?.headers).get("X-Api-Key"),"fixed-owner-key");
+      assert.deepEqual(JSON.parse(String(init?.body)),body);return Response.json(result);
+    },()=>100);
+    assert.equal((await service(action,request(body))).status,200);
+  }
+  let calls=0;const service=createMediaOwnerService(config,"https://s3r.ch",async()=>owner,async()=>{calls++;return Response.json(policyView);},()=>100);
+  for(const patch of [{ownerPub:reader},{config:{...policy,owner:reader}},{set:"invalid"},{fence:"bad"}])
+    assert.equal((await service("group-policy-append",request({...write,...patch}))).status,400);
+  assert.equal(calls,0);
+  const bad=createMediaOwnerService(config,"https://s3r.ch",async()=>owner,async()=>Response.json({...policyView,context:{...policyView.context,owner:reader}}),()=>100);
+  assert.equal((await bad("group-policy-view",request({object,...policyScope}))).status,403);
+  let principal=0;const changed=createMediaOwnerService(config,"https://s3r.ch",async()=>++principal===1?owner:reader,async()=>Response.json(policyView),()=>100);
+  assert.equal((await changed("group-policy-view",request({object,...policyScope}))).status,403);
 });

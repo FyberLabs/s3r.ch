@@ -1,9 +1,9 @@
-import { parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
+import { parseMediaGroupPolicyView, parseMediaGroupPolicy, parseMediaGroupScope, parseMediaGroupView, parseMediaGroupAppend } from "./media-group";
 import { parseMediaSharePlan } from "./media-share";
 import { parseMediaDeletionDraft, parseMediaDeletionIntent, type MediaDeletionIntent } from "./media-deletion";
 import { parseForumObjectRecord, type UnverifiedObjectRecord } from "./identity/forum-object-record";
 import { isMediaCatalogPageNumber, parseMediaCatalogPage, parseMediaCleanupPage } from "./media-catalog";
-import { signPrivateMediaGrant, signPrivateMediaEpoch, signPrivateMediaFinalization, signPrivateMediaStatus, signPrivateMediaDeletion } from "sociacl-ids/private-media";
+import { signPrivateMediaGroupConfig, signPrivateMediaGrant, signPrivateMediaEpoch, signPrivateMediaFinalization, signPrivateMediaStatus, signPrivateMediaDeletion } from "sociacl-ids/private-media";
 import type { ItemReaderWrap } from "sociacl-ids";
 import type { MediaCiphertextReference } from "./media-client";
 import { MEDIA_STORED_MAX } from "./media-crypto";
@@ -99,6 +99,31 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
       return hash;
     }
   return Object.freeze({
+    async groupPolicyView(object:string,scope:unknown,signal?:AbortSignal) {
+      if(!objectOK(object))throw Error("Invalid media group object");
+      const heldScope=parseMediaGroupScope(scope),held=await request("group-policy-view",{object,...heldScope},signal??new AbortController().signal);
+      current(held);return parseMediaGroupPolicyView(held,heldScope);
+    },
+    async prepareGroupPolicy(object:string,scope:unknown,settleWindowMs:number,owner:string,scalar:Uint8Array,signal?:AbortSignal) {
+      const heldScope=parseMediaGroupScope(scope);
+      return withKey(scalar,signal,async(key,deadline)=>{
+        if(!objectOK(object)||!isSeaPubkey(owner))throw Error("Invalid media group owner");
+        const held=await request("group-policy-view",{object,...heldScope},deadline);
+        current(held);const draft=parseMediaGroupPolicyView(held,heldScope);
+        if(draft.context.owner!==owner)throw Error("Group policy requires the set owner");
+        const signed=signPrivateMediaGroupConfig({owner,setId:heldScope.set,predicate:heldScope.predicate,
+          settleWindowMs,configRevision:(draft.config?.configRevision??0)+1},key,draft.context.ownerPub);
+        current(held);deadline.throwIfAborted();return signed;
+      });
+    },
+    async appendGroupPolicy(object:string,scope:unknown,config:unknown,signal?:AbortSignal) {
+      if(!objectOK(object))throw Error("Invalid media group object");
+      const heldScope=parseMediaGroupScope(scope),signed=parseMediaGroupPolicy(config,heldScope),deadline=signal??new AbortController().signal;
+      const held=await request("group-policy-view",{object,...heldScope},deadline);
+      parseMediaGroupPolicyView(held,heldScope);current(held);deadline.throwIfAborted();
+      const result=await request("group-policy-append",{object,at:held.at,fence:held.fence,...heldScope,config:signed},deadline);
+      if(!exact(result,["accepted"])||result.accepted!==true)throw Error("Media group policy refused");
+    },
     async groupView(object:string,signal?:AbortSignal) {
       const held=await request("group-view",{object},signal??new AbortController().signal);current(held);
       return parseMediaGroupView(held,object);
