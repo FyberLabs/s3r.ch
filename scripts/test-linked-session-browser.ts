@@ -1,5 +1,7 @@
 /** Scheduled isolated browser/HTTP admission contract; no deployed identity. */
 import assert from "node:assert/strict";
+import { build } from "esbuild";
+import { siteSeaSession } from "../lib/identity/site-sea-session-server";
 import { writeNightlyCaseResults } from "./nightly-case-results.mjs";
 import { chromium, type Browser, type BrowserContext, type Page, type Route } from "playwright-core";
 import { linkedSessionFixture } from "./fixtures/linked-session";
@@ -19,6 +21,16 @@ type ExchangeResult = { status: number; session: { key: string } | null };
 async function main() {
   let browser: Browser | undefined;
   try {
+    const bundle = await build({ stdin: { resolveDir: process.cwd(), loader: "ts", contents: `
+import { createLinkedWalletClient } from './lib/identity/linked-wallet-client';
+window.exerciseWallet = async address => {
+  let signatures = 0;
+  const client = createLinkedWalletClient({origin: location.origin, clock: () => 200,
+    current: () => ({address, chainId:'1', walletRevision:0, sessionRevision:0}),
+    signMessage: async message => { signatures++; return (await (await fetch('/fixture/sign', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({message})})).json()).signature; }
+  });
+  return {ok:await client.signIn(), signatures};
+};` }, bundle: true, write: false, platform: "browser", format: "iife" });
     browser = await chromium.launch({ headless: true });
     for (const row of cases) {
       const fixture = await linkedSessionFixture(row.name === "oidc-linked-session" ? "oidc" : "wallet");
@@ -26,18 +38,20 @@ async function main() {
       const context: BrowserContext = await browser.newContext();
       try {
         const page: Page = await context.newPage();
-        let unexpected = false;
+        let unexpected = false, hostedUnavailable = false;
         await context.route("**/*", async (route: Route) => {
           const req = route.request(), url = new URL(req.url());
           if (url.origin !== origin) { unexpected = true; await route.abort(); return; }
           if (url.pathname === "/") { await route.fulfill({ contentType: "text/html", body: "<!doctype html><title>Isolated linked admission</title>" }); return; }
           const request = new Request(req.url(), { method: req.method(), headers: await req.allHeaders(), body: req.postData() ?? undefined });
           let response: Response;
-          if (url.pathname === "/fixture/proof") {
+          if (url.pathname === "/fixture/sign") {
+            const { message } = await request.json(); response = Response.json({ signature: await fixture.signWalletMessage(message) });
+          } else if (url.pathname === "/fixture/proof") {
             const { challenge } = await request.json();
             response = Response.json(await fixture.proof(challenge));
           } else if (url.pathname === "/fixture/session") response = Response.json(await handlers.authenticate(request));
-          else if (url.pathname.endsWith("/linked-challenge")) response = await handlers["linked-challenge"](request);
+          else if (url.pathname.endsWith("/linked-challenge")) response = hostedUnavailable ? await siteSeaSession(request, "linked-challenge", {}) : await handlers["linked-challenge"](request);
           else if (url.pathname.endsWith("/linked-exchange")) response = await handlers["linked-exchange"](request);
           else { unexpected = true; await route.abort(); return; }
           const headers = Object.fromEntries(response.headers);
@@ -46,6 +60,17 @@ async function main() {
           await route.fulfill({ status: response.status, headers, body: await response.text() });
         });
         await page.goto(origin);
+        if (row.name === "wallet-linked-session") {
+          await page.addScriptTag({ content: bundle.outputFiles[0].text });
+          const exercise = () => page.evaluate((address: string) => (window as unknown as { exerciseWallet: (address: string) => Promise<{ok: boolean; signatures: number}> }).exerciseWallet(address), (fixture.credential as {address: string}).address);
+          hostedUnavailable = true;
+          assert.deepEqual(await exercise(), { ok: false, signatures: 0 });
+          hostedUnavailable = false;
+          assert.deepEqual(await exercise(), { ok: true, signatures: 1 });
+          const session = await page.evaluate(async () => (await fetch("/fixture/session")).json());
+          assert.deepEqual(session, { key: fixture.principal }); assert.equal(unexpected, false);
+          row.status = "passed"; row.reason = "verified"; continue;
+        }
         const prepared: Prepared = await page.evaluate(async (credential: LinkedCredential): Promise<Prepared> => {
           const response = await fetch("/api/identity/sea/linked-challenge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ credential }) });
           if (response.status !== 200) throw Error("challenge-refused");
