@@ -60,7 +60,8 @@ test("forum grants and revocation use the SEA principal across credential metada
     assert.equal((await post(alice, { action: "token" })).status, 410);
     const malformed = await POST(new Request(origin + "/api/forum", { method: "POST", headers: { cookie: alice }, body: "{" }));
     assert.equal(malformed.status, 400);
-    for (const headers of [{ authorization: "Bearer agent-token" }, { "x-s3rch-forum-token": "agent-token" }, { "x-s3rch-forum-token": "" }]) {
+    const delegatedHeaders: Record<string, string>[] = [{ authorization: "Bearer agent-token" }, { "x-s3rch-forum-token": "agent-token" }, { "x-s3rch-forum-token": "" }];
+    for (const headers of delegatedHeaders) {
       assert.equal((await GET(req(alice, headers))).status, 401);
       for (const action of ["post", "invite", "token", "desktop"])
         assert.equal((await post(alice, { action }, headers)).status, 401);
