@@ -1,6 +1,7 @@
 import { createPrivateMediaBrowser } from "./media-browser-session";
 import { subscribeUnlockedMeshPair } from "./identity/unlocked-mesh";
 import { readBoundedIdentityJson } from "./identity/bounded-json";
+import { MediaQuotaExceeded } from "./media-client";
 import { isSeaPubkey } from "./identity/forum-check";
 
 export type UploadPanelState={busy:boolean;message:string;allocationConfirmed:boolean;pending:{object:string;name:string}|null};
@@ -31,8 +32,10 @@ export function createMediaUploadPanel(tenant:string,changed:(state:UploadPanelS
       signal.throwIfAborted();if(!current())return;key=session.principal;expires=session.expiresAt as number;
       if(expiry)clearTimeout(expiry);expiry=setTimeout(reset,Math.max(0,expires-clock()));
       await work(signal,progress,()=>{signal.throwIfAborted();if(current())publish({...state,allocationConfirmed:true});});
-    } catch {
-      if(current())publish({...state,message:"Upload stopped. Your encrypted recovery draft is retained if it was saved. Unlock the same identity and check the pending upload before retrying."});
+    } catch (error) {
+      if(current())publish({...state,message:error instanceof MediaQuotaExceeded
+        ? "Storage quota reached. Upload did not complete. Your encrypted draft is retained; resume it after capacity is available."
+        :"Upload stopped. Your encrypted recovery draft is retained if it was saved. Unlock the same identity and check the pending upload before retrying."});
     } finally {if(!disposed&&attempt===generation){controller=null;key=null;expires=0;publish({...state,busy:false});}}
   }
   return Object.freeze({

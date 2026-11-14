@@ -1,3 +1,4 @@
+import type { MediaCleanupItem } from "./media-catalog";
 import type { MediaDeletionIntent } from "./media-deletion";
 import { readMemePngTags } from "./meme-png-tags";
 import { mediaPreviewKind } from "./media-preview";
@@ -10,10 +11,11 @@ class SessionUnavailable extends Error {}
 
 export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly string[]; page: number;
   nextPage: number | null; loaded: boolean; message: string;
+  cleanup: Readonly<{objects:readonly MediaCleanupItem[];page:number;nextPage:number|null}> | null;
   deletion: Readonly<{object:string;prepared:boolean}> | null;
   audience: Readonly<{object:string;readers:readonly string[]}> | null;
   preview: Readonly<{ url: string; name: string; mediaType: string; tags?:readonly string[] }> | null }>;
-const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null});
+const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null});
 
 /** Private, in-memory navigation. Never persists catalog entries or plaintext. */
 export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, options: {
@@ -105,6 +107,21 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       },()=>publish({...state,message:deletionIntent
         ? "Deletion could not be confirmed. Retry sends the same request. Closing does not undo an accepted deletion."
         : "Deletion could not be prepared. Check your access and retry."}));
+    },
+    loadCleanup(page=0) {
+      if(state.deletion)return Promise.resolve();
+      return operation(async(signal,current)=>{
+        const catalog=await browser.cleanupCatalog(page,signal);
+        if(current())publish({...state,cleanup:{objects:catalog.objects,page,nextPage:catalog.nextPage},audience:null});
+      });
+    },
+    cleanup(object:string,command:string) {
+      if(state.deletion || !state.cleanup?.objects.some(item=>item.object===object && item.command===command))return Promise.resolve();
+      return operation(async(signal,current)=>{
+        await browser.cleanup(object,command,signal);
+        if(current() && state.cleanup)publish({...state,cleanup:{...state.cleanup,
+          objects:state.cleanup.objects.filter(item=>item.object!==object)},message:"Storage cleanup confirmed."});
+      },()=>publish({...state,message:"Storage cleanup could not be confirmed. Refresh pending cleanup or retry."}));
     },
     load(page=0) {
       if(state.deletion)return Promise.resolve();

@@ -1,4 +1,5 @@
 // Isolated grant UI/inbox regression; no deployed session or shared Gun peer.
+import { writeNightlyCaseResults } from "./nightly-case-results.mjs";
 import assert from "node:assert/strict";
 import { createECDH } from "node:crypto";
 import { createServer } from "node:http";
@@ -6,7 +7,10 @@ import { build } from "esbuild";
 import { chromium } from "playwright-core";
 const names = ["wallet-recipient-refused", "sea-grant-view", "linked-principal-continuity", "wallet-only-viewer-refused", "sea-grant-revoke"];
 const cases = names.map(name => ({ name, status: "blocked" }));
-const report = status => console.log(JSON.stringify({ status, cases }));
+const report = status => {
+  const result = writeNightlyCaseResults({ suite: "sea-grants", expectedCases: names, cases });
+  console.log(JSON.stringify({ status: status === "failed" ? "failed" : result.status, cases: result.cases }));
+};
 if (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_EVENT_NAME !== "schedule") {
   report("blocked"); process.exit(1);
 }

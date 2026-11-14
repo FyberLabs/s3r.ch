@@ -195,3 +195,30 @@ test("temporary session failure retains the original deletion intent without sub
     await item.library.confirmDeletion("tenant");assert.equal(submitted,2);assert.equal(prepared,1);
   }finally{item.library.dispose();}
 });
+
+test("pending cleanup survives an unknown result and clears only after confirmation",async()=>{
+  const command="a".repeat(64),calls:string[]=[];let fail=true;
+  const item=setup({browser:()=>({
+    cleanupCatalog:async(page:number)=>({at:1,objects:[{object:"owned",command}],nextPage:page===15?null:page+1,principal:key}),
+    cleanup:async(object:string,held:string)=>{calls.push(object+held);if(fail)throw Error("unknown");return {command,cleanup:"complete"};},
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    await item.library.cleanup("owned",command);assert.deepEqual(calls,[]);
+    await item.library.loadCleanup(15);assert.equal(item.state().cleanup?.nextPage,null);
+    await item.library.cleanup("owned","wrong");assert.deepEqual(calls,[]);
+    await item.library.cleanup("owned",command);assert.equal(calls.length,1);assert.equal(item.state().cleanup?.objects.length,1);
+    assert.match(item.state().message,/could not be confirmed/);
+    fail=false;await item.library.cleanup("owned",command);assert.equal(calls.length,2);assert.deepEqual(item.state().cleanup?.objects,[]);
+    item.library.reset();assert.equal(item.state().cleanup,null);
+  }finally{item.library.dispose();}
+});
+test("identity reset discards late cleanup navigation",async()=>{
+  let release!:()=>void,started!:()=>void;
+  const gate=new Promise<void>(resolve=>{release=resolve;}),began=new Promise<void>(resolve=>{started=resolve;});
+  const item=setup({browser:()=>({cleanupCatalog:async()=>{started();await gate;return {at:1,objects:[{object:"owned",command:"a".repeat(64)}],nextPage:1,principal:key};}
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+  try {
+    const loading=item.library.loadCleanup();await began;item.library.reset();release();await loading;
+    assert.equal(item.state().cleanup,null);assert.equal(item.state().busy,false);
+  }finally{release();item.library.dispose();}
+});

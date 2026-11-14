@@ -176,3 +176,20 @@ test("cleanup proxy keeps fixed subject credentials and requires completed ackno
   for(const bad of [{...result,cleanup:"pending"},{...result,command:"bad"},{...result,accepted:1}])
     assert.equal((await service(async()=>Response.json(bad))("cleanup",request({object}))).status,403);
 });
+
+test("cleanup catalog uses fixed subject and rejects foreign or malformed commands",async()=>{
+  const result={at:100,objects:[{object,command:"a".repeat(64)}],nextPage:1};
+  let calls=0;
+  const handle=service(async(url,init)=>{calls++;assert.equal(String(url),config.origin+"/api/v1/acl/sociacl/media/owner/cleanup-catalog");
+    assert.equal(new Headers(init?.headers).get("x-api-key"),"owner-key");
+    assert.deepEqual(JSON.parse(String(init?.body)),{page:0});return Response.json(result);});
+  const response=await handle("cleanup-catalog",request({page:0}));
+  assert.equal(response.status,200);assert.deepEqual(await response.json(),{...result,principal});
+  assert.equal(response.headers.get("cache-control"),"private, no-store");
+  for(const body of [{page:true},{page:16},{page:0,owner:principal},{object}])
+    assert.equal((await handle("cleanup-catalog",request(body))).status,400);
+  assert.equal(calls,1);
+  for(const bad of [{...result,objects:[{object:"media_other",command:"a".repeat(64)}]},
+    {...result,objects:[{object,command:"bad"}]},{...result,nextPage:null},{...result,extra:true}])
+    assert.equal((await service(async()=>Response.json(bad))("cleanup-catalog",request({page:0}))).status,403);
+});

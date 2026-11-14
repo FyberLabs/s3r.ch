@@ -7,7 +7,7 @@ import { PrivateMediaUpload } from "./PrivateMediaUpload";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
-  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null});
+  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null});
   const library=useRef<ReturnType<typeof createMediaLibrary>|null>(null);
   useEffect(()=>{
     const current=createMediaLibrary(setState);library.current=current;
@@ -38,6 +38,20 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
         <button type="button" disabled={state.busy || !!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.recipients(object)}>Manage sharing</button>
         <button type="button" disabled={state.busy || !!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>library.current?.requestDeletion(object)}>Delete file</button>
       </li>)}</ul>
+      <section aria-labelledby="media-cleanup-title" className="space-y-3 rounded border p-4">
+        <h2 id="media-cleanup-title" className="font-semibold">Pending storage cleanup</h2>
+        <p>Deleted files stay inaccessible while storage cleanup finishes. Retry a previously accepted deletion here.</p>
+        <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadCleanup(0)}>Refresh pending cleanup</button>
+        {state.cleanup && <>
+          <p>Page {state.cleanup.page+1} of 16. Empty pages are valid.</p>
+          {!state.cleanup.objects.length && <p>No pending cleanup on this page.</p>}
+          <ul>{state.cleanup.objects.map((item,index)=><li key={item.object}>
+            <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.cleanup(item.object,item.command)}>Retry cleanup for deleted file {state.cleanup!.page*4+index+1}</button>
+          </li>)}</ul>
+          {state.cleanup.page>0 && <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadCleanup(state.cleanup!.page-1)}>Previous cleanup page</button>}
+          {state.cleanup.nextPage!==null && <button type="button" disabled={state.busy || !!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.loadCleanup(state.cleanup!.nextPage!)}>Next cleanup page</button>}
+        </>}
+      </section>
       {state.deletion && <section aria-labelledby="delete-media-title" className="space-y-3 rounded border p-4">
         <h2 id="delete-media-title" className="font-semibold">Delete this file?</h2>
         <p>This permanently stops access through your library and shared links. Copies already saved cannot be removed. Storage cleanup happens separately.</p>

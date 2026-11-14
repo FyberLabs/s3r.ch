@@ -1,6 +1,6 @@
 import { parseMediaDeletionDraft, parseMediaDeletionIntent, type MediaDeletionIntent } from "./media-deletion";
 import { parseForumObjectRecord, type UnverifiedObjectRecord } from "./identity/forum-object-record";
-import { isMediaCatalogPageNumber, parseMediaCatalogPage } from "./media-catalog";
+import { isMediaCatalogPageNumber, parseMediaCatalogPage, parseMediaCleanupPage } from "./media-catalog";
 import { signPrivateMediaGrant, signPrivateMediaEpoch, signPrivateMediaFinalization, signPrivateMediaStatus, signPrivateMediaDeletion } from "sociacl-ids/private-media";
 import type { ItemReaderWrap } from "sociacl-ids";
 import type { MediaCiphertextReference } from "./media-client";
@@ -152,6 +152,16 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
         throw Error("Invalid media catalog principal");
       const { principal, ...catalog } = result;
       return { ...parseMediaCatalogPage(catalog, page, principal), principal };
+    },
+    async cleanupCatalog(page: number, signal?: AbortSignal) {
+      if (!isMediaCatalogPageNumber(page)) throw Error("Invalid media catalog request");
+      const result = await request("cleanup-catalog", {page}, signal ?? new AbortController().signal);
+      const started = fetchedAt.get(result), elapsed = started === undefined ? NaN : clock() - started;
+      if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 4) throw new PrivateMediaConflict();
+      if (!exact(result, ["at", "objects", "nextPage", "principal"]) || typeof result.principal !== "string" || !isSeaPubkey(result.principal))
+        throw Error("Invalid media catalog principal");
+      const { principal, ...catalog } = result;
+      return { ...parseMediaCleanupPage(catalog, page, principal), principal };
     },
     async recipients(object: string, owner: string, signal?: AbortSignal) {
       const held=await view(object,owner,signal ?? new AbortController().signal);
