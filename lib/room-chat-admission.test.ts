@@ -13,12 +13,12 @@ const TASK_PREFIX="s3rch-work:v1:";
 const sea=createRequire(import.meta.url)("gun/sea") as {pair():Promise<SeaPair>};
 // Unit contract substitutes the already-verified authority graph, not signature verification.
 async function fixture(){
- const alice=await sea.pair(),bob=await sea.pair();let access=true;
+ const alice=await sea.pair(),bob=await sea.pair();let access=true, reader: string | null=alice.pub;
  const keys=new Set([alice.pub,bob.pub]);
  const graph={writerKey:(p:string)=>keys.has(p)?p:null,principalForKey:(p:string)=>keys.has(p)?p:null,
   checkForumSee:()=>({allowed:access}),checkPost:()=>({allowed:access})} as unknown as ForumAuthorityGraph;
- const admission=createRoomChatAdmission({graph,readerKey:()=>alice.pub,clock:()=>100});
- return {alice,bob,admission,keys,revoke:()=>{access=false;}, restore:()=>{access=true;}};
+ const admission=createRoomChatAdmission({graph,readerKey:()=>reader,clock:()=>100});
+ return {alice,bob,admission,keys,revoke:()=>{access=false;}, restore:()=>{access=true;},reader:(key:string|null)=>{reader=key;}};
 }
 test("signed chat binds author, payload, transport ID and room; unsigned rows are refused",async()=>{
  const f=await fixture();const row=await f.admission.compose("room","hello",()=>f.alice);assert.ok(row);
@@ -266,4 +266,21 @@ test("ingress bounds asynchronous verification and yields during peer floods", a
  release();await Promise.all(jobs);clearTimeout(timer);
  assert.equal(maximum,1);assert.equal(calls,8193);assert.ok(timerCalls>0 && timerCalls<calls);
  queue.close();
+});
+
+
+test("same-identity refresh fences and restores Mine-only receipts without replay", async () => {
+ const {mineOwnerChanged}=await import("./mine-session");
+ const f=await fixture(), row=await f.admission.compose("room","local only",()=>f.alice);assert.ok(row);
+ let held:string|null=f.alice.pub;
+ const observe=(key:string|null|undefined)=>{
+  f.reader(key??null);
+  if(mineOwnerChanged(held,key)){held=key!;f.admission.reset();}
+ };
+ assert.deepEqual(f.admission.readable([row],"room"),[row]);
+ observe(undefined);assert.deepEqual(f.admission.readable([row],"room"),[]);
+ assert.equal(await f.admission.compose("room","pending refresh",()=>f.alice),null);
+ observe(f.alice.pub);assert.deepEqual(f.admission.readable([row],"room"),[row]);
+ observe(f.bob.pub);assert.deepEqual(f.admission.readable([row],"room"),[]);
+ observe(f.alice.pub);assert.deepEqual(f.admission.readable([row],"room"),[]);
 });

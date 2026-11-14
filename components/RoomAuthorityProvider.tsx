@@ -2,7 +2,8 @@
 import { roomAuthorityDiagnosticsBlock } from "@/lib/room-authority-diagnostics";
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useIdentitySession } from "./useIdentitySession";
+import { mineOwnerChanged } from "@/lib/mine-session";
+import { useIdentitySessionState } from "./useIdentitySession";
 import { createForumAuthority } from "@/lib/identity/forum-authority";
 import { observeUnlockedForumSigner } from "@/lib/identity/browser-forum-signer";
 import { createSquadBrowserSource } from "@/lib/squad-browser-source";
@@ -45,8 +46,15 @@ function controller(config: Config, session: () => string | null) {
 }
 const Context = createContext<{ current: Controller | null; revision: number }>({ current: null, revision: 0 });
 export function RoomAuthorityProvider({ children }: { children: ReactNode }) {
-  const session = useIdentitySession(), key = session?.owner ?? null;
-  const keyRef = useRef(key); keyRef.current = key;
+  const session = useIdentitySessionState();
+  const observed = session === undefined ? undefined : session?.owner ?? null;
+  const [key, setKey] = useState<string | null>(null);
+  // An unresolved refresh fences the reader/signer but preserves same-identity
+  // receipts, including Mine-only messages with no mesh replay. A resolved
+  // sign-out or identity change still replaces and closes the controller.
+  if (mineOwnerChanged(key, observed)) setKey(observed!);
+  const keyRef = useRef<string | null>(null); keyRef.current = observed ?? null;
+  const observedRef = useRef(observed); observedRef.current = observed;
   const [current, setCurrent] = useState<Controller | null>(null), [revision, setRevision] = useState(0);
   useEffect(() => {
     setCurrent(null);
@@ -54,7 +62,7 @@ export function RoomAuthorityProvider({ children }: { children: ReactNode }) {
     const pending = new AbortController();
     let next: Controller | undefined, stop: (() => void) | undefined;
     void readRoomAuthorityConfig(pending.signal).then(config => {
-      if (!config || pending.signal.aborted || keyRef.current !== key) return;
+      if (!config || pending.signal.aborted || (observedRef.current !== undefined && observedRef.current !== key)) return;
       next = controller(config, () => keyRef.current);
       stop = next.authority.subscribe(() => setRevision(n => n + 1));
       setCurrent(next);
