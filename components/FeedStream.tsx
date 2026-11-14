@@ -1,6 +1,7 @@
 "use client";
 import { useRoomAuthority } from "./RoomAuthorityProvider";
 import { isForumObjectId } from "@/lib/identity/forum-check";
+import { publishCurrentRoomChat } from "@/lib/room-chat-publication";
 import { createRoomChatSubscription } from "@/lib/room-chat-receive-queue";
 import PublicFeedMedia from "./PublicFeedMedia";
 import FeedConversation from "./FeedConversation";
@@ -186,6 +187,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
   );
   const [roomShareMessage, setRoomShareMessage] = useState<string | null>(null);
   const [overlayChat, setOverlayChat] = useState<ChatMessage[]>([]);
+  const overlayChatRef = useRef<ChatMessage[]>([]);
   const [graphChat, setGraphChat] = useState<ChatMessage[]>([]);
   const [overlayPresence, setOverlayPresence] = useState<PresenceEntry[]>([]);
   const [graphPresence, setGraphPresence] = useState<PresenceEntry[]>([]);
@@ -707,17 +709,13 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
       return;
     }
     gun.get("s3rch").get("rooms").get(prepared.key).put(prepared.node);
-    setSharedRoomIds((prev) =>
-      prev.includes(room.id) ? prev : [...prev, room.id],
-    );
-    const publicIds = new Set(publishedRooms);
+    const publicIds = new Set(publishedRoomsRef.current);
     publicIds.add(room.id);
-    for (const row of overlayChat) {
-      if (isRoomTaskBody(row.body)) continue;
-      if (row.room !== room.id) continue;
-      if (!roomAuthority.admission.valid(row)) continue;
-      gun.get("s3rch").get("rooms").get(encodeKey(room.id)).get("chat").get(encodeKey(row.id)).put(row);
-    }
+    publishedRoomsRef.current = publicIds;
+    setSharedRoomIds((prev) => prev.includes(room.id) ? prev : [...prev, room.id]);
+    publishCurrentRoomChat({ room: room.id, currentRows: () => overlayChatRef.current,
+      publicRoom: () => canMutate() && publishedRoomsRef.current.has(room.id), admission: roomAuthority.admission,
+      publish: row => { gun.get("s3rch").get("rooms").get(encodeKey(room.id)).get("chat").get(encodeKey(row.id)).put(row); } });
     for (const row of overlayPresence) {
       if (row.room !== room.id) continue;
       const preparedPresence = preparePublishRoomPresence(
@@ -766,6 +764,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
       return;
     }
     gun.get("s3rch").get("rooms").get(prepared.key).put(prepared.tombstone);
+    publishedRoomsRef.current = new Set([...publishedRoomsRef.current].filter(id => id !== room.id));
     setSharedRoomIds((prev) => prev.filter((id) => id !== room.id));
     setPublicRooms((prev) => dropRooms(prev, room.id));
     heardRoomsRef.current = dropRooms(heardRoomsRef.current, room.id);
@@ -933,14 +932,16 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
           presence={openRoomPresence}
           onPublicGraph={openRoomIsPublic}
           seedWsUp={seedWsUp}
-          onComposed={(next, putOnGun) => {
+          onComposed={(next) => {
             if (!canMutate() || !roomAuthority?.admission.valid(next) || isRoomTaskBody(next.body)) return;
-            setOverlayChat((prev) => mergeChat(prev, [next]));
-            if (!putOnGun || !see?.acl || !session) return;
+            overlayChatRef.current = mergeChat(overlayChatRef.current, [next]);
+            setOverlayChat(overlayChatRef.current);
+            if (!see?.acl || !session) return;
             const gun = gunRef.current;
             if (!gun) return;
-            if (!publishedRooms.has(next.room) || !roomAuthority.admission.valid(next)) return;
-            gun.get("s3rch").get("rooms").get(encodeKey(next.room)).get("chat").get(encodeKey(next.id)).put(next);
+            publishCurrentRoomChat({ room: next.room, currentRows: () => [next],
+              publicRoom: () => canMutate() && publishedRoomsRef.current.has(next.room), admission: roomAuthority.admission,
+              publish: row => { gun.get("s3rch").get("rooms").get(encodeKey(row.room)).get("chat").get(encodeKey(row.id)).put(row); } });
           }}
         />
       ) : null}

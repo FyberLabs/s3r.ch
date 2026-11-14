@@ -284,3 +284,20 @@ test("same-identity refresh fences and restores Mine-only receipts without repla
  observe(f.bob.pub);assert.deepEqual(f.admission.readable([row],"room"),[]);
  observe(f.alice.pub);assert.deepEqual(f.admission.readable([row],"room"),[]);
 });
+
+
+test("room sharing publishes current local rows and late composition uses current visibility", async () => {
+ const {publishCurrentRoomChat}=await import("./room-chat-publication");
+ const f=await fixture(), rows:SignedRoomChat[]=[], sent:string[]=[];
+ let publicRoom=false, release!:()=>void;
+ const gate=new Promise<void>(resolve=>{release=resolve;});
+ const publish=(currentRows:()=>readonly SignedRoomChat[])=>publishCurrentRoomChat({room:"room",currentRows,
+  publicRoom:()=>publicRoom,admission:f.admission,publish:row=>sent.push(row.id)});
+ const sharing=(async()=>{await gate;publicRoom=true;publish(()=>rows);})();
+ const before=await f.admission.compose("room","during admission",()=>f.alice);assert.ok(before);rows.push(before);
+ release();await sharing;assert.deepEqual(sent,[before.id]);
+ const after=await f.admission.compose("room","late completion",()=>f.alice);assert.ok(after);rows.push(after);
+ publish(()=>[after]);assert.deepEqual(sent,[before.id,after.id]);
+ publicRoom=false;publish(()=>rows);assert.equal(sent.length,2);
+ publicRoom=true;f.revoke();publish(()=>rows);assert.equal(sent.length,2);
+});
