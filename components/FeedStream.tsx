@@ -1351,11 +1351,6 @@ function FeedCard({
               >
                 {confirmUnshare ? "Confirm unshare" : "Unshare from public"}
               </button>
-              {isForumObjectId(room.id, "room") ? (
-                <button type="button" onClick={onShare} className={`ml-2 mt-2 ${btnSecondary}`}>
-                  {confirmShare ? "Confirm renewal" : "Renew chat access"}
-                </button>
-              ) : null}
             </>
           ) : (
             <>
