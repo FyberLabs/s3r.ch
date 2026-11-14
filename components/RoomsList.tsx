@@ -1,7 +1,7 @@
 "use client";
 
 import { useRoomAuthority } from "./RoomAuthorityProvider";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { shortenOwner } from "@/lib/feed-discover";
 import { splitTags } from "@/lib/feed-types";
 import {
@@ -132,6 +132,10 @@ function NewRoomForm({ onCreated }: { onCreated: (room: Room) => void }) {
   const [message, setMessage] = useState<string | null>(null);
   const identity = useIdentitySession();
   const session = identity ? objectOwner(identity) : null;
+  const mounted = useRef(true);
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const current = useRef({ session, roomAuthority, see });
+  current.current = { session, roomAuthority, see };
 
   async function submit() {
     setBusy(true);
@@ -158,6 +162,7 @@ function NewRoomForm({ onCreated }: { onCreated: (room: Room) => void }) {
         return;
       }
       if (!roomAuthority || !await roomAuthority.admit(room, false)) { setMessage("Could not create this room."); return; }
+      if (!mounted.current || current.current.session !== session || current.current.roomAuthority !== roomAuthority || current.current.see !== see) return;
       const admitted = admitComposedRoom(see.acl, room, principal);
       if ("denied" in admitted) {
         setMessage("Could not create this room.");
