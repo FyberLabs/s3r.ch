@@ -46,6 +46,10 @@ try {
  browser=await chromium.launch({headless:true});const page=await browser.newPage();
  await page.goto(`http://127.0.0.1:${server.address().port}`);seed=await page.evaluate(()=>window.seed());
  await page.getByRole('button',{name:'Refresh my media',exact:true}).click();
+ await page.getByRole('button',{name:'Open file 1',exact:true}).click();
+ await page.getByRole('article',{name:'Private media post'}).waitFor();
+ assert.equal(await page.getByRole('article',{name:'Private media post'}).getByRole('heading',{name:'private.png',exact:true}).count(),1);
+ assert.ok((await page.getByRole('article',{name:'Private media post'}).locator('img').getAttribute('src')).startsWith('blob:'));
  await page.getByRole('button',{name:'Manage sharing'}).click();await page.getByLabel('Recipient SEA account').fill(reader);
  await page.getByRole('button',{name:'Share with this identity'}).click();
  await page.getByRole('status').filter({hasText:'Sharing could not be confirmed.'}).waitFor();
