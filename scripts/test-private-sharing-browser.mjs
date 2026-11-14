@@ -11,7 +11,7 @@ const tenant="11111111-1111-4111-8111-111111111111";
 const object="media_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_11111111111111111111111111111111";
 const context={object,epoch:1,revisionId:"b".repeat(64)};
 const bundle=await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {PrivateMediaLibrary} from './components/PrivateMediaLibrary';import {sealMediaFile} from './lib/media-file';import {rememberUnlockedMeshPair,forgetUnlockedMeshPair} from './lib/identity/unlocked-mesh';const pair=${JSON.stringify(pair)};rememberUnlockedMeshPair('ci-fixture',pair);window.lockIdentity=forgetUnlockedMeshPair;window.seed=async()=>{const s=await sealMediaFile(new TextEncoder().encode('private fixture'),{name:'private.png',mediaType:'image/png'},{tenant:'${tenant}',object:'${object}'},${JSON.stringify(context)},[{account:pair.pub,pub:pair.pub,identityPub:pair.pub,epub:pair.epub}],[pair.pub]);return {...s,bytes:Array.from(s.bytes)};};createRoot(document.getElementById('root')).render(<PrivateMediaLibrary tenant="${tenant}"/>);`,resolveDir:process.cwd(),loader:"tsx"},bundle:true,write:false,platform:"browser",format:"iife",define:{"process.env.NODE_ENV":'"production"'},plugins:[{name:"synthetic-identity-display",setup(b){b.onLoad({filter:/[/\\]IdentityBar\.tsx$/},()=>({contents:"export function IdentityBar(){return null}",loader:"tsx"}));}}]});
-let seed,lost=false;const applied=new Map(),writes=[],errors=[];
+let seed,lost=false;const applied=new Map(),writes=[],errors=[],actions=[];
 const bindings={[owner]:{pub:owner,epub:pair.epub,head:0},[reader]:{pub:reader,epub:reader,head:0}};
 const grants=()=>[owner,reader].map(accessor=>({object,owner,accessor,from:0,until:Number.MAX_SAFE_INTEGER,stated:1,epoch:2,grantRevision:2,itemCiphertextDigest:seed.sha256}));
 const snapshot=()=>({entries:grants().map(g=>({accessor:g.accessor,from:g.from,until:g.until,stated:1,grantRevision:2,scope:'direct',setId:'',hamState:0}))});
@@ -25,6 +25,7 @@ const server=createServer(async(req,res)=>{
   if(req.url==='/api/identity/sea/session'){json({enabled:true,principal:owner,expiresAt:Date.now()+120000});return;}
   const chunks=[];for await(const c of req)chunks.push(c);const raw=Buffer.concat(chunks),body=raw.length?JSON.parse(raw):null;
   if(body){assert.ok(!raw.toString().includes(pair.priv));assert.ok(!raw.toString().includes(pair.epriv));}
+  actions.push(req.url);
   const action=req.url.split('/').at(-1),at=Math.floor(Date.now()/1000),fence='a'.repeat(64);
   if(action==='catalog'){json({at,objects:[object],nextPage:1,principal:owner});return;}
   if(action==='view'){json({at,fence,objectVersion:1,owner,snapshot:snapshot(),bindings});return;}
@@ -48,7 +49,7 @@ try {
  await page.getByRole('button',{name:'Manage sharing'}).click();await page.getByLabel('Recipient SEA account').fill(reader);
  await page.getByRole('button',{name:'Share with this identity'}).click();
  await page.getByRole('status').filter({hasText:'Sharing could not be confirmed.'}).waitFor();
- assert.equal(writes.length,3);await page.reload();
+ assert.equal(writes.length,3,JSON.stringify({actions,errors}));await page.reload();
  await page.getByRole('button',{name:'Check saved sharing'}).click();await page.getByRole('button',{name:'Resume sharing'}).click();
  await page.getByRole('status').filter({hasText:'Sharing confirmed.'}).waitFor();
  assert.equal(writes.length,5);assert.equal(new Set(writes).size,5);
