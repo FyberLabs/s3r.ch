@@ -193,3 +193,9 @@ browser memory. Only currently authorized shared files appear; opening one
 performs fresh delivery checks. Catalog entries never enable owner deletion or
 sharing controls. Session changes clear both entries and previews. This adds no
 new credentials or storage activation.
+
+The private media browser can prepare the next epoch from the protected
+`epoch-view` response. It derives the parent finalization and signs one candidate
+and matching finalization without writing them. The session must remain unlocked
+through preparation. This adapter does not implement share publication or recovery;
+a caller must retain the exact signed intent before a later fenced write.
