@@ -1,4 +1,6 @@
 "use client";
+import { roomAuthorityDiagnosticsBlock } from "@/lib/room-authority-diagnostics";
+
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useIdentitySession } from "./useIdentitySession";
 import { createForumAuthority } from "@/lib/identity/forum-authority";
@@ -36,7 +38,7 @@ function controller(config: Config, session: () => string | null) {
           fetch, signal: pending.signal });
         if (!active || epoch !== generation || signer.current() !== pair) return false;
         const refreshed = await authority.refresh(result.snapshot, result.at);
-        return active && epoch === generation && signer.current() === pair && refreshed.ok && !refreshed.diagnostics.length;
+        return active && epoch === generation && signer.current() === pair && refreshed.ok && !roomAuthorityDiagnosticsBlock(refreshed.diagnostics, result.snapshot, authority.graph);
       } catch { return false; }
     },
     close() { active = false; generation++; pending.abort(); signer.stop(); unsubscribe(); browser.dispose(); authority.invalidate(); admission.reset(); },
