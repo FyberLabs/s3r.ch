@@ -1,3 +1,4 @@
+import { isCanonicalObjectId } from "./identity/object-id";
 import type { MediaCleanupItem } from "./media-catalog";
 import type { MediaDeletionIntent } from "./media-deletion";
 import { readMemePngTags } from "./meme-png-tags";
@@ -79,6 +80,24 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
     } finally {
       if(!disposed && attempt===generation){pending=null;publish({...state,busy:false});}
     }
+  }
+  function openAuthorized(object: string, tenant: string) {
+      return operation(async(signal,current)=>{
+        if(state.objects.includes(object)) {
+          if (!owner) throw Error("Media owner unavailable");
+          await browser.status(object,owner,signal);
+        }
+        const file=await browser.open(object,tenant,signal);
+        try {
+          if(!current())return;
+          if(!mediaPreviewKind(file.description.mediaType)) {
+            publish({...state,message:"This file format cannot be previewed."});return;
+          }
+          const url=makeUrl(new Blob([new Uint8Array(file.bytes)],{type:file.description.mediaType}));
+          if(!current()){revokeUrl(url);return;}
+          publish({...state,preview:{url,...file.description,...(file.description.mediaType==="image/png"?{tags:readMemePngTags(file.bytes)}:{})}});
+        } finally {file.bytes.fill(0);}
+      });
   }
   return Object.freeze({
     reset,
@@ -198,22 +217,13 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
     },
     open(object: string, tenant: string) {
       if(state.deletion || (!state.objects.includes(object) && !state.granted?.objects.includes(object)))return Promise.resolve();
-      return operation(async(signal,current)=>{
-        if(state.objects.includes(object)) {
-          if (!owner) throw Error("Media owner unavailable");
-          await browser.status(object,owner,signal);
-        }
-        const file=await browser.open(object,tenant,signal);
-        try {
-          if(!current())return;
-          if(!mediaPreviewKind(file.description.mediaType)) {
-            publish({...state,message:"This file format cannot be previewed."});return;
-          }
-          const url=makeUrl(new Blob([new Uint8Array(file.bytes)],{type:file.description.mediaType}));
-          if(!current()){revokeUrl(url);return;}
-          publish({...state,preview:{url,...file.description,...(file.description.mediaType==="image/png"?{tags:readMemePngTags(file.bytes)}:{})}});
-        } finally {file.bytes.fill(0);}
-      });
+      return openAuthorized(object,tenant);
+    },
+    /** A signed room reference is a locator, never read authority. The browser's
+     * existing read-wrap path checks current access before fetching ciphertext. */
+    openReference(object: string, tenant: string) {
+      if(state.deletion || !object.startsWith("media_") || !isCanonicalObjectId(object))return Promise.resolve();
+      return openAuthorized(object,tenant);
     },
     dispose() { if(disposed)return;disposed=true;unsubscribe();reset(); },
   });

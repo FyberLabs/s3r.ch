@@ -322,3 +322,26 @@ test("unsigned mesh visibility cannot authorize publication of the owner's Mine 
  ownerConfirmedShares.delete("room");publishedRooms.add("room");publish();assert.equal(puts,1);
  const restarted=new Set<string>();assert.equal(roomChatPublicationAllowed({room:"room",readerKey:f.alice.pub,now:100,graph,publishedRooms,ownerConfirmedShares:restarted}),false);
 });
+
+test("media references retain signed author, room and current permission checks",async()=>{
+ const {composeRoomMedia,parseRoomMedia}=await import("./room-media");
+ const f=await fixture(),object='media_p_7cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc4766997807775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1_22222222222222222222222222222222';
+ const body=composeRoomMedia(object);assert.ok(body);
+ const row=await f.admission.compose("room",body,()=>f.alice);assert.ok(row);
+ assert.equal(parseRoomMedia(row.body),object);
+ assert.equal(await f.admission.receive({...row,body:composeRoomMedia(object.replace(/2$/, "3"))},"room",encodeKey(row.id)),null);
+ assert.equal(await f.admission.receive(row,"other-room",encodeKey(row.id)),null);
+ f.revoke();assert.deepEqual(f.admission.readable([row],"room"),[]);
+});
+
+ test("closing the room-media composer during signing refuses publication",async()=>{
+ const {composeCurrentRoomMedia}=await import("./room-media-composition");
+ const {composeRoomMedia}=await import("./room-media");
+ const f=await fixture();
+ const object='media_p_7cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc4766997807775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1_22222222222222222222222222222222';
+ const body=composeRoomMedia(object);assert.ok(body);
+ let current=true;
+ const pending=composeCurrentRoomMedia({room:"room",body,admission:f.admission,pair:()=>f.alice,current:()=>current});
+ current=false;assert.equal(await pending,null);
+ current=true;assert.ok(await composeCurrentRoomMedia({room:"room",body,admission:f.admission,pair:()=>f.alice,current:()=>current}));
+ });

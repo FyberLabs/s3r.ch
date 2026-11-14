@@ -303,3 +303,15 @@ test("unshare UI uses recoverable removal and preserves the selected operation",
     assert.match(f.state().message,/Removal is saved/);
   } finally {f.library.dispose();}
 });
+
+test("room reference uses current file authorization without a catalog and refuses noncanonical locators",async()=>{
+ const object='media_p_7cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc4766997807775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1_22222222222222222222222222222222';let opens=0;
+ const bytes=new Uint8Array([7]);const item=setup({browser:()=>({open:async(id:string)=>{
+   assert.equal(id,object);opens++;if(opens>1)throw Error("revoked");return {description:{name:"clip.wav",mediaType:"audio/wav"},bytes};
+ }} as unknown as ReturnType<typeof createPrivateMediaBrowser>),makeUrl:()=>"blob:clip"});
+ try {
+   await item.library.openReference("https://example.test/clip","tenant");assert.equal(opens,0);
+   await item.library.openReference(object,"tenant");assert.equal(opens,1);assert.equal(item.state().preview?.url,"blob:clip");assert.equal(bytes[0],0);
+   await item.library.openReference(object,"tenant");assert.equal(opens,2);assert.equal(item.state().preview,null);assert.deepEqual(item.revoked,["blob:clip"]);
+ }finally{item.library.dispose();}
+});
