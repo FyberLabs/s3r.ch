@@ -39,7 +39,7 @@ export async function pendingMediaUpload(journal:UploadJournal,tenant:string,pai
 }
 export async function discardMediaUpload(journal:UploadJournal,tenant:string,expectedObject:string,pair:SeaPair,signal:AbortSignal) {
   const entry=await journal.read(signal);signal.throwIfAborted();if(!entry)return;
-  if(!expectedObject||entry.object!==expectedObject)throw new PrivateMediaConflict("Pending upload changed; inspect it before discarding");
+  if(!expectedObject||entry.object!==expectedObject)throw new Error("Pending upload changed; inspect it before discarding");
   const draft=draftValue(await decryptUploadJournal(entry,tenant,pair),entry,tenant);
   try {signal.throwIfAborted();await journal.remove(entry.revision,signal);}
   finally {draft.fileKey.fill(0);}
