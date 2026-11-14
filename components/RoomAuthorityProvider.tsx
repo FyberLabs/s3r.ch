@@ -9,10 +9,9 @@ import { createSquadBrowserSource } from "@/lib/squad-browser-source";
 import { createHttpForumAuthorityReader } from "@/lib/forum-authority-http";
 import { createRoomChatAdmission } from "@/lib/room-chat-admission";
 import { admitBrowserRoom } from "@/lib/room-authority-browser";
-import type { publicSquadPilotConfig } from "@/lib/squad-pilot-config";
+import { readRoomAuthorityConfig, type RoomAuthorityConfig as Config } from "@/lib/room-authority-config";
 import type { Room } from "@/lib/rooms";
 
-type Config = ReturnType<typeof publicSquadPilotConfig>;
 type Controller = ReturnType<typeof controller>;
 function controller(config: Config, session: () => string | null) {
   const authority = createForumAuthority(config.config);
@@ -45,17 +44,23 @@ function controller(config: Config, session: () => string | null) {
   };
 }
 const Context = createContext<{ current: Controller | null; revision: number }>({ current: null, revision: 0 });
-export function RoomAuthorityProvider({ config, children }: { config: Config | null; children: ReactNode }) {
+export function RoomAuthorityProvider({ children }: { children: ReactNode }) {
   const session = useIdentitySession(), key = session?.owner ?? null;
   const keyRef = useRef(key); keyRef.current = key;
   const [current, setCurrent] = useState<Controller | null>(null), [revision, setRevision] = useState(0);
   useEffect(() => {
-    if (!config || !key) { setCurrent(null); return; }
-    const next = controller(config, () => keyRef.current);
-    const stop = next.authority.subscribe(() => setRevision(n => n + 1));
-    setCurrent(next);
-    return () => { stop(); next.close(); };
-  }, [config, key]);
+    setCurrent(null);
+    if (!key) return;
+    const pending = new AbortController();
+    let next: Controller | undefined, stop: (() => void) | undefined;
+    void readRoomAuthorityConfig(pending.signal).then(config => {
+      if (!config || pending.signal.aborted || keyRef.current !== key) return;
+      next = controller(config, () => keyRef.current);
+      stop = next.authority.subscribe(() => setRevision(n => n + 1));
+      setCurrent(next);
+    }).catch(() => { /* Missing runtime configuration never falls back to local ACL. */ });
+    return () => { pending.abort(); stop?.(); next?.close(); };
+  }, [key]);
   const value = useMemo(() => ({ current, revision }), [current, revision]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

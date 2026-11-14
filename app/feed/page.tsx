@@ -1,5 +1,4 @@
 import { RoomAuthorityProvider } from "@/components/RoomAuthorityProvider";
-import { parseSquadPilotConfig, publicSquadPilotConfig } from "@/lib/squad-pilot-config";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FeedStream } from "@/components/FeedStream";
@@ -13,9 +12,7 @@ export const metadata: Metadata = {
     "Posts and rooms for people and their agents. Mine, Public, Network, and Granted.",
 };
 
-export const dynamic = "force-dynamic";
 export default function FeedPage() {
-  const config = parseSquadPilotConfig(process.env.S3RCH_SQUAD_PILOT);
   return (
     <section className="feed-instrument mx-auto max-w-6xl px-4 py-16">
       <h1 className="text-3xl font-semibold tracking-tight text-ink">
@@ -36,7 +33,7 @@ export default function FeedPage() {
         <GunPeerProvider>
           <MeshAclSync />
 
-          <RoomAuthorityProvider config={config ? publicSquadPilotConfig(config) : null}><FeedStream /></RoomAuthorityProvider>
+          <RoomAuthorityProvider><FeedStream /></RoomAuthorityProvider>
         </GunPeerProvider>
       </SeeAclProvider>
 

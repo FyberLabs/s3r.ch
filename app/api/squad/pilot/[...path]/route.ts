@@ -1,3 +1,5 @@
+import { readSeaRequestSession } from "@/lib/identity/sea-request-session";
+import { parseSquadPilotConfig, publicSquadPilotConfig } from "@/lib/squad-pilot-config";
 import { siteSeaSession } from "@/lib/identity/site-sea-session-server";
 import { getSquadPilotServer, squadPilotReady } from "@/lib/squad-pilot-server";
 export const runtime = "nodejs";
@@ -6,6 +8,11 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
   const headers = { "Cache-Control": "no-store" };
   try {
     const { path } = await context.params;
+    if (path.length === 1 && path[0] === "room-config") {
+      if (!await readSeaRequestSession(request)) return Response.json({ config: null }, { status: 401, headers });
+      const config = parseSquadPilotConfig(process.env.S3RCH_SQUAD_PILOT);
+      return Response.json({ config: config ? publicSquadPilotConfig(config) : null }, { status: config ? 200 : 404, headers });
+    }
     if (path.length !== 1 || path[0] !== "health") return Response.json({ ready: false }, { status: 404, headers });
     const pilot = getSquadPilotServer();
     if (!pilot) return Response.json({ ready: false }, { status: 404, headers });
