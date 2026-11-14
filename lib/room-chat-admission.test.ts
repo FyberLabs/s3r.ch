@@ -295,6 +295,9 @@ test("room sharing publishes current local rows and late composition uses curren
   publicRoom:()=>publicRoom,admission:f.admission,publish:row=>sent.push(row.id)});
  const sharing=(async()=>{await gate;publicRoom=true;publish(()=>rows);})();
  const before=await f.admission.compose("room","during admission",()=>f.alice);assert.ok(before);rows.push(before);
+ const task=await f.admission.compose("room",TASK_PREFIX+JSON.stringify(["create","task","hidden editor","room","open",null]),()=>f.alice);
+ const other=await f.admission.compose("other-room","different room",()=>f.alice);
+ assert.ok(task);assert.ok(other);rows.push(task,other);
  release();await sharing;assert.deepEqual(sent,[before.id]);
  const after=await f.admission.compose("room","late completion",()=>f.alice);assert.ok(after);rows.push(after);
  publish(()=>[after]);assert.deepEqual(sent,[before.id,after.id]);

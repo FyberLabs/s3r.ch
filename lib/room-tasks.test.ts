@@ -131,8 +131,8 @@ test("production room paths filter signatures before rendering and keep task UI 
   const feed = readFileSync(new URL("../components/FeedStream.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(chat, /(?:import.*RoomTasks|<RoomTasks|visibleRoomTaskChat|roomTaskChatText)/);
   assert.match(chat, /rankChatMessages\(verified\.filter\(row => !isRoomTaskBody\(row\.body\)\)\)/);
-  assert.match(feed, /if \(isRoomTaskBody\(row\.body\)\) continue;/);
-  assert.match(feed, /if \(!canMutate\(\) \|\| !roomAuthority\?\.admission\.valid\(next\) \|\| isRoomTaskBody\(next\.body\)\) return;\s+setOverlayChat/);
+  assert.match(feed, /publishCurrentRoomChat\(/);
+  assert.match(feed, /if \(!canMutate\(\) \|\| !roomAuthority\?\.admission\.valid\(next\) \|\| isRoomTaskBody\(next\.body\)\) return;/);
 });
 
 test("Views room adapter quarantines forged work while preserving ordinary chat", () => {
