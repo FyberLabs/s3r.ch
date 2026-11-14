@@ -86,12 +86,7 @@ export function RoomChat({
           </ul>
         )
       )}
-      <RoomGame roomId={roomId} messages={verified} presence={presence} onPublicGraph={onPublicGraph} seedWsUp={seedWsUp} onComposed={(draft, publish) => {
-        if (!roomAuthority || draft.room !== roomId) return;
-        void roomAuthority.admission.compose(roomId, draft.body, roomAuthority.pair).then(row => {
-          if (row && roomAuthority.admission.valid(row)) onComposed(row, publish);
-        });
-      }} />
+      <RoomGame roomId={roomId} messages={verified} presence={presence} onPublicGraph={onPublicGraph} seedWsUp={seedWsUp} onComposed={onComposed} />
       <ChatCompose roomId={roomId} onPublicGraph={onPublicGraph} onComposed={onComposed} />
     </div>
   );

@@ -2,8 +2,9 @@
  * Callers must apply the same room/message Check used by chat before projecting.
  * Presence is display-only; a heartbeat never selects a player or grants access. */
 import { checkSee, roomSoul, type SeeAcl } from "./identity/check";
-import { getAddress } from "viem";
+import { signedRoomMessageId, type RoomChatAdmission } from "./room-chat-admission";
 import { isSeaPubkey } from "./identity/forum-check";
+import { getAddress } from "viem";
 import { composeChat, shortChatEntropy, type ChatMessage } from "./chat";
 
 const PREFIX = "s3rch-game:v1:";
@@ -17,7 +18,7 @@ export type RoomGame = Readonly<{
   outcome: "X" | "O" | "draw" | null; startedAt: number;
 }>;
 const idOK = (value: unknown): value is string => typeof value === "string" &&
-  /^s3rch:chat:(?:0x[0-9a-fA-F]{40}|[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}):[0-9]{1,16}:[A-Za-z0-9_-]{1,32}$/.test(value);
+  (signedRoomMessageId(value) || /^s3rch:chat:(?:0x[0-9a-fA-F]{40}|[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}):[0-9]{1,16}:[A-Za-z0-9_-]{1,32}$/.test(value));
 const order = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 
 export function canPlayRoomGame(acl: SeeAcl, room: string, actor: string, now: number): boolean {
@@ -61,13 +62,23 @@ function outcome(board: RoomGame["board"]): RoomGame["outcome"] {
  * Concurrent siblings use bytewise message-ID order, independent of arrival.
  * Missing parents wait; stale moves, outsiders and moves after a result are ignored. */
 export function roomGames(messages: readonly ChatMessage[], room: string): RoomGame[] {
+  return projectRoomGames(messages, room, false);
+}
+
+/** Compact IDs only enter through current signature admission. */
+export function admittedRoomGames(messages: readonly ChatMessage[], room: string, admission: RoomChatAdmission): RoomGame[] {
+  return projectRoomGames(admission.readable(messages, room), room, true);
+}
+
+function projectRoomGames(messages: readonly ChatMessage[], room: string, signed: boolean): RoomGame[] {
+  if (messages.length > 8192) return [];
   const rows = new Map<string, { message: ChatMessage; action: RoomGameAction }>();
   const conflicts = new Set<string>();
   for (const message of messages) {
     if (message.room !== room || !idOK(message.id) || !Number.isSafeInteger(message.ts) || message.ts < 0 || (message.v !== undefined && message.v !== 1)) continue;
     let author: string;
     try { author = isSeaPubkey(message.author) ? message.author : getAddress(message.author); } catch { continue; }
-    if (!message.id.startsWith(`s3rch:chat:${author}:`)) continue;
+    if (signed ? !signedRoomMessageId(message.id) : !message.id.startsWith(`s3rch:chat:${author}:`)) continue;
     const action = parseRoomGameAction(message.body);
     if (!action) continue;
     const normalized = { ...message, author };
