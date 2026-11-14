@@ -35,7 +35,7 @@ export function createAllocatedMediaStore(config:Readonly<{origin:string;tenant:
     finally{if(response?.body && !response.body.locked)await response.body.cancel().catch(()=>{});}
   }
   return Object.freeze({
-    reference(object,signal) {
+    reference(object:string,signal:AbortSignal) {
       return request(object,undefined,undefined,signal,async(response,deadline)=>{
         if(response.status===404)return null;
         if(response.status!==200 || response.headers.get("content-type")?.split(";")[0]!=="application/json" ||
@@ -47,7 +47,7 @@ export function createAllocatedMediaStore(config:Readonly<{origin:string;tenant:
         return {digest:row.sha256,length:row.length as number};
       });
     },
-    get(object,digest,signal) {
+    get(object:string,digest:string,signal:AbortSignal) {
       return request(object,digest,undefined,signal,async(response,deadline)=>{
         const length=response.headers.get("content-length");
         if(response.status!==200 || response.headers.get("etag")!=='"'+digest+'"' || !response.body ||
@@ -61,7 +61,7 @@ export function createAllocatedMediaStore(config:Readonly<{origin:string;tenant:
         if(offset!==bytes.length || hash(bytes)!==digest)throw Error();return bytes;
       });
     },
-    async put(object,digest,input,signal) {
+    async put(object:string,digest:string,input:Uint8Array,signal:AbortSignal) {
       if(!(input instanceof Uint8Array) || input.length<33 || input.length>OBJECT_BYTES_MAX || hash(input)!==digest)throw Error("Invalid media bytes");
       const bytes=new Uint8Array(input);
       await request(object,digest,bytes,signal,async response=>{
