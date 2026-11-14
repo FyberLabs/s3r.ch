@@ -1,3 +1,4 @@
+import { parseMediaDeletionIntent, type MediaDeletionIntent } from "./media-deletion";
 import { createUploadJournal } from "./media-upload-journal";
 import { uploadMedia, pendingMediaUpload, discardMediaUpload } from "./media-upload";
 import type { MediaFileDescription } from "./media-file";
@@ -72,6 +73,16 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     },
     recipients(object:string,owner:string,signal?:AbortSignal){
       return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).recipients(object,owner,deadline),signal);
+    },
+    prepareDeletion(tenant:string,object:string,owner:string,signal?:AbortSignal){
+      return signed((client,key,deadline)=>client.prepareDeletion(tenant,object,owner,key,deadline),signal);
+    },
+    submitDeletion(input:MediaDeletionIntent,signal?:AbortSignal){
+      const intent=parseMediaDeletionIntent(input);
+      return run((pair,transport,deadline)=>{
+        if(pair.pub!==intent.ownerPub)throw Error("Deletion signing identity changed");
+        return createPrivateMediaOwner(transport).submitDeletion(intent,deadline);
+      },signal);
     },
     cancel(object:string,reader:string,signal?:AbortSignal){
       return signed((client,key,deadline)=>client.cancel(object,reader,key,deadline),signal);

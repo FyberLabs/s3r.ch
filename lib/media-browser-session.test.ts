@@ -166,3 +166,17 @@ test("upload recovery wrappers require one unlocked identity and an exclusive br
     if(oldDb)Object.defineProperty(globalThis,"indexedDB",oldDb);else Reflect.deleteProperty(globalThis,"indexedDB");
   }
 });
+
+test("deletion uses the unlocked owner and refuses replay after identity changes",async()=>{
+  unlock();let writes=0;
+  const claims={tenant,object,owner,objectVersion:1,fence:view.fence,issuedAt:100000,expiresAt:160000};
+  const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
+    assert.ok(!String(init?.body).includes(pair.priv));assert.ok(!String(init?.body).includes(pair.epriv));
+    if(String(url).endsWith("/delete-view"))return Response.json({at:100,ownerPub:owner,claims});
+    writes++;return Response.json({accepted:true,command:"f".repeat(64),cleanup:"pending"});
+  });
+  const intent=await browser.prepareDeletion(tenant,object,owner);assert.equal(writes,0);
+  await browser.submitDeletion(intent);assert.equal(writes,1);
+  await assert.rejects(browser.submitDeletion({...intent,ownerPub:other}));assert.equal(writes,1);
+  forgetUnlockedMeshPair();await assert.rejects(browser.submitDeletion(intent));assert.equal(writes,1);
+});
