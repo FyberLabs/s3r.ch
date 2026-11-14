@@ -315,3 +315,12 @@ test("room reference uses current file authorization without a catalog and refus
    await item.library.openReference(object,"tenant");assert.equal(opens,2);assert.equal(item.state().preview,null);assert.deepEqual(item.revoked,["blob:clip"]);
  }finally{item.library.dispose();}
 });
+
+test("decrypted audio tags follow the private preview and disappear on reset",async()=>{
+  const bytes=new Uint8Array([1,2]);const item=setup({browser:()=>({catalog:async()=>({at:1,objects:["owned"],nextPage:null,principal:key}),
+    status:async()=>{},open:async()=>({description:{name:"voice.wav",mediaType:"audio/wav",tags:["team"]},bytes}),
+  } as unknown as ReturnType<typeof createPrivateMediaBrowser>),makeUrl:()=>"blob:audio"});
+  try {await item.library.load();await item.library.open("owned","tenant");assert.deepEqual(item.state().preview?.tags,["team"]);
+    assert.deepEqual([...bytes],[0,0]);item.library.reset();assert.equal(item.state().preview,null);assert.deepEqual(item.revoked,["blob:audio"]);
+  }finally{item.library.dispose();}
+});

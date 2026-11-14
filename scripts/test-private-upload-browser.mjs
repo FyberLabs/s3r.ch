@@ -55,6 +55,7 @@ try {
   await page.getByRole('button',{name:'Stop recording'}).waitFor();
   await page.waitForTimeout(1200);await page.getByRole('button',{name:'Stop recording'}).click();
   await page.getByRole('link',{name:'Save recording'}).waitFor();
+  if(recording==='audio')await page.getByLabel('Audio tags',{exact:true}).fill('team, demo');
   rendered=await page.getByRole('link',{name:'Save recording'}).evaluate(async link=>Array.from(new Uint8Array(await(await fetch(link.href)).arrayBuffer())));
   assert.ok(rendered.length>0);assert.deepEqual(writes,[]);
  }else if(meme){
@@ -83,7 +84,7 @@ try {
  await page.getByRole('status').filter({hasText:'No pending upload'}).waitFor();
  if(meme||recording){
   const opened=await page.evaluate(async input=>window.verifyMeme(input.cipher,input.material,input.object),{cipher:storedCipher,material:storedMaterial,object});
-  assert.deepEqual(opened.bytes,rendered);assert.deepEqual(opened.tags,meme?['team','demo']:[]);if(recording)assert.equal(opened.description.mediaType,`${recording}/webm`);
+  assert.deepEqual(opened.bytes,rendered);assert.deepEqual(opened.tags,meme?['team','demo']:[]);if(recording)assert.equal(opened.description.mediaType,`${recording}/webm`);if(recording==='audio')assert.deepEqual(opened.description.tags,['team','demo']);
  }
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  console.log('Synthetic private upload reload/reconciliation/UI contract passed; hosted login/storage not qualified');

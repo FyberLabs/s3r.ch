@@ -214,6 +214,7 @@ jobs:
           --test-coverage-include=lib/media-upload.ts
           --test-coverage-include=lib/media-upload-journal.ts
           --test-coverage-include=lib/media-upload-panel.ts
+          --test-coverage-include=lib/media-tags.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/media-upload.test.ts lib/media-upload-panel.test.ts
       - name: Private media library state and coverage (CI only)

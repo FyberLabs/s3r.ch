@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sealMediaFile, openMediaFile } from "./media-file";
+import { sealMediaFile, openMediaFile, mediaFileDescription } from "./media-file";
 import { MEDIA_PLAIN_MAX } from "./media-crypto";
 import { sealMediaForReaders } from "./media-reader-wraps";
 // Public SociACL encrypted-discovery/sea-fixture.json test keys, never credentials.
@@ -82,4 +82,30 @@ test("the encrypted descriptor overhead counts against the provider byte limit",
   await assert.rejects(seal(bytes));
   await assert.rejects(seal(bytes.subarray(0, MEDIA_PLAIN_MAX - 8)));
   await assert.rejects(sealMediaFile(plain, metadata, binding, expected, [], []));
+});
+
+test("audio tags stay encrypted, detached and authenticated while v1 files remain readable",async()=>{
+  const info={name:"private.webm",mediaType:"audio/webm",tags:[" Team ","demo","team"]};
+  const pending=sealMediaFile(plain,info,binding,expected,[reader],[pub]);info.tags.push("late");
+  const sealed=await pending,opened=await open(sealed);
+  assert.deepEqual(opened.description.tags,["team","demo"]);assert.deepEqual(opened.bytes,plain);
+  assert.equal(Object.isFrozen(opened.description.tags),true);
+  assert.equal(new TextDecoder().decode(sealed.bytes).includes("team"),false);
+  assert.deepEqual((await open(await seal())).description,metadata);
+  assert.deepEqual((await open(await sealMediaFile(plain,{name:"plain.wav",mediaType:"audio/wav",tags:[]},binding,expected,[reader],[pub]))).description,
+    {name:"plain.wav",mediaType:"audio/wav"});
+  for(const tags of [null,"tag",Array(13).fill("x"),["x".repeat(41)],["bad\n"],["\ud800"]])
+    assert.throws(()=>mediaFileDescription({...info,tags}));
+  assert.throws(()=>mediaFileDescription({...metadata,tags:["private"]}));
+  let reads=0;assert.throws(()=>mediaFileDescription({name:"a.wav",mediaType:"audio/wav",get tags(){reads++;return [];}}));assert.equal(reads,0);
+});
+test("tagged envelopes reject mismatched versions and ambiguous tag metadata",async()=>{
+  const valid={version:2,name:"private.wav",mediaType:"audio/wav",tags:["team"],length:plain.length};
+  for(const change of [{tags:[]},{tags:["Team"]},{tags:["team","team"]},{tags:["x".repeat(41)]},
+    {mediaType:"image/png"},{version:1},{extra:true}]) {
+    const bytes=packed({...valid,...change});bytes[3]=2;
+    await assert.rejects(open(await sealMediaForReaders(bytes,binding,expected,[reader],[pub])));
+  }
+  const unknown=packed(valid);unknown[3]=3;
+  await assert.rejects(open(await sealMediaForReaders(unknown,binding,expected,[reader],[pub])));
 });
