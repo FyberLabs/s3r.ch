@@ -6,6 +6,7 @@
  * Shareable string: canonical + optional "?b=", "&r=", "&rc=" binding hints.
  */
 import { getAddress, isAddress } from "viem";
+import { isSeaPubkey } from "./identity/forum-check";
 
 export const SOURCE_KINDS = ["chat", "forum", "feed", "stream", "voice"] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
@@ -147,8 +148,8 @@ function isHttpsUrl(value: string): boolean {
 export function validateOwner(network: string, owner: string): Result<string> {
   if (owner === "" || owner.length > MAX_COMPONENT || !isWellFormed(owner)) return fail("owner is empty, too long or malformed");
   if (network.startsWith("s3rch:")) {
-    if (!isAddress(owner, { strict: false }) || getAddress(owner) !== owner) {
-      return fail("s3r.ch owner must be a checksummed wallet address");
+    if (!isSeaPubkey(owner) && (!isAddress(owner, { strict: false }) || getAddress(owner) !== owner)) {
+      return fail("s3r.ch owner must be a SEA public key or an existing checksummed wallet record");
     }
     return { ok: true, value: owner };
   }

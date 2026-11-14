@@ -1,3 +1,4 @@
+import { isSeaPubkey } from "./identity/forum-check";
 /**
  * Picker logic for Views (docs/views.md §3, PR 3): the Browse tree, multi-select with
  * tri-state groups, kind filters, kind inference, and applying a selection to a View
@@ -70,7 +71,7 @@ export function buildBrowseTree(sources: PickerSource[], selfNetwork: string, me
     return [...byOwner.entries()]
       .map(([owner, items]) => ({
         id: `${prefix}/${owner}`,
-        label: me && owner.toLowerCase() === me.toLowerCase() ? `Me (${shortOwner(owner)})` : shortOwner(owner),
+        label: me && (isSeaPubkey(owner) || isSeaPubkey(me) ? owner === me : owner.toLowerCase() === me.toLowerCase()) ? `Me (${shortOwner(owner)})` : shortOwner(owner),
         children: items.map((s) => ({ id: sourceKey(s.ref), label: s.label, source: s })).sort(byLabel),
       }))
       .sort(byLabel);

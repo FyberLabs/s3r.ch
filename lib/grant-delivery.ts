@@ -17,6 +17,7 @@
 
 import { legacyUserSoul } from "./identity/legacy-user-soul";
 import { getAddress } from "viem";
+import { isSeaPubkey } from "./identity/forum-check";
 import { isNativePost } from "./compose";
 import {
   GUN_PROTOCOL_V,
@@ -58,7 +59,7 @@ import {
 import {
   composeUser,
   fromGunUserNode,
-  isWalletClaimId,
+  isUserIdentityClaimId,
   toGunUserNode,
   userNodeHasForbiddenSecrets,
   type User,
@@ -181,7 +182,7 @@ export function checksumAccessor(accessor: string): string | null {
     ? trimmed.slice(`${S3RCH_ROOT}/${S3RCH_USERS}/`.length)
     : trimmed;
   try {
-    return getAddress(wallet);
+    return isSeaPubkey(wallet) ? wallet : getAddress(wallet);
   } catch {
     return null;
   }
@@ -427,7 +428,7 @@ export function prepareGrantUserDelivery(
   const object = requireLiveGrant(acl, dest, accessor, "user", claimId, now);
   if (!object) return { denied: true, reason: "check" };
 
-  const walletClaim = isWalletClaimId(claimId, user.id);
+  const walletClaim = isUserIdentityClaimId(claimId, user.id);
   const held = user.indicators.some(
     (row) => row.toLowerCase() === claimId.toLowerCase(),
   );

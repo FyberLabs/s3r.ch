@@ -8,6 +8,7 @@
  */
 
 import { getAddress } from "viem";
+import { isSeaPubkey } from "./identity/forum-check";
 import { GUN_PROTOCOL_V, protocolVersionOf } from "./feed-types";
 import {
   admitPresenceNode,
@@ -63,7 +64,7 @@ export function fromGunPresenceNode(
   let address = typeof node.address === "string" ? node.address.trim() : "";
   if (!address) return null;
   try {
-    address = getAddress(address);
+    address = isSeaPubkey(address) ? address : getAddress(address);
   } catch {
     return null;
   }
@@ -88,7 +89,7 @@ export function composePresence(input: ComposePresenceInput): PresenceEntry | nu
 
   let address: string;
   try {
-    address = getAddress(input.address);
+    address = isSeaPubkey(input.address) ? input.address : getAddress(input.address);
   } catch {
     return null;
   }

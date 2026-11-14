@@ -345,8 +345,9 @@ function IdentityBarInner() {
       indicators.rss3.name,
     ],
   );
-  const objectOwner = session?.owner || session?.address || null;
-  const confirms = useHeldConfirms(objectOwner);
+  const objectOwner = session?.owner || null;
+  // Confirmation proofs remain bound to the credential that confirmed them.
+  const confirms = useHeldConfirms(session?.address || null);
   const overlayLookups = useMemo(
     () => ({
       ...heldLookups,
@@ -1005,18 +1006,18 @@ function IdentityBarInner() {
       {meshLine ? <p className="mt-3 text-xs text-ink-muted">{meshLine}</p> : null}
       {session ? (
         <>
-          <HeldConfirmControls
-            address={session.owner || session.address}
+          {session.address && <HeldConfirmControls
+            address={session.address}
             proofs={confirms.proofs}
             onHeld={confirms.putProof}
-          />
+          />}
           <UserNodeControls
-            address={session.owner || session.address}
+            address={session.owner}
             overlay={mineUser.overlay}
             ready={mineUser.ready}
           />
           <SeeGrantControls
-            address={session.owner || session.address}
+            address={session.owner}
             overlay={mineUser.overlay}
           />
         </>

@@ -17,8 +17,8 @@ import {
 import { createMemorySeeAcl } from "./identity/see-acl";
 import { itemsForTab } from "./feed-tabs";
 
-const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const BOB = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+const ALICE = "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
+const BOB = "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
 const NOW = 1_700_000_000;
 
 function seedItem() {
@@ -70,7 +70,7 @@ describe("FeedSource s3rch", () => {
   it("toGunNode / fromGunNode round-trip a native post", () => {
     const item = composeNativePost({
       body: "hello mine",
-      address: ALICE.toLowerCase(),
+      address: ALICE,
       tags: ["Lab", "lab"],
       nowSeconds: NOW,
       entropy: "ab12cd",
@@ -98,7 +98,7 @@ describe("composeNativePost", () => {
   it("builds a valid native item", () => {
     const item = composeNativePost({
       body: "  a note  ",
-      address: ALICE.toLowerCase(),
+      address: ALICE,
       tags: ["mesh"],
       nowSeconds: NOW,
       entropy: "deadbeef",

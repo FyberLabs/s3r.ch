@@ -4,7 +4,11 @@
  * claim is not publishing it. No SIWE / SEA secrets.
  */
 
-import { getAddress } from "viem";
+import { isSeaPubkey } from "./forum-check";
+function requirePrincipal(value: string): string {
+  if (!isSeaPubkey(value)) throw new Error("SEA principal required");
+  return value;
+}
 import {
   fromGunUserNode,
   toGunUserNode,
@@ -67,10 +71,10 @@ export function overlayRecordToUser(value: unknown): User | null {
   if (overlayRecordHasForbiddenSecrets(value)) return null;
   const record = value as Record<string, unknown>;
   const user = fromGunUserNode(record);
-  if (!user) return null;
+  if (!user || !isSeaPubkey(user.id)) return null;
   if (typeof record.address === "string" && record.address.trim()) {
     try {
-      if (getAddress(record.address) !== user.id) return null;
+      if (requirePrincipal(record.address) !== user.id) return null;
     } catch {
       return null;
     }
@@ -90,7 +94,7 @@ export function createMemoryUserOverlayStore(
     async get(address: string) {
       let checksum: string;
       try {
-        checksum = getAddress(address);
+        checksum = requirePrincipal(address);
       } catch {
         return null;
       }
@@ -111,7 +115,7 @@ export function createIndexedDbUserOverlayStore(
     async get(address: string) {
       let checksum: string;
       try {
-        checksum = getAddress(address);
+        checksum = requirePrincipal(address);
       } catch {
         return null;
       }

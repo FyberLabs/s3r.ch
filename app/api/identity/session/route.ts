@@ -3,7 +3,7 @@ import {
   readSessionFromRequest,
   secretFailureResponse,
 } from "@/lib/identity/http";
-import { ownerForWallet } from "@/lib/identity/link";
+import { readSeaRequestSession } from "@/lib/identity/sea-request-session";
 import { readSessionToken } from "@/lib/identity/session";
 
 export const dynamic = "force-dynamic";
@@ -24,15 +24,21 @@ export async function GET(request: Request) {
     );
   }
 
+  const sea = await readSeaRequestSession(request);
   const token = await readSessionFromRequest(request);
+  if (sea) {
+    const credential = token ? await readSessionToken(token, secret).catch(() => null) : null;
+    return Response.json({ owner: sea.key, address: credential?.address ?? "",
+      chainId: credential?.chainId ?? 1, expiresAt: sea.expiresAt });
+  }
   if (!token) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
   try {
     const session = await readSessionToken(token, secret);
-    const owner = ownerForWallet(session.address);
-    if (!owner) return Response.json({ error: "Identity store unavailable" }, { status: 503 });
+    // A credential-only session may render login controls, never an owner.
+    const owner = "";
     return Response.json({
       address: session.address,
       chainId: session.chainId,

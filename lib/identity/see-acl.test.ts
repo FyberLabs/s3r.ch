@@ -112,8 +112,8 @@ describe("held claim ids and grant form", () => {
     );
   });
 
-  it("requires a checksummed accessor and a positive window", () => {
-    assert.equal(parseGrantAccessor(BOB.toLowerCase()), BOB);
+  it("refuses wallet recipients and requires a positive window", () => {
+    assert.equal(parseGrantAccessor(BOB.toLowerCase()), null);
     assert.equal(parseGrantAccessor("not-an-address"), null);
     assert.deepEqual(grantWindowFromHours(1, 100), { from: 100, until: 3700 });
     assert.equal(grantWindowFromHours(0, 100), null);

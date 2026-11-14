@@ -11,7 +11,7 @@ import {
 } from "./feed-tabs";
 import type { FeedItem } from "./feed-types";
 
-const ALICE = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+const ALICE = "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
 const NOW = 1_700_000_000;
 
 function seedItem(): FeedItem {

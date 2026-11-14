@@ -8,6 +8,7 @@
  * One agreed value for this deployment, not a permitted key.
  */
 import { getAddress } from "viem";
+import { isSeaPubkey } from "./identity/forum-check";
 import type { ChatMessage } from "./chat";
 import { isFeedSource, type FeedItem } from "./feed-types";
 import type { ForumMessage } from "./forum";
@@ -143,7 +144,7 @@ export type ObservedTimes = Record<string, number>;
 const MAX_OBSERVED = ROWS_PER_SOURCE * MAX_WINDOWS * MAX_SOURCES_PER_WINDOW;
 
 export function observedStorageKey(owner: string, viewId: string): string {
-  return `s3rch-views-observed:${owner.toLowerCase()}:${viewId}`;
+  return `s3rch-views-observed:${isSeaPubkey(owner) ? owner : owner.toLowerCase()}:${viewId}`;
 }
 
 /** Parse stored first-seen times. Only finite times on row keys are kept. */
@@ -418,7 +419,7 @@ export function feedSourceOf(item: FeedItem, selfNetwork: string): { ref: Source
   if (item.source === "s3rch") {
     let owner: string;
     try {
-      owner = getAddress(item.author);
+      owner = isSeaPubkey(item.author) ? item.author : getAddress(item.author);
     } catch {
       return null;
     }
@@ -480,7 +481,7 @@ function asChannel(value: unknown): CatalogChannel | null {
   const record = value as { id?: unknown; owner?: unknown };
   if (typeof record.id !== "string" || record.id === "" || typeof record.owner !== "string") return null;
   try {
-    if (getAddress(record.owner) !== record.owner) return null;
+    if (!isSeaPubkey(record.owner) && getAddress(record.owner) !== record.owner) return null;
   } catch {
     return null;
   }

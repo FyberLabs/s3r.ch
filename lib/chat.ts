@@ -7,6 +7,7 @@
  */
 
 import { getAddress } from "viem";
+import { isSeaPubkey } from "./identity/forum-check";
 import { GUN_PROTOCOL_V, protocolVersionOf } from "./feed-types";
 import {
   admitChatNode,
@@ -79,7 +80,7 @@ export function fromGunChatNode(
   let author = typeof node.author === "string" ? node.author.trim() : "";
   if (!author) return null;
   try {
-    author = getAddress(author);
+    author = isSeaPubkey(author) ? author : getAddress(author);
   } catch {
     return null;
   }
@@ -101,13 +102,15 @@ export function fromGunChatNode(
  */
 export function composeChat(input: ComposeChatInput): ChatMessage | null {
   const body = input.body.trim();
-  if (!body || body.length > CHAT_BODY_MAX) return null;
+  // Task/game envelopes carry two predecessor IDs and may include an assignee SEA key.
+  const limit = (body.startsWith("s3rch-work:v1:") || body.startsWith("s3rch-game:v1:")) ? 512 : CHAT_BODY_MAX;
+  if (!body || body.length > limit) return null;
   const room = input.roomId.trim();
   if (!room) return null;
 
   let author: string;
   try {
-    author = getAddress(input.address);
+    author = isSeaPubkey(input.address) ? input.address : getAddress(input.address);
   } catch {
     return null;
   }

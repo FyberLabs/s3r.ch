@@ -245,9 +245,11 @@ describe("identity blob documents", () => {
       const token = await signSessionToken({ address: "${WALLET}", chainId: 1 }, process.env.IDENTITY_SESSION_SECRET);
       const request = new Request("https://s3rch.test/api", { headers: { cookie: sessionCookieName(true) + "=" + token } });
       const sessionRoute = await import(${JSON.stringify(new URL("../../app/api/identity/session/route.ts", import.meta.url).href)});
-      assert.equal((await sessionRoute.GET(request)).status, 503);
+      const credentialResponse = await sessionRoute.GET(request);
+      assert.equal(credentialResponse.status, 200);
+      assert.equal((await credentialResponse.json()).owner, "");
       const outboundRoute = await import(${JSON.stringify(new URL("../../app/api/outbound/route.ts", import.meta.url).href)});
-      assert.equal((await outboundRoute.GET(request)).status, 503);
+      assert.equal((await outboundRoute.GET(request)).status, 401);
       assert.equal(links.ownerForWallet("${WALLET}"), null);
       assert.equal(links.link({ wallet: "${WALLET}", sub: "missing", idp: null }).denied, true);
       assert.equal(blob.uploads, 0);
