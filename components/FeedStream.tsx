@@ -1,4 +1,5 @@
 "use client";
+import { useRoomAuthority } from "./RoomAuthorityProvider";
 import PublicFeedMedia from "./PublicFeedMedia";
 import FeedConversation from "./FeedConversation";
 
@@ -40,10 +41,7 @@ import {
   readUnshareId,
 } from "@/lib/unshare";
 import {
-  fromGunChatNode,
   mergeChat,
-  messagesInRoom,
-  preparePublishRoomChat,
   type ChatMessage,
 } from "@/lib/chat";
 import {
@@ -107,6 +105,7 @@ function writeDiscoverTagQuery(tags: readonly string[]): void {
 }
 
 export function FeedStream() {
+  const { current: roomAuthority, revision: roomAuthorityRevision } = useRoomAuthority();
   const [tab, setTab] = useState<FeedTab>("public");
   const [accountOpen, setAccountOpen] = useState(false);
   const [sharePeers, setSharePeers] = useState(false);
@@ -514,18 +513,18 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
       .get(encodeKey(roomId))
       .get("chat")
       .map()
-      .on((data) => {
-        const message = fromGunChatNode(
-          data as Parameters<typeof fromGunChatNode>[0],
-        );
-        if (!message || cancelled || message.room !== roomId) return;
-        setGraphChat((prev) => mergeChat(prev, [message]));
+      .on((data, key) => {
+        if (!roomAuthority || cancelled || typeof key !== "string") return;
+        void roomAuthority.admission.receive(data, roomId, key).then(message => {
+          if (!message || cancelled || !roomAuthority.admission.valid(message)) return;
+          setGraphChat(prev => mergeChat(prev, [message]).slice(0, 8192));
+        });
       });
     return () => {
       cancelled = true;
       if (typeof listener?.off === "function") listener.off();
     };
-  }, [gunReady, openRoomId, openRoomIsPublic]);
+  }, [gunReady, openRoomId, openRoomIsPublic, roomAuthority, roomAuthorityRevision]);
 
   useEffect(() => {
     const gun = gunRef.current;
@@ -553,8 +552,8 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
 
   const openRoomChat = useMemo(() => {
     if (!openRoomId) return [];
-    return messagesInRoom(mergeChat(graphChat, overlayChat), openRoomId);
-  }, [openRoomId, graphChat, overlayChat]);
+    return roomAuthority?.admission.readable(mergeChat(graphChat, overlayChat), openRoomId) ?? [];
+  }, [openRoomId, graphChat, overlayChat, roomAuthority, roomAuthorityRevision]);
 
   const openRoomPresence = useMemo(() => {
     if (!openRoomId) return [];
@@ -690,7 +689,11 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     }
     if (confirmShareRoomId !== room.id) {
       setConfirmShareRoomId(room.id);
+      setRoomShareMessage("The room listing becomes public. Current forum members receive chat access for one hour; posts inside stay on Mine.");
       return;
+    }
+    if (!roomAuthority || !await roomAuthority.admit(room, true)) {
+      setRoomShareMessage("Room access could not be shared."); return;
     }
     const prepared = prepareShareRoomIntoMesh(see.acl, room, objectOwner(session));
     if ("denied" in prepared) {
@@ -712,20 +715,8 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     for (const row of overlayChat) {
       if (isRoomTaskBody(row.body)) continue;
       if (row.room !== room.id) continue;
-      const preparedChat = preparePublishRoomChat(
-        see.acl,
-        row,
-        objectOwner(session),
-        publicIds,
-      );
-      if ("denied" in preparedChat) continue;
-      gun
-        .get("s3rch")
-        .get("rooms")
-        .get(preparedChat.roomKey)
-        .get("chat")
-        .get(preparedChat.key)
-        .put(preparedChat.node);
+      if (!roomAuthority.admission.valid(row)) continue;
+      gun.get("s3rch").get("rooms").get(encodeKey(room.id)).get("chat").get(encodeKey(row.id)).put(row);
     }
     for (const row of overlayPresence) {
       if (row.room !== room.id) continue;
@@ -746,7 +737,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     }
     setConfirmShareRoomId(null);
     setRoomShareMessage(
-      "Published. Posts inside stay on Mine until you share them.",
+      "Room listing published; chat shared with current forum members for one hour. Posts inside stay on Mine.",
     );
     await see.persist();
   }
@@ -943,26 +934,13 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
           onPublicGraph={openRoomIsPublic}
           seedWsUp={seedWsUp}
           onComposed={(next, putOnGun) => {
-            if (!canMutate()) return;
-            if (isRoomTaskBody(next.body)) return;
+            if (!canMutate() || !roomAuthority?.admission.valid(next) || isRoomTaskBody(next.body)) return;
             setOverlayChat((prev) => mergeChat(prev, [next]));
             if (!putOnGun || !see?.acl || !session) return;
             const gun = gunRef.current;
             if (!gun) return;
-            const prepared = preparePublishRoomChat(
-              see.acl,
-              next,
-              objectOwner(session),
-              publishedRooms,
-            );
-            if ("denied" in prepared) return;
-            gun
-              .get("s3rch")
-              .get("rooms")
-              .get(prepared.roomKey)
-              .get("chat")
-              .get(prepared.key)
-              .put(prepared.node);
+            if (!publishedRooms.has(next.room) || !roomAuthority.admission.valid(next)) return;
+            gun.get("s3rch").get("rooms").get(encodeKey(next.room)).get("chat").get(encodeKey(next.id)).put(next);
           }}
         />
       ) : null}

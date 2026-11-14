@@ -27,7 +27,8 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
   const common = { squad: config.squad, origin: config.origin, config: config.authority, clock, authenticate };
   const services = Object.freeze({ authenticate,
     authority: createForumAuthorityService({ ...common, read: source.read }),
-    statements: createBotStatementAdmission({ ...common, source: statements }) });
+    statements: createBotStatementAdmission({ ...common, source: statements }),
+    rooms: createBotStatementAdmission({ ...common, source: statements, objectKind: "room" }) });
   return { backend: "acl" as const, config, source, services };
 }
 // No build-time or import-time secret/storage reads. Key Vault references are

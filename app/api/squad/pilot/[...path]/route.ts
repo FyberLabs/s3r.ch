@@ -22,6 +22,7 @@ export async function POST(request: Request, context: { params: Promise<{ path: 
     const pilot = getSquadPilotServer();
     if (!pilot) return reply(404);
     if (path.length === 1 && path[0] === "statement") return pilot.services.statements ? pilot.services.statements(request) : reply(503);
+    if (path.length === 1 && path[0] === "room") return pilot.services.rooms(request);
     if (path.length === 1 && path[0] === "authority") return pilot.services.authority(request);
     return reply(404);
   } catch { return reply(503); }

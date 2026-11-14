@@ -1,20 +1,19 @@
 "use client";
 
+import { useRoomAuthority } from "./RoomAuthorityProvider";
 import { useState } from "react";
 import { RoomGame } from "./RoomGame";
 import { isRoomTaskBody } from "@/lib/room-tasks";
 import { roomGameChatText } from "@/lib/room-game";
 import type { PresenceEntry } from "@/lib/presence";
 import {
-  admitComposedChat,
   CHAT_BODY_MAX,
-  composeChat,
   rankChatMessages,
   type ChatMessage,
 } from "@/lib/chat";
 import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
-import { objectOwner, useIdentitySession } from "@/components/useIdentitySession";
+import { useIdentitySession } from "@/components/useIdentitySession";
 import { btnPrimary, field, panel } from "@/lib/brand-ui";
 
 export function RoomChat({
@@ -33,7 +32,9 @@ export function RoomChat({
   onComposed: (message: ChatMessage, putOnGun: boolean) => void;
 }) {
   // Legacy room rows have no authenticated author admission. Never project work.
-  const listed = rankChatMessages(messages.filter(row => !isRoomTaskBody(row.body)));
+  const { current: roomAuthority } = useRoomAuthority();
+  const verified = roomAuthority?.admission.readable(messages, roomId) ?? [];
+  const listed = rankChatMessages(verified.filter(row => !isRoomTaskBody(row.body)));
   const { reader } = useBrand();
 
   return (
@@ -85,7 +86,12 @@ export function RoomChat({
           </ul>
         )
       )}
-      <RoomGame roomId={roomId} messages={messages} presence={presence} onPublicGraph={onPublicGraph} seedWsUp={seedWsUp} onComposed={onComposed} />
+      <RoomGame roomId={roomId} messages={verified} presence={presence} onPublicGraph={onPublicGraph} seedWsUp={seedWsUp} onComposed={(draft, publish) => {
+        if (!roomAuthority || draft.room !== roomId) return;
+        void roomAuthority.admission.compose(roomId, draft.body, roomAuthority.pair).then(row => {
+          if (row && roomAuthority.admission.valid(row)) onComposed(row, publish);
+        });
+      }} />
       <ChatCompose roomId={roomId} onPublicGraph={onPublicGraph} onComposed={onComposed} />
     </div>
   );
@@ -101,6 +107,7 @@ function ChatCompose({
   onComposed: (message: ChatMessage, putOnGun: boolean) => void;
 }) {
   const session = useIdentitySession();
+  const { current: roomAuthority } = useRoomAuthority();
   const see = useSeeAcl();
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
@@ -114,35 +121,21 @@ function ChatCompose({
     );
   }
 
-  const sessionAddress = objectOwner(session);
 
   async function submit() {
     setBusy(true);
     setMessage(null);
     try {
-      const next = composeChat({
-        body,
-        roomId,
-        address: sessionAddress,
-      });
-      if (!next) {
-        setMessage("Write a short message first.");
-        return;
+      if (!roomAuthority) { setMessage("Room access is unavailable."); return; }
+      const next = await roomAuthority.admission.compose(roomId, body, roomAuthority.pair);
+      if (!next || !roomAuthority.admission.valid(next)) {
+        setMessage("Could not send. Unlock your identity and check room access."); return;
       }
-      if (!see?.acl) {
-        setMessage("Could not send.");
-        return;
-      }
-      const admitted = admitComposedChat(see.acl, next, sessionAddress);
-      if ("denied" in admitted) {
-        setMessage("Could not send.");
-        return;
-      }
-      onComposed(admitted.message, onPublicGraph);
-      await see.persist();
+      onComposed(next, onPublicGraph);
+      await see?.persist();
       setBody("");
       setMessage("Sent.");
-    } finally {
+    } catch { setMessage("Could not send. Check your identity and room access."); } finally {
       setBusy(false);
     }
   }

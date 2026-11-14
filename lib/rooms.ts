@@ -8,7 +8,7 @@
  */
 
 import { getAddress } from "viem";
-import { isSeaPubkey } from "./identity/forum-check";
+import { isSeaPubkey, seaToPrincipalKey } from "./identity/forum-check";
 import { composeNativePost, type ComposeNativeInput } from "./compose";
 import {
   GUN_PROTOCOL_V,
@@ -153,6 +153,18 @@ export function composeRoom(input: ComposeRoomInput): Room | null {
   };
 }
 
+/** New ordinary rooms use the signed object contract. The caller must admit
+ * ownership through the protected source before exposing this draft. */
+export function composeSignedRoom(input: ComposeRoomInput): Room | null {
+  const title = input.title.trim(), owner = input.address;
+  if (!isSeaPubkey(owner) || !title || title.length > ROOM_TITLE_MAX) return null;
+  const ts = input.nowSeconds ?? Math.floor(Date.now() / 1000);
+  const nonce = input.entropy ?? shortRoomEntropy(16);
+  if (!Number.isSafeInteger(ts) || ts < 0 || !/^[a-f0-9]{32}$/.test(nonce)) return null;
+  return { id: `room_${seaToPrincipalKey(owner)}_${nonce}`, owner, title, ts,
+    tags: normalizeTags([...(input.tags ?? []), ...ROOM_KIND_TAGS]), provenance: "s3rch:room", v: GUN_PROTOCOL_V };
+}
+
 /** Dest re-auth before overlay register. Hint / URL fetch is not authorization. */
 export function admitComposedRoom(
   acl: SeeAcl,
@@ -208,8 +220,7 @@ export function ownsRoom(
 ): boolean {
   if (!address) return false;
   try {
-    if (isSeaPubkey(address)) return room.owner === address;
-    return getAddress(room.owner) === getAddress(address);
+    return isSeaPubkey(room.owner) ? room.owner === address : getAddress(room.owner) === getAddress(address);
   } catch {
     return false;
   }

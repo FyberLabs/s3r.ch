@@ -11,7 +11,11 @@ import type { SeaPair } from "./identity/sea";
 export type SignedRoomChat = Readonly<ChatMessage & { v: 1; sig: string }>;
 const domain = "s3rch-room-chat/v1";
 export const signedRoomMessageId = (id: unknown): id is string =>
-  typeof id === "string" && /^s3rch:chat:[0-9a-f]{32}$/.test(id);
+  typeof id === "string" && /^s3rch:chat:[0-9a-f]{64}$/.test(id);
+async function principalPrefix(author: string): Promise<string> {
+  const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(author)));
+  return Array.from(bytes.slice(0, 16), byte => byte.toString(16).padStart(2, "0")).join("");
+}
 const integer = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n >= 0 && !Object.is(n, -0);
 function payload(input: unknown): ChatMessage | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
@@ -30,6 +34,8 @@ export function createRoomChatAdmission(input: {
   graph: ForumAuthorityGraph;
   /** Current session signing key, not a wallet address or a caller-supplied principal. */
   readerKey(): string | null;
+  /** Protected namespace parent; its revocation always dominates room grants. */
+  parent?: string;
   clock?: () => number;
 }) {
   const { graph } = input, clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
@@ -41,6 +47,8 @@ export function createRoomChatAdmission(input: {
     const at = clock(), readerKey = input.readerKey();
     const reader = readerKey && graph.principalForKey(readerKey, at);
     return integer(at) && row.ts <= at && !!reader && graph.writerKey(row.author, row.ts, at) === key &&
+      (!input.parent || (graph.checkForumSee(input.parent, reader, at).allowed &&
+        graph.checkForumSee(input.parent, row.author, at).allowed && graph.checkPost(input.parent, row.author, at).allowed)) &&
       graph.checkForumSee(row.room, reader, at).allowed &&
       graph.checkForumSee(row.room, row.author, at).allowed && graph.checkPost(row.room, row.author, at).allowed;
   }
@@ -51,7 +59,7 @@ export function createRoomChatAdmission(input: {
     const sig = descriptor && "value" in descriptor ? descriptor.value : null;
     if (typeof sig !== "string" || sig.length > 8192) return null;
     const at = clock(), key = graph.writerKey(parsed.author, parsed.ts, at);
-    if (!key || !allowed(parsed, key)) return null;
+    if (!key || !allowed(parsed, key) || !parsed.id.startsWith(`s3rch:chat:${await principalPrefix(parsed.author)}`)) return null;
     const proof = proofs.begin();
     const decoded = await proof.read(sig, parsed.author);
     const signed = payload(decoded);
@@ -69,7 +77,9 @@ export function createRoomChatAdmission(input: {
       const pair = currentPair(), at = clock();
       if (!pair || !integer(at)) return null;
       const author = graph.principalForKey(pair.pub, at);
-      const row = payload({ id: `s3rch:chat:${shortChatEntropy(16)}`, room, body: body.trim(), author, ts: at, v: 1 });
+      if (!author) return null;
+      const prefix = await principalPrefix(author);
+      const row = payload({ id: `s3rch:chat:${prefix}${shortChatEntropy(16)}`, room, body: body.trim(), author, ts: at, v: 1 });
       if (!row || !allowed(row, pair.pub)) return null;
       const sig = await signForumRecord({ domain, ...row }, pair);
       if (!sig || currentPair() !== pair || !allowed(row, pair.pub)) return null;

@@ -49,7 +49,7 @@ test("production Squad verifies shared SEA sessions without exposing issuer acti
           ({principal:pair.pub,rotations:[],revocations:[],genesisEpubBindings:[]}))}}};},
       append:async()=>false,
     },{challengeDomain:"a".repeat(64),consume:async()=>{assert.fail("Squad must not issue or consume challenges");}},()=>at,secret);
-  assert.deepEqual(Object.keys(runtime.services).sort(),["authenticate","authority","statements"]);
+  assert.deepEqual(Object.keys(runtime.services).sort(),["authenticate","authority","rooms","statements"]);
   const request=(value:string)=>new Request(origin+"/api/squad/pilot/authority",{method:"POST",
     headers:{Origin:origin,"Content-Type":"application/json",Cookie:seaSessionCookieNames()[0]+"="+value},
     body:JSON.stringify({version:1,forumId:f.forum,owner:f.owner.pub,evaluatedAt:at})});
