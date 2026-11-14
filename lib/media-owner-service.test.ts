@@ -205,3 +205,21 @@ test("registration forwards only the fixed owner's signed object record",async()
   for(const result of [{accepted:false},{accepted:true,extra:"private"}])
     assert.equal((await service(async()=>Response.json(result))("registration",request({object,record}))).status,403);
 });
+
+test("next epoch context proxy binds owner and permits only object selection",async()=>{
+  const context={at:100,fence:view.fence,snapshot:view.snapshot,owner:principal,ownerPub:principal,
+    previousEpoch:1,previousFinalizationId:"d".repeat(64),bindings:{}};
+  let calls=0;
+  const handle=service(async(url,init)=>{calls++;assert.ok(String(url).endsWith("/owner/epoch-view"));
+    assert.deepEqual(JSON.parse(String(init?.body)),{object});return Response.json(context);});
+  const response=await handle("epoch-view",request());assert.equal(response.status,200);assert.deepEqual(await response.json(),context);
+  for(const body of [{object,owner:principal},{object,previousEpoch:1},{object,reader:principal}])
+    assert.equal((await handle("epoch-view",request(body))).status,400);
+  assert.equal(calls,1);
+  for(const changes of [{owner:"foreign"},{ownerPub:"bad"},{previousEpoch:0},{previousEpoch:Number.MAX_SAFE_INTEGER},
+    {previousFinalizationId:"bad"},{at:-1},{fence:"bad"},{snapshot:{entries:[]} ,bindings:[]},{snapshot:{entries:new Array(65).fill({})}}])
+    assert.equal((await service(async()=>Response.json({...context,...changes}))("epoch-view",request())).status,403);
+  let resolveCalls=0;
+  const changing=service(async()=>Response.json(context),async()=>++resolveCalls===1?principal:"foreign");
+  assert.equal((await changing("epoch-view",request())).status,403);
+});

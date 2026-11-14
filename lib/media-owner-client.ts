@@ -119,6 +119,27 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
         return { document, finalization, ownerPub: held.key, ownerEpub: binding.epub };
       });
     },
+    /** Prepare only: retain these exact signatures before a later fenced write. */
+    async prepareNextEpoch(object: string, owner: string, draft: unknown, scalar: Uint8Array, signal?: AbortSignal) {
+      const input=structuredClone(draft);
+      if(!exact(input,["deviceId","keyCommitment","settleWindowMs"]) || !objectOK(object) || !isSeaPubkey(owner))
+        throw Error("Invalid next media epoch");
+      return withKey(scalar,signal,async(key,deadline)=>{
+        const held=await request("epoch-view",{object},deadline);current(held);
+        if(!exact(held,["at","fence","snapshot","owner","ownerPub","previousEpoch","previousFinalizationId","bindings"]) ||
+            held.owner!==owner || typeof held.ownerPub!=="string" || !isSeaPubkey(held.ownerPub) ||
+            !Number.isSafeInteger(held.previousEpoch) || (held.previousEpoch as number)<1 ||
+            (held.previousEpoch as number)>=Number.MAX_SAFE_INTEGER || !digest(held.previousFinalizationId))
+          throw Error("Invalid protected epoch context");
+        const previousEpoch=held.previousEpoch as number, epoch=previousEpoch+1;
+        const document=signPrivateMediaEpoch({...input,object,previousEpoch,epoch},held.snapshot,key,held.ownerPub);
+        const revisionId=document.manifest.revisionId;
+        const finalization=signPrivateMediaFinalization({object,previousEpoch,epoch,revisionId,
+          candidateRevisionIds:[revisionId],previousFinalizationId:held.previousFinalizationId},key,held.ownerPub);
+        deadline.throwIfAborted();current(held);
+        return {document,finalization,ownerPub:held.ownerPub};
+      });
+    },
     async uploadState(object: string, operation: "grant" | "epoch" | "wrap", payload: unknown, signal: AbortSignal) {
       if (!objectOK(object)) throw Error("Invalid media upload");
       const result = await request("upload-state", { object, operation, payload }, signal);

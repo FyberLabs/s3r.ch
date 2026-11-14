@@ -267,3 +267,30 @@ test("cleanup catalog binds owner, exact commands, pages and response age",async
   let now=100;
   await assert.rejects(createPrivateMediaOwner(async()=>{now=104;return Response.json(result);},()=>now).cleanupCatalog(0),PrivateMediaConflict);
 });
+
+test("next epoch preparation derives parent and signatures without sending a mutation",async()=>{
+  const context={at:100,fence:view.fence,snapshot:view.snapshot,owner,ownerPub:owner,previousEpoch:1,
+    previousFinalizationId:"d".repeat(64),bindings:view.bindings};
+  const input={deviceId:"browser",keyCommitment:"c".repeat(64),settleWindowMs:3600000};let calls=0;
+  const client=createPrivateMediaOwner(async(url,init)=>{
+    calls++;assert.equal(action(url),"epoch-view");assert.deepEqual(JSON.parse(String(init?.body)),{object});
+    input.keyCommitment="e".repeat(64);return Response.json(context);
+  },()=>100);
+  const prepared=await client.prepareNextEpoch(object,owner,input,key());
+  assert.equal(prepared.document.manifest.epoch,2);
+  assert.equal(prepared.document.manifest.keyCommitment,"c".repeat(64));
+  assert.equal(prepared.finalization.previousFinalizationId,context.previousFinalizationId);
+  assert.equal(prepared.finalization.revisionId,prepared.document.manifest.revisionId);
+  assert.equal(prepared.ownerPub,owner);assert.equal(calls,1);
+  for(const changes of [{owner:other},{ownerPub:"bad"},{previousEpoch:0},{previousEpoch:Number.MAX_SAFE_INTEGER},
+    {previousFinalizationId:""},{extra:true},{snapshot:{entries:"bad"}}]){
+    await assert.rejects(createPrivateMediaOwner(async()=>Response.json({...context,...changes}),()=>100)
+      .prepareNextEpoch(object,owner,input,key()));
+  }
+  await assert.rejects(client.prepareNextEpoch(object,owner,{...input,previousEpoch:2},key()));
+  await assert.rejects(client.prepareNextEpoch("bad",owner,input,key()));
+  assert.equal(calls,1);
+  let now=0;
+  await assert.rejects(createPrivateMediaOwner(async()=>{now=5;return Response.json(context);},()=>now)
+    .prepareNextEpoch(object,owner,input,key()),PrivateMediaConflict);
+});
