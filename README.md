@@ -174,7 +174,7 @@ Runtime settings are in [docs/configuration.md](docs/configuration.md). How to p
 
 
 Private media ciphertext can explicitly select
-`S3RCH_MEDIA_STORAGE_MODE=allocated-v1` after the Spanopticon tenant's
+`S3RCH_MEDIA_STORAGE_MODE=allocated-v1` after the storage tenant's
 PostgreSQL allocation registry, immutable provider locations and dedicated
 payload read/write credentials are staged. This mode resolves the ciphertext
 reference from the allocation and uses its object-bound payload routes. It
