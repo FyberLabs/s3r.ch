@@ -67,6 +67,45 @@ export function createPrivateMediaOwner(fetcher: typeof fetch = fetch, clock = (
     finally { held.fill(0); }
   }
   return Object.freeze({
+    async confirmAllocation(object: string, owner: string, signal: AbortSignal) {
+      await view(object, owner, signal);
+    },
+    async prepareUploadGrant(object: string, owner: string, draft: unknown, scalar: Uint8Array, signal: AbortSignal) {
+      const input = structuredClone(draft);
+      return withKey(scalar, signal, async (key, deadline) => {
+        const held = await view(object, owner, deadline), signed = signPrivateMediaGrant(input, key, held.key);
+        if (signed.claims.object !== object || signed.claims.owner !== owner || signed.claims.accessor !== owner ||
+            signed.claims.epoch !== 1 || signed.claims.grantRevision !== 1 || signed.claims.stated !== 1)
+          throw Error("Invalid initial owner grant");
+        return signed;
+      });
+    },
+    async prepareUploadEpoch(object: string, owner: string, commitment: string, scalar: Uint8Array, signal: AbortSignal) {
+      return withKey(scalar, signal, async (key, deadline) => {
+        const held = await view(object, owner, deadline);
+        const document = signPrivateMediaEpoch({ object, previousEpoch: 0, epoch: 1, deviceId: "s3rch-upload",
+          keyCommitment: commitment, settleWindowMs: 3600000 }, held.snapshot, key, held.key);
+        const revisionId = document.manifest.revisionId;
+        const finalization = signPrivateMediaFinalization({ object, previousEpoch: 0, epoch: 1, revisionId,
+          candidateRevisionIds: [revisionId], previousFinalizationId: "" }, key, held.key);
+        const binding = (held.bindings as Record<string, {pub:string;epub:string}>)[owner];
+        if (!isSeaPubkey(binding.epub)) throw Error("Invalid owner encryption key");
+        return { document, finalization, ownerPub: held.key, ownerEpub: binding.epub };
+      });
+    },
+    async uploadState(object: string, operation: "grant" | "epoch" | "wrap", payload: unknown, signal: AbortSignal) {
+      if (!objectOK(object)) throw Error("Invalid media upload");
+      const result = await request("upload-state", { object, operation, payload }, signal);
+      const started = fetchedAt.get(result), elapsed = started === undefined ? NaN : clock() - started;
+      if (!exact(result, ["at", "state"]) || !Number.isSafeInteger(result.at) || (result.at as number) < 0 ||
+          !Number.isFinite(elapsed) || elapsed < 0 || elapsed >= 4 ||
+          !["absent", "applied", "conflict"].includes(result.state as string)) throw new PrivateMediaConflict();
+      return result.state as "absent" | "applied" | "conflict";
+    },
+    async commitUploadIntent(object: string, owner: string, operation: "grant" | "epoch", payload: unknown, signal: AbortSignal) {
+      const input = structuredClone(payload), held = await view(object, owner, signal);
+      await mutate(object, held, operation, input, signal);
+    },
     async allocate(input: UnverifiedObjectRecord, signal?: AbortSignal) {
       const parsed = parseForumObjectRecord(input);
       if (!parsed || !objectOK(parsed.record.object)) throw Error("Invalid media ownership record");

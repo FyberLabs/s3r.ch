@@ -1,7 +1,7 @@
 /** Private file metadata is encrypted with its bytes, never public post metadata.
  * These helpers do not establish reader enrollment, Check, or current epoch state. */
 import type { ItemReaderWrap, ItemWrapContext } from "sociacl-ids";
-import { MEDIA_PLAIN_MAX, type MediaBinding } from "./media-crypto";
+import { MEDIA_PLAIN_MAX, sealMedia, type MediaBinding } from "./media-crypto";
 import { openMediaForReader, sealMediaForReaders, type MediaReader } from "./media-reader-wraps";
 
 export type MediaFileDescription = Readonly<{ name: string; mediaType: string }>;
@@ -55,5 +55,13 @@ export async function openMediaFile(stored: Uint8Array, sha256: string, wrap: It
   epriv: string, epub: string, binding: MediaBinding, expected: ItemWrapContext) {
   const packed = await openMediaForReader(stored, sha256, wrap, epriv, epub, binding, expected);
   try { return decode(packed); }
+  finally { packed.fill(0); }
+}
+
+/** Prepare ciphertext before signing its digest into a grant. The caller must
+ * keep the returned key private and clear it after publishing encrypted wraps. */
+export async function prepareMediaFile(bytes: Uint8Array, metadata: MediaFileDescription, binding: MediaBinding) {
+  const packed = encode(bytes, metadata);
+  try { return await sealMedia(packed, binding); }
   finally { packed.fill(0); }
 }

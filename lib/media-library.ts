@@ -70,7 +70,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       if(!state.objects.includes(object) || !owner)return Promise.resolve();
       const principal=owner;
       return operation(async(signal,current)=>{
-        const readers=await browser.recipients(object,principal,signal);
+        const readers=(await browser.recipients(object,principal,signal)).filter(reader=>reader!==principal);
         if(current())publish({...state,audience:{object,readers}});
       });
     },
@@ -84,6 +84,8 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
     open(object: string, tenant: string) {
       if(!state.objects.includes(object))return Promise.resolve();
       return operation(async(signal,current)=>{
+        if (!owner) throw Error("Media owner unavailable");
+        await browser.status(object,owner,signal);
         const file=await browser.open(object,tenant,signal);
         try {
           if(!current())return;

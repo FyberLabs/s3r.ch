@@ -1,3 +1,6 @@
+import { createUploadJournal } from "./media-upload-journal";
+import { uploadMedia, pendingMediaUpload, discardMediaUpload } from "./media-upload";
+import type { MediaFileDescription } from "./media-file";
 import type { UnverifiedObjectRecord } from "./identity/forum-object-record";
 import { createPrivateMediaOwner } from "./media-owner-client";
 import { createPrivateMediaReader } from "./media-wrap-client";
@@ -45,7 +48,22 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
       } finally {scalar.fill(0);}
     },signal);
   }
+  async function locked<T>(work:()=>Promise<T>) {
+    if (typeof navigator === "undefined" || !navigator.locks) throw Error("This browser cannot safely resume uploads");
+    return navigator.locks.request("s3rch-private-upload-v1", {mode:"exclusive",ifAvailable:true}, lock=>{
+      if(!lock)throw Error("An upload is active in another tab");return work();
+    });
+  }
   return Object.freeze({
+    upload(tenant:string,file?:{bytes:Uint8Array;description:MediaFileDescription},signal?:AbortSignal,progress?:(message:string)=>void){
+      return locked(()=>run((pair,transport,deadline)=>uploadMedia({tenant,pair,fetcher:transport,signal:deadline,journal:createUploadJournal(),file,progress}),signal));
+    },
+    pendingUpload(tenant:string,signal?:AbortSignal){
+      return run((pair,_transport,deadline)=>pendingMediaUpload(createUploadJournal(),tenant,pair,deadline),signal);
+    },
+    discardUpload(tenant:string,expectedObject:string,signal?:AbortSignal){
+      return locked(()=>run((pair,_transport,deadline)=>discardMediaUpload(createUploadJournal(),tenant,expectedObject,pair,deadline),signal));
+    },
     allocate(record:UnverifiedObjectRecord,signal?:AbortSignal){
       return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).allocate(record,deadline),signal);
     },

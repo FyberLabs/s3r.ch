@@ -46,6 +46,8 @@ jobs:
           sudo apt-get install -y ffmpeg
       - name: Public media browser contracts (CI only)
         run: node scripts/test-public-media-browser.mjs
+      - name: Private upload browser recovery contract (CI only)
+        run: node scripts/test-private-upload-browser.mjs
       - name: Room task browser contracts (CI only)
         run: node scripts/test-room-tasks.mjs
       - name: Recording browser contracts (CI only)
@@ -162,13 +164,21 @@ jobs:
           --test-coverage-include=lib/media-owner-client.ts
           --test-coverage-include=lib/media-catalog.ts
           --test-coverage-lines=90 --test-coverage-branches=80
-          lib/media-owner-service.test.ts lib/media-owner-client.test.ts lib/media-catalog.test.ts
+          lib/media-owner-service.test.ts lib/media-owner-client.test.ts lib/media-catalog.test.ts lib/media-upload.test.ts
       - name: Unlocked media identity contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
           --test-coverage-include=lib/media-browser-session.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/media-browser-session.test.ts
+      - name: Encrypted upload recovery and UI coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-upload.ts
+          --test-coverage-include=lib/media-upload-journal.ts
+          --test-coverage-include=lib/media-upload-panel.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-upload.test.ts lib/media-upload-panel.test.ts
       - name: Private media library state and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage

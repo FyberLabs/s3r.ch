@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createMediaLibrary, type MediaLibraryState } from "@/lib/media-library";
 import { IdentityBar } from "./IdentityBar";
+import { PrivateMediaUpload } from "./PrivateMediaUpload";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
@@ -23,6 +24,7 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
     <p><a className="underline" href="/media/edit">Create an image draft</a></p>
     <IdentityBar />
     {!tenant ? <p role="status">Private media is not available on this site yet.</p> : <>
+      <PrivateMediaUpload tenant={tenant} />
       <div className="flex gap-4">
         <button type="button" disabled={state.busy} className="underline disabled:opacity-50" onClick={()=>void library.current?.load(0)}>Refresh my media</button>
         {state.loaded && state.page>0 && <button type="button" disabled={state.busy} className="underline disabled:opacity-50" onClick={()=>void library.current?.load(state.page-1)}>Previous page</button>}

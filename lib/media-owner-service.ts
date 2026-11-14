@@ -21,7 +21,7 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
   const active = new Set<string>(); let preflights = 0, transports = 0;
   return async (action: string, request: Request) => {
     const reply = (status: number) => new Response(null, { status, headers });
-    if (!["allocate", "catalog", "view", "status-view", "cancel-view", "mutate", "publish-wrap"].includes(action)) return reply(404);
+    if (!["allocate", "catalog", "view", "status-view", "cancel-view", "mutate", "publish-wrap", "upload-state"].includes(action)) return reply(404);
     if (request.method !== "POST") return reply(405);
     if (!matchesBrowserOrigin(request, origin)) return reply(403);
     if (request.headers.get("content-type")?.split(";")[0] !== "application/json" ||
@@ -39,13 +39,15 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
       active.add(principal); occupied = true;
       const body = await readBoundedIdentityJson(new Response(request.body), ["allocate", "catalog", "view", "status-view", "cancel-view"].includes(action) ? 2048 : 100000,
         AbortSignal.any([signal, AbortSignal.timeout(1000)]));
-      const keys = action === "allocate" ? ["object", "owner", "issuedAt", "sig"] : action === "catalog" ? ["page"] : action === "view" ? ["object"] : ["status-view", "cancel-view"].includes(action) ? ["object", "reader"] : action === "mutate" ?
+      const keys = action === "upload-state" ? ["object", "operation", "payload"] : action === "allocate" ? ["object", "owner", "issuedAt", "sig"] : action === "catalog" ? ["page"] : action === "view" ? ["object"] : ["status-view", "cancel-view"].includes(action) ? ["object", "reader"] : action === "mutate" ?
         ["object", "at", "fence", "operation", "payload"] : ["object", "at", "fence", "metadata", "wrapBase64"];
       if (!exact(body, keys)) return reply(400);
       if (action === "catalog" ? !isMediaCatalogPageNumber(body.page) : typeof body.object !== "string" || !body.object.startsWith("media_") || !isCanonicalObjectId(body.object)) return reply(400);
-      if (!["allocate", "catalog", "view", "status-view", "cancel-view"].includes(action) && (!Number.isSafeInteger(body.at) || (body.at as number) < 0 || !digest(body.fence))) return reply(400);
+      if (!["allocate", "catalog", "view", "status-view", "cancel-view", "upload-state"].includes(action) && (!Number.isSafeInteger(body.at) || (body.at as number) < 0 || !digest(body.fence))) return reply(400);
       if (["status-view", "cancel-view"].includes(action) && (typeof body.reader!=="string" || !isSeaPubkey(body.reader))) return reply(400);
       if (action === "allocate" && (!mediaRegistration(body) || body.owner !== principal)) return reply(403);
+      if (action === "upload-state" && (typeof body.operation !== "string" || !["grant", "epoch", "wrap"].includes(body.operation) ||
+          !body.payload || typeof body.payload !== "object" || Array.isArray(body.payload))) return reply(400);
       if (action === "mutate" && (typeof body.operation !== "string" || !["grant", "epoch", "status", "wrap"].includes(body.operation) ||
           !body.payload || typeof body.payload !== "object" || Array.isArray(body.payload))) return reply(400);
       if (action === "publish-wrap" && (!body.metadata || typeof body.metadata !== "object" || Array.isArray(body.metadata) ||
@@ -63,7 +65,10 @@ export function createMediaOwnerService(config: MediaReaderConfig, siteOrigin: s
       }
       const result = await readBoundedIdentityJson(response, 262144, signal);
       let catalog: ReturnType<typeof parseMediaCatalogPage> | undefined;
-      if (action === "allocate") {
+      if (action === "upload-state") {
+        if (!exact(result, ["at", "state"]) || !Number.isSafeInteger(result.at) || (result.at as number) < 0 ||
+            typeof result.state !== "string" || !["absent", "applied", "conflict"].includes(result.state)) return reply(403);
+      } else if (action === "allocate") {
         if (!exact(result, ["object", "accepted"]) || result.object !== body.object || result.accepted !== true) return reply(403);
       } else if (action === "catalog") {
         try { catalog = parseMediaCatalogPage(result, body.page as number, principal); } catch { return reply(403); }

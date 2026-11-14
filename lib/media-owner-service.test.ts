@@ -138,3 +138,17 @@ test("allocation uses the bound principal and separate ACL route without browser
   assert.equal((await service(async()=>Response.json({object:"foreign",accepted:true}))("allocate",request(record))).status,403);
   assert.equal((await service(async()=>Response.json({object,accepted:false}))("allocate",request(record))).status,403);
 });
+
+test("upload reconciliation keeps fixed credentials and rejects extra authority or malformed results",async()=>{
+  const body={object,operation:"epoch",payload:{document:{},finalization:{}}};let calls=0;
+  const handle=service(async(url,init)=>{
+    calls++;assert.ok(String(url).endsWith("/owner/upload-state"));assert.deepEqual(JSON.parse(String(init?.body)),body);
+    assert.equal(new Headers(init?.headers).get("x-api-key"),"owner-key");return Response.json({at:100,state:"applied"});
+  });
+  assert.equal((await handle("upload-state",request(body))).status,200);
+  for(const changes of [{owner:"foreign"},{at:1},{operation:"status"},{payload:[]}])
+    assert.equal((await handle("upload-state",request({...body,...changes}))).status,400);
+  assert.equal(calls,1);
+  for(const result of [{at:100,state:"allowed"},{at:-1,state:"applied"},{at:100,state:"applied",secret:"no"}])
+    assert.equal((await service(async()=>Response.json(result))("upload-state",request(body))).status,403);
+});
