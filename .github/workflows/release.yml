@@ -11,7 +11,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     environment: release
     permissions:
       contents: write
@@ -41,3 +41,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/release-channels.mjs promote
+
+      - name: Mint infra static dispatch token
+        id: static-dispatch
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ vars.S3RCH_STATIC_DISPATCH_APP_ID }}
+          private-key: ${{ secrets.S3RCH_STATIC_DISPATCH_APP_PRIVATE_KEY }}
+          owner: FyberLabs
+          repositories: infra
+          permission-actions: write
+      - name: Publish the production static frontend
+        env:
+          GH_TOKEN: ${{ steps.static-dispatch.outputs.token }}
+          DISPATCH_TAG: ${{ github.ref_name }}
+          DISPATCH_RUN_ID: ${{ github.run_id }}
+        run: node scripts/dispatch-static-publish.mjs release
+      - name: Publish the TEST static frontend
+        env:
+          GH_TOKEN: ${{ steps.static-dispatch.outputs.token }}
+          DISPATCH_RUN_ID: ${{ github.run_id }}
+        run: node scripts/dispatch-static-publish.mjs reconcile
