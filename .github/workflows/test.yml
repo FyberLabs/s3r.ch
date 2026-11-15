@@ -189,6 +189,13 @@ jobs:
         run: node scripts/test-wallet-key-browser.mjs
       - name: Private sharing browser recovery contract (CI only)
         run: node scripts/test-private-sharing-browser.mjs
+      - name: Independent group command contracts and coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-command.ts
+          --test-coverage-include=lib/media-group-service.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-service.test.ts
       - name: Private media owner contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
