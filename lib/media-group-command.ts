@@ -1,3 +1,4 @@
+import {parseGroupKeyCommand,parseGroupKeyView} from "./media-group-key";
 import {parseMediaGroupScope,parseMediaGroupPolicy} from "./media-group";
 import {objectPrincipal,parseForumAuthority} from "./identity/forum-authority-records";
 import {isCanonicalObjectId} from "./identity/object-id";
@@ -8,6 +9,9 @@ export type GroupCatalog=Readonly<{at:number;groups:readonly GroupCatalogEntry[]
 
 export const groupCommandFields={
   catalog:["page"],
+  "key-view":["predicate","set"],
+  "key-append":["predicate","set","at","fence","command"],
+  "key-state":["predicate","set","command"],
   "create-view":["object","predicate","set"],
   create:["object","predicate","set","at","fence","config"],
   "create-state":["object","predicate","set","config"],
@@ -28,7 +32,10 @@ export function parseGroupCommand(action:GroupCommandAction,input:unknown,princi
   if(!isSeaPubkey(principal)||!exact(body,groupCommandFields[action]))return fail();
   if(action==="catalog"){if(!integer(body.page)||body.page>15)return fail();return body;}
   const scope=parseMediaGroupScope({predicate:body.predicate,set:body.set}),owner=objectPrincipal(scope.set);
-  if(action.startsWith("create")) {
+  if(action.startsWith("key-")){
+    if(owner!==principal)return fail();
+    if("command" in body)parseGroupKeyCommand(body.command,scope);
+  } else if(action.startsWith("create")) {
     if(owner!==principal||typeof body.object!=="string"||!body.object.startsWith("media_")||!isCanonicalObjectId(body.object)||objectPrincipal(body.object)!==principal)return fail();
     if("config" in body)parseMediaGroupPolicy(body.config,scope);
   } else {
@@ -67,13 +74,14 @@ export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,
     return value;
   }
   const scope=parseMediaGroupScope({predicate:body.predicate,set:body.set});
-  if(action==="create"||action==="member-append") {
+  if(action==="create"||action==="member-append"||action==="key-append") {
     if(!exact(value,["accepted"])||value.accepted!==true)return fail();return value;
   }
   if(!value||typeof value!=="object"||Array.isArray(value))return fail();
   const v=value as Record<string,unknown>;
   if(!integer(v.at)||v.at>now+1||now-v.at>4)return fail();
-  if(action==="create-state"||action==="member-state") {
+  if(action==="key-view")return parseGroupKeyView(v,scope);
+  if(action==="create-state"||action==="member-state"||action==="key-state") {
     const fields=action==="create-state"&&v.state==="applied"?["at","state"]:["at","state","fence"];
     if(!exact(v,fields)||!["absent","applied"].includes(v.state as string)||("fence" in v&&!digest(v.fence)))return fail();
   } else if(action==="create-view") {
@@ -92,3 +100,6 @@ export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,
   }
   return v;
 }
+
+export const groupRequestLimit=(action:GroupCommandAction)=>action==="key-append"||action==="key-state"?73728:18432;
+export const groupResponseLimit=(action:GroupCommandAction)=>action==="key-view"?73728:18432;

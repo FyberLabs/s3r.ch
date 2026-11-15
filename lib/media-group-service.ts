@@ -1,5 +1,5 @@
 import {parseMediaReaderConfig,type MediaReaderConfig} from "./media-wrap-service";
-import {isGroupCommand,parseGroupCommand,parseGroupCommandResult} from "./media-group-command";
+import {isGroupCommand,parseGroupCommand,parseGroupCommandResult,groupRequestLimit,groupResponseLimit} from "./media-group-command";
 import {readBoundedIdentityJson} from "./identity/bounded-json";
 import {matchesBrowserOrigin} from "./request-origin";
 const headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff",Vary:"Cookie, Origin"};
@@ -26,7 +26,7 @@ export function createMediaGroupService(config:MediaReaderConfig,siteOrigin:stri
       if(active.has(principal))return reply(429);
       active.add(principal);occupied=true;
       let body:Record<string,unknown>;
-      try{body=parseGroupCommand(action,await readBoundedIdentityJson(new Response(request.body),18432,
+      try{body=parseGroupCommand(action,await readBoundedIdentityJson(new Response(request.body),groupRequestLimit(action),
         AbortSignal.any([signal,AbortSignal.timeout(1000)])),principal);}catch{return reply(400);}
       signal.throwIfAborted();
       const response=await fetcher(held.origin+"/api/v1/acl/sociacl/media/groups/"+action,{
@@ -35,7 +35,7 @@ export function createMediaGroupService(config:MediaReaderConfig,siteOrigin:stri
       if(response.status!==200||response.headers.get("content-type")?.split(";")[0]!=="application/json"||![null,"identity"].includes(response.headers.get("content-encoding"))){
         await response.body?.cancel().catch(()=>{});return reply([403,409,429].includes(response.status)?response.status:503);
       }
-      const result=parseGroupCommandResult(action,await readBoundedIdentityJson(response,18432,signal),body,clock(),principal);
+      const result=parseGroupCommandResult(action,await readBoundedIdentityJson(response,groupResponseLimit(action),signal),body,clock(),principal);
       if(await resolvePrincipal(request,signal)!==principal)return reply(403);
       signal.throwIfAborted();
       return Response.json(parseGroupCommandResult(action,result,body,clock(),principal),{headers});
