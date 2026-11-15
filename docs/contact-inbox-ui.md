@@ -1,47 +1,49 @@
-# Contact inbox UI boundary
+# Contact inbox and live adapter
 
-`ContactInbox` presents explicit accept/decline decisions, accepted contacts,
-blocking, messages, and a bounded draft. It takes a `ContactInboxSession` created
-by a trusted browser adapter. The session must authenticate current identity,
-contact decisions and message grants; UI rows are never admission evidence.
+`/contacts` mounts `ContactsWorkspace` and `ContactInbox`. The existing unlocked
+identity supplies keys; the contacts adapter checks the authenticated server
+session, current signed identity history and configured witness policy. No login
+or group interface is changed. Unset contacts configuration leaves the page
+unavailable.
 
-A prepared message retains its submission object after an ambiguous response.
-Retry calls that same object instead of creating a second ciphertext. The adapter
-must durably retain bytes and recheck identity, block state and recipient grants
-on every submission. Lock/logout, authority change and session replacement clear
-private UI state. Backend errors are not shown verbatim.
+The ACL contacts contract publishes signed descriptors and stores an encrypted
+private vault. Source checkpoints protect document revisions. Every browser
+write signs the expected revision, complete-authority fence and ciphertext digest.
+A peer history or trust change refuses the write even when the document revision
+is unchanged. An ambiguous write is reconciled against retained ciphertext before
+retrying; intervening decisions are not overwritten.
 
-The panel is not mounted in the live site yet. The remaining composition needs
-current signed descriptor publication/discovery, the unlocked contact-secret
-keyring, persisted contact/block decisions, authenticated grant delivery, and the
-message encryption/admission adapter. A bare SEA pair is not this capability.
-The existing login and group owners retain their interfaces and worktrees.
+The private vault holds restored contact keys, pending requests, decisions,
+blocks, grants, replay identifiers, messages and prepared ciphertext. An existing
+keyring must be restored explicitly when the vault is absent; the adapter never
+creates replacement contact secrets. The current SEA encryption key derives a
+non-exportable vault key. Rotated identities cannot silently overwrite a vault
+whose key history they cannot open; recovery migration is separate work.
 
-`scripts/test-contact-inbox.mjs` is an isolated scheduled-only UI contract with
-synthetic identity, journal and transport adapters. Its cases cover explicit
-acceptance, ambiguous retry without duplicate preparation, peer messages,
-blocking and private-state isolation. It reports named cases without private
-values. It is not evidence for hosted two-identity messaging or cryptographic
-admission. The SociACL browser acceptance tests independently cover the real
-canonical envelope, signatures and atomic outbox. No hosted reader case or login
-fixture is installed by this change.
+A sender verifies the recipient's signed descriptor and encrypts the request.
+Acceptance uses SociACL's native browser acceptance API and commits the exact
+confidential grant before delivery. Its reply lane is derived from the encrypted
+request nonce and request ID. The sender opens the grant and sends a reciprocal
+grant through the authorized lane. Text and reciprocal grants are signed and
+AEAD encrypted for the current recipient. Ciphertext transport digests provide
+integrity checks only; they are not sender authentication.
 
-The production `createFirstContactClient.accept` now consumes the published
-SociACL browser acceptance API. It binds the explicit decision to the displayed
-request, requires the restored issuer keyring and current authority, and commits
-the confidential grant to the existing outbox before returning. It neither
-delivers nor acknowledges that grant. Retry delivery must use committed bytes.
-The package is from SociACL `8d75c494dd35b95b78fa012a6f26b0e56585766d`, with
-SHA-256 `1db82fa0cd896db45384b943c29fab592262cc40733b92d0d23bda345417e232`.
+Blocks remove outgoing commands and prevent message opening or preparation.
+Prepared commands retain their ciphertext across ambiguous delivery, and check
+current identity, blocks and grants before retrying. Requests can be disabled
+without resetting the public descriptor revision. Lock, session change or hidden
+page clears the mounted private view. The browser does not persist plaintext in
+localStorage or IndexedDB.
 
-The registered UI suite also reports `consumer-crypto-acceptance`, exercising
-the production client with real browser crypto and IndexedDB, two public
-synthetic identities and a substituted ciphertext transport. It verifies explicit
-acceptance, recipient opening and retained outbox bytes after reopening the store.
-This case does not qualify hosted discovery, grant delivery or messaging.
+`scripts/test-contact-inbox.mjs` remains central scheduled-only. Its UI cases use
+substituted sessions. `consumer-crypto-acceptance` uses the real SociACL browser
+API and IndexedDB. `live-adapter-contract` uses the production browser composition
+and cryptography with two public synthetic identities and mocked authenticated
+source/transport contracts: discovery, explicit acceptance, reciprocal grants,
+messages, ambiguous retries, replay suppression, blocks and lock refusal. These
+cases do not qualify hosted login or a provisioned two-account deployment.
 
-Infra confirmed that no contacts descriptor/keyring provisioning contract is
-staged. The existing ACL keyring route handles recovery envelopes and wraps,
-not a contacts registry or durable block decisions. A live mount still requires
-those interfaces; do not generate replacement contact secrets for existing
-accounts or interpret a transport digest as sender authority.
+The native package is SociACL `8d75c494dd35b95b78fa012a6f26b0e56585766d`, SHA-256
+`1db82fa0cd896db45384b943c29fab592262cc40733b92d0d23bda345417e232`.
+ACL journal installation and bound operator credentials remain explicit Infra
+inputs. This change does not stage them or activate a hosted fixture.
