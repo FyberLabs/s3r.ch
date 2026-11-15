@@ -1,3 +1,4 @@
+import { mintObjectId, parsePrincipalId } from "sociacl-ids";
 import type { GroupCatalogEntry } from "./media-group-command";
 import type { PendingGroupCommand } from "./media-group-command-recovery";
 import type { PendingGroupConsent } from "./media-group-recovery";
@@ -163,6 +164,31 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         const catalog=await browser.grantedCatalog(page,signal);
         if(current())publish({...state,granted:{objects:catalog.objects,page,nextPage:catalog.nextPage},audience:null});
       });
+    },
+    createGroup(tenant:string) {
+      if(state.deletion||state.groupCommand||!owner||!state.objects.length)return Promise.resolve();
+      const principal=owner,object=state.objects[0];
+      return operation(async(signal,current)=>{
+        if(await browser.pendingGroupCommand(tenant,principal,signal))throw Error("Saved group request requires recovery");
+        const parsed=parsePrincipalId(principal);if(!parsed.ok)throw Error("Group owner unavailable");
+        const minted=mintObjectId("set",parsed.value);if(!minted.ok)throw Error("Group identifier unavailable");
+        const command=await browser.prepareGroupCreation(principal,object,{predicate:"same-group",set:minted.value},86400000,signal);
+        await browser.runGroupCommand(tenant,principal,command,signal);
+        if(current())publish({...state,groups:null,message:"Your empty group was created. Refresh groups to invite members. No files have been shared."});
+      },()=>publish({...state,groups:null,groupCommand:null,message:"Group creation could not be confirmed. Check the saved group change before trying again."}));
+    },
+    inviteToGroup(tenant:string,set:string,predicate:"same-group"|"named-circle",member:string,stated:0|1) {
+      const entry=state.groups?.entries.find(row=>row.set===set&&row.predicate===predicate);
+      if(state.deletion||state.groupCommand||!owner||!entry?.owned||!isSeaPubkey(member))return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        if(await browser.pendingGroupCommand(tenant,principal,signal))throw Error("Saved group request requires recovery");
+        const command=await browser.prepareGroupMembership(principal,{set,predicate},member,"set",stated,signal);
+        await browser.runGroupCommand(tenant,principal,command,signal);
+        if(current())publish({...state,groups:null,message:stated===1?
+          "The invitation was accepted by the service. The member must also consent before joining.":
+          "Your invitation withdrawal was accepted. Refresh groups to see current state."});
+      },()=>publish({...state,groups:null,groupCommand:null,message:"The invitation change could not be confirmed. Check the saved group change before trying again."}));
     },
     loadGroups(page=0) {
       if(state.deletion||!owner)return Promise.resolve();

@@ -47,3 +47,9 @@ test("group discovery starts without revealing invitations or enabling member wr
  assert.match(html,/Groups and invitations/);assert.match(html,/<button[^>]*disabled=""[^>]*>Refresh groups<\/button>/);
  assert.doesNotMatch(html,/Accept group invitation|Leave group|set_p_/);
 });
+
+test("empty group creation starts disabled and explains that it shares no files",()=>{
+ const html=renderToStaticMarkup(createElement(PrivateMediaLibrary,{tenant:"11111111-1111-4111-8111-111111111111"}));
+ assert.match(html,/<button[^>]*disabled=""[^>]*>Create empty group<\/button>/);
+ assert.match(html,/does not share it/);assert.doesNotMatch(html,/Member SEA account|Withdraw invitation/);
+});
