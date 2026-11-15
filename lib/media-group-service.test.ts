@@ -34,6 +34,7 @@ const cases:readonly [GroupCommandAction,Record<string,unknown>,unknown][]=[
   ["key-append",{...scope,at:100,fence,command:groupKeyCommand},{accepted:true}],
   ["key-state",{...scope,command:groupKeyCommand},{at:100,state:"absent",fence}],
   ["item-view",{object,...scope},itemView],
+  ["item-authority-view",{object},{at:100,fence,objectVersion:1,projection:null,ownerPub:owner}],
 ];
 const request=(body:unknown,headers:Record<string,string>={})=>new Request("https://s3r.ch/api/media/groups/create-view",{method:"POST",headers:{origin:"https://s3r.ch","content-type":"application/json",...headers},body:JSON.stringify(body)});
 const service=(fetcher:typeof fetch,resolve=async()=>owner)=>createMediaGroupService(config,"https://s3r.ch",resolve,fetcher,()=>100);
@@ -156,4 +157,24 @@ test("group wrap transport preserves scoped ciphertext and refuses expired repli
     assert.equal(response.status,200);assert.deepEqual(await response.json(),output);
   }
   assert.equal((await service(async()=>Response.json({...read,expires_at:100}))("wrap-read",request(scope))).status,503);
+});
+
+
+test("current item authority transports the full 64-member projection and bounds larger responses",async()=>{
+  const {p256}=await import("@noble/curves/nist.js");
+  const principals=Array.from({length:64},(_,index)=>{
+    const scalar=new Uint8Array(32);scalar[31]=index+1;
+    const point=p256.getPublicKey(scalar,false);
+    return Buffer.from(point.slice(1,33)).toString("base64url")+"."+Buffer.from(point.slice(33)).toString("base64url");
+  }).sort();
+  const edge={predicate:scope.predicate,setId:scope.set,stated:1,hamState:1};
+  const projection={object,...scope,members:principals.filter(p=>p!==owner),
+    snapshot:{objectSet:edge,members:principals.map(accessor=>({...edge,accessor}))}};
+  const result={at:100,fence,objectVersion:1,projection,ownerPub:owner};
+  assert.ok(new TextEncoder().encode(JSON.stringify(result)).length>18432);
+  const response=await service(async()=>Response.json(result))("item-authority-view",request({object}));
+  assert.equal(response.status,200);assert.deepEqual(await response.json(),result);
+  const oversized=await service(async()=>new Response(" ".repeat(73729),{headers:{"content-type":"application/json"}}))(
+    "item-authority-view",request({object}));
+  assert.equal(oversized.status,503);
 });
