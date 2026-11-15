@@ -45,3 +45,16 @@ and refuses stale replies. The BFF rechecks the browser session after the ACL
 request and never forwards a caller-selected member or credential. No consent
 signature, append, group epoch, or delivery is performed here. Safe member writes
 and the group sharing UI remain separate work.
+
+Member consent now has a separate browser client and unlocked-identity adapter.
+Preparation signs only the authenticated member role with the current protected
+key; key copies are wiped after use. Withdrawal preparation does not require a
+surviving set-owner invitation, and uses same-HAM stated 0 with no cancellation
+acknowledgements. The fixed-reader BFF accepts only that reader's member row.
+The ACL credential must additionally carry media write scope for append.
+
+Append first checks the exact signed row. Applied rows return without another
+write; absent rows get one write attempt against the fresh fence. A lost response
+is left for explicit reconciliation, and an expired absent signature must be
+prepared again. These methods do not persist a browser recovery journal or add
+group delivery; durable UI recovery and group epoch delivery remain separate.
