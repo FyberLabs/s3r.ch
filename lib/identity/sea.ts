@@ -30,22 +30,16 @@ export function isSeaPair(value: unknown): value is SeaPair {
   );
 }
 
-type SeaModule = {
-  pair?: () => Promise<SeaPair>;
-  default?: { pair?: () => Promise<SeaPair> };
-};
-
-async function loadSea(): Promise<{ pair: () => Promise<SeaPair> }> {
-  // Literal specifier lets Next and browser test bundlers include the module.
-  const mod = (await import("gun/sea.js")) as SeaModule;
-  const sea = mod.default ?? mod;
-  if (typeof sea.pair !== "function") throw new Error("SEA module unavailable");
-  return { pair: sea.pair.bind(sea) };
-}
-
+/** Match Gun SEA's JWK representation using the browser's native WebCrypto.
+ * Avoid the legacy CommonJS loader and its runtime-dependent shim imports.
+ */
 export async function createSeaPair(): Promise<SeaPair> {
-  const sea = await loadSea();
-  const pair = await sea.pair();
-  if (!isSeaPair(pair)) throw new Error("SEA key generation failed");
-  return pair;
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) throw new Error("Secure browser cryptography unavailable");
+  const signing = await subtle.generateKey({name: "ECDSA", namedCurve: "P-256"}, true, ["sign", "verify"]);
+  const encryption = await subtle.generateKey({name: "ECDH", namedCurve: "P-256"}, true, ["deriveKey"]);
+  const sign = await subtle.exportKey("jwk", signing.privateKey);
+  const enc = await subtle.exportKey("jwk", encryption.privateKey);
+  if (!sign.x || !sign.y || !sign.d || !enc.x || !enc.y || !enc.d) throw new Error("SEA key generation failed");
+  return {pub: `${sign.x}.${sign.y}`, priv: sign.d, epub: `${enc.x}.${enc.y}`, epriv: enc.d};
 }
