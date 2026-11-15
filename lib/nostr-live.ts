@@ -2,7 +2,7 @@ import {verifiedNostrEvent,type NostrEvent as LiveEvent} from "./nostr-event";
 import {publicMediaUrl} from "./feed-media";
 import {NOSTR_RELAY_URL,PUBLIC_NOSTR_PUBKEYS,queryNostrRelay} from "./nostr";
 export const LIVE_MAX_AGE=3600;
-export type PublicLiveStream={id:string;author:string;title:string;url:string;thumbnail?:string;participants?:number;starts:number;expires:number};
+export type PublicLiveStream={playback?:"external";id:string;author:string;title:string;url:string;thumbnail?:string;participants?:number;starts:number;expires:number};
 /** NIP-01 authentication precedes NIP-53 address replacement and display. */
 export function verifiedLiveEvent(raw:unknown,authors:readonly string[],now:number){
  return verifiedNostrEvent(raw,authors,30311,now,LIVE_MAX_AGE);
