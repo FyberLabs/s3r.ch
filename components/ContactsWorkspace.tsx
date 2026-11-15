@@ -4,6 +4,7 @@ import {IdentityBar} from './IdentityBar';
 import {ContactInbox} from './ContactInbox';
 import {useIdentitySessionState} from './useIdentitySession';
 import {readSingleUnlockedIdentity,readUnlockedMeshRevision,subscribeUnlockedMeshPair} from '@/lib/identity/unlocked-mesh';
+import {contactTarget} from '@/lib/contact-link';
 import {openContactWorkspace} from '@/lib/contact-workspace';
 type Workspace=Awaited<ReturnType<typeof openContactWorkspace>>;
 export function ContactsWorkspace({origin}:{origin:string|null}){
@@ -31,7 +32,7 @@ export function ContactsWorkspace({origin}:{origin:string|null}){
   if(!selected||!session||!origin)throw Error('Unlock required');
   const current=()=>generation.current===held&&identityRef.current===session&&readUnlockedMeshRevision()===selected.revision;
   const next=await openContactWorkspace({pair:selected.pair,current,subscribe:listener=>{listeners.current.add(listener);return()=>{listeners.current.delete(listener);};},origin,signal});
-  signal.throwIfAborted();if(!current())throw Error('Identity changed');setWorkspace(next);setReady(next.ready);
+  signal.throwIfAborted();if(!current())throw Error('Identity changed');setWorkspace(next);setReady(next.ready);setPeer(contactTarget(window.location.hash));
  }
  return <section className="mx-auto max-w-3xl space-y-4 px-4 py-8">
   <h1 className="text-2xl font-semibold">Contacts</h1><IdentityBar/>
@@ -50,7 +51,7 @@ export function ContactsWorkspace({origin}:{origin:string|null}){
      <label className="block">Introduction<textarea className="block w-full border rounded p-2" value={message} onChange={event=>setMessage(event.target.value)} maxLength={1024} disabled={busy}/></label>
      <button disabled={busy||!peer||!message.trim()}>Send contact request</button>
     </form>
-    <ContactInbox session={workspace.session}/>
+    <ContactInbox session={workspace.session} preferredPeer={contactTarget(typeof window==='undefined'?'':window.location.hash)}/>
    </>}
   </>}
  </section>;

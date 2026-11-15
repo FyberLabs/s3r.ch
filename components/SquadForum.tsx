@@ -1,5 +1,7 @@
 "use client";
 
+import {contactHref} from "@/lib/contact-link";
+
 import Link from "next/link";
 import { useSquadForumCoordination } from "@/lib/use-squad-forum-coordination";
 import { BusinessRoleStrips } from "@/components/BusinessRoleStrips";
@@ -456,6 +458,7 @@ function ChatColumn({
             <li key={item.id} className={`text-sm text-ink ${klass}`}>
               <span className="font-data text-xs text-ink-muted">
                 {formatClock(item.ts)} {authorLabel(item.author)}
+                {contactHref(item.author)&&<Link className="ml-2 underline" href={contactHref(item.author)!}>Message privately</Link>}
               </span>
               {botMessage ? <ForumBotMessage message={botMessage} author={item.author} viewer={viewer}
                 onPrepareCancel={onPrepareCancel} /> : <p><ChatBody body={item.body} /></p>}

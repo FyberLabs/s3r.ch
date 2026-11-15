@@ -3,7 +3,10 @@
 `/contacts` mounts `ContactsWorkspace` and `ContactInbox`. The existing unlocked
 identity supplies keys; the contacts adapter checks the authenticated server
 session, current signed identity history and configured witness policy. No login
-or group interface is changed. Unset contacts configuration leaves the page
+or group interface is changed. Forum and room authors link to this same inbox;
+the account selection stays in the URL fragment, and message text never enters
+the URL. An existing contact opens its conversation; a new contact requires an
+explicit request. Unset contacts configuration leaves the page
 unavailable.
 
 The ACL contacts contract publishes signed descriptors and stores an encrypted
