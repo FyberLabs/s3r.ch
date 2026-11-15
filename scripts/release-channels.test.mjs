@@ -4,6 +4,11 @@ import { readFileSync } from 'node:fs';
 import { validateManifest, compareTags, minorLine, promotionAliases, validTestRun, signedByTestRun, requireStableTag, releaseTargetArgs } from './release-channels.mjs';
 const revision = 'a'.repeat(40), repository = 'FyberLabs/s3r.ch', tag = `test-${revision}`;
 const candidate = { schema: 1, repository, channel: 'test', tag, revision, image: 'ghcr.io/fyberlabs/s3r.ch', digest: 'sha256:' + 'b'.repeat(64), test_run_id: '123' };
+test('promotion waits through the static publication job', () => {
+  const source = readFileSync(new URL('./release-channels.mjs', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf("action !== 'promote'"));
+  assert.match(body, /Date\.now\(\) \+ \(35 \+ 45\) \* 60 \* 1000/);
+});
 test('promotion is bound to the exact repository, tested revision, image and channel', () => {
   assert.deepEqual(validateManifest(candidate, repository, 'test', revision, tag), candidate);
   for (const changes of [{ channel: 'prod' }, { repository: 'other/repo' }, { image: 'ghcr.io/other/image' }, { revision: 'c'.repeat(40) }, { digest: 'latest' }, { test_run_id: '0' }, { extra: true }]) {
