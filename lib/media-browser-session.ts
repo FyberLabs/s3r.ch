@@ -1,3 +1,4 @@
+import {applyGroupCommand as applyDurableGroupCommand,pendingGroupCommand,discardGroupCommand,type PendingGroupCommand} from "./media-group-command-recovery";
 import {createGroupCommandClient,parseSignedGroupCommand,type GroupSignedCommand} from "./media-group-client";
 import {applyGroupConsent,pendingGroupConsent,discardGroupConsent,type PendingGroupConsent} from "./media-group-recovery";
 import {createMediaGroupMember} from "./media-group-member";
@@ -63,6 +64,25 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     });
   }
   return Object.freeze({
+    runGroupCommand(tenant:string,principal:string,command:GroupSignedCommand,signal?:AbortSignal){
+      const held=parseSignedGroupCommand(command,principal);
+      return locked(()=>run((pair,transport,deadline)=>applyDurableGroupCommand({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-command"),command:held}),signal),"s3rch-private-group-command-v1");
+    },
+    resumeGroupCommand(tenant:string,principal:string,expected:PendingGroupCommand,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>applyDurableGroupCommand({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-command"),expected:held}),signal),"s3rch-private-group-command-v1");
+    },
+    pendingGroupCommand(tenant:string,principal:string,signal?:AbortSignal){
+      return run((pair,transport,deadline)=>pendingGroupCommand({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-command")}),signal);
+    },
+    discardGroupCommand(tenant:string,principal:string,expected:PendingGroupCommand,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>discardGroupCommand({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-command"),expected:held}),signal),"s3rch-private-group-command-v1");
+    },
     prepareGroupCreation(principal:string,object:string,scope:MediaGroupScope,windowMs:number,signal?:AbortSignal){
       const held=parseMediaGroupScope(scope);
       return signed((_owner,key,deadline,transport)=>createGroupCommandClient(principal,transport).prepareCreate(object,held,windowMs,key,deadline),signal);

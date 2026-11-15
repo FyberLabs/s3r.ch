@@ -315,3 +315,34 @@ test("group commands sign with the unlocked identity and stop when it locks",asy
   unlock();await assert.rejects(browser.prepareGroupMembership(owner,scope,other,"set",1));
   unlock();await assert.rejects(browser.applyGroupCommand(owner,member));assert.equal(writes,2);
 });
+
+test("durable group commands use an exclusive lock and reconcile a lost response",async()=>{
+  const {IDBFactory}=await import("fake-indexeddb");
+  const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,"navigator"),oldDb=Object.getOwnPropertyDescriptor(globalThis,"indexedDB");
+  try {
+    unlock();Object.defineProperty(globalThis,"indexedDB",{configurable:true,value:new IDBFactory()});
+    const names:string[]=[];
+    Object.defineProperty(globalThis,"navigator",{configurable:true,value:{locks:{request:async(name:string,_options:unknown,work:(lock:unknown)=>unknown)=>{names.push(name);return work({});}}}});
+    const scope={predicate:"same-group" as const,set:object.replace("media_","set_")};let applied=false,writes=0;
+    const browser=createPrivateMediaBrowser(()=>owner,async(url)=>{
+      const at=Math.floor(Date.now()/1000),action=String(url).split("/").at(-1);
+      if(action==="create-view")return Response.json({at,fence:view.fence,context:{owner,ownerPub:owner,predicate:scope.predicate,setId:scope.set}});
+      if(action==="create-state")return Response.json({at,state:applied?"applied":"absent",...(!applied?{fence:view.fence}:{})});
+      writes++;applied=true;throw Error("lost response");
+    });
+    assert.equal(await browser.pendingGroupCommand(tenant,owner),null);
+    const command=await browser.prepareGroupCreation(owner,object,scope,3600000);
+    await assert.rejects(browser.runGroupCommand(tenant,owner,command));
+    const pending=await browser.pendingGroupCommand(tenant,owner);assert.ok(pending);
+    await browser.resumeGroupCommand(tenant,owner,pending);assert.equal(writes,1);
+    assert.equal(await browser.pendingGroupCommand(tenant,owner),null);
+    applied=false;await assert.rejects(browser.runGroupCommand(tenant,owner,command));
+    const next=await browser.pendingGroupCommand(tenant,owner);assert.ok(next);
+    assert.deepEqual(await browser.discardGroupCommand(tenant,owner,next),{applied:true});
+    assert.ok(names.every(name=>name==="s3rch-private-group-command-v1"));
+    forgetUnlockedMeshPair();await assert.rejects(browser.pendingGroupCommand(tenant,owner));
+  } finally {
+    if(oldNavigator)Object.defineProperty(globalThis,"navigator",oldNavigator);else Reflect.deleteProperty(globalThis,"navigator");
+    if(oldDb)Object.defineProperty(globalThis,"indexedDB",oldDb);else Reflect.deleteProperty(globalThis,"indexedDB");
+  }
+});
