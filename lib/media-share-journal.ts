@@ -5,10 +5,11 @@ import { isCanonicalObjectId } from "./identity/object-id";
 
 export type ShareEntry = { revision: number; tenant: string; object: string; 
   encrypted: Uint8Array; sha256: string; wrap: ItemReaderWrap };
+export type ShareVersion = number | Pick<ShareEntry,"revision"|"sha256">;
 export interface ShareJournal {
   read(signal: AbortSignal): Promise<ShareEntry | null>;
-  write(entry: Omit<ShareEntry,"revision">, expected: number|null, signal: AbortSignal): Promise<ShareEntry>;
-  remove(expected: number, signal: AbortSignal): Promise<void>;
+  write(entry: Omit<ShareEntry,"revision">, expected: ShareVersion|null, signal: AbortSignal): Promise<ShareEntry>;
+  remove(expected: ShareVersion, signal: AbortSignal): Promise<void>;
 }
 export const shareDigest = async (bytes: Uint8Array) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new Uint8Array(bytes))),b=>b.toString(16).padStart(2,"0")).join("");
 export type JournalPurpose="share"|"group-consent"|"group-command"|"group-key";
@@ -37,6 +38,11 @@ export async function decryptShareJournal(entry:ShareEntry,tenant:string,pair:Se
     {tenant,object:entry.object},await context(tenant,entry.object,purpose));
   try {return JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));}
   finally {bytes.fill(0);}
+}
+function matchesVersion(entry:ShareEntry|undefined,expected:ShareVersion|null) {
+  if(expected===null)return entry==null;
+  return typeof expected==="number"?entry?.revision===expected:
+    entry?.revision===expected.revision&&entry?.sha256===expected.sha256;
 }
 /** One pending share per origin. CAS prevents overwriting another tab's draft. */
 export function createShareJournal(factory:IDBFactory=indexedDB,purpose:JournalPurpose="share"):ShareJournal {
@@ -69,13 +75,13 @@ export function createShareJournal(factory:IDBFactory=indexedDB,purpose:JournalP
     read:signal=>transact(signal,"readonly",(store,done)=>{const q=store.get("share");q.onsuccess=()=>done(q.result??null);}),
     write:(entry,expected,signal)=>transact(signal,"readwrite",(store,done,fail)=>{
       const q=store.get("share");q.onsuccess=()=>{
-        if((q.result?.revision??null)!==expected){fail();return;}
-        const saved={...entry,revision:(expected??0)+1};store.put(saved,"share");done(saved);
+        if(!matchesVersion(q.result,expected)){fail();return;}
+        const saved={...entry,revision:(q.result?.revision??0)+1};store.put(saved,"share");done(saved);
       };
     }),
     remove:(expected,signal)=>transact(signal,"readwrite",(store,done,fail)=>{
       const q=store.get("share");q.onsuccess=()=>{
-        if(q.result?.revision!==expected){fail();return;}store.delete("share");done(undefined);
+        if(!matchesVersion(q.result,expected)){fail();return;}store.delete("share");done(undefined);
       };
     }),
   };

@@ -23,7 +23,7 @@ function fixture(){
   if(action==="key-state")return Response.json({at:now,state:applied?"applied":"absent",fence:"a".repeat(64)});
   const entry=(await journal.read(signal))!;assert.ok(entry);
   const draft=await decryptShareJournal(entry,tenant,pair,"group-key") as {attemptAt:number;groupKey:number[]};
-  assert.equal(draft.attemptAt,now);assert.deepEqual(draft.groupKey,Array.from(secret));draft.groupKey.fill(0);writes++;
+  assert.ok(draft.attemptAt>=now);assert.deepEqual(draft.groupKey,Array.from(secret));draft.groupKey.fill(0);writes++;
   if(mode!=="uncommitted")applied=true;
   if(mode!=="ok")throw Error("lost reply");return Response.json({accepted:true});
  };
@@ -75,4 +75,26 @@ test("pending key cannot be replaced, and malformed or mismatched secrets refuse
   await assert.rejects(pendingGroupKey({...f.input,journal}));
  }
  draft.groupKey.fill(0);
+});
+
+test("retry cannot forget a later outstanding fence",async()=>{
+ const f=fixture(),command=await f.prepare();f.mode("uncommitted");
+ await assert.rejects(applyGroupKey({...f.input,command,groupKey:secret}));
+ f.time(99);await assert.rejects(applyGroupKey({...f.input,expected:(await pendingGroupKey(f.input))!}));
+ const expected=(await pendingGroupKey(f.input))!;
+ f.time(104);await assert.rejects(discardGroupKey({...f.input,expected}));
+ f.time(105);await discardGroupKey({...f.input,expected});
+ assert.equal(await pendingGroupKey(f.input),null);
+});
+test("ciphertext CAS rejects writes and deletes after revision reuse",async()=>{
+ const f=fixture(),command=await f.prepare();f.mode("uncommitted");
+ await assert.rejects(applyGroupKey({...f.input,command,groupKey:secret}));
+ const old=(await f.input.journal.read(signal))!;
+ await f.input.journal.remove(old,signal);
+ const first=await f.input.journal.write({...old,sha256:"a".repeat(64)},null,signal);
+ const replacement=await f.input.journal.write({...old,sha256:"b".repeat(64)},first,signal);
+ assert.equal(replacement.revision,old.revision);
+ await assert.rejects(f.input.journal.remove(old,signal));
+ await assert.rejects(f.input.journal.write(old,old,signal));
+ assert.deepEqual(await f.input.journal.read(signal),replacement);
 });

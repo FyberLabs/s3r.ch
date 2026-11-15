@@ -51,7 +51,7 @@ async function load(input:Input){
   try{const draft=await parse(raw,entry,input);input.signal.throwIfAborted();return {draft,entry};}
   catch(error){clear(raw);throw error;}
 }
-async function save(input:Input,draft:Draft,expected:number|null){
+async function save(input:Input,draft:Draft,expected:Pick<ShareEntry,"revision"|"sha256">|null){
   draft=await parse(draft,{object:draft.command.set},input);
   const encrypted=await encryptShareJournal(draft,input.tenant,draft.command.set,input.pair,"group-key");input.signal.throwIfAborted();
   const entry=await input.journal.write({...encrypted,tenant:input.tenant,object:draft.command.set},expected,input.signal);
@@ -77,9 +77,9 @@ export async function applyGroupKey(input:Input&{command?:SignedGroupKeyCommand;
       if((await client.state(held.draft.command,input.signal)).state!=="applied")return fail();
       return pending(held.draft,held.entry);
     }
-    await client.apply(held.draft.command,input.signal,async at=>{held=await save(input,{...held!.draft,attemptAt:at},held!.entry.revision);});
+    await client.apply(held.draft.command,input.signal,async at=>{held=await save(input,{...held!.draft,attemptAt:Math.max(held!.draft.attemptAt??at,at)},held!.entry);});
     input.signal.throwIfAborted();
-    held=await save(input,{...held.draft,phase:"admitted"},held.entry.revision);
+    held=await save(input,{...held.draft,phase:"admitted"},held.entry);
     return pending(held.draft,held.entry);
   }finally{clear(draft);clear(held?.draft);}
 }
@@ -91,6 +91,6 @@ export async function discardGroupKey(input:Input&{expected:PendingGroupKey}){
     if(held.draft.phase==="admitted")return fail();
     const state=await createGroupKeyClient(input.principal,input.fetcher,input.clock).state(held.draft.command,input.signal);
     if(state.state!=="absent"||(held.draft.attemptAt!==null&&state.at-held.draft.attemptAt<=4))return fail();
-    input.signal.throwIfAborted();await input.journal.remove(held.entry.revision,input.signal);
+    input.signal.throwIfAborted();await input.journal.remove(held.entry,input.signal);
   }finally{clear(held?.draft);}
 }
