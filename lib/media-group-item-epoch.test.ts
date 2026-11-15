@@ -46,3 +46,12 @@ test("group recipients cannot override direct authority or survive a detached ed
     assert.throws(()=>parse({...plan,snapshot:{...plan.snapshot,objectSet:{...plan.snapshot.objectSet,...patch}}}));
   assert.throws(()=>parse({...plan,snapshot:{...plan.snapshot,entries:[direct]}}));
 });
+
+test("independent group authority survives expiry of an unrelated direct grant",()=>{
+  const expired={...grant,accessor:reader,stated:0,until:90000,grantRevision:3};
+  const refresh={...plan,grants:[grant,expired]};
+  assert.deepEqual(parse(refresh),refresh);
+  const retained={...plan,groupReaders:[],snapshot:{...plan.snapshot,entries:[direct,{...group,scope:"direct",setId:"",hamState:0,stated:0}]}};
+  assert.deepEqual(parse(retained),retained);
+  assert.throws(()=>parse({...refresh,grants:[grant,{...expired,itemCiphertextDigest:"e".repeat(64)}]}));
+});

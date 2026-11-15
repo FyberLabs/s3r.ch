@@ -20,7 +20,7 @@ export function parseGroupItemEpochPlan(input:unknown,object:string,owner:string
       !integer(v.at)||!Number.isSafeInteger(v.at*1000)||v.at>now+1||now-v.at>4||!digest(v.fence)||
       v.owner!==owner||!pub(v.ownerPub)||v.predicate!==scope.predicate||v.set!==scope.set||
       !integer(v.previousEpoch)||v.previousEpoch<1||v.previousEpoch>=Number.MAX_SAFE_INTEGER||!digest(v.previousFinalizationId)||
-      !integer(v.settleWindowMs)||v.settleWindowMs<3600000||v.settleWindowMs>259200000||!digest(v.keyCommitment)||
+      !integer(v.settleWindowMs)||v.settleWindowMs<3600000||v.settleWindowMs>259200000||!Number.isSafeInteger(v.at*1000+v.settleWindowMs)||!digest(v.keyCommitment)||
       !Array.isArray(v.grants)||v.grants.length<1||v.grants.length>64||!Array.isArray(v.groupReaders)||v.groupReaders.length>64||
       !exact(v.snapshot,["entries","objectSet"])||!Array.isArray(v.snapshot.entries)||v.snapshot.entries.length>64||
       !v.bindings||typeof v.bindings!=="object"||Array.isArray(v.bindings))return fail();
@@ -53,7 +53,7 @@ export function parseGroupItemEpochPlan(input:unknown,object:string,owner:string
       if(e.setId!==""||e.hamState!==0||(!g&&e.stated!==0)||
           (g&&(g.grantRevision!==e.grantRevision||g.stated!==e.stated||g.from!==e.from||g.until!==e.until)))return fail();
     }else{
-      if(g||e.scope!==scope.predicate||e.setId!==scope.set||
+      if(g?.stated===1||e.scope!==scope.predicate||e.setId!==scope.set||
           (e.stated===1&&(!groupReaders.has(e.accessor)||e.from>v.at*1000||e.until<=v.at*1000+v.settleWindowMs))||
           (e.stated===0&&groupReaders.has(e.accessor)))return fail();
       if(e.stated===1)seenGroups.add(e.accessor);
