@@ -10,6 +10,6 @@ test('restored vault preserves secret history and rejects truncated, duplicated 
 });
 test('stored messages must name this conversation and retry rows must retain encrypted commands',()=>{
  const value=initial();value.messages=[{id:'ab'.repeat(32),sender:peer,peer,body:'Hello'}];assert.equal(parseContactVault(value,owner).messages.length,1);
- value.messages[0].sender=fixture.mint.epub;assert.throws(()=>parseContactVault(value,owner));
+ value.messages[0]={...value.messages[0],sender:fixture.mint.epub};assert.throws(()=>parseContactVault(value,owner));
  const other=initial();other.outbox=[{id:'ab'.repeat(32),peer,lane:'ef'.repeat(32),kind:'text',body:'Hello',ciphertext:'',grant:'ab'.repeat(100)}];assert.throws(()=>parseContactVault(other,owner));
 });
