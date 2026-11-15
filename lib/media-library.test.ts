@@ -388,3 +388,28 @@ test("identity reset discards delayed independent group recovery",async()=>{
   assert.equal(f.state().groupCommand,null);assert.equal(f.state().message,"Identity changed");
  }finally{f.library.dispose();}
 });
+
+test("group invitations and withdrawals use durable member-only commands",async()=>{
+ const entry={predicate:"same-group" as const,set:"set_test",owner:key,owned:true,invited:true,active:false};
+ let active=false,saved=false,fail=false;const calls:unknown[]=[];
+ const command={kind:"member",body:{}};
+ const f=setup({browser:()=>({catalog:async()=>({at:1,objects:[],nextPage:null,principal:key}),
+  groupCatalog:async(principal:string,page:number)=>{assert.equal(principal,key);return {at:1,principal:key,groups:[{...entry,active}],nextPage:page<15?page+1:null};},
+  pendingGroupCommand:async()=>saved?{token:"pending"}:null,
+  prepareGroupMembership:async(...args:unknown[])=>{calls.push(args.slice(0,5));return command;},
+  runGroupCommand:async(tenant:string,principal:string,value:unknown)=>{assert.equal(tenant,"tenant");assert.equal(principal,key);assert.equal(value,command);if(fail)throw Error("lost");},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try {
+  await f.library.loadGroups();await f.library.respondToGroup("tenant",entry.set,entry.predicate,1);assert.equal(calls.length,0);
+  await f.library.load();await f.library.loadGroups();assert.equal(f.state().groups?.nextPage,1);
+  await f.library.respondToGroup("tenant","unknown",entry.predicate,1);await f.library.respondToGroup("tenant",entry.set,entry.predicate,0);assert.equal(calls.length,0);
+  await f.library.respondToGroup("tenant",entry.set,entry.predicate,1);
+  assert.deepEqual(calls[0],[key,{set:entry.set,predicate:entry.predicate},key,"member",1]);assert.equal(f.state().groups,null);assert.match(f.state().message,/checked separately/);
+  active=true;await f.library.loadGroups(15);assert.equal(f.state().groups?.nextPage,null);
+  await f.library.respondToGroup("tenant",entry.set,entry.predicate,1);assert.equal(calls.length,1);
+  await f.library.respondToGroup("tenant",entry.set,entry.predicate,0);assert.match(f.state().message,/withdrawal was accepted/);
+  await f.library.loadGroups();fail=true;await f.library.respondToGroup("tenant",entry.set,entry.predicate,0);assert.equal(f.state().groups,null);assert.match(f.state().message,/Check the saved group change/);
+  await f.library.loadGroups();saved=true;const count=calls.length;await f.library.respondToGroup("tenant",entry.set,entry.predicate,0);assert.equal(calls.length,count);
+  await f.library.loadGroups();f.library.reset();assert.equal(f.state().groups,null);
+ }finally{f.library.dispose();}
+});

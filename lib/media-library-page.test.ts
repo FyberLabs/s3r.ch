@@ -41,3 +41,9 @@ test("group command recovery starts disabled until the current catalog principal
   assert.match(html,/<button[^>]*disabled=""[^>]*>Check saved group change<\/button>/);
   assert.doesNotMatch(html,/Retry saved group change|Clear reconciled group request|set_p_/);
 });
+
+test("group discovery starts without revealing invitations or enabling member writes",()=>{
+ const html=renderToStaticMarkup(createElement(PrivateMediaLibrary,{tenant:"11111111-1111-4111-8111-111111111111"}));
+ assert.match(html,/Groups and invitations/);assert.match(html,/<button[^>]*disabled=""[^>]*>Refresh groups<\/button>/);
+ assert.doesNotMatch(html,/Accept group invitation|Leave group|set_p_/);
+});

@@ -1,3 +1,4 @@
+import type { GroupCatalogEntry } from "./media-group-command";
 import type { PendingGroupCommand } from "./media-group-command-recovery";
 import type { PendingGroupConsent } from "./media-group-recovery";
 import { isCanonicalObjectId } from "./identity/object-id";
@@ -16,13 +17,14 @@ export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly stri
   nextPage: number | null; loaded: boolean; message: string;
   consent: PendingGroupConsent | null;
   groupCommand: PendingGroupCommand | null;
+  groups: Readonly<{entries:readonly GroupCatalogEntry[];page:number;nextPage:number|null}> | null;
   sharing: Readonly<{object:string;reader:string;token:string;remove?:boolean}> | null;
   granted: Readonly<{objects:readonly string[];page:number;nextPage:number|null}> | null;
   cleanup: Readonly<{objects:readonly MediaCleanupItem[];page:number;nextPage:number|null}> | null;
   deletion: Readonly<{object:string;prepared:boolean}> | null;
   audience: Readonly<{object:string;readers:readonly string[]}> | null;
   preview: Readonly<{ url: string; name: string; mediaType: string; tags?:readonly string[] }> | null }>;
-const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null});
+const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groups:null});
 
 /** Private, in-memory navigation. Never persists catalog entries or plaintext. */
 export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, options: {
@@ -161,6 +163,27 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         const catalog=await browser.grantedCatalog(page,signal);
         if(current())publish({...state,granted:{objects:catalog.objects,page,nextPage:catalog.nextPage},audience:null});
       });
+    },
+    loadGroups(page=0) {
+      if(state.deletion||!owner)return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        const catalog=await browser.groupCatalog(principal,page,signal);
+        if(current())publish({...state,groups:{entries:catalog.groups,page,nextPage:catalog.nextPage}});
+      });
+    },
+    respondToGroup(tenant:string,set:string,predicate:"same-group"|"named-circle",stated:0|1) {
+      const entry=state.groups?.entries.find(row=>row.set===set&&row.predicate===predicate);
+      if(state.deletion||state.groupCommand||!owner||!entry||(stated===1?!entry.invited||entry.active:!entry.active))return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        if(await browser.pendingGroupCommand(tenant,principal,signal))throw Error("Saved group request requires recovery");
+        const command=await browser.prepareGroupMembership(principal,{set,predicate},principal,"member",stated,signal);
+        await browser.runGroupCommand(tenant,principal,command,signal);
+        if(current())publish({...state,groups:null,message:stated===1?
+          "Your group response was accepted. Refresh groups; media access is checked separately.":
+          "Your group withdrawal was accepted. Refresh groups to see current membership."});
+      },()=>publish({...state,groups:null,groupCommand:null,message:"The group response could not be confirmed. Check the saved group change before trying again."}));
     },
     inspectGroupCommand(tenant:string) {
       if(state.deletion||!owner)return Promise.resolve();
