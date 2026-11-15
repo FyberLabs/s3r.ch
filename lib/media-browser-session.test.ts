@@ -346,3 +346,10 @@ test("durable group commands use an exclusive lock and reconcile a lost response
     if(oldDb)Object.defineProperty(globalThis,"indexedDB",oldDb);else Reflect.deleteProperty(globalThis,"indexedDB");
   }
 });
+
+test("group catalog rejects identity lock during the response",async()=>{
+ unlock();let lock=false;const result={at:Math.floor(Date.now()/1000),groups:[],nextPage:1,principal:owner};
+ const browser=createPrivateMediaBrowser(()=>owner,async()=>{if(lock)forgetUnlockedMeshPair();return Response.json(result);});
+ assert.deepEqual(await browser.groupCatalog(owner),result);
+ lock=true;await assert.rejects(browser.groupCatalog(owner));
+});

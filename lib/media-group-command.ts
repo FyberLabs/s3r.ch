@@ -3,7 +3,11 @@ import {objectPrincipal,parseForumAuthority} from "./identity/forum-authority-re
 import {isCanonicalObjectId} from "./identity/object-id";
 import {isSeaPubkey} from "./identity/forum-check";
 
+export type GroupCatalogEntry=Readonly<{predicate:"same-group"|"named-circle";set:string;owner:string;owned:boolean;invited:boolean;active:boolean}>;
+export type GroupCatalog=Readonly<{at:number;groups:readonly GroupCatalogEntry[];nextPage:number|null;principal:string}>;
+
 export const groupCommandFields={
+  catalog:["page"],
   "create-view":["object","predicate","set"],
   create:["object","predicate","set","at","fence","config"],
   "create-state":["object","predicate","set","config"],
@@ -22,6 +26,7 @@ export const isGroupCommand=(action:string):action is GroupCommandAction=>Object
 export function parseGroupCommand(action:GroupCommandAction,input:unknown,principal:string) {
   const body=structuredClone(input);
   if(!isSeaPubkey(principal)||!exact(body,groupCommandFields[action]))return fail();
+  if(action==="catalog"){if(!integer(body.page)||body.page>15)return fail();return body;}
   const scope=parseMediaGroupScope({predicate:body.predicate,set:body.set}),owner=objectPrincipal(scope.set);
   if(action.startsWith("create")) {
     if(owner!==principal||typeof body.object!=="string"||!body.object.startsWith("media_")||!isCanonicalObjectId(body.object)||objectPrincipal(body.object)!==principal)return fail();
@@ -43,8 +48,25 @@ export function parseGroupCommand(action:GroupCommandAction,input:unknown,princi
 }
 
 /** Reject a mismatched preparation before a browser can sign or persist it. */
-export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,body:Record<string,unknown>,now:number) {
-  const value=structuredClone(input),scope=parseMediaGroupScope({predicate:body.predicate,set:body.set});
+export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,body:Record<string,unknown>,now:number,principal?:string) {
+  const value=structuredClone(input);
+  if(action==="catalog") {
+    if(!principal||!exact(value,["at","groups","nextPage","principal"])||value.principal!==principal||
+        !integer(value.at)||value.at>now+1||now-value.at>4||!Array.isArray(value.groups)||value.groups.length>4||
+        value.nextPage!==(body.page===15?null:(body.page as number)+1))return fail();
+    const seen=new Set<string>();
+    for(const row of value.groups){
+      if(!exact(row,["predicate","set","owner","owned","invited","active"]))return fail();
+      const scope=parseMediaGroupScope({predicate:row.predicate,set:row.set});
+      const id=JSON.stringify(scope);
+      if(seen.has(id)||row.owner!==objectPrincipal(scope.set)||typeof row.owned!=="boolean"||
+          row.owned!==(row.owner===principal)||typeof row.invited!=="boolean"||typeof row.active!=="boolean"||
+          (!row.owned&&!row.invited&&!row.active))return fail();
+      seen.add(id);
+    }
+    return value;
+  }
+  const scope=parseMediaGroupScope({predicate:body.predicate,set:body.set});
   if(action==="create"||action==="member-append") {
     if(!exact(value,["accepted"])||value.accepted!==true)return fail();return value;
   }

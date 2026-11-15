@@ -35,10 +35,10 @@ export function createMediaGroupService(config:MediaReaderConfig,siteOrigin:stri
       if(response.status!==200||response.headers.get("content-type")?.split(";")[0]!=="application/json"||![null,"identity"].includes(response.headers.get("content-encoding"))){
         await response.body?.cancel().catch(()=>{});return reply([403,409,429].includes(response.status)?response.status:503);
       }
-      const result=parseGroupCommandResult(action,await readBoundedIdentityJson(response,18432,signal),body,clock());
+      const result=parseGroupCommandResult(action,await readBoundedIdentityJson(response,18432,signal),body,clock(),principal);
       if(await resolvePrincipal(request,signal)!==principal)return reply(403);
       signal.throwIfAborted();
-      return Response.json(parseGroupCommandResult(action,result,body,clock()),{headers});
+      return Response.json(parseGroupCommandResult(action,result,body,clock(),principal),{headers});
     }catch{return reply(503);}finally{if(occupied&&principal)active.delete(principal);}
   };
 }

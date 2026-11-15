@@ -83,3 +83,12 @@ test("inputs and scalar are copied before asynchronous preparation",async()=>{
   held.body.set="changed";unblock();await applying;
   assert.equal(server.requests.at(-1)!.body.set,scope.set);
 });
+
+test("catalog binds page and canonical principal without signing",async()=>{
+ const result={at:100,groups:[],nextPage:1,principal:owner};
+ const client=createGroupCommandClient(owner,async(url,init)=>{
+  assert.equal(String(url),"/api/media/groups/catalog");assert.deepEqual(JSON.parse(String(init?.body)),{page:0});return Response.json(result);
+ },()=>100);
+ assert.deepEqual(await client.catalog(),result);
+ await assert.rejects(client.catalog(16));
+});

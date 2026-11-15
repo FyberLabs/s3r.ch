@@ -64,6 +64,9 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     });
   }
   return Object.freeze({
+    groupCatalog(principal:string,page=0,signal?:AbortSignal){
+      return run((_pair,transport,deadline)=>createGroupCommandClient(principal,transport).catalog(page,deadline),signal);
+    },
     runGroupCommand(tenant:string,principal:string,command:GroupSignedCommand,signal?:AbortSignal){
       const held=parseSignedGroupCommand(command,principal);
       return locked(()=>run((pair,transport,deadline)=>applyDurableGroupCommand({tenant,principal,pair,fetcher:transport,signal:deadline,

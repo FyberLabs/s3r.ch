@@ -1,7 +1,7 @@
 import {signPrivateMediaGroupConfig} from "sociacl-ids/private-media";
 import {signMembershipAssent,membershipSoul} from "sociacl-ids/group-signing";
 import {parseMediaGroupScope,type MediaGroupScope} from "./media-group";
-import {parseGroupCommand,parseGroupCommandResult,type GroupCommandAction} from "./media-group-command";
+import {parseGroupCommand,parseGroupCommandResult,type GroupCommandAction,type GroupCatalog} from "./media-group-command";
 import {readBoundedIdentityJson} from "./identity/bounded-json";
 import {isSeaPubkey} from "./identity/forum-check";
 
@@ -27,7 +27,7 @@ export function createGroupCommandClient(principal:string,fetcher:typeof fetch=f
     if(response.status!==200||response.headers.get("content-type")?.split(";")[0]!=="application/json"){
       await response.body?.cancel().catch(()=>{});return fail();
     }
-    const result=parseGroupCommandResult(action,await readBoundedIdentityJson(response,18432,signal),held,clock());
+    const result=parseGroupCommandResult(action,await readBoundedIdentityJson(response,18432,signal),held,clock(),principal);
     signal.throwIfAborted();return result;
   }
   function deadline(signal?:AbortSignal){return AbortSignal.any([...(signal?[signal]:[]),AbortSignal.timeout(4000)]);}
@@ -40,6 +40,7 @@ export function createGroupCommandClient(principal:string,fetcher:typeof fetch=f
     return await request(command.kind==="create"?"create-state":"member-state",command.body,signal) as GroupCommandState;
   }
   return Object.freeze({
+    catalog(page=0,signal?:AbortSignal){return request("catalog",{page},deadline(signal)) as Promise<GroupCatalog>;},
     prepareCreate(object:string,scope:MediaGroupScope,settleWindowMs:number,scalar:Uint8Array,signal?:AbortSignal){
       const held=parseMediaGroupScope(scope);
       if(!Number.isSafeInteger(settleWindowMs)||settleWindowMs<3600000||settleWindowMs>259200000)return Promise.reject(Error("Invalid group settle window"));
