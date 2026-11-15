@@ -149,3 +149,32 @@ test("group preparation refuses withdrawal, changed item/group context and corru
     await assert.rejects(createPrivateMediaReader(fetcher,()=>100).prepareGroupSharing(object,tenant,epriv,epub,owner,groupScope,new AbortController().signal));
   }
 });
+
+test("group preparation refuses mismatched initial context and aborted requests before wrapping",async()=>{
+  const f=await groupFixture();
+  for(const change of ["item-epoch","item-revision","item-digest","commitment","expiry","content-type"]){
+    let now=100;
+    const fetcher:typeof fetch=async(url)=>{
+      const path=String(url);
+      if(path==="/api/media/read-wrap")return Response.json(f.delivery);
+      if(path==="/api/media/groups/item-view"){
+        const changed=structuredClone(f.joint);
+        if(change==="item-epoch")changed.item.epoch++;
+        if(change==="item-revision")changed.item.revisionId="e".repeat(64);
+        if(change==="item-digest")changed.item.digest="e".repeat(64);
+        if(change==="commitment")changed.group.keyCommitment="e".repeat(64);
+        return Response.json(changed,change==="content-type"?{headers:{"content-type":"text/plain"}}:undefined);
+      }
+      if(path==="/api/media/groups/wrap-read"){
+        if(change==="expiry")now=102;
+        return Response.json(f.groupDelivery);
+      }
+      return new Response(new Uint8Array(f.sealed.bytes),{headers:{"content-type":"application/octet-stream",
+        "content-length":String(f.sealed.bytes.length),etag:`"${f.sealed.sha256}"`}});
+    };
+    await assert.rejects(createPrivateMediaReader(fetcher,()=>now).prepareGroupSharing(object,tenant,epriv,epub,owner,groupScope,new AbortController().signal));
+  }
+  const reader=createPrivateMediaReader(async()=>{throw Error("must not fetch");},()=>100);
+  await assert.rejects(reader.prepareGroupSharing(object,tenant,epriv,epub,owner,groupScope,AbortSignal.abort()));
+  await assert.rejects(reader.prepareGroupSharing(object,tenant,epriv,epub,pub,groupScope,new AbortController().signal));
+});
