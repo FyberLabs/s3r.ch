@@ -6,7 +6,7 @@ import type {SeaPair} from './identity/sea';
 import {contactText,type ContactInboxSession} from './contact-inbox-view';
 import {openContactDocuments,contactBytes,contactBase64,contactDigest} from './contact-document-client';
 import {createContactVault,type ContactVault,type SavedSend} from './contact-vault';
-import {contactJournal} from './contact-journal';
+import {contactJournal,activateContactJournal} from './contact-journal';
 import {createContactLaneTransport,createFirstContactTransport} from './contact-lane-transport';
 import {sealContactMessage,openContactMessage,type ContactPeer} from './contact-crypto';
 const fail=():never=>{throw Error('Contacts unavailable');};
@@ -142,8 +142,7 @@ export async function openContactWorkspace(options:{pair:SeaPair;current:()=>boo
     if(previous&&JSON.stringify(previous.descriptor)===JSON.stringify(descriptor)&&publicRow.revision===descriptor.revision)return;
    }
    if(!descriptor||!v.journal.enabled||descriptor.expiresAt<=clock()||descriptor.revision!==publicRow.revision+1){
-    await vault.change(next=>{next.journal.revision=publicRow.revision;},signal);
-    const journal=contactJournal(vault,signal);try{descriptor=await journal.activate({encryptionEpub:pair.epub,expiresAt:clock()+604800,maxLifetimeSeconds:300,maxMessageBytes:1024});}finally{journal.close();}
+    descriptor=await activateContactJournal(vault,signal,{encryptionEpub:pair.epub,expiresAt:clock()+604800,maxLifetimeSeconds:300,maxMessageBytes:1024},publicRow.revision);
    }
    await fresh(signal);const principal=parsePrincipalId(owner);if(!principal.ok)return fail();
    const unsigned={v:1 as const,owner:principal.value,issuedAt:clock(),descriptor,sig:''};

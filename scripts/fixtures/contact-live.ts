@@ -46,7 +46,7 @@ export async function contactLive(){
   return {workspace,principal,lock:()=>{unlocked=false;}};
  };
  const alice=await create(1),bob=await create(2);
- await alice.workspace.enableRequests(signal);await bob.workspace.request(alice.principal,'Hello Alice',signal);
+ await alice.workspace.enableRequests(signal);await alice.workspace.disableRequests(signal);await alice.workspace.enableRequests(signal);await bob.workspace.request(alice.principal,'Hello Alice',signal);
  const incoming=await alice.workspace.session.load(signal);if(incoming.requests.length!==1||incoming.contacts.length)throw Error('Explicit acceptance missing');
  await alice.workspace.session.accept(incoming.requests[0].id,signal);
  await bob.workspace.session.load(signal);await alice.workspace.session.messages(bob.principal,signal);

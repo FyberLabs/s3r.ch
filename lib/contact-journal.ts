@@ -13,6 +13,16 @@ function match(v:ContactVault,d:Descriptor|null,now:number){
    (['channelId','revision','encryptionEpub','expiresAt','maxLifetimeSeconds','maxMessageBytes'] as const).some(k=>d[k]!==active[k]))return fail();
 }
 function row(value:ContactVault['journal']['rows'][number]):Row{return {...structuredClone(value),envelope:contactBytes(value.envelope)};}
+/** Publishable revision and private descriptor change in one validated CAS. */
+export async function activateContactJournal(vault:ContactVaultStore,signal:AbortSignal,input:Omit<Descriptor,'channelId'|'revision'>,publicRevision?:number,validate=()=>{}){
+ vault.guard(signal);const policy=structuredClone(input);
+ return vault.change((v,now)=>{
+  const prior=publicRevision??v.journal.revision;
+  if(!integer(prior)||prior>=Number.MAX_SAFE_INTEGER||prior<v.journal.revision-1||!policy||!parsePrincipalId(policy.encryptionEpub).ok||!integer(policy.expiresAt)||policy.expiresAt<=now||policy.expiresAt-now>604800||
+   !integer(policy.maxLifetimeSeconds)||policy.maxLifetimeSeconds<1||policy.maxLifetimeSeconds>604800||!integer(policy.maxMessageBytes)||policy.maxMessageBytes<1||policy.maxMessageBytes>4096)return fail();
+  const d={channelId:random(),revision:prior+1,...policy};v.journal.revision=d.revision;v.journal.enabled=true;v.journal.descriptor=d;return structuredClone(d);
+ },signal,()=>{vault.guard(signal);validate();});
+}
 /** Remote CAS plus the source's complete-history fence supplies the atomic
  * decision boundary. The synchronous validator runs before and after sealing;
  * backend admission checks the same history fence while holding the write lock. */
@@ -21,13 +31,7 @@ export function contactJournal(vault:ContactVaultStore,signal:AbortSignal,select
  const guard=()=>{vault.guard(signal);if(closed)return fail();};
  async function read(){guard();const {value}=await vault.load(signal);guard();if(!value)return fail();return value;}
  return {owner:vault.owner,
-  async activate(input){
-   guard();return vault.change((v,now)=>{
-    if(!input||!parsePrincipalId(input.encryptionEpub).ok||!integer(input.expiresAt)||input.expiresAt<=now||input.expiresAt-now>604800||
-      !integer(input.maxLifetimeSeconds)||input.maxLifetimeSeconds<1||input.maxLifetimeSeconds>604800||!integer(input.maxMessageBytes)||input.maxMessageBytes<1||input.maxMessageBytes>4096||v.journal.revision>=Number.MAX_SAFE_INTEGER)return fail();
-    const d={channelId:random(),revision:v.journal.revision+1,...input};v.journal.revision=d.revision;v.journal.enabled=true;v.journal.descriptor=d;return structuredClone(d);
-   },signal,guard);
-  },
+  async activate(input){guard();return activateContactJournal(vault,signal,input,undefined,guard);},
   async disable(){guard();await vault.change(v=>{v.journal.enabled=false;},signal,guard);},
   async descriptor(){const v=await read();match(v,v.journal.descriptor,vault.state(vault.owner).context.now);return structuredClone(v.journal.descriptor!);},
   async reserve(descriptor,record){
