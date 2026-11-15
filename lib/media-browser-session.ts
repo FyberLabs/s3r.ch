@@ -1,3 +1,4 @@
+import {applyGroupConsent,pendingGroupConsent,discardGroupConsent,type PendingGroupConsent} from "./media-group-recovery";
 import {createMediaGroupMember} from "./media-group-member";
 import {parseMediaGroupScope,type MediaGroupScope} from "./media-group";
 import { createShareJournal } from "./media-share-journal";
@@ -61,6 +62,21 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     });
   }
   return Object.freeze({
+    consent(tenant:string,target:{object:string;scope:MediaGroupScope;member:string;stated:0|1},signal?:AbortSignal){
+      const held=structuredClone(target);
+      return locked(()=>run((pair,transport,deadline)=>applyGroupConsent({tenant,pair,fetcher:transport,signal:deadline,journal:createShareJournal(undefined,"group-consent"),target:held}),signal),"s3rch-private-group-consent-v1");
+    },
+    resumeConsent(tenant:string,expected:PendingGroupConsent,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>applyGroupConsent({tenant,pair,fetcher:transport,signal:deadline,journal:createShareJournal(undefined,"group-consent"),expected:held}),signal),"s3rch-private-group-consent-v1");
+    },
+    pendingConsent(tenant:string,signal?:AbortSignal){
+      return run((pair,_transport,deadline)=>pendingGroupConsent(createShareJournal(undefined,"group-consent"),tenant,pair,deadline),signal);
+    },
+    discardConsent(tenant:string,expected:PendingGroupConsent,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>discardGroupConsent({tenant,pair,fetcher:transport,signal:deadline,journal:createShareJournal(undefined,"group-consent"),expected:held}),signal),"s3rch-private-group-consent-v1");
+    },
     prepareGroupConsent(object:string,scope:MediaGroupScope,member:string,stated:0|1,signal?:AbortSignal){
       const held=parseMediaGroupScope(scope);
       return signed((_owner,key,deadline,transport)=>createMediaGroupMember(transport).prepare(object,held,member,stated,key,deadline),signal);

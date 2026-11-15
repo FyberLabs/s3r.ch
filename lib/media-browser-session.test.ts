@@ -262,3 +262,31 @@ test("member consent uses the unlocked key and preserves session guards",async()
   const changed=createPrivateMediaBrowser(()=>owner,async()=>{forgetUnlockedMeshPair();return Response.json(consent);});
   await assert.rejects(changed.prepareGroupConsent(object,scope,owner,1));
 });
+
+test("durable member consent uses its own lock and survives a lost write reply",async()=>{
+  const {IDBFactory}=await import("fake-indexeddb");
+  const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,"navigator"),oldDb=Object.getOwnPropertyDescriptor(globalThis,"indexedDB");
+  try {
+    unlock();Object.defineProperty(globalThis,"indexedDB",{configurable:true,value:new IDBFactory()});
+    const names:string[]=[];
+    Object.defineProperty(globalThis,"navigator",{configurable:true,value:{locks:{request:async(name:string,_options:unknown,work:(lock:unknown)=>unknown)=>{names.push(name);return work({});}}}});
+    const scope={predicate:"same-group" as const,set:object.replace("media_","set_")};let applied=false,writes=0;
+    const browser=createPrivateMediaBrowser(()=>owner,async(url)=>{
+      const at=Math.floor(Date.now()/1000);
+      if(String(url).endsWith("view"))return Response.json({at,fence:view.fence,consent:{memberPub:owner,state:{...scope,member:owner,setOwner:owner,memberAssent:null,setAssent:{stated:1,hamState:1,cancels:[]},cancels:[],stated:0},draft:{role:"member",...scope,member:owner,setOwner:owner,hamState:2,issuedAt:at,cancels:[]}}});
+      if(String(url).endsWith("check"))return Response.json({at,fence:view.fence,state:applied?"applied":"absent"});
+      writes++;applied=true;throw Error("lost reply");
+    });
+    assert.equal(await browser.pendingConsent(tenant),null);
+    await assert.rejects(browser.consent(tenant,{object,scope,member:owner,stated:1}));
+    const pending=(await browser.pendingConsent(tenant))!;
+    await browser.resumeConsent(tenant,pending);assert.equal(writes,1);
+    assert.equal(await browser.pendingConsent(tenant),null);
+    applied=false;await assert.rejects(browser.consent(tenant,{object,scope,member:owner,stated:1}));
+    await browser.discardConsent(tenant,(await browser.pendingConsent(tenant))!);
+    assert.equal(await browser.pendingConsent(tenant),null);assert.ok(names.every(n=>n==="s3rch-private-group-consent-v1"));
+  } finally {
+    if(oldNavigator)Object.defineProperty(globalThis,"navigator",oldNavigator);else Reflect.deleteProperty(globalThis,"navigator");
+    if(oldDb)Object.defineProperty(globalThis,"indexedDB",oldDb);else Reflect.deleteProperty(globalThis,"indexedDB");
+  }
+});
