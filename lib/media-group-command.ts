@@ -1,6 +1,6 @@
 import {parseGroupWrapCommand,parseGroupWrapResult} from "./media-group-wrap";
 import {parseGroupKeyCommand,parseGroupKeyView} from "./media-group-key";
-import {parseMediaGroupScope,parseMediaGroupPolicy} from "./media-group";
+import {parseMediaGroupScope,parseMediaGroupPolicy,parseMediaGroupView} from "./media-group";
 import {objectPrincipal,parseForumAuthority} from "./identity/forum-authority-records";
 import {isCanonicalObjectId} from "./identity/object-id";
 import {isSeaPubkey} from "./identity/forum-check";
@@ -11,6 +11,7 @@ export type GroupCatalog=Readonly<{at:number;groups:readonly GroupCatalogEntry[]
 export const groupCommandFields={
   catalog:["page"],
   "item-view":["object","predicate","set"],
+  "item-authority-view":["object"],
   allocate:["predicate","set"],
   "wrap-view":["predicate","set"],
   "wrap-publish":["predicate","set","at","fence","metadata","payload"],
@@ -38,6 +39,10 @@ export function parseGroupCommand(action:GroupCommandAction,input:unknown,princi
   const body=structuredClone(input);
   if(!isSeaPubkey(principal)||!exact(body,groupCommandFields[action]))return fail();
   if(action==="catalog"){if(!integer(body.page)||body.page>15)return fail();return body;}
+  if(action==="item-authority-view"){
+    if(typeof body.object!=="string"||!body.object.startsWith("media_")||!isCanonicalObjectId(body.object)||objectPrincipal(body.object)!==principal)return fail();
+    return body;
+  }
   const scope=parseMediaGroupScope({predicate:body.predicate,set:body.set}),owner=objectPrincipal(scope.set);
   if(action==="item-view"){
     if(typeof body.object!=="string"||!body.object.startsWith("media_")||!isCanonicalObjectId(body.object)||objectPrincipal(body.object)!==principal)return fail();
@@ -82,6 +87,12 @@ export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,
       seen.add(id);
     }
     return value;
+  }
+  if(action==="item-authority-view"){
+    if(!exact(value,["at","fence","objectVersion","projection","ownerPub"])||typeof body.object!=="string"||
+        !integer(value.at)||value.at>now+1||now-value.at>4||typeof value.ownerPub!=="string"||!isSeaPubkey(value.ownerPub))return fail();
+    const {ownerPub,...projection}=value;
+    return {...parseMediaGroupView(projection,body.object),ownerPub};
   }
   const scope=parseMediaGroupScope({predicate:body.predicate,set:body.set});
   if(action==="allocate"){

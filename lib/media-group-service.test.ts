@@ -34,6 +34,7 @@ const cases:readonly [GroupCommandAction,Record<string,unknown>,unknown][]=[
   ["key-append",{...scope,at:100,fence,command:groupKeyCommand},{accepted:true}],
   ["key-state",{...scope,command:groupKeyCommand},{at:100,state:"absent",fence}],
   ["item-view",{object,...scope},itemView],
+  ["item-authority-view",{object},{at:100,fence,objectVersion:1,projection:null,ownerPub:owner}],
 ];
 const request=(body:unknown,headers:Record<string,string>={})=>new Request("https://s3r.ch/api/media/groups/create-view",{method:"POST",headers:{origin:"https://s3r.ch","content-type":"application/json",...headers},body:JSON.stringify(body)});
 const service=(fetcher:typeof fetch,resolve=async()=>owner)=>createMediaGroupService(config,"https://s3r.ch",resolve,fetcher,()=>100);
