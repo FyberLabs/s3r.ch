@@ -354,3 +354,35 @@ test("identity reset discards a delayed group recovery result",async()=>{
   f.library.reset("Identity changed");release(saved);await work;assert.equal(f.state().consent,null);assert.equal(f.state().message,"Identity changed");
  } finally {f.library.dispose();}
 });
+
+test("independent group recovery binds the catalog principal and preserves failed requests",async()=>{
+ const saved={kind:"create" as const,set:"set_test",principal:key,token:"saved"};
+ let pending:typeof saved|null=saved,fail=false,applied=true;const calls:unknown[]=[];
+ const f=setup({browser:()=>({catalog:async()=>({at:1,objects:[],nextPage:null,principal:key}),
+  pendingGroupCommand:async(_tenant:string,principal:string)=>{assert.equal(principal,key);return pending;},
+  resumeGroupCommand:async(_tenant:string,principal:string,expected:unknown)=>{assert.equal(principal,key);calls.push(expected);if(fail)throw Error("lost");},
+  discardGroupCommand:async(_tenant:string,principal:string,expected:unknown)=>{assert.equal(principal,key);calls.push(expected);if(fail)throw Error("offline");return {applied};},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try {
+  await f.library.inspectGroupCommand("tenant");await f.library.resumeGroupCommand("tenant");await f.library.discardGroupCommand("tenant");assert.equal(calls.length,0);
+  await f.library.load();await f.library.inspectGroupCommand("tenant");assert.deepEqual(f.state().groupCommand,saved);
+  fail=true;await f.library.resumeGroupCommand("tenant");assert.deepEqual(f.state().groupCommand,saved);assert.match(f.state().message,/retained/);
+  await f.library.discardGroupCommand("tenant");assert.deepEqual(f.state().groupCommand,saved);assert.match(f.state().message,/cannot be cleared/);
+  fail=false;await f.library.resumeGroupCommand("tenant");assert.equal(f.state().groupCommand,null);assert.match(f.state().message,/checked separately/);
+  await f.library.inspectGroupCommand("tenant");await f.library.discardGroupCommand("tenant");assert.match(f.state().message,/already accepted/);
+  applied=false;await f.library.inspectGroupCommand("tenant");await f.library.discardGroupCommand("tenant");assert.match(f.state().message,/not undone/);
+  assert.ok(calls.every(value=>JSON.stringify(value)===JSON.stringify(saved)));
+  pending=null;await f.library.inspectGroupCommand("tenant");assert.match(f.state().message,/No saved/);
+  pending=saved;await f.library.inspectGroupCommand("tenant");f.library.reset();assert.equal(f.state().groupCommand,null);
+ }finally{f.library.dispose();}
+});
+test("identity reset discards delayed independent group recovery",async()=>{
+ let release!:(value:unknown)=>void;
+ const f=setup({browser:()=>({catalog:async()=>({at:1,objects:[],nextPage:null,principal:key}),
+  pendingGroupCommand:()=>new Promise(resolve=>{release=resolve;})} as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try {
+  await f.library.load();const work=f.library.inspectGroupCommand("tenant");while(!release)await new Promise(resolve=>setImmediate(resolve));
+  f.library.reset("Identity changed");release({kind:"create",set:"set_test",principal:key,token:"saved"});await work;
+  assert.equal(f.state().groupCommand,null);assert.equal(f.state().message,"Identity changed");
+ }finally{f.library.dispose();}
+});

@@ -1,3 +1,4 @@
+import type { PendingGroupCommand } from "./media-group-command-recovery";
 import type { PendingGroupConsent } from "./media-group-recovery";
 import { isCanonicalObjectId } from "./identity/object-id";
 import type { MediaCleanupItem } from "./media-catalog";
@@ -14,13 +15,14 @@ class SessionUnavailable extends Error {}
 export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly string[]; page: number;
   nextPage: number | null; loaded: boolean; message: string;
   consent: PendingGroupConsent | null;
+  groupCommand: PendingGroupCommand | null;
   sharing: Readonly<{object:string;reader:string;token:string;remove?:boolean}> | null;
   granted: Readonly<{objects:readonly string[];page:number;nextPage:number|null}> | null;
   cleanup: Readonly<{objects:readonly MediaCleanupItem[];page:number;nextPage:number|null}> | null;
   deletion: Readonly<{object:string;prepared:boolean}> | null;
   audience: Readonly<{object:string;readers:readonly string[]}> | null;
   preview: Readonly<{ url: string; name: string; mediaType: string; tags?:readonly string[] }> | null }>;
-const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null});
+const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null});
 
 /** Private, in-memory navigation. Never persists catalog entries or plaintext. */
 export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, options: {
@@ -159,6 +161,32 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         const catalog=await browser.grantedCatalog(page,signal);
         if(current())publish({...state,granted:{objects:catalog.objects,page,nextPage:catalog.nextPage},audience:null});
       });
+    },
+    inspectGroupCommand(tenant:string) {
+      if(state.deletion||!owner)return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        const groupCommand=await browser.pendingGroupCommand(tenant,principal,signal);
+        if(current())publish({...state,groupCommand,message:groupCommand?"A group change is saved. Retry to confirm it.":"No saved group change."});
+      });
+    },
+    resumeGroupCommand(tenant:string) {
+      if(state.deletion||!state.groupCommand||!owner)return Promise.resolve();
+      const selected=structuredClone(state.groupCommand),principal=owner;
+      return operation(async(signal,current)=>{
+        await browser.resumeGroupCommand(tenant,principal,selected,signal);
+        if(current())publish({...state,groupCommand:null,message:"The group change was accepted. Media access is checked separately."});
+      },()=>publish({...state,message:"The group change could not be confirmed. Its saved request is retained."}));
+    },
+    discardGroupCommand(tenant:string) {
+      if(state.deletion||!state.groupCommand||!owner)return Promise.resolve();
+      const selected=structuredClone(state.groupCommand),principal=owner;
+      return operation(async(signal,current)=>{
+        const result=await browser.discardGroupCommand(tenant,principal,selected,signal);
+        if(current())publish({...state,groupCommand:null,message:result.applied?
+          "The group change was already accepted. Its local saved copy was cleared.":
+          "The unconfirmed group request was cleared. Accepted group changes are not undone."});
+      },()=>publish({...state,message:"The saved group change cannot be cleared yet. Retry recovery; it may still apply or the source may be unavailable."}));
     },
     inspectConsent(tenant:string) {
       if(state.deletion)return Promise.resolve();
