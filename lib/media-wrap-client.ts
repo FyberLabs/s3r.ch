@@ -1,3 +1,8 @@
+import {wrapItemDekToGroupEpoch} from "sociacl-ids/group-wrap";
+import {createGroupWrapClient} from "./media-group-wrap-client";
+import {readGroupItemContext,sameGroupItemContext} from "./media-group-item-client";
+import {parseMediaGroupScope,type MediaGroupScope} from "./media-group";
+import {parseGroupCommand} from "./media-group-command";
 import { openItemDekReaderWrap, wrapItemDekToReaders } from "sociacl-ids";
 import { signPrivateMediaEpoch, signPrivateMediaFinalization } from "sociacl-ids/private-media";
 import { openMedia } from "./media-crypto";
@@ -64,6 +69,37 @@ export function createPrivateMediaReader(fetcher: typeof fetch = fetch, clock = 
       wrap: material.wrap as ItemReaderWrap, reference: material.reference as MediaCiphertextReference, encoded: data.wrapBase64 });
   }
   return Object.freeze({
+    /** Prepare opaque bytes only. Publication still requires protected item grants. */
+    async prepareGroupSharing(object:string,tenant:string,epriv:string,epub:string,owner:string,scopeInput:MediaGroupScope,signal:AbortSignal) {
+      const scope=parseMediaGroupScope(scopeInput);
+      parseGroupCommand("item-view",{object,...scope},owner);
+      const held=AbortSignal.any([signal,AbortSignal.timeout(120_000)]);
+      let dek:Uint8Array|undefined,groupKey:Uint8Array|undefined;
+      try {
+        held.throwIfAborted();
+        const initial=await delivery(object,epub,held),stored=await ciphertext.get(object,initial.reference,held);
+        const current=await delivery(object,epub,held);
+        if(current.encoded!==initial.encoded||clock()>=current.expiresAt)throw Error("Private media changed");
+        const context=await readGroupItemContext(object,scope,owner,fetcher,clock,held);
+        if(context.item.epoch!==current.context.epoch||context.item.revisionId!==current.context.revisionId||
+            context.item.digest!==current.reference.sha256)throw Error("Group item changed");
+        groupKey=await createGroupWrapClient(owner,fetcher,clock).open(scope,epriv,epub,held);
+        if(await uploadDigest(groupKey)!==context.group.keyCommitment||clock()>=context.expiresAt||clock()>=current.expiresAt)
+          throw Error("Group key changed");
+        const opened=await openItemDekReaderWrap(current.wrap,epriv,epub,current.context);
+        if(!opened.ok)throw Error("Private wrapping refused");dek=opened.value;
+        const plaintext=await openMedia(stored,current.reference.sha256,dek,{tenant,object});plaintext.fill(0);
+        held.throwIfAborted();
+        const wrapped=await wrapItemDekToGroupEpoch(dek,groupKey,{object,group:scope.set,epoch:context.item.epoch,revisionId:context.item.revisionId});
+        if(!wrapped.ok)throw Error("Group item wrapping refused");
+        const final=await delivery(object,epub,held);
+        const latest=await readGroupItemContext(object,scope,owner,fetcher,clock,held);
+        if(final.encoded!==current.encoded||final.context.epoch!==current.context.epoch||final.context.revisionId!==current.context.revisionId||
+            !sameGroupItemContext(context,latest)||clock()>=final.expiresAt||clock()>=latest.expiresAt)throw Error("Group item changed");
+        held.throwIfAborted();
+        return {version:1 as const,object,...scope,item:{...latest.item},group:{...latest.group},wrap:wrapped.value,reference:current.reference};
+      } finally {dek?.fill(0);groupKey?.fill(0);}
+    },
     async prepareSharing(object:string,tenant:string,epriv:string,epub:string,planInput:unknown,owner:string,recipient:string,scalar:Uint8Array,signal:AbortSignal,remove=false) {
       const plan=parseMediaSharePlan(planInput,object,owner,recipient,remove),key=new Uint8Array(scalar);
       let dek:Uint8Array|undefined;

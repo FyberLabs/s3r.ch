@@ -81,3 +81,71 @@ test("Fetch-decoded compressed JSON remains bounded and readable",async()=>{
     await assert.rejects(oversized.open(object,tenant,epriv,epub));
   }
 });
+
+import {wrapGroupKeyToMembers} from "sociacl-ids/group-reader-wrap";
+import {openGroupEpochWrap} from "sociacl-ids/group-wrap";
+import {openItemDekReaderWrap} from "sociacl-ids";
+import {uploadDigest} from "./media-upload-journal";
+const owner="axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
+const groupScope={predicate:"same-group" as const,set:object.replace("media_","set_")};
+async function groupFixture(){
+  const f=await fixture(),key=new Uint8Array(32).fill(0x33),revision="b".repeat(64);
+  const encrypted=await wrapGroupKeyToMembers(key,{group:groupScope.set,epoch:3,revisionId:revision},
+    [{account:owner,pub,identityPub:pub,epub}],[owner]);
+  assert.equal(encrypted.ok,true);if(!encrypted.ok)throw Error("fixture");
+  const group={epoch:3,revisionId:revision,keyCommitment:await uploadDigest(key)};
+  const joint={at:100,expiresAt:102,fence:"c".repeat(64),object,...groupScope,ownerPub:owner,
+    item:{...context,digest:f.sealed.sha256},group};
+  const {object:unused,...item}=joint.item;void unused;
+  return {...f,key,joint:{...joint,item},groupDelivery:{predicate:groupScope.predicate,set_id:groupScope.set,epoch:3,revision_id:revision,
+    reader_epub:epub,key_commitment:group.keyCommitment,expires_at:102,payload:Buffer.from(JSON.stringify(encrypted.value[0])).toString("base64")}};
+}
+test("group sharing wraps the current item key without returning or sending plaintext keys",async()=>{
+  const f=await groupFixture();const order:string[]=[];
+  const fetcher:typeof fetch=async(url,init)=>{
+    const path=String(url);order.push(path);
+    assert.ok(!String(init?.body).includes(epriv));
+    if(path==="/api/media/read-wrap")return Response.json(f.delivery);
+    if(path==="/api/media/groups/item-view")return Response.json(f.joint);
+    if(path==="/api/media/groups/wrap-read")return Response.json(f.groupDelivery);
+    return new Response(new Uint8Array(f.sealed.bytes),{headers:{"content-type":"application/octet-stream",
+      "content-length":String(f.sealed.bytes.length),etag:`"${f.sealed.sha256}"`}});
+  };
+  const result=await createPrivateMediaReader(fetcher,()=>100).prepareGroupSharing(object,tenant,epriv,epub,owner,groupScope,new AbortController().signal);
+  assert.deepEqual(Object.keys(result).sort(),["version","object","predicate","set","item","group","wrap","reference"].sort());
+  assert.deepEqual(result.item,f.joint.item);assert.deepEqual(result.group,f.joint.group);
+  const groupOpened=await openGroupEpochWrap(result.wrap,f.key,{object,group:groupScope.set,epoch:1,revisionId:context.revisionId});
+  const direct=await openItemDekReaderWrap(f.sealed.wraps[0],epriv,epub,context);
+  assert.equal(groupOpened.ok,true);assert.equal(direct.ok,true);
+  if(groupOpened.ok&&direct.ok){assert.deepEqual(groupOpened.value,direct.value);groupOpened.value.fill(0);direct.value.fill(0);}
+  assert.equal(order.filter(p=>p==="/api/media/groups/item-view").length,2);
+  assert.equal(order.filter(p=>p==="/api/media/read-wrap").length,3);
+});
+test("group preparation refuses withdrawal, changed item/group context and corrupt ciphertext",async()=>{
+  const f=await groupFixture();
+  for(const change of ["withdraw","group-epoch","group-revision","group-key","item-epoch","item-revision","item-digest","owner-key","cipher","wrong-key"]){
+    let reads=0;
+    const fetcher:typeof fetch=async(url)=>{
+      const path=String(url);
+      if(path==="/api/media/read-wrap")return Response.json(f.delivery);
+      if(path==="/api/media/groups/wrap-read")return Response.json(change==="wrong-key"?{...f.groupDelivery,key_commitment:"0".repeat(64)}:f.groupDelivery);
+      if(path==="/api/media/groups/item-view"){
+        reads++;if(reads===1)return Response.json(f.joint);
+        if(change==="withdraw")return new Response(null,{status:403});
+        const changed=structuredClone(f.joint);
+        if(change==="group-epoch")changed.group.epoch++;
+        if(change==="group-revision")changed.group.revisionId="e".repeat(64);
+        if(change==="group-key")changed.group.keyCommitment="e".repeat(64);
+        if(change==="item-epoch")changed.item.epoch++;
+        if(change==="item-revision")changed.item.revisionId="e".repeat(64);
+        if(change==="item-digest")changed.item.digest="e".repeat(64);
+        if(change==="owner-key")changed.ownerPub=pub;
+        return Response.json(changed);
+      }
+      const bytes=new Uint8Array(f.sealed.bytes);if(change==="cipher")bytes[bytes.length-1]^=1;
+      return new Response(bytes,{headers:{"content-type":"application/octet-stream",
+        "content-length":String(bytes.length),etag:`"${f.sealed.sha256}"`}});
+    };
+    await assert.rejects(createPrivateMediaReader(fetcher,()=>100).prepareGroupSharing(object,tenant,epriv,epub,owner,groupScope,new AbortController().signal));
+  }
+});
