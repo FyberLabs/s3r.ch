@@ -31,6 +31,7 @@ import {
 } from "@/lib/identity/idb";
 import {
   ensureLocalMeshKey,
+  MeshKeySetupError,
   persistRewrappedMeshKey,
   persistWrappedMeshKey,
   readLocalMeshPair,
@@ -482,8 +483,8 @@ function IdentityBarInner() {
           rememberUnlockedMeshPair(verifyBody.address, mesh.record.seaPair);
         }
         setUnlocked(false);
-      } catch {
-        setMeshLine("Failed");
+      } catch (error) {
+        setMeshLine(error instanceof MeshKeySetupError ? error.message : "SEA key setup failed. Retry sign-in.");
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign-in failed.");

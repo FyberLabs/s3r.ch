@@ -241,10 +241,11 @@ function idbRequest<T>(
     return new Promise<T>((resolve, reject) => {
       const tx = db.transaction(MESH_STORE_NAME, mode);
       const request = run(tx.objectStore(MESH_STORE_NAME));
-      request.onsuccess = () => resolve(request.result);
+      // Resolve only after commit; a successful request can still abort.
+      request.onsuccess = () => {};
       request.onerror = () =>
         reject(request.error ?? new Error("IndexedDB request failed."));
-      tx.oncomplete = () => db.close();
+      tx.oncomplete = () => { db.close(); resolve(request.result); };
       tx.onabort = () => {
         db.close();
         reject(tx.error ?? new Error("IndexedDB transaction aborted."));

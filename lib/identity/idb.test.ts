@@ -194,32 +194,33 @@ class FakeDb {
   transaction(storeName: string) {
     const data = this.stores.get(storeName);
     if (!data) throw new Error(`missing store ${storeName}`);
-    return {
+    const tx = {
       objectStore: () => ({
-        get: (key: IDBValidKey) => succeed(data.rows.get(key)),
+        get: (key: IDBValidKey) => succeed(data.rows.get(key), () => tx.oncomplete?.(new Event("complete"))),
         put: (value: Record<string, unknown>) => {
           const key = value[data.keyPath] as IDBValidKey;
           data.rows.set(key, value);
-          return succeed(key);
+          return succeed(key, () => tx.oncomplete?.(new Event("complete")));
         },
       }),
       oncomplete: null as ((ev: Event) => void) | null,
       onabort: null as ((ev: Event) => void) | null,
       error: null,
     };
+    return tx;
   }
 
   close() {}
 }
 
-function succeed<T>(result: T) {
+function succeed<T>(result: T, complete: () => void = () => {}) {
   const request: {
     result: T;
     error: null;
     onsuccess: ((ev: Event) => void) | null;
     onerror: ((ev: Event) => void) | null;
   } = { result, error: null, onsuccess: null, onerror: null };
-  queueMicrotask(() => request.onsuccess?.(new Event("success")));
+  queueMicrotask(() => { request.onsuccess?.(new Event("success")); queueMicrotask(complete); });
   return request;
 }
 

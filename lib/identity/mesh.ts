@@ -51,19 +51,19 @@ export async function ensureLocalMeshKey(
   input: EnsureLocalMeshKeyInput,
 ): Promise<EnsureLocalMeshKeyResult> {
   const store = input.store ?? createIndexedDbMeshKeyStore();
-  const existing = await store.get(input.address);
+  const existing = await meshStage("storage", () => store.get(input.address));
   if (existing && isMeshKeyRecord(existing)) {
     return { record: existing, created: false };
   }
 
-  const pair = await (input.createPair ?? createSeaPair)();
+  const pair = await meshStage("key-generation", input.createPair ?? createSeaPair);
   const signedPayload = buildMeshLinkStatement({
     domain: input.domain,
     uri: input.uri,
     address: input.address,
     seaPub: pair.pub,
   });
-  const walletSignature = await input.signMessage(signedPayload);
+  const walletSignature = await meshStage("wallet-signature", () => input.signMessage(signedPayload));
   const record: MeshKeyRecord = {
     address: input.address,
     seaPub: pair.pub,
@@ -71,10 +71,10 @@ export async function ensureLocalMeshKey(
     walletSignature,
     signedPayload,
   };
-  await store.put(record);
-  const stored = await store.get(input.address);
+  await meshStage("storage", () => store.put(record));
+  const stored = await meshStage("storage", () => store.get(input.address));
   if (!stored) {
-    throw new Error("Mesh key did not persist in IndexedDB.");
+    throw new MeshKeySetupError("storage");
   }
   return { record: stored, created: true };
 }
@@ -162,4 +162,15 @@ export async function persistRewrappedMeshKey(
     throw new Error("Rewrapped mesh key did not persist in IndexedDB.");
   }
   return stored;
+}
+
+export class MeshKeySetupError extends Error {
+  constructor(readonly stage: "storage" | "key-generation" | "wallet-signature") {
+    super(stage === "storage" ? "Browser key storage is unavailable. Allow site storage and retry." :
+      stage === "key-generation" ? "SEA key creation failed. Retry in a secure browser context." :
+      "Wallet link signature was not completed. Retry and approve the wallet request.");
+  }
+}
+async function meshStage<T>(stage: MeshKeySetupError["stage"], action: () => Promise<T>): Promise<T> {
+  try { return await action(); } catch { throw new MeshKeySetupError(stage); }
 }

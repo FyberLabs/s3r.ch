@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { btnSecondary, field } from "@/lib/brand-ui";
 import { FIXTURE_CONFIRM_CODE } from "@/lib/identity/config";
 import type { HeldConfirmProof } from "@/lib/identity/confirm-proof";
@@ -12,6 +12,16 @@ type Props = {
 };
 
 export function HeldConfirmControls({ address, proofs, onHeld }: Props) {
+  const [available, setAvailable] = useState({ email: false, phone: false });
+  useEffect(() => {
+    let active = true;
+    fetch("/api/identity/confirm/start", { cache: "no-store" }).then(async response => {
+      if (!response.ok) return;
+      const body = await response.json();
+      if (active) setAvailable({ email: body.email === true, phone: body.phone === true });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
   const hasEmail = proofs.some((row) => row.kind === "email");
   const hasPhone = proofs.some((row) => row.kind === "phone");
   const hasKyc = proofs.some((row) => row.kind === "kyc");
@@ -19,10 +29,10 @@ export function HeldConfirmControls({ address, proofs, onHeld }: Props) {
 
   return (
     <div className="mt-4 border-t border-rule pt-4">
-      {!hasEmail ? (
+      {available.email && !hasEmail ? (
         <ConfirmRow kind="email" address={address} onHeld={onHeld} />
       ) : null}
-      {!hasPhone ? (
+      {available.phone && !hasPhone ? (
         <ConfirmRow kind="phone" address={address} onHeld={onHeld} />
       ) : null}
       {!hasKyc ? <KycRow address={address} onHeld={onHeld} /> : null}
