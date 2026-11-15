@@ -10,8 +10,8 @@ const owner=pair.pub,reader="fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENu
 const tenant="11111111-1111-4111-8111-111111111111";
 const object="media_p_6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_11111111111111111111111111111111";
 const context={object,epoch:1,revisionId:"b".repeat(64)};
-const bundle=await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {PrivateMediaLibrary} from './components/PrivateMediaLibrary';import {sealMediaFile} from './lib/media-file';import {rememberUnlockedMeshPair,forgetUnlockedMeshPair} from './lib/identity/unlocked-mesh';const pair=${JSON.stringify(pair)};rememberUnlockedMeshPair('ci-fixture',pair);window.lockIdentity=forgetUnlockedMeshPair;window.seed=async()=>{const s=await sealMediaFile(new TextEncoder().encode('private fixture'),{name:'private.png',mediaType:'image/png'},{tenant:'${tenant}',object:'${object}'},${JSON.stringify(context)},[{account:pair.pub,pub:pair.pub,identityPub:pair.pub,epub:pair.epub}],[pair.pub]);return {...s,bytes:Array.from(s.bytes)};};createRoot(document.getElementById('root')).render(<PrivateMediaLibrary tenant="${tenant}"/>);`,resolveDir:process.cwd(),loader:"tsx"},bundle:true,write:false,platform:"browser",format:"iife",define:{"process.env.NODE_ENV":'"production"'},plugins:[{name:"synthetic-identity-display",setup(b){b.onLoad({filter:/[/\\]IdentityBar\.tsx$/},()=>({contents:"export function IdentityBar(){return null}",loader:"tsx"}));}}]});
-let seed,lost=false;const applied=new Map(),writes=[],errors=[],actions=[];
+const bundle=await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {PrivateMediaLibrary} from './components/PrivateMediaLibrary';import {sealMediaFile} from './lib/media-file';import {applyGroupConsent} from './lib/media-group-recovery';import {createShareJournal} from './lib/media-share-journal';import {rememberUnlockedMeshPair,forgetUnlockedMeshPair} from './lib/identity/unlocked-mesh';const pair=${JSON.stringify(pair)};rememberUnlockedMeshPair('ci-fixture',pair);window.lockIdentity=forgetUnlockedMeshPair;window.seedConsent=async(stated)=>{try{await applyGroupConsent({tenant:'${tenant}',pair,fetcher:fetch,signal:new AbortController().signal,journal:createShareJournal(undefined,'group-consent'),target:{object:'${object}',scope:{predicate:'same-group',set:'${object.replace("media_","set_")}'},member:pair.pub,stated}});}catch{}};window.seed=async()=>{const s=await sealMediaFile(new TextEncoder().encode('private fixture'),{name:'private.png',mediaType:'image/png'},{tenant:'${tenant}',object:'${object}'},${JSON.stringify(context)},[{account:pair.pub,pub:pair.pub,identityPub:pair.pub,epub:pair.epub}],[pair.pub]);return {...s,bytes:Array.from(s.bytes)};};createRoot(document.getElementById('root')).render(<PrivateMediaLibrary tenant="${tenant}"/>);`,resolveDir:process.cwd(),loader:"tsx"},bundle:true,write:false,platform:"browser",format:"iife",define:{"process.env.NODE_ENV":'"production"'},plugins:[{name:"synthetic-identity-display",setup(b){b.onLoad({filter:/[/\\]IdentityBar\.tsx$/},()=>({contents:"export function IdentityBar(){return null}",loader:"tsx"}));}}]});
+let groupApplied=false,groupWrites=0;let seed,lost=false;const applied=new Map(),writes=[],errors=[],actions=[];
 const bindings={[owner]:{pub:owner,epub:pair.epub,head:0},[reader]:{pub:reader,epub:reader,head:0}};
 const grants=()=>[owner,reader].map(accessor=>({object,owner,accessor,from:0,until:Number.MAX_SAFE_INTEGER,stated:1,epoch:2,grantRevision:2,itemCiphertextDigest:seed.sha256}));
 const snapshot=()=>({entries:grants().map(g=>({accessor:g.accessor,from:g.from,until:g.until,stated:1,grantRevision:2,scope:'direct',setId:'',hamState:0}))});
@@ -27,6 +27,12 @@ const server=createServer(async(req,res)=>{
   if(body){assert.ok(!raw.toString().includes(pair.priv));assert.ok(!raw.toString().includes(pair.epriv));}
   actions.push(req.url);
   const action=req.url.split('/').at(-1),at=Math.floor(Date.now()/1000),fence='a'.repeat(64);
+  if(action==='group-consent-view'||action==='group-withdrawal-view'){
+    const scope={predicate:'same-group',set:object.replace('media_','set_')},withdraw=action==='group-withdrawal-view';
+    json({at,fence,consent:{memberPub:owner,state:{...scope,member:owner,setOwner:owner,memberAssent:withdraw?{stated:1,hamState:2,cancels:[]}:null,setAssent:withdraw?null:{stated:1,hamState:1,cancels:[]},cancels:[],stated:0},draft:{role:'member',...scope,member:owner,setOwner:owner,hamState:2,issuedAt:at,cancels:[]}}});return;
+  }
+  if(action==='group-consent-check'){json({at,fence,state:groupApplied?'applied':'absent'});return;}
+  if(action==='group-consent-append'){groupApplied=true;groupWrites++;json({},503);return;}
   if(action==='catalog'){json({at,objects:[object],nextPage:1,principal:owner});return;}
   if(action==='view'){json({at,fence,objectVersion:1,owner,snapshot:snapshot(),bindings});return;}
   if(action==='status-view'){json({at,fence,ownerPub:owner,status:{object,epoch:applied.has('epoch')?2:1,revisionId:'b'.repeat(64),accessor:body.reader,grantRevision:2,stated:1,signedAt:at*1000,maxAgeMs:60000,zookie:{object,objectVersion:1,snapshotHash:'c'.repeat(64)}}});return;}
@@ -58,6 +64,16 @@ try {
  await page.getByRole('status').filter({hasText:'Sharing confirmed.'}).waitFor();
  assert.equal(writes.length,5);assert.equal(new Set(writes).size,5);
  await page.getByRole('button',{name:'Check saved sharing'}).click();await page.getByRole('status').filter({hasText:'No pending sharing change.'}).waitFor();
+ await page.evaluate(()=>window.seedConsent(1));await page.reload();
+ await page.getByRole('button',{name:'Check saved group response',exact:true}).click();
+ await page.getByText('Saved request to join a group.',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Retry saved group response',exact:true}).click();
+ await page.getByRole('status').filter({hasText:'Your group response was accepted.'}).waitFor();assert.equal(groupWrites,1);
+ groupApplied=false;await page.evaluate(()=>window.seedConsent(0));
+ await page.getByRole('button',{name:'Check saved group response',exact:true}).click();
+ await page.getByText('Saved request to leave a group.',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Clear completed or expired request',exact:true}).click();
+ await page.getByRole('status').filter({hasText:'The group response was already accepted.'}).waitFor();assert.equal(groupWrites,2);
  await page.getByRole('button',{name:'Refresh my media',exact:true}).click();await page.getByRole('button',{name:'Manage sharing'}).click();
  await page.getByLabel('Recipient SEA account').fill(reader);await page.evaluate(()=>window.lockIdentity());
  assert.equal(await page.getByLabel('Recipient SEA account').count(),0);assert.deepEqual(errors,[]);
