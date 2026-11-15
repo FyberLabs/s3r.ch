@@ -31,6 +31,9 @@ try{
  next('cleanup');
 }catch{outcomes.set(active,'failed');process.exitCode=1;}
 finally{
- try{await browser?.close();if(server)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));if(active==='cleanup')outcomes.set('cleanup','passed');}catch{outcomes.set('cleanup','failed');process.exitCode=1;}
+ let cleaned=true;
+ try{await browser?.close();}catch{cleaned=false;}
+ try{if(server)await new Promise((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}catch{cleaned=false;}
+ outcomes.set('cleanup',cleaned?'passed':'failed');if(!cleaned)process.exitCode=1;
  writeNightlyCaseResults({suite:'s3rch-contact-inbox-ui',expectedCases:names,cases:names.map(name=>({name,status:outcomes.get(name)??'blocked'}))});
 }
