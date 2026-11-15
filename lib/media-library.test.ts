@@ -360,18 +360,20 @@ test("independent group recovery binds the catalog principal and preserves faile
  let pending:typeof saved|null=saved,fail=false,applied=true;const calls:unknown[]=[];
  const f=setup({browser:()=>({catalog:async()=>({at:1,objects:[],nextPage:null,principal:key}),
   pendingGroupCommand:async(_tenant:string,principal:string)=>{assert.equal(principal,key);return pending;},
-  resumeGroupCommand:async(_tenant:string,principal:string,expected:unknown)=>{assert.equal(principal,key);calls.push(expected);if(fail)throw Error("lost");},
+  resumeGroupCommand:async(_tenant:string,principal:string,expected:unknown)=>{assert.equal(principal,key);calls.push(expected);if(fail){pending={...saved,token:"renewed"};throw Error("lost");}},
   discardGroupCommand:async(_tenant:string,principal:string,expected:unknown)=>{assert.equal(principal,key);calls.push(expected);if(fail)throw Error("offline");return {applied};},
  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
  try {
   await f.library.inspectGroupCommand("tenant");await f.library.resumeGroupCommand("tenant");await f.library.discardGroupCommand("tenant");assert.equal(calls.length,0);
   await f.library.load();await f.library.inspectGroupCommand("tenant");assert.deepEqual(f.state().groupCommand,saved);
-  fail=true;await f.library.resumeGroupCommand("tenant");assert.deepEqual(f.state().groupCommand,saved);assert.match(f.state().message,/retained/);
-  await f.library.discardGroupCommand("tenant");assert.deepEqual(f.state().groupCommand,saved);assert.match(f.state().message,/cannot be cleared/);
+  fail=true;await f.library.resumeGroupCommand("tenant");assert.equal(f.state().groupCommand,null);assert.match(f.state().message,/Check the saved group change again/);
+  const count=calls.length;await f.library.resumeGroupCommand("tenant");await f.library.discardGroupCommand("tenant");assert.equal(calls.length,count);
+  await f.library.inspectGroupCommand("tenant");assert.equal(f.state().groupCommand?.token,"renewed");
+  await f.library.discardGroupCommand("tenant");assert.equal(f.state().groupCommand?.token,"renewed");assert.match(f.state().message,/cannot be cleared/);
   fail=false;await f.library.resumeGroupCommand("tenant");assert.equal(f.state().groupCommand,null);assert.match(f.state().message,/checked separately/);
   await f.library.inspectGroupCommand("tenant");await f.library.discardGroupCommand("tenant");assert.match(f.state().message,/already accepted/);
   applied=false;await f.library.inspectGroupCommand("tenant");await f.library.discardGroupCommand("tenant");assert.match(f.state().message,/not undone/);
-  assert.ok(calls.every(value=>JSON.stringify(value)===JSON.stringify(saved)));
+  assert.deepEqual(calls[0],saved);assert.ok(calls.slice(1).every(value=>(value as {token:string}).token==="renewed"));
   pending=null;await f.library.inspectGroupCommand("tenant");assert.match(f.state().message,/No saved/);
   pending=saved;await f.library.inspectGroupCommand("tenant");f.library.reset();assert.equal(f.state().groupCommand,null);
  }finally{f.library.dispose();}

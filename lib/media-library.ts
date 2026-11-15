@@ -176,7 +176,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       return operation(async(signal,current)=>{
         await browser.resumeGroupCommand(tenant,principal,selected,signal);
         if(current())publish({...state,groupCommand:null,message:"The group change was accepted. Media access is checked separately."});
-      },()=>publish({...state,message:"The group change could not be confirmed. Its saved request is retained."}));
+      },()=>publish({...state,groupCommand:null,message:"The group change could not be confirmed. Its saved request is retained. Check the saved group change again before retrying."}));
     },
     discardGroupCommand(tenant:string) {
       if(state.deletion||!state.groupCommand||!owner)return Promise.resolve();
