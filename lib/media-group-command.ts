@@ -10,6 +10,7 @@ export type GroupCatalog=Readonly<{at:number;groups:readonly GroupCatalogEntry[]
 
 export const groupCommandFields={
   catalog:["page"],
+  "item-view":["object","predicate","set"],
   allocate:["predicate","set"],
   "wrap-view":["predicate","set"],
   "wrap-publish":["predicate","set","at","fence","metadata","payload"],
@@ -38,7 +39,9 @@ export function parseGroupCommand(action:GroupCommandAction,input:unknown,princi
   if(!isSeaPubkey(principal)||!exact(body,groupCommandFields[action]))return fail();
   if(action==="catalog"){if(!integer(body.page)||body.page>15)return fail();return body;}
   const scope=parseMediaGroupScope({predicate:body.predicate,set:body.set}),owner=objectPrincipal(scope.set);
-  if(action.startsWith("key-")||action==="allocate"){
+  if(action==="item-view"){
+    if(typeof body.object!=="string"||!body.object.startsWith("media_")||!isCanonicalObjectId(body.object)||objectPrincipal(body.object)!==principal)return fail();
+  } else if(action.startsWith("key-")||action==="allocate"){
     if(owner!==principal)return fail();
     if("command" in body)parseGroupKeyCommand(body.command,scope);
   } else if(action.startsWith("create")) {
@@ -91,6 +94,17 @@ export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,
   if(!value||typeof value!=="object"||Array.isArray(value))return fail();
   const v=value as Record<string,unknown>;
   if(!integer(v.at)||v.at>now+1||now-v.at>4)return fail();
+  if(action==="item-view"){
+    if(!exact(v,["at","expiresAt","fence","object","predicate","set","ownerPub","item","group"])||
+        v.object!==body.object||v.predicate!==scope.predicate||v.set!==scope.set||!digest(v.fence)||
+        typeof v.ownerPub!=="string"||!isSeaPubkey(v.ownerPub)||!integer(v.expiresAt)||
+        v.expiresAt<=now||v.expiresAt>now+2||v.expiresAt<=v.at||v.expiresAt>v.at+2||
+        !exact(v.item,["epoch","revisionId","digest"])||!integer(v.item.epoch)||v.item.epoch<1||
+        !digest(v.item.revisionId)||!digest(v.item.digest)||
+        !exact(v.group,["epoch","revisionId","keyCommitment"])||!integer(v.group.epoch)||v.group.epoch<1||
+        !digest(v.group.revisionId)||!digest(v.group.keyCommitment))return fail();
+    return v;
+  }
   if(action==="key-view")return parseGroupKeyView(v,scope);
   if(action==="create-state"||action==="member-state"||action==="key-state") {
     const fields=action==="create-state"&&v.state==="applied"?["at","state"]:["at","state","fence"];
