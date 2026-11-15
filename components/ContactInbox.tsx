@@ -62,7 +62,7 @@ function SessionInbox({ session }: { session: ContactInboxSession }) {
   return <section aria-label="Contacts" className="space-y-4">
     <h2 className="font-semibold">Contacts</h2>
     {status&&<p role="status">{status}</p>}
-    {!view?<p>Loading contacts…</p>:<>
+    {!view?<p>{busy?"Loading contacts…":"Contacts could not be loaded."}</p>:<>
       <section aria-label="Contact requests"><h3>Requests</h3>
         {!view.requests.length&&<p>No pending requests.</p>}
         {view.requests.map(request=><article key={request.id} className="border rounded p-3">
@@ -86,7 +86,7 @@ function SessionInbox({ session }: { session: ContactInboxSession }) {
           <button disabled={busy||(!draft.trim()&&!pending.current)}>{pending.current?"Retry message":"Send message"}</button>
         </form>
       </section>}
-      <button disabled={busy} onClick={()=>void run(load)}>Refresh contacts</button>
     </>}
+    <button disabled={busy} onClick={()=>void run(load)}>Refresh contacts</button>
   </section>;
 }

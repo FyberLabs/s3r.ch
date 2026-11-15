@@ -14,7 +14,8 @@ try{
  server.listen(0,'127.0.0.1');await once(server,'listening');const origin=`http://127.0.0.1:${server.address().port}`;
  browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH});
  const page=await browser.newPage();await page.route('**/*',route=>route.request().url().startsWith(origin+'/')?route.continue():route.abort());
- await page.goto(origin);await page.getByText('Hello Alice',{exact:true}).waitFor();
+ await page.goto(origin);await page.getByText('Contacts could not be loaded.',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Refresh contacts',exact:true}).click();await page.getByText('Hello Alice',{exact:true}).waitFor();
  next('explicit-acceptance');assert.equal(await page.getByLabel('Contact conversation').count(),0);
  await page.getByRole('button',{name:'Accept',exact:true}).click();await page.getByText('No pending requests.').waitFor();
  await page.getByRole('button',{name:'fixture-bob',exact:true}).click();await page.getByLabel('Message',{exact:true}).fill('Private draft');

@@ -4,13 +4,13 @@ import React,{useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {ContactInbox} from '../../components/ContactInbox';
 import type {ContactInboxSession,ContactMessageView} from '../../lib/contact-inbox-view';
-let accepted=false,blocked=false,locked=false,failOnce=true,prepared=0,submitted=0;
+let accepted=false,blocked=false,locked=false,failOnce=true,failLoad=true,prepared=0,submitted=0;
 const rows:ContactMessageView[]=[],listeners=new Set<()=>void>();
 const peer='fixture-bob',owner='fixture-alice';
 function changed(){for(const listener of listeners)listener();}
 const session:ContactInboxSession={id:'fixture-session-alice',principal:owner,
  subscribe(listener){listeners.add(listener);return()=>{listeners.delete(listener);};},current:()=>!locked,
- async load(){return{requests:accepted||blocked?[]:[{id:'request-bob',sender:peer,message:'Hello Alice'}],contacts:accepted?[{principal:peer,blocked}]:[]};},
+ async load(){if(failLoad){failLoad=false;throw Error('Simulated initial load failure');}return{requests:accepted||blocked?[]:[{id:'request-bob',sender:peer,message:'Hello Alice'}],contacts:accepted?[{principal:peer,blocked}]:[]};},
  async accept(id,signal){signal.throwIfAborted();if(id!=='request-bob'||blocked||locked)throw Error();accepted=true;},
  async reject(id,signal){signal.throwIfAborted();if(id!=='request-bob')throw Error();blocked=true;},
  async block(principal,signal){signal.throwIfAborted();if(principal!==peer)throw Error();blocked=true;},
