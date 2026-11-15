@@ -16,6 +16,10 @@ const key=new Uint8Array(32);key[31]=1;
 const row=signOwnerGroupRow("membership",unsigned,scope,object,owner,100,key,owner);
 const draft={...unsigned,...scope,issuedAt:100};
 const member={...scope,member:other,role:"set"};
+const groupSnapshot={predicate:scope.predicate,setId:scope.set,setOwner:owner,ownerSigningPub:owner,ownerEncryptionPub:other,ownerIdentityHead:0,members:[]};
+const groupManifest={object:scope.set,previousEpoch:0,epoch:1,deviceId:"device",revisionId:"b".repeat(64),keyCommitment:"c".repeat(64),settleWindowMs:3600000,aclSnapshot:"d".repeat(64),signature:"1".repeat(128)};
+const groupFinalization={object:scope.set,previousEpoch:0,epoch:1,revisionId:groupManifest.revisionId,candidateRevisionIds:[groupManifest.revisionId],previousFinalizationId:"",finalizationId:"e".repeat(64),signature:"1".repeat(128)};
+const groupKeyCommand={document:{manifest:groupManifest,snapshot:groupSnapshot},finalization:groupFinalization};
 const cases:readonly [GroupCommandAction,Record<string,unknown>,unknown][]=[
   ["create-view",{object,...scope},{at:100,context,fence}],
   ["create",{object,...scope,at:100,fence,config:policy},{accepted:true}],
@@ -23,6 +27,9 @@ const cases:readonly [GroupCommandAction,Record<string,unknown>,unknown][]=[
   ["member-view",{...member,stated:1},{at:100,draft,signerPub:owner,fence}],
   ["member-append",{...member,at:100,fence,row},{accepted:true}],
   ["member-state",{...member,row},{at:100,state:"absent",fence}],
+  ["key-view",scope,{at:100,fence,snapshot:groupSnapshot,config:policy,previousEpoch:0,previousFinalizationId:""}],
+  ["key-append",{...scope,at:100,fence,command:groupKeyCommand},{accepted:true}],
+  ["key-state",{...scope,command:groupKeyCommand},{at:100,state:"absent",fence}],
 ];
 const request=(body:unknown,headers:Record<string,string>={})=>new Request("https://s3r.ch/api/media/groups/create-view",{method:"POST",headers:{origin:"https://s3r.ch","content-type":"application/json",...headers},body:JSON.stringify(body)});
 const service=(fetcher:typeof fetch,resolve=async()=>owner)=>createMediaGroupService(config,"https://s3r.ch",resolve,fetcher,()=>100);
