@@ -11,13 +11,13 @@ export interface ShareJournal {
   remove(expected: number, signal: AbortSignal): Promise<void>;
 }
 export const shareDigest = async (bytes: Uint8Array) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new Uint8Array(bytes))),b=>b.toString(16).padStart(2,"0")).join("");
-export type JournalPurpose="share"|"group-consent"|"group-command";
+export type JournalPurpose="share"|"group-consent"|"group-command"|"group-key";
 function domain(purpose:JournalPurpose) {
-  if(purpose!=="share"&&purpose!=="group-consent"&&purpose!=="group-command")throw Error("Invalid recovery purpose");
+  if(purpose!=="share"&&purpose!=="group-consent"&&purpose!=="group-command"&&purpose!=="group-key")throw Error("Invalid recovery purpose");
   return purpose;
 }
 async function context(tenant:string,object:string,purpose:JournalPurpose) {
-  if(!object.startsWith(purpose==="group-command"?"set_":"media_") || !isCanonicalObjectId(object))throw Error("Invalid recovery object");
+  if(!object.startsWith((purpose==="group-command"||purpose==="group-key")?"set_":"media_") || !isCanonicalObjectId(object))throw Error("Invalid recovery object");
   return {object,epoch:0,revisionId:await shareDigest(new TextEncoder().encode(JSON.stringify([`s3rch-${domain(purpose)}-recovery-v1`,tenant,object])))};
 }
 /** Local recovery encryption is not a service grant and is never published. */
