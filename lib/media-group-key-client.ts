@@ -27,6 +27,9 @@ export function createGroupKeyClient(principal:string,fetcher:typeof fetch=fetch
     signal.throwIfAborted();return result;
   }
   return Object.freeze({
+    async allocate(scope:MediaGroupScope,signal?:AbortSignal){
+      await request("allocate",parseMediaGroupScope(scope),deadline(signal));
+    },
     async prepare(scope:MediaGroupScope,deviceId:string,groupKey:Uint8Array,scalar:Uint8Array,signal?:AbortSignal):Promise<SignedGroupKeyCommand>{
       if(!(scalar instanceof Uint8Array)||scalar.length!==32||!(groupKey instanceof Uint8Array)||groupKey.length!==32)return fail();
       const signer=new Uint8Array(scalar),secret=new Uint8Array(groupKey),held=deadline(signal);

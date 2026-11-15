@@ -1,3 +1,5 @@
+import {createGroupKeyClient} from "./media-group-key-client";
+import {applyGroupKey,pendingGroupKey,deliverGroupKey,finishGroupKeyDelivery,discardGroupKey,type PendingGroupKey} from "./media-group-key-recovery";
 import {applyGroupCommand as applyDurableGroupCommand,pendingGroupCommand,discardGroupCommand,type PendingGroupCommand} from "./media-group-command-recovery";
 import {createGroupCommandClient,parseSignedGroupCommand,type GroupSignedCommand} from "./media-group-client";
 import {applyGroupConsent,pendingGroupConsent,discardGroupConsent,type PendingGroupConsent} from "./media-group-recovery";
@@ -64,6 +66,44 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     });
   }
   return Object.freeze({
+    startGroupKey(tenant:string,principal:string,scope:MediaGroupScope,signal?:AbortSignal){
+      const held=parseMediaGroupScope(scope);
+      return locked(()=>run(async(pair,transport,deadline)=>{
+        const input={tenant,principal,pair,fetcher:transport,signal:deadline,journal:createShareJournal(undefined,"group-key")};
+        if(await pendingGroupKey(input))throw Error("A group key requires recovery");
+        const client=createGroupKeyClient(principal,transport);
+        await client.allocate(held,deadline);
+        if(!/^[A-Za-z0-9_-]{43}$/.test(pair.priv))throw Error("Invalid group signing key");
+        const scalar=Uint8Array.from(atob(pair.priv.replace(/-/g,"+").replace(/_/g,"/")+"="),c=>c.charCodeAt(0));
+        const secret=crypto.getRandomValues(new Uint8Array(32));
+        try{
+          if(scalar.length!==32||btoa(String.fromCharCode(...scalar)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")!==pair.priv)throw Error("Invalid group signing key");
+          const command=await client.prepare(held,crypto.randomUUID(),secret,scalar,deadline);
+          return await applyGroupKey({...input,command,groupKey:secret});
+        }finally{scalar.fill(0);secret.fill(0);}
+      },signal),"s3rch-private-group-key-v1");
+    },
+    pendingGroupKey(tenant:string,principal:string,signal?:AbortSignal){
+      return run((pair,transport,deadline)=>pendingGroupKey({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-key")}),signal);
+    },
+    resumeGroupKey(tenant:string,principal:string,expected:PendingGroupKey,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>{
+        const input={tenant,principal,pair,fetcher:transport,signal:deadline,journal:createShareJournal(undefined,"group-key"),expected:held};
+        return held.phase==="prepared"?applyGroupKey(input):deliverGroupKey(input);
+      },signal),"s3rch-private-group-key-v1");
+    },
+    finishGroupKey(tenant:string,principal:string,expected:PendingGroupKey,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>finishGroupKeyDelivery({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-key"),expected:held}),signal),"s3rch-private-group-key-v1");
+    },
+    discardGroupKey(tenant:string,principal:string,expected:PendingGroupKey,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>discardGroupKey({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-key"),expected:held}),signal),"s3rch-private-group-key-v1");
+    },
     groupCatalog(principal:string,page=0,signal?:AbortSignal){
       return run((_pair,transport,deadline)=>createGroupCommandClient(principal,transport).catalog(page,deadline),signal);
     },

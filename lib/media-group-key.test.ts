@@ -56,3 +56,11 @@ test("preparation requires exact policy, safe parent and a scope-bound snapshot"
   assert.doesNotThrow(()=>parseGroupKeyView({...view,previousEpoch:1,previousFinalizationId:"a".repeat(64)},scope));
   assert.throws(()=>parseGroupKeyView({...view,previousEpoch:1},scope));
 });
+
+test("group allocation accepts only the owner and matching accepted scope",()=>{
+ assert.deepEqual(parseGroupCommand("allocate",scope,owner),scope);
+ assert.throws(()=>parseGroupCommand("allocate",scope,other));
+ assert.deepEqual(parseGroupCommandResult("allocate",{...scope,accepted:true},scope,100,owner),{...scope,accepted:true});
+ for(const value of [{accepted:true},{...scope,accepted:false},{...scope,accepted:true,set:"wrong"}])
+  assert.throws(()=>parseGroupCommandResult("allocate",value,scope,100,owner));
+});

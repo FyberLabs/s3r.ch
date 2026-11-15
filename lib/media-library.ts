@@ -1,3 +1,4 @@
+import type {PendingGroupKey} from "./media-group-key-recovery";
 import { mintObjectId, parsePrincipalId } from "sociacl-ids";
 import type { GroupCatalogEntry } from "./media-group-command";
 import type { PendingGroupCommand } from "./media-group-command-recovery";
@@ -18,6 +19,7 @@ export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly stri
   nextPage: number | null; loaded: boolean; message: string;
   consent: PendingGroupConsent | null;
   groupCommand: PendingGroupCommand | null;
+  groupKey: PendingGroupKey | null;
   groups: Readonly<{entries:readonly GroupCatalogEntry[];page:number;nextPage:number|null}> | null;
   sharing: Readonly<{object:string;reader:string;token:string;remove?:boolean}> | null;
   granted: Readonly<{objects:readonly string[];page:number;nextPage:number|null}> | null;
@@ -25,7 +27,7 @@ export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly stri
   deletion: Readonly<{object:string;prepared:boolean}> | null;
   audience: Readonly<{object:string;readers:readonly string[]}> | null;
   preview: Readonly<{ url: string; name: string; mediaType: string; tags?:readonly string[] }> | null }>;
-const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groups:null});
+const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,groups:null});
 
 /** Private, in-memory navigation. Never persists catalog entries or plaintext. */
 export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, options: {
@@ -164,6 +166,46 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         const catalog=await browser.grantedCatalog(page,signal);
         if(current())publish({...state,granted:{objects:catalog.objects,page,nextPage:catalog.nextPage},audience:null});
       });
+    },
+    startGroupKey(tenant:string,set:string,predicate:"same-group"|"named-circle") {
+      const entry=state.groups?.entries.find(row=>row.set===set&&row.predicate===predicate);
+      if(state.deletion||state.groupCommand||state.groupKey||!owner||!entry?.owned||!entry.active)return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        const groupKey=await browser.startGroupKey(tenant,principal,{set,predicate},signal);
+        if(current())publish({...state,groupKey,message:"The group key is saved. Continue to deliver it to current members."});
+      },()=>publish({...state,groupKey:null,message:"The key change could not be confirmed. Check saved group keys before trying again."}));
+    },
+    inspectGroupKey(tenant:string) {
+      if(state.deletion||!owner)return Promise.resolve();const principal=owner;
+      return operation(async(signal,current)=>{
+        const groupKey=await browser.pendingGroupKey(tenant,principal,signal);
+        if(current())publish({...state,groupKey,message:groupKey?"A group key is saved. Continue its delivery.":"No saved group key."});
+      });
+    },
+    resumeGroupKey(tenant:string) {
+      if(state.deletion||!state.groupKey||!owner)return Promise.resolve();
+      const selected=structuredClone(state.groupKey),principal=owner;
+      return operation(async(signal,current)=>{
+        const groupKey=await browser.resumeGroupKey(tenant,principal,selected,signal);
+        if(current())publish({...state,groupKey,message:groupKey.total>0&&groupKey.published===groupKey.total?
+          "All member keys were delivered. Verify your access after the group's waiting period before clearing this saved key.":"The group key is saved. Continue delivery."});
+      },()=>publish({...state,groupKey:null,message:"Delivery could not be confirmed. Your encrypted key and exact pending wraps remain saved. Check saved group keys to continue."}));
+    },
+    finishGroupKey(tenant:string) {
+      if(state.deletion||!state.groupKey||!owner)return Promise.resolve();const selected=structuredClone(state.groupKey),principal=owner;
+      return operation(async(signal,current)=>{
+        await browser.finishGroupKey(tenant,principal,selected,signal);
+        if(current())publish({...state,groupKey:null,message:"Your durable group key was verified. The temporary recovery copy was cleared."});
+      },()=>publish({...state,message:"Your current group key could not be opened yet. The saved key is retained; check membership and the group's waiting period."}));
+    },
+    discardGroupKey(tenant:string) {
+      if(state.deletion||!state.groupKey||state.groupKey.phase!=="prepared"||!owner)return Promise.resolve();
+      const selected=structuredClone(state.groupKey),principal=owner;
+      return operation(async(signal,current)=>{
+        await browser.discardGroupKey(tenant,principal,selected,signal);
+        if(current())publish({...state,groupKey:null,message:"The unaccepted key change was cleared."});
+      },()=>publish({...state,message:"This saved key cannot be cleared yet. Continue recovery or wait for outstanding requests to expire."}));
     },
     createGroup(tenant:string) {
       if(state.deletion||state.groupCommand||!owner||!state.objects.length)return Promise.resolve();

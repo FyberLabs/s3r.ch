@@ -7,7 +7,7 @@ import { PrivateMediaUpload } from "./PrivateMediaUpload";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
-  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groups:null});
+  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,groups:null});
   const [abandon,setAbandon]=useState(false);
   useEffect(()=>{setAbandon(false);},[state.sharing?.token]);
   const [recipient,setRecipient]=useState("");
@@ -96,10 +96,23 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
               <button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand||!groupRecipient} className="underline disabled:opacity-50" onClick={()=>void library.current?.inviteToGroup(tenant,entry.set,entry.predicate,groupRecipient,0)}>Withdraw invitation</button>
             </div>}
             {entry.invited&&!entry.active&&<button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand} className="underline disabled:opacity-50" onClick={()=>void library.current?.respondToGroup(tenant,entry.set,entry.predicate,1)}>Accept group invitation</button>}
+            {entry.owned&&entry.active&&<button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand||!!state.groupKey} className="mr-4 underline disabled:opacity-50" onClick={()=>void library.current?.startGroupKey(tenant,entry.set,entry.predicate)}>Prepare new group key</button>}
             {entry.active&&<button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand} className="underline disabled:opacity-50" onClick={()=>void library.current?.respondToGroup(tenant,entry.set,entry.predicate,0)}>Leave group</button>}
           </li>)}</ul>
           {state.groups.page>0&&<button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadGroups(state.groups!.page-1)}>Previous group page</button>}
           {state.groups.nextPage!==null&&<button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.loadGroups(state.groups!.nextPage!)}>Next group page</button>}
+        </>}
+      </section>
+      <section aria-label="Saved group key" className="space-y-2 rounded border p-4">
+        <h2 className="font-semibold">Group key delivery</h2>
+        <p>Owners must also join their group before preparing a key. New keys become usable after the group's waiting period.</p>
+        <button type="button" disabled={state.busy||!!state.deletion||!state.loaded} className="underline disabled:opacity-50" onClick={()=>void library.current?.inspectGroupKey(tenant)}>Check saved group keys</button>
+        {state.groupKey&&<>
+          <p className="break-all">{state.groupKey.set}</p>
+          <p>Key {state.groupKey.epoch}. {state.groupKey.published} of {state.groupKey.total||"pending"} member keys delivered.</p>
+          <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeGroupKey(tenant)}>Continue key delivery</button>
+          {state.groupKey.total>0&&state.groupKey.published===state.groupKey.total&&<button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.finishGroupKey(tenant)}>Verify access and finish</button>}
+          {state.groupKey.phase==="prepared"&&<button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.discardGroupKey(tenant)}>Discard unaccepted key change</button>}
         </>}
       </section>
       <section aria-label="Saved group change" className="space-y-2 rounded border p-4">
