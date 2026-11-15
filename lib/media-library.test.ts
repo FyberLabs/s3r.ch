@@ -324,3 +324,33 @@ test("decrypted audio tags follow the private preview and disappear on reset",as
     assert.deepEqual([...bytes],[0,0]);item.library.reset();assert.equal(item.state().preview,null);assert.deepEqual(item.revoked,["blob:audio"]);
   }finally{item.library.dispose();}
 });
+
+test("saved group responses preserve exact selection and report recovery without granting access",async()=>{
+ const saved={object:"owned",member:key,scope:{predicate:"same-group" as const,set:"set_test"},stated:1 as const,token:"token"};
+ let pending:typeof saved|null=saved,fail=false,applied=true;const calls:unknown[]=[];
+ const f=setup({browser:()=>({pendingConsent:async()=>pending,
+  resumeConsent:async(_tenant:string,expected:unknown)=>{calls.push(expected);if(fail)throw Error("lost");},
+  discardConsent:async(_tenant:string,expected:unknown)=>{calls.push(expected);if(fail)throw Error("unavailable");return {applied};},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try {
+  await f.library.resumeConsent("tenant");await f.library.discardConsent("tenant");assert.equal(calls.length,0);
+  await f.library.inspectConsent("tenant");assert.deepEqual(f.state().consent,saved);
+  fail=true;await f.library.resumeConsent("tenant");assert.deepEqual(f.state().consent,saved);assert.match(f.state().message,/retained/);
+  await f.library.discardConsent("tenant");assert.deepEqual(f.state().consent,saved);assert.match(f.state().message,/cannot be cleared/);
+  fail=false;await f.library.resumeConsent("tenant");assert.equal(f.state().consent,null);assert.match(f.state().message,/checked separately/);
+  await f.library.inspectConsent("tenant");await f.library.discardConsent("tenant");assert.match(f.state().message,/already accepted/);
+  applied=false;await f.library.inspectConsent("tenant");await f.library.discardConsent("tenant");assert.match(f.state().message,/does not undo/);
+  assert.ok(calls.every(value=>JSON.stringify(value)===JSON.stringify(saved)));
+  pending=null;await f.library.inspectConsent("tenant");assert.equal(f.state().consent,null);assert.match(f.state().message,/No saved/);
+  pending=saved;await f.library.inspectConsent("tenant");f.library.reset();assert.equal(f.state().consent,null);
+ } finally {f.library.dispose();}
+});
+test("identity reset discards a delayed group recovery result",async()=>{
+ let release!:(value:unknown)=>void;
+ const saved={object:"owned",member:key,scope:{predicate:"same-group",set:"set_test"},stated:0,token:"token"};
+ const f=setup({browser:()=>({pendingConsent:()=>new Promise(resolve=>{release=resolve;})} as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try {
+  const work=f.library.inspectConsent("tenant");while(!release)await new Promise(resolve=>setImmediate(resolve));
+  f.library.reset("Identity changed");release(saved);await work;assert.equal(f.state().consent,null);assert.equal(f.state().message,"Identity changed");
+ } finally {f.library.dispose();}
+});
