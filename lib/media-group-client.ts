@@ -60,13 +60,15 @@ export function createGroupCommandClient(principal:string,fetcher:typeof fetch=f
       });
     },
     state(input:GroupSignedCommand,signal?:AbortSignal){const command=parseSignedGroupCommand(input,principal);return state(command,deadline(signal));},
-    async apply(input:GroupSignedCommand,signal?:AbortSignal){
+    async apply(input:GroupSignedCommand,signal?:AbortSignal,beforeAppend?:(at:number)=>Promise<void>){
       const command=parseSignedGroupCommand(input,principal),held=deadline(signal),current=await state(command,held);
       if(current.state==="applied")return;
       if(command.kind==="member"){
         const row=command.body.row as {record:{issuedAt:number}};
         if(current.at-row.record.issuedAt<0||current.at-row.record.issuedAt>4)return fail();
       }
+      if(beforeAppend)await beforeAppend(current.at);
+      held.throwIfAborted();
       await request(command.kind==="create"?"create":"member-append",{...command.body,at:current.at,fence:current.fence},held);
     },
   });
