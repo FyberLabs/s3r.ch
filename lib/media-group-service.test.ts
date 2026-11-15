@@ -131,3 +131,25 @@ test("group catalog validates the fixed principal and excludes unrelated rows",a
   assert.throws(()=>parseGroupCommandResult("catalog",{...result,groups:[{...entry,owned:false}]},{page:0},100,other));
   assert.deepEqual(parseGroupCommandResult("catalog",{...result,groups:[],nextPage:null},{page:15},100,owner).groups,[]);
 });
+
+test("group wrap transport preserves scoped ciphertext and refuses expired replies",async()=>{
+  const metadata={reader:owner,readerEpub:other,epoch:1,revisionId:groupManifest.revisionId,digest:"f".repeat(64)};
+  const body={...scope,at:100,fence,metadata,payload:btoa("opaque")};
+  const read={payload:body.payload,predicate:scope.predicate,set_id:scope.set,epoch:1,revision_id:groupManifest.revisionId,
+    reader_epub:other,key_commitment:groupManifest.keyCommitment,expires_at:102};
+  const wraps:readonly [GroupCommandAction,Record<string,unknown>,unknown][]=[
+    ["wrap-view",scope,{at:100,fence,snapshot:groupSnapshot,manifest:groupManifest}],
+    ["wrap-publish",body,{digest:metadata.digest}],["wrap-read",scope,read],
+  ];
+  for(const [action,input,output] of wraps){
+    const handle=service(async(url,init)=>{
+      assert.equal(String(url),config.origin+"/api/v1/acl/sociacl/media/groups/"+action);
+      assert.deepEqual(JSON.parse(String(init?.body)),input);
+      assert.equal(new Headers(init?.headers).get("x-api-key"),"private-key");
+      return Response.json(output);
+    });
+    const response=await handle(action,request(input));
+    assert.equal(response.status,200);assert.deepEqual(await response.json(),output);
+  }
+  assert.equal((await service(async()=>Response.json({...read,expires_at:100}))("wrap-read",request(scope))).status,503);
+});

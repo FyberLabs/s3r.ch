@@ -1,3 +1,4 @@
+import {parseGroupWrapCommand,parseGroupWrapResult} from "./media-group-wrap";
 import {parseGroupKeyCommand,parseGroupKeyView} from "./media-group-key";
 import {parseMediaGroupScope,parseMediaGroupPolicy} from "./media-group";
 import {objectPrincipal,parseForumAuthority} from "./identity/forum-authority-records";
@@ -9,6 +10,9 @@ export type GroupCatalog=Readonly<{at:number;groups:readonly GroupCatalogEntry[]
 
 export const groupCommandFields={
   catalog:["page"],
+  "wrap-view":["predicate","set"],
+  "wrap-publish":["predicate","set","at","fence","metadata","payload"],
+  "wrap-read":["predicate","set"],
   "key-view":["predicate","set"],
   "key-append":["predicate","set","at","fence","command"],
   "key-state":["predicate","set","command"],
@@ -28,6 +32,7 @@ export const isGroupCommand=(action:string):action is GroupCommandAction=>Object
 
 /** Shape and authenticated-party checks. Native ACL remains the signature authority. */
 export function parseGroupCommand(action:GroupCommandAction,input:unknown,principal:string) {
+  if(action==="wrap-view"||action==="wrap-publish"||action==="wrap-read")return parseGroupWrapCommand(action,input,principal);
   const body=structuredClone(input);
   if(!isSeaPubkey(principal)||!exact(body,groupCommandFields[action]))return fail();
   if(action==="catalog"){if(!integer(body.page)||body.page>15)return fail();return body;}
@@ -56,6 +61,7 @@ export function parseGroupCommand(action:GroupCommandAction,input:unknown,princi
 
 /** Reject a mismatched preparation before a browser can sign or persist it. */
 export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,body:Record<string,unknown>,now:number,principal?:string) {
+  if(action==="wrap-view"||action==="wrap-publish"||action==="wrap-read")return parseGroupWrapResult(action,input,body,now);
   const value=structuredClone(input);
   if(action==="catalog") {
     if(!principal||!exact(value,["at","groups","nextPage","principal"])||value.principal!==principal||
@@ -101,5 +107,5 @@ export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,
   return v;
 }
 
-export const groupRequestLimit=(action:GroupCommandAction)=>action==="key-append"||action==="key-state"?73728:18432;
-export const groupResponseLimit=(action:GroupCommandAction)=>action==="key-view"?73728:18432;
+export const groupRequestLimit=(action:GroupCommandAction)=>action==="wrap-publish"?92160:action==="key-append"||action==="key-state"?73728:18432;
+export const groupResponseLimit=(action:GroupCommandAction)=>action==="wrap-read"?92160:action==="wrap-view"||action==="key-view"?73728:18432;
