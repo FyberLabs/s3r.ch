@@ -264,3 +264,23 @@ Stop sharing also uses encrypted recovery: `unshare-view` cancels the selected
 recipient while preparing the remaining readers for the next epoch. The removed
 reader receives no new wrap. The cancellation can take effect before settlement;
 remaining access can be pending until the saved epoch and statuses are ready.
+
+### Contacts
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `S3RCH_CONTACT_READER_BINDINGS` | no | Server-only fixed principal/API-key bindings for the contacts service. |
+
+`S3RCH_CONTACT_READER_BINDINGS` is optional, server-only JSON using the media
+reader binding format (`origin`, `tenant`, `readers`). Each reader
+maps a stable SEA principal to a separately configured ACL API key. The tenant
+must match `S3RCH_STATEMENT_SOURCE_TENANT_ID`. Never use a peer-provided origin.
+Only the configured HTTPS origin is rendered to the contacts page; API keys
+stay on the server. Unset or invalid configuration leaves contacts unavailable.
+
+The ACL operator installs the protected contacts journal and owner bindings
+separately. The browser consumes signed public descriptors and stores contact
+keys, decisions, blocks and pending ciphertext in an encrypted, revisioned vault.
+Existing contact keyrings must be restored explicitly; this page does not create
+a replacement identity or contact secret. It uses the current unlocked identity
+and clears its private view when that identity changes or the page is hidden.

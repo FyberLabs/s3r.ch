@@ -5,14 +5,15 @@ import { contactText, type ContactInboxSession, type ContactInboxView, type Cont
 
 /** Mount only with the authenticated contacts adapter. A held key or a transport
  * URL alone cannot supply a session. No raw key or plaintext is persisted here. */
-export function ContactInbox({ session }: { session: ContactInboxSession | null }) {
-  return session ? <SessionInbox key={session.id} session={session} /> : <p>Contacts are unavailable for this session.</p>;
+export function ContactInbox({ session, preferredPeer }: { session: ContactInboxSession | null; preferredPeer?:string }) {
+  return session ? <SessionInbox key={session.id} session={session} preferredPeer={preferredPeer} /> : <p>Contacts are unavailable for this session.</p>;
 }
-function SessionInbox({ session }: { session: ContactInboxSession }) {
+function SessionInbox({ session, preferredPeer }: { session: ContactInboxSession; preferredPeer?:string }) {
   const [view,setView]=useState<ContactInboxView|null>(null),[peer,setPeer]=useState("");
   const [messages,setMessages]=useState<readonly ContactMessageView[]>([]),[draft,setDraft]=useState("");
   const [busy,setBusy]=useState(false),[status,setStatus]=useState("");
   const [locked,setLocked]=useState(!session.current());
+  const target=useRef(preferredPeer);
   const operation=useRef<AbortController|null>(null),mounted=useRef(true);
   const pending=useRef<{peer:string;submit:(signal:AbortSignal)=>Promise<void>}|null>(null);
   function valid(signal:AbortSignal){signal.throwIfAborted();if(!mounted.current||!session.current())throw Error('Session changed');}
@@ -25,7 +26,11 @@ function SessionInbox({ session }: { session: ContactInboxSession }) {
     catch{if(mounted.current&&!controller.signal.aborted)setStatus("Could not complete this action. Retry when your contact session is available.");}
     finally{clearTimeout(timeout);if(operation.current===controller){operation.current=null;if(mounted.current)setBusy(false);}}
   }
-  async function load(signal:AbortSignal){const next=await session.load(signal);valid(signal);setView(next);}
+  async function load(signal:AbortSignal){const next=await session.load(signal);valid(signal);setView(next);
+    const intended=target.current;if(intended&&next.contacts.some(contact=>contact.principal===intended&&!contact.blocked)){
+      const rows=await session.messages(intended,signal);valid(signal);target.current=undefined;setPeer(intended);setMessages(rows);
+    }
+  }
   useEffect(()=>{
     mounted.current=true;
     const off=session.subscribe(()=>{

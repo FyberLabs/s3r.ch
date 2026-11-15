@@ -16,6 +16,7 @@ export function SiteHeader() {
             Feed
           </Link>
           <Link href="/live" className="hover:text-ink">Live</Link>
+          <Link href="/contacts" className="hover:text-ink">Contacts</Link>
           <Link href="/media" className="hover:text-ink">My media</Link>
           <Link href="/tools" className="hover:text-ink">Tools</Link>
           <Link href="/features" className="hover:text-ink">
