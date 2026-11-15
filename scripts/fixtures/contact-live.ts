@@ -42,7 +42,7 @@ export async function contactLive(){
    if(loseAppend){loseAppend=false;throw Error('Lost append response');}return Response.json({id});
   }) as typeof fetch;
   const workspace=await openContactWorkspace({pair,current:()=>unlocked,subscribe:()=>()=>{},origin:'https://plane.example',signal,fetcher,clock:()=>now});
-  await workspace.restore({principal,pub:principal,epub:pair.epub,rotationSeq:0,priorLanes:[],priorContactSecrets:[],laneId:(n===1?'ab':'bc').repeat(32),contactLaneSecret:(n===1?'cd':'de').repeat(32)},signal);
+  if(!workspace.ready)await workspace.restore({principal,pub:principal,epub:pair.epub,rotationSeq:0,priorLanes:[],priorContactSecrets:[],laneId:(n===1?'ab':'bc').repeat(32),contactLaneSecret:(n===1?'cd':'de').repeat(32)},signal);
   return {workspace,principal,lock:()=>{unlocked=false;}};
  };
  const alice=await create(1),bob=await create(2);
@@ -55,8 +55,13 @@ export async function contactLive(){
  await message.submit(signal);if(appendAttempts!==attempts+1)throw Error('Retry did not reuse command');
  const messages=await alice.workspace.session.messages(bob.principal,signal);if(messages.length!==1||messages[0].body!=='Private message')throw Error('Peer message mismatch');
  if((await alice.workspace.session.messages(bob.principal,signal)).length!==1)throw Error('Replay accepted twice');
+ const reply=await alice.workspace.session.prepareMessage(bob.principal,'Private reply',signal);await reply.submit(signal);
+ const replies=await bob.workspace.session.messages(alice.principal,signal);if(!replies.some(row=>row.body==='Private reply'))throw Error('Reciprocal message mismatch');
  await alice.workspace.session.block(bob.principal,signal);refused=false;
  try{await alice.workspace.session.prepareMessage(bob.principal,'Blocked',signal);}catch{refused=true;}if(!refused)throw Error('Blocked contact permitted');
+ const late=await bob.workspace.session.prepareMessage(alice.principal,'After block',signal);await late.submit(signal);
+ const reopened=await create(1);if(!(await reopened.workspace.session.load(signal)).contacts.find(row=>row.principal===bob.principal)?.blocked)throw Error('Lost durable block');
+ refused=false;try{await reopened.workspace.session.messages(bob.principal,signal);}catch{refused=true;}if(!refused)throw Error('Blocked incoming message permitted');
  alice.lock();refused=false;try{await alice.workspace.session.load(signal);}catch{refused=true;}if(!refused)throw Error('Locked identity permitted');
 }
 Object.assign(window,{contactLive});
