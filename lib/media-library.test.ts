@@ -413,3 +413,31 @@ test("group invitations and withdrawals use durable member-only commands",async(
   await f.library.loadGroups();f.library.reset();assert.equal(f.state().groups,null);
  }finally{f.library.dispose();}
 });
+
+test("group owners create empty groups and sign only their invitation role",async()=>{
+ const member="fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
+ const entry={predicate:"same-group" as const,set:"set_test",owner:key,owned:true,invited:false,active:false};
+ const calls:unknown[][]=[];let saved=false,fail=false,owned=true;
+ const command={kind:"create",body:{}};
+ const f=setup({browser:()=>({catalog:async()=>({at:1,objects:["owned"],nextPage:null,principal:key}),
+  groupCatalog:async()=>({at:1,principal:key,groups:[{...entry,owned}],nextPage:1}),pendingGroupCommand:async()=>saved?{token:"saved"}:null,
+  prepareGroupCreation:async(...args:unknown[])=>{calls.push(args.slice(0,4));return command;},
+  prepareGroupMembership:async(...args:unknown[])=>{calls.push(args.slice(0,5));return command;},
+  runGroupCommand:async()=>{if(fail)throw Error("lost");},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try {
+  await f.library.createGroup("tenant");assert.equal(calls.length,0);
+  await f.library.load();await f.library.createGroup("tenant");
+  assert.equal(calls[0][0],key);assert.equal(calls[0][1],"owned");assert.equal(calls[0][3],86400000);
+  assert.match((calls[0][2] as {set:string}).set,/^set_p_/);assert.match(f.state().message,/No files have been shared/);
+  await f.library.inviteToGroup("tenant",entry.set,entry.predicate,member,1);assert.equal(calls.length,1);
+  await f.library.loadGroups();await f.library.inviteToGroup("tenant",entry.set,entry.predicate,"bad",1);assert.equal(calls.length,1);
+  await f.library.inviteToGroup("tenant",entry.set,entry.predicate,member,1);
+  assert.deepEqual(calls[1],[key,{set:entry.set,predicate:entry.predicate},member,"set",1]);assert.match(f.state().message,/must also consent/);
+  await f.library.loadGroups();await f.library.inviteToGroup("tenant",entry.set,entry.predicate,member,0);assert.match(f.state().message,/withdrawal was accepted/);
+  owned=false;await f.library.loadGroups();const count=calls.length;await f.library.inviteToGroup("tenant",entry.set,entry.predicate,member,1);assert.equal(calls.length,count);
+  fail=true;await f.library.createGroup("tenant");assert.match(f.state().message,/Check the saved group change/);
+  owned=true;await f.library.loadGroups();await f.library.inviteToGroup("tenant",entry.set,entry.predicate,member,1);assert.match(f.state().message,/Check the saved group change/);
+  saved=true;const held=calls.length;await f.library.createGroup("tenant");await f.library.loadGroups();await f.library.inviteToGroup("tenant",entry.set,entry.predicate,member,1);assert.equal(calls.length,held);
+ }finally{f.library.dispose();}
+});

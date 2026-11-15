@@ -11,6 +11,8 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
   const [abandon,setAbandon]=useState(false);
   useEffect(()=>{setAbandon(false);},[state.sharing?.token]);
   const [recipient,setRecipient]=useState("");
+  const [groupRecipient,setGroupRecipient]=useState("");
+  useEffect(()=>{setGroupRecipient("");},[state.groups,state.loaded]);
   useEffect(()=>{setRecipient("");},[state.audience?.object,state.loaded]);
   const library=useRef<ReturnType<typeof createMediaLibrary>|null>(null);
   useEffect(()=>{
@@ -80,12 +82,19 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
         <h2 id="media-groups-title" className="font-semibold">Groups and invitations</h2>
         <p>Refresh your media first, then check groups for this identity. Membership alone does not grant access to a file.</p>
         <button type="button" disabled={state.busy||!!state.deletion||!state.loaded} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadGroups()}>Refresh groups</button>
+        <button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand||!state.objects.length} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.createGroup(tenant)}>Create empty group</button>
+        <p>Creating a group requires an owned file and does not share it. New groups use a 24-hour key-settlement policy.</p>
         {state.groups && <>
           <p>Page {state.groups.page+1} of 16. Refresh to see membership changes.</p>
           {!state.groups.entries.length && <p>No groups or invitations on this page.</p>}
+          {state.groups.entries.some(entry=>entry.owned)&&<label className="block">Member SEA account<input className="block w-full rounded border p-2" value={groupRecipient} onChange={event=>setGroupRecipient(event.target.value)} disabled={state.busy} autoComplete="off" spellCheck={false}/></label>}
           <ul className="space-y-2">{state.groups.entries.map(entry=><li key={entry.predicate+entry.set}>
             <p className="break-all">{entry.set}</p>
             <p>{entry.owned?"You own this group. ":""}{entry.active?"You are a member.":entry.invited?"You are invited to join.":"You have not joined."}</p>
+            {entry.owned&&<div className="flex gap-4">
+              <button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand||!groupRecipient} className="underline disabled:opacity-50" onClick={()=>void library.current?.inviteToGroup(tenant,entry.set,entry.predicate,groupRecipient,1)}>Invite member</button>
+              <button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand||!groupRecipient} className="underline disabled:opacity-50" onClick={()=>void library.current?.inviteToGroup(tenant,entry.set,entry.predicate,groupRecipient,0)}>Withdraw invitation</button>
+            </div>}
             {entry.invited&&!entry.active&&<button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand} className="underline disabled:opacity-50" onClick={()=>void library.current?.respondToGroup(tenant,entry.set,entry.predicate,1)}>Accept group invitation</button>}
             {entry.active&&<button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand} className="underline disabled:opacity-50" onClick={()=>void library.current?.respondToGroup(tenant,entry.set,entry.predicate,0)}>Leave group</button>}
           </li>)}</ul>
