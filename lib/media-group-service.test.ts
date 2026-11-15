@@ -107,3 +107,20 @@ test("preflight and per-principal concurrency remain bounded and release capacit
   assert.equal((await held("create-view",request(cases[0][1]))).status,429);
   unblock();await Promise.all([a,b]);
 });
+
+test("group catalog validates the fixed principal and excludes unrelated rows",async()=>{
+  const entry={...scope,owner,owned:true,invited:false,active:false};
+  const result={at:100,groups:[entry],nextPage:1,principal:owner};
+  const response=await service(async()=>Response.json(result))("catalog",request({page:0}));
+  assert.equal(response.status,200);assert.deepEqual(await response.json(),result);
+  for(const page of [-1,16,true,0.5,"0",null])assert.throws(()=>parseGroupCommand("catalog",{page},owner));
+  for(const changed of [{...result,principal:other},{...result,nextPage:2},{...result,at:90},
+    {...result,groups:[entry,entry]},{...result,groups:Array(5).fill(entry)},
+    {...result,groups:[{...entry,owned:false}]},{...result,groups:[{...entry,owner:other}]},
+    {...result,groups:[{...entry,invited:1}]},{...result,groups:[{...entry,active:1}]},
+    {...result,groups:[{...entry,extra:1}]}]){
+    assert.throws(()=>parseGroupCommandResult("catalog",changed,{page:0},100,owner));
+  }
+  assert.throws(()=>parseGroupCommandResult("catalog",{...result,groups:[{...entry,owned:false}]},{page:0},100,other));
+  assert.deepEqual(parseGroupCommandResult("catalog",{...result,groups:[],nextPage:null},{page:15},100,owner).groups,[]);
+});
