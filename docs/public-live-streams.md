@@ -1,6 +1,6 @@
 # Public live streams
 
-`/live` lists Nostr NIP-53 kind-30311 events from the site's fixed
+`/live` lists Bluesky live statuses and Nostr NIP-53 kind-30311 events from the site's fixed
 `PUBLIC_NOSTR_PUBKEYS` set. This is not a visitor's personal follow list.
 `GET /api/live` accepts no caller-selected relay, author or room. Room streams,
 private-room grants, live ingest and other providers remain separate work under
@@ -51,3 +51,31 @@ whole source window, preserving the previous successful window rather than
 publishing a partial prefix or treating the failure as an empty success. Kind-1
 notes do not inherit the live directory's one-hour expiry. The shared verifier
 uses WebCrypto hashing and is covered by a CI-only real-browser signature fixture.
+
+## Bluesky live status
+
+The fixed author entries in `PUBLIC_ATPROTO_SOURCES` are queried through the
+configured `ATPROTO_APPVIEW_BASE` public AppView `app.bsky.actor.getProfile`.
+Feed generators do not establish followed authors. Visitors cannot supply an
+actor or endpoint. The existing public fetcher bounds time, response bytes and
+concurrency and checks public addresses through redirects.
+
+The response must match the configured handle or DID. This trusts the configured
+AppView over HTTPS; it does not independently verify an AT repository signature.
+Only active `app.bsky.actor.status#live` status with a valid creation/expiry time
+and an external embed is displayed. Disabled and labelled statuses are hidden.
+The stream opens on its public HTTPS streaming site with no referrer; the embed
+URL is not assumed to be a media file or admitted to the media proxy. No thumbnail
+or participant count is fabricated from the status.
+
+A successful missing, inactive or non-displayable status removes the previous
+entry. Failed pulls retain it only until the earlier of its declared expiry or
+five minutes after its last successful observation. One shared poll runs at most
+once per minute, with at most 16 configured authors. This is transient public
+cache state, not new durable storage. Unit contracts cover admission, ended and
+expired status, concurrent polls and failed pulls. The existing CI-only browser
+fixture covers the external link and its removal on expiry without external
+network requests. These are isolated fixtures, not shared TEST qualification.
+
+Protocol: [Bluesky statusView](https://github.com/bluesky-social/atproto/blob/main/lexicons/app/bsky/actor/defs.json).
+ActivityPub and room/private-stream coverage remain open under #410/#306.

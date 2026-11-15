@@ -18,15 +18,15 @@ export function LiveDirectory(){
  },[]);
  const visible=streams.filter(stream=>stream.expires>now);
  return <section className="space-y-4" aria-label="Live streams">
-  <p>Public Nostr streams from the accounts this site follows. Room streams are coming in v1.</p>
-  <p className="text-sm text-ink-muted">Live status expires after one hour without an update. Participant counts are reported by the publisher.</p>
+  <p>Public Nostr and Bluesky streams from the accounts this site follows. Room streams are coming in v1.</p>
+  <p className="text-sm text-ink-muted">Nostr status expires after one hour. Bluesky status expires at its declared end or after five minutes without a successful check. Participant counts are reported by the publisher.</p>
   {available===null?<p role="status">Checking for live streams…</p>:available===false?<p role="status">The live source is unavailable. Previously received entries expire normally.</p>:null}
   {available!==null&&!visible.length?<p>No live streams from these accounts right now.</p>:null}
   <ul className="space-y-6">{visible.map(stream=><li key={stream.id} className="border border-rule p-4">
    <h2 className="font-semibold">{stream.title}</h2><p className="break-all text-sm">Publisher: {stream.author}</p>
    <p>Live for {Math.max(0,Math.floor((now-stream.starts)/60))} minutes{stream.participants!==undefined?` · ${stream.participants} participants`:""}</p>
    {stream.thumbnail?<img alt="" loading="lazy" className="max-h-48" src={`/api/feed/media?${new URLSearchParams({url:stream.thumbnail,kind:"image"})}`}/>:null}
-   {selected===stream.id?<><PublicFeedVideo key={stream.url} url={stream.url} onError={()=>setFailed(true)}/>{failed?<p role="status">This stream could not play.</p>:null}<button type="button" onClick={()=>setSelected(null)}>Close player</button></>:<button type="button" onClick={()=>{setSelected(stream.id);setFailed(false);}}>Watch stream</button>}
+   {stream.playback==="external"?<a href={stream.url} target="_blank" rel="noopener noreferrer">Watch on streaming site</a>:selected===stream.id?<><PublicFeedVideo key={stream.url} url={stream.url} onError={()=>setFailed(true)}/>{failed?<p role="status">This stream could not play.</p>:null}<button type="button" onClick={()=>setSelected(null)}>Close player</button></>:<button type="button" onClick={()=>{setSelected(stream.id);setFailed(false);}}>Watch stream</button>}
   </li>)}</ul>
  </section>;
 }
