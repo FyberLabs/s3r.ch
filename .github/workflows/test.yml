@@ -191,10 +191,11 @@ jobs:
           --test-coverage-include=lib/media-owner-client.ts
           --test-coverage-include=lib/media-share.ts
           --test-coverage-include=lib/media-group.ts
+          --test-coverage-include=lib/media-group-signing.ts
           --test-coverage-include=lib/media-deletion.ts
           --test-coverage-include=lib/media-catalog.ts
           --test-coverage-lines=90 --test-coverage-branches=80
-          lib/media-group.test.ts lib/media-owner-service.test.ts lib/media-owner-client.test.ts lib/media-deletion.test.ts lib/media-catalog.test.ts lib/media-upload.test.ts lib/media-share-recovery.test.ts
+          lib/media-group.test.ts lib/media-group-signing.test.ts lib/media-owner-service.test.ts lib/media-owner-client.test.ts lib/media-deletion.test.ts lib/media-catalog.test.ts lib/media-upload.test.ts lib/media-share-recovery.test.ts
       - name: Private sharing recovery contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
