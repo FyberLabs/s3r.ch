@@ -242,3 +242,23 @@ test("sharing recovery uses a separate exclusive lock and refuses session change
     if(oldDb)Object.defineProperty(globalThis,"indexedDB",oldDb);else Reflect.deleteProperty(globalThis,"indexedDB");
   }
 });
+
+test("member consent uses the unlocked key and preserves session guards",async()=>{
+  unlock();const at=Math.floor(Date.now()/1000),scope={predicate:"same-group" as const,set:object.replace("media_","set_")};
+  const consent={at,fence:view.fence,consent:{memberPub:owner,
+    state:{...scope,member:owner,setOwner:owner,memberAssent:null,setAssent:{stated:1,hamState:1,cancels:[]},cancels:[],stated:0},
+    draft:{role:"member",...scope,member:owner,setOwner:owner,hamState:2,issuedAt:at,cancels:[]}}};
+  let writes=0,applied=false;
+  const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
+    assert.ok(!String(init?.body).includes(pair.priv));assert.ok(!String(init?.body).includes(pair.epriv));
+    if(String(url).endsWith("group-consent-view"))return Response.json(consent);
+    if(String(url).endsWith("group-consent-check"))return Response.json({at,fence:view.fence,state:applied?"applied":"absent"});
+    writes++;applied=true;return Response.json({applied:true});
+  });
+  const row=await browser.prepareGroupConsent(object,scope,owner,1);
+  assert.equal(row.record.member,owner);assert.equal(row.record.role,"member");
+  assert.equal((await browser.groupConsentState(object,scope,owner,row)).state,"absent");
+  await browser.appendGroupConsent(object,scope,owner,row);await browser.appendGroupConsent(object,scope,owner,row);assert.equal(writes,1);
+  const changed=createPrivateMediaBrowser(()=>owner,async()=>{forgetUnlockedMeshPair();return Response.json(consent);});
+  await assert.rejects(changed.prepareGroupConsent(object,scope,owner,1));
+});

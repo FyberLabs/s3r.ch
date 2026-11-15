@@ -166,9 +166,10 @@ jobs:
           --test-coverage-include=lib/media-wrap-service.ts
           --test-coverage-include=lib/media-wrap-client.ts
           --test-coverage-lines=90 --test-coverage-branches=80
+          --test-coverage-include=lib/media-group-member.ts
           --test-coverage-include=lib/media-group-consent.ts
           --test-coverage-include=lib/media-reader-catalog.ts
-          lib/media-group-consent.test.ts lib/media-reader-catalog.test.ts lib/media-wrap-server.test.ts lib/media-wrap-client.test.ts lib/media-share-recovery.test.ts
+          lib/media-group-member.test.ts lib/media-group-consent.test.ts lib/media-reader-catalog.test.ts lib/media-wrap-server.test.ts lib/media-wrap-client.test.ts lib/media-share-recovery.test.ts
 
       - name: Allocated media payload contracts and coverage (CI only)
         run: >-

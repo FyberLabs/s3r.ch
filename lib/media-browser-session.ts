@@ -1,3 +1,5 @@
+import {createMediaGroupMember} from "./media-group-member";
+import {parseMediaGroupScope,type MediaGroupScope} from "./media-group";
 import { createShareJournal } from "./media-share-journal";
 import { shareMedia, pendingMediaShare, abandonMediaShare, type PendingShare } from "./media-share-recovery";
 import { readGrantedMedia } from "./media-reader-catalog";
@@ -41,14 +43,14 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
       try {check();return result;}catch(error){discard?.(result);throw error;}
     } finally {unsubscribe();stopped.abort();}
   }
-  async function signed<T>(operation: (client: ReturnType<typeof createPrivateMediaOwner>, scalar: Uint8Array, signal: AbortSignal)=>Promise<T>,signal?:AbortSignal) {
+  async function signed<T>(operation: (client: ReturnType<typeof createPrivateMediaOwner>, scalar: Uint8Array, signal: AbortSignal, transport: typeof fetch)=>Promise<T>,signal?:AbortSignal) {
     return run(async(pair,transport,deadline)=>{
       if(!/^[A-Za-z0-9_-]{43}$/.test(pair.priv))throw Error("Invalid media signing key");
       const scalar=Uint8Array.from(atob(pair.priv.replace(/-/g,"+").replace(/_/g,"/")+"="),c=>c.charCodeAt(0));
       try {
         if(scalar.length!==32 || btoa(String.fromCharCode(...scalar)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")!==pair.priv)
           throw Error("Invalid media signing key");
-        return await operation(createPrivateMediaOwner(transport),scalar,deadline);
+        return await operation(createPrivateMediaOwner(transport),scalar,deadline,transport);
       } finally {scalar.fill(0);}
     },signal);
   }
@@ -59,6 +61,18 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     });
   }
   return Object.freeze({
+    prepareGroupConsent(object:string,scope:MediaGroupScope,member:string,stated:0|1,signal?:AbortSignal){
+      const held=parseMediaGroupScope(scope);
+      return signed((_owner,key,deadline,transport)=>createMediaGroupMember(transport).prepare(object,held,member,stated,key,deadline),signal);
+    },
+    groupConsentState(object:string,scope:MediaGroupScope,member:string,row:unknown,signal?:AbortSignal){
+      const held=parseMediaGroupScope(scope),input=structuredClone(row);
+      return run((_pair,transport,deadline)=>createMediaGroupMember(transport).state(object,held,member,input,deadline),signal);
+    },
+    appendGroupConsent(object:string,scope:MediaGroupScope,member:string,row:unknown,signal?:AbortSignal){
+      const held=parseMediaGroupScope(scope),input=structuredClone(row);
+      return run((_pair,transport,deadline)=>createMediaGroupMember(transport).append(object,held,member,input,deadline),signal);
+    },
     share(tenant:string,target:{object:string;owner:string;reader:string;remove?:boolean},signal?:AbortSignal){
       return locked(()=>run((pair,transport,deadline)=>shareMedia({tenant,pair,fetcher:transport,signal:deadline,journal:createShareJournal(),target}),signal),"s3rch-private-share-v1");
     },
