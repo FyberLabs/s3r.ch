@@ -21,7 +21,7 @@ function signed(key:string,signature:string,domain:string,id:string){
 }
 async function parse(value:unknown,entry:Pick<ShareEntry,"object">,input:Pick<Input,"tenant"|"principal"|"pair">):Promise<Draft>{
   if(value&&typeof value==="object"&&!Array.isArray(value)&&(value as {version?:unknown}).version===1&&
-      Object.keys(value).length===legacyFields.length&&legacyFields.every(k=>Object.hasOwn(value,k)))
+      Object.keys(value).length===legacyFields.length&&legacyFields.every(k=>Object.hasOwn(value as object,k)))
     value={...value,version:2,wraps:null,next:0};
   const d=value as Draft,{tenant,principal,pair}=input;
   if(!d||typeof d!=="object"||Array.isArray(d)||Object.keys(d).length!==fields.length||!fields.every(k=>Object.hasOwn(d,k))||
