@@ -7,7 +7,7 @@ import { PrivateMediaUpload } from "./PrivateMediaUpload";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
-  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null});
+  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groups:null});
   const [abandon,setAbandon]=useState(false);
   useEffect(()=>{setAbandon(false);},[state.sharing?.token]);
   const [recipient,setRecipient]=useState("");
@@ -76,6 +76,23 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
         <button type="button" disabled={state.busy} className="underline disabled:opacity-50" onClick={()=>void library.current?.confirmDeletion(tenant)}>{state.deletion.prepared ? "Retry deletion" : "Permanently delete file"}</button>
         <button type="button" disabled={state.busy} className="ml-4 underline disabled:opacity-50" onClick={()=>library.current?.cancelDeletion()}>{state.deletion.prepared ? "Close" : "Keep file"}</button>
       </section>}
+      <section aria-labelledby="media-groups-title" className="space-y-2 rounded border p-4">
+        <h2 id="media-groups-title" className="font-semibold">Groups and invitations</h2>
+        <p>Refresh your media first, then check groups for this identity. Membership alone does not grant access to a file.</p>
+        <button type="button" disabled={state.busy||!!state.deletion||!state.loaded} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadGroups()}>Refresh groups</button>
+        {state.groups && <>
+          <p>Page {state.groups.page+1} of 16. Refresh to see membership changes.</p>
+          {!state.groups.entries.length && <p>No groups or invitations on this page.</p>}
+          <ul className="space-y-2">{state.groups.entries.map(entry=><li key={entry.predicate+entry.set}>
+            <p className="break-all">{entry.set}</p>
+            <p>{entry.owned?"You own this group. ":""}{entry.active?"You are a member.":entry.invited?"You are invited to join.":"You have not joined."}</p>
+            {entry.invited&&!entry.active&&<button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand} className="underline disabled:opacity-50" onClick={()=>void library.current?.respondToGroup(tenant,entry.set,entry.predicate,1)}>Accept group invitation</button>}
+            {entry.active&&<button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand} className="underline disabled:opacity-50" onClick={()=>void library.current?.respondToGroup(tenant,entry.set,entry.predicate,0)}>Leave group</button>}
+          </li>)}</ul>
+          {state.groups.page>0&&<button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadGroups(state.groups!.page-1)}>Previous group page</button>}
+          {state.groups.nextPage!==null&&<button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.loadGroups(state.groups!.nextPage!)}>Next group page</button>}
+        </>}
+      </section>
       <section aria-label="Saved group change" className="space-y-2 rounded border p-4">
         <h2 className="font-semibold">Group change recovery</h2>
         <p>Refresh your media to check group changes saved by this identity.</p>
