@@ -11,6 +11,13 @@ const result={...body,at:100,expiresAt:102,fence:"a".repeat(64),ownerPub:owner,
 const parse=(v:unknown)=>parseGroupCommandResult("item-view",v,body,100);
 test("item preparation fixes the owned object and snapshots accepted context",()=>{
   assert.deepEqual(parseGroupCommand("item-view",body,owner),body);
+  const other="fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
+  const point=other.split(".").map(part=>Buffer.from(part,"base64url").toString("hex")).join("");
+  const foreignGroup={...body,set:"set_p_"+point+"_"+"2".repeat(32)};
+  assert.deepEqual(parseGroupCommand("item-view",foreignGroup,owner),foreignGroup);
+  assert.throws(()=>parseGroupCommand("item-view",body,other));
+  const rotated={...result,...foreignGroup,ownerPub:other};
+  assert.deepEqual(parseGroupCommandResult("item-view",rotated,foreignGroup,100),rotated);
   const parsed=parse(result);assert.deepEqual(parsed,result);assert.notEqual(parsed,result);
   for(const object of [null,"bad",body.set])assert.throws(()=>parseGroupCommand("item-view",{...body,object},owner));
   assert.throws(()=>parseGroupCommand("item-view",{...body,owner},owner));
