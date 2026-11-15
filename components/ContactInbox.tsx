@@ -52,7 +52,7 @@ function SessionInbox({ session }: { session: ContactInboxSession }) {
   async function send(){await run(async signal=>{
     const selected=view?.contacts.find(contact=>contact.principal===peer);
     if(!selected||selected.blocked)throw Error('Contact unavailable');
-    if(!pending.current){const prepared=await session.prepareMessage(peer,contactText(draft),signal);valid(signal);pending.current={peer,submit:prepared.submit};}
+    if(!pending.current){const prepared=await session.prepareMessage(peer,contactText(draft),signal);valid(signal);pending.current={peer,submit:prepared.submit.bind(prepared)};}
     const held=pending.current;if(held.peer!==peer)throw Error('Contact changed');
     await held.submit(signal);valid(signal);pending.current=null;setDraft("");
     const rows=await session.messages(peer,signal);valid(signal);setMessages(rows);
