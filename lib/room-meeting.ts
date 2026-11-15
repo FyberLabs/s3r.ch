@@ -52,6 +52,7 @@ export function controlMeetingTransport(input: {
 }) {
   const now = input.now ?? Date.now;
   const { peer, authority } = input;
+  const tracks = [...input.tracks];
   const expiresAt = authority.expiresAt;
   let lastTime = now();
   let closed = false;
@@ -74,10 +75,9 @@ export function controlMeetingTransport(input: {
     clearTimeout(timer);
     peer.removeEventListener("connectionstatechange", onChange);
     try { unsubscribe?.(); } catch { /* Cleanup must still stop local capture. */ }
-    try { peer.close(); } finally {
-      for (const track of input.tracks) {
-        try { track.stop(); } catch { /* Stop every owned track. */ }
-      }
+    try { peer.close(); } catch { /* A failed close must not retain local capture. */ }
+    for (const track of tracks) {
+      try { track.stop(); } catch { /* Stop every owned track. */ }
     }
     input.changed({ connection: "closed", path: "unknown" });
   };

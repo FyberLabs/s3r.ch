@@ -50,7 +50,7 @@ function fixture() {
     changed: (state) => states.push(state),
   });
   return { peer, controller, states, revoke: () => revoke(),
-    deny: () => { authorized = false; }, expire: () => { clock = 500; },
+    deny: () => { authorized = false; }, expire: () => { clock = 500; }, rollback: () => { clock = 99; },
     counts: () => ({ stopped, closed }) };
 }
 
@@ -82,7 +82,7 @@ test("late stats cannot restore a revoked connection", async () => {
 });
 
 test("authority is checked again after stats and expires without extending permission", async () => {
-  for (const action of ["deny", "expire"] as const) {
+  for (const action of ["deny", "expire", "rollback"] as const) {
     const f = fixture();
     try {
       f.peer.connectionState = "connected";
@@ -92,4 +92,25 @@ test("authority is checked again after stats and expires without extending permi
       assert.deepEqual(f.counts(), { stopped: 1, closed: 1 });
     } finally { f.controller.close(); }
   }
+});
+
+test("synchronous revocation unsubscribes and stops capture even if cleanup throws", () => {
+  let stopped = 0;
+  let unsubscribed = 0;
+  const peer = Object.assign(new EventTarget(), { close: () => { throw new Error("closed"); } });
+  const states: MeetingTransportState[] = [];
+  const controller = controlMeetingTransport({
+    peer: peer as unknown as RTCPeerConnection,
+    tracks: [{ stop: () => { stopped++; } } as unknown as MediaStreamTrack],
+    authority: { current: () => true, expiresAt: 500, subscribe: (revoke) => {
+      revoke();
+      return () => { unsubscribed++; };
+    } },
+    now: () => 100,
+    changed: (state) => states.push(state),
+  });
+  controller.close();
+  assert.equal(stopped, 1);
+  assert.equal(unsubscribed, 1);
+  assert.deepEqual(states, [{ connection: "closed", path: "unknown" }]);
 });
