@@ -1,35 +1,33 @@
-// Loopback browser-test fixture. This entry is never included in the Next app.
+// Isolated CI component contract: authority/session and persistence are substitutions.
+// Signature composition, admission, task projection and publication are production code.
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { RoomTasks } from "../../components/RoomTasks";
-import { SeeAclProvider, useSeeAcl } from "../../components/SeeAclProvider";
-import { identitySessionChanged } from "../../components/useIdentitySession";
-import { applySeeGrant, roomSoul } from "../../lib/identity/check";
-import { preparePublishRoomChat, type ChatMessage } from "../../lib/chat";
-const owner = "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
-const other = "fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
-const room = "s3rch:room:axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU:100:work";
-function Fixture() {
-  const see = useSeeAcl();
-  const [shared, setShared] = useState(false), [ready, setReady] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => JSON.parse(localStorage.getItem("fixture-work") ?? "[]"));
-  const [overflow, setOverflow] = useState(false);
-  const [, refresh] = useState(0);
-  const [published, setPublished] = useState(0);
-  useEffect(() => { if (see?.ready) { see.acl.putObject(roomSoul(room), owner); setReady(true); } }, [see]);
-  return <><h1>Isolated room task fixture</h1>
-    <button onClick={() => setShared(value => !value)}>Toggle shared room</button>
-    <button onClick={async () => { await fetch("/fixture/other", { method: "POST" }); identitySessionChanged(); }}>Switch to reader without access</button>
-    <button onClick={async () => { await fetch("/fixture/owner", { method: "POST" }); identitySessionChanged(); }}>Switch back to owner</button>
-    <button onClick={() => { if (see) { applySeeGrant(see.acl, owner, { claimId: roomSoul(room), accessor: other, from: 0, until: Math.floor(Date.now() / 1000) + 300 }); refresh(value => value + 1); } }}>Grant other room access</button>
-    <button onClick={() => setOverflow(true)}>Simulate full raw history</button>
-    <output aria-label="Published events">{published}</output>
-    {ready && see ? <RoomTasks roomId={room} messages={messages} historySize={overflow ? 8193 : messages.length} onPublicGraph={shared} onComposed={(message, put) => {
-      if (put) {
-        if ("denied" in preparePublishRoomChat(see.acl, message, owner, shared ? [room] : [])) throw Error("Fixture publication refused");
-        setPublished(value => value + 1);
-      }
-      setMessages(held => { const next = [...held, message]; localStorage.setItem("fixture-work", JSON.stringify(next)); return next; });
-    }} /> : null}</>;
+import { initialize, admission, other, changeActor, grantOther } from "./room-task-authority";
+import { publishCurrentRoomChat } from "../../lib/room-chat-publication";
+import { encodeKey } from "../../lib/identity/check";
+import type { ChatMessage } from "../../lib/chat";
+const room="s3rch:room:fixture-work";
+function Fixture(){
+ const [shared,setShared]=useState(false),[ready,setReady]=useState(false),[messages,setMessages]=useState<ChatMessage[]>([]);
+ const [overflow,setOverflow]=useState(false),[published,setPublished]=useState(0);
+ useEffect(()=>{let active=true;void(async()=>{
+   const rows=JSON.parse(localStorage.getItem("fixture-work")??"[]") as ChatMessage[];
+   const admitted=await Promise.all(rows.map(row=>admission.receive(row,room,encodeKey(row.id))));
+   if(active){setMessages(admitted.filter((row):row is NonNullable<typeof row>=>!!row));setReady(true);}
+ })();return()=>{active=false;};},[]);
+ return <><h1>Isolated signed room task fixture</h1>
+  <output aria-label="Other identity">{other()}</output>
+  <button onClick={()=>setShared(v=>!v)}>Toggle shared room</button>
+  <button onClick={()=>changeActor(1)}>Switch to reader without access</button>
+  <button onClick={()=>changeActor(0)}>Switch back to owner</button>
+  <button onClick={grantOther}>Grant other room access</button>
+  <button onClick={()=>setOverflow(true)}>Simulate full raw history</button>
+  <output aria-label="Published events">{published}</output>
+  {ready && <RoomTasks roomId={room} messages={messages} historySize={overflow?8193:messages.length} onPublicGraph={shared} onComposed={message=>{
+    const next=[...messages,message];
+    publishCurrentRoomChat({room,currentRows:()=>[message],taskHistory:()=>next,publicRoom:()=>shared,admission,publish:()=>setPublished(n=>n+1)});
+    setMessages(next);localStorage.setItem("fixture-work",JSON.stringify(next));
+  }}/>}</>;
 }
-createRoot(document.getElementById("root")!).render(<SeeAclProvider><Fixture /></SeeAclProvider>);
+void initialize().then(()=>createRoot(document.getElementById("root")!).render(<Fixture/>));

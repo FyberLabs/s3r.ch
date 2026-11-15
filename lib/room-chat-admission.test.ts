@@ -295,7 +295,7 @@ test("room sharing publishes current local rows and late composition uses curren
   publicRoom:()=>publicRoom,admission:f.admission,publish:row=>sent.push(row.id)});
  const sharing=(async()=>{await gate;publicRoom=true;publish(()=>rows);})();
  const before=await f.admission.compose("room","during admission",()=>f.alice);assert.ok(before);rows.push(before);
- const task=await f.admission.compose("room",TASK_PREFIX+JSON.stringify(["create","task","hidden editor","room","open",null]),()=>f.alice);
+ const task=await f.admission.compose("room",TASK_PREFIX+JSON.stringify(["create","task","private work","mine","open",null]),()=>f.alice);
  const other=await f.admission.compose("other-room","different room",()=>f.alice);
  assert.ok(task);assert.ok(other);rows.push(task,other);
  release();await sharing;assert.deepEqual(sent,[before.id]);
@@ -345,3 +345,43 @@ test("media references retain signed author, room and current permission checks"
  current=false;assert.equal(await pending,null);
  current=true;assert.ok(await composeCurrentRoomMedia({room:"room",body,admission:f.admission,pair:()=>f.alice,current:()=>current}));
  });
+
+
+test("signed task creation, status, SEA assignment and explicit shared copies preserve Mine privacy", async () => {
+ const {publishCurrentRoomChat}=await import("./room-chat-publication");
+ const f=await fixture(), rows:SignedRoomChat[]=[], sent:string[]=[];
+ const compose=async(action:unknown[],pair=f.alice)=>{const row=await f.admission.compose("room",TASK_PREFIX+JSON.stringify(action),()=>pair);assert.ok(row);rows.push(row);return row;};
+ const create=await compose(["create","task","Private work","mine","open",null]);
+ const status=await compose(["status",create.id,create.id,"doing"]);
+ const assign=await compose(["assign",create.id,status.id,f.bob.pub]);
+ assert.equal(admittedRoomTasks(rows,"room",f.admission)[0].assignee,f.bob.pub);
+ const forged=await compose(["status",create.id,assign.id,"done"],f.bob);
+ assert.equal(admittedRoomTasks(rows,"room",f.admission)[0].status,"doing");
+ const publish=(subset:SignedRoomChat[])=>publishCurrentRoomChat({room:"room",currentRows:()=>subset,taskHistory:()=>rows,
+   publicRoom:()=>true,admission:f.admission,publish:row=>sent.push(row.id)});
+ publish(rows);assert.equal(sent.length,0);
+ const shared=await compose(["create","task","Private work","room","doing",f.bob.pub]);
+ const changed=await compose(["status",shared.id,shared.id,"done"]);
+ publish([changed]);assert.deepEqual(sent,[changed.id]);
+ sent.length=0;publish(rows);assert.deepEqual(sent,[shared.id,changed.id]);
+ assert.equal(sent.includes(forged.id),false);
+ f.revoke();publish(rows);assert.deepEqual(sent,[shared.id,changed.id]);
+});
+test("bounded task payload supports escaped titles and full SEA assignment, ordinary chat remains bounded",async()=>{
+ const f=await fixture();
+ const body=TASK_PREFIX+JSON.stringify(["create","task",'"'.repeat(80),"room","open",f.bob.pub]);
+ assert.ok(body.length>280);assert.ok(await f.admission.compose("room",body,()=>f.alice));
+ assert.equal(await f.admission.compose("room","x".repeat(281),()=>f.alice),null);
+ assert.equal(await f.admission.compose("room",TASK_PREFIX+"x".repeat(512),()=>f.alice),null);
+});
+
+test("unrelated admitted room histories cannot suppress shared task publication",async()=>{
+ const {publishCurrentRoomChat}=await import("./room-chat-publication");
+ const f=await fixture();
+ const task=await f.admission.compose("room",TASK_PREFIX+JSON.stringify(["create","task","Shared","room","open",null]),()=>f.alice);
+ const other=await f.admission.compose("another-room","other history",()=>f.alice);assert.ok(task);assert.ok(other);
+ const sent:string[]=[];
+ publishCurrentRoomChat({room:"room",currentRows:()=>[task],taskHistory:()=>[...Array(8193).fill(other),task],
+  publicRoom:()=>true,admission:f.admission,publish:row=>sent.push(row.id)});
+ assert.deepEqual(sent,[task.id]);
+});

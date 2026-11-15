@@ -24,7 +24,7 @@ function payload(input: unknown): ChatMessage | null {
     if (Object.values(row).some(p => !("value" in p))) return null;
     const v = Object.fromEntries(Object.entries(row).map(([k, p]) => [k, p.value]));
     if (!signedRoomMessageId(v.id) || typeof v.room !== "string" || !v.room || v.room.length > 512 || v.room.trim() !== v.room ||
-        !isSeaPubkey(v.author) || typeof v.body !== "string" || !v.body || v.body.trim() !== v.body || v.body.length > CHAT_BODY_MAX ||
+        !isSeaPubkey(v.author) || typeof v.body !== "string" || !v.body || v.body.trim() !== v.body || v.body.length > (v.body.startsWith("s3rch-work:v1:") ? 512 : CHAT_BODY_MAX) ||
         !integer(v.ts) || v.v !== 1) return null;
     return Object.freeze({ id: v.id, room: v.room, author: v.author, body: v.body, ts: v.ts, v: 1 });
   } catch { return null; }
@@ -98,6 +98,11 @@ export function createRoomChatAdmission(input: {
   return Object.freeze({
     receive,
     authenticateEnvelope,
+    canRead(room: string): boolean {
+      const at = clock(), key = input.readerKey(), reader = key && graph.principalForKey(key, at);
+      return integer(at) && !!reader && (!input.parent || graph.checkForumSee(input.parent, reader, at).allowed) &&
+        graph.checkForumSee(room, reader, at).allowed;
+    },
     canCompose(room: string, currentPair: () => SeaPair | null): boolean {
       const pair = currentPair(), at = clock();
       const author = pair && graph.principalForKey(pair.pub, at);
