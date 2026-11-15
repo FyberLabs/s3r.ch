@@ -290,3 +290,28 @@ test("durable member consent uses its own lock and survives a lost write reply",
     if(oldDb)Object.defineProperty(globalThis,"indexedDB",oldDb);else Reflect.deleteProperty(globalThis,"indexedDB");
   }
 });
+
+test("group commands sign with the unlocked identity and stop when it locks",async()=>{
+  unlock();const scope={predicate:"same-group" as const,set:object.replace("media_","set_")};
+  let applied=false,writes=0,lockOnRead=false;
+  const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
+    const action=String(url).split("/").at(-1),body=JSON.parse(String(init?.body)),at=Math.floor(Date.now()/1000);
+    assert.ok(!String(init?.body).includes(pair.priv));assert.ok(!String(init?.body).includes(pair.epriv));
+    if(lockOnRead)forgetUnlockedMeshPair();
+    if(action==="create-view")return Response.json({at,fence:view.fence,context:{owner,ownerPub:owner,predicate:scope.predicate,setId:scope.set}});
+    if(action==="member-view")return Response.json({at,fence:view.fence,signerPub:owner,draft:{...body,setOwner:owner,hamState:1,issuedAt:at,cancels:[]}});
+    if(action?.endsWith("state"))return Response.json({at,state:applied?"applied":"absent",...(action==="member-state"||!applied?{fence:view.fence}:{})});
+    writes++;applied=true;return Response.json({accepted:true});
+  });
+  const create=await browser.prepareGroupCreation(owner,object,scope,3600000);
+  assert.equal((await browser.groupCommandState(owner,create)).state,"absent");
+  await browser.applyGroupCommand(owner,create);await browser.applyGroupCommand(owner,create);assert.equal(writes,1);
+  applied=false;
+  const member=await browser.prepareGroupMembership(owner,scope,other,"set",1);
+  await browser.applyGroupCommand(owner,member);assert.equal(writes,2);
+  lockOnRead=true;
+  await assert.rejects(browser.groupCommandState(owner,member));
+  unlock();await assert.rejects(browser.prepareGroupCreation(owner,object,scope,3600000));
+  unlock();await assert.rejects(browser.prepareGroupMembership(owner,scope,other,"set",1));
+  unlock();await assert.rejects(browser.applyGroupCommand(owner,member));assert.equal(writes,2);
+});
