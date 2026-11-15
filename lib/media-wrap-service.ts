@@ -82,7 +82,7 @@ export function createMediaWrapService(config: MediaReaderConfig, siteOrigin: st
           ![null, "identity"].includes(response.headers.get("content-encoding"))) {
         await response.body?.cancel().catch(() => {}); return reply(403);
       }
-      const result = await readBoundedIdentityJson(response, action === "catalog" || action === "group-consent-check" || action === "group-consent-append" ? 4096 : action === "group-consent-view" ? 32768 : 100000, signal) as Record<string, unknown>;
+      const result = await readBoundedIdentityJson(response, action === "catalog" || action === "group-consent-check" || action === "group-consent-append" ? 4096 : action === "group-consent-view" ? 32768 : action === "group-withdrawal-view" ? 262144 : 100000, signal) as Record<string, unknown>;
       if(action === "catalog") {
         const catalog=parseMediaGrantedPage(result,page as number,reader);
         if(await resolveReader(request,signal)!==reader)return reply(403);

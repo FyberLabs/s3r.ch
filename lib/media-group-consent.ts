@@ -13,10 +13,10 @@ function cancellations(input:unknown,limit=64):string[] {
   for(const id of input){if(typeof id!=="string"||!/^[a-f0-9]{64}$/.test(id)||id<=previous)return fail();previous=id;}
   return input;
 }
-function assent(input:unknown) {
+function assent(input:unknown,limit:number) {
   if(input===null)return null;
   if(!exact(input,["stated","hamState","cancels"])||(input.stated!==0&&input.stated!==1)||!integer(input.hamState))return fail();
-  return {stated:input.stated,hamState:input.hamState,cancels:cancellations(input.cancels)};
+  return {stated:input.stated,hamState:input.hamState,cancels:cancellations(input.cancels,limit)};
 }
 
 /** Protected preparation only. This view neither grants access nor signs consent. */
@@ -27,7 +27,8 @@ export function parseMediaGroupConsent(input:unknown,scope:MediaGroupScope,membe
   const state=v.consent.state,draft=v.consent.draft,setOwner=objectPrincipal(held.set);
   if(!exact(state,["predicate","set","member","setOwner","memberAssent","setAssent","cancels","stated"])||
       state.predicate!==held.predicate||state.set!==held.set||state.member!==member||state.setOwner!==setOwner)return fail();
-  const memberAssent=assent(state.memberAssent),setAssent=assent(state.setAssent),cancels=cancellations(state.cancels,withdraw?1024:64);
+  const limit=withdraw?1024:64;
+  const memberAssent=assent(state.memberAssent,limit),setAssent=assent(state.setAssent,limit),cancels=cancellations(state.cancels,limit);
   if(withdraw ? memberAssent?.stated!==1 : !setAssent||setAssent.stated!==1||cancels.some(id=>!setAssent.cancels.includes(id)))return fail();
   const live=memberAssent?.stated===1&&setAssent?.stated===1&&cancels.every(id=>memberAssent.cancels.includes(id)&&setAssent.cancels.includes(id));
   const hamState=withdraw?memberAssent!.hamState:Math.max(memberAssent?.hamState??0,setAssent!.hamState)+1;
@@ -52,7 +53,7 @@ export async function readMediaGroupConsent(object:string,scope:MediaGroupScope,
   if(response.status!==200||response.headers.get("content-type")?.split(";")[0]!=="application/json"){
     await response.body?.cancel().catch(()=>{});return fail();
   }
-  const value=parseMediaGroupConsent(await readBoundedIdentityJson(response,withdraw?100000:32768,deadline),held,member,withdraw);
+  const value=parseMediaGroupConsent(await readBoundedIdentityJson(response,withdraw?262144:32768,deadline),held,member,withdraw);
   deadline.throwIfAborted();
   if(value.at>clock()+1||clock()-value.at>4)return fail();
   return value;

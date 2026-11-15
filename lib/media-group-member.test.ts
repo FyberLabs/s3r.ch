@@ -85,3 +85,18 @@ test("withdrawal BFF accepts bounded cancellation history and checks the final s
  const stale=createMediaWrapService(config,"https://s3r.ch",async()=>owner,async()=>Response.json(state(false,90)),()=>100);
  assert.equal((await stale(request({object,...scope,row:await signed()}),"group-consent-check")).status,403);
 });
+
+ test("withdrawal accepts full bounded histories in both assents through browser and BFF",async()=>{
+ const held=structuredClone(view),ids=Array.from({length:1024},(_,i)=>(i+1).toString(16).padStart(64,"0"));
+ held.consent.state.memberAssent={stated:1,hamState:2,cancels:[...ids]};
+ held.consent.state.setAssent={stated:1,hamState:2,cancels:[...ids]};
+ held.consent.state.cancels=ids;held.consent.state.stated=1;held.consent.draft.hamState=2;
+ const service=createMediaWrapService(config,"https://s3r.ch",async()=>owner,async()=>Response.json(held),()=>100);
+ const row=await client(async()=>service(request({object,...scope}),"group-withdrawal-view")).prepare(object,scope,owner,0,scalar());
+ assert.equal(row.record.stated,0);assert.deepEqual(row.record.cancels,[]);
+ assert.throws(()=>parseMediaGroupConsent(held,scope,owner));
+ for(const party of ["memberAssent","setAssent"] as const){
+  const invalid=structuredClone(held);invalid.consent.state[party]!.cancels.push("f".repeat(64));
+  assert.throws(()=>parseMediaGroupConsent(invalid,scope,owner,true));
+ }
+});
