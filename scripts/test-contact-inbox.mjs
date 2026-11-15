@@ -5,7 +5,7 @@ import {build} from 'esbuild';
 import {chromium} from 'playwright-core';
 import {writeNightlyCaseResults} from './nightly-case-results.mjs';
 if(process.env.GITHUB_ACTIONS!=='true'||process.env.GITHUB_EVENT_NAME!=='schedule'||process.env.NIGHTLY_SUITE!=='s3rch-contact-inbox-ui')throw Error('Requires isolated central scheduled contacts UI suite');
-const names=['setup','explicit-acceptance','ambiguous-send-retry','peer-message','block','identity-and-lock-isolation','cleanup'];
+const names=['setup','consumer-crypto-acceptance','explicit-acceptance','ambiguous-send-retry','peer-message','block','identity-and-lock-isolation','cleanup'];
 const outcomes=new Map();let active='setup',browser,server;
 function next(name){outcomes.set(active,'passed');active=name;}
 try{
@@ -16,6 +16,7 @@ try{
  const page=await browser.newPage();await page.route('**/*',route=>route.request().url().startsWith(origin+'/')?route.continue():route.abort());
  await page.goto(origin);await page.getByText('Contacts could not be loaded.',{exact:true}).waitFor();
  await page.getByRole('button',{name:'Refresh contacts',exact:true}).click();await page.getByText('Hello Alice',{exact:true}).waitFor();
+ next('consumer-crypto-acceptance');await page.evaluate(()=>window.contactAcceptance());
  next('explicit-acceptance');assert.equal(await page.getByLabel('Contact conversation').count(),0);
  await page.getByRole('button',{name:'Accept',exact:true}).click();await page.getByText('No pending requests.').waitFor();
  await page.getByRole('button',{name:'fixture-bob',exact:true}).click();await page.getByLabel('Message',{exact:true}).fill('Private draft');

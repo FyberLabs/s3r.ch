@@ -1,3 +1,4 @@
+import './contact-acceptance';
 // Isolated UI contract only. Identity, authority, journal and transport adapters
 // are substitutions. This is not hosted contact or cryptographic qualification.
 import React,{useState} from 'react';
