@@ -36,25 +36,16 @@ type SeaModule = {
 };
 
 async function loadSea(): Promise<{ pair: () => Promise<SeaPair> }> {
-  const candidates = ["gun/sea", "gun/sea.js"];
-  let last: unknown;
-  for (const spec of candidates) {
-    try {
-      const mod = (await import(spec)) as SeaModule;
-      const sea = mod.default ?? mod;
-      if (typeof sea.pair === "function") {
-        return { pair: sea.pair.bind(sea) };
-      }
-    } catch (error) {
-      last = error;
-    }
-  }
-  throw new Error(
-    `gun/sea import is not available in this runtime (${String(last)}).`,
-  );
+  // Literal specifier lets Next and browser test bundlers include the module.
+  const mod = (await import("gun/sea.js")) as SeaModule;
+  const sea = mod.default ?? mod;
+  if (typeof sea.pair !== "function") throw new Error("SEA module unavailable");
+  return { pair: sea.pair.bind(sea) };
 }
 
 export async function createSeaPair(): Promise<SeaPair> {
   const sea = await loadSea();
-  return sea.pair();
+  const pair = await sea.pair();
+  if (!isSeaPair(pair)) throw new Error("SEA key generation failed");
+  return pair;
 }

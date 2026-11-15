@@ -2,6 +2,7 @@ import { requestIsSecure } from "@/lib/request-origin";
 import { CONFIRM_TTL_SECONDS } from "@/lib/identity/config";
 import {
   confirmFixtureEnabled,
+  confirmSendUrl,
   envConfirmSender,
   signConfirmChallenge,
   startHeldConfirm,
@@ -75,4 +76,12 @@ export async function POST(request: Request) {
     CONFIRM_TTL_SECONDS,
   );
   return Response.json(result.body, { status: 200 });
+}
+
+/** Public availability only; no provider URL, credential or challenge disclosure. */
+export async function GET() {
+  const available = confirmFixtureEnabled() || confirmSendUrl() !== null;
+  return Response.json({ email: available, phone: available }, {
+    headers: { "cache-control": "no-store" },
+  });
 }

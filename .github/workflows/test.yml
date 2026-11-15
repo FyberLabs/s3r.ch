@@ -182,6 +182,8 @@ jobs:
           node scripts/test-granted-media-browser.mjs
           S3RCH_GRANTED_FIXTURE=audio node scripts/test-granted-media-browser.mjs
           S3RCH_GRANTED_FIXTURE=video node scripts/test-granted-media-browser.mjs
+      - name: Wallet key creation and public export browser contract (CI only)
+        run: node scripts/test-wallet-key-browser.mjs
       - name: Private sharing browser recovery contract (CI only)
         run: node scripts/test-private-sharing-browser.mjs
       - name: Private media owner contracts and coverage (CI only)
