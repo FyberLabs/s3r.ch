@@ -11,35 +11,41 @@ export interface ShareJournal {
   remove(expected: number, signal: AbortSignal): Promise<void>;
 }
 export const shareDigest = async (bytes: Uint8Array) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new Uint8Array(bytes))),b=>b.toString(16).padStart(2,"0")).join("");
-async function context(tenant:string,object:string) {
+export type JournalPurpose="share"|"group-consent";
+function domain(purpose:JournalPurpose) {
+  if(purpose!=="share"&&purpose!=="group-consent")throw Error("Invalid recovery purpose");
+  return purpose;
+}
+async function context(tenant:string,object:string,purpose:JournalPurpose) {
   if(!object.startsWith("media_") || !isCanonicalObjectId(object))throw Error("Invalid recovery object");
-  return {object,epoch:0,revisionId:await shareDigest(new TextEncoder().encode(JSON.stringify(["s3rch-share-recovery-v1",tenant,object])))};
+  return {object,epoch:0,revisionId:await shareDigest(new TextEncoder().encode(JSON.stringify([`s3rch-${domain(purpose)}-recovery-v1`,tenant,object])))};
 }
 /** Local recovery encryption is not a service grant and is never published. */
-export async function encryptShareJournal(value: unknown, tenant:string,object:string,pair:SeaPair) {
+export async function encryptShareJournal(value: unknown, tenant:string,object:string,pair:SeaPair,purpose:JournalPurpose="share") {
   const bytes=new TextEncoder().encode(JSON.stringify(value));
   try {
     if(bytes.length>524288)throw Error("Recovery draft too large");
-    const sealed=await sealMediaForReaders(bytes,{tenant,object},await context(tenant,object),
+    const sealed=await sealMediaForReaders(bytes,{tenant,object},await context(tenant,object,purpose),
       [{account:pair.pub,pub:pair.pub,identityPub:pair.pub,epub:pair.epub}],[pair.pub]);
     return {encrypted:sealed.bytes,sha256:sealed.sha256,wrap:sealed.wraps[0]};
   } finally {bytes.fill(0);}
 }
-export async function decryptShareJournal(entry:ShareEntry,tenant:string,pair:SeaPair):Promise<unknown> {
+export async function decryptShareJournal(entry:ShareEntry,tenant:string,pair:SeaPair,purpose:JournalPurpose="share"):Promise<unknown> {
   if(entry.tenant!==tenant || !(entry.encrypted instanceof Uint8Array) || entry.encrypted.length>524320 ||
       !Number.isSafeInteger(entry.revision) || entry.revision<1)throw Error("Invalid recovery draft");
   const bytes=await openMediaForReader(entry.encrypted,entry.sha256,entry.wrap,pair.epriv,pair.epub,
-    {tenant,object:entry.object},await context(tenant,entry.object));
+    {tenant,object:entry.object},await context(tenant,entry.object,purpose));
   try {return JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));}
   finally {bytes.fill(0);}
 }
 /** One pending share per origin. CAS prevents overwriting another tab's draft. */
-export function createShareJournal(factory:IDBFactory=indexedDB):ShareJournal {
+export function createShareJournal(factory:IDBFactory=indexedDB,purpose:JournalPurpose="share"):ShareJournal {
+  const namespace=`s3rch-private-${domain(purpose)}-v1`;
   async function transact<T>(signal:AbortSignal,mode:IDBTransactionMode,work:(store:IDBObjectStore,done:(value:T)=>void,fail:()=>void)=>void):Promise<T> {
     signal.throwIfAborted();
     const db=await new Promise<IDBDatabase>((resolve,reject)=>{
       let finished=false;
-      const open=factory.open("s3rch-private-share-v1",1);
+      const open=factory.open(namespace,1);
       open.onupgradeneeded=()=>open.result.createObjectStore("pending");
       open.onerror=()=>reject(Error("Recovery storage unavailable"));
       open.onblocked=()=>{finished=true;reject(Error("Close other media tabs and retry"));};
