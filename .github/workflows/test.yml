@@ -212,7 +212,7 @@ jobs:
           --test-coverage-include=lib/media-group-client.ts
           --test-coverage-include=lib/media-group-command-recovery.ts
           --test-coverage-lines=90 --test-coverage-branches=80
-          lib/media-group-key-recovery.test.ts lib/media-group-key-client.test.ts lib/media-group-key.test.ts lib/media-group-service.test.ts lib/media-group-client.test.ts lib/media-group-command-recovery.test.ts
+          lib/media-group-key-recovery.test.ts lib/media-group-key-client.test.ts lib/media-group-key.test.ts lib/media-group-service.test.ts lib/media-group-item.test.ts lib/media-group-client.test.ts lib/media-group-command-recovery.test.ts
       - name: Private media owner contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
