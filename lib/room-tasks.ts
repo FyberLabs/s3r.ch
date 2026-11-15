@@ -133,3 +133,12 @@ export function roomTaskPublicationIds(messages: readonly ChatMessage[], room: s
     for (const event of task.events) ids.add(event.messageId);
   return ids;
 }
+
+/** Signed shared work only. A room share never upgrades Mine visibility. */
+export function admittedRoomTaskPublicationIds(messages: readonly ChatMessage[], room: string,
+  admission: Pick<RoomChatAdmission, "valid">): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const task of projectRoomTasks(messages.filter(row => row.room === room && admission.valid(row)), room, true))
+    if (task.visibility === "room") for (const event of task.events) ids.add(event.messageId);
+  return ids;
+}

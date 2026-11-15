@@ -2,6 +2,7 @@
 
 import { useRoomAuthority } from "./RoomAuthorityProvider";
 import { useLayoutEffect, useRef, useState } from "react";
+import { RoomTasks } from "./RoomTasks";
 import { RoomMedia } from "./RoomMedia";
 import { roomMediaText } from "@/lib/room-media";
 import { RoomGame } from "./RoomGame";
@@ -93,6 +94,7 @@ export function RoomChat({
           </ul>
         )
       )}
+      <RoomTasks roomId={roomId} messages={verified} historySize={messages.length} onPublicGraph={onPublicGraph} onComposed={onComposed} />
       <RoomGame roomId={roomId} messages={verified} presence={presence} onPublicGraph={onPublicGraph} seedWsUp={seedWsUp} onComposed={onComposed} />
       <RoomMedia roomId={roomId} messages={verified} onPublicGraph={onPublicGraph} onComposed={onComposed} />
       <ChatCompose roomId={roomId} onPublicGraph={onPublicGraph} onComposed={onComposed} />

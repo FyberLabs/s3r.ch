@@ -1,21 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { admitComposedChat, type ChatMessage } from "@/lib/chat";
-import { canUseRoomTasks, composeRoomTask, roomTasks, TASK_STATUSES, TASK_TITLE_MAX, type RoomTask, type TaskAction, type TaskStatus } from "@/lib/room-tasks";
-import { useSeeAcl, type SeeAclContextValue } from "./SeeAclProvider";
-import { objectOwner, useIdentitySession } from "./useIdentitySession";
+import { type ChatMessage } from "@/lib/chat";
+import { admittedRoomTasks, parseTaskAction, TASK_STATUSES, TASK_TITLE_MAX, type RoomTask, type TaskAction, type TaskStatus } from "@/lib/room-tasks";
+import { useRoomAuthority } from "./RoomAuthorityProvider";
+import { useIdentitySession } from "./useIdentitySession";
 import { btnPrimary, field } from "@/lib/brand-ui";
 
 type Props = { roomId: string; messages: ChatMessage[]; historySize: number; onPublicGraph: boolean;
   onComposed: (message: ChatMessage, putOnGun: boolean) => void };
 export function RoomTasks(props: Props) {
-  const session = useIdentitySession(), see = useSeeAcl(), actor = session ? objectOwner(session) : null;
+  const session = useIdentitySession(), { current: authority } = useRoomAuthority();
+  const actor = session?.owner && authority?.authority.graph.principalForKey(session.owner, Math.floor(Date.now() / 1000)) || null;
   // Private drafts and pending submissions cannot cross room or identity changes.
-  return <RoomWork key={JSON.stringify([props.roomId, actor])} {...props} actor={actor} see={see} />;
+  return <RoomWork key={JSON.stringify([props.roomId, actor])} {...props} actor={actor} authority={authority} />;
 }
-function RoomWork({ roomId, messages, historySize, onPublicGraph, onComposed, actor, see }: Props & {
-  actor: string | null; see: SeeAclContextValue | null;
+function RoomWork({ roomId, messages, historySize, onPublicGraph, onComposed, actor, authority }: Props & {
+  actor: string | null; authority: ReturnType<typeof useRoomAuthority>["current"];
 }) {
   const [title, setTitle] = useState(""), [kind, setKind] = useState<"task" | "issue">("task");
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState("");
@@ -23,29 +24,30 @@ function RoomWork({ roomId, messages, historySize, onPublicGraph, onComposed, ac
   const [, setNow] = useState(() => Math.floor(Date.now() / 1000));
   useEffect(() => { mounted.current = true; const timer = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 10_000);
     return () => { mounted.current = false; clearInterval(timer); }; }, []);
-  const current = useRef({ actor, roomId, see, onPublicGraph, messages, historySize, onComposed });
-  current.current = { actor, roomId, see, onPublicGraph, messages, historySize, onComposed };
-  const allowed = !!actor && !!see?.ready && canUseRoomTasks(see.acl, roomId, actor, Math.floor(Date.now() / 1000));
-  const tasks = allowed ? roomTasks(messages, roomId).filter(task => task.visibility === "room" || task.owner === actor) : [];
+  const current = useRef({ actor, roomId, authority, onPublicGraph, messages, historySize, onComposed });
+  current.current = { actor, roomId, authority, onPublicGraph, messages, historySize, onComposed };
+  const allowed = !!actor && !!authority && authority.admission.canRead(roomId);
+  const canWrite = !!authority && authority.admission.canCompose(roomId, authority.pair);
+  const tasks = allowed ? admittedRoomTasks(messages, roomId, authority!.admission).filter(task => task.visibility === "room" || task.owner === actor) : [];
   const full = !Number.isSafeInteger(historySize) || historySize < messages.length || historySize >= 8192;
   async function send(action: TaskAction) {
-    if (full || !actor || !see?.ready || pending.current || !canUseRoomTasks(see.acl, roomId, actor, Math.floor(Date.now() / 1000))) return;
+    if (full || !actor || !authority || pending.current || !authority.admission.canCompose(roomId, authority.pair)) return;
     const stillCurrent = () => {
       const held = current.current;
       if (!Number.isSafeInteger(held.historySize) || held.historySize < held.messages.length || held.historySize >= 8192 ||
-          !mounted.current || held.actor !== actor || held.roomId !== roomId || held.see !== see || held.onPublicGraph !== onPublicGraph ||
-          !canUseRoomTasks(see.acl, roomId, actor, Math.floor(Date.now() / 1000))) return false;
+          !mounted.current || held.actor !== actor || held.roomId !== roomId || held.authority !== authority || held.onPublicGraph !== onPublicGraph ||
+          !authority.admission.canCompose(roomId, authority.pair)) return false;
       if (action[0] === "create") return true;
-      return roomTasks(held.messages, roomId).some(task => task.id === action[1] && task.head === action[2] && task.owner === actor && (task.visibility === "mine" || onPublicGraph));
+      return admittedRoomTasks(held.messages, roomId, authority.admission).some(task => task.id === action[1] && task.head === action[2] && task.owner === actor && (task.visibility === "mine" || onPublicGraph));
     };
     if (!stillCurrent()) { setNotice("This work changed. Try again."); return; }
     pending.current = true; setBusy(true); setNotice("");
     try {
-      const message = composeRoomTask(roomId, actor, action);
-      if (!message || "denied" in admitComposedChat(see.acl, message, actor)) { setNotice("Could not save this work."); return; }
-      await see.persist();
+      const body = "s3rch-work:v1:" + JSON.stringify(action);
+      const message = parseTaskAction(body) && await authority.admission.compose(roomId, body, authority.pair);
+      if (!message || !authority.admission.valid(message)) { setNotice("Could not save this work."); return; }
       if (!stillCurrent()) { if (mounted.current) setNotice("Room access or work changed. Nothing was sent."); return; }
-      const publish = onPublicGraph && (action[0] === "create" ? action[3] === "room" : roomTasks(current.current.messages, roomId).find(task => task.id === action[1])?.visibility === "room");
+      const publish = onPublicGraph && (action[0] === "create" ? action[3] === "room" : admittedRoomTasks(current.current.messages, roomId, authority.admission).find(task => task.id === action[1])?.visibility === "room");
       current.current.onComposed(message, publish);
       if (action[0] === "create") setTitle("");
       setNotice(publish ? "Sent to this room." : "Saved in Mine.");
@@ -60,17 +62,17 @@ function RoomWork({ roomId, messages, historySize, onPublicGraph, onComposed, ac
       <p className="mt-2 text-xs text-ink-muted">{onPublicGraph ? "Updates appear in this room’s timeline." : "Work stays in Mine. Sharing a room does not publish earlier private work."}</p>
       {full ? <p className="mt-2 text-xs text-ink-muted">This room’s work history is at capacity. New work and updates are unavailable here.</p> : <>
         <div className="mt-3 flex flex-wrap gap-2">
-          <label className="text-xs text-ink-muted">Kind<select aria-label="Work kind" className={`ml-2 ${field}`} value={kind} disabled={busy} onChange={e => setKind(e.target.value as "task" | "issue")}>
+          <label className="text-xs text-ink-muted">Kind<select aria-label="Work kind" className={`ml-2 ${field}`} value={kind} disabled={busy || !canWrite} onChange={e => setKind(e.target.value as "task" | "issue")}>
             <option value="task">Task</option><option value="issue">Issue</option></select></label>
-          <label className="min-w-0 flex-1 text-xs text-ink-muted">Title<input className={`mt-1 w-full ${field}`} value={title} maxLength={TASK_TITLE_MAX} disabled={busy} onChange={e => setTitle(e.target.value)} /></label>
-          <button type="button" className={btnPrimary} disabled={busy || !title.trim()} onClick={() => void send(["create", kind, title.trim(), onPublicGraph ? "room" : "mine", "open", null])}>Add work</button>
+          <label className="min-w-0 flex-1 text-xs text-ink-muted">Title<input className={`mt-1 w-full ${field}`} value={title} maxLength={TASK_TITLE_MAX} disabled={busy || !canWrite} onChange={e => setTitle(e.target.value)} /></label>
+          <button type="button" className={btnPrimary} disabled={busy || !canWrite || !title.trim()} onClick={() => void send(["create", kind, title.trim(), onPublicGraph ? "room" : "mine", "open", null])}>Add work</button>
         </div>
         {!tasks.length ? <p className="mt-3 text-xs text-ink-muted">No tasks or issues yet.</p> : <ul className="mt-3 space-y-3">{tasks.map(task =>
           <li key={task.id} className="border-t border-rule pt-2"><p className="text-sm text-ink">{task.kind === "issue" ? "Issue" : "Task"}: {task.title}</p>
             <p className="text-xs text-ink-muted">{task.visibility === "mine" ? "Mine" : "Shared in room"} · {task.status} · {task.assignee ? `Assigned to ${task.assignee}` : "Unassigned"}</p>
-            {task.owner === actor && task.visibility === "mine" && onPublicGraph ? <button type="button" className={`mt-2 ${btnPrimary}`} disabled={busy}
+            {task.owner === actor && task.visibility === "mine" && onPublicGraph ? <button type="button" className={`mt-2 ${btnPrimary}`} disabled={busy || !canWrite}
               onClick={() => void send(["create", task.kind, task.title, "room", task.status, task.assignee])}>Share a copy</button> : null}
-            {task.owner === actor && (task.visibility === "mine" || onPublicGraph) ? <TaskEditor key={task.head} task={task} busy={busy} send={send} /> : null}
+            {task.owner === actor && (task.visibility === "mine" || onPublicGraph) ? <TaskEditor key={task.head} task={task} busy={busy || !canWrite} send={send} /> : null}
           </li>)}</ul>}
       </>}
     </>}

@@ -125,14 +125,15 @@ test("room-share replay and chat summaries enforce the same task privacy boundar
   assert.deepEqual([...roomTaskPublicationIds(rows, room, other, acl, 150)], []);
 });
 
-// Pin the fail-closed production boundary until authenticated admission replaces it.
-test("production room paths filter signatures before rendering and keep task UI disabled", () => {
+// Production editor uses signed admission; raw task text stays out of ordinary chat.
+test("production room paths filter signatures before rendering and mount the signed task editor", () => {
   const chat = readFileSync(new URL("../components/RoomChat.tsx", import.meta.url), "utf8");
   const feed = readFileSync(new URL("../components/FeedStream.tsx", import.meta.url), "utf8");
-  assert.doesNotMatch(chat, /(?:import.*RoomTasks|<RoomTasks|visibleRoomTaskChat|roomTaskChatText)/);
+  assert.match(chat, /<RoomTasks roomId=\{roomId\} messages=\{verified\}/);
+  assert.doesNotMatch(chat, /visibleRoomTaskChat|roomTaskChatText/);
   assert.match(chat, /rankChatMessages\(verified\.filter\(row => !isRoomTaskBody\(row\.body\)\)\)/);
   assert.match(feed, /publishCurrentRoomChat\(/);
-  assert.match(feed, /if \(!canMutate\(\) \|\| !roomAuthority\?\.admission\.valid\(next\) \|\| isRoomTaskBody\(next\.body\)\) return;/);
+  assert.match(feed, /if \(!canMutate\(\) \|\| !roomAuthority\?\.admission\.valid\(next\)\) return;/);
 });
 
 test("Views room adapter quarantines forged work while preserving ordinary chat", () => {

@@ -9,7 +9,6 @@ import FeedConversation from "./FeedConversation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { FeedItem, FeedSnapshot, FeedTab } from "@/lib/feed-types";
 import { fromGunNode } from "@/lib/feed-types";
-import { isRoomTaskBody } from "@/lib/room-tasks";
 import { mergeItems } from "@/lib/merge";
 import {
   aggregateDiscoverTags,
@@ -947,13 +946,14 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
           onPublicGraph={roomChatPublic(openRoom.id)}
           seedWsUp={seedWsUp}
           onComposed={(next) => {
-            if (!canMutate() || !roomAuthority?.admission.valid(next) || isRoomTaskBody(next.body)) return;
+            if (!canMutate() || !roomAuthority?.admission.valid(next)) return;
             overlayChatRef.current = mergeChat(overlayChatRef.current, [next]);
             setOverlayChat(overlayChatRef.current);
             if (!see?.acl || !session) return;
             const gun = gunRef.current;
             if (!gun) return;
             publishCurrentRoomChat({ room: next.room, currentRows: () => [next],
+              taskHistory: () => mergeChat(graphChat, overlayChatRef.current),
               publicRoom: () => canMutate() && roomChatPublic(next.room), admission: roomAuthority.admission,
               publish: row => { gun.get("s3rch").get("rooms").get(encodeKey(row.room)).get("chat").get(encodeKey(row.id)).put(row); } });
           }}
