@@ -98,3 +98,42 @@ test("ciphertext CAS rejects writes and deletes after revision reuse",async()=>{
  await assert.rejects(f.input.journal.write(old,old,signal));
  assert.deepEqual(await f.input.journal.read(signal),replacement);
 });
+
+test("group wrap recovery persists exact ciphertext before writes and retains secret until remote opening",async()=>{
+ const {deliverGroupKey,finishGroupKeyDelivery}=await import('./media-group-key-recovery');
+ const journal=createShareJournal(new IDBFactory(),"group-key");let command:any,applied=false,lose=true,readable=false;
+ const publications:string[]=[];
+ const snapshot={predicate:scope.predicate,setId:set,setOwner:owner,ownerSigningPub:owner,ownerEncryptionPub:pair.epub,ownerIdentityHead:0,
+  members:[{accessor:owner,stated:1,hamState:1,signingPub:owner,encryptionPub:pair.epub,identityHead:0}]};
+ const fetcher:typeof fetch=async(url,init)=>{
+  const action=String(url).split('/').at(-1),body=JSON.parse(String(init?.body));
+  if(action==='key-view')return Response.json({at:100,fence:'a'.repeat(64),previousEpoch:0,previousFinalizationId:'',snapshot,
+   config:{owner,setId:set,predicate:scope.predicate,settleWindowMs:3600000,configRevision:0,signature:'1'.repeat(128)}});
+  if(action==='key-state')return Response.json({at:100,state:applied?'applied':'absent',fence:'a'.repeat(64)});
+  if(action==='key-append'){command=body.command;applied=true;return Response.json({accepted:true});}
+  if(action==='wrap-view')return Response.json({at:100,fence:'b'.repeat(64),snapshot,manifest:command.document.manifest});
+  if(action==='wrap-publish'){
+   const entry=(await journal.read(signal))!;
+   const saved=await decryptShareJournal(entry,tenant,pair,'group-key') as any;
+   assert.equal(saved.wraps.wraps[0].payload,body.payload);assert.equal(saved.next,0);saved.groupKey.fill(0);
+   publications.push(body.payload);
+   if(lose){lose=false;throw Error('lost publication response');}
+   return Response.json({digest:body.metadata.digest});
+  }
+  if(!readable)return new Response(null,{status:403});
+  return Response.json({payload:publications[0],predicate:scope.predicate,set_id:set,epoch:1,revision_id:command.document.manifest.revisionId,
+   reader_epub:pair.epub,key_commitment:command.document.manifest.keyCommitment,expires_at:102});
+ };
+ const input={tenant,principal:owner,pair,fetcher,signal,journal,clock:()=>100};
+ const signed=await createGroupKeyClient(owner,fetcher,input.clock).prepare(scope,'device',secret,scalar);
+ const admitted=await applyGroupKey({...input,command:signed,groupKey:secret});
+ await assert.rejects(deliverGroupKey({...input,expected:admitted}));
+ const retry=(await pendingGroupKey(input))!;assert.equal(retry.published,0);assert.equal(retry.total,1);
+ await assert.rejects(deliverGroupKey({...input,expected:admitted}));
+ const published=await deliverGroupKey({...input,expected:retry});
+ assert.equal(published.published,1);assert.equal(publications.length,2);assert.equal(publications[0],publications[1]);
+ await assert.rejects(finishGroupKeyDelivery({...input,expected:published}));assert.ok(await journal.read(signal));
+ readable=true;await finishGroupKeyDelivery({...input,expected:published});assert.equal(await journal.read(signal),null);
+ await assert.rejects(deliverGroupKey({...input,expected:published}));
+ await assert.rejects(finishGroupKeyDelivery({...input,expected:published}));
+});
