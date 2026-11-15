@@ -58,3 +58,34 @@ write; absent rows get one write attempt against the fresh fence. A lost respons
 is left for explicit reconciliation, and an expired absent signature must be
 prepared again. These methods do not persist a browser recovery journal or add
 group delivery; durable UI recovery and group epoch delivery remain separate.
+
+## Independent group commands
+
+The protected `/api/media/groups/{action}` routes create a group from an owned
+media anchor and manage the group's independent membership journal. The anchor
+supplies trusted policy at creation; later membership does not depend on an
+object-set edge. Creation does not enroll the owner as a member. Set-owner and
+member assents remain separate, and withdrawal does not require a surviving
+invitation or an encryption key.
+
+The unlocked browser prepares group configuration and membership signatures
+from fresh protected views. `runGroupCommand` saves the exact signed command in
+a separate encrypted IndexedDB journal before sending it. It records the fresh
+attempt time before each write. `resumeGroupCommand` reconciles that command
+without generating a replacement signature; an expired absent membership command
+must be cleared after reconciliation before preparing a new one. The dedicated
+Web Lock and journal revision check prevent competing tabs from replacing the
+saved command. Locking or changing identity aborts in-flight browser operations.
+
+My media can inspect, retry and clear the saved independent group command after
+loading the current principal's catalog. Clearing requires source confirmation:
+an applied command can be cleared, while an absent attempted command must wait
+until its write fence has expired. An unavailable source retains the command.
+The UI clears its visible selection when the identity session changes. Clearing
+local recovery never reverses an accepted change.
+
+Group creation and membership acceptance alone do not grant media access.
+Group-wide epoch selection, member key delivery, object-set sharing controls and
+the hosted share/view/unshare scenario remain required before group sharing is
+complete. Existing per-object consent recovery remains separate from this
+independent group journal.
