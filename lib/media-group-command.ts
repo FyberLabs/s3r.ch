@@ -1,0 +1,72 @@
+import {parseMediaGroupScope,parseMediaGroupPolicy} from "./media-group";
+import {objectPrincipal,parseForumAuthority} from "./identity/forum-authority-records";
+import {isCanonicalObjectId} from "./identity/object-id";
+import {isSeaPubkey} from "./identity/forum-check";
+
+export const groupCommandFields={
+  "create-view":["object","predicate","set"],
+  create:["object","predicate","set","at","fence","config"],
+  "create-state":["object","predicate","set","config"],
+  "member-view":["predicate","set","member","role","stated"],
+  "member-append":["predicate","set","member","role","at","fence","row"],
+  "member-state":["predicate","set","member","role","row"],
+} as const;
+export type GroupCommandAction=keyof typeof groupCommandFields;
+const fail=():never=>{throw Error("Group command unavailable");};
+const exact=(v:unknown,keys:readonly string[]):v is Record<string,unknown>=>!!v&&typeof v==="object"&&!Array.isArray(v)&&Object.keys(v).sort().join() === [...keys].sort().join();
+const integer=(v:unknown):v is number=>Number.isSafeInteger(v)&&(v as number)>=0;
+const digest=(v:unknown):v is string=>typeof v==="string"&&/^[a-f0-9]{64}$/.test(v);
+export const isGroupCommand=(action:string):action is GroupCommandAction=>Object.hasOwn(groupCommandFields,action);
+
+/** Shape and authenticated-party checks. Native ACL remains the signature authority. */
+export function parseGroupCommand(action:GroupCommandAction,input:unknown,principal:string) {
+  const body=structuredClone(input);
+  if(!isSeaPubkey(principal)||!exact(body,groupCommandFields[action]))return fail();
+  const scope=parseMediaGroupScope({predicate:body.predicate,set:body.set}),owner=objectPrincipal(scope.set);
+  if(action.startsWith("create")) {
+    if(owner!==principal||typeof body.object!=="string"||!body.object.startsWith("media_")||!isCanonicalObjectId(body.object)||objectPrincipal(body.object)!==principal)return fail();
+    if("config" in body)parseMediaGroupPolicy(body.config,scope);
+  } else {
+    if(typeof body.member!=="string"||!isSeaPubkey(body.member)||!["set","member"].includes(body.role as string)||
+        (body.role==="set"?owner:body.member)!==principal)return fail();
+    if("stated" in body&&body.stated!==0&&body.stated!==1)return fail();
+    if("row" in body) {
+      const row=body.row;
+      if(!exact(row,["kind","soul","record"])||row.kind!=="membership")return fail();
+      const parsed=parseForumAuthority("membership",row.record);
+      if(!parsed||parsed.kind!=="membership"||parsed.soul!==row.soul||parsed.row.role!==body.role||
+          parsed.row.member!==body.member||parsed.row.predicate!==scope.predicate||parsed.row.set!==scope.set)return fail();
+    }
+  }
+  if("at" in body&&(!integer(body.at)||!digest(body.fence)))return fail();
+  return body;
+}
+
+/** Reject a mismatched preparation before a browser can sign or persist it. */
+export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,body:Record<string,unknown>,now:number) {
+  const value=structuredClone(input),scope=parseMediaGroupScope({predicate:body.predicate,set:body.set});
+  if(action==="create"||action==="member-append") {
+    if(!exact(value,["accepted"])||value.accepted!==true)return fail();return value;
+  }
+  if(!value||typeof value!=="object"||Array.isArray(value))return fail();
+  const v=value as Record<string,unknown>;
+  if(!integer(v.at)||v.at>now+1||now-v.at>4)return fail();
+  if(action==="create-state"||action==="member-state") {
+    const fields=action==="create-state"&&v.state==="applied"?["at","state"]:["at","state","fence"];
+    if(!exact(v,fields)||!["absent","applied"].includes(v.state as string)||("fence" in v&&!digest(v.fence)))return fail();
+  } else if(action==="create-view") {
+    if(!exact(v,["at","context","fence"])||!digest(v.fence)||!exact(v.context,["owner","ownerPub","predicate","setId"])||
+        v.context.owner!==objectPrincipal(scope.set)||v.context.predicate!==scope.predicate||v.context.setId!==scope.set||
+        typeof v.context.ownerPub!=="string"||!isSeaPubkey(v.context.ownerPub))return fail();
+  } else {
+    if(!exact(v,["at","draft","signerPub","fence"])||!digest(v.fence)||typeof v.signerPub!=="string"||!isSeaPubkey(v.signerPub)||
+        !exact(v.draft,["predicate","set","member","setOwner","role","stated","hamState","issuedAt","cancels"]))return fail();
+    const d=v.draft;
+    if(d.predicate!==scope.predicate||d.set!==scope.set||d.member!==body.member||d.role!==body.role||d.stated!==body.stated||
+        d.setOwner!==objectPrincipal(scope.set)||!integer(d.hamState)||d.issuedAt!==v.at||!Array.isArray(d.cancels)||d.cancels.length>64)return fail();
+    let previous="";
+    for(const id of d.cancels){if(!digest(id)||id<=previous)return fail();previous=id;}
+    if(d.stated===0&&d.cancels.length)return fail();
+  }
+  return v;
+}

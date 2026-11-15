@@ -2,9 +2,11 @@ import { getSquadPilotServer } from "./squad-pilot-server";
 import { createForumAuthority } from "./identity/forum-authority";
 import { createMediaWrapService, parseMediaReaderConfig } from "./media-wrap-service";
 
+import { createMediaGroupService } from "./media-group-service";
+
 import { createMediaOwnerService } from "./media-owner-service";
 
-let cached: { raw: string; pilot: unknown; service: ReturnType<typeof createMediaWrapService>; owner: ReturnType<typeof createMediaOwnerService> } | undefined;
+let cached: { raw: string; pilot: unknown; service: ReturnType<typeof createMediaWrapService>; owner: ReturnType<typeof createMediaOwnerService>; group: ReturnType<typeof createMediaGroupService> } | undefined;
 function getMediaServices() {
   const raw = process.env.S3RCH_MEDIA_READER_BINDINGS;
   if (raw === undefined) { cached = undefined; return null; }
@@ -27,8 +29,11 @@ function getMediaServices() {
   };
   const service = createMediaWrapService(config, pilot.config.origin, resolveReader);
   const owner = createMediaOwnerService(config, pilot.config.origin, resolveReader);
-  cached = { raw, pilot, service, owner }; return cached;
+  const group = createMediaGroupService(config, pilot.config.origin, resolveReader);
+  cached = { raw, pilot, service, owner, group }; return cached;
 }
 
 export function getMediaWrapService() { return getMediaServices()?.service ?? null; }
 export function getMediaOwnerService() { return getMediaServices()?.owner ?? null; }
+
+export function getMediaGroupService() { return getMediaServices()?.group ?? null; }
