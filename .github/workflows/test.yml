@@ -62,6 +62,12 @@ jobs:
         run: node scripts/test-room-tasks.mjs
       - name: Recording browser contracts (CI only)
         run: node scripts/test-media-recorder.mjs
+      - name: Group wrap transport coverage (CI only)
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/media-group-wrap.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-wrap.test.ts lib/media-group-service.test.ts
       - name: Recording draft coverage
         run: >-
           node --import tsx --test --experimental-test-coverage
