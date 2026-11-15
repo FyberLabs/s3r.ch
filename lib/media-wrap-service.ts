@@ -1,3 +1,5 @@
+import { parseMediaGroupScope } from "./media-group";
+import { parseMediaGroupConsent } from "./media-group-consent";
 import { isMediaCatalogPageNumber, parseMediaGrantedPage } from "./media-catalog";
 import { isSeaPubkey } from "./identity/forum-check";
 import { isCanonicalObjectId } from "./identity/object-id";
@@ -36,7 +38,7 @@ export function createMediaWrapService(config: MediaReaderConfig, siteOrigin: st
   if (origin.protocol !== "https:" || origin.origin !== siteOrigin) throw Error("Invalid site origin");
   const readers = new Map(held.readers.map(row => [row.principal, row.apiKey]));
   const active = new Set<string>(); let preflights = 0, transports = 0;
-  return async (request: Request, action: "read-wrap" | "catalog" = "read-wrap") => {
+  return async (request: Request, action: "read-wrap" | "catalog" | "group-consent-view" = "read-wrap") => {
     const reply = (status: number) => new Response(null, { status, headers });
     if (request.method !== "POST") return reply(405);
     if (!matchesBrowserOrigin(request, origin)) return reply(403);
@@ -54,26 +56,38 @@ export function createMediaWrapService(config: MediaReaderConfig, siteOrigin: st
       active.add(reader); occupied = true;
       const body = await readBoundedIdentityJson(new Response(request.body), 2048,
         AbortSignal.any([signal, AbortSignal.timeout(1000)]));
-      if (!body || typeof body !== "object" || Object.keys(body).join() !== (action === "catalog" ? "page" : "object")) return reply(400);
+      if (!body || typeof body !== "object" || Object.keys(body).sort().join() !== (action === "catalog" ? "page" : action === "group-consent-view" ? "object,predicate,set" : "object")) return reply(400);
       const object = (body as { object?: unknown }).object, page=(body as {page?:unknown}).page;
       if(action === "catalog") { if(!isMediaCatalogPageNumber(page))return reply(400); }
       else if (typeof object !== "string" || !object.startsWith("media_") || !isCanonicalObjectId(object)) return reply(400);
+      let scope:ReturnType<typeof parseMediaGroupScope>|undefined;
+      if(action === "group-consent-view") {
+        try { scope=parseMediaGroupScope({predicate:(body as Record<string,unknown>).predicate,set:(body as Record<string,unknown>).set}); }
+        catch { return reply(400); }
+      }
       if (transports >= 2) return reply(429);
       transports++; transport = true;
       const response = await fetcher(held.origin + "/api/v1/acl/sociacl/media/" + action, {
         method: "POST", credentials: "omit", redirect: "error", cache: "no-store", signal,
         headers: { "X-Api-Key": readers.get(reader)!, "X-Tenant-ID": held.tenant,
-          "Content-Type": "application/json", "Accept-Encoding": "identity" }, body: JSON.stringify(action === "catalog" ? {page} : {object}) });
+          "Content-Type": "application/json", "Accept-Encoding": "identity" }, body: JSON.stringify(action === "catalog" ? {page} : action === "group-consent-view" ? {object,...scope} : {object}) });
       if (response.status !== 200 || response.headers.get("content-type")?.split(";")[0] !== "application/json" ||
           ![null, "identity"].includes(response.headers.get("content-encoding"))) {
         await response.body?.cancel().catch(() => {}); return reply(403);
       }
-      const result = await readBoundedIdentityJson(response, action === "catalog" ? 4096 : 100000, signal) as Record<string, unknown>;
+      const result = await readBoundedIdentityJson(response, action === "catalog" ? 4096 : action === "group-consent-view" ? 32768 : 100000, signal) as Record<string, unknown>;
       if(action === "catalog") {
         const catalog=parseMediaGrantedPage(result,page as number,reader);
         if(await resolveReader(request,signal)!==reader)return reply(403);
         signal.throwIfAborted();
         return Response.json({...catalog,principal:reader},{headers});
+      }
+      if(action === "group-consent-view") {
+        const consent=parseMediaGroupConsent(result,scope!,reader);
+        if(await resolveReader(request,signal)!==reader)return reply(403);
+        signal.throwIfAborted();
+        if(consent.at>clock()+1||clock()-consent.at>4)return reply(403);
+        return Response.json(consent,{headers});
       }
       const context = result?.context as Record<string, unknown> | undefined;
       if (!result || Object.keys(result).sort().join() !== "context,expiresAt,readerEpub,wrapBase64" ||

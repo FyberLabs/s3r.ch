@@ -37,3 +37,11 @@ original signed rows and reconcile them before another attempt. Applied means
 retained, not live authorization: an older object-set row can remain retained
 after a later withdrawal without regaining access. Current-history refusal,
 stale fences and session changes still stop the operation.
+
+The read-only `/api/media/group-consent-view` BFF takes `{object,predicate,set}`
+under an existing fixed reader binding. The browser helper requires the expected
+member and scope, validates the separate assents and exact unsigned member draft,
+and refuses stale replies. The BFF rechecks the browser session after the ACL
+request and never forwards a caller-selected member or credential. No consent
+signature, append, group epoch, or delivery is performed here. Safe member writes
+and the group sharing UI remain separate work.
