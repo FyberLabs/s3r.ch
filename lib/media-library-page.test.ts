@@ -34,3 +34,10 @@ test("sharing recovery starts as an explicit action without private recipient da
   const html=renderToStaticMarkup(createElement(PrivateMediaLibrary,{tenant:"11111111-1111-4111-8111-111111111111"}));
   assert.match(html,/Check saved sharing/);assert.doesNotMatch(html,/Pending sharing with|Resume sharing|Recipient SEA account/);
 });
+
+test("group command recovery starts disabled until the current catalog principal is loaded",()=>{
+  const html=renderToStaticMarkup(createElement(PrivateMediaLibrary,{tenant:"11111111-1111-4111-8111-111111111111"}));
+  assert.match(html,/Group change recovery/);
+  assert.match(html,/<button[^>]*disabled=""[^>]*>Check saved group change<\/button>/);
+  assert.doesNotMatch(html,/Retry saved group change|Clear reconciled group request|set_p_/);
+});
