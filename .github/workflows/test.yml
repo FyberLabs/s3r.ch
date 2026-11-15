@@ -58,6 +58,8 @@ jobs:
         run: |
           S3RCH_ROOM_MEDIA_FIXTURE=audio node scripts/test-room-media-browser.mjs
           S3RCH_ROOM_MEDIA_FIXTURE=video node scripts/test-room-media-browser.mjs
+      - name: Check scheduled contact inbox source
+        run: node --check scripts/test-contact-inbox.mjs
       - name: Room task browser contracts (CI only)
         run: node scripts/test-room-tasks.mjs
       - name: Recording browser contracts (CI only)
