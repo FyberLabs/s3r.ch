@@ -43,6 +43,7 @@ test("six group commands retain exact payloads and fixed credentials",async()=>{
   }
 });
 test("request parser rejects other parties, scopes, rows and authority fields",()=>{
+  assert.throws(()=>parseGroupCommand("create",{object,...scope,"at,config,fence":{}},owner));
   for(const [action,body] of cases){
     assert.throws(()=>parseGroupCommand(action,{...body,writer:owner},owner));
     assert.throws(()=>parseGroupCommand(action,body,other));
@@ -80,6 +81,7 @@ test("BFF refuses spoofing and provider failures without exposing responses",asy
   for(const headers of ([{origin:"https://evil.example"},{"content-type":"text/plain"},{"content-encoding":"gzip"}] as Record<string,string>[]))assert.notEqual((await handle("create-view",request(cases[0][1],headers))).status,200);
   assert.equal((await handle("create-view",request({...cases[0][1],writer:owner}))).status,400);
   assert.equal((await handle("create-view",request({padding:"x".repeat(19000)}))).status,400);
+  assert.equal((await handle("create",request({object,...scope,"at,config,fence":{}}))).status,400);
   assert.equal(calls,0);
   for(const status of [403,409,429,500]){
     const response=await service(async()=>new Response("private detail",{status}))("create-view",request(cases[0][1]));

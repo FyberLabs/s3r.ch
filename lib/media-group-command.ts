@@ -13,7 +13,7 @@ export const groupCommandFields={
 } as const;
 export type GroupCommandAction=keyof typeof groupCommandFields;
 const fail=():never=>{throw Error("Group command unavailable");};
-const exact=(v:unknown,keys:readonly string[]):v is Record<string,unknown>=>!!v&&typeof v==="object"&&!Array.isArray(v)&&Object.keys(v).sort().join() === [...keys].sort().join();
+const exact=(v:unknown,keys:readonly string[]):v is Record<string,unknown>=>!!v&&typeof v==="object"&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(key=>Object.hasOwn(v,key));
 const integer=(v:unknown):v is number=>Number.isSafeInteger(v)&&(v as number)>=0;
 const digest=(v:unknown):v is string=>typeof v==="string"&&/^[a-f0-9]{64}$/.test(v);
 export const isGroupCommand=(action:string):action is GroupCommandAction=>Object.hasOwn(groupCommandFields,action);
