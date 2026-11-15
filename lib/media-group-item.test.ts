@@ -32,3 +32,26 @@ test("item preparation rejects expired, mismatched or malformed context",()=>{
       assert.throws(()=>parse({...result,[field]:{...result[field],...patch}}));
   }
 });
+
+const authority={at:100,fence:"a".repeat(64),objectVersion:1,projection:null,ownerPub:owner};
+const parseAuthority=(v:unknown)=>parseGroupCommandResult("item-authority-view",v,{object},100);
+test("current item authority takes only an owned object and allows a rotated signing key",()=>{
+  assert.deepEqual(parseGroupCommand("item-authority-view",{object},owner),{object});
+  for(const bad of [{object:body.set},{object:"bad"},{object,owner},{...body},{object,at:100}])
+    assert.throws(()=>parseGroupCommand("item-authority-view",bad,owner));
+  assert.throws(()=>parseGroupCommand("item-authority-view",{object},"bad"));
+  const parsed=parseAuthority(authority);assert.deepEqual(parsed,authority);assert.notEqual(parsed,authority);
+  const rotated="fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E";
+  assert.deepEqual(parseAuthority({...authority,ownerPub:rotated}),{...authority,ownerPub:rotated});
+});
+test("current item authority refuses stale, foreign or inconsistent projections",()=>{
+  for(const patch of [{extra:true},{at:95},{at:102},{at:true},{fence:"bad"},{ownerPub:"bad"},
+      {objectVersion:-1},{objectVersion:true},{projection:{}}])assert.throws(()=>parseAuthority({...authority,...patch}));
+  const edge={predicate:body.predicate,setId:body.set,stated:1,hamState:2};
+  const member={...edge,accessor:owner};
+  const projection={object,set:body.set,predicate:body.predicate,members:[],snapshot:{objectSet:edge,members:[member]}};
+  assert.deepEqual(parseAuthority({...authority,projection}),{...authority,projection});
+  assert.throws(()=>parseAuthority({...authority,projection:{...projection,object:"other"}}));
+  assert.throws(()=>parseAuthority({...authority,projection:{...projection,members:[owner]}}));
+  assert.throws(()=>parseAuthority({...authority,projection:{...projection,snapshot:{...projection.snapshot,members:[member,member]}}}));
+});
