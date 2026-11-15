@@ -3,6 +3,9 @@ import {objectPrincipal,parseForumAuthority} from "./identity/forum-authority-re
 import {isCanonicalObjectId} from "./identity/object-id";
 import {isSeaPubkey} from "./identity/forum-check";
 
+export type GroupCatalogEntry=Readonly<{predicate:"same-group"|"named-circle";set:string;owner:string;owned:boolean;invited:boolean;active:boolean}>;
+export type GroupCatalog=Readonly<{at:number;groups:readonly GroupCatalogEntry[];nextPage:number|null;principal:string}>;
+
 export const groupCommandFields={
   catalog:["page"],
   "create-view":["object","predicate","set"],
