@@ -138,4 +138,4 @@ export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,
 }
 
 export const groupRequestLimit=(action:GroupCommandAction)=>action==="wrap-publish"?92160:action==="key-append"||action==="key-state"?73728:18432;
-export const groupResponseLimit=(action:GroupCommandAction)=>action==="wrap-read"?92160:action==="wrap-view"||action==="key-view"?73728:18432;
+export const groupResponseLimit=(action:GroupCommandAction)=>action==="wrap-read"?92160:action==="wrap-view"||action==="key-view"||action==="item-authority-view"?73728:18432;
