@@ -1,3 +1,4 @@
+import {createGroupCommandClient,parseSignedGroupCommand,type GroupSignedCommand} from "./media-group-client";
 import {applyGroupConsent,pendingGroupConsent,discardGroupConsent,type PendingGroupConsent} from "./media-group-recovery";
 import {createMediaGroupMember} from "./media-group-member";
 import {parseMediaGroupScope,type MediaGroupScope} from "./media-group";
@@ -62,6 +63,22 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     });
   }
   return Object.freeze({
+    prepareGroupCreation(principal:string,object:string,scope:MediaGroupScope,windowMs:number,signal?:AbortSignal){
+      const held=parseMediaGroupScope(scope);
+      return signed((_owner,key,deadline,transport)=>createGroupCommandClient(principal,transport).prepareCreate(object,held,windowMs,key,deadline),signal);
+    },
+    prepareGroupMembership(principal:string,scope:MediaGroupScope,member:string,role:"member"|"set",stated:0|1,signal?:AbortSignal){
+      const held=parseMediaGroupScope(scope);
+      return signed((_owner,key,deadline,transport)=>createGroupCommandClient(principal,transport).prepareMember(held,member,role,stated,key,deadline),signal);
+    },
+    groupCommandState(principal:string,command:GroupSignedCommand,signal?:AbortSignal){
+      const held=parseSignedGroupCommand(command,principal);
+      return run((_pair,transport,deadline)=>createGroupCommandClient(principal,transport).state(held,deadline),signal);
+    },
+    applyGroupCommand(principal:string,command:GroupSignedCommand,signal?:AbortSignal){
+      const held=parseSignedGroupCommand(command,principal);
+      return run((_pair,transport,deadline)=>createGroupCommandClient(principal,transport).apply(held,deadline),signal);
+    },
     consent(tenant:string,target:{object:string;scope:MediaGroupScope;member:string;stated:0|1},signal?:AbortSignal){
       const held=structuredClone(target);
       return locked(()=>run((pair,transport,deadline)=>applyGroupConsent({tenant,pair,fetcher:transport,signal:deadline,journal:createShareJournal(undefined,"group-consent"),target:held}),signal),"s3rch-private-group-consent-v1");
