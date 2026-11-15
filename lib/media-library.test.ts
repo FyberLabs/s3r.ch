@@ -441,3 +441,30 @@ test("group owners create empty groups and sign only their invitation role",asyn
   saved=true;const held=calls.length;await f.library.createGroup("tenant");await f.library.loadGroups();await f.library.inviteToGroup("tenant",entry.set,entry.predicate,member,1);assert.equal(calls.length,held);
  }finally{f.library.dispose();}
 });
+
+test("group key controls require active ownership and preserve recoverable failures",async()=>{
+ const entry={predicate:"same-group" as const,set:"set_test",owner:key,owned:true,invited:true,active:true};
+ let held:any={set:entry.set,principal:key,token:'saved',epoch:1,revisionId:'a'.repeat(64),phase:'admitted',published:0,total:0};
+ let active=false,fail=false,calls=0;
+ const f=setup({browser:()=>({catalog:async()=>({at:1,objects:['owned'],nextPage:null,principal:key}),
+  groupCatalog:async()=>({at:1,principal:key,groups:[{...entry,active}],nextPage:1}),
+  startGroupKey:async()=>{calls++;if(fail)throw Error();return held;},pendingGroupKey:async()=>held,
+  resumeGroupKey:async()=>{if(fail)throw Error();return held={...held,published:1,total:1};},
+  finishGroupKey:async()=>{if(fail)throw Error();},discardGroupKey:async()=>{if(fail)throw Error();},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try{
+  await f.library.startGroupKey('tenant',entry.set,entry.predicate);assert.equal(calls,0);
+  await f.library.load();await f.library.loadGroups();await f.library.startGroupKey('tenant',entry.set,entry.predicate);assert.equal(calls,0);
+  active=true;await f.library.loadGroups();await f.library.startGroupKey('tenant',entry.set,entry.predicate);assert.equal(calls,1);
+  assert.equal(f.state().groupKey?.phase,'admitted');await f.library.discardGroupKey('tenant');assert.ok(f.state().groupKey);
+  fail=true;await f.library.resumeGroupKey('tenant');assert.equal(f.state().groupKey,null);assert.match(f.state().message,/remain saved/);
+  await f.library.inspectGroupKey('tenant');fail=false;await f.library.resumeGroupKey('tenant');assert.equal(f.state().groupKey?.published,1);
+  fail=true;await f.library.finishGroupKey('tenant');assert.ok(f.state().groupKey);assert.match(f.state().message,/retained/);
+  fail=false;await f.library.finishGroupKey('tenant');assert.equal(f.state().groupKey,null);
+  held={...held,phase:'prepared'};await f.library.inspectGroupKey('tenant');fail=true;await f.library.discardGroupKey('tenant');assert.ok(f.state().groupKey);
+  fail=false;await f.library.discardGroupKey('tenant');assert.equal(f.state().groupKey,null);
+  fail=true;await f.library.startGroupKey('tenant',entry.set,entry.predicate);assert.match(f.state().message,/Check saved group keys/);
+  held=null;await f.library.inspectGroupKey('tenant');assert.match(f.state().message,/No saved/);
+  f.library.reset();assert.equal(f.state().groupKey,null);
+ }finally{f.library.dispose();}
+});

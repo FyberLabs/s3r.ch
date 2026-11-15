@@ -10,6 +10,7 @@ export type GroupCatalog=Readonly<{at:number;groups:readonly GroupCatalogEntry[]
 
 export const groupCommandFields={
   catalog:["page"],
+  allocate:["predicate","set"],
   "wrap-view":["predicate","set"],
   "wrap-publish":["predicate","set","at","fence","metadata","payload"],
   "wrap-read":["predicate","set"],
@@ -37,7 +38,7 @@ export function parseGroupCommand(action:GroupCommandAction,input:unknown,princi
   if(!isSeaPubkey(principal)||!exact(body,groupCommandFields[action]))return fail();
   if(action==="catalog"){if(!integer(body.page)||body.page>15)return fail();return body;}
   const scope=parseMediaGroupScope({predicate:body.predicate,set:body.set}),owner=objectPrincipal(scope.set);
-  if(action.startsWith("key-")){
+  if(action.startsWith("key-")||action==="allocate"){
     if(owner!==principal)return fail();
     if("command" in body)parseGroupKeyCommand(body.command,scope);
   } else if(action.startsWith("create")) {
@@ -80,6 +81,10 @@ export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,
     return value;
   }
   const scope=parseMediaGroupScope({predicate:body.predicate,set:body.set});
+  if(action==="allocate"){
+    if(!exact(value,["predicate","set","accepted"])||value.predicate!==scope.predicate||value.set!==scope.set||value.accepted!==true)return fail();
+    return value;
+  }
   if(action==="create"||action==="member-append"||action==="key-append") {
     if(!exact(value,["accepted"])||value.accepted!==true)return fail();return value;
   }

@@ -353,3 +353,39 @@ test("group catalog rejects identity lock during the response",async()=>{
  assert.deepEqual(await browser.groupCatalog(owner),result);
  lock=true;await assert.rejects(browser.groupCatalog(owner));
 });
+
+test("group key browser operations share a lock and retain encrypted recovery across replies",async()=>{
+ const {IDBFactory}=await import('fake-indexeddb');
+ const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator'),oldDb=Object.getOwnPropertyDescriptor(globalThis,'indexedDB');
+ try{
+  unlock();Object.defineProperty(globalThis,'indexedDB',{configurable:true,value:new IDBFactory()});
+  const names:string[]=[];Object.defineProperty(globalThis,'navigator',{configurable:true,value:{locks:{request:async(name:string,_options:unknown,work:(lock:unknown)=>unknown)=>{names.push(name);return work({});}}}});
+  const scope={predicate:'same-group' as const,set:object.replace('media_','set_')};let command:any,payload='',applied=false,lose=true;
+  const snapshot={predicate:scope.predicate,setId:scope.set,setOwner:owner,ownerSigningPub:owner,ownerEncryptionPub:pair.epub,ownerIdentityHead:0,
+   members:[{accessor:owner,stated:1,hamState:1,signingPub:owner,encryptionPub:pair.epub,identityHead:0}]};
+  const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
+   const body=JSON.parse(String(init?.body)),at=Math.floor(Date.now()/1000),action=String(url).split('/').at(-1);
+   assert.ok(!String(init?.body).includes(pair.priv));assert.ok(!String(init?.body).includes(pair.epriv));
+   if(action==='allocate')return Response.json({...scope,accepted:true});
+   if(action==='key-view')return Response.json({at,fence:view.fence,previousEpoch:0,previousFinalizationId:'',snapshot,
+    config:{owner,setId:scope.set,predicate:scope.predicate,settleWindowMs:3600000,configRevision:0,signature:'1'.repeat(128)}});
+   if(action==='key-state')return Response.json({at,state:applied?'applied':'absent',fence:view.fence});
+   if(action==='key-append'){command=body.command;applied=true;if(lose){lose=false;throw Error('lost');}return Response.json({accepted:true});}
+   if(action==='wrap-view')return Response.json({at,fence:view.fence,snapshot,manifest:command.document.manifest});
+   if(action==='wrap-publish'){payload=body.payload;return Response.json({digest:body.metadata.digest});}
+   return Response.json({payload,predicate:scope.predicate,set_id:scope.set,epoch:1,revision_id:command.document.manifest.revisionId,
+    reader_epub:pair.epub,key_commitment:command.document.manifest.keyCommitment,expires_at:at+2});
+  });
+  await assert.rejects(browser.startGroupKey(tenant,owner,scope));
+  const pending=(await browser.pendingGroupKey(tenant,owner))!;assert.equal(pending.phase,'prepared');
+  await assert.rejects(browser.startGroupKey(tenant,owner,scope));await assert.rejects(browser.discardGroupKey(tenant,owner,pending));
+  const admitted=await browser.resumeGroupKey(tenant,owner,pending);assert.equal(admitted.phase,'admitted');
+  const published=await browser.resumeGroupKey(tenant,owner,admitted);assert.equal(published.published,1);
+  await browser.finishGroupKey(tenant,owner,published);assert.equal(await browser.pendingGroupKey(tenant,owner),null);
+  assert.ok(names.every(name=>name==='s3rch-private-group-key-v1'));
+  forgetUnlockedMeshPair();await assert.rejects(browser.pendingGroupKey(tenant,owner));
+ }finally{
+  if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else Reflect.deleteProperty(globalThis,'navigator');
+  if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
+ }
+});
