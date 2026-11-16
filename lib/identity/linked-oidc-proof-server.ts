@@ -1,4 +1,4 @@
-import {terminalRelayHeaders} from './terminal-run';
+import {terminalLinkedOidcHeaders} from './terminal-run';
 import {readBoundedIdentityJson} from './bounded-json';
 import type {createIdentitySessions} from './sea-session';
 
@@ -28,7 +28,7 @@ export function createLinkedOidcProofClient(input:{config:LinkedOidcBrokerConfig
   const target=c.authOrigin+'/auth/linked-oidc/v1/'+action;
   const bounded=AbortSignal.any([signal,AbortSignal.timeout(20000)]);
   const response=await fetcher(target,{method:'POST',credentials:'omit',redirect:'error',cache:'no-store',signal:bounded,
-   headers:{'Content-Type':'application/json',Accept:'application/json','Accept-Encoding':'identity',Authorization:'Bearer '+c.serviceToken,...await terminalRelayHeaders(target)},
+   headers:{'Content-Type':'application/json',Accept:'application/json','Accept-Encoding':'identity',Authorization:'Bearer '+c.serviceToken,...await terminalLinkedOidcHeaders(target)},
    body:JSON.stringify({challenge,...extra})});
   try{
    bounded.throwIfAborted();
