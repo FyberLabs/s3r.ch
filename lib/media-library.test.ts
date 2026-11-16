@@ -556,3 +556,42 @@ test("late group access recovery cannot restore state after reset",async()=>{
   await work;assert.equal(f.state().itemEpoch,null);assert.equal(f.state().loaded,false);
  }finally{release(null);f.library.dispose();}
 });
+
+for(const kind of ['Wrap','Status'] as const)test(`group item ${kind} controls preserve recovery and reset private state`,async()=>{
+ const field=kind==='Wrap'?'itemWrap':'itemStatus',held={object:'owned',predicate:'same-group',set:'set_test',reader:key,token:'saved'};
+ let saved:typeof held|null=held,fail=false,calls=0;
+ const browser={catalog:async()=>({at:1,objects:['owned'],nextPage:null,principal:key}),recipients:async()=>[],
+  ['pendingItem'+kind]:async()=>saved,
+  ['startItem'+kind]:async()=>{calls++;if(fail)throw Error();return {delivered:true,state:'applied'};},
+  ['resumeItem'+kind]:async(_tenant:string,_owner:string,expected:typeof held)=>{assert.deepEqual(expected,saved);if(fail)throw Error();return {delivered:true,state:'applied'};},
+  discardItemStatus:async()=>{if(fail)throw Error();return {state:'absent'};},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>;
+ const f=setup({browser:()=>browser});
+ const start=()=>kind==='Wrap'?f.library.startItemWrap('tenant','owned','same-group','set_test',key):f.library.startItemStatus('tenant','owned','same-group','set_test',key);
+ const inspect=()=>kind==='Wrap'?f.library.inspectItemWrap('tenant'):f.library.inspectItemStatus('tenant');
+ const resume=()=>kind==='Wrap'?f.library.resumeItemWrap('tenant'):f.library.resumeItemStatus('tenant');
+ try{
+  await start();await inspect();await resume();assert.equal(calls,0);
+  await f.library.load();await f.library.recipients('owned');await start();assert.equal(calls,1);
+  fail=true;await start();assert.match(f.state().message,/Check its saved request/);
+  await inspect();assert.deepEqual(f.state()[field],held);const count=calls;await start();assert.equal(calls,count);
+  await resume();assert.deepEqual(f.state()[field],held);assert.match(f.state().message,/retained/);
+  if(kind==='Status'){await f.library.discardItemStatus('tenant');assert.deepEqual(f.state().itemStatus,held);}
+  fail=false;await resume();assert.equal(f.state()[field],null);
+  if(kind==='Status'){await inspect();await f.library.discardItemStatus('tenant');assert.equal(f.state().itemStatus,null);}
+  saved=null;await inspect();assert.match(f.state().message,/No saved/);
+  saved=held;await inspect();f.library.requestDeletion('owned');await resume();assert.deepEqual(f.state()[field],held);
+  f.library.reset();assert.equal(f.state()[field],null);
+ }finally{f.library.dispose();}
+});
+for(const kind of ['Wrap','Status'] as const)test(`late group ${kind} recovery cannot restore reset identity state`,async()=>{
+ let release!:(value:any)=>void,began!:()=>void;const waiting=new Promise(resolve=>{release=resolve;}),started=new Promise<void>(resolve=>{began=resolve;});
+ const f=setup({browser:()=>({catalog:async()=>({at:1,objects:['owned'],nextPage:null,principal:key}),
+  ['pendingItem'+kind]:async()=>{began();return await waiting;},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try{
+  await f.library.load();const work=kind==='Wrap'?f.library.inspectItemWrap('tenant'):f.library.inspectItemStatus('tenant');await started;f.library.reset();
+  release({object:'owned',predicate:'same-group',set:'set_test',reader:key,token:'saved'});await work;
+  assert.equal(f.state().itemWrap,null);assert.equal(f.state().itemStatus,null);assert.equal(f.state().loaded,false);
+ }finally{release(null);f.library.dispose();}
+});

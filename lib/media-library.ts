@@ -1,3 +1,5 @@
+import type {PendingItemWrap} from "./media-group-item-wrap-recovery";
+import type {PendingItemStatus} from "./media-group-item-status-recovery";
 import type {PendingItemEpoch} from "./media-group-item-epoch-recovery";
 import type {PendingItemGrant} from "./media-group-item-grant-recovery";
 import type {PendingGroupKey} from "./media-group-key-recovery";
@@ -24,6 +26,8 @@ export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly stri
   groupKey: PendingGroupKey | null;
   itemGrant: PendingItemGrant | null;
   itemEpoch: PendingItemEpoch | null;
+  itemWrap: PendingItemWrap | null;
+  itemStatus: PendingItemStatus | null;
   groups: Readonly<{entries:readonly GroupCatalogEntry[];page:number;nextPage:number|null}> | null;
   sharing: Readonly<{object:string;reader:string;token:string;remove?:boolean}> | null;
   granted: Readonly<{objects:readonly string[];page:number;nextPage:number|null}> | null;
@@ -31,7 +35,7 @@ export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly stri
   deletion: Readonly<{object:string;prepared:boolean}> | null;
   audience: Readonly<{object:string;readers:readonly string[]}> | null;
   preview: Readonly<{ url: string; name: string; mediaType: string; tags?:readonly string[] }> | null }>;
-const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,groups:null});
+const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,itemWrap:null,itemStatus:null,groups:null});
 
 /** Private, in-memory navigation. Never persists catalog entries or plaintext. */
 export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, options: {
@@ -170,6 +174,57 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         const catalog=await browser.grantedCatalog(page,signal);
         if(current())publish({...state,granted:{objects:catalog.objects,page,nextPage:catalog.nextPage},audience:null});
       });
+    },
+    startItemWrap(tenant:string,object:string,predicate:"same-group"|"named-circle",set:string,reader:string) {
+      if(state.deletion||state.itemGrant||state.itemEpoch||state.itemWrap||state.itemStatus||!owner||state.audience?.object!==object||!state.objects.includes(object)||!isSeaPubkey(reader)||!set)return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        await browser.startItemWrap(tenant,principal,{object,predicate,set,reader},signal);
+        if(current())publish({...state,itemWrap:null,message:"The group file key was delivered. Refresh this member’s access before they open it."});
+      },()=>publish({...state,message:"The key delivery could not be confirmed. Check its saved request before trying again."}));
+    },
+    inspectItemWrap(tenant:string) {
+      if(state.deletion||!owner)return Promise.resolve();const principal=owner;
+      return operation(async(signal,current)=>{
+        const itemWrap=await browser.pendingItemWrap(tenant,principal,signal);
+        if(current())publish({...state,itemWrap,message:itemWrap?"A key delivery request is saved. Retry to confirm it.":"No saved key delivery request."});
+      });
+    },
+    resumeItemWrap(tenant:string) {
+      if(state.deletion||!state.itemWrap||!owner)return Promise.resolve();const principal=owner,selected={...state.itemWrap};
+      return operation(async(signal,current)=>{
+        await browser.resumeItemWrap(tenant,principal,selected,signal);
+        if(current())publish({...state,itemWrap:null,message:"The group file key was delivered. Refresh this member’s access before they open it."});
+      },()=>publish({...state,message:"The saved key delivery request is retained. Check access and retry recovery."}));
+    },
+    startItemStatus(tenant:string,object:string,predicate:"same-group"|"named-circle",set:string,reader:string) {
+      if(state.deletion||state.itemGrant||state.itemEpoch||state.itemWrap||state.itemStatus||!owner||state.audience?.object!==object||!state.objects.includes(object)||!isSeaPubkey(reader)||!set)return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        await browser.startItemStatus(tenant,principal,{object,predicate,set,reader},signal);
+        if(current())publish({...state,itemStatus:null,message:"This member’s current file access was confirmed. It expires shortly; refresh it when needed."});
+      },()=>publish({...state,message:"The member access could not be confirmed. Check its saved request before trying again."}));
+    },
+    inspectItemStatus(tenant:string) {
+      if(state.deletion||!owner)return Promise.resolve();const principal=owner;
+      return operation(async(signal,current)=>{
+        const itemStatus=await browser.pendingItemStatus(tenant,principal,signal);
+        if(current())publish({...state,itemStatus,message:itemStatus?"A member access request is saved. Retry to confirm it.":"No saved member access request."});
+      });
+    },
+    resumeItemStatus(tenant:string) {
+      if(state.deletion||!state.itemStatus||!owner)return Promise.resolve();const principal=owner,selected={...state.itemStatus};
+      return operation(async(signal,current)=>{
+        await browser.resumeItemStatus(tenant,principal,selected,signal);
+        if(current())publish({...state,itemStatus:null,message:"This member’s current file access was confirmed. It expires shortly; refresh it when needed."});
+      },()=>publish({...state,message:"The saved member access request is retained. Check access and retry recovery."}));
+    },
+    discardItemStatus(tenant:string) {
+      if(state.deletion||!state.itemStatus||!owner)return Promise.resolve();const principal=owner,selected={...state.itemStatus};
+      return operation(async(signal,current)=>{
+        await browser.discardItemStatus(tenant,principal,selected,signal);
+        if(current())publish({...state,itemStatus:null,message:"The local member access request was cleared. Accepted changes were not undone."});
+      },()=>publish({...state,message:"The saved member access request cannot be cleared yet. Retry recovery."}));
     },
     startItemEpoch(tenant:string,object:string,predicate:"same-group"|"named-circle",set:string) {
       if(state.deletion||state.itemGrant||state.itemEpoch||!owner||state.audience?.object!==object||!state.objects.includes(object)||!set)return Promise.resolve();
