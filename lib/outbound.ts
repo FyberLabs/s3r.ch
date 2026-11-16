@@ -11,10 +11,11 @@ import { ownsNativePost } from "./compose";
 import { isFeedSource, type FeedItem } from "./feed-types";
 import type { OutboundAdapter, OutboundDraft, OutboundResult } from "./bridges";
 
-export const OUTBOUND_NETWORK_IDS = ["farcaster", "atproto", "nostr"] as const;
+export const OUTBOUND_NETWORK_IDS = ["farcaster", "atproto", "nostr", "mastodon"] as const;
 export type OutboundNetworkId = (typeof OUTBOUND_NETWORK_IDS)[number];
 
 export const OUTBOUND_NETWORK_LABEL: Record<OutboundNetworkId, string> = {
+  mastodon: "Mastodon (ActivityPub)",
   nostr: "Nostr",
   farcaster: "Farcaster",
   atproto: "ATProto / Bluesky",
@@ -39,7 +40,7 @@ export type ParsedOutboundRequest =
   | { ok: false; error: string };
 
 export function isOutboundNetworkId(value: unknown): value is OutboundNetworkId {
-  return value === "farcaster" || value === "atproto" || value === "nostr";
+  return value === "farcaster" || value === "atproto" || value === "nostr" || value === "mastodon";
 }
 
 /** Own native s3r.ch post only. Pulled rows and grants cannot outbound. */

@@ -20,6 +20,7 @@ const LABELS: Record<
   OutboundNetworkId,
   { action: string; confirm: string }
 > = {
+  mastodon: {action:"Post to Mastodon", confirm:"Confirm public Mastodon post"},
   nostr: {action:"Post to Nostr", confirm:"Confirm Nostr"},
   farcaster: { action: POST_TO_FARCASTER_COPY, confirm: CONFIRM_FARCASTER_COPY },
   atproto: { action: POST_TO_BLUESKY_COPY, confirm: CONFIRM_BLUESKY_COPY },
@@ -100,7 +101,7 @@ export function OutboundPostControls({ item }: { item: FeedItem }) {
   return (
     <div className="mt-3 border-t border-rule pt-3">
       <div className="flex flex-wrap gap-2">
-        {(["farcaster", "atproto", "nostr"] as const).map((network) => {
+        {(["farcaster", "atproto", "nostr", "mastodon"] as const).map((network) => {
           const row = status?.find((entry) => entry.id === network);
           const label = LABELS[network];
           return (

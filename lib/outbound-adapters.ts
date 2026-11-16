@@ -2,6 +2,7 @@
  * Server-only outbound adapter factory. Do not import from client components.
  */
 
+import { MastodonOutbound } from "./mastodon-outbound";
 import { NostrOutbound } from "./nostr-outbound";
 import { AtprotoOutbound, type AtprotoOutboundOptions } from "./atproto-outbound";
 import { UnimplementedOutbound, type OutboundAdapter } from "./bridges";
@@ -27,7 +28,7 @@ export function createOutboundAdapters(
   return [
     new UnimplementedOutbound("RSS3 Data Sublayer"),
     new UnimplementedOutbound("RSS / Atom"),
-    new UnimplementedOutbound("ActivityPub"),
+    new MastodonOutbound({env, owner:options.owner, signal:options.signal, fetch:fetchFn}),
     new AtprotoOutbound({ env, fetch: fetchFn, ...options.atproto }),
     new NostrOutbound({env, owner: options.owner, signal: options.signal}),
     new FarcasterOutbound({ env, fetch: fetchFn, ...options.farcaster }),

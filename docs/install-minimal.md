@@ -293,6 +293,7 @@ Secrets are server-side only. Never `NEXT_PUBLIC_*` for a secret. `NEXT_PUBLIC_W
 | `KYC_ISSUER_URL` | no | fixture issuer | no |
 | `FARCASTER_FID`, `FARCASTER_SIGNER_KEY` | no | empty; Farcaster outbound fails closed | signer key is a secret |
 | `FARCASTER_HUB_AUTH`, `FARCASTER_HUB_BASE` | no | hub auth empty | hub auth is a secret |
+| `MASTODON_OUTBOUND_OWNER`, `MASTODON_OUTBOUND_ORIGIN`, `MASTODON_OUTBOUND_ACCOUNT_ID`, `MASTODON_ACCESS_TOKEN` | no | empty; Mastodon refuses | explicit SEA owner and provider account; secret token; see [Mastodon outbound](mastodon-outbound.md) |
 | `NOSTR_OUTBOUND_OWNER`, `NOSTR_SIGNER_KEY`, `NOSTR_OUTBOUND_RELAY` | no | empty; Nostr outbound refuses | exact SEA owner, secret Schnorr key, explicit wss relay; see [Nostr outbound](nostr-outbound.md) |
 | `ATPROTO_IDENTIFIER`, `ATPROTO_APP_PASSWORD` | no | empty; Bluesky outbound fails closed | app password is a secret |
 | `ATPROTO_PDS_BASE` | no | `https://bsky.social` | no |
