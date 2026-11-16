@@ -14,6 +14,7 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 | --- | --- | --- | --- | --- |
 | `S3RCH_NIGHTLY_RUN_CONFIG` | no | unset | yes | Private TEST owner JSON with separate controller/owner keys and both declared suite scopes. Enables guarded Next entry routing when explicitly configured; absent preserves native handlers, malformed or changed configuration refuses. No credentials or reader cases are installed by source wiring. |
 | `S3RCH_DEVICE_TRANSFER_CONFIG` | for device transfer | unset | no | Exact scope, Auth/ACL routes and existing OIDC provider; see below. |
+| `S3RCH_RECOVERY_STORE_ENABLED` | no | unset | no | Explicitly enable person-authenticated recovery ciphertext reads and signed puts. |
 | `S3RCH_EXPERIMENTS_ENABLED` | no | unset | no | Set to 1 to enable the optional landing experiment. Withdrawal remains available after disabling. |
 | `S3RCH_LINKED_OIDC_CONFIG_FILE` | for linked OIDC proof | unset | yes | Absolute owner-only Auth broker configuration; requires matching existing-person provider and complete linked identity source. |
 | `S3RCH_LINKED_IDENTITY_CONFIG_FILE` | for linked identity | unset | yes | Absolute owner-only complete-source and witness-trust file; missing leaves linked login unavailable. |
@@ -347,3 +348,5 @@ backend and one-time challenge consumption remain required.
 Auth #69's provider orchestration and #583's restoration browser flow are separate
 consumers. This setting alone does not activate them, provision credentials, or
 register reader cases. No private file is included in the image or this repository.
+
+Setting `S3RCH_RECOVERY_STORE_ENABLED` to `true` explicitly enables authenticated recovery current/pending reads and signed current-copy puts through the device-person session. It defaults off and requires the existing device-transfer configuration plus ACL signed-store subject bindings. Only ciphertext and public CAS metadata cross this boundary; the browser keeps passphrases and key material. This setting does not provision storage, enroll identities, enable rotation or register readers.
