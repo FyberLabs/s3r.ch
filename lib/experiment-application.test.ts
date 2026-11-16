@@ -62,9 +62,20 @@ test("product consumption preserves anonymous assignment through verified SEA si
     jar.set("__Host-s3rch-squad-session",await native("keycloak-account"));assert.equal((await post({action:"evaluate"})).status,401);
     jar.set("__Host-s3rch-squad-session","malformed");assert.equal((await post({action:"evaluate"})).status,401);
     const status=await app.get(new Request(site+"/api/experiments",{headers:{cookie:cookie()}}),false);assert.equal((await status.json()).consented,true);
-    assert.equal((await post({action:"consent",allowed:false},false)).status,200);assert.ok(!jar.has("__Host-s3rch-experiment-consent"));
+    const withdrawn=await post({action:"consent",allowed:false},false);
+    assert.equal(withdrawn.status,200);assert.deepEqual(await withdrawn.json(),{consented:false,withdrawalVerified:true});assert.ok(!jar.has("__Host-s3rch-experiment-consent"));
     assert.equal(JSON.parse([...records.values()][0].value).revoked,true);
     jar.delete("__Host-s3rch-squad-session");
+    assert.deepEqual(await (await post({action:"consent",allowed:false},false)).json(),{consented:false,withdrawalVerified:true});
+    jar.set("__Host-s3rch-experiment-consent","malformed");
+    assert.deepEqual(await (await post({action:"consent",allowed:false},false)).json(),{consented:false,withdrawalVerified:false});
+    for (const secret of [env.S3RCH_EXPERIMENT_SECRET,"f".repeat(64)]) {
+      const privacy=createExperimentPrivacy({tenant,origin:site,secret:Buffer.from(secret,"hex"),clock:()=>now-86500});
+      const saved=(await privacy.consent()).split(";")[0];jar.set("__Host-s3rch-experiment-consent",saved.slice(saved.indexOf("=")+1));
+      assert.deepEqual(await (await post({action:"consent",allowed:false},false)).json(),{consented:false,withdrawalVerified:secret===env.S3RCH_EXPERIMENT_SECRET});
+    }
+    const duplicate=await app.post(new Request(site+"/api/experiments",{method:"POST",headers:{origin:site,"content-type":"application/json",cookie:"__Host-s3rch-experiment-consent=a; __Host-s3rch-experiment-consent=b"},body:JSON.stringify({action:"consent",allowed:false})}),false);
+    assert.deepEqual(await duplicate.json(),{consented:false,withdrawalVerified:false});
     const nearExpiry=createExperimentPrivacy({tenant,origin:site,secret:Buffer.from(env.S3RCH_EXPERIMENT_SECRET,"hex"),clock:()=>now-86390});
     const consent=(await nearExpiry.consent()).split(";")[0];jar.set(consent.slice(0,consent.indexOf("=")),consent.slice(consent.indexOf("=")+1));
     const bounded=await (await post({action:"evaluate"})).json();assert.ok(bounded.expiresAt<=now+10);
