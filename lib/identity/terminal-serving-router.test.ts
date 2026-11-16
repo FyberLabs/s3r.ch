@@ -49,6 +49,7 @@ async function fixture() {
       assert.equal(row ? headers.get("if-match") : headers.get("if-none-match"), row ? `"${row.revision}"` : "*");
       records.set(target, { value: String(init?.body), revision: (++revision).toString(16).padStart(64, "0") }); return new Response(null, { status: row ? 204 : 201 });
     }
+    if (target === "https://dc.applicationinsights.azure.com/v2/track") return Response.json({ itemsReceived: 1, itemsAccepted: 1, errors: [] });
     throw Error("Unexpected owner target");
   };
   const router = await createTerminalServingRouter({ config: JSON.stringify(config), env, experimentsEnabled: true }, async request => {
@@ -82,7 +83,11 @@ test("absent-grant anonymous consent and withdrawal cannot touch native fixture 
   const h = await fixture();
   try {
     assert.equal((await h.request("/api/experiments", { action: "consent", allowed: true })).status, 200);
-    assert.equal((await h.request("/api/experiments", { action: "evaluate" })).status, 200); assert.ok(h.records.size);
+    const evaluation = await h.request("/api/experiments", { action: "evaluate" }); assert.equal(evaluation.status, 200);
+    const shown = await evaluation.json(); assert.equal(shown.consented, true); assert.equal(shown.variant, "create"); assert.equal(typeof shown.display, "string");
+    const exposure = await h.request("/api/experiments", { action: "exposure", display: shown.display, eventId: "12345678-1234-4234-8234-123456789abc" });
+    assert.equal(exposure.status, 200); assert.equal((await exposure.json()).accepted, true);
+    assert.ok([...h.records.values()].some(row => JSON.parse(row.value).rows.some((event: { delivered: string[] }) => event.delivered.includes("primary"))));
     const beforeForeignTenant = JSON.stringify([...h.records]);
     assert.equal((await h.request("/api/experiments", { action: "consent", allowed: true, tenant: "77777777-7777-7777-7777-777777777777" })).status, 400);
     assert.equal(JSON.stringify([...h.records]), beforeForeignTenant);
