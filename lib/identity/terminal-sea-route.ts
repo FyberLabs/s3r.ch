@@ -15,9 +15,11 @@ export function createTerminalSeaRoute(input: { serviceKey: string; scope: unkno
   env: Record<string, string | undefined> }, fetcher: typeof fetch = fetch) {
   const env = Object.freeze({ ...input.env }), scopes = (Array.isArray(input.scope) ? input.scope : [input.scope]).map(parseTerminalScope), serviceKey = input.serviceKey;
   if (!/^[a-f0-9]{64}$/.test(serviceKey) || scopes.length < 1 || scopes.length > 2 || new Set(scopes.map(scope => scope.suite)).size !== scopes.length ||
-      scopes.some(scope => !scope.identities.sea.length || env.S3RCH_IDENTITY_REPLAY_TENANT_ID !== scope.tenant) ||
+      scopes.some(scope => !scope.identities.sea.length) ||
       env.S3RCH_IDENTITY_REPLAY_ORIGIN !== "https://api.test.hyperme.sh" ||
       !configuredIdentityReplay(identitySessionNamespace(origin.origin), env, fetcher)) throw Error("Terminal SEA configuration unavailable");
+  // Replay storage has its own deployment-owned product tenant. It is not the
+  // OIDC tenant of either run scope; native challenges bind its exact namespace.
   getIdentitySecret({ ...env, NODE_ENV: "production" });
   return async (request: Request): Promise<Response> => {
     try {

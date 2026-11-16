@@ -133,7 +133,8 @@ owner acceptance remain required before installation; the factory alone is not a
 
 `createTerminalSeaRoute` prepares the actual SEA issuer and existing Squad session
 alias behind per-request admission, with the declared fixture SEA allowlist and
-matching Spanopticon replay tenant. It refuses linked-login paths until their
+explicitly configured Spanopticon replay namespace. The replay product tenant is
+independent of either run scope identity tenant. It refuses linked-login paths until their
 complete owner source exists. The real browser client accepts only the exact
 optional run/generation hint shape in its signing intent; it does not treat that
 decoded hint as authenticated authority. Native CI exercises sign-in, old-run
@@ -216,3 +217,14 @@ Installation still requires the whole application handler/renderer to enter this
 dispatcher and the prepared private owner configuration. Selectively installing
 only grant-bearing API routes is unsafe. No setting is read automatically, no
 capability is published, and reader cases remain unregistered.
+
+Replay namespace correction: the dispatcher CI uses distinct flags identity, device
+identity and replay product tenants. Native challenges bind the fixed replay
+namespace while registry admission checks the exact original identity scope; no
+identity tenant or browser input selects storage credentials.
+
+The experiment product-record tenant is likewise independent of the flags identity
+tenant. Native configuration validates it and binds privacy tokens, records and
+cache/runtime namespaces; request bodies cannot override it. CI uses a fourth
+distinct product-record tenant, refuses a caller tenant field without changing
+the outbox, and retains original-run/successor refusal coverage.

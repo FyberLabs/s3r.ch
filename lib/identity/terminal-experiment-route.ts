@@ -11,8 +11,10 @@ export async function createTerminalExperimentRoute(input: { serviceKey: string;
   env: Record<string, string | undefined>; enabled: boolean }, transport: typeof fetch = fetch) {
   const env = Object.freeze({ ...input.env }), scope = parseTerminalScope(input.scope), serviceKey = input.serviceKey, enabled = input.enabled;
   if (!/^[a-f0-9]{64}$/.test(serviceKey) || typeof enabled !== "boolean" || scope.suite !== "flags-s3rch-browser" ||
-      env.S3RCH_EXPERIMENT_ORIGIN !== origin.origin || env.S3RCH_EXPERIMENT_TENANT !== scope.tenant ||
+      env.S3RCH_EXPERIMENT_ORIGIN !== origin.origin ||
       env.S3RCH_EXPERIMENT_STORAGE_ORIGIN !== "https://api.test.hyperme.sh") throw Error("Terminal experiment configuration unavailable");
+  // Native configuration owns the product-record tenant; the identity scope
+  // must not select or overwrite that independent storage namespace.
   const app = await createExperimentApplication(env, transport);
   let closed = false;
   return Object.freeze({

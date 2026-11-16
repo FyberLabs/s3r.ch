@@ -19,12 +19,12 @@ const origin = "https://test.s3r.ch", issuer = "https://auth.test.hyperme.sh/rea
 async function fixture() {
   const pair = await sea.pair(), signing = generateKeyPairSync("ed25519"), oldSecret = process.env.IDENTITY_SESSION_SECRET;
   const common = { subject: "11111111-1111-1111-1111-111111111111", tenant, organization: "", realm: "controlplane", issuer, clients: ["s3rch-web"], origins: [origin], identities: { sea: [pair.pub] } };
-  const scopes = { "flags-s3rch-browser": { ...common, suite: "flags-s3rch-browser" }, "s3rch-device-transfer": { ...common, suite: "s3rch-device-transfer" } };
+  const scopes = { "flags-s3rch-browser": { ...common, suite: "flags-s3rch-browser" }, "s3rch-device-transfer": { ...common, suite: "s3rch-device-transfer", tenant: "33333333-3333-3333-3333-333333333333", subject: "44444444-4444-4444-4444-444444444444" } };
   const config = { version: 1, owner: "s3rch", origin, authOrigin: "https://api.test.hyperme.sh", controllerKey: "a".repeat(64), ownerKey: "b".repeat(64), scopes };
   const env = { IDENTITY_SESSION_SECRET: "s".repeat(40), S3RCH_OAUTH_ISSUER: issuer, S3RCH_OAUTH_CLIENT_ID: "s3rch-web",
-    S3RCH_DEVICE_TRANSFER_CONFIG: JSON.stringify({ v: 1, scope: { sourceOrigin: origin, destinationOrigin: origin, application: "s3r.ch", tenant, audience: "device" }, auth: "https://api.test.hyperme.sh/auth/sea-device-link/v1/", acl: "https://api.test.hyperme.sh/api/v1/acl/sociacl/device-transfer/", provider: "panopticon" }),
-    S3RCH_IDENTITY_REPLAY_BACKEND: "spanopticon", S3RCH_IDENTITY_REPLAY_ORIGIN: "https://api.test.hyperme.sh", S3RCH_IDENTITY_REPLAY_TENANT_ID: tenant, S3RCH_IDENTITY_REPLAY_API_KEY: "dedicated-replay",
-    S3RCH_EXPERIMENT_ORIGIN: origin, S3RCH_EXPERIMENT_TENANT: tenant, S3RCH_EXPERIMENT_SECRET: "d".repeat(64), S3RCH_EXPERIMENT_STORAGE_ORIGIN: "https://api.test.hyperme.sh",
+    S3RCH_DEVICE_TRANSFER_CONFIG: JSON.stringify({ v: 1, scope: { sourceOrigin: origin, destinationOrigin: origin, application: "s3r.ch", tenant: scopes["s3rch-device-transfer"].tenant, audience: "device" }, auth: "https://api.test.hyperme.sh/auth/sea-device-link/v1/", acl: "https://api.test.hyperme.sh/api/v1/acl/sociacl/device-transfer/", provider: "panopticon" }),
+    S3RCH_IDENTITY_REPLAY_BACKEND: "spanopticon", S3RCH_IDENTITY_REPLAY_ORIGIN: "https://api.test.hyperme.sh", S3RCH_IDENTITY_REPLAY_TENANT_ID: "55555555-5555-5555-5555-555555555555", S3RCH_IDENTITY_REPLAY_API_KEY: "dedicated-replay",
+    S3RCH_EXPERIMENT_ORIGIN: origin, S3RCH_EXPERIMENT_TENANT: "66666666-6666-6666-6666-666666666666", S3RCH_EXPERIMENT_SECRET: "d".repeat(64), S3RCH_EXPERIMENT_STORAGE_ORIGIN: "https://api.test.hyperme.sh",
     S3RCH_EXPERIMENT_CACHE_KEY: "cache-key-1234567890", S3RCH_EXPERIMENT_OUTBOX_KEY: "outbox-key-1234567890", S3RCH_EXPERIMENT_PUBLIC_KEY: signing.publicKey.export({ type: "spki", format: "pem" }).toString(),
     APPLICATIONINSIGHTS_CONNECTION_STRING: "InstrumentationKey=11111111-1111-4111-8111-111111111111" };
   process.env.IDENTITY_SESSION_SECRET = env.IDENTITY_SESSION_SECRET;
@@ -40,9 +40,10 @@ async function fixture() {
       if (command.action === "complete") { state.complete++; return Response.json({ ...base, operation: command.operation, completed: true }); }
       return Response.json({ ...base, active: state.active });
     }
-    if (target.includes("/storage/replays/")) return new Response(null, { status: 204 });
+    if (target.includes("/storage/replays/")) { assert.equal(headers.get("X-Tenant-ID"), env.S3RCH_IDENTITY_REPLAY_TENANT_ID); return new Response(null, { status: 204 }); }
     if (target.endsWith("experiments/s3rch-cache")) return Response.json({ payload, signature: sign(null, Buffer.from(payload), signing.privateKey).toString("base64url") });
     if (target.includes("/storage/records/experiments/")) {
+      assert.equal(headers.get("X-Tenant-ID"), env.S3RCH_EXPERIMENT_TENANT);
       const row = records.get(target);
       if (init?.method === "GET") return new Response(row?.value ?? null, { status: row ? 200 : 404, headers: row ? { etag: `"${row.revision}"` } : {} });
       assert.equal(row ? headers.get("if-match") : headers.get("if-none-match"), row ? `"${row.revision}"` : "*");
@@ -82,6 +83,9 @@ test("absent-grant anonymous consent and withdrawal cannot touch native fixture 
   try {
     assert.equal((await h.request("/api/experiments", { action: "consent", allowed: true })).status, 200);
     assert.equal((await h.request("/api/experiments", { action: "evaluate" })).status, 200); assert.ok(h.records.size);
+    const beforeForeignTenant = JSON.stringify([...h.records]);
+    assert.equal((await h.request("/api/experiments", { action: "consent", allowed: true, tenant: "77777777-7777-7777-7777-777777777777" })).status, 400);
+    assert.equal(JSON.stringify([...h.records]), beforeForeignTenant);
     h.jar.delete("__Host-nightly-run-grant"); const saved = JSON.stringify([...h.records]), before = h.state.network;
     for (const body of [{ action: "consent", allowed: false }, { action: "consent", allowed: true }, { action: "evaluate" }])
       assert.equal((await h.request("/api/experiments", body)).status, 503);
