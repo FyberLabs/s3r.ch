@@ -1,3 +1,4 @@
+import {parseOwnerWrapResult} from "./media-group-owner-wrap";
 import {parseItemEpochCommand,parseItemEpochResult} from "./media-group-item-epoch-command";
 import {parseGroupItemEpochPlan} from "./media-group-item-epoch";
 import {parseItemGrantCommand,parseItemGrantResult} from "./media-group-item-grant";
@@ -13,6 +14,7 @@ export type GroupCatalog=Readonly<{at:number;groups:readonly GroupCatalogEntry[]
 
 export const groupCommandFields={
   catalog:["page"],
+  "item-owner-wrap-read":["object","predicate","set"],
   "item-grant-view":["object","predicate","set","reader","withdraw"],
   "item-grant-append":["object","predicate","set","at","fence","payload"],
   "item-grant-state":["object","predicate","set","payload"],
@@ -55,7 +57,7 @@ export function parseGroupCommand(action:GroupCommandAction,input:unknown,princi
     return body;
   }
   const scope=parseMediaGroupScope({predicate:body.predicate,set:body.set}),owner=objectPrincipal(scope.set);
-  if(action==="item-view"||action==="item-epoch-view"){
+  if(action==="item-view"||action==="item-epoch-view"||action==="item-owner-wrap-read"){
     if(typeof body.object!=="string"||!body.object.startsWith("media_")||!isCanonicalObjectId(body.object)||objectPrincipal(body.object)!==principal)return fail();
   } else if(action.startsWith("key-")||action==="allocate"){
     if(owner!==principal)return fail();
@@ -90,6 +92,7 @@ export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,
     return parseGroupItemEpochPlan(input,body.object as string,principal,parseMediaGroupScope({predicate:body.predicate,set:body.set}),now);
   }
   if(action==="item-epoch-append"||action==="item-epoch-state")return parseItemEpochResult(action,input,now);
+  if(action==="item-owner-wrap-read")return parseOwnerWrapResult(input,body,now);
   const value=structuredClone(input);
   if(action==="catalog") {
     if(!principal||!exact(value,["at","groups","nextPage","principal"])||value.principal!==principal||
@@ -156,5 +159,5 @@ export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,
   return v;
 }
 
-export const groupRequestLimit=(action:GroupCommandAction)=>action==="item-epoch-append"||action==="item-epoch-state"?270336:action==="item-epoch-view"||action==="item-grant-view"?2048:action==="item-grant-append"||action==="item-grant-state"?8192:action==="wrap-publish"?92160:action==="key-append"||action==="key-state"?73728:18432;
-export const groupResponseLimit=(action:GroupCommandAction)=>action==="item-epoch-view"?262144:action==="wrap-read"?92160:action==="wrap-view"||action==="key-view"||action==="item-authority-view"?73728:18432;
+export const groupRequestLimit=(action:GroupCommandAction)=>action==="item-epoch-append"||action==="item-epoch-state"?270336:action==="item-owner-wrap-read"||action==="item-epoch-view"||action==="item-grant-view"?2048:action==="item-grant-append"||action==="item-grant-state"?8192:action==="wrap-publish"?92160:action==="key-append"||action==="key-state"?73728:18432;
+export const groupResponseLimit=(action:GroupCommandAction)=>action==="item-epoch-view"?262144:action==="wrap-read"||action==="item-owner-wrap-read"?92160:action==="wrap-view"||action==="key-view"||action==="item-authority-view"?73728:18432;

@@ -521,8 +521,8 @@ test("group access controls preserve uncertain updates and never claim file deli
  let saved:typeof held|null=held,fail=false,calls=0;
  const f=setup({browser:()=>({catalog:async()=>({at:1,objects:['owned'],nextPage:null,principal:key}),
   recipients:async()=>[],pendingItemEpoch:async()=>saved,
-  startItemEpoch:async()=>{calls++;if(fail)throw Error();return {state:'applied'};},
-  resumeItemEpoch:async(_tenant:string,_owner:string,expected:typeof held)=>{assert.deepEqual(expected,saved);if(fail)throw Error();return {state:'applied'};},
+  startItemEpoch:async()=>{calls++;if(fail)throw Error();return {state:'applied',pending:true};},
+  resumeItemEpoch:async(_tenant:string,_owner:string,expected:typeof held)=>{assert.deepEqual(expected,saved);if(fail)throw Error();return {state:'applied',pending:true};},
   discardItemEpoch:async()=>{if(fail)throw Error();return {state:'absent'};},
  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
  try{
@@ -530,14 +530,14 @@ test("group access controls preserve uncertain updates and never claim file deli
   await f.library.inspectItemEpoch('tenant');await f.library.resumeItemEpoch('tenant');await f.library.discardItemEpoch('tenant');
   await f.library.load();await f.library.recipients('owned');
   for(const [object,set] of [['other','set_test'],['owned','']])await f.library.startItemEpoch('tenant',object,'same-group',set);
-  assert.equal(calls,0);await f.library.startItemEpoch('tenant','owned','same-group','set_test');assert.match(f.state().message,/delivery still needs/);
+  assert.equal(calls,0);await f.library.startItemEpoch('tenant','owned','same-group','set_test');assert.match(f.state().message,/remain saved/);
   fail=true;await f.library.startItemEpoch('tenant','owned','same-group','set_test');assert.match(f.state().message,/Check its saved request/);
   await f.library.inspectItemEpoch('tenant');assert.deepEqual(f.state().itemEpoch,held);
   const before=calls;await f.library.startItemEpoch('tenant','owned','same-group','set_test');assert.equal(calls,before);
   await f.library.resumeItemEpoch('tenant');assert.deepEqual(f.state().itemEpoch,held);assert.match(f.state().message,/retained/);
   await f.library.discardItemEpoch('tenant');assert.deepEqual(f.state().itemEpoch,held);assert.match(f.state().message,/cannot be cleared/);
-  fail=false;await f.library.resumeItemEpoch('tenant');assert.equal(f.state().itemEpoch,null);assert.match(f.state().message,/delivery still needs/);
-  await f.library.inspectItemEpoch('tenant');await f.library.discardItemEpoch('tenant');assert.equal(f.state().itemEpoch,null);assert.match(f.state().message,/not undone/);
+  fail=false;await f.library.resumeItemEpoch('tenant');assert.equal(f.state().itemEpoch,null);assert.match(f.state().message,/remain saved/);
+  await f.library.inspectItemEpoch('tenant');await f.library.discardItemEpoch('tenant');assert.equal(f.state().itemEpoch,null);assert.match(f.state().message,/unapplied/);
   saved=null;await f.library.inspectItemEpoch('tenant');assert.match(f.state().message,/No saved/);
   saved=held;await f.library.inspectItemEpoch('tenant');f.library.requestDeletion('owned');
   await f.library.inspectItemEpoch('tenant');await f.library.resumeItemEpoch('tenant');await f.library.discardItemEpoch('tenant');assert.deepEqual(f.state().itemEpoch,held);

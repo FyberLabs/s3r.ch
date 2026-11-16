@@ -121,9 +121,9 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
         <button type="button" disabled={state.busy||!!state.deletion||!state.loaded} className="underline disabled:opacity-50" onClick={()=>void library.current?.inspectItemEpoch(tenant)}>Check saved group access update</button>
         {state.itemEpoch&&<>
           <p className="break-all">Saved access update for {state.itemEpoch.object} in {state.itemEpoch.set}.</p>
-          <p>Retry confirms the original request. Clearing its local copy does not undo accepted changes.</p>
+          <p>Retry confirms the original request and restores direct access. Accepted updates keep their replacement keys until delivery completes.</p>
           <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeItemEpoch(tenant)}>Retry group access update</button>
-          <button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.discardItemEpoch(tenant)}>Clear reconciled access update</button>
+          <button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.discardItemEpoch(tenant)}>Clear expired unapplied update</button>
         </>}
       </section>
       <section aria-label="Saved group key" className="space-y-2 rounded border p-4">
