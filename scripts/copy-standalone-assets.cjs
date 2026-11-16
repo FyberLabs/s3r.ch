@@ -48,3 +48,10 @@ async function copyPeerDependencies() {
 }
 copy(path.join(__dirname, "..", ".next", "seed-peer.cjs"), path.join(standalone, "seed-peer.cjs"));
 copyPeerDependencies().catch(error => { console.error(error); process.exitCode = 1; });
+
+// Ship the create-only migration beside the standalone server and Blob worker.
+require("esbuild").buildSync({
+  entryPoints: [path.join(__dirname, "migrate-forum.ts")],
+  outfile: path.join(standalone, "migrate-forum.cjs"),
+  bundle: true, platform: "node", format: "cjs", packages: "external",
+});

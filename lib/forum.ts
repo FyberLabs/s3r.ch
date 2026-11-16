@@ -154,7 +154,8 @@ export type StoreLoad =
 
 export type ForumStore = {
   load(): StoreLoad;
-  save(file: ForumFile): void;
+  save(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer | null }, cleanup?: boolean): void;
+  readSnapshot?(channel: string, handle: string): Buffer | null;
 };
 
 export type Denied = { denied: true; reason: string };
@@ -324,6 +325,9 @@ export class FileForumStore implements ForumStore {
 }
 
 export function getForum(): Forum {
+  const mode = process.env.S3RCH_FORUM_STORAGE || "file";
+  if (mode !== "file" && mode !== "blob") throw new Error("Invalid forum storage mode");
+  if (mode === "blob") throw new Error("Blob forum requests require the asynchronous request boundary");
   const g = globalThis as GlobalForum;
   if (!g.__s3rchForum) {
     g.__s3rchForum = openForum(new FileForumStore(forumFilePath()));
@@ -345,12 +349,12 @@ export function openForum(store: ForumStore): Forum {
     return { ok: true, file: loaded.file };
   }
 
-  function commit(file: ForumFile): Denied | null {
+  function commit(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer | null }, cleanup = false): Denied | null {
     try {
-      store.save(file);
+      store.save(file, snapshot, cleanup);
       return null;
-    } catch {
-      return { denied: true, reason: "store-unreadable" };
+    } catch (error) {
+      return { denied: true, reason: (error as { code?: string }).code === "blob-conflict" ? "store-conflict" : (error as { code?: string }).code === "forum-quota" ? "store-quota" : "store-unreadable" };
     }
   }
 
@@ -431,7 +435,7 @@ export function openForum(store: ForumStore): Forum {
     if (bot.status !== "archived") {
       bot.status = "archived";
       bot.archivedAt = nowSeconds(input.nowSeconds);
-      const saved = commit(file);
+      const saved = commit(file, undefined, true);
       if (saved) return saved;
     }
     return { bot: toView(file, bot) };
@@ -567,7 +571,7 @@ export function openForum(store: ForumStore): Forum {
     };
     file.desktops = file.desktops.filter((row) => row.channel !== channel.id);
     file.desktops.push(desktop);
-    const saved = commit(file);
+    const saved = commit(file, { channel: channel.id, handle: input.snapshot?.handle ?? "", bytes: png });
     if (saved) return saved;
     for (const [key, held] of heldPng) {
       if (held.channel === channel.id) heldPng.delete(key);
@@ -592,6 +596,10 @@ export function openForum(store: ForumStore): Forum {
     if (!row?.snapshot) return null;
     const channel = file.channels.find((item) => item.id === row.channel);
     if (!channel || !canSee(file, owner, channel)) return null;
+    if (store.readSnapshot) {
+      const bytes = store.readSnapshot(row.channel, handle);
+      return bytes ? { mime: "image/png", bytes } : null;
+    }
     const held = heldPng.get(heldKey(row.channel, handle));
     if (!held || held.channel !== row.channel) return null;
     return { mime: "image/png", bytes: held.bytes };
@@ -630,7 +638,7 @@ export function openForum(store: ForumStore): Forum {
     file.invites = file.invites.filter((row) => !(row.channel === channel.id && row.guest === guest));
     const removed = file.invites.length !== before;
     if (removed) {
-      const saved = commit(file);
+      const saved = commit(file, undefined, true);
       if (saved) return saved;
     }
     return { channel, guest, removed };
@@ -698,7 +706,7 @@ export function openForum(store: ForumStore): Forum {
     );
     const removed = file.groupMembers.length !== before;
     if (removed) {
-      const saved = commit(file);
+      const saved = commit(file, undefined, true);
       if (saved) return saved;
     }
     return { group, member, removed };
@@ -1416,8 +1424,9 @@ function cleanLabel(value: string): string | null {
 }
 
 function cleanEntropy(value: string | undefined): string | null {
+  if (value !== undefined && value.length > 64) return null;
   const entropy = (value ?? shortEntropy()).trim().toLowerCase();
-  if (!/^[a-z0-9]+$/.test(entropy)) return null;
+  if (!/^[a-z0-9]{1,64}$/.test(entropy)) return null;
   return entropy;
 }
 
@@ -1455,7 +1464,7 @@ function asSeconds(value: unknown): number | undefined {
 function mapResult(result: Denied | object): ForumHttpResult {
   if ("denied" in result && result.denied) {
     const reason = result.reason;
-    const status =
+    const status = reason === "store-conflict" ? 409 : reason === "store-quota" ? 429 :
       reason === "store-unreadable" || reason === "unknown-version"
         ? 500
         : reason === "bad-owner" ||

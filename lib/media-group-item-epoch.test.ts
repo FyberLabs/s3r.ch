@@ -55,3 +55,15 @@ test("independent group authority survives expiry of an unrelated direct grant",
   assert.deepEqual(parse(retained),retained);
   assert.throws(()=>parse({...refresh,grants:[grant,{...expired,itemCiphertextDigest:"e".repeat(64)}]}));
 });
+
+test("epoch preparation transport shapes require the owner and bounded metadata",async()=>{
+  const {parseGroupCommand,parseGroupCommandResult,groupRequestLimit,groupResponseLimit}=await import("./media-group-command");
+  const body={object,...scope};
+  assert.deepEqual(parseGroupCommand("item-epoch-view",body,owner),body);
+  assert.deepEqual(parseGroupCommandResult("item-epoch-view",plan,body,100,owner),plan);
+  assert.equal(groupRequestLimit("item-epoch-view"),2048);assert.equal(groupResponseLimit("item-epoch-view"),262144);
+  for(const patch of [{owner},{object:scope.set},{set:"bad"}])assert.throws(()=>parseGroupCommand("item-epoch-view",{...body,...patch},owner));
+  assert.throws(()=>parseGroupCommand("item-epoch-view",body,reader));
+  assert.throws(()=>parseGroupCommandResult("item-epoch-view",plan,body,100));
+  assert.throws(()=>parseGroupCommandResult("item-epoch-view",plan,body,105,owner));
+});

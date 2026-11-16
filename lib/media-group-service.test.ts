@@ -1,3 +1,4 @@
+import {readGroupItemEpochPlan} from "./media-group-item-client";
 // Protected HTTP and signing contracts run in CI only.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -23,6 +24,11 @@ const groupKeyCommand={document:{manifest:groupManifest,snapshot:groupSnapshot},
 const itemView={at:100,expiresAt:102,fence,object,...scope,ownerPub:owner,
   item:{epoch:1,revisionId:"b".repeat(64),digest:"c".repeat(64)},
   group:{epoch:1,revisionId:"d".repeat(64),keyCommitment:"e".repeat(64)}};
+const epochGrant={object,owner,accessor:owner,from:0,until:10_000_000,stated:1,epoch:2,grantRevision:2,itemCiphertextDigest:"a".repeat(64)};
+const epochPlan={at:100,fence,owner,ownerPub:owner,...scope,previousEpoch:1,previousFinalizationId:"b".repeat(64),
+  settleWindowMs:3600000,keyCommitment:"c".repeat(64),grants:[epochGrant],bindings:{[owner]:{pub:owner,epub:owner,head:0}},groupReaders:[],
+  snapshot:{entries:[{accessor:owner,from:0,until:epochGrant.until,stated:1,grantRevision:2,scope:"direct",setId:"",hamState:0}],
+    objectSet:{predicate:scope.predicate,setId:scope.set,stated:0,hamState:2}}};
 const cases:readonly [GroupCommandAction,Record<string,unknown>,unknown][]=[
   ["create-view",{object,...scope},{at:100,context,fence}],
   ["create",{object,...scope,at:100,fence,config:policy},{accepted:true}],
@@ -34,6 +40,7 @@ const cases:readonly [GroupCommandAction,Record<string,unknown>,unknown][]=[
   ["key-append",{...scope,at:100,fence,command:groupKeyCommand},{accepted:true}],
   ["key-state",{...scope,command:groupKeyCommand},{at:100,state:"absent",fence}],
   ["item-view",{object,...scope},itemView],
+  ["item-epoch-view",{object,...scope},epochPlan],
   ["item-authority-view",{object},{at:100,fence,objectVersion:1,projection:null,ownerPub:owner}],
 ];
 const request=(body:unknown,headers:Record<string,string>={})=>new Request("https://s3r.ch/api/media/groups/create-view",{method:"POST",headers:{origin:"https://s3r.ch","content-type":"application/json",...headers},body:JSON.stringify(body)});
@@ -177,4 +184,17 @@ test("current item authority transports the full 64-member projection and bounds
   const oversized=await service(async()=>new Response(" ".repeat(73729),{headers:{"content-type":"application/json"}}))(
     "item-authority-view",request({object}));
   assert.equal(oversized.status,503);
+});
+
+test("epoch browser transport refuses stale, failed, oversized or aborted responses",async()=>{
+  const read=(fetcher:typeof fetch,signal=new AbortController().signal)=>readGroupItemEpochPlan(object,scope,owner,fetcher,()=>100,signal);
+  assert.deepEqual(await read(async(url,init)=>{
+    assert.equal(url,"/api/media/groups/item-epoch-view");assert.equal(init?.credentials,"same-origin");
+    assert.equal(init?.redirect,"error");assert.equal(init?.cache,"no-store");
+    assert.deepEqual(JSON.parse(String(init?.body)),{object,...scope});return Response.json(epochPlan);
+  }),epochPlan);
+  for(const result of [()=>new Response(null,{status:403}),()=>new Response("{}"),()=>Response.json({...epochPlan,at:95}),
+      ()=>new Response("x".repeat(262145),{headers:{"content-type":"application/json"}})])await assert.rejects(read(async()=>result()));
+  const controller=new AbortController();controller.abort();
+  await assert.rejects(read(async()=>{throw Error("must not fetch");},controller.signal));
 });

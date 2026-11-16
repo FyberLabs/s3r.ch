@@ -1,5 +1,5 @@
+import { forumRequest } from "@/lib/forum-request";
 import {
-  getForum,
   handleForumGet,
   handleForumPost,
 } from "@/lib/forum";
@@ -12,9 +12,10 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const session = await requireSession(request);
   if (!session.ok) return session.response;
+  return forumRequest(session.address, forum => {
   const handle = new URL(request.url).searchParams.get("snapshot");
   if (handle !== null) {
-    const hit = getForum().readSnapshot({ owner: session.address, handle });
+    const hit = forum.readSnapshot({ owner: session.address, handle });
     if (!hit) return new Response(null, { status: 404 });
     return new Response(new Uint8Array(hit.bytes), {
       status: 200,
@@ -25,8 +26,9 @@ export async function GET(request: Request) {
       },
     });
   }
-  const result = handleForumGet(getForum(), session.address);
+  const result = handleForumGet(forum, session.address);
   return Response.json(result.body, { status: result.status });
+  });
 }
 
 export async function POST(request: Request) {
@@ -46,8 +48,10 @@ export async function POST(request: Request) {
     });
   }
 
-  const result = handleForumPost(getForum(), session.address, body);
-  return Response.json(result.body, { status: result.status });
+  return forumRequest(session.address, forum => {
+    const result = handleForumPost(forum, session.address, body);
+    return Response.json(result.body, { status: result.status });
+  });
 }
 
 function isTokenMint(body: unknown): boolean {
