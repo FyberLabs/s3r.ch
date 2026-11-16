@@ -20,7 +20,7 @@
     {
       "name": "sociacl-ids",
       "repository": "FyberLabs/SociACL",
-      "revision": "85d553dda2e7199a899b8807d09d21e8a0318837",
+      "revision": "2f5c176d45532bfcd66c77d9502092bd54352ae1",
       "path": "typescript/ids",
       "file": "sociacl-ids-0.11.1.tgz",
       "sha256": "cf949374f32be51033e4851301c53188d163dd2ac68eb0007ad36f41432ef6fa"
