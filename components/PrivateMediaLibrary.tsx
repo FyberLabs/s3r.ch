@@ -7,7 +7,7 @@ import { PrivateMediaUpload } from "./PrivateMediaUpload";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
-  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,groups:null});
+  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,itemWrap:null,itemStatus:null,groups:null});
   const [abandon,setAbandon]=useState(false);
   useEffect(()=>{setAbandon(false);},[state.sharing?.token]);
   const [recipient,setRecipient]=useState("");
@@ -126,6 +126,24 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
           <button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.discardItemEpoch(tenant)}>Clear expired unapplied update</button>
         </>}
       </section>
+      <section aria-label="Saved group file key delivery" className="space-y-2 rounded border p-4">
+        <h2 className="font-semibold">Group file key delivery recovery</h2>
+        <button type="button" disabled={state.busy||!!state.deletion||!state.loaded} className="underline disabled:opacity-50" onClick={()=>void library.current?.inspectItemWrap(tenant)}>Check saved group file key delivery</button>
+        {state.itemWrap&&<>
+          <p className="break-all">Saved for {state.itemWrap.reader} in {state.itemWrap.set}.</p>
+          <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeItemWrap(tenant)}>Retry group file key delivery</button>
+          <p>Keep this saved delivery until it succeeds. Retrying preserves the original encrypted key.</p>
+        </>}
+      </section>
+      <section aria-label="Saved member file access" className="space-y-2 rounded border p-4">
+        <h2 className="font-semibold">Member file access recovery</h2>
+        <button type="button" disabled={state.busy||!!state.deletion||!state.loaded} className="underline disabled:opacity-50" onClick={()=>void library.current?.inspectItemStatus(tenant)}>Check saved member file access</button>
+        {state.itemStatus&&<>
+          <p className="break-all">Saved for {state.itemStatus.reader} in {state.itemStatus.set}.</p>
+          <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeItemStatus(tenant)}>Retry member file access</button>
+          <button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.discardItemStatus(tenant)}>Clear reconciled member access request</button>
+        </>}
+      </section>
       <section aria-label="Saved group key" className="space-y-2 rounded border p-4">
         <h2 className="font-semibold">Group key delivery</h2>
         <p>Owners must also join their group before preparing a key. New keys become usable after the group's waiting period.</p>
@@ -184,6 +202,9 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
           <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!!state.itemEpoch||!recipient.trim()||!itemGroup.trim()} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.startItemGrant(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim(),true)}>Withdraw group permission</button>
           <p>After recording permissions, update the file's group access. Key delivery remains a separate step after its waiting period.</p>
           <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!!state.itemEpoch||!itemGroup.trim()} className="underline disabled:opacity-50" onClick={()=>void library.current?.startItemEpoch(tenant,state.audience!.object,itemPredicate,itemGroup.trim())}>Update file group access</button>
+          <p>After the waiting period and access recovery finish, deliver the file key, then refresh access for the member who will open it.</p>
+          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!!state.itemEpoch||!!state.itemWrap||!!state.itemStatus||!recipient.trim()||!itemGroup.trim()} className="underline disabled:opacity-50" onClick={()=>void library.current?.startItemWrap(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim())}>Deliver group file key</button>
+          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!!state.itemEpoch||!!state.itemWrap||!!state.itemStatus||!recipient.trim()||!itemGroup.trim()} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.startItemStatus(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim())}>Refresh member file access</button>
         </details>
         {!state.audience.readers.length && <p>No recipient grants to cancel.</p>}
         <ul>{state.audience.readers.map(reader=><li key={reader} className="my-2 flex flex-wrap gap-3">
