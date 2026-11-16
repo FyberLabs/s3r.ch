@@ -29,3 +29,10 @@ Check cryptography with named HTTP/replay-storage doubles; they do not qualify a
 deployed session. Direct P2P remains preferred. Core's 32,000,000,000-byte daily
 fallback reservation ceiling does not become a recording upload path or a paid
 fallback offer.
+
+
+Concurrent requests queued before a source read starts share that fresh snapshot
+and native graph verification. Requests arriving after it starts wait for a new
+read. Completed snapshots and allow decisions are never cached. A clock rollover
+requires a new native read within the same 650 ms request deadline. Core uses a
+700 ms authority deadline inside its unchanged controller/watchdog shutdown bounds.

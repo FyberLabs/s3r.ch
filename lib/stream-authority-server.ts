@@ -47,13 +47,64 @@ export function createStreamAuthority(input: {
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= at || expiresAt > at + 300) throw Error();
     return { key: parts[1] + "." + parts[2], expiresAt };
   };
+  // Only requests queued before a read begins share that read. Later arrivals
+  // get a new snapshot: neither completed snapshots nor allow decisions persist.
+  type Fresh = { at: number; snapshot: Awaited<ReturnType<typeof source.read>>["snapshot"];
+    fence: string; authority: ReturnType<typeof createForumAuthority>;
+    result: Awaited<ReturnType<ReturnType<typeof createForumAuthority>["refresh"]>> };
+  type Waiting = { signal: AbortSignal; resolve(value: Fresh): void; reject(error: unknown): void };
+  let waiting: Waiting[] = [], reading = false, scheduled = false;
+  const schedule = () => {
+    if (reading || scheduled || !waiting.length) return;
+    scheduled = true;
+    setTimeout(() => { scheduled = false; void flush(); }, 1);
+  };
+  const flush = async () => {
+    const cohort = waiting.filter(item => !item.signal.aborted); waiting = [];
+    if (!cohort.length) return;
+    reading = true;
+    const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(650)]);
+    const cancelEmpty = () => { if (cohort.every(item => item.signal.aborted)) controller.abort(); };
+    for (const item of cohort) item.signal.addEventListener("abort", cancelEmpty, { once: true });
+    try {
+      for (;;) {
+        signal.throwIfAborted(); const at = clock();
+        try {
+          const { snapshot, fence } = await source.read(at, signal);
+          const authority = createForumAuthority(policy, clock), result = await authority.refresh(snapshot, at);
+          signal.throwIfAborted();
+          if (clock() !== at) continue;
+          if (!result.ok) throw Error();
+          for (const item of cohort) item.resolve({ at, snapshot, fence, authority, result });
+          break;
+        } catch (error) {
+          // A rollover invalidates the old read; retry only within the same
+          // finite operation budget, never by accepting an older snapshot.
+          if (!signal.aborted && clock() !== at) continue;
+          throw error;
+        }
+      }
+    } catch (error) { for (const item of cohort) item.reject(error); }
+    finally {
+      for (const item of cohort) item.signal.removeEventListener("abort", cancelEmpty);
+      reading = false; schedule();
+    }
+  };
+  const fresh = (signal: AbortSignal) => new Promise<Fresh>((resolve, reject) => {
+    signal.throwIfAborted();
+    const finish = () => signal.removeEventListener("abort", abort);
+    const item: Waiting = { signal, resolve(value) { finish(); resolve(value); }, reject(error) { finish(); reject(error); } };
+    const abort = () => { waiting = waiting.filter(row => row !== item); item.reject(Error("Authority cancelled")); };
+    signal.addEventListener("abort", abort, { once: true }); waiting.push(item); schedule();
+  });
   let active = 0;
   return async (request: Request): Promise<Response> => {
     const deny = () => Response.json({ error: "stream-authority-unavailable" }, { status: 403, headers });
     if (request.method !== "POST" || new URL(request.url).pathname !== "/internal/streams/authority" ||
         !equal(request.headers.get("x-stream-service-key") ?? "", serviceKey) || active >= 32) return deny();
     active++;
-    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(200)]);
+    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(650)]);
     try {
       if (request.headers.get("content-type")?.split(";")[0] !== "application/json" ||
           ![null,"identity"].includes(request.headers.get("content-encoding")) || !request.body) throw Error();
@@ -67,7 +118,8 @@ export function createStreamAuthority(input: {
           size += part.value.length; if (size > 4096) throw Error(); chunks.push(part.value);
         }
       } finally { signal.removeEventListener("abort", abort); await reader.cancel().catch(() => {}); reader.releaseLock(); }
-      const value = JSON.parse(Buffer.concat(chunks).toString("utf8")), at = clock();
+      const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      let at = clock();
       if (!value || value.version !== 1 || typeof value.nonce !== "string" || !/^[a-f0-9]{64}$/.test(value.nonce)) throw Error();
       let proof: { key: string; expiresAt: number }, subject: string;
       if (value.operation === "identity" && exact(value,"nonce,operation,version")) {
@@ -82,8 +134,10 @@ export function createStreamAuthority(input: {
             !isForumObjectId(scope.room,"room")) throw Error();
         subject = scope.subject.principal; proof = unseal(subject,at);
       } else throw Error();
-      const { snapshot, fence } = await source.read(at, signal);
-      const authority = createForumAuthority(policy, clock), result = await authority.refresh(snapshot, at);
+      let current = await fresh(signal);
+      while (clock() !== current.at) current = await fresh(signal);
+      const { snapshot, fence, authority, result } = current; at = current.at;
+      if (proof.expiresAt <= at) throw Error();
       const room = value.operation === "check" ? value.scope.room : undefined;
       signal.throwIfAborted();
       if (clock() !== at || !result.ok || roomAuthorityDiagnosticsBlock(result.diagnostics,snapshot,authority.graph,room)) throw Error();
