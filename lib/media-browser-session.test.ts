@@ -454,3 +454,55 @@ test("group epoch adapter requires unlocked identity and uses its isolated journ
   if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
  }
 });
+
+test("group item status session preserves signed recovery and isolates its lock",async()=>{
+ const {IDBFactory}=await import('fake-indexeddb');
+ const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator'),oldDb=Object.getOwnPropertyDescriptor(globalThis,'indexedDB');
+ try{
+  unlock();Object.defineProperty(globalThis,'indexedDB',{configurable:true,value:new IDBFactory()});
+  const names:string[]=[];Object.defineProperty(globalThis,'navigator',{configurable:true,value:{locks:{request:async(name:string,_options:unknown,work:(lock:unknown)=>unknown)=>{names.push(name);return work({});}}}});
+  const target={object,predicate:'same-group' as const,set:object.replace('media_','set_'),reader:other};
+  let applied=false,writes=0,views=0;
+  const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
+   const at=Math.floor(Date.now()/1000),action=String(url).split('/').at(-1);
+   assert.ok(!String(init?.body).includes(pair.priv));assert.ok(!String(init?.body).includes(pair.epriv));
+   if(action==='item-status-view'){
+    views++;return Response.json({at,fence:view.fence,ownerPub:owner,status:{object,epoch:2,revisionId:'b'.repeat(64),accessor:other,grantRevision:1,stated:1,
+     signedAt:at*1000,maxAgeMs:60000,zookie:{object,objectVersion:3,snapshotHash:'c'.repeat(64)}}});
+   }
+   if(action==='item-status-state')return Response.json({at,state:applied?'applied':'absent'});
+   writes++;applied=true;throw Error('lost append reply');
+  });
+  assert.equal(await browser.pendingItemStatus(tenant,owner),null);
+  await assert.rejects(browser.startItemStatus(tenant,owner,target));const pending=(await browser.pendingItemStatus(tenant,owner))!;
+  await assert.rejects(browser.startItemStatus(tenant,owner,target));assert.equal(views,1);
+  assert.equal((await browser.resumeItemStatus(tenant,owner,pending)).state,'applied');assert.equal(writes,1);
+  applied=false;await assert.rejects(browser.startItemStatus(tenant,owner,target));const second=(await browser.pendingItemStatus(tenant,owner))!;
+  assert.equal((await browser.discardItemStatus(tenant,owner,second)).state,'applied');
+  assert.ok(names.every(n=>n==='s3rch-private-group-item-status-v1'));
+  for(const priv of ['bad',pair.priv.slice(0,-1)+'F']){
+   unlock();rememberUnlockedMeshPair('linked-credential',{...pair,priv});await assert.rejects(browser.startItemStatus(tenant,owner,target));
+  }
+  forgetUnlockedMeshPair();await assert.rejects(browser.pendingItemStatus(tenant,owner));
+ }finally{
+  if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else Reflect.deleteProperty(globalThis,'navigator');
+  if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
+ }
+});
+test("group item wrap session uses dedicated recovery and refuses missing authority",async()=>{
+ const {IDBFactory}=await import('fake-indexeddb');
+ const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator'),oldDb=Object.getOwnPropertyDescriptor(globalThis,'indexedDB');
+ try{
+  unlock();Object.defineProperty(globalThis,'indexedDB',{configurable:true,value:new IDBFactory()});
+  const names:string[]=[];Object.defineProperty(globalThis,'navigator',{configurable:true,value:{locks:{request:async(name:string,_options:unknown,work:(lock:unknown)=>unknown)=>{names.push(name);return work({});}}}});
+  const target={object,predicate:'same-group' as const,set:object.replace('media_','set_'),reader:other};
+  let calls=0;const browser=createPrivateMediaBrowser(()=>owner,async()=>{calls++;return new Response(null,{status:503});});
+  assert.equal(await browser.pendingItemWrap(tenant,owner),null);await assert.rejects(browser.startItemWrap(tenant,owner,target));assert.equal(calls,1);
+  await assert.rejects(browser.resumeItemWrap(tenant,owner,{...target,token:'missing'}));assert.equal(calls,1);
+  assert.ok(names.every(n=>n==='s3rch-private-group-item-wrap-v1'));
+  forgetUnlockedMeshPair();await assert.rejects(browser.pendingItemWrap(tenant,owner));await assert.rejects(browser.startItemWrap(tenant,owner,target));
+ }finally{
+  if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else Reflect.deleteProperty(globalThis,'navigator');
+  if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
+ }
+});
