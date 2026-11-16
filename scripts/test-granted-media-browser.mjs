@@ -36,10 +36,10 @@ const server=createServer(async(req,res)=>{
   if(req.url==='/api/media/config'){json({tenant});return;}
   if(req.url==='/api/media/catalog'){json({at:Math.floor(Date.now()/1000),principal:pair.pub,objects:catalog?[object]:[],nextPage:1});return;}
   if(req.url==='/api/media/groups/item-reader-catalog'){json({at:Math.floor(Date.now()/1000),entries:groupCatalog?[groupSeed.entry]:[],nextPage:1});return;}
-  if(req.url==='/api/media/groups/wrap-read'){json({...groupSeed.group,expires_at:Date.now()/1000+2});return;}
+  if(req.url==='/api/media/groups/wrap-read'){json({...groupSeed.group,expires_at:Math.floor(Date.now()/1000)+2});return;}
   if(req.url==='/api/media/groups/item-wrap-read'){
    if(!groupAllowed){json({},403);return;}
-   json({...groupSeed.item,expires_at:Date.now()/1000+2});return;
+   json({...groupSeed.item,expires_at:Math.floor(Date.now()/1000)+2});return;
   }
   if(decodeURIComponent(req.url)==='/api/media/'+groupObject){
    assert.equal(req.method,'GET');groupDownloads++;
