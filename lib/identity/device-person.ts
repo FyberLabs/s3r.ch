@@ -1,3 +1,4 @@
+import {terminalTokenClaims,verifyTerminalToken} from "./terminal-run";
 import {createHash,randomBytes} from 'node:crypto';
 import {EncryptJWT,jwtDecrypt,jwtVerify,createRemoteJWKSet,type JWTVerifyGetKey} from 'jose';
 import {createPkcePair,exchangeCode} from './oauth';
@@ -10,12 +11,13 @@ const key=(env:Record<string,string|undefined>)=>createHash('sha256').update('s3
 const clear=(name:string)=>serializeCookie(name,'',cookieOptions(true,0));
 export const personClearCookies=()=>[clear(devicePersonCookie),clear(devicePendingCookie)];
 async function seal(payload:Record<string,unknown>,kind:string,origin:string,env:Record<string,string|undefined>,now:number,exp=now+ttl){
- return new EncryptJWT(payload).setProtectedHeader({alg:'dir',enc:'A256GCM',typ:kind}).setIssuer(origin).setAudience(origin).setIssuedAt(now).setExpirationTime(exp).encrypt(key(env));
+ return new EncryptJWT({...payload,...await terminalTokenClaims({kind,subject:typeof payload.sub==='string'?payload.sub:null})}).setProtectedHeader({alg:'dir',enc:'A256GCM',typ:kind}).setIssuer(origin).setAudience(origin).setIssuedAt(now).setExpirationTime(exp).encrypt(key(env));
 }
 async function open(request:Request,name:string,kind:string,config:DeviceConfig,origin:string,env:Record<string,string|undefined>,now:number){
  const token=readCookie(request.headers.get('cookie'),[name]);if(!token||token.length>3800)throw Error();
  const {payload}=await jwtDecrypt(token,key(env),{issuer:origin,audience:origin,currentDate:new Date(now*1000),keyManagementAlgorithms:['dir'],contentEncryptionAlgorithms:['A256GCM'],typ:kind,requiredClaims:['iat','exp']});
  if(!Number.isSafeInteger(payload.iat)||!Number.isSafeInteger(payload.exp)||payload.iat!>now||payload.exp!-payload.iat!>ttl||payload.config!==config.digest)throw Error();
+ await verifyTerminalToken(payload,{kind,subject:typeof payload.sub==='string'?payload.sub:null});
  return payload;
 }
 export async function readDevicePerson(request:Request,config:DeviceConfig,origin:string,env:Record<string,string|undefined>,now=Math.floor(Date.now()/1000)){
@@ -40,6 +42,7 @@ export async function devicePersonOAuth(request:Request,action:'authorize'|'call
   const exchanged=await exchangeCode({issuer:provider.issuer,clientId:provider.clientId,tokenEndpoint:provider.tokenEndpoint,code:q.get('code')!,verifier:p.verifier,redirectUri:callback},deps.fetch);
   const {payload}=await jwtVerify(exchanged.idToken,deps.verifyKey??createRemoteJWKSet(new URL(provider.jwksUri)),{issuer:provider.issuer,audience:provider.clientId,algorithms:['RS256','PS256','ES256'],currentDate:new Date(now*1000),requiredClaims:['sub','iat','exp','nonce']});
   if(payload.nonce!==p.nonce||typeof payload.sub!=='string'||payload.sub.length>255||!Number.isSafeInteger(payload.iat)||payload.iat!>now||!Number.isSafeInteger(payload.exp)||(payload.azp!==undefined&&payload.azp!==provider.clientId)||!exchanged.accessToken)throw Error();
+  await verifyTerminalToken(payload,{kind:'provider-id-token',subject:payload.sub});
   const finished=(deps.now??(()=>Math.floor(Date.now()/1000)))();if(p.exp!<=finished||payload.exp!<=finished)throw Error();
   const token=await seal({access:exchanged.accessToken,sub:payload.sub,context:randomBytes(32).toString('base64url'),config:config.digest},'s3rch-device-person-v1',origin,env,finished,Math.min(finished+ttl,payload.exp!));
   if(token.length>3800)throw Error();

@@ -1,3 +1,4 @@
+import { terminalTokenClaims, verifyTerminalToken } from "./terminal-run";
 import { parseLinkedCredential, type LinkedSessionAdmission } from "./linked-session-admission";
 import { createIdentityTokenVerifier } from "./sea-session-verifier";
 import { parseAgentDelegation, parsePrincipalId, verifyAgentDelegation, type ResolutionContext } from "sociacl-ids";
@@ -46,7 +47,7 @@ export function createIdentitySessions(input: {
   async function token(type: string, key: string, ttl: number, extra: Record<string, unknown> = {}, ceiling = Number.MAX_SAFE_INTEGER) {
     const now = clock(), expiresAt = Math.min(now + ttl, ceiling);
     if (!Number.isSafeInteger(now) || now < 0 || expiresAt <= now) throw Error("Invalid issuance time");
-    return new SignJWT(extra).setSubject(key).setProtectedHeader({ alg: "HS256", typ: type })
+    return new SignJWT({ ...extra, ...await terminalTokenClaims({ kind: type, subject: typeof extra.agent === "string" ? extra.agent : key }) }).setSubject(key).setProtectedHeader({ alg: "HS256", typ: type })
       .setIssuer(issuer).setAudience(audience).setIssuedAt(now).setExpirationTime(expiresAt)
       .setJti(randomBytes(32).toString("hex")).sign(secret);
   }
@@ -61,6 +62,7 @@ export function createIdentitySessions(input: {
     if (!credential || typeof payload.linkId !== "string" || !idPattern.test(payload.linkId) || typeof payload.sub !== "string" || !isSeaPubkey(payload.sub) || isPublicSquadPrincipal(payload.sub) ||
         !Number.isSafeInteger(payload.iat) || !Number.isSafeInteger(payload.exp) || payload.iat! > now || payload.exp! - payload.iat! !== 60 ||
         typeof payload.jti !== "string" || !idPattern.test(payload.jti)) throw Error("Invalid linked challenge");
+    await verifyTerminalToken(payload, { kind: linkedType, subject: payload.sub });
     return { key: payload.sub, linkId: payload.linkId, credential, token: value, id: payload.jti, issuedAt: payload.iat!, expiresAt: payload.exp! };
   }
   const claims = createIdentityTokenVerifier({ origin: issuer, secret: input.secret, clock }).claims;
@@ -88,6 +90,7 @@ export function createIdentitySessions(input: {
         typeof payload.jti !== "string" || !idPattern.test(payload.jti) ||
         !Number.isSafeInteger(payload.iat) || !Number.isSafeInteger(payload.exp) || payload.iat! > now ||
         payload.exp! <= payload.iat! || payload.exp! - payload.iat! > maximum) throw Error("Invalid agent claims");
+    await verifyTerminalToken(payload, { kind: type, subject: payload.agent as string });
     return { principal: payload.sub!, agent: payload.agent as string, delegationId: payload.delegationId,
       scopes: agentScopes(payload.scopes), id: payload.jti, expiresAt: payload.exp! };
   }

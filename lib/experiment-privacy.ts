@@ -1,3 +1,4 @@
+import { terminalTokenClaims, verifyTerminalToken } from "./identity/terminal-run";
 import { createHmac, randomUUID } from "node:crypto";
 import { parseExperimentPayload, type ExperimentPayload } from "./experiment-contract";
 import { SignJWT, jwtVerify, decodeJwt, type JWTPayload } from "jose";
@@ -17,7 +18,7 @@ export function createExperimentPrivacy(input: { tenant: string; origin: string;
   const key = derive(input.secret), previous = (input.previousSecrets ?? []).map(derive);
   async function issue(type: string, claims: Record<string, unknown>, ttl: number) {
     const time = now();
-    return new SignJWT(claims).setProtectedHeader({ alg: "HS256", typ: type }).setIssuer(input.origin).setAudience(type).setIssuedAt(time).setExpirationTime(time + ttl).sign(key);
+    return new SignJWT({ ...claims, ...await terminalTokenClaims({ kind: type, subject: null }) }).setProtectedHeader({ alg: "HS256", typ: type }).setIssuer(input.origin).setAudience(type).setIssuedAt(time).setExpirationTime(time + ttl).sign(key);
   }
   async function read(token: string | null, type: string, ttl: number, expiredForDeletion = false): Promise<(JWTPayload & { signingKey: Buffer }) | null> {
     if (!token || token.length > 4096) return null;
@@ -27,6 +28,7 @@ export function createExperimentPrivacy(input: { tenant: string; origin: string;
       if (!Number.isSafeInteger(validationTime) || validationTime! > now() || validationTime! < 0) return null;
       const { payload } = await jwtVerify(token, candidate, { algorithms: ["HS256"], typ: type, issuer: input.origin, audience: type, currentDate: new Date(validationTime! * 1000), requiredClaims: ["iat", "exp"] });
       if (!Number.isSafeInteger(payload.iat) || !Number.isSafeInteger(payload.exp) || payload.iat! > now() || payload.exp! - payload.iat! !== ttl) return null;
+      await verifyTerminalToken(payload, { kind: type, subject: null });
       return { ...payload, signingKey: candidate };
     } catch { /* Try only deployment-configured prior keys. */ }
     }
