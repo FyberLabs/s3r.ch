@@ -235,7 +235,7 @@ jobs:
           --test-coverage-include=lib/media-group-item-epoch-delivery.ts
           --test-coverage-include=lib/media-group-owner-wrap.ts
           --test-coverage-lines=90 --test-coverage-branches=80
-          lib/media-group-item-epoch-delivery.test.ts
+          lib/media-group-item-epoch-delivery.test.ts lib/media-group-owner-wrap.test.ts
       - name: Independent group command contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
