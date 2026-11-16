@@ -1,5 +1,5 @@
 'use client';
-import {encodePassphrase} from 'sociacl-ids/recovery';
+import {encodePassphrase,RecoveryWeakPassphraseError} from 'sociacl-ids/recovery';
 import {readBoundedIdentityJson} from '@/lib/identity/bounded-json';
 import {useEffect,useState,useRef} from 'react';
 import {ReceiverFlow,SenderFlow} from 'sea-device-link-ui';
@@ -28,13 +28,15 @@ export function DeviceTransfer(){
  </div>;
 }
 function Session({session,onCancel}:{session:DeviceSession;onCancel:()=>void}){
- const [client,setClient]=useState<ReturnType<typeof createDeviceClient>>(),[records,setRecords]=useState<DeviceRecord[]>([]),[restored,setRestored]=useState<RestoredKeyringRecord[]>([]),[restoreFile,setRestoreFile]=useState<File|null>(null),[recoveryFile,setRecoveryFile]=useState<File|null>(null),[mode,setMode]=useState<'sender'|'receiver'|'restore'|'recovery'>('receiver'),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
+ const [client,setClient]=useState<ReturnType<typeof createDeviceClient>>(),[records,setRecords]=useState<DeviceRecord[]>([]),[restored,setRestored]=useState<RestoredKeyringRecord[]>([]),[restoreFile,setRestoreFile]=useState<File|null>(null),[recoveryFile,setRecoveryFile]=useState<File|null>(null),[mode,setMode]=useState<'sender'|'receiver'|'restore'|'recovery'|'backup'>('receiver'),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
  useEffect(()=>{
   let active=true;const refresh=()=>{void Promise.all([deviceRecords(),restoredKeyringRecords()]).then(([r,s])=>{if(active){setRecords(r);setRestored(s);}}).catch(()=>{if(active)setStatus('Local identity storage is unavailable.');});};
   const value=createDeviceClient(session,location.origin,refresh);setClient(value);refresh();
   return ()=>{active=false;value.dispose();};
  },[session]);
- const recoveryPassphrase=useRef<HTMLInputElement>(null);
+ const recoveryPassphrase=useRef<HTMLInputElement>(null),newPassphrase=useRef<HTMLInputElement>(null),confirmPassphrase=useRef<HTMLInputElement>(null),accountHandle=useRef<HTMLInputElement>(null);
+ const [download,setDownload]=useState<string>();
+ useEffect(()=>()=>{if(download)URL.revokeObjectURL(download);},[download]);
  const linkedAbort=useRef(new AbortController());
  useEffect(()=>{const abort=new AbortController();linkedAbort.current=abort;return ()=>abort.abort();},[]);
  async function linked(action:'start'|'finish'|'cancel'){
@@ -43,9 +45,9 @@ function Session({session,onCancel}:{session:DeviceSession;onCancel:()=>void}){
   if(!response.ok)throw Error();const value=await readBoundedIdentityJson(response,16384,signal);signal.throwIfAborted();
   if(!value||typeof value!=='object'||Array.isArray(value))throw Error();return value as Record<string,unknown>;
  }
- async function work(fn:()=>Promise<string>){setBusy(true);setStatus('');try{setStatus(await fn());}catch{setStatus('Unable to finish. Saved identities are preserved. Check authorization and local protection before retrying.');}finally{setBusy(false);}}
+ async function work(fn:()=>Promise<string>){setBusy(true);setStatus('');try{setStatus(await fn());}catch(error){if(error instanceof RecoveryWeakPassphraseError){setStatus('Choose a stronger recovery passphrase. '+error.warning);return;}setStatus('Unable to finish. Saved identities are preserved. Check authorization and local protection before retrying.');}finally{setBusy(false);}}
  return <div className="space-y-4"><p>Transfer authorization expires after five minutes. Reauthorize to continue with a saved identity.</p>
-  <div className="flex gap-4"><button disabled={busy||mode==='receiver'} onClick={()=>setMode('receiver')}>Receive existing identity</button><button disabled={busy||mode==='sender'} onClick={()=>setMode('sender')}>Send from this device</button><button disabled={busy||mode==='restore'} onClick={()=>setMode('restore')}>Restore existing keyring</button><button disabled={busy||mode==='recovery'} onClick={()=>setMode('recovery')}>Open encrypted recovery copy</button></div>
+  <div className="flex gap-4"><button disabled={busy||mode==='receiver'} onClick={()=>setMode('receiver')}>Receive existing identity</button><button disabled={busy||mode==='sender'} onClick={()=>setMode('sender')}>Send from this device</button><button disabled={busy||mode==='restore'} onClick={()=>setMode('restore')}>Restore existing keyring</button><button disabled={busy||mode==='recovery'} onClick={()=>setMode('recovery')}>Open encrypted recovery copy</button><button disabled={busy||mode==='backup'} onClick={()=>setMode('backup')}>Create encrypted recovery copy</button></div>
   {session.linkedOidcEnabled&&<section><h2>Sign in through your linked account</h2>
    <p>Verify the existing account with its provider, then complete sign-in here. This does not create or replace an identity.</p>
    <button disabled={busy} onClick={()=>void work(async()=>{const value=await linked('start');if(typeof value.authorizationUrl!=='string'||!value.authorizationUrl.startsWith('https://'))throw Error();window.location.assign(value.authorizationUrl);return 'Continue with your account provider.';})}>Verify linked account for sign-in</button>{' '}
@@ -80,6 +82,25 @@ function Session({session,onCancel}:{session:DeviceSession;onCancel:()=>void}){
     }finally{if(field)field.value='';passphrase?.fill(0);bytes?.fill(0);}
    })}>Open and protect recovery copy</button>
   </section>}
+  {client&&mode==='backup'&&<section><h2>Create an encrypted recovery copy</h2>
+   <p>Unlock the complete identity saved on this device, or load its complete export under “Send from this device”. Choose a strong new passphrase and store it separately from the downloaded file. This creates a local copy; your keys and existing copies stay valid.</p>
+   <label>Account handle (if you use one) <input ref={accountHandle} maxLength={255} autoComplete="off" disabled={busy}/></label>
+   <label>New recovery passphrase <input ref={newPassphrase} type="password" autoComplete="new-password" disabled={busy}/></label>
+   <label>Confirm recovery passphrase <input ref={confirmPassphrase} type="password" autoComplete="new-password" disabled={busy}/></label>
+   <button disabled={busy} onClick={()=>void work(async()=>{
+    setDownload(undefined);let phrase:Uint8Array|undefined,confirmation:Uint8Array|undefined,bytes:Uint8Array|undefined;
+    const first=newPassphrase.current,second=confirmPassphrase.current;
+    try{
+     if(!first||!second)throw Error();const a=first.value,b=second.value;first.value='';second.value='';
+     phrase=encodePassphrase(a);confirmation=encodePassphrase(b);
+     if(!phrase.length||phrase.length!==confirmation.length||!phrase.every((value,index)=>value===confirmation![index]))return 'Passphrases did not match. Enter both again.';
+     bytes=await client.prepareEncryptedCopy(phrase,accountHandle.current?.value??'');
+     setDownload(URL.createObjectURL(new Blob([new Uint8Array(bytes)],{type:'application/json'})));
+     return 'Encrypted copy prepared. Download it and verify it using “Open encrypted recovery copy” before relying on it.';
+    }finally{if(first)first.value='';if(second)second.value='';phrase?.fill(0);confirmation?.fill(0);bytes?.fill(0);}
+   })}>Prepare encrypted recovery file</button>
+   {download&&<a href={download} download="s3rch-recovery.json">Download encrypted recovery file</a>}
+  </section>}
   {restored.map(record=><section key={record.address}><h2>Restored identity</h2><p className="break-all">{record.identity.principal}</p>
    <p>The protected copy is saved locally. Unlock verifies current authority again before sign-in.</p>
    <button disabled={busy||!client} onClick={()=>void work(async()=>{const ok=await client!.signInRestored(record);if(ok){identitySessionChanged();return 'Signed in with the restored existing identity.';}return 'Restored identity is preserved; sign-in failed. Retry without restoring again.';})}>Unlock restored identity and sign in</button>
@@ -88,7 +109,7 @@ function Session({session,onCancel}:{session:DeviceSession;onCancel:()=>void}){
    <button disabled={busy||!client} onClick={()=>void work(async()=>{await client!.resume(record);return 'Saved completion acknowledged. No identity was imported again.';})}>Retry saved acknowledgement</button>{' '}
    <button disabled={busy||!client} onClick={()=>void work(async()=>{const ok=await client!.signIn(record);if(ok){identitySessionChanged();return 'Signed in with the saved identity.';}return 'Identity saved; sign-in failed. Retry sign-in without importing again.';})}>Unlock saved identity and sign in</button>
   </section>)}
-  {busy&&<button onClick={()=>{client?.dispose();setRestoreFile(null);setRecoveryFile(null);if(recoveryPassphrase.current)recoveryPassphrase.current.value='';onCancel();}}>Cancel current identity operation</button>}
+  {busy&&<button onClick={()=>{client?.dispose();setDownload(undefined);if(newPassphrase.current)newPassphrase.current.value='';if(confirmPassphrase.current)confirmPassphrase.current.value='';setRestoreFile(null);setRecoveryFile(null);if(recoveryPassphrase.current)recoveryPassphrase.current.value='';onCancel();}}>Cancel current identity operation</button>}
   {status&&<p role="status">{status}</p>}
  </div>;
 }

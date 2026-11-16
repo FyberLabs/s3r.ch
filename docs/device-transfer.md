@@ -98,3 +98,13 @@ identity is never overwritten. Passphrase and plaintext remain in the browser;
 mutable buffers are cleared, and account changes/cancellation refuse delivery.
 JavaScript strings cannot be guaranteed erased. Unlock/sign-in is still explicit.
 This slice does not fetch remote recovery copies or rotate keys/passphrases.
+
+## Local encrypted recovery downloads
+
+Create encrypted recovery copy unlocks a complete saved identity, or uses the
+complete source selected in Send from this device. Enter and confirm a strong
+new passphrase, including the public account handle in the strength context when
+you use one. The downloaded JSON contains only authenticated metadata and the
+canonical SociACL ciphertext. Verify the file using Open encrypted recovery copy
+before relying on it. This does not publish a signed recovery-store operation,
+rotate keys, or invalidate older copies. Session disposal revokes the download URL.
