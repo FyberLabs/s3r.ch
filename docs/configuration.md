@@ -15,6 +15,7 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 | `S3RCH_NIGHTLY_RUN_CONFIG` | no | unset | yes | Private TEST owner JSON with separate controller/owner keys and both declared suite scopes. Enables guarded Next entry routing when explicitly configured; absent preserves native handlers, malformed or changed configuration refuses. No credentials or reader cases are installed by source wiring. |
 | `S3RCH_DEVICE_TRANSFER_CONFIG` | for device transfer | unset | no | Exact scope, Auth/ACL routes and existing OIDC provider; see below. |
 | `S3RCH_EXPERIMENTS_ENABLED` | no | unset | no | Set to 1 to enable the optional landing experiment. Withdrawal remains available after disabling. |
+| `S3RCH_LINKED_IDENTITY_CONFIG_FILE` | for linked identity | unset | yes | Absolute owner-only complete-source and witness-trust file; missing leaves linked login unavailable. |
 | `S3RCH_EXPERIMENT_ORIGIN` | for experiments | unset | no | Exact canonical HTTPS site origin. |
 | `S3RCH_EXPERIMENT_TENANT` | for experiments | unset | no | Nonzero tenant UUID for private experiment records. |
 | `S3RCH_EXPERIMENT_SECRET` | for experiments | unset | yes | Separate random 32-byte experiment root, encoded as 64 lowercase hex characters. |
@@ -316,3 +317,30 @@ provision ordinary person authorization for `auth:device:transfer` and
 The transfer-specific PKCE flow keeps its bearer encrypted in a five-minute
 HttpOnly cookie; ordinary wallet/OAuth cookies are never treated as that bearer.
 See [device transfer](device-transfer.md) for storage and acceptance boundaries.
+
+### Complete linked-credential authority
+
+`S3RCH_LINKED_IDENTITY_CONFIG_FILE` is optional and absent by default. It points
+to an absolute owner-only, single-link regular file (at most 64 KiB). The file
+uses compact recursively sorted-key JSON plus a final newline. Its exact fields
+are `version: 1`, `origin` (this deployment's canonical HTTPS origin), `source`,
+`trust`, `walletChainIds`, and `oidc`.
+
+`source` contains `origin` (ACL HTTPS origin), `tenant`, `source` (the configured
+whole authority UUID), and `apiKey` for its private service subject. `trust` holds
+locally configured `jwks`, SIWE `policy`, and `pinnedIss` array. `oidc` is an array
+of exact `issuer`, `clientId`, `tenant`, `tenantClaim`, `jwks` records. Provider
+verification uses those local keys; neither ACL response keys nor browser data can
+install witness trust. Duplicate issuer/tenant bindings refuse configuration.
+
+This wires ACL #189's complete credential domain into the existing linked SEA
+challenge/exchange issuer. It is not an owner-only history export and does not
+create identities. Missing configuration keeps linked login unavailable. Source
+scope, complete histories, candidate inclusion, revocations and current keys are
+checked again by shared SociACL helpers. Responses cannot omit a candidate present
+in the complete history or replace configured witness keys. The existing replay
+backend and one-time challenge consumption remain required.
+
+Auth #69's provider orchestration and #583's restoration browser flow are separate
+consumers. This setting alone does not activate them, provision credentials, or
+register reader cases. No private file is included in the image or this repository.

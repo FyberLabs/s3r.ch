@@ -1,6 +1,5 @@
 import { decodeJwt, decodeProtectedHeader } from "jose";
-import { parseEip55, parsePrincipalId } from "sociacl-ids";
-import { isPublicSquadPrincipal } from "../squad-view";
+import { parseEip55 } from "sociacl-ids";
 import { readBoundedIdentityJson } from "./bounded-json";
 
 /** Revisions must increase on every wallet/account/chain or session change,
@@ -71,11 +70,11 @@ export function createLinkedWalletClient(input: {
         const token = reply.challenge, header = decodeProtectedHeader(token), claims = decodeJwt(token), now = clock();
         // Signing-intent decoding only; issuer MAC/current authority/replay are
         // verified by the server. Never treat this payload as an identity source.
-        if (!exact(header, "alg,typ") || header.alg !== "HS256" || typeof header.typ !== "string" || !/^s3rch-linked-challenge-v1(?::[0-9a-f]{64})?$/.test(header.typ) ||
-            !exact(claims, "aud,credential,exp,iat,iss,jti,linkId,sub") || claims.iss !== origin.origin || claims.aud !== origin.origin ||
-            typeof claims.sub !== "string" || !parsePrincipalId(claims.sub).ok || isPublicSquadPrincipal(claims.sub) ||
+        if (!exact(header, "alg,typ") || header.alg !== "HS256" || typeof header.typ !== "string" || !/^s3rch-linked-challenge-v2(?::[0-9a-f]{64})?$/.test(header.typ) ||
+            !exact(claims, "aud,credential,exp,iat,iss,jti,sub") || claims.iss !== origin.origin || claims.aud !== origin.origin ||
+            typeof claims.sub !== "string" || !/^[0-9a-f]{64}$/.test(claims.sub) ||
             !exact(claims.credential, "address,kind") || claims.credential.kind !== "wallet" || claims.credential.address !== selected.address ||
-            typeof claims.linkId !== "string" || !/^[0-9a-f]{64}$/.test(claims.linkId) || typeof claims.jti !== "string" || !/^[0-9a-f]{64}$/.test(claims.jti) ||
+            typeof claims.jti !== "string" || !/^[0-9a-f]{64}$/.test(claims.jti) ||
             !Number.isSafeInteger(claims.iat) || !Number.isSafeInteger(claims.exp) || claims.iat! < 0 || claims.iat! > now || claims.exp! <= now || claims.exp! - claims.iat! !== 60) return false;
         const digest = new Uint8Array(await bounded(crypto.subtle.digest("SHA-256", new TextEncoder().encode(token)))); check();
         const hash = Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");

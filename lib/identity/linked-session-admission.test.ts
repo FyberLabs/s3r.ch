@@ -1,3 +1,4 @@
+import { decodeJwt } from "jose";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { linkedSessionFixture } from "../../scripts/fixtures/linked-session";
@@ -17,13 +18,15 @@ for (const kind of ["wallet", "oidc"] as const) {
   });
   test(`${kind}: two eligible identities refuse despite different link timestamps`, async () => {
     const h = await linkedSessionFixture(kind); await h.conflict();
-    assert.equal(await h.sessions.linkedChallenge(h.credential), null);
+    const challenge = await h.sessions.linkedChallenge(h.credential); assert.ok(challenge);
+    assert.equal(await h.sessions.exchangeLinked(challenge, await h.proof(challenge)), null);
   });
-  test(`${kind}: replacement link cannot reuse a challenge bound to the old link`, async () => {
+  test(`${kind}: replacement during proof consumption cannot change the selected link`, async () => {
     const h = await linkedSessionFixture(kind), challenge = (await h.sessions.linkedChallenge(h.credential))!;
-    const proof = await h.proof(challenge); await h.replace();
+    const proof = await h.proof(challenge);
+    const consume = async (id: string) => { await h.replace(); return h.options.consume(id); };
     assert.ok(await h.sessions.linkedChallenge(h.credential));
-    assert.equal(await h.sessions.exchangeLinked(challenge, proof), null);
+    assert.equal(await createIdentitySessions({ ...h.options, consume }).exchangeLinked(challenge, proof), null);
   });
   test(`${kind}: replay storage failure cannot issue a session`, async () => {
     const h = await linkedSessionFixture(kind), challenge = (await h.sessions.linkedChallenge(h.credential))!;
@@ -35,7 +38,7 @@ for (const kind of ["wallet", "oidc"] as const) {
     for (const failure of ["missing", "stale", "unavailable", "tamper", "revoke", "badHistory"] as const) {
       const h = await linkedSessionFixture(kind), challenge = await h.sessions.linkedChallenge(h.credential); assert.ok(challenge);
       const proof = await h.proof(challenge); h[failure]();
-      assert.equal(await h.sessions.linkedChallenge(h.credential), null, failure);
+      assert.ok(await h.sessions.linkedChallenge(h.credential), failure);
       assert.equal(await h.sessions.exchangeLinked(challenge, proof), null, failure);
       assert.equal(h.used.size, 0, failure);
     }
@@ -77,4 +80,15 @@ test("linked HTTP challenge is same-origin and cookie-bound; hosted source absen
   assert.equal(exchanged.status, 200); assert.ok(exchanged.headers.getSetCookie().some(s => s.startsWith("__Host-s3rch-squad-session=")));
   const response = await siteSeaSession(req({ credential: h.credential }), "linked-challenge", {}, async () => { assert.fail("no provider IO"); });
   assert.equal(response.status, 503);
+});
+
+test("challenge reveals no identity and does not consult authority before valid proof", async () => {
+  const h = await linkedSessionFixture("oidc"); let reads = 0;
+  const admission = { ...h.admission, resolve: async (...args: Parameters<typeof h.admission.resolve>) => { reads++; return h.admission.resolve(...args); } };
+  const sessions = createIdentitySessions({ ...h.options, linkedAdmission: admission });
+  const challenge = await sessions.linkedChallenge(h.credential); assert.ok(challenge);
+  assert.equal(reads, 0); const claims = decodeJwt(challenge);
+  assert.notEqual(claims.sub, h.principal); assert.equal(claims.linkId, undefined);
+  assert.equal(await sessions.exchangeLinked(challenge, { idToken: "invalid" }), null);
+  assert.equal(reads, 0);
 });

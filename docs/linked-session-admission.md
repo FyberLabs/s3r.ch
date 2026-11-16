@@ -5,8 +5,8 @@ wallet/OIDC signed-link and recovery-history contract. It is verification-only.
 `createIdentitySessions` remains the sole issuer and uses the existing atomic
 identity replay store. No link, rotation, key, account or enrollment is written.
 
-A linked challenge names the exact credential, signed-link ID and current SEA
-key. It expires after 60 seconds and is bound to the issuer origin, replay domain
+A linked challenge binds the exact credential and an independent random subject.
+It contains no SEA identity or link ID and performs no authority lookup before proof. It expires after 60 seconds and is bound to the issuer origin, replay domain
 and browser HttpOnly challenge cookie. Wallet proof uses the existing SociACL
 SIWE wire: the statement hashes the opaque challenge, the nonce is its `jti`,
 and URI is the issuer origin plus `/api/identity/sea/linked-exchange`. OIDC proof
@@ -14,7 +14,8 @@ uses a pinned issuer and key resolver, exact audience, tenant claim and subject,
 challenge nonce and `auth_time` no earlier than the challenge. Email and display
 names are never account selectors. Multiple eligible accounts fail closed.
 
-Exchange re-resolves the same link/current key before and after replay consumption
+After credential proof, exchange resolves the link/current key and rechecks that
+same selection before and after replay consumption
 and rechecks credential expiry. Concurrent replay has one winner. Success issues
 the same five-minute `s3rch-identity-session-v1` SEA-subject cookie as existing-key
 proof. Failed admission issues no session and never creates an identity.
@@ -94,3 +95,8 @@ and lost-key recovery remain separate owning work. The existing nightly
 exercises the actual unconfigured route with zero signing calls, then admits
 against the explicitly synthetic source and signer. It does not test a real wallet
 extension or make a deployed-readiness claim.
+
+The protected HTTP adapter additionally limits native verification to 32 rotations
+and revocations per account, 128 domain links and 4096 work units, with monotonic
+deadline checks at account and recursive-history boundaries. Larger domains fail
+closed; records are never truncated. Revocation comparison ignores JSON key order.

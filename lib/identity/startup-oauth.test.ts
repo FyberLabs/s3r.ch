@@ -99,3 +99,23 @@ test("disabled, invalid origin and absent credential cannot start or resolve log
   assert.equal(await readStartupCredential(new Request(base), env, { config: async () => h.config }), null);
   assert.equal(hasStartupPending(new Request(base)), false);
 });
+
+// Provider work may cross a wall-clock second. Verify against completion time,
+// while retaining the original pending-cookie deadline.
+test("provider exchange crossing a second accepts fresh tokens but never extends the original attempt", async () => {
+  for (const delay of [1000, 301000]) {
+    const h = await setup(); let clock = now;
+    const result = await finishStartupOAuth(h.request(), env, { config: async () => h.config, clock: () => clock, key: h.keys.publicKey,
+      fetch: async url => {
+        if (String(url) === h.config.provider.tokenEndpoint) {
+          clock += delay;
+          const token = await new SignJWT({ nonce: h.authorize.searchParams.get("nonce") })
+            .setProtectedHeader({ alg: "ES256" }).setIssuer(h.config.provider.issuer).setAudience(h.config.provider.clientId)
+            .setSubject("broker-person").setIssuedAt(clock / 1000).setExpirationTime(clock / 1000 + 300).sign(h.keys.privateKey);
+          return Response.json({ id_token: token, access_token: "synthetic-access" });
+        }
+        return Response.json(h.identity);
+      } });
+    assert.equal(result.headers.get("location"), delay < 300000 ? "/feed?startup=linked" : "/feed?startup=denied");
+  }
+});

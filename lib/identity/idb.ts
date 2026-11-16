@@ -172,7 +172,7 @@ export function createIndexedDbMeshKeyStore(
     async hasImportedIdentity() {
       const rows = await idbRequest(factory, "readonly", store => store.getAll(null,65));
       if(rows.length>64) throw Error("Identity storage unavailable");
-      return rows.some(row=>row?.kind === "sea-keyring-v1");
+      return rows.some(row=>(row?.kind === "sea-keyring-v1" || row?.kind === "sea-restored-keyring-v1"));
     },
     async get(address: string) {
       let checksum: string;
@@ -190,7 +190,7 @@ export function createIndexedDbMeshKeyStore(
       const db=await openMeshDb(requireFactory(factory));
       await new Promise<void>((resolve,reject)=>{
         const tx=db.transaction(MESH_STORE_NAME,'readwrite'),store=tx.objectStore(MESH_STORE_NAME),get=store.getAll(null,65);
-        get.onsuccess=()=>{if(get.result.length>64||get.result.some(row=>row?.kind==='sea-keyring-v1'&&row.seaPub!==stored.seaPub)){tx.abort();return;}store.put(stored);};
+        get.onsuccess=()=>{if(get.result.length>64||get.result.some(row=>(row?.kind==='sea-keyring-v1'||row?.kind==='sea-restored-keyring-v1')&&row.seaPub!==stored.seaPub)){tx.abort();return;}store.put(stored);};
         tx.oncomplete=()=>{db.close();resolve();};tx.onabort=()=>{db.close();reject(Error('Imported identity must be unlocked instead'));};
       });
     },
