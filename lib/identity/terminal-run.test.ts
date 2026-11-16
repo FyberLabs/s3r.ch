@@ -131,3 +131,18 @@ test("ACL grant propagation is limited to the two authenticated TEST device rout
   }, () => true);
   assert.deepEqual(await terminalAclHeaders(root + "state"), {});
 });
+
+test("linked OIDC forwards only the original admitted grant to four exact TEST commands", async () => {
+  const { terminalLinkedOidcHeaders, terminalRelayHeaders } = await import("./terminal-run");
+  const h = fixture(), grant = "f".repeat(64), root = "https://api.test.hyperme.sh/auth/linked-oidc/v1/";
+  const request = { headers: { get: () => "__Host-nightly-run-grant=" + grant } } as unknown as Request;
+  await withTerminalRun(request, h.authority, async () => {
+    for (const action of ["start", "exchange", "result", "cancel"]) {
+      assert.deepEqual(await terminalLinkedOidcHeaders(root + action), { "X-Nightly-Run-Grant": grant });
+      await assert.rejects(terminalRelayHeaders(root + action));
+    }
+    for (const target of [root + "start?next=other", root + "admin", root.replace("api.test.hyperme.sh", "api.hyperme.sh") + "start", root.replace("https:", "http:") + "start"])
+      await assert.rejects(terminalLinkedOidcHeaders(target));
+  }, () => true);
+  assert.deepEqual(await terminalLinkedOidcHeaders(root + "start"), {});
+});

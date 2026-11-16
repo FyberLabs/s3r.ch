@@ -1,5 +1,6 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {readBoundedIdentityJson} from '@/lib/identity/bounded-json';
+import {useEffect,useState,useRef} from 'react';
 import {ReceiverFlow,SenderFlow} from 'sea-device-link-ui';
 import 'sea-device-link-ui/styles.css';
 import {createDeviceClient,readDeviceSession,type DeviceSession} from '@/lib/identity/device-client';
@@ -32,9 +33,23 @@ function Session({session,onCancel}:{session:DeviceSession;onCancel:()=>void}){
   const value=createDeviceClient(session,location.origin,refresh);setClient(value);refresh();
   return ()=>{active=false;value.dispose();};
  },[session]);
+ const linkedAbort=useRef(new AbortController());
+ useEffect(()=>{const abort=new AbortController();linkedAbort.current=abort;return ()=>abort.abort();},[]);
+ async function linked(action:'start'|'finish'|'cancel'){
+  const signal=linkedAbort.current.signal;signal.throwIfAborted();
+  const response=await fetch('/api/identity/sea/linked-oidc-'+action,{method:'POST',credentials:'same-origin',mode:'same-origin',redirect:'error',cache:'no-store',signal,headers:{'Content-Type':'application/json','X-Device-Context':session.context??''},body:'{}'});
+  if(!response.ok)throw Error();const value=await readBoundedIdentityJson(response,16384,signal);signal.throwIfAborted();
+  if(!value||typeof value!=='object'||Array.isArray(value))throw Error();return value as Record<string,unknown>;
+ }
  async function work(fn:()=>Promise<string>){setBusy(true);setStatus('');try{setStatus(await fn());}catch{setStatus('Unable to finish. Saved identities are preserved. Check authorization and local protection before retrying.');}finally{setBusy(false);}}
  return <div className="space-y-4"><p>Transfer authorization expires after five minutes. Reauthorize to continue with a saved identity.</p>
   <div className="flex gap-4"><button disabled={busy||mode==='receiver'} onClick={()=>setMode('receiver')}>Receive existing identity</button><button disabled={busy||mode==='sender'} onClick={()=>setMode('sender')}>Send from this device</button><button disabled={busy||mode==='restore'} onClick={()=>setMode('restore')}>Restore existing keyring</button></div>
+  {session.linkedOidcEnabled&&<section><h2>Sign in through your linked account</h2>
+   <p>Verify the existing account with its provider, then complete sign-in here. This does not create or replace an identity.</p>
+   <button disabled={busy} onClick={()=>void work(async()=>{const value=await linked('start');if(typeof value.authorizationUrl!=='string'||!value.authorizationUrl.startsWith('https://'))throw Error();window.location.assign(value.authorizationUrl);return 'Continue with your account provider.';})}>Verify linked account for sign-in</button>{' '}
+   <button disabled={busy} onClick={()=>void work(async()=>{const value=await linked('finish');if(value.ok!==true)throw Error();identitySessionChanged();return 'Signed in through the existing linked account.';})}>Complete linked account sign-in</button>{' '}
+   <button disabled={busy} onClick={()=>void work(async()=>{const value=await linked('cancel');return value.status==='cancelled'?'Linked account attempt cancelled.':'Local attempt cleared. Remote cancellation could not be confirmed; the original attempt will expire.';})}>Cancel linked account attempt</button>
+  </section>}
   {client&&mode==='receiver'&&<ReceiverFlow adapters={client.adapters} help="Use a PRF-capable passkey on this device. Import preserves the complete keyring; sign-in is a separate step below."/>}
   {client&&mode==='sender'&&<><p>Unlock your existing identity first. Previously received complete identities can be unlocked here with their passkey. Older pair-only storage needs its complete SociACL keyring JSON export; missing historical keys cannot be recreated.</p>
    <label>Load complete local keyring JSON export <input type="file" disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;void work(async()=>{if(file.size>524288)throw Error();const bytes=new Uint8Array(await file.arrayBuffer());try{await client.selectCompleteSource(bytes);return 'Complete source keyring validated for this identity.';}finally{bytes.fill(0);}});}}/></label>
