@@ -1,5 +1,6 @@
 "use client";
 
+import {parseForumCollection} from "./forum-collections";
 import {parseLedgerEntry} from "./forum-ledger";
 
 import {
@@ -1629,11 +1630,11 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
 
   const statementSending = useRef(false);
   const stagedStatement = useRef<ReturnType<typeof buildForumStatement>>(null);
-  async function onSend(report = false, ledgerBody?: string): Promise<boolean> {
+  async function onSend(report = false, structuredBody?: string): Promise<boolean> {
     if (statementSending.current) return false;
     if (report && liveEnabled) return false;
-    if (ledgerBody !== undefined && (!liveEnabled || !parseLedgerEntry(ledgerBody))) return false;
-    const body = ledgerBody ?? draft;
+    if (structuredBody !== undefined && (!liveEnabled || (!parseLedgerEntry(structuredBody) && !parseForumCollection(structuredBody)))) return false;
+    const body = structuredBody ?? draft;
     const writer = signingPrincipal();
     if (!writer) {
       setNotice("A mesh key on this browser is required.");
@@ -1750,7 +1751,8 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   } : null;
   const ledgerReadable = !!(liveEnabled && viewer && proofs.ready() && authority?.graph.checkForumSee(forumId, viewer, Math.floor(Date.now()/1000)).allowed);
   const ledgerWritable = !!(ledgerReadable && viewer && authority?.graph.checkPost(forumId, viewer, Math.floor(Date.now()/1000)).allowed);
-  return { ledgerReadable, ledgerWritable, sendLedger: (body: string) => onSend(false, body), forumId, forumLabel, liveEnabled, authorLabel, seaPub, oauthLinked,
+  const memoryCurrent = () => !!(sessionKey && proofs.ready() && viewer && signingPrincipal() === viewer && authority?.graph.checkForumSee(forumId, viewer, Math.floor(Date.now()/1000)).allowed);
+  return { memoryCurrent, sendCollection: (body: string) => onSend(false, body), ledgerReadable, ledgerWritable, sendLedger: (body: string) => onSend(false, body), forumId, forumLabel, liveEnabled, authorLabel, seaPub, oauthLinked,
     vitals, setVitals, escalations, sharedReports, previewLevel, setPreviewLevel,
     tab, setTab, filters, query, setQuery, setSelected, notice, draft, setDraft,
     offerBody, setOfferBody, roster, visible, active, chat, needs, offers,
