@@ -112,13 +112,15 @@ try{
  groupAllowed=true;groupCatalog=true;await groupRefresh();await groupOpen();await page.getByRole('heading',{name:'Group '+kind,exact:true}).waitFor();
  const before=await page.evaluate(()=>window.revoked.length);await page.evaluate(()=>window.dispatchEvent(new Event('s3rch-session-changed')));
  await page.waitForFunction(count=>window.revoked.length===count+1,before);assert.equal(await page.getByRole('article').count(),0);
+ assert.deepEqual(errors,[]);
  });
- assert.deepEqual(errors,[]);console.log('Granted media UI, denied open, session reset and unmount cleanup contracts passed; hosted services not qualified');
+ console.log('Granted media UI, denied open, session reset and unmount cleanup contracts passed; hosted services not qualified');
 }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));rmSync(fixtureRoot,{recursive:true,force:true});}
 
 }
-await main().catch(()=>{process.exitCode=1;}).finally(()=>{
- if(fixtureRoot)rmSync(fixtureRoot,{recursive:true,force:true});
+function blockIncompleteRun(){process.exitCode=1;if(cases.every(row=>row.status==='passed'))for(const row of cases)row.status='blocked';}
+await main().catch(blockIncompleteRun).finally(()=>{
+ try{if(fixtureRoot)rmSync(fixtureRoot,{recursive:true,force:true});}catch{blockIncompleteRun();}
  const requested=process.env.S3RCH_GRANTED_FIXTURE??'image',kind=['image','audio','video'].includes(requested)?requested:'invalid';
  const report=writeNightlyCaseResults({suite:'granted-media-'+kind,expectedCases:names,cases});
  console.log(JSON.stringify(report));if(report.status!=='passed')process.exitCode=1;
