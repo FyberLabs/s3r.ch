@@ -85,3 +85,18 @@ export async function verifyTerminalToken(claims: Record<string, unknown>, token
   await tokenContext(token);
   if (current?.closed) fail();
 }
+
+/** Persistent work inherits admission, not caller labels. Already-admitted work
+ * may drain after seal; the durable pending operation fences terminal completion.
+ * This does not authorize new requests or token issuance after seal. */
+export function terminalWorkBinding(): RunBinding | undefined {
+  const current = context.getStore();
+  if (current?.closed) return fail();
+  return current?.admission ? { ...current.admission.binding } : undefined;
+}
+export function verifyTerminalWork(original: unknown): void {
+  const current = terminalWorkBinding();
+  if (original === undefined) { if (current) fail(); return; }
+  const saved = binding(original);
+  if (!current || saved.run !== current.run || saved.generation !== current.generation) fail();
+}

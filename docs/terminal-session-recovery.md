@@ -86,3 +86,12 @@ new local credentials. Startup broker subjects remain separate from SEA keys.
 Native fixture tests run in CI only. Unsupported wallet/backup credential kinds
 remain denied by the installed-adapter candidate; these hooks do not authorize
 an alternate fixture identity mapping or enable those paths.
+
+Protected experiment outboxes now persist the original admitted run and generation
+on the consent ledger, including its revocation tombstone. Missing, foreign and
+successor contexts cannot adopt or drain it. Unrelated ledgers keep the v1 shape;
+older readers refuse the additional protected field rather than treating it as
+unrelated traffic. Existing pre-seal admissions may finish the awaited sink send
+and conditional progress commit; only then may the request completion predicate
+acknowledge them. Ambiguous sends retain pending admissions. This remains source
+composition only: no reader registration, route installation or activation.
