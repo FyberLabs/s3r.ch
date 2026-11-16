@@ -81,6 +81,7 @@ function browser(grant?: string) {
       outgoing.on("error", reject);
       outgoing.end(body === undefined ? undefined : JSON.stringify(body));
     });
+    console.log("CI Next route", body === undefined ? "GET" : "POST", route.split("?")[0], response.status);
     for (const cookie of response.headers.getSetCookie()) { const [key, ...values] = cookie.split(";")[0].split("="); const value = values.join("="); if (value) jar.set(key, value); else jar.delete(key); }
     return response;
   }
