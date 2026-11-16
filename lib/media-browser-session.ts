@@ -1,3 +1,6 @@
+import {prepareGroupItemEpoch} from "./media-group-item-epoch-signing";
+import {parseGroupCommand} from "./media-group-command";
+import {applyItemEpoch,pendingItemEpoch,discardItemEpoch,type PendingItemEpoch} from "./media-group-item-epoch-recovery";
 import {createItemGrantClient} from "./media-group-item-grant-client";
 import {parseItemGrantCommand} from "./media-group-item-grant";
 import {applyItemGrant,pendingItemGrant,discardItemGrant,type PendingItemGrant} from "./media-group-item-grant-recovery";
@@ -69,6 +72,34 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     });
   }
   return Object.freeze({
+    startItemEpoch(tenant:string,principal:string,target:{object:string;predicate:"same-group"|"named-circle";set:string},signal?:AbortSignal){
+      const held=parseGroupCommand("item-epoch-view",target,principal);
+      return locked(()=>run(async(pair,transport,deadline)=>{
+        const input={tenant,principal,pair,fetcher:transport,signal:deadline,journal:createShareJournal(undefined,"group-item-epoch")};
+        if(await pendingItemEpoch(input))throw Error("A group item request requires recovery");
+        if(!/^[A-Za-z0-9_-]{43}$/.test(pair.priv))throw Error("Invalid media signing key");
+        const scalar=Uint8Array.from(atob(pair.priv.replace(/-/g,"+").replace(/_/g,"/")+"="),c=>c.charCodeAt(0));
+        try{
+          if(scalar.length!==32||btoa(String.fromCharCode(...scalar)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")!==pair.priv)throw Error("Invalid media signing key");
+          const command=await prepareGroupItemEpoch(held.object as string,parseMediaGroupScope({predicate:held.predicate,set:held.set}),principal,crypto.randomUUID(),scalar,transport,()=>Date.now()/1000,deadline);
+          return await applyItemEpoch({...input,command});
+        }finally{scalar.fill(0);}
+      },signal),"s3rch-private-group-item-epoch-v1");
+    },
+    pendingItemEpoch(tenant:string,principal:string,signal?:AbortSignal){
+      return run((pair,transport,deadline)=>pendingItemEpoch({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-item-epoch")}),signal);
+    },
+    resumeItemEpoch(tenant:string,principal:string,expected:PendingItemEpoch,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>applyItemEpoch({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-item-epoch"),expected:held}),signal),"s3rch-private-group-item-epoch-v1");
+    },
+    discardItemEpoch(tenant:string,principal:string,expected:PendingItemEpoch,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>discardItemEpoch({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-item-epoch"),expected:held}),signal),"s3rch-private-group-item-epoch-v1");
+    },
     startItemGrant(tenant:string,principal:string,target:{object:string;predicate:"same-group"|"named-circle";set:string;reader:string;withdraw:boolean},signal?:AbortSignal){
       const held=parseItemGrantCommand("item-grant-view",target,principal);
       return locked(()=>run(async(pair,transport,deadline)=>{
