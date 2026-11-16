@@ -331,7 +331,7 @@ export function getForum(): Forum {
     const mode = process.env.S3RCH_FORUM_STORAGE || "file";
     if (mode !== "file" && mode !== "blob") throw new Error("Invalid forum storage mode");
     g.__s3rchForum = openForum(mode === "blob"
-      ? forumBlobHealthStore()
+      ? new BlobForumStore(configuredForumBlobClient())
       : new FileForumStore(forumFilePath()));
   }
   return g.__s3rchForum;
@@ -1486,19 +1486,4 @@ function mapResult(result: Denied | object): ForumHttpResult {
 
 function readResult(result: ReadChatResult): ForumHttpResult {
   return mapResult(result);
-}
-
-/** Read-only readiness. Never creates or repairs a missing durable document. */
-export function forumHealth(): { status: string; storage: string; concurrency: string } {
-  const mode = process.env.S3RCH_FORUM_STORAGE || "file";
-  if (mode === "file") return { status: "ok", storage: "file", concurrency: "single-process" };
-  try {
-    if (mode !== "blob") throw new Error("Invalid forum storage mode");
-    const store = forumBlobHealthStore();
-    return { status: store.load().ok ? "ok" : "unavailable", storage: "blob", concurrency: "etag" };
-  } catch { return { status: "unavailable", storage: mode, concurrency: "unavailable" }; }
-}
-let healthBlobStore: BlobForumStore | undefined;
-function forumBlobHealthStore(): BlobForumStore {
-  return healthBlobStore ??= new BlobForumStore(configuredForumBlobClient());
 }

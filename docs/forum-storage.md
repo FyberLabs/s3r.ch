@@ -17,14 +17,15 @@ bytes committed together. The entire document is limited to 1 MiB. A full store
 refuses a mutation without truncating or replacing existing data. Unknown schemas,
 missing documents, denied access and malformed content fail closed. Health reports
 `dependencies.forum` with `storage=blob`, `concurrency=etag` and read availability;
-this read-only check is not a claim that a write has succeeded.
+health serves cached state from a bounded asynchronous probe, so a storage
+outage cannot block the health request. This read-only check is not a claim that a write has succeeded.
 
 ## Migration before enabling slots
 
 Keep provisioning and Blob mode disabled until the migration is scheduled. First
 ship this compatible capability to the single live web process. Quiesce forum
 writes, retain a backup of its forum file, and configure the private Blob account
-and container. Run `npx tsx scripts/migrate-forum.ts /app/data/forum.json` with the
+and container. Run `node /app/migrate-forum.cjs /app/data/forum.json` with the
 app's managed identity in the existing owner environment. The destination must
 not exist: the command uses If-None-Match and cannot overwrite a prior migration.
 It validates the source ledger before uploading. Existing in-memory desktop image

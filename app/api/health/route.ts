@@ -1,4 +1,4 @@
-import { forumHealth } from "@/lib/forum";
+import { forumHealth } from "@/lib/forum-health";
 import { gunHealth } from "@/lib/gun-health";
 import { identityHealth } from "../../../identity-health.cjs";
 import { panopticonHealth } from "@/lib/dependency-health";
