@@ -65,7 +65,7 @@ test("explicit ingestion contains only the event envelope and has bounded transp
     assert.match(envelope.time, /^\d{4}-/); delete envelope.time;
     assert.deepEqual(envelope, { ver: 1, name: "Microsoft.ApplicationInsights.Event", sampleRate: 100, iKey: key,
       tags: { "ai.cloud.role": "s3rch" }, data: { baseType: "EventData", baseData: { ver: 2, name: "experiment.exposure.v1", properties: payload } } });
-    return new Response(null, { status: 200 });
+    return Response.json({ itemsReceived: 1, itemsAccepted: 1, errors: [] });
   });
   assert.equal(sent, 0);
   await client.trackEvent({ name: "experiment.exposure.v1", properties: payload as any });
@@ -79,7 +79,7 @@ test("ingestion errors and partial acceptance fail without retry or unbounded co
   }
   const releases: (() => void)[] = [];
   const client = await createManualExperimentClient(connection, async () => {
-    await new Promise<void>(resolve => releases.push(resolve)); return new Response(null, { status: 200 });
+    await new Promise<void>(resolve => releases.push(resolve)); return Response.json({ itemsReceived: 1, itemsAccepted: 1, errors: [] });
   });
   const pending = Array.from({ length: 8 }, () => client.trackEvent({ name: "experiment.exposure.v1", properties: payload as any }));
   await assert.rejects(client.trackEvent({ name: "experiment.exposure.v1", properties: payload as any }));
@@ -122,7 +122,7 @@ test("named telemetry carries the caller's stable ID on both attempts without pr
   const sent: Array<Record<string, any>> = [];
   const telemetry = createExperimentTelemetry(connection, async value => createManualExperimentClient(value, async (_url, init) => {
     sent.push(JSON.parse(init.body as string));
-    return new Response(null, { status: 200 });
+    return Response.json({ itemsReceived: 1, itemsAccepted: 1, errors: [] });
   }), { ...allowed, supportedEventTypes: ["experiment.conversion.v2"], metrics: { layout: ["sign_in_completed"] } });
   const named = { ...payload, conversion_key: "sign_in_completed" };
   for (let attempt = 0; attempt < 2; attempt++) assert.equal(await telemetry.emit("experiment.conversion.v2", named, key), true);
@@ -166,5 +166,20 @@ test("withdrawal during client initialization prevents dispatch", async () => {
     release();
     assert.equal(await event, false);
     assert.equal(sent, 0);
+  }
+});
+
+// HTTP receipt contracts run in CI, including mocked transports.
+test("single-event ingestion requires an unambiguous full acceptance receipt", async () => {
+  for (const body of ["", "{}", "null", "[]", '{"itemsReceived":1,"itemsAccepted":0,"errors":[]}',
+    '{"itemsReceived":2,"itemsAccepted":2,"errors":[]}', '{"itemsReceived":1,"itemsAccepted":1}',
+    '{"itemsReceived":1,"itemsAccepted":1,"errors":[{}]}',
+    '{"itemsReceived":1,"itemsAccepted":0,"itemsAccepted":1,"errors":[]}', " ".repeat(4097)]) {
+    let calls = 0;
+    const client = await createManualExperimentClient(connection, async () => {
+      calls++; return new Response(body, { status: 200 });
+    });
+    await assert.rejects(client.trackEvent({ name: "experiment.exposure.v1", properties: payload as any }));
+    assert.equal(calls, 1);
   }
 });

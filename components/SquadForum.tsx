@@ -1,5 +1,7 @@
 "use client";
 
+import {ForumMemoryMap} from "./ForumMemoryMap";
+import {forumCollections} from "@/lib/forum-collections";
 import {ForumLedger} from "./ForumLedger";
 
 import {contactHref} from "@/lib/contact-link";
@@ -62,7 +64,7 @@ export function SquadForum({ live, reportParents, sessionKey = null }: { live?: 
   return <SquadForumView key={view.key} view={view} reportParents={reportParents} sessionKey={sessionKey} />;
 }
 function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; reportParents?: ReportParents; sessionKey: string | null }) {
-  const { ledgerReadable, ledgerWritable, sendLedger, forumId, forumLabel, liveEnabled, authorLabel, seaPub, oauthLinked,
+  const { memoryCurrent, sendCollection, ledgerReadable, ledgerWritable, sendLedger, forumId, forumLabel, liveEnabled, authorLabel, seaPub, oauthLinked,
     vitals, setVitals, escalations, sharedReports, previewLevel, setPreviewLevel,
     tab, setTab, filters, query, setQuery, setSelected, notice, draft, setDraft,
     offerBody, setOfferBody, roster, visible, active, chat, needs, offers,
@@ -80,7 +82,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   const shell = (
     <div>
       {hierarchy}
-      <ForumShell memory={ledgerReadable ? <ForumLedger key={JSON.stringify([forumId, sessionKey, viewer])} rows={chat} writable={ledgerWritable} send={sendLedger}/> : undefined} reports={reports} tab={tab} onTab={setTab} forum={{ label: forumLabel, href: "/feed/squad" }}
+      <ForumShell memory={ledgerReadable ? <div className="space-y-4" key={JSON.stringify([forumId, sessionKey, viewer])}>{sessionKey && <ForumMemoryMap sessionKey={sessionKey} current={memoryCurrent} collections={forumCollections(chat)} writable={ledgerWritable} send={sendCollection}/>}<ForumLedger rows={chat} writable={ledgerWritable} send={sendLedger}/></div> : undefined} reports={reports} tab={tab} onTab={setTab} forum={{ label: forumLabel, href: "/feed/squad" }}
         header={<>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>

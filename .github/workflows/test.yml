@@ -46,6 +46,13 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Terminal admission unit coverage
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/identity/terminal-run.ts
+          --test-coverage-lines=90 --test-coverage-branches=90
+          lib/identity/terminal-run.test.ts lib/experiment-outbox-terminal.test.ts
+
       - name: Install isolated browser for media contracts
         run: |
           npx playwright-core install --with-deps chromium

@@ -1,3 +1,4 @@
+import { terminalWorkBinding, verifyTerminalWork, type RunBinding } from "./identity/terminal-run";
 import { randomUUID } from "node:crypto";
 import { parseExperimentPayload } from "./experiment-contract";
 import type { ExperimentEvent, ExperimentSink } from "./experiment-runtime";
@@ -8,7 +9,7 @@ export type ExperimentRecordStore = {
   write(name: string, value: string, revision: string | null): Promise<boolean>;
 };
 type Row = { event: ExperimentEvent; expires: number; delivered: string[] };
-type Ledger = { version: 1; expires: number; revoked: boolean; rows: Row[] };
+type Ledger = { nightly_run?: RunBinding; version: 1; expires: number; revoked: boolean; rows: Row[] };
 function validEvent(event: ExperimentEvent): boolean {
   return !!event && Object.keys(event).sort().join() === "event_id,event_type,payload" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(event.event_id) &&
@@ -28,13 +29,16 @@ export function createExperimentOutbox(input: {
   const now = input.clock ?? Date.now;
   const permitted = () => input.permitted() && now() < input.retentionUntil;
   async function load() {
+    const original = terminalWorkBinding();
     const record = await input.store.read(name);
-    if (!record) return { ledger: { version: 1, expires: input.retentionUntil, revoked: false, rows: [] } as Ledger, revision: null };
+    verifyTerminalWork(original);
+    if (!record) return { ledger: { ...(original ? { nightly_run: original } : {}), version: 1, expires: input.retentionUntil, revoked: false, rows: [] } as Ledger, revision: null };
     if (record.value.length > 65536) throw Error("Invalid experiment outbox");
     const ledger = JSON.parse(record.value) as Ledger;
-    if (!ledger || Object.keys(ledger).sort().join() !== "expires,revoked,rows,version" || ledger.version !== 1 || ledger.expires !== input.retentionUntil || typeof ledger.revoked !== "boolean" || !Array.isArray(ledger.rows) || ledger.rows.length > 64 ||
+    if (!ledger || Object.keys(ledger).sort().join() !== (ledger.nightly_run === undefined ? "expires,revoked,rows,version" : "expires,nightly_run,revoked,rows,version") || ledger.version !== 1 || ledger.expires !== input.retentionUntil || typeof ledger.revoked !== "boolean" || !Array.isArray(ledger.rows) || ledger.rows.length > 64 ||
         ledger.rows.some(r => !r || !Number.isSafeInteger(r.expires) || !Array.isArray(r.delivered) ||
           r.delivered.some(k => typeof k !== "string") || Object.keys(r).sort().join() !== "delivered,event,expires" || !validEvent(r.event))) throw Error("Invalid experiment outbox");
+    verifyTerminalWork(ledger.nightly_run);
     return { ledger, revision: record.revision };
   }
   async function update(change: (rows: Row[]) => void) {
@@ -45,7 +49,8 @@ export function createExperimentOutbox(input: {
       ledger.rows = ledger.rows.filter(r => r.expires > now());
       change(ledger.rows);
       if (!permitted()) throw Error("Experiment consent unavailable");
-      if (await input.store.write(name, JSON.stringify(ledger), revision)) return;
+      verifyTerminalWork(ledger.nightly_run);
+      if (await input.store.write(name, JSON.stringify(ledger), revision)) { verifyTerminalWork(ledger.nightly_run); return; }
     }
     throw Error("Experiment outbox busy");
   }
@@ -85,7 +90,9 @@ export function createExperimentOutbox(input: {
             if (!permitted()) throw Error("Experiment consent unavailable");
             if (input.healthy && !input.healthy(row.event.payload.experiment_key)) throw Error("Experiment configuration unavailable");
             if (!sink.supportedEventTypes.includes(row.event.event_type)) throw Error("Experiment event unsupported");
+            verifyTerminalWork(latest.nightly_run);
             await sink.send(row.event);
+            verifyTerminalWork(latest.nightly_run);
             await update(rows => {
               const current = rows.find(r => r.event.event_id === row.event.event_id);
               if (!current?.delivered.includes(claim)) throw Error("Experiment delivery claim changed");
@@ -142,10 +149,10 @@ export function createExperimentOutbox(input: {
     flush,
     async erase(): Promise<void> {
       for (let attempt = 0; attempt < 4; attempt++) {
-        const { revision } = await load();
+        const { ledger, revision } = await load();
         // Keep only a revocation marker so a concurrent old request cannot
         // recreate the deleted events using its previously valid consent token.
-        if (await input.store.write(name, JSON.stringify({ version: 1, expires: input.retentionUntil, revoked: true, rows: [] }), revision)) return;
+        if (await input.store.write(name, JSON.stringify({ ...ledger, revoked: true, rows: [] }), revision)) return;
       }
       throw Error("Experiment deletion busy");
     },

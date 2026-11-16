@@ -1,3 +1,4 @@
+import { terminalTokenClaims, verifyTerminalToken } from "./terminal-run";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify, SignJWT, type JWTVerifyGetKey } from "jose";
 import { requestHost, requestIsSecure } from "../request-origin";
@@ -32,9 +33,13 @@ function origin(request: Request) {
   if (!callback) throw Error("Unavailable callback");
   return { callback, origin: new URL(callback).origin };
 }
+function nativeSubject(payload: Record<string, unknown>): string | null {
+  const identity = payload.identity;
+  return identity && typeof identity === "object" && "broker_subject" in identity && typeof identity.broker_subject === "string" ? identity.broker_subject : null;
+}
 async function sign(kind: string, payload: Record<string, unknown>, request: Request, secret: string, now: number) {
   const scope = origin(request).origin;
-  return new SignJWT(payload).setProtectedHeader({ alg: "HS256", typ: kind })
+  return new SignJWT({ ...payload, ...await terminalTokenClaims({ kind, subject: nativeSubject(payload) }) }).setProtectedHeader({ alg: "HS256", typ: kind })
     .setIssuer(scope).setAudience(scope).setIssuedAt(now).setExpirationTime(now + ttl).sign(secretKey(secret));
 }
 async function verify(token: string, kind: string, request: Request, secret: string, now: number) {
@@ -43,6 +48,7 @@ async function verify(token: string, kind: string, request: Request, secret: str
   const { payload } = await jwtVerify(token, secretKey(secret), { algorithms: ["HS256"], typ: kind,
     issuer: scope, audience: scope, currentDate: new Date(now * 1000), requiredClaims: ["iat", "exp"] });
   if (!Number.isSafeInteger(payload.iat) || !Number.isSafeInteger(payload.exp) || payload.iat! > now || payload.exp! - payload.iat! !== ttl) throw Error("Invalid credential");
+  await verifyTerminalToken(payload, { kind, subject: nativeSubject(payload) });
   return payload;
 }
 export function hasStartupPending(request: Request) {
@@ -91,6 +97,7 @@ export async function finishStartupOAuth(request: Request, env: Env = process.en
       issuer: config.provider.issuer, audience: config.provider.clientId, currentDate: new Date(now * 1000), requiredClaims: ["sub", "exp", "iat", "nonce"] });
     if (!Number.isSafeInteger(payload.iat) || payload.iat! > now || !Number.isSafeInteger(payload.exp) || !same(payload.nonce, pending.nonce) || typeof payload.sub !== "string" || !exchanged.accessToken ||
         (payload.azp !== undefined && payload.azp !== config.provider.clientId)) return denied();
+    await verifyTerminalToken(payload, { kind: "provider-id-token", subject: payload.sub });
     const identity = await createStartupIdentityClient({ endpoint: config.endpoint, expected: config.binding, fetch: deps.fetch })
       .resolve(exchanged.accessToken, payload.sub, { sea_public_key: config.binding.sea_public_key });
     if (!identity) return denied();
