@@ -1,3 +1,4 @@
+import { terminalStartupHeaders } from "./terminal-run";
 import { readBoundedIdentityJson } from "./bounded-json";
 import { resolveStartupLinkedIdentity, snapshotStartupLoginBinding,
   type StartupLinkedIdentity, type StartupLoginBinding } from "./startup-linked-login";
@@ -24,7 +25,7 @@ export function createStartupIdentityClient(input: {
       try {
         signal.throwIfAborted();
         const response = await fetcher(target, { method: "GET", redirect: "error", cache: "no-store",
-          credentials: "omit", signal, headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" } });
+          credentials: "omit", signal, headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json", ...await terminalStartupHeaders(target) } });
         if (signal.aborted || response.status !== 200 || response.redirected || !response.body ||
             response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
           await response.body?.cancel(); return null;
