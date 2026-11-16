@@ -7,10 +7,10 @@ const unavailable = () => new Error("IPFS media unavailable");
 export function createIpfsMediaTransfer(options: {blocks: Blocks; current: () => boolean; signal: AbortSignal}) {
   const {blocks, current, signal} = options;
   // One whole-media operation per instance bounds retained copies during Web Crypto work.
-  let busy = false;
+  let busy = false, prepared = false;
   function check() { if (signal.aborted || !current()) throw unavailable(); }
   async function run<T>(work: () => Promise<T>): Promise<T> {
-    check(); if (busy) throw unavailable(); busy = true;
+    check(); if (busy || prepared) throw unavailable(); busy = true;
     try { return await work(); } finally { busy = false; }
   }
   return Object.freeze({
@@ -31,6 +31,65 @@ export function createIpfsMediaTransfer(options: {blocks: Blocks; current: () =>
           const result = {manifest: JSON.stringify(manifest), key: sealed.key};
           returned = true; return result;
         } finally { sealed.bytes.fill(0); if (!returned) sealed.key.fill(0); }
+      });
+    },
+    /** Retain one encrypted upload for at most 15 minutes. resume() is explicit;
+     * acknowledged blocks are not resent, and failure releases no key/manifest. */
+    prepareUpload(plaintext: Uint8Array, binding: MediaBinding) {
+      return run(async () => {
+        const sealed = await sealMedia(plaintext, binding);
+        try {
+          check(); const manifest = await describeMediaBlocks(sealed.bytes); check();
+          const start = performance.now();
+          if (!Number.isFinite(start)) throw unavailable();
+          let lastTime = start, cursor = 0, running = false, retained = true;
+          let state: "local-only" | "uploading" | "unavailable" | "acknowledged" | "disposed" | "expired" = "local-only";
+          let timer: ReturnType<typeof setTimeout>;
+          function release(next: typeof state) {
+            if (!retained) return;
+            retained = false; prepared = false; state = next;
+            sealed.bytes.fill(0); sealed.key.fill(0);
+            clearTimeout(timer); signal.removeEventListener("abort", abort);
+          }
+          const abort = () => release("disposed");
+          function alive() {
+            if (!retained) return false;
+            const now = performance.now();
+            if (!Number.isFinite(now) || now < lastTime || now - start >= 15 * 60_000) {release("expired");return false;}
+            lastTime = now;
+            let allowed = false;
+            try { allowed = !signal.aborted && current(); } catch { /* no authority */ }
+            if (!allowed) {release("disposed");return false;}
+            return true;
+          }
+          prepared = true;
+          timer = setTimeout(() => release("expired"), 15 * 60_000);
+          signal.addEventListener("abort", abort, {once: true});
+          if (!alive()) throw unavailable();
+          return Object.freeze({
+            status() {alive();return Object.freeze({state, acknowledgedBlocks: cursor, totalBlocks: manifest.blocks.length});},
+            dispose() {release("disposed");},
+            async resume(): Promise<{manifest: string; key: Uint8Array}> {
+              if (!alive() || running) throw unavailable();
+              running = true; state = "uploading";
+              try {
+                while (cursor < manifest.blocks.length) {
+                  if (!alive()) throw unavailable();
+                  const block = sealed.bytes.subarray(cursor * IPFS_MEDIA_BLOCK_BYTES, (cursor + 1) * IPFS_MEDIA_BLOCK_BYTES);
+                  const cid = await blocks.put(block);
+                  if (!alive() || cid !== manifest.blocks[cursor]) throw unavailable();
+                  cursor++;
+                }
+                if (!alive()) throw unavailable();
+                const grant = {manifest: JSON.stringify(manifest), key: new Uint8Array(sealed.key)};
+                release("acknowledged");return grant;
+              } catch {
+                if (alive()) state = "unavailable";
+                throw unavailable();
+              } finally {running = false;}
+            },
+          });
+        } catch (error) {sealed.bytes.fill(0);sealed.key.fill(0);throw error;}
       });
     },
     /** Manifest, binding and key must come from a current authenticated private grant. */
