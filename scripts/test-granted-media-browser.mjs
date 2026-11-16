@@ -12,6 +12,7 @@ const pair={pub:'axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-
  epub:'EMvdmXTv89JPyMx5n3blU3L_D70U-6JoVaVzTvSzgYg.B_b0CP3o9X3I7tWrxA_F1VhXpjeMuIJCtQWnOh7LN5c',epriv:'6EXhKuFCyTddo7uvYddNjXON5iKEMV7v8bCol7XOHt8'};
 const owner='fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXg.B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E';
 const object='media_p_'+owner.split('.').map(part=>Buffer.from(part,'base64url').toString('hex')).join('')+'_11111111111111111111111111111111';
+const groupObject=object.slice(0,-32)+'2'.repeat(32);
 const tenant='11111111-1111-4111-8111-111111111111',context={object,epoch:1,revisionId:'b'.repeat(64)};
 const kind=process.env.S3RCH_GRANTED_FIXTURE??'image';
 if(!['image','audio','video'].includes(kind))throw Error('Invalid fixture kind');
@@ -23,8 +24,8 @@ if(kind!=='image'){
  execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-f','lavfi','-i',kind==='audio'?'sine=frequency=440:sample_rate=16000':'color=c=blue:s=64x64:r=10','-t','2',...(kind==='video'?['-c:v','libvpx','-an']:[]),file]);
  bytes64=readFileSync(file).toString('base64');
 }
-const result=await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {GrantedMediaFeed} from './components/GrantedMediaFeed';import {sealMediaFile} from './lib/media-file';import {rememberUnlockedMeshPair} from './lib/identity/unlocked-mesh';const pair=${JSON.stringify(pair)};rememberUnlockedMeshPair('ci-reader',pair);const root=createRoot(document.getElementById('root'));window.show=()=>root.render(<React.StrictMode><GrantedMediaFeed/></React.StrictMode>);window.hide=()=>root.render(null);window.seed=async()=>{const bytes=Uint8Array.from(atob('${bytes64}'),c=>c.charCodeAt(0));const s=await sealMediaFile(bytes,{name:'${name}',mediaType:'${mediaType}',...("${kind}"==='audio'?{tags:['team','demo']}:{})},{tenant:'${tenant}',object:'${object}'},${JSON.stringify(context)},[{account:pair.pub,pub:pair.pub,identityPub:pair.pub,epub:pair.epub}],[pair.pub]);return {...s,bytes:Array.from(s.bytes)};};window.show();`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"development"'}});
-let seed,allowed=true,catalog=true,downloads=0;const errors=[];
+const result=await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {GrantedMediaFeed} from './components/GrantedMediaFeed';import {sealMediaFile} from './lib/media-file';import {groupFixture} from './scripts/group-granted-browser-fixture';import {rememberUnlockedMeshPair} from './lib/identity/unlocked-mesh';const pair=${JSON.stringify(pair)};rememberUnlockedMeshPair('ci-reader',pair);const root=createRoot(document.getElementById('root'));window.show=()=>root.render(<React.StrictMode><GrantedMediaFeed/></React.StrictMode>);window.hide=()=>root.render(null);window.seed=async()=>{const bytes=Uint8Array.from(atob('${bytes64}'),c=>c.charCodeAt(0));const s=await sealMediaFile(bytes,{name:'${name}',mediaType:'${mediaType}',...("${kind}"==='audio'?{tags:['team','demo']}:{})},{tenant:'${tenant}',object:'${object}'},${JSON.stringify(context)},[{account:pair.pub,pub:pair.pub,identityPub:pair.pub,epub:pair.epub}],[pair.pub]);return {...s,bytes:Array.from(s.bytes)};};window.groupSeed=()=>groupFixture(Uint8Array.from(atob('${bytes64}'),c=>c.charCodeAt(0)),{name:'Group ${kind}',mediaType:'${mediaType}'},'${tenant}','${groupObject}',pair);window.show();`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"development"'}});
+let seed,groupSeed,groupCatalog=false,groupAllowed=true,groupDownloads=0,allowed=true,catalog=true,downloads=0;const errors=[];
 const server=createServer(async(req,res)=>{
  const json=(value,status=200)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(value));};
  try {
@@ -34,7 +35,16 @@ const server=createServer(async(req,res)=>{
   if(req.url==='/api/identity/sea/session'){json({enabled:true,principal:pair.pub,expiresAt:Date.now()+120000});return;}
   if(req.url==='/api/media/config'){json({tenant});return;}
   if(req.url==='/api/media/catalog'){json({at:Math.floor(Date.now()/1000),principal:pair.pub,objects:catalog?[object]:[],nextPage:1});return;}
-  if(req.url==='/api/media/groups/item-reader-catalog'){json({at:Math.floor(Date.now()/1000),entries:[],nextPage:1});return;}
+  if(req.url==='/api/media/groups/item-reader-catalog'){json({at:Math.floor(Date.now()/1000),entries:groupCatalog?[groupSeed.entry]:[],nextPage:1});return;}
+  if(req.url==='/api/media/groups/wrap-read'){json({...groupSeed.group,expires_at:Date.now()/1000+2});return;}
+  if(req.url==='/api/media/groups/item-wrap-read'){
+   if(!groupAllowed){json({},403);return;}
+   json({...groupSeed.item,expires_at:Date.now()/1000+2});return;
+  }
+  if(decodeURIComponent(req.url)==='/api/media/'+groupObject){
+   assert.equal(req.method,'GET');groupDownloads++;
+   res.writeHead(200,{'content-type':'application/octet-stream','content-length':groupSeed.bytes.length,etag:'"'+groupSeed.sha256+'"'});res.end(Buffer.from(groupSeed.bytes));return;
+  }
   if(req.url==='/api/media/read-wrap'){
    if(!allowed){json({},403);return;}
    json({context,readerEpub:pair.epub,expiresAt:Date.now()/1000+2,wrapBase64:Buffer.from(JSON.stringify({wrap:seed.wraps[0],reference:{sha256:seed.sha256,length:seed.bytes.length}})).toString('base64')});return;
@@ -67,5 +77,16 @@ try{
  allowed=true;catalog=true;await refresh();await open();await page.getByRole('article').waitFor();
  await page.evaluate(()=>window.dispatchEvent(new Event('s3rch-session-changed')));
  await page.waitForFunction(()=>window.revoked.length===2);assert.equal(await page.getByRole('article').count(),0);
+ groupSeed=await page.evaluate(()=>window.groupSeed());groupCatalog=true;
+ const groupRefresh=()=>page.getByRole('button',{name:'Refresh group media',exact:true}).click();
+ const groupOpen=()=>page.getByRole('button',{name:'Open group file 1',exact:true}).click();
+ await groupRefresh();await groupOpen();await page.getByRole('heading',{name:'Group '+kind,exact:true}).waitFor();
+ assert.equal(groupDownloads,1);assert.ok((await page.getByRole('article',{name:'Private media post'}).locator(kind==='image'?'img':kind).getAttribute('src')).startsWith('blob:'));
+ groupAllowed=false;await groupRefresh();await groupOpen();
+ await page.getByRole('status').filter({hasText:'Media is unavailable.'}).waitFor();assert.equal(groupDownloads,1);assert.equal(await page.getByRole('article').count(),0);
+ groupCatalog=false;await groupRefresh();await page.getByText('No currently available group files on this page.',{exact:true}).waitFor();
+ groupAllowed=true;groupCatalog=true;await groupRefresh();await groupOpen();await page.getByRole('heading',{name:'Group '+kind,exact:true}).waitFor();
+ const before=await page.evaluate(()=>window.revoked.length);await page.evaluate(()=>window.dispatchEvent(new Event('s3rch-session-changed')));
+ await page.waitForFunction(count=>window.revoked.length===count+1,before);assert.equal(await page.getByRole('article').count(),0);
  assert.deepEqual(errors,[]);console.log('Granted media UI, denied open, session reset and unmount cleanup contracts passed; hosted services not qualified');
 }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));rmSync(fixtureRoot,{recursive:true,force:true});}
