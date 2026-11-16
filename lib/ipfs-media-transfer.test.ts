@@ -100,3 +100,50 @@ test("suspended or backwards monotonic clock expires retained upload on access",
   now+=15*60_000;assert.equal(prepared.status().state,"expired");await assert.rejects(prepared.resume());
   const next=await f.client.prepareUpload(new Uint8Array([1]),binding);now--;assert.equal(next.status().state,"expired");
 });
+
+test("prepared download retains only CID-verified blocks and retries the failed block", async () => {
+  const f=fixture(),input=new Uint8Array(IPFS_MEDIA_BLOCK_BYTES+7).fill(9),grant=await f.client.upload(input,binding),get=f.blocks.get;
+  const requests:string[]=[];f.blocks.get=async cid=>{requests.push(cid);if(requests.length===2)throw Error("offline");return get(cid);};
+  const prepared=await f.client.prepareDownload(grant.manifest,grant.key,binding);
+  try{
+    assert.equal(requests.length,0);await assert.rejects(prepared.resume());
+    assert.deepEqual(prepared.status(),{state:"unavailable",verifiedBlocks:1,totalBlocks:2});
+    assert.deepEqual(await prepared.resume(),input);assert.equal(requests.length,3);assert.equal(requests[1],requests[2]);assert.notEqual(requests[0],requests[1]);
+    assert.equal(prepared.status().state,"verified");await assert.rejects(prepared.resume());
+  }finally{prepared.dispose();}
+});
+test("corrupted download block is not retained or counted on resume", async () => {
+  const f=fixture(),grant=await f.client.upload(new Uint8Array([4]),binding),get=f.blocks.get;let corrupt=true;
+  f.blocks.get=async cid=>{const bytes=await get(cid);if(corrupt)bytes[20]^=1;return bytes;};
+  const prepared=await f.client.prepareDownload(grant.manifest,grant.key,binding);
+  try{await assert.rejects(prepared.resume());assert.equal(prepared.status().verifiedBlocks,0);corrupt=false;assert.deepEqual(await prepared.resume(),new Uint8Array([4]));}finally{prepared.dispose();}
+});
+test("wrong decryption key terminates prepared download and releases its reservation", async () => {
+  const f=fixture(),grant=await f.client.upload(new Uint8Array([4]),binding),prepared=await f.client.prepareDownload(grant.manifest,new Uint8Array(32),binding);
+  await assert.rejects(prepared.resume());assert.equal(prepared.status().state,"disposed");
+  assert.deepEqual(await f.client.download(grant.manifest,grant.key,binding),new Uint8Array([4]));
+});
+test("prepared download snapshots grant material and excludes competing whole-media work", async () => {
+  const f=fixture(),grant=await f.client.upload(new Uint8Array([8]),binding),bound={...binding};
+  const prepared=await f.client.prepareDownload(grant.manifest,grant.key,bound);
+  try{
+    grant.key.fill(0);bound.object='claim_'+'34'.repeat(32);
+    await assert.rejects(f.client.prepareUpload(new Uint8Array([1]),binding));
+    await assert.rejects(f.client.download(grant.manifest,grant.key,binding));
+    assert.deepEqual(await prepared.resume(),new Uint8Array([8]));
+  }finally{prepared.dispose();}
+});
+test("pending prepared download cannot release bytes after dispose or overlap another resume", async () => {
+  const f=fixture(),grant=await f.client.upload(new Uint8Array([8]),binding),get=f.blocks.get;
+  let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});f.blocks.get=async cid=>{await gate;return get(cid);};
+  const prepared=await f.client.prepareDownload(grant.manifest,grant.key,binding),pending=assert.rejects(prepared.resume());
+  await assert.rejects(prepared.resume());prepared.dispose();release();await pending;assert.equal(prepared.status().state,"disposed");
+});
+test("prepared downloads expire or revoke without sending provider traffic", async t => {
+  t.mock.timers.enable({apis:["setTimeout"]});
+  for(const reason of ["abort","revoke","expire"]){
+    const f=fixture(),grant=await f.client.upload(new Uint8Array([8]),binding),prepared=await f.client.prepareDownload(grant.manifest,grant.key,binding);
+    if(reason==="abort")f.abort.abort();else if(reason==="revoke")f.revoke();else t.mock.timers.tick(15*60_000);
+    await assert.rejects(prepared.resume());assert.equal(prepared.status().state,reason==="expire"?"expired":"disposed");assert.equal(f.counts().gets,0);
+  }
+});

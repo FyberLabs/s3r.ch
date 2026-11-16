@@ -1,6 +1,6 @@
 {
   "name": "s3rch-website",
-  "version": "0.1.241",
+  "version": "0.1.243",
   "private": true,
   "scripts": {
     "dev": "next dev",
