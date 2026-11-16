@@ -65,7 +65,7 @@ try {
   assert.equal(new URL(page.url()).searchParams.get("tag"), "cached");
   // Longer than two of the former four-second session polling intervals.
   await delay(8500);
-  assert.deepEqual(requests.filter(url => url.startsWith("/api/")), []);
+  assert.deepEqual(requests.filter(url => url.startsWith("/api/")), [], "Public snapshot must not start identity or room API requests");
   assert.equal(requests.filter(url => url === "/feed-cache/snapshot.json").length, 1);
   assert.deepEqual(sockets, []);
 
@@ -80,6 +80,9 @@ try {
   assert.equal(sockets.length, 1);
   assert.deepEqual(requests.slice(returned).filter(url => url.startsWith("/api/")), []);
   assert.equal(requests.includes("/api/turn/allocate"), false);
+  const accountRequest = page.waitForRequest(request => new URL(request.url()).pathname === "/api/identity/session");
+  await page.getByRole("button", { name: "Account and posting", exact: true }).click();
+  await accountRequest;
   const forumReads = () => requests.filter(url => url === "/api/forum").length;
   await page.route("**/api/forum", route => route.fulfill({ status: 401, json: {} }));
   await page.goto(origin + "/forum");
