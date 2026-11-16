@@ -55,3 +55,41 @@ test("at most two pending operations including abort-ignoring transport", async 
   await assert.rejects(client.get(cid, 3)); assert.equal(calls, 2);
   controller.abort(); await assert.rejects(first); await assert.rejects(second);
 });
+
+test("rolling minute combines uploads/downloads and charges failed attempts", async t => {
+  let now = 1000, calls = 0;
+  t.mock.method(performance, "now", () => now);
+  const cid = await rawMediaBlockCid(bytes);
+  const client = createKuboBlockClient({...options(), maxBytesPerMinute: 6}, async (_url, init) => {
+    calls++;
+    if (init?.body) return Response.json({Key: cid, Size: 3});
+    return new Response("unavailable", {status: 503});
+  });
+  await client.put(bytes);
+  now = 2000; await assert.rejects(client.get(cid, 3));
+  now = 60999; await assert.rejects(client.put(bytes)); assert.equal(calls, 2);
+  now = 61000; await client.put(bytes); assert.equal(calls, 3);
+  await assert.rejects(client.put(bytes));
+  now = 62000; await client.put(bytes); assert.equal(calls, 4);
+});
+test("rate policy is validated and snapshotted; bad clocks cannot replenish", async t => {
+  for (const maxBytesPerMinute of [0, -1, 0.5, NaN, Infinity, 8 * 1024 * 1024 + 1])
+    assert.throws(() => createKuboBlockClient({...options(), maxBytesPerMinute}));
+  let now = 100, calls = 0; t.mock.method(performance, "now", () => now);
+  const policy = {...options(), maxBytesPerMinute: 3};
+  const cid = await rawMediaBlockCid(bytes);
+  const client = createKuboBlockClient(policy, async () => {calls++; return new Response(bytes);});
+  policy.maxBytesPerMinute = 100;
+  await client.get(cid, 3); await assert.rejects(client.get(cid, 3));
+  for (const invalid of [99, NaN, Infinity]) {now = invalid; await assert.rejects(client.get(cid, 3));}
+  assert.equal(calls, 1);
+  now = 60100; await client.get(cid, 3); assert.equal(calls, 2);
+});
+test("deadline rejects an abort-ignoring provider and keeps its occupied slots", async t => {
+  t.mock.timers.enable({apis: ["setTimeout"]});
+  const cid = await rawMediaBlockCid(bytes); let calls = 0;
+  const client = createKuboBlockClient(options(), async () => {calls++; return new Promise<Response>(() => {});});
+  const first = assert.rejects(client.get(cid, 3)), second = assert.rejects(client.get(cid, 3));
+  t.mock.timers.tick(10_000); await Promise.all([first, second]);
+  await assert.rejects(client.get(cid, 3)); assert.equal(calls, 2);
+});
