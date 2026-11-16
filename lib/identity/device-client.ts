@@ -12,7 +12,7 @@ import {readSingleUnlockedIdentity,readUnlockedMeshRevision,rememberUnlockedMesh
 import {exportDeviceSource} from './device-source';
 import {createSeaSessionClient} from './sea-session-client';
 const fail=():never=>{throw Error('Device identity unavailable');};
-export type DeviceSession={scope:Scope;authorized:boolean;subject:string|null;context:string|null;expiresAt:number|null};
+export type DeviceSession={linkedOidcEnabled?:boolean;scope:Scope;authorized:boolean;subject:string|null;context:string|null;expiresAt:number|null};
 export async function readDeviceSession(signal:AbortSignal=new AbortController().signal):Promise<DeviceSession>{
  const r=await fetch('/api/identity/device/config',{credentials:'same-origin',mode:'same-origin',cache:'no-store',redirect:'error',signal});
  if(!r.ok)return fail();return await readBoundedIdentityJson(r,8192,signal) as DeviceSession;

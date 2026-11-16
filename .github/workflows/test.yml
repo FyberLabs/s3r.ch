@@ -60,6 +60,13 @@ jobs:
           lib/identity/linked-admission-config-server.test.ts
           lib/identity/linked-session-admission.test.ts
           lib/identity/linked-wallet-client.test.ts
+      - name: Native linked OIDC browser flow coverage (CI only)
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/identity/linked-oidc-browser-flow.ts
+          --test-coverage-include=lib/identity/linked-oidc-config-server.ts
+          lib/identity/linked-oidc-browser-flow.test.ts
+          lib/identity/linked-oidc-config-server.test.ts
       - name: Terminal admission unit coverage
         run: >-
           node --import tsx --test --experimental-test-coverage
