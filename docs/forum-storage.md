@@ -10,7 +10,6 @@ Set `S3RCH_FORUM_ADMITTED_OWNERS` to a JSON array of at most twelve canonical
 principals. Each has a reserved 64 KiB budget; public session issuance, invitations
 and group membership do not create an admission. Unknown principals are refused
 before Azure I/O. The private document independently retains the reservations.
-The native delegated-agent forum keeps its existing authorization.
 
 Both web colors use the same account and container through their system-assigned
 managed identities. Grant Blob Data Contributor only on that container. No
@@ -18,8 +17,9 @@ account keys, connection strings, public access, or browser Blob URLs are used.
 Each request awaits a bounded asynchronous Blob read, runs the existing forum
 model against that snapshot, and awaits a conditional commit before returning
 success. Storage delays do not block unrelated requests. Each mutation reads
-the current ETag and writes with If-Match. A competing write
-returns HTTP 409 (`store-conflict`); reload before submitting again. Failed writes
+the current ETag and writes with If-Match. Conflicts reread and reapply the
+operation with jittered backoff, for at most four attempts. Exhausted conflicts
+return HTTP 409 (`store-conflict`); reload before submitting again. Failed writes
 are never acknowledged as successful. Reads refresh the document on every call.
 
 The envelope is schema 1, with the existing version-1 ledger and private snapshot
