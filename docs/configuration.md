@@ -34,6 +34,7 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 | `PANOPTICON_PAYMENTS_BASE` | no | unset | no | Payments origin, or that origin plus the `/api/v1` prefix the hop already joins. |
 | `PANOPTICON_TENANT_ID` | no | unset | no | Marketplace tenant UUID sent as `X-Tenant-ID`. An identifier. The process treats a missing value as unconfigured. |
 | `PANOPTICON_TURN_BASE` | no | unset | no | TURN allocate origin, or that origin plus the `/api/v1` prefix the hop already joins. |
+| `S3RCH_FORUM_ADMITTED_OWNERS` | for blob forum | unset | no | JSON array of one to twelve explicitly admitted SEA principals, each with reserved capacity. Public sessions and invitations cannot add admissions. |
 | `S3RCH_FORUM_STORAGE` | no | file | no | Set to blob only after the existing forum is migrated. Never falls back to file after a Blob error. |
 | `S3RCH_FORUM_BLOB_ACCOUNT` | for blob forum | unset | no | Existing Azure Storage account; managed identity only. |
 | `S3RCH_FORUM_BLOB_CONTAINER` | for blob forum | unset | no | Private container with migrated forum.json. No automatic empty document creation. |

@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const session = await requireSession(request);
   if (!session.ok) return session.response;
-  return forumRequest(forum => {
+  return forumRequest(session.address, forum => {
   const handle = new URL(request.url).searchParams.get("snapshot");
   if (handle !== null) {
     const hit = forum.readSnapshot({ owner: session.address, handle });
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     });
   }
 
-  return forumRequest(forum => {
+  return forumRequest(session.address, forum => {
     const result = handleForumPost(forum, session.address, body);
     return Response.json(result.body, { status: result.status });
   });

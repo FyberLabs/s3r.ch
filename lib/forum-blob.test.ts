@@ -23,14 +23,14 @@ test('migration is create-only, preserves the ledger and never repairs missing/c
   const f=fixture(), store=new BlobForumStore(f.client);
   assert.equal(store.load().ok,false); assert.equal(f.read(),null);
   assert.throws(()=>store.save(emptyForumFile()));
-  migrateForum(f.client,emptyForumFile()); const before=f.read();
-  assert.throws(()=>migrateForum(f.client,emptyForumFile()), /conflict/);
+  migrateForum(f.client,emptyForumFile(),[owner,other]); const before=f.read();
+  assert.throws(()=>migrateForum(f.client,emptyForumFile(),[owner,other]), /conflict/);
   assert.equal(f.read(),before);
   f.corrupt('{broken'); assert.equal(store.load().ok,false); assert.throws(()=>store.save(emptyForumFile()));
   assert.equal(f.read(),'{broken');
 });
 test('two processes cannot overwrite each other; a fresh read permits the next write', () => {
-  const f=fixture();migrateForum(f.client,emptyForumFile());
+  const f=fixture();migrateForum(f.client,emptyForumFile(),[owner,other]);
   const a=new BlobForumStore(f.client), b=new BlobForumStore(f.client);
   const first=a.load(), stale=b.load();assert.ok(first.ok && stale.ok);
   a.save(first.file); const accepted=f.read();
@@ -38,13 +38,13 @@ test('two processes cannot overwrite each other; a fresh read permits the next w
   const fresh=b.load();assert.ok(fresh.ok);b.save(fresh.file);
 });
 test('HTTP mutations expose conflicts as retryable 409 without falsely accepting a write', () => {
-  const f=fixture();migrateForum(f.client,emptyForumFile());
+  const f=fixture();migrateForum(f.client,emptyForumFile(),[owner,other]);
   const client={...f.client,upload:()=>{throw blobConflict();}};
   const response=handleForumPost(openForum(new BlobForumStore(client)),owner,{action:'register',label:'one',entropy:'aa11'});
   assert.equal(response.status,409);assert.equal(response.body.reason,'store-conflict');
 });
 test('ledger and private snapshot survive a color change and retain authorization', () => {
-  const f=fixture();migrateForum(f.client,emptyForumFile());
+  const f=fixture();migrateForum(f.client,emptyForumFile(),[owner,other]);
   const first=openForum(new BlobForumStore(f.client));
   assert.ok(!('denied' in first.registerBot({owner,label:'one',entropy:'aa11'})));
   const bytes=Buffer.from('snapshot unit fixture');
@@ -59,13 +59,13 @@ test('ledger and private snapshot survive a color change and retain authorizatio
   assert.equal(openForum(new BlobForumStore(f.client)).readSnapshot({owner,handle:'abc123def0'}),null);
 });
 test('oversize mutation leaves the prior document intact', () => {
-  const f=fixture();migrateForum(f.client,emptyForumFile());const store=new BlobForumStore(f.client);
+  const f=fixture();migrateForum(f.client,emptyForumFile(),[owner,other]);const store=new BlobForumStore(f.client);
   const value=store.load();assert.ok(value.ok);const before=f.read();
   assert.throws(()=>store.save(value.file,{channel:'test',handle:'test',bytes:Buffer.alloc(1048576)}),/capacity|quota/);
   assert.equal(f.read(),before);
 });
 test('one owner cannot exhaust the shared document and cleanup still works at its quota', () => {
-  const f=fixture();migrateForum(f.client,emptyForumFile());const forum=openForum(new BlobForumStore(f.client));
+  const f=fixture();migrateForum(f.client,emptyForumFile(),[owner,other]);const forum=openForum(new BlobForumStore(f.client));
   const bots: string[]=[];
   for(let i=0;i<16;i++) {
     const result=forum.registerBot({owner,label:`bot${i}`,entropy:`b${i}`});
@@ -77,7 +77,7 @@ test('one owner cannot exhaust the shared document and cleanup still works at it
   assert.deepEqual(forum.registerBot({owner:other,label:'huge',entropy:'a'.repeat(65)}),{denied:true,reason:'bad-entropy'});
 });
 test('shared-channel messages consume the author budget, not the destination owner budget', () => {
-  const f=fixture();migrateForum(f.client,emptyForumFile());const forum=openForum(new BlobForumStore(f.client));
+  const f=fixture();migrateForum(f.client,emptyForumFile(),[owner,other]);const forum=openForum(new BlobForumStore(f.client));
   const host=forum.registerBot({owner,label:'host',entropy:'host'}), guest=forum.registerBot({owner:other,label:'guest',entropy:'guest'});
   assert.ok(!('denied' in host) && !('denied' in guest));
   assert.ok(!('denied' in forum.invite({owner,guest:other})));
@@ -90,4 +90,13 @@ test('shared-channel messages consume the author budget, not the destination own
   assert.ok(!('denied' in forum.post({owner,botId:host.bot.id,body:'host retains room',entropy:'hostmessage'})));
   assert.deepEqual(forum.post({owner:other,botId:guest.bot.id,body:'cannot move quota to home',entropy:'home'}),{denied:true,reason:'store-quota'});
   assert.ok(!('denied' in forum.uninvite({owner,guest:other})));
+});
+test('only explicit bounded administrative reservations can admit additional owners', async () => {
+  const {admitForumOwners,validateAdmissions}=await import('./forum-blob');
+  const f=fixture();migrateForum(f.client,emptyForumFile(),[owner]);
+  const store=new BlobForumStore(f.client);assert.equal(store.load().ok,true);assert.equal(store.admits(other),false);
+  admitForumOwners(f.client,[owner,other]);assert.equal(store.load().ok,true);assert.equal(store.admits(other),true);
+  const before=f.read();assert.throws(()=>admitForumOwners(f.client,[other]),/Reservations/);assert.equal(f.read(),before);
+  assert.throws(()=>validateAdmissions(Array(13).fill(owner)));assert.throws(()=>validateAdmissions([]));
+  assert.throws(()=>validateAdmissions([owner,owner]));assert.throws(()=>validateAdmissions(['unregistered']));
 });

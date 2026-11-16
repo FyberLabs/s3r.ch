@@ -1,5 +1,5 @@
 /** Cached, asynchronous readiness: health requests never perform blocking I/O. */
-import { BlobForumStore } from "./forum-blob";
+import { BlobForumStore, configuredAdmissions } from "./forum-blob";
 import { forumAsyncClient } from "./forum-blob-async";
 export function createForumHealth(read: () => Promise<boolean>, now = Date.now) {
   let checked = -Infinity, ok = false, pending: Promise<void> | null = null;
@@ -12,9 +12,11 @@ export function createForumHealth(read: () => Promise<boolean>, now = Date.now) 
   };
 }
 async function readForum(): Promise<boolean> {
+  const owners = configuredAdmissions();
   const hit = await (await forumAsyncClient()).download();
-  return new BlobForumStore({assertReachable() {}, download:()=>hit,
-    upload:()=>{throw new Error("Read-only health probe");}}).load().ok;
+  const store = new BlobForumStore({assertReachable() {}, download:()=>hit,
+    upload:()=>{throw new Error("Read-only health probe");}});
+  return store.load().ok && owners.every(owner=>store.admits(owner));
 }
 
 const cached = createForumHealth(readForum);
