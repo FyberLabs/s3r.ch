@@ -17,22 +17,24 @@ try {
  import {createKuboBlockClient} from './lib/ipfs-kubo-client';
  import {rawMediaBlockCid} from './lib/ipfs-media-blocks';
  import {sealMedia} from './lib/media-crypto';
- let sample,controller,pending;
+ let sample,controller,pending,calls=0;
+ const transport=(url,init)=>{calls++;return fetch(url,init);};
+ window.fetchCalls=()=>calls;
  window.exercise=async endpoint=>{
   let allowed=true;const abort=new AbortController();
-  const client=createKuboBlockClient({endpoint,maxBytes:1024,current:()=>allowed,signal:abort.signal});
+  const client=createKuboBlockClient({endpoint,maxBytes:1024,current:()=>allowed,signal:abort.signal},transport);
   const sealed=await sealMedia(new Uint8Array([7,8,9]),{tenant:'afee9b29-1706-5590-bbbf-e58df8945ac0',object:'claim_'+'12'.repeat(32)});
   const cid=await client.put(sealed.bytes);sample={cid,bytes:sealed.bytes};const result=await client.get(cid,sealed.bytes.length);
   allowed=false;let refused=false;try{await client.get(cid,result.length);}catch{refused=true;}
   return {cid,expected:await rawMediaBlockCid(sealed.bytes),same:Array.from(result).join()===Array.from(sealed.bytes).join(),refused};
  };
  window.failure=async(endpoint,upload=false,rate=1024)=>{
-  const client=createKuboBlockClient({endpoint,maxBytes:1024,maxBytesPerMinute:rate,current:()=>true,signal:new AbortController().signal});
+  const client=createKuboBlockClient({endpoint,maxBytes:1024,maxBytesPerMinute:rate,current:()=>true,signal:new AbortController().signal},transport);
   try {if(upload)await client.put(sample.bytes);else await client.get(sample.cid,sample.bytes.length);return false;}catch{return true;}
  };
  window.beginUpload=endpoint=>{
   controller=new AbortController();
-  const client=createKuboBlockClient({endpoint,maxBytes:1024,current:()=>true,signal:controller.signal});
+  const client=createKuboBlockClient({endpoint,maxBytes:1024,current:()=>true,signal:controller.signal},transport);
   pending=client.put(sample.bytes).then(()=>false,()=>true);
  };
  window.cancelUpload=async()=>{controller.abort();return pending;};
@@ -72,10 +74,16 @@ try {
  // Admission exhaustion must cause zero provider traffic.
  assert.equal(await page.evaluate(endpoint=>window.failure(endpoint,false,1),providerOrigin),true);
  assert.equal(providerRequests.length,2);
+ let networkRetries=0;
  for(const fault of ['tamper','truncate','unavailable','drop-upload']){
-  mode=fault;const before=providerRequests.length;
+  mode=fault;const before=providerRequests.length,fetchBefore=await page.evaluate(()=>window.fetchCalls());
   assert.equal(await page.evaluate(({endpoint,upload})=>window.failure(endpoint,upload),{endpoint:providerOrigin,upload:fault==='drop-upload'}),true,fault);
-  assert.equal(providerRequests.length,before+1,'no retries or fallback on '+fault);
+  assert.equal(await page.evaluate(()=>window.fetchCalls()),fetchBefore+1,'one application attempt on '+fault);
+  const received=providerRequests.length-before;
+  if(fault==='drop-upload'){
+   // Chromium may retry a connection failure internally, below the fetch API.
+   assert.ok(received>=1&&received<=2,'bounded observed Chromium connection retries');networkRetries=received-1;
+  }else assert.equal(received,1,'one provider request on '+fault);
  }
  async function bounded(promise){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('fixture deadline')),5000);})]);}finally{clearTimeout(timer);}}
  // Server withholds the acknowledgement; abort and browser closure must end the connection.
@@ -85,6 +93,6 @@ try {
  seen=new Promise(resolve=>{noticed=resolve;});gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
  await browser.close();browser=undefined;await bounded(gone);
- assert.deepEqual(appRequests.sort(),['/','/app.js']);assert.equal(providerRequests.length,8);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+ assert.deepEqual(appRequests.sort(),['/','/app.js']);assert.equal(providerRequests.length,8+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
  console.log('Direct Kubo browser success, consent/rate refusal, provider faults and interrupted acknowledgements passed (protocol substitute).');
 }finally{await browser?.close();for(const server of [app,provider])if(server)await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true});}
