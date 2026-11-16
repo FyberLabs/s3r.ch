@@ -601,10 +601,12 @@ for(const kind of ['Wrap','Status'] as const)test(`late group ${kind} recovery c
 test("pending group file delivery blocks epoch-changing actions",async()=>{
  let writes=0;const held={object:'owned',predicate:'same-group',set:'set_test',reader:key,token:'saved'};
  const f=setup({browser:()=>({catalog:async()=>({at:1,objects:['owned'],nextPage:null,principal:key}),recipients:async()=>[key],
+  groupCatalog:async()=>({at:1,principal:key,groups:[{predicate:'same-group',set:'set_test',owner:key,owned:true,active:true,invited:true}],nextPage:null}),startGroupKey:async()=>{writes++;},
   pendingItemWrap:async()=>held,startItemEpoch:async()=>{writes++;},startItemGrant:async()=>{writes++;},share:async()=>{writes++;},
  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
  try{
   await f.library.load();await f.library.recipients('owned');await f.library.inspectItemWrap('tenant');
+  await f.library.loadGroups();await f.library.startGroupKey('tenant','set_test','same-group');
   await f.library.startItemEpoch('tenant','owned','same-group','set_test');
   await f.library.startItemGrant('tenant','owned','same-group','set_test',key,false);
   await f.library.share('tenant','owned',key);await f.library.unshare('tenant','owned',key);

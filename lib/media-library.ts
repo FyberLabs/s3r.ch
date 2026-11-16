@@ -292,7 +292,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
     },
     startGroupKey(tenant:string,set:string,predicate:"same-group"|"named-circle") {
       const entry=state.groups?.entries.find(row=>row.set===set&&row.predicate===predicate);
-      if(state.deletion||state.groupCommand||state.groupKey||!owner||!entry?.owned||!entry.active)return Promise.resolve();
+      if(state.deletion||state.itemWrap||state.groupCommand||state.groupKey||!owner||!entry?.owned||!entry.active)return Promise.resolve();
       const principal=owner;
       return operation(async(signal,current)=>{
         const groupKey=await browser.startGroupKey(tenant,principal,{set,predicate},signal);
