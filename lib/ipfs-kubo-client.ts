@@ -5,16 +5,28 @@ export function createKuboBlockClient(options: {
   endpoint: string; current: () => boolean; signal: AbortSignal;
   /** Lifetime payload reservations, including failed attempts; not wire-byte accounting. */
   maxBytes: number;
+  /** Combined upload/download payload admitted in any rolling minute. Defaults to 1 MiB. */
+  maxBytesPerMinute?: number;
 }, transport: typeof fetch = fetch) {
   const endpoint = new URL(options.endpoint);
+  const rate = options.maxBytesPerMinute ?? IPFS_MEDIA_BLOCK_BYTES;
+  if (!Number.isSafeInteger(rate) || rate < 1 || rate > 8 * IPFS_MEDIA_BLOCK_BYTES) throw denied();
   if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.pathname !== "/" || endpoint.search || endpoint.hash ||
       !Number.isSafeInteger(options.maxBytes) || options.maxBytes < 1 || options.maxBytes > 64 * IPFS_MEDIA_BLOCK_BYTES) throw denied();
   const origin = endpoint.origin, current = options.current, signal = options.signal;
-  let remaining = options.maxBytes, active = 0, attempts = 0;
+  let remaining = options.maxBytes, active = 0, attempts = 0, lastTime = -Infinity;
+  const admitted: {at: number; bytes: number}[] = [];
   function check() { if (signal.aborted || !current()) throw denied(); }
   async function run<T>(size: number, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
     check();
     if (!Number.isSafeInteger(size) || size < 1 || size > IPFS_MEDIA_BLOCK_BYTES || size > remaining || active >= 2 || attempts >= 128) throw denied();
+    const at = performance.now();
+    // Monotonic clock; fail closed on invalid/backwards time instead of replenishing quota.
+    if (!Number.isFinite(at) || at < lastTime) throw denied();
+    lastTime = at;
+    while (admitted.length && at - admitted[0].at >= 60_000) admitted.shift();
+    if (size > rate - admitted.reduce((sum, entry) => sum + entry.bytes, 0)) throw denied();
+    admitted.push({at, bytes: size});
     remaining -= size; attempts++; active++;
     const controller = new AbortController();
     const cancel = () => controller.abort();
