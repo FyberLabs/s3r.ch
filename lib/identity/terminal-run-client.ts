@@ -25,7 +25,7 @@ export function parseTerminalScope(value: unknown) {
       typeof scope.organization !== "string" || (scope.organization !== "" && !uuid.test(scope.organization))) return refused();
   const identities = row(scope.identities, "sea");
   const origins = list(scope.origins, value => ["https://portal.test.hyperme.sh", "https://test.s3r.ch", "https://test.hyperme.sh", "https://auth.test.hyperme.sh"].includes(value));
-  if (!origins.includes("https://test.s3r.ch")) return refused();
+  if (!origins.some(value => value === "https://test.s3r.ch")) return refused();
   return Object.freeze({ suite: scope.suite, subject: scope.subject, tenant: scope.tenant, organization: scope.organization,
     realm: scope.realm, issuer: scope.issuer, clients: list(scope.clients, value => /^[A-Za-z0-9_-]{1,128}$/.test(value)), origins,
     identities: Object.freeze({ sea: list(identities.sea, value => isSeaPubkey(value) && !isPublicSquadPrincipal(value), true) }) });

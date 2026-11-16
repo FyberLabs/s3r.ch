@@ -74,7 +74,7 @@ test("transport refuses errors, redirects, oversized, duplicate and malformed bo
 });
 test("deployment scope is strict and copied before use", () => {
   for (const value of [null, { ...scope, extra: true }, { ...scope, realm: "production" }, { ...scope, identities: { sea: [scope.subject] } },
-    { ...scope, clients: ["same", "same"] }, { ...scope, origins: ["https://s3r.ch"] }]) assert.throws(() => parseTerminalScope(value));
+    { ...scope, clients: ["same", "same"] }, { ...scope, origins: ["https://s3r.ch"] }, { ...scope, origins: ["https://test.s3r.ch.attacker.invalid"] }, { ...scope, origins: ["https://attacker.invalid/https://test.s3r.ch"] }]) assert.throws(() => parseTerminalScope(value));
   assert.throws(() => createTerminalHttpAuthority({ ...config, serviceKey: "short" }));
   assert.throws(() => createTerminalHttpAuthority({ ...config, scopes: [scope, scope] }));
   const copied = parseTerminalScope(scope); assert.notEqual(copied, scope); assert.ok(Object.isFrozen(copied.identities.sea));
