@@ -108,3 +108,5 @@ you use one. The downloaded JSON contains only authenticated metadata and the
 canonical SociACL ciphertext. Verify the file using Open encrypted recovery copy
 before relying on it. This does not publish a signed recovery-store operation,
 rotate keys, or invalidate older copies. Session disposal revokes the download URL.
+
+When recovery storage is explicitly enabled, use the stored-copy button to load ciphertext before entering its passphrase. Opening still verifies the same complete current identity. A newly prepared copy can be saved separately: unlock the local identity, sign a fresh current-row/generation replacement, and verify read-back. Lost responses never resend the write automatically. A conflicting state requires another explicit save after all inputs are read again. The UI reports local preparation, server save, already-stored verification and sign-in separately. None of these actions rotates account keys.
