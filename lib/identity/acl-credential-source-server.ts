@@ -44,6 +44,7 @@ export function createAclCredentialSource(input: AclCredentialConfig, suppliedTr
         body: JSON.stringify({ credential: selected, evaluatedAt: at }),
       }).then(value => { if (signal.aborted) { void value.body?.cancel().catch(() => {}); signal.throwIfAborted(); } return value; }));
       signal.throwIfAborted();
+      if (!response) throw Error("Missing credential source response");
       if (response.status !== 200 || response.headers.get("content-type")?.split(";")[0] !== "application/json" ||
           ![null, "identity"].includes(response.headers.get("content-encoding"))) throw Error("Unavailable credential source");
       const value = record(await bounded(readBoundedIdentityJson(response, 4 * 1024 * 1024, signal)));

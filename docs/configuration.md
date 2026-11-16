@@ -15,6 +15,7 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 | `S3RCH_NIGHTLY_RUN_CONFIG` | no | unset | yes | Private TEST owner JSON with separate controller/owner keys and both declared suite scopes. Enables guarded Next entry routing when explicitly configured; absent preserves native handlers, malformed or changed configuration refuses. No credentials or reader cases are installed by source wiring. |
 | `S3RCH_DEVICE_TRANSFER_CONFIG` | for device transfer | unset | no | Exact scope, Auth/ACL routes and existing OIDC provider; see below. |
 | `S3RCH_EXPERIMENTS_ENABLED` | no | unset | no | Set to 1 to enable the optional landing experiment. Withdrawal remains available after disabling. |
+| `S3RCH_LINKED_IDENTITY_CONFIG_FILE` | for linked identity | unset | yes | Absolute owner-only complete-source and witness-trust file; missing leaves linked login unavailable. |
 | `S3RCH_EXPERIMENT_ORIGIN` | for experiments | unset | no | Exact canonical HTTPS site origin. |
 | `S3RCH_EXPERIMENT_TENANT` | for experiments | unset | no | Nonzero tenant UUID for private experiment records. |
 | `S3RCH_EXPERIMENT_SECRET` | for experiments | unset | yes | Separate random 32-byte experiment root, encoded as 64 lowercase hex characters. |
