@@ -19,7 +19,7 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const session = await requireSession(request);
   if (!session.ok) return session.response;
-  const adapters = createOutboundAdapters();
+  const adapters = createOutboundAdapters({owner:session.owner, signal:request.signal});
   return Response.json({ adapters: outboundStatus(adapters) });
 }
 
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "You can only post your own note." }, { status: 403 });
   }
 
-  const adapters = createOutboundAdapters();
+  const adapters = createOutboundAdapters({owner:session.owner, signal:request.signal});
   const adapter = adapterForNetwork(adapters, parsed.network);
   if (!adapter) {
     return Response.json({ error: "Unknown network." }, { status: 400 });
