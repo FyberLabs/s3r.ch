@@ -13,7 +13,7 @@ const request = (cookie = "__Host-nightly-run-grant=" + "c".repeat(64), origin =
 function fixture(change: (value: Record<string, unknown>, action: string) => unknown = value => value) {
   const commands: Record<string, unknown>[] = [];
   const authority = createTerminalHttpAuthority(config, async (url, init) => {
-    assert.equal(url, "https://auth.test.hyperme.sh/auth/nightly-run/v1/command");
+    assert.equal(url, "https://api.test.hyperme.sh/auth/nightly-run/v1/command");
     assert.equal(init?.redirect, "error"); assert.equal(init?.cache, "no-store"); assert.equal(init?.credentials, "omit");
     const body = String(init?.body), headers = new Headers(init?.headers);
     assert.equal(headers.get("X-Nightly-Owner-Signature"), createHmac("sha256", Buffer.from(config.serviceKey, "hex")).update(body).digest("hex"));
