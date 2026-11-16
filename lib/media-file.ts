@@ -2,7 +2,7 @@ import { privateMediaTags } from "./media-tags";
 /** Private file metadata is encrypted with its bytes, never public post metadata.
  * These helpers do not establish reader enrollment, Check, or current epoch state. */
 import type { ItemReaderWrap, ItemWrapContext } from "sociacl-ids";
-import { MEDIA_PLAIN_MAX, sealMedia, type MediaBinding } from "./media-crypto";
+import { MEDIA_PLAIN_MAX, sealMedia, openMedia, type MediaBinding } from "./media-crypto";
 import { openMediaForReader, sealMediaForReaders, type MediaReader } from "./media-reader-wraps";
 
 export type MediaFileDescription = Readonly<{ name: string; mediaType: string; tags?:readonly string[] }>;
@@ -69,4 +69,11 @@ export async function prepareMediaFile(bytes: Uint8Array, metadata: MediaFileDes
   const packed = encode(bytes, metadata);
   try { return await sealMedia(packed, binding); }
   finally { packed.fill(0); }
+}
+
+
+/** Caller must independently establish current item/group authority. */
+export async function openMediaFileWithKey(stored:Uint8Array,sha256:string,key:Uint8Array,binding:MediaBinding){
+  const packed=await openMedia(stored,sha256,key,binding);
+  try{return decode(packed);}finally{packed.fill(0);}
 }
