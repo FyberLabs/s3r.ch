@@ -55,3 +55,48 @@ test("snapshots download key/binding and refuses concurrent whole-media work", a
   grant.key.fill(0);bound.object='claim_'+'34'.repeat(32);
   await assert.rejects(f.client.upload(new Uint8Array([2]),binding));release();assert.deepEqual(await result,new Uint8Array([1]));
 });
+
+test("prepared upload resumes identical failed ciphertext without resending acknowledged blocks", async () => {
+  const f=fixture(),input=new Uint8Array(IPFS_MEDIA_BLOCK_BYTES+7).fill(7),original=f.blocks.put;
+  const attempts:string[]=[];let fail=true;
+  f.blocks.put=async bytes=>{attempts.push(await rawMediaBlockCid(bytes));if(attempts.length===2&&fail){fail=false;throw Error("lost");}return original(bytes);};
+  const prepared=await f.client.prepareUpload(input,binding);
+  assert.equal(prepared.status().state,"local-only");assert.equal(attempts.length,0);
+  try {
+    await assert.rejects(prepared.resume());
+    assert.deepEqual(prepared.status(),{state:"unavailable",acknowledgedBlocks:1,totalBlocks:2});
+    const grant=await prepared.resume();assert.equal(prepared.status().state,"acknowledged");
+    assert.equal(attempts.length,3);assert.equal(attempts[1],attempts[2]);assert.notEqual(attempts[0],attempts[1]);
+    assert.deepEqual(await f.client.download(grant.manifest,grant.key,binding),input);
+    await assert.rejects(prepared.resume());assert.ok(grant.key.some(byte=>byte!==0));
+  }finally{prepared.dispose();}
+});
+test("one prepared recording owns the composition until explicitly disposed", async () => {
+  const f=fixture(),prepared=await f.client.prepareUpload(new Uint8Array([1]),binding);
+  await assert.rejects(f.client.prepareUpload(new Uint8Array([2]),binding));
+  await assert.rejects(f.client.upload(new Uint8Array([2]),binding));
+  prepared.dispose();assert.equal(prepared.status().state,"disposed");await assert.rejects(prepared.resume());
+  const grant=await f.client.upload(new Uint8Array([2]),binding);assert.equal(grant.key.length,32);
+});
+test("dispose during a pending acknowledgement prevents key release and clears retained block bytes", async () => {
+  const f=fixture();let release!:(cid:string)=>void,received:Uint8Array|undefined;
+  f.blocks.put=async bytes=>{received=bytes;return new Promise<string>(resolve=>{release=resolve;});};
+  const prepared=await f.client.prepareUpload(new Uint8Array([1]),binding),pending=assert.rejects(prepared.resume());
+  assert.ok(received);const cid=await rawMediaBlockCid(received!);
+  await assert.rejects(prepared.resume());prepared.dispose();assert.ok(received!.every(byte=>byte===0));release(cid);await pending;
+  assert.equal(prepared.status().state,"disposed");
+});
+test("abort, revoked consent and expiry terminate retained uploads without provider traffic", async t => {
+  t.mock.timers.enable({apis:["setTimeout"]});
+  for(const reason of ["abort","revoke","expire"]){
+    const f=fixture(),prepared=await f.client.prepareUpload(new Uint8Array([1]),binding);
+    if(reason==="abort")f.abort.abort();else if(reason==="revoke")f.revoke();else t.mock.timers.tick(15*60_000);
+    await assert.rejects(prepared.resume());assert.equal(prepared.status().state,reason==="expire"?"expired":"disposed");assert.equal(f.counts().puts,0);
+  }
+});
+test("suspended or backwards monotonic clock expires retained upload on access", async t => {
+  let now=100;t.mock.method(performance,"now",()=>now);
+  const f=fixture(),prepared=await f.client.prepareUpload(new Uint8Array([1]),binding);
+  now+=15*60_000;assert.equal(prepared.status().state,"expired");await assert.rejects(prepared.resume());
+  const next=await f.client.prepareUpload(new Uint8Array([1]),binding);now--;assert.equal(next.status().state,"expired");
+});
