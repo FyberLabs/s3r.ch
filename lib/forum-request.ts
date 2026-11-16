@@ -5,6 +5,7 @@ import { forumAsyncClient, type AsyncForumClient } from "./forum-blob-async";
 import { type IdentityBlobConditions } from "../identity-blob.cjs";
 
 export async function blobForumRequest(client: AsyncForumClient, owner: string, handler: (forum: Forum) => Response): Promise<Response> {
+  for(let attempt=0;attempt<4;attempt++) {
   try {
     let current = await client.download();
     let pending: {text:string;conditions:IdentityBlobConditions} | null = null;
@@ -25,9 +26,15 @@ export async function blobForumRequest(client: AsyncForumClient, owner: string, 
   } catch(error) {
     const status=(error as {statusCode?:number}).statusCode;
     const conflict=status===409 || status===412 || (error as {code?:string}).code==='blob-conflict';
+    if(conflict && attempt<3) {
+      await new Promise(resolve=>setTimeout(resolve,25 * 2 ** attempt + Math.floor(Math.random()*25)));
+      continue;
+    }
     return Response.json({denied:true,reason:conflict?'store-conflict':'store-unreadable'},
       {status:conflict?409:503,headers:{'Cache-Control':'private, no-store'}});
   }
+  }
+  throw new Error("Unreachable retry exhaustion");
 }
 export async function forumRequest(owner: string, handler: (forum: Forum) => Response): Promise<Response> {
   const mode=process.env.S3RCH_FORUM_STORAGE || 'file';

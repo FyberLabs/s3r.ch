@@ -24,11 +24,11 @@ test('two concurrent colors cannot acknowledge conflicting writes', async () => 
   let current=text,etag='1';
   const client:AsyncForumClient={
     async download(){const hit={found:true as const,text:current,etag};await new Promise(resolve=>setImmediate(resolve));return hit;},
-    async upload(next,conditions){if(conditions.ifMatch!==etag)throw Object.assign(new Error('conflict'),{statusCode:412});current=next;etag='2';},
+    async upload(next,conditions){if(conditions.ifMatch!==etag)throw Object.assign(new Error('conflict'),{statusCode:412});current=next;etag=String(Number(etag)+1);},
   };
   const responses=await Promise.all([blobForumRequest(client,owner,write('first')),blobForumRequest(client,owner,write('second'))]);
-  assert.deepEqual(responses.map(r=>r.status).sort(),[200,409]);
-  assert.equal(JSON.parse(current).forum.bots.length,1);
+  assert.deepEqual(responses.map(r=>r.status).sort(),[200,200]);
+  assert.equal(JSON.parse(current).forum.bots.length,2);
 });
 test('failed and missing storage cannot produce a success or an empty replacement', async () => {
   for(const download of [async()=>({found:false as const}),async()=>{throw new Error('unavailable');}]) {
@@ -51,4 +51,13 @@ test('deployment admission refuses a new principal before attempting Azure I/O',
     if(previous.mode===undefined)delete process.env.S3RCH_FORUM_STORAGE;else process.env.S3RCH_FORUM_STORAGE=previous.mode;
     if(previous.owners===undefined)delete process.env.S3RCH_FORUM_ADMITTED_OWNERS;else process.env.S3RCH_FORUM_ADMITTED_OWNERS=previous.owners;
   }
+});
+
+test('persistent conflicts stop after four fresh attempts without acknowledgement',async()=>{
+  let reads=0,writes=0;
+  const response=await blobForumRequest({
+    async download(){reads++;return {found:true,text,etag:String(reads)};},
+    async upload(){writes++;throw Object.assign(new Error('conflict'),{statusCode:412});}
+  },owner,write('bounded'));
+  assert.equal(response.status,409);assert.equal(reads,4);assert.equal(writes,4);
 });
