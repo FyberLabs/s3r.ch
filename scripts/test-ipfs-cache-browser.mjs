@@ -41,7 +41,7 @@ async function page(scope,maxBytes=35,enabled=true){const p=await context.newPag
  await p.evaluate(({scope,maxBytes,enabled})=>window.fixture.configure(scope,maxBytes,enabled),{scope,maxBytes,enabled});return p;}
 try {
  await launch();
- const disabled=await page('c',35,false),sample=await disabled.evaluate(()=>window.fixture.sample());
+ const disabled=await page('c',35,false);let sample=await disabled.evaluate(()=>window.fixture.sample());
  assert.equal(await disabled.evaluate(sample=>window.fixture.put(sample),sample),false);
  assert.deepEqual(await disabled.evaluate(()=>window.fixture.databases()),[],'opt-out must not create a DB');
  const a=await page('a'),b=await page('b');
@@ -60,8 +60,12 @@ try {
  await reopened.evaluate(()=>window.fixture.time(1700000000500));
  assert.equal(await reopened.evaluate(sample=>window.fixture.put(sample),sample),true);
  await reopened.evaluate(()=>window.fixture.time(1700000001000));
- assert.equal(await reopened.evaluate(cid=>window.fixture.get(cid),sample.cid),null,'retry must not extend TTL');
- assert.equal(await reopened.evaluate(sample=>window.fixture.put(sample),sample),true,'expiry must free quota');
+ const expiredCid=sample.cid;sample=await reopened.evaluate(()=>window.fixture.sample());
+ assert.notEqual(sample.cid,expiredCid);
+ // No read may sweep expiry first: the distinct insert must reclaim the full budget.
+ assert.equal(await reopened.evaluate(sample=>window.fixture.put(sample),sample),true,'put must reclaim expired quota and retries must not extend TTL');
+ assert.equal(await reopened.evaluate(cid=>window.fixture.get(cid),expiredCid),null);
+ assert.deepEqual(await reopened.evaluate(cid=>window.fixture.get(cid),sample.cid),sample.bytes);
  await reopened.evaluate(()=>window.fixture.consent(false));
  assert.equal(await reopened.evaluate(cid=>window.fixture.get(cid),sample.cid),'unavailable');
  await reopened.evaluate(async()=>{window.fixture.close();window.fixture.time(0);await window.fixture.clear();});
