@@ -1,3 +1,4 @@
+import { channel } from "node:diagnostics_channel";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { terminalRuntimeConfig } from "./terminal-runtime-config";
 import type { createTerminalServingRouter } from "./terminal-serving-router";
@@ -19,7 +20,11 @@ export async function configuredTerminalRequest(request: Request, native: Native
         const current = callbacks.getStore();
         if (!current) throw Error("Native request context unavailable");
         return current();
-      }));
+      })).catch(error => {
+        // Local diagnostics only: never expose initialization details to clients.
+        channel("s3rch.terminal.initialization").publish({ error });
+        throw error;
+      });
       shared[key] = { native: callbacks, router };
     }
     const state = shared[key];

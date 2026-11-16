@@ -1,3 +1,6 @@
+require("node:diagnostics_channel").channel("s3rch.terminal.initialization").subscribe(({ error }) => {
+  console.error("CI terminal initialization:", error);
+});
 // CI child process only. No real Auth, replay, storage or telemetry endpoints.
 const { createHmac, randomUUID } = require("node:crypto");
 const raw = process.env.S3RCH_NIGHTLY_RUN_CONFIG;

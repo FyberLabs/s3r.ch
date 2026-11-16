@@ -37,7 +37,7 @@ async function boot(raw?: string) {
     ...(raw === undefined ? {} : { S3RCH_NIGHTLY_RUN_CONFIG: raw }) };
   const child = spawn(process.execPath, ["--require", path.resolve("scripts/terminal-owner-fixture.cjs"), "server.js"], {
     cwd: path.resolve(".next/standalone"), env: childEnv, stdio: ["ignore", "pipe", "pipe"] });
-  let log = ""; child.stdout.on("data", value => log += value); child.stderr.on("data", value => log += value);
+  let log = ""; child.stdout.on("data", value => log += value); child.stderr.on("data", value => { log += value; process.stderr.write(value); });
   const stop = async () => {
     if (child.exitCode !== null || child.signalCode !== null) return;
     const exited = once(child, "exit");
