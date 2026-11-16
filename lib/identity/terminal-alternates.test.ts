@@ -21,7 +21,7 @@ function fixture() {
 }
 test("backup OAuth, wallet nonce and confirmation cannot bypass original-run binding", async () => {
   const now = Math.floor(Date.now() / 1000);
-  const cases = [
+  const cases: Array<{ issue: () => Promise<string>; read: (token: string) => Promise<unknown> }> = [
     { issue: () => signNonceToken("fixture-nonce", secret), read: (token: string) => readNonceToken(token, secret) },
     { issue: () => signConfirmChallenge({ address, kind: "email", targetHash: "target", codeHash: "code", iat: now, exp: now + 300 }, secret), read: (token: string) => readConfirmChallenge(token, secret) },
     { issue: () => signBackupSession({ sub: "provider-person", idp: null }, secret), read: (token: string) => readBackupSession(token, secret) },
