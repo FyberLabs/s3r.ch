@@ -542,3 +542,10 @@ test("saved delivery blocks conflicting browser mutations after a fresh session"
   if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
  }
 });
+
+test("group file adapter requires current unlocked identity before any read",async()=>{
+ let calls=0;const browser=createPrivateMediaBrowser(()=>owner,async()=>{calls++;return new Response(null,{status:403});});
+ const scope={predicate:'same-group' as const,set:object.replace('media_','set_')};
+ forgetUnlockedMeshPair();await assert.rejects(browser.openGroup(object,tenant,owner,scope));assert.equal(calls,0);
+ unlock();await assert.rejects(browser.openGroup(object,tenant,owner,scope));assert.equal(calls,1);
+});

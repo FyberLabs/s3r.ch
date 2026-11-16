@@ -1,3 +1,4 @@
+import {openGroupMediaFile} from "./media-group-item-file";
 import {createItemStatusClient} from "./media-group-item-status-client";
 import {parseItemStatusCommand} from "./media-group-item-status";
 import {applyItemStatus,pendingItemStatus,discardItemStatus,type PendingItemStatus} from "./media-group-item-status-recovery";
@@ -365,6 +366,11 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     },
     publishWrap(object:string,owner:string,reader:string,wrap:ItemReaderWrap,reference:MediaCiphertextReference,signal?:AbortSignal){
       return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).publishWrap(object,owner,reader,wrap,reference,deadline),signal);
+    },
+    openGroup(object:string,tenant:string,principal:string,scope:MediaGroupScope,signal?:AbortSignal){
+      const held=parseMediaGroupScope(scope);
+      return run((pair,transport,deadline)=>openGroupMediaFile({object,tenant,principal,scope:held,epriv:pair.epriv,epub:pair.epub,
+        fetcher:transport,signal:deadline}),signal,result=>result.bytes.fill(0));
     },
     open(object:string,tenant:string,signal?:AbortSignal){
       return run((pair,transport,deadline)=>createPrivateMediaReader(transport).open(object,tenant,pair.epriv,pair.epub,deadline),signal,
