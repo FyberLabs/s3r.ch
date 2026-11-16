@@ -41,7 +41,8 @@ const server=createServer(async(req,res)=>{
    if(!groupAllowed){json({},403);return;}
    json({...groupSeed.item,expires_at:Math.floor(Date.now()/1000)+2});return;
   }
-  if(decodeURIComponent(req.url)==='/api/media/'+groupObject){
+  if(decodeURIComponent(new URL(req.url,'http://fixture').pathname)==='/api/media/'+groupObject){
+   assert.deepEqual(Object.fromEntries(new URL(req.url,'http://fixture').searchParams),{predicate:groupSeed.entry.predicate,set:groupSeed.entry.set});
    assert.equal(req.method,'GET');groupDownloads++;
    res.writeHead(200,{'content-type':'application/octet-stream','content-length':groupSeed.bytes.length,etag:'"'+groupSeed.sha256+'"'});res.end(Buffer.from(groupSeed.bytes));return;
   }
