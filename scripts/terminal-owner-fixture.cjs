@@ -22,7 +22,7 @@ globalThis.fetch = async (url, init = {}) => {
     if (command.action === "complete") return Response.json({ ...base, operation: command.operation, completed: true });
     return Response.json({ ...base, active: true });
   }
-  if (target.startsWith("https://api.test.hyperme.sh/storage/replays/")) return new Response(null, { status: 204 });
+  if (target.startsWith("https://api.test.hyperme.sh/api/v1/storage/replays/")) return new Response(null, { status: 204 });
   console.error("CI unexpected owner transport:", request.method, target);
   throw Error("Unexpected external request in terminal CI fixture: " + target);
 };
