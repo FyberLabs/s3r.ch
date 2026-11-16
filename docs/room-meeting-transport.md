@@ -3,7 +3,10 @@
 Issue #153's `controlMeetingTransport` owns one WebRTC peer connection and its
 dedicated local capture tracks. It is not mounted in the room UI. Admission and
 authenticated signaling are tracked in
-[issue #527](https://github.com/FyberLabs/s3r.ch/issues/527).
+[issue #527](https://github.com/FyberLabs/s3r.ch/issues/527). An
+[inactive contract proposal](meeting-signaling-contract.md) now supplies bounded
+wire validators and sequencing tests; it is not authenticated admission or a
+runtime signaling adapter.
 
 The eventual signaling adapter must bind both participants to the room and
 meeting, check current admission, supply a fixed expiry, and synchronously notify
