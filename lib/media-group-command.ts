@@ -1,3 +1,4 @@
+import {parseGroupItemEpochPlan} from "./media-group-item-epoch";
 import {parseItemGrantCommand,parseItemGrantResult} from "./media-group-item-grant";
 import {parseGroupWrapCommand,parseGroupWrapResult} from "./media-group-wrap";
 import {parseGroupKeyCommand,parseGroupKeyView} from "./media-group-key";
@@ -15,6 +16,7 @@ export const groupCommandFields={
   "item-grant-append":["object","predicate","set","at","fence","payload"],
   "item-grant-state":["object","predicate","set","payload"],
   "item-view":["object","predicate","set"],
+  "item-epoch-view":["object","predicate","set"],
   "item-authority-view":["object"],
   allocate:["predicate","set"],
   "wrap-view":["predicate","set"],
@@ -49,7 +51,7 @@ export function parseGroupCommand(action:GroupCommandAction,input:unknown,princi
     return body;
   }
   const scope=parseMediaGroupScope({predicate:body.predicate,set:body.set}),owner=objectPrincipal(scope.set);
-  if(action==="item-view"){
+  if(action==="item-view"||action==="item-epoch-view"){
     if(typeof body.object!=="string"||!body.object.startsWith("media_")||!isCanonicalObjectId(body.object)||objectPrincipal(body.object)!==principal)return fail();
   } else if(action.startsWith("key-")||action==="allocate"){
     if(owner!==principal)return fail();
@@ -78,6 +80,10 @@ export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,
   if(action==="wrap-view"||action==="wrap-publish"||action==="wrap-read")return parseGroupWrapResult(action,input,body,now);
   if(action==="item-grant-view"||action==="item-grant-append"||action==="item-grant-state"){
     if(!principal)return fail();return parseItemGrantResult(action,input,body,now,principal);
+  }
+  if(action==="item-epoch-view"){
+    if(!principal)return fail();
+    return parseGroupItemEpochPlan(input,body.object as string,principal,parseMediaGroupScope({predicate:body.predicate,set:body.set}),now);
   }
   const value=structuredClone(input);
   if(action==="catalog") {
@@ -145,5 +151,5 @@ export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,
   return v;
 }
 
-export const groupRequestLimit=(action:GroupCommandAction)=>action==="item-grant-view"?2048:action==="item-grant-append"||action==="item-grant-state"?8192:action==="wrap-publish"?92160:action==="key-append"||action==="key-state"?73728:18432;
-export const groupResponseLimit=(action:GroupCommandAction)=>action==="wrap-read"?92160:action==="wrap-view"||action==="key-view"||action==="item-authority-view"?73728:18432;
+export const groupRequestLimit=(action:GroupCommandAction)=>action==="item-epoch-view"||action==="item-grant-view"?2048:action==="item-grant-append"||action==="item-grant-state"?8192:action==="wrap-publish"?92160:action==="key-append"||action==="key-state"?73728:18432;
+export const groupResponseLimit=(action:GroupCommandAction)=>action==="item-epoch-view"?262144:action==="wrap-read"?92160:action==="wrap-view"||action==="key-view"||action==="item-authority-view"?73728:18432;
