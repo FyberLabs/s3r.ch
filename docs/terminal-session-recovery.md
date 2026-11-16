@@ -155,3 +155,13 @@ a declared non-pilot SEA identity for device transfer. Duplicate members and
 unknown fields refuse. This decoder does not read process environment, install
 `/api/internal/nightly-run`, register grants or provide readiness evidence.
 The control handler and complete route inventory remain separate work.
+
+`createTerminalOwnerControl` prepares the authenticated POST control handler for
+`/api/internal/nightly-run`. It verifies the controller HMAC over bounded exact
+bytes, validates the owner/action/run/scope, and re-signs those same bytes with
+the separate owner key for Auth. Auth owns monotonic fences, pending operations
+and durable tombstones. The handler refuses fences outside JavaScript safe integer
+range rather than rounding them, and validates exact positive phase receipts.
+Native HTTP/HMAC contracts run in CI with Auth transport substituted. This factory
+is uninstalled, performs no retries, and neither installs configuration nor proves
+whole-fixture coverage. Reader cases remain unregistered.
