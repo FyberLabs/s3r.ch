@@ -9,7 +9,7 @@ const root=process.cwd(),out=resolve('vendor/pairing'),temp=mkdtempSync(join(tmp
 const inputs=[
  ['hyperme-sh/controlplane-sdk','006611d80fe60b303288447204271cde5ba35332','packages/sea-device-link','sea-device-link'],
  ['hyperme-sh/auth-service','24a1b061106838673e5b98facd68f4a0593342b1','browser/sea-relay','auth-sea-relay'],
- ['FyberLabs/SociACL','1b88bfd7c313b88dd43f048e4dfe78e67d7efe4c','typescript/ids','sociacl-ids'],
+ ['FyberLabs/SociACL','d0844508ca1145ecb35a99aead9cf67141096b60','typescript/ids','sociacl-ids'],
  ['hyperme-sh/acl-service','5519668e201bd2fc472f99c21ad977e810a00dc3','browser/device-transfer','acl-sea-device-authority'],
  ['hyperme-sh/controlplane-portal','70f197f1871344382d769bc6b8a30349e8ead8f4','packages/sea-device-link-ui','sea-device-link-ui'],
 ];
