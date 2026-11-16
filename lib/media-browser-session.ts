@@ -75,7 +75,7 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     const take=()=>navigator.locks.request(name, {mode:"exclusive",ifAvailable:true}, lock=>{
       if(!lock)throw Error("An upload is active in another tab");return work();
     });
-    const conflicts=["s3rch-private-share-v1","s3rch-private-group-key-v1","s3rch-private-group-item-grant-v1","s3rch-private-group-item-epoch-delivery-v1"];
+    const conflicts=["s3rch-private-delete-v1","s3rch-private-share-v1","s3rch-private-group-key-v1","s3rch-private-group-item-grant-v1","s3rch-private-group-item-epoch-delivery-v1"];
     if(!conflicts.includes(name))return take();
     // Serialize the journal check with publication across tabs. UI state is only
     // advisory: a lost reply or page reload must not hide an encrypted draft.
@@ -331,10 +331,10 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     },
     submitDeletion(input:MediaDeletionIntent,signal?:AbortSignal){
       const intent=parseMediaDeletionIntent(input);
-      return run((pair,transport,deadline)=>{
+      return locked(()=>run((pair,transport,deadline)=>{
         if(pair.pub!==intent.ownerPub)throw Error("Deletion signing identity changed");
         return createPrivateMediaOwner(transport).submitDeletion(intent,deadline);
-      },signal);
+      },signal),"s3rch-private-delete-v1");
     },
     cleanupCatalog(page:number,signal?:AbortSignal){
       return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).cleanupCatalog(page,deadline),signal);
