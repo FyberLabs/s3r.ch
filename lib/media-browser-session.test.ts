@@ -543,6 +543,44 @@ test("saved delivery blocks conflicting browser mutations after a fresh session"
  }
 });
 
+test("foreign pending delivery preserves its draft without blocking another authenticated owner",async()=>{
+ const {IDBFactory}=await import('fake-indexeddb');
+ const {createShareJournal}=await import('./media-share-journal');
+ const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator'),oldDb=Object.getOwnPropertyDescriptor(globalThis,'indexedDB');
+ try{
+  Object.defineProperty(globalThis,'indexedDB',{configurable:true,value:new IDBFactory()});
+  let switchAtInnerLock=false;
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{locks:{request:async(name:string,_options:unknown,work:(lock:unknown)=>unknown)=>{
+   if(switchAtInnerLock&&name==='s3rch-private-group-key-v1')unlock();return work({});
+  }}}});
+  const journal=createShareJournal(undefined,'group-item-wrap'),signal=new AbortController().signal;
+  const saved=await journal.write({tenant,object,encrypted:new Uint8Array([1]),sha256:'a'.repeat(64),wrap:{} as any},null,signal);
+  const privateBytes=new Uint8Array(32);privateBytes[31]=2;
+  const unlockOther=()=>{forgetUnlockedMeshPair();rememberUnlockedMeshPair('other-owner',{...pair,pub:other,priv:Buffer.from(privateBytes).toString('base64url')});};
+  const otherObject='media_p_'+other.split('.').map(part=>Buffer.from(part,'base64url').toString('hex')).join('')+'_'+'2'.repeat(32);
+  const scope={predicate:'same-group' as const,set:otherObject.replace('media_','set_')};
+  let calls=0;const browser=createPrivateMediaBrowser(()=>other,async()=>{calls++;return new Response(null,{status:503});});
+  unlockOther();
+  // Each reaches its own protected service read; none can erase A's journal.
+  await assert.rejects(browser.startGroupKey(tenant,other,scope));assert.equal(calls,1);
+  await assert.rejects(browser.startItemEpoch(tenant,other,{object:otherObject,...scope}));assert.equal(calls,2);
+  await assert.rejects(browser.share(tenant,{object:otherObject,owner:other,reader:owner}));assert.equal(calls,3);
+  assert.deepEqual(await journal.read(signal),saved);
+  switchAtInnerLock=true;
+  await assert.rejects(browser.startGroupKey(tenant,other,scope),/identity changed/);assert.equal(calls,3);
+  switchAtInnerLock=false;
+  const original=createPrivateMediaBrowser(()=>owner,async()=>{calls++;throw Error('must not send');});
+  await assert.rejects(original.startGroupKey(tenant,owner,{predicate:'same-group',set:object.replace('media_','set_')}),/requires recovery/);
+  assert.equal(calls,3);assert.deepEqual(await journal.read(signal),saved);
+  const corrupt=await journal.write({...saved,object:'invalid'},saved,signal);unlockOther();
+  await assert.rejects(browser.startGroupKey(tenant,other,scope),/requires recovery/);
+  assert.equal(calls,3);assert.deepEqual(await journal.read(signal),corrupt);
+ }finally{
+  if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else Reflect.deleteProperty(globalThis,'navigator');
+  if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
+ }
+});
+
 test("group file adapter requires current unlocked identity before any read",async()=>{
  let calls=0;const browser=createPrivateMediaBrowser(()=>owner,async()=>{calls++;return new Response(null,{status:403});});
  const scope={predicate:'same-group' as const,set:object.replace('media_','set_')};

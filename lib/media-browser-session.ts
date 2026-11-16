@@ -1,3 +1,5 @@
+import {objectPrincipal} from "./identity/forum-authority-records";
+import {isCanonicalObjectId} from "./identity/object-id";
 import {readGroupGranted} from "./media-group-item-catalog-client";
 import {openGroupMediaFile} from "./media-group-item-file";
 import {createItemStatusClient} from "./media-group-item-status-client";
@@ -74,8 +76,8 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
   }
   async function locked<T>(work:()=>Promise<T>,name="s3rch-private-upload-v1") {
     if (typeof navigator === "undefined" || !navigator.locks) throw Error("This browser cannot safely resume uploads");
-    const take=()=>navigator.locks.request(name, {mode:"exclusive",ifAvailable:true}, lock=>{
-      if(!lock)throw Error("An upload is active in another tab");return work();
+    const take=(check=()=>{})=>navigator.locks.request(name, {mode:"exclusive",ifAvailable:true}, lock=>{
+      if(!lock)throw Error("An upload is active in another tab");check();return work();
     });
     const conflicts=["s3rch-private-delete-v1","s3rch-private-share-v1","s3rch-private-group-key-v1","s3rch-private-group-item-grant-v1","s3rch-private-group-item-epoch-delivery-v1"];
     if(!conflicts.includes(name))return take();
@@ -83,9 +85,21 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     // advisory: a lost reply or page reload must not hide an encrypted draft.
     return navigator.locks.request("s3rch-private-group-item-wrap-v1",{mode:"exclusive",ifAvailable:true},async lock=>{
       if(!lock)throw Error("A group file delivery is active in another tab");
-      if(await createShareJournal(undefined,"group-item-wrap").read(AbortSignal.timeout(4000)))
+      const selected=readSingleUnlockedIdentity();
+      if(!selected||selected.pair.pub!==sessionKey())throw Error("Unlock the signed-in media identity");
+      const check=()=>{
+        const current=readSingleUnlockedIdentity();
+        if(!current||current.revision!==selected.revision||current.pair.pub!==selected.pair.pub||sessionKey()!==selected.pair.pub)
+          throw Error("Media identity changed during recovery check");
+      };
+      const pending=await createShareJournal(undefined,"group-item-wrap").read(AbortSignal.timeout(4000));
+      check();
+      // A foreign owner's retained draft must survive without disabling this
+      // identity. Unknown/corrupt object ownership still fails closed.
+      const pendingOwner=pending&&isCanonicalObjectId(pending.object)&&pending.object.startsWith("media_")?objectPrincipal(pending.object):null;
+      if(pending&&(!pendingOwner||pendingOwner===selected.pair.pub))
         throw Error("A group file delivery requires recovery before changing access");
-      return take();
+      return take(check);
     });
   }
   async function epochWork(tenant:string,principal:string,change:{target?:{object:string;predicate:MediaGroupScope["predicate"];set:string};expected?:PendingItemEpoch},signal?:AbortSignal){
