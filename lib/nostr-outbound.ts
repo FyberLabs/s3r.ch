@@ -1,10 +1,12 @@
 /** Server-only NIP-01 publishing. A configured signer belongs to exactly one SEA owner. */
+import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { schnorr } from "@noble/curves/secp256k1.js";
 import { isSeaPubkey } from "./identity/forum-check";
 import type { OutboundAdapter, OutboundDraft, OutboundResult } from "./bridges";
 
-type Socket = Pick<WebSocket, "addEventListener" | "removeEventListener" | "send" | "close">;
+type Socket = Pick<WebSocket, "addEventListener" | "removeEventListener" | "send" | "close"> & {terminate: () => void};
+const NodeSocket = createRequire(import.meta.url)("ws") as new (url:string, options:{maxPayload:number;handshakeTimeout:number;perMessageDeflate:false}) => Socket;
 export type NostrOutboundOptions = {
   env?: Record<string, string | undefined>;
   owner?: string;
@@ -48,12 +50,16 @@ export class NostrOutbound implements OutboundAdapter {
         this.options.signal?.removeEventListener("abort", cancelled);
         if (socket) {
           socket.removeEventListener("open", opened); socket.removeEventListener("message", message);
-          socket.removeEventListener("error", cancelled); socket.removeEventListener("close", cancelled);
-          try { socket.close(); } catch { /* already closed */ }
+          // Keep error/close handlers until termination finishes, including during handshake.
+          try { socket.terminate(); } catch { /* already terminated */ }
         }
         resolve(ok ? {ok:true, network:this.network, url:`https://njump.me/${id}`} : failure());
       };
       const cancelled = () => finish();
+      const closed = () => {
+        socket?.removeEventListener("error", cancelled); socket?.removeEventListener("close", closed);
+        finish();
+      };
       const opened = () => { if (settled || sent) return; try { sent = true; socket!.send(JSON.stringify(["EVENT",event])); } catch { finish(); } };
       const message = (incoming: Event) => {
         if (settled) return;
@@ -68,9 +74,9 @@ export class NostrOutbound implements OutboundAdapter {
       };
       const timer = setTimeout(cancelled, Math.min(10000, Math.max(1, this.options.timeoutMs ?? 10000)));
       try {
-        socket = (this.options.connect ?? (url => new WebSocket(url)))(config.relay);
+        socket = (this.options.connect ?? (url => new NodeSocket(url, {maxPayload:16384, handshakeTimeout:10000, perMessageDeflate:false})))(config.relay);
         socket.addEventListener("open", opened); socket.addEventListener("message", message);
-        socket.addEventListener("error", cancelled); socket.addEventListener("close", cancelled);
+        socket.addEventListener("error", cancelled); socket.addEventListener("close", closed);
         this.options.signal?.addEventListener("abort", cancelled, {once:true});
         if (this.options.signal?.aborted) finish();
       } catch { finish(); }

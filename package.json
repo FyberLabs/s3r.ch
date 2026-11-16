@@ -12,6 +12,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "ws": "7.5.13",
     "@azure/identity": "^4.14.1",
     "@azure/storage-blob": "^12.34.0",
     "@coinbase/wallet-sdk": "^4.4.0",

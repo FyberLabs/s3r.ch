@@ -22,7 +22,9 @@ this source change. Future multi-owner credential custody needs its own contract
 The adapter publishes a kind-1 note using [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md).
 Only the trimmed body is copied; private links and metadata are excluded. Notes
 are capped at 16 KiB UTF-8, replies at 4,096 characters and 32 frames, and the
-connection at ten seconds. Temporary key buffers are erased after use; the
+connection at ten seconds. The server uses `ws` with bounded payloads, compression
+disabled, and forced termination on completion; it does not wait for a relay close
+handshake. Temporary key buffers are erased after use; the
 operator-owned environment secret remains in server configuration.
 
 Success requires a matching `OK` event ID and boolean `true` after sending the
@@ -37,3 +39,7 @@ wrong-ID acknowledgements, timeout, abort, and resource bounds. These tests run
 in PR CI; no live relay or shared-host scenario is run manually. ActivityPub,
 scheduling (#309), and nightly provider acceptance remain outstanding. #455 stays
 open and private reader cases remain unregistered.
+
+A CI-only loopback TCP peer completes the WebSocket upgrade, then ignores all
+frames, including CLOSE. The regression verifies that a timed-out publisher
+actually reaches CLOSED; it is skipped during local unit runs.

@@ -9,7 +9,8 @@ class Relay extends EventTarget {
   event?: NostrEvent;
   reply: (event:NostrEvent) => void = event => this.frame(["OK",event.id,true,""]);
   send(raw:string) { const [type,event] = JSON.parse(raw); assert.equal(type,"EVENT"); this.event = event; this.reply(event); }
-  close() { this.closed = true; }
+  close() { /* Deliberately unresponsive graceful-close peer. */ }
+  terminate() { this.closed = true; this.dispatchEvent(new Event("close")); }
   frame(value:unknown) { this.dispatchEvent(new MessageEvent("message", {data:JSON.stringify(value)})); }
 }
 async function fixture() {
@@ -60,4 +61,41 @@ test("oversized, malformed Unicode, empty and cancelled notes fail before connec
  const adapter = new NostrOutbound({...f,signal:abort.signal,connect:()=>{assert.fail("must not connect");}});
  for(const body of ["", "🦊".repeat(5000), "\ud800"]) assert.equal((await adapter.post({body})).ok,false);
  abort.abort(); assert.equal((await adapter.post({body:"hello"})).ok,false);
+});
+
+// Real loopback transport qualification is CI-only; no local/shared-host execution.
+test("CI: an unresponsive close peer cannot retain a timed-out publisher socket", {skip:!process.env.CI, timeout:5000}, async () => {
+ const {createServer} = await import("node:net");
+ const {createHash} = await import("node:crypto");
+ const peers = new Set<import("node:net").Socket>();
+ const server = createServer(peer => {
+  peers.add(peer); peer.on("error", () => {});
+  peer.once("data", raw => {
+   const key = /Sec-WebSocket-Key: ([^\r\n]+)/i.exec(raw.toString())?.[1];
+   assert.ok(key);
+   const accept = createHash("sha1").update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
+   peer.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+   peer.pause(); // Never read EVENT or reply to a graceful CLOSE.
+  });
+ });
+ const Client = createRequire(import.meta.url)("ws") as new (url:string) => Pick<WebSocket,"addEventListener"|"removeEventListener"|"send"|"close"|"readyState"> & {terminate:()=>void};
+ try {
+  await new Promise<void>(resolve => server.listen(0,"127.0.0.1",resolve));
+  const port = (server.address() as import("node:net").AddressInfo).port;
+  const f = await fixture(); let client: InstanceType<typeof Client> | undefined, opened = false;
+  const adapter = new NostrOutbound({...f,timeoutMs:250,connect:() => {
+   client = new Client(`ws://127.0.0.1:${port}`);
+   client.addEventListener("open", () => {opened = true;}); return client;
+  }});
+  assert.equal((await adapter.post({body:"hello"})).ok,false); assert.equal(opened,true);
+  await new Promise<void>((resolve,reject) => {
+   const timer = setTimeout(() => reject(Error("socket retained after timeout")),1000);
+   const closed = () => {clearTimeout(timer); resolve();};
+   if(client!.readyState === 3) closed(); else client!.addEventListener("close",closed,{once:true});
+  });
+  assert.equal(client!.readyState,3);
+ } finally {
+  for(const peer of peers) peer.destroy();
+  await new Promise<void>(resolve => server.close(() => resolve()));
+ }
 });
