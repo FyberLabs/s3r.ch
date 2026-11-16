@@ -2,19 +2,22 @@ import type { ExperimentRecordStore } from "./experiment-outbox";
 
 /** Separate keys are required for read-only flag bytes and mutable outbox data.
  * Construct only from server deployment settings, never request parameters. */
-export function createExperimentRecords(input: { origin: string; tenant: string; cacheKey: string; outboxKey: string }, transport: typeof fetch = fetch) {
+export function createExperimentRecords(input: { origin: string; tenant: string; cacheKey: string; outboxKey: string; measureRead?: (name: string, signal?: AbortSignal) => Promise<Response | null> }, transport: typeof fetch = fetch) {
   const origin = new URL(input.origin);
   if (origin.protocol !== "https:" || origin.username || origin.password || origin.pathname !== "/" || origin.port || origin.search || origin.hash ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(input.tenant) || input.tenant === "00000000-0000-0000-0000-000000000000" ||
       input.cacheKey === input.outboxKey || [input.cacheKey, input.outboxKey].some(k => !/^[\x21-\x7e]{16,4096}$/.test(k))) throw Error("Invalid experiment storage binding");
-  async function request(method: string, path: string, key: string, body?: string, revision?: string | null, signal?: AbortSignal) {
+  async function request(method: string, path: string, key: string, body?: string, revision?: string | null, signal?: AbortSignal, measurementName?: string) {
     const controller = new AbortController();
     const abort = () => controller.abort();
-    const timer = setTimeout(abort, 3000);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) abort();
     try {
-      const response = await transport(`${origin.origin}/api/v1/storage/records/${path}`, {
+      const measured = measurementName && input.measureRead ? await input.measureRead(measurementName, signal) : null;
+      // The adapter owns the sampled deadline; only external cancellation is forwarded.
+      if (!measured) timer = setTimeout(abort, 3000);
+      const response = measured ?? await transport(`${origin.origin}/api/v1/storage/records/${path}`, {
         method, cache: "no-store", redirect: "error", credentials: "omit", signal: controller.signal,
         headers: { "X-Api-Key": key, "X-Tenant-ID": input.tenant, "Accept-Encoding": "identity",
           ...(body === undefined ? {} : { "Content-Type": "application/octet-stream", "Content-Length": String(Buffer.byteLength(body)) }),
@@ -42,7 +45,7 @@ export function createExperimentRecords(input: { origin: string; tenant: string;
   };
   const outbox: ExperimentRecordStore = {
     async read(name) {
-      const result = await request("GET", path(name), input.outboxKey);
+      const result = await request("GET", path(name), input.outboxKey, undefined, undefined, undefined, name);
       if (result.status === 404) return null;
       if (result.status !== 200 || !result.etag || !/^"[a-f0-9]{64}"$/.test(result.etag)) throw Error("Experiment storage unavailable");
       return { value: new TextDecoder("utf-8", { fatal: true }).decode(result.bytes), revision: result.etag.slice(1, -1) };
@@ -56,7 +59,7 @@ export function createExperimentRecords(input: { origin: string; tenant: string;
     },
   };
   return Object.freeze({ outbox, cache: {
-    async get(namespace: "cache", name: string, signal?: AbortSignal) {
+    async get(namespace: "cache", name: string, signal?: AbortSignal, measurementName?: string) {
       if (namespace !== "cache" || name !== "experiments-v1-s3rch") throw Error("Invalid experiment cache");
       const result = await request("GET", "experiments/s3rch-cache", input.cacheKey, undefined, undefined, signal);
       if (result.status === 404) return null;

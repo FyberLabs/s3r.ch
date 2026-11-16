@@ -102,6 +102,12 @@ Core #61 remains open until reviewed producer/relay contracts, the protected
 publisher, native post-verification injection and actual-operation CI acceptance
 are complete. Real owner/provider scenarios belong only to Infra's scheduled
 batch with declared fixtures. No shared validation is manually run here. Version
-222 follows merged 220. The native owner agreed to renumber its unapplied entry
+The original adapter version 222 follows merged 220. The native owner agreed to renumber its unapplied entry
 slice; this isolated adapter has no source dependency on that wiring. Source
 readiness is not installation.
+
+
+The default-disabled native consumer is now implemented in
+[native-experiment-measurements.md](native-experiment-measurements.md). That
+integration scopes only verified outbox delivery, stages rows through ledger
+validation and uses separate private ingestion. It does not activate deployment.
