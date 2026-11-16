@@ -4,12 +4,13 @@ import assert from 'node:assert/strict';
 import {decodeJwt} from 'jose';
 import {linkedSessionFixture} from '../../scripts/fixtures/linked-session';
 import {createLinkedOidcProofClient} from './linked-oidc-proof-server';
-async function setup(){
+async function setup(binding?:{run:string;generation:string}){
  const f=await linkedSessionFixture('oidc');if(f.credential.kind!=='oidc')throw Error();
- const token=(await f.sessions.linkedChallenge(f.credential))!,proof=await f.proof(token);
- const config={origin:'https://s3r.ch',authOrigin:'https://auth.example',serviceToken:'a'.repeat(43),issuer:f.credential.iss,tenant:f.credential.tenant,clientId:'site',authorizationEndpoint:'https://id.example/authorize',redirectUri:'https://s3r.ch/api/identity/linked-oidc/callback'};
+ const token=(await f.sessions.linkedChallenge(f.credential))!,proof=await f.proof(token,binding?{nightly_run:binding}:{});
+ const config={origin:'https://s3r.ch',authOrigin:binding?'https://api.test.hyperme.sh':'https://auth.example',serviceToken:'a'.repeat(43),issuer:f.credential.iss,tenant:f.credential.tenant,clientId:'site',authorizationEndpoint:'https://id.example/authorize',redirectUri:'https://s3r.ch/api/identity/linked-oidc/callback'};
  const calls:string[]=[];let saved=false,cancelled=false,lost=false,mutate=(v:any)=>v;
  const fetcher:typeof fetch=async(url,options)=>{
+  if(binding)assert.equal(new Headers(options?.headers).get('X-Nightly-Run-Grant'),'b'.repeat(64));
   assert.equal(options?.redirect,'error');assert.equal(options?.credentials,'omit');
   assert.equal(new Headers(options?.headers).get('Authorization'),'Bearer '+config.serviceToken);
   const action=String(url).split('/').at(-1)!;calls.push(action);const body=JSON.parse(String(options?.body));
@@ -57,4 +58,17 @@ test('provider redirect substitutions and malformed responses fail closed',async
  await assert.rejects(h.client.exchange(h.token,'bad','provider-code',h.signal));
  await assert.rejects(h.client.exchange(h.token,'s'.repeat(43),'bad\ncode',h.signal));
  assert.throws(()=>createLinkedOidcProofClient({config:{...h.config,authOrigin:'http://auth.example'},sessions:h.f.sessions}));
+});
+
+test('admitted proof commands preserve the original grant through the existing issuer',async()=>{
+ const {withTerminalRun}=await import('./terminal-run');
+ const binding={run:'original-proof-run',generation:'a'.repeat(64)};
+ const request=new Request('https://s3r.ch',{headers:{cookie:'__Host-nightly-run-grant='+'b'.repeat(64)}});
+ await withTerminalRun(request,{async admit(){return {binding,operation:'12345678-1234-1234-1234-123456789abc'};},async active(){return true;},async authorizeToken(){return true;},async complete(){}},async()=>{
+  const h=await setup(binding),started=await h.client.start(h.token,h.signal);
+  await h.client.exchange(h.token,started.state,'provider-code',h.signal);
+  const session=await h.client.finish(h.token,h.signal);assert.deepEqual(await h.f.sessions.authenticate(session),{key:h.f.principal});
+  await h.client.cancel(h.token,h.signal);assert.deepEqual(h.calls,['start','exchange','result','cancel']);
+  return true;
+ },result=>result);
 });
