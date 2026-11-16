@@ -3,7 +3,7 @@ import { matchesBrowserOrigin, matchesRequestOrigin } from "./request-origin";
 import { anonymousExperimentCookie } from "./experiment-state";
 import { createCachedExperimentProvider } from "./experiment-cache-provider";
 import { createExperimentRecords } from "./experiment-records";
-import { createExperimentPrivacy, clearExperimentCookies } from "./experiment-privacy";
+import { createExperimentPrivacy, clearExperimentCookies, experimentConsentCookie } from "./experiment-privacy";
 import { createIdentityTokenVerifier } from "./identity/sea-session-verifier";
 import { getIdentitySecret } from "./identity/secret";
 import { readSeaSessionCookie, seaSessionCookieNames } from "./identity/sea-session-http";
@@ -106,7 +106,7 @@ export async function createExperimentApplication(env: Record<string, string | u
           if (body.allowed && !enabled) return result({ error: "Experiments disabled" }, 503);
           const old = await sessions.privacy(cookies, true);
           if (old) await outbox(old).erase();
-          return result({ consented: body.allowed }, 200, [...clearExperimentCookies(), ...(body.allowed ? [await sessions.consent(), `${anonymousExperimentCookie}=${randomUUID()}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=86400`] : [])]);
+          return result({ consented: body.allowed, ...(!body.allowed ? { withdrawalVerified: old !== null || !cookies.split(";").some(part => part.trim().startsWith(experimentConsentCookie + "=")) } : {}) }, 200, [...clearExperimentCookies(), ...(body.allowed ? [await sessions.consent(), `${anonymousExperimentCookie}=${randomUUID()}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=86400`] : [])]);
         }
         if (!enabled) return result({ error: "Experiments disabled" }, 503);
         const fields = Object.keys(body).sort().join();
