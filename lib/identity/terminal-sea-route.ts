@@ -13,10 +13,10 @@ const refused = () => Response.json({ error: "identity-unavailable" }, { status:
  * admitted by this factory. No routes, secrets or capabilities are installed. */
 export function createTerminalSeaRoute(input: { serviceKey: string; scope: unknown;
   env: Record<string, string | undefined> }, fetcher: typeof fetch = fetch) {
-  const env = Object.freeze({ ...input.env }), scope = parseTerminalScope(input.scope), serviceKey = input.serviceKey;
-  if (!/^[a-f0-9]{64}$/.test(serviceKey) || !scope.identities.sea.length ||
+  const env = Object.freeze({ ...input.env }), scopes = (Array.isArray(input.scope) ? input.scope : [input.scope]).map(parseTerminalScope), serviceKey = input.serviceKey;
+  if (!/^[a-f0-9]{64}$/.test(serviceKey) || scopes.length < 1 || scopes.length > 2 || new Set(scopes.map(scope => scope.suite)).size !== scopes.length ||
+      scopes.some(scope => !scope.identities.sea.length || env.S3RCH_IDENTITY_REPLAY_TENANT_ID !== scope.tenant) ||
       env.S3RCH_IDENTITY_REPLAY_ORIGIN !== "https://api.test.hyperme.sh" ||
-      env.S3RCH_IDENTITY_REPLAY_TENANT_ID !== scope.tenant ||
       !configuredIdentityReplay(identitySessionNamespace(origin.origin), env, fetcher)) throw Error("Terminal SEA configuration unavailable");
   getIdentitySecret({ ...env, NODE_ENV: "production" });
   return async (request: Request): Promise<Response> => {
@@ -27,7 +27,7 @@ export function createTerminalSeaRoute(input: { serviceKey: string; scope: unkno
         path.match(/^\/api\/squad\/pilot\/session\/(challenge|exchange|logout)$/)?.[1];
       if (!action || (action === "session" ? request.method !== "GET" :
           request.method !== "POST" || request.headers.get("origin") !== origin.origin)) return refused();
-      const authority = createTerminalHttpAuthority({ serviceKey, scopes: [scope] }, fetcher);
+      const authority = createTerminalHttpAuthority({ serviceKey, scopes }, fetcher);
       return await withTerminalRun(request, authority, () => siteSeaSession(request, action, env, fetcher),
         response => response.status === 200);
     } catch { return refused(); }

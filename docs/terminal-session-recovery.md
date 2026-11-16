@@ -186,3 +186,33 @@ nested replacement and closes inherited async contexts on exit. Native SEA CI
 proves old fixture credentials fail while unrelated credentials still verify.
 No route dispatcher installs this guard yet; the complete route inventory must
 enclose every native fixture issuer/verifier before deployment activation.
+
+## Prepared serving dispatcher and route inventory
+
+`createTerminalServingRouter` composes the native factories under the fixture
+policy for the whole request. It is not imported by app routes or installed.
+
+| Native request | Configured TEST behavior |
+| --- | --- |
+| Device authorize/callback/config/logout/relay/state/current | Require grant; exact device suite and native handler. |
+| SEA session/challenge/exchange/logout and Squad session alias | A single registry admission accepts either exact configured suite. Without a grant, the native handler is enclosed by fixture policy and cannot accept the configured fixture subject. |
+| Startup availability/start/session and shared OAuth callback | Require grant; only the native startup handler, never backup OAuth fallback. |
+| Experiments GET and POST, including consent replacement and withdrawal | Require grant, including anonymous requests. This scoped TEST restriction prevents unattributed fixture outbox mutation. |
+| Identity session, backup-session view and provider list GET | With a grant, native read runs under admission; a known 401 is a completed read. Without it, fixture policy remains active. |
+| Identity logout POST | Native cookie clearing under admission when a grant is present; not terminal proof. Same-origin required for the admitted path. |
+| Other identity paths, including wallet verification, linking, confirmation and delegation | Refuse under configured TEST router, with or without a grant; no guessed wallet alias policy. |
+| Other API paths carrying a grant | Refuse before native effects; do not silently fall back. |
+| Pages and static/feed-cache assets | Native rendering remains enclosed by fixture policy. Current `/`, `/feed` and `/identity/devices` render client identity components and do not verify server cookies. |
+
+The current wallet-only session route returns `owner: ""`; only a verified SEA
+session produces a mesh owner. Native dispatcher CI exercises that actual route,
+old unbound fixture replay, unrelated SEA access, both SEA suites with exactly one
+admission per request, and absent-grant consent/withdrawal preserving an existing
+native outbox. Auth, replay and storage transports are named substitutes; page
+rendering is substituted. Startup positive native contracts are separate in the
+startup factory suite. CI is not installed or scheduled acceptance.
+
+Installation still requires the whole application handler/renderer to enter this
+dispatcher and the prepared private owner configuration. Selectively installing
+only grant-bearing API routes is unsafe. No setting is read automatically, no
+capability is published, and reader cases remain unregistered.
