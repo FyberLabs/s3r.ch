@@ -57,3 +57,28 @@ protection, with explicit failure for unsupported clients. Setup owns any source
 local fixture material and teardown removes temporary downloads/credentials.
 The scenario covers QR cancellation, camera-free transfer, lost acknowledgement,
 reload, reconciliation and existing-issuer sign-in. Missing driver is blocked.
+
+## Restore an existing complete keyring (#583)
+
+After authenticating the existing person through **Authorize device transfer**, a
+fresh browser can select **Restore existing keyring**, choose **Existing complete
+keyring export**, and press **Protect and restore existing identity**. This path
+does not need an already unlocked SEA pair. It accepts a complete SociACL JSON
+keyring, validates current owner history, and saves an encrypted copy under a
+PRF-capable passkey. It refuses incomplete historical keys and any conflicting
+local identity. It creates no identity, link, transfer acknowledgement or membership.
+
+The **Restored identity** card exposes **Unlock restored identity and sign in**.
+This separately unlocks and validates the saved copy against fresh owner state
+before using the existing SEA issuer. Issuer refusal preserves the saved copy.
+An exact retry reports an existing copy without claiming that it has been unlocked
+or replacing its protection. **Cancel current identity operation** disposes the
+current client and fences pending storage work. Account changes and expiry also
+invalidate the client. An already committed copy remains available for readback.
+
+These selectors support Infra's existing-person fixture driver. PR component and
+native contracts are isolated CI checks; hosted browser/passkey acceptance still
+requires the declared fixture and scheduled run. First enrollment remains owned
+separately. Encrypted remote recovery retrieval, passphrase migration and the
+linked-OIDC browser broker are still outstanding under #583; this slice does not
+close that issue or register reader cases.

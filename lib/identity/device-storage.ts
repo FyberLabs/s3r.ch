@@ -20,20 +20,20 @@ export async function deviceRecords(factory=globalThis.indexedDB):Promise<Device
   tx.oncomplete=()=>{db.close();if(get.result.length>64)reject(Error('Protected identity unavailable'));else resolve(get.result.filter(isDeviceRecord));};
   tx.onabort=()=>{db.close();reject(Error('Protected identity unavailable'));};});
 }
-async function protectionKey(raw:Uint8Array):Promise<CryptoKey>{
+export async function deviceProtectionKey(raw:Uint8Array):Promise<CryptoKey>{
  try {const base=await crypto.subtle.importKey('raw',new Uint8Array(raw),'HKDF',false,['deriveKey']);
   return await crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:new Uint8Array(0),info:new TextEncoder().encode('s3r.ch/device-keyring/prf/v1')},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
  }finally{raw.fill(0);}
 }
 export async function prepareDeviceProtection(host:string){
- const result=await createPrfCredential({host,localUser:{id:crypto.getRandomValues(new Uint8Array(32)),name:'s3r.ch receiving device'}});
- const key=await protectionKey(result.prfOutput);
+ const result=await createPrfCredential({host,localUser:{id:crypto.getRandomValues(new Uint8Array(32)),name:'s3r.ch device identity'}});
+ const key=await deviceProtectionKey(result.prfOutput);
  return {key,protection:{version:1 as const,rpId:result.rpId,credentialId:bytesToBase64Url(result.credentialId),prfSalt:bytesToBase64Url(result.prfSalt)}};
 }
 export async function unlockDeviceRecord(record:DeviceRecord){
  if(!isDeviceRecord(record))return fail();
  const p=record.protection,raw=await evaluatePrf({rpId:p.rpId,credentialId:base64UrlToBytes(p.credentialId),prfSalt:base64UrlToBytes(p.prfSalt)});
- const key=await protectionKey(raw),packed=base64UrlToBytes(record.sealed);
+ const key=await deviceProtectionKey(raw),packed=base64UrlToBytes(record.sealed);
  const plain=new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(packed.slice(0,12)),additionalData:new TextEncoder().encode(canonical(record.binding))},key,new Uint8Array(packed.slice(12))));
  try {const value=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(plain));
   if(!value||Object.keys(value).sort().join()!=='keyring,receiverCapability'||typeof value.receiverCapability!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(value.receiverCapability))return fail();
