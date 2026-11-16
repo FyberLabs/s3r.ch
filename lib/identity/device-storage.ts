@@ -63,6 +63,7 @@ export function createDeviceStorage(input:{factory?:IDBFactory;protection:()=>{k
    const db=await openMeshDb(input.factory??globalThis.indexedDB);try{guard(value.signal);}catch(e){db.close();throw e;}
    await new Promise<void>((resolve,reject)=>{
     const tx=db.transaction(MESH_STORE_NAME,'readwrite'),store=tx.objectStore(MESH_STORE_NAME),get=store.getAll(null,65);
+    const cancel=()=>{try{tx.abort();}catch{/* Already complete. */}};value.signal.addEventListener('abort',cancel,{once:true});
     get.onsuccess=()=>{try{
      guard(value.signal);if(now()>=checkpoint.validUntil||now()>=value.binding.expiresAt||get.result.length>64)throw Error();
      const rows=get.result as unknown[];
@@ -75,9 +76,9 @@ export function createDeviceStorage(input:{factory?:IDBFactory;protection:()=>{k
      if(existing){if(!same(existing.binding,value.binding)||existing.payloadHash!==payloadHash||!same(existing.completion,value.completion))throw Error();return;}
      const record:DeviceRecord={kind:'sea-keyring-v1',address:deviceRecordKey(value.binding.identity.principal),seaPub:value.binding.identity.pub,principal:value.binding.identity.principal,
       binding:structuredClone(value.binding),checkpoint:structuredClone(checkpoint),completion:structuredClone(value.completion),payloadHash,protection:structuredClone(held.protection),sealed};
-     store.add(record);
+     const added=store.add(record);added.onsuccess=()=>{try{guard(value.signal);if(now()>=checkpoint.validUntil||now()>=value.binding.expiresAt)throw Error();}catch{cancel();}};
     }catch{tx.abort();}};
-    tx.oncomplete=()=>{db.close();resolve();};tx.onabort=()=>{db.close();reject(Error('Protected identity unavailable'));};
+    tx.oncomplete=()=>{value.signal.removeEventListener('abort',cancel);db.close();resolve();};tx.onabort=()=>{value.signal.removeEventListener('abort',cancel);db.close();reject(Error('Protected identity unavailable'));};
    });
   },
  };

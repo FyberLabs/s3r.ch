@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {IDBFactory} from 'fake-indexeddb';
+import {IDBFactory,IDBObjectStore} from 'fake-indexeddb';
 import type {CommitInput,Binding} from 'sea-device-link';
 import {createDeviceStorage,deviceRecords,canonical} from './device-storage';
 import {base64UrlToBytes} from './wrap';
@@ -43,4 +43,11 @@ test('wallet login does not generate a replacement after protected import',async
 test('maximum complete keyring remains discoverable after nested local wrapping',async()=>{
  const f=await fixture();f.value.keyring=new Uint8Array(524288).fill(7);await f.storage.commit(f.value);
  assert.equal((await deviceRecords(f.factory)).length,1);assert.deepEqual(await f.storage.lookup(binding),f.value.completion);
+});
+
+test('cancellation after the write request aborts the transaction and completion',async t=>{
+ const f=await fixture(),abort=new AbortController();f.value.signal=abort.signal;
+ const add=IDBObjectStore.prototype.add;
+ t.mock.method(IDBObjectStore.prototype,'add',function(this:IDBObjectStore,value:unknown,key?:IDBValidKey){const request=add.call(this,value,key);abort.abort();return request;});
+ await assert.rejects(f.storage.commit(f.value));assert.deepEqual(await deviceRecords(f.factory),[]);assert.equal(await f.storage.lookup(binding),null);
 });
