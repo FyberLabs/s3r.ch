@@ -7,7 +7,7 @@ import {chromium} from 'playwright-core';
 if(process.env.GITHUB_ACTIONS!=='true')throw Error('CI only');
 const mocks={
  '@/lib/identity/device-client':`export async function readDeviceSession(){return {authorized:true,linkedOidcEnabled:true,context:'ui-person-context',expiresAt:Date.now()+300000};}
- export function createDeviceClient(session,origin,refresh){let disposed=false;return {adapters:{},dispose(){disposed=true;window.fixture.disposals++;},async restoreCompleteSource(bytes){window.fixture.restores++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');window.fixture.rows=[{address:'restored',identity:{principal:'existing-principal'}}];refresh();return 'stored';},async restoreEncryptedSource(bytes,passphrase){window.fixture.recoveryBytes=passphrase;window.fixture.recoveries++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');return 'existing';},async signInRestored(){window.fixture.signins++;return false;}};}`,
+ export function createDeviceClient(session,origin,refresh){let disposed=false;return {adapters:{},dispose(){disposed=true;window.fixture.disposals++;},async restoreCompleteSource(bytes){window.fixture.restores++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');window.fixture.rows=[{address:'restored',identity:{principal:'existing-principal'}}];refresh();return 'stored';},async restoreEncryptedSource(bytes,passphrase){window.fixture.recoveryBytes=passphrase;window.fixture.recoveries++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');return 'existing';},async prepareEncryptedCopy(passphrase,handle){window.fixture.preparedPass=passphrase;window.fixture.preparedHandle=handle;return new TextEncoder().encode('{"version":1,"ciphertext":"synthetic"}');},async signInRestored(){window.fixture.signins++;return false;}};}`,
  '@/lib/identity/restored-keyring-storage':`export async function restoredKeyringRecords(){return window.fixture.rows;}`,
  '@/lib/identity/device-storage':`export async function deviceRecords(){return [];}`,
  '@/lib/identity/unlocked-mesh':`export function subscribeUnlockedMeshPair(){return ()=>{};}`,
@@ -54,5 +54,23 @@ try{
  assert.equal(await page.evaluate(()=>window.fixture.recoveries),1);
  assert.equal(await page.evaluate(()=>window.fixture.recoveryBytes.every(b=>b===0)),true);
  assert.equal(await page.evaluate(()=>window.fixture.linked.some(v=>JSON.stringify(v).includes('password'))),false);
+ await page.evaluate(()=>{window.fixture.revoked=[];const original=URL.revokeObjectURL;URL.revokeObjectURL=url=>{window.fixture.revoked.push(url);original.call(URL,url);};});
+ await page.getByRole('button',{name:'Create encrypted recovery copy',exact:true}).click();
+ await page.getByLabel('New recovery passphrase',{exact:true}).fill('strong synthetic copy phrase');
+ await page.getByLabel('Confirm recovery passphrase',{exact:true}).fill('different');
+ await page.getByRole('button',{name:'Prepare encrypted recovery file',exact:true}).click();
+ await page.getByText('Passphrases did not match. Enter both again.',{exact:true}).waitFor();
+ assert.equal(await page.getByLabel('New recovery passphrase',{exact:true}).inputValue(),'');
+ await page.getByLabel('Account handle (if you use one)',{exact:true}).fill('public-handle');
+ await page.getByLabel('New recovery passphrase',{exact:true}).fill('strong synthetic copy phrase');
+ await page.getByLabel('Confirm recovery passphrase',{exact:true}).fill('strong synthetic copy phrase');
+ await page.getByRole('button',{name:'Prepare encrypted recovery file',exact:true}).click();
+ await page.getByRole('link',{name:'Download encrypted recovery file',exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>window.fixture.preparedHandle),'public-handle');
+ assert.equal(await page.evaluate(()=>window.fixture.preparedPass.every(b=>b===0)),true);
+ assert.equal(await page.getByLabel('Confirm recovery passphrase',{exact:true}).inputValue(),'');
+ const download=await page.getByRole('link',{name:'Download encrypted recovery file',exact:true}).getAttribute('href');
+ await page.evaluate(()=>window.dispatchEvent(new Event('s3rch-session-changed')));
+ await page.waitForFunction(url=>window.fixture.revoked.includes(url),download);
  assert.deepEqual(errors,[]);console.log('Restore UI: explicit import, independent failed sign-in, preserved copy and cancellation passed');
 }finally{await browser?.close();await new Promise(r=>server.close(r));}
