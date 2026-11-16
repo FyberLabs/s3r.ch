@@ -7,7 +7,7 @@ import {chromium} from 'playwright-core';
 if(process.env.GITHUB_ACTIONS!=='true')throw Error('CI only');
 const mocks={
  '@/lib/identity/device-client':`export async function readDeviceSession(){return {authorized:true,linkedOidcEnabled:true,context:'ui-person-context',expiresAt:Date.now()+300000};}
- export function createDeviceClient(session,origin,refresh){let disposed=false;return {adapters:{},dispose(){disposed=true;window.fixture.disposals++;},async restoreCompleteSource(bytes){window.fixture.restores++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');window.fixture.rows=[{address:'restored',identity:{principal:'existing-principal'}}];refresh();return 'stored';},async signInRestored(){window.fixture.signins++;return false;}};}`,
+ export function createDeviceClient(session,origin,refresh){let disposed=false;return {adapters:{},dispose(){disposed=true;window.fixture.disposals++;},async restoreCompleteSource(bytes){window.fixture.restores++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');window.fixture.rows=[{address:'restored',identity:{principal:'existing-principal'}}];refresh();return 'stored';},async restoreEncryptedSource(bytes,passphrase){window.fixture.recoveryBytes=passphrase;window.fixture.recoveries++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');return 'existing';},async signInRestored(){window.fixture.signins++;return false;}};}`,
  '@/lib/identity/restored-keyring-storage':`export async function restoredKeyringRecords(){return window.fixture.rows;}`,
  '@/lib/identity/device-storage':`export async function deviceRecords(){return [];}`,
  '@/lib/identity/unlocked-mesh':`export function subscribeUnlockedMeshPair(){return ()=>{};}`,
@@ -15,7 +15,7 @@ const mocks={
  'sea-device-link-ui':`export function ReceiverFlow(){return null;}export function SenderFlow(){return null;}`,
  'sea-device-link-ui/styles.css':''
 };
-const bundle=await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {DeviceTransfer} from './components/DeviceTransfer';window.fixture={rows:[],restores:0,signins:0,disposals:0,pending:false,linked:[],linkedPending:false,linkedAborts:0};window.fetch=async(url,options)=>{window.fixture.linked.push({url,context:new Headers(options.headers).get('X-Device-Context')});if(window.fixture.linkedPending)return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>{window.fixture.linkedAborts++;reject(Error('cancelled'));},{once:true}));return Response.json(String(url).endsWith('cancel')?{status:'local-cleared-remote-unknown'}:{ok:true});};createRoot(document.getElementById('root')).render(<DeviceTransfer/>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'isolated-ui-boundaries',setup(b){b.onResolve({filter:/.*/},args=>Object.hasOwn(mocks,args.path)?{path:args.path,namespace:'fixture'}:undefined);b.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:mocks[args.path],loader:'js'}));}}]});
+const bundle=await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {DeviceTransfer} from './components/DeviceTransfer';window.fixture={rows:[],restores:0,recoveries:0,signins:0,disposals:0,pending:false,linked:[],linkedPending:false,linkedAborts:0};window.fetch=async(url,options)=>{window.fixture.linked.push({url,context:new Headers(options.headers).get('X-Device-Context')});if(window.fixture.linkedPending)return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>{window.fixture.linkedAborts++;reject(Error('cancelled'));},{once:true}));return Response.json(String(url).endsWith('cancel')?{status:'local-cleared-remote-unknown'}:{ok:true});};createRoot(document.getElementById('root')).render(<DeviceTransfer/>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'isolated-ui-boundaries',setup(b){b.onResolve({filter:/.*/},args=>Object.hasOwn(mocks,args.path)?{path:args.path,namespace:'fixture'}:undefined);b.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:mocks[args.path],loader:'js'}));}}]});
 const server=createServer((req,res)=>{res.setHeader('content-type',req.url==='/app.js'?'text/javascript':'text/html');res.end(req.url==='/app.js'?bundle.outputFiles[0].text:'<div id="root"></div><script src="/app.js"></script>');});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
 try{
@@ -44,5 +44,15 @@ try{
  await page.getByRole('button',{name:'Complete linked account sign-in',exact:true}).click();
  await page.getByRole('button',{name:'Cancel current identity operation',exact:true}).click();
  await page.waitForFunction(()=>window.fixture.linkedAborts===1);
+ await page.evaluate(()=>{window.fixture.pending=false;window.fixture.linkedPending=false;});
+ await page.getByRole('button',{name:'Open encrypted recovery copy',exact:true}).click();
+ await page.getByLabel('Encrypted recovery file').setInputFiles({name:'recovery.json',mimeType:'application/json',buffer:Buffer.from('{"synthetic":"encrypted boundary"}')});
+ await page.getByLabel('Recovery passphrase',{exact:true}).fill('password');
+ await page.getByRole('button',{name:'Open and protect recovery copy',exact:true}).click();
+ await page.getByText('A matching saved copy already exists. Unlock it below; no new passkey was created.',{exact:true}).waitFor();
+ assert.equal(await page.getByLabel('Recovery passphrase',{exact:true}).inputValue(),'');
+ assert.equal(await page.evaluate(()=>window.fixture.recoveries),1);
+ assert.equal(await page.evaluate(()=>window.fixture.recoveryBytes.every(b=>b===0)),true);
+ assert.equal(await page.evaluate(()=>window.fixture.linked.some(v=>JSON.stringify(v).includes('password'))),false);
  assert.deepEqual(errors,[]);console.log('Restore UI: explicit import, independent failed sign-in, preserved copy and cancellation passed');
 }finally{await browser?.close();await new Promise(r=>server.close(r));}

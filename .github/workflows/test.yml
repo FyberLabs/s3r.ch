@@ -293,6 +293,12 @@ jobs:
           S3RCH_GRANTED_FIXTURE=video node scripts/test-granted-media-browser.mjs
       - name: Existing keyring restore component contract (CI only)
         run: node scripts/test-keyring-restore-ui.mjs
+      - name: Encrypted recovery native coverage (CI only)
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/identity/restore-encrypted-recovery.ts
+          --test-coverage-lines=95 --test-coverage-branches=75
+          lib/identity/restore-encrypted-recovery.test.ts
       - name: Existing keyring restore native coverage (CI only)
         run: >-
           node --import tsx --test --experimental-test-coverage
