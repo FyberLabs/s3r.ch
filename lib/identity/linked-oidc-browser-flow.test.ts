@@ -52,7 +52,8 @@ test('normalized TLS ingress supports all actions and rejects mismatched host or
   return new Request('http://next.internal:3000'+new URL(request.url).pathname,{method:'POST',headers,body:request.body,duplex:'half'} as RequestInit);
  };
  const h=await setup();
- for(const override of [{'host':'foreign.example'},{'x-forwarded-host':'foreign.example'},{'x-forwarded-proto':'http'}]){
+ const overrides:Record<string,string>[]=[{'host':'foreign.example'},{'x-forwarded-host':'foreign.example'},{'x-forwarded-proto':'http'}];
+ for(const override of overrides){
   assert.equal((await h.flow(proxy(h.request('start'),override),'start')).status,403);
  }
  const started=await h.flow(proxy(h.request('start')),'start');assert.equal(started.status,200);
