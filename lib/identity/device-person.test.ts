@@ -43,7 +43,7 @@ test('BFF confines bearer to owner calls, rejects switched context and strips ow
 test('admitted native relay forwards only its original grant to Auth TEST',async()=>{
  const {withTerminalRun}=await import('./terminal-run');
  const testOrigin='https://test.s3r.ch',testScope={...scope,sourceOrigin:testOrigin,destinationOrigin:testOrigin};
- const testEnv={...env,S3RCH_DEVICE_TRANSFER_CONFIG:JSON.stringify({v:1,scope:testScope,auth:'https://auth.test.hyperme.sh/auth/sea-device-link/v1/',acl:'https://acl.example/api/v1/acl/sociacl/device-transfer/',provider:'panopticon'})};
+ const testEnv={...env,S3RCH_DEVICE_TRANSFER_CONFIG:JSON.stringify({v:1,scope:testScope,auth:'https://api.test.hyperme.sh/auth/sea-device-link/v1/',acl:'https://acl.example/api/v1/acl/sociacl/device-transfer/',provider:'panopticon'})};
  const cfg=deviceConfig(testOrigin,testEnv)!,now=Math.floor(Date.now()/1000),ctx='a'.repeat(43),grant='b'.repeat(64),binding={run:'original',generation:'c'.repeat(64)};
  const key=createHash('sha256').update('s3r.ch/device-person/v1\0'+env.IDENTITY_SESSION_SECRET).digest();
  const token=await new EncryptJWT({config:cfg.digest,access:'person-bearer',sub:'person',context:ctx,nightly_run:binding}).setProtectedHeader({alg:'dir',enc:'A256GCM',typ:'s3rch-device-person-v1'}).setIssuer(testOrigin).setAudience(testOrigin).setIssuedAt(now).setExpirationTime(now+300).encrypt(key);

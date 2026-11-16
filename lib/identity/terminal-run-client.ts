@@ -44,7 +44,7 @@ export function createTerminalHttpAuthority(config: { serviceKey: string; scopes
     const signal = AbortSignal.timeout(5000);
     let response: Response | undefined;
     try {
-      response = await fetcher("https://auth.test.hyperme.sh/auth/nightly-run/v1/command", { method: "POST", redirect: "error", cache: "no-store", credentials: "omit", signal,
+      response = await fetcher("https://api.test.hyperme.sh/auth/nightly-run/v1/command", { method: "POST", redirect: "error", cache: "no-store", credentials: "omit", signal,
         headers: { "Content-Type": "application/json", "X-Nightly-Owner-Signature": createHmac("sha256", key).update(body).digest("hex") }, body });
       if (response.status !== 200 || response.redirected || response.headers.get("content-type")?.split(";")[0] !== "application/json" || response.headers.has("content-encoding") || !response.body) return refused();
       const reader = response.body.getReader(), chunks: Uint8Array[] = []; let size = 0;

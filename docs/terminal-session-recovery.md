@@ -107,3 +107,7 @@ attribution and native commit/verifier contract remain with the shared authoriza
 owner. Installation must wait for that checked-in contract and complete native
 route wrappers. The current source does not install a controller endpoint, read
 new deployment credentials, register reader cases, or advertise a capability.
+
+Auth registry and relay service requests use `https://api.test.hyperme.sh`;
+the provider issuer remains `https://auth.test.hyperme.sh/realms/controlplane`.
+These distinct service and provider origins must not be interchanged.

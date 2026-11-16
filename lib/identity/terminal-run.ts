@@ -108,7 +108,7 @@ export async function terminalRelayHeaders(target: string): Promise<Record<strin
   const current = context.getStore();
   if (current?.closed) return fail();
   if (!current?.admission) return {};
-  if (!/^https:\/\/auth\.test\.hyperme\.sh\/auth\/sea-device-link\/v1\/sessions\/[A-Za-z0-9_-]{43}\/(admit|create|join|offer|send|receive|complete|completed|cancel)$/.test(target)) return fail();
+  if (!/^https:\/\/api\.test\.hyperme\.sh\/auth\/sea-device-link\/v1\/sessions\/[A-Za-z0-9_-]{43}\/(admit|create|join|offer|send|receive|complete|completed|cancel)$/.test(target)) return fail();
   if (current.cookies.length > 16384) return fail();
   const grants = current.cookies.split(";").map(value => value.trim()).filter(value => value.startsWith("__Host-nightly-run-grant="));
   const grant = grants[0]?.slice("__Host-nightly-run-grant=".length);
