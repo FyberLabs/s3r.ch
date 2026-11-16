@@ -10,6 +10,9 @@ const record = (v: unknown): Record<string, unknown> => {
   if (!v || typeof v !== "object" || Array.isArray(v)) throw Error("Invalid credential source response");
   return v as Record<string, unknown>;
 };
+const canonical = (value: unknown): string => JSON.stringify(value, (_, item) =>
+  item && typeof item === "object" && !Array.isArray(item)
+    ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
 const ids = (rows: readonly unknown[]) => rows.map(row => {
   const id = linkId(record(row) as UnsignedRecord);
   if (!id.ok) throw Error("Invalid credential link");
@@ -28,6 +31,13 @@ export function createAclCredentialSource(input: AclCredentialConfig, suppliedTr
   return Object.freeze({ async read(credential: LinkedCredential, at: number, parent: AbortSignal) {
     const selected = parseLinkedCredential(credential);
     if (!selected || !Number.isSafeInteger(at) || at < 0 || clock() !== at) throw Error("Invalid credential evaluation");
+    const deadline = performance.now() + 5000;
+    let work = 0;
+    const budget = (cost = 1) => {
+      work += cost;
+      if (work > 4096 || performance.now() >= deadline) throw Error("Credential verification budget exceeded");
+      parent.throwIfAborted();
+    };
     const signal = AbortSignal.any([parent, AbortSignal.timeout(5000)]);
     let response: Response | undefined;
     const bounded = <T>(work: Promise<T>) => new Promise<T>((resolve, reject) => {
@@ -56,7 +66,13 @@ export function createAclCredentialSource(input: AclCredentialConfig, suppliedTr
           JSON.stringify(echoed) !== JSON.stringify(selected) || !Array.isArray(snapshot.links) || snapshot.links.length > 128 ||
           !Array.isArray(snapshot.revocations) || snapshot.revocations.length > 1024) throw Error("Incomplete credential source");
       const history = record(snapshot.history) as unknown as ForumRecoverySnapshot;
-      const { accounts, contextFor } = authenticatedHistoryContexts(history, structuredClone(trust), at);
+      // Bound each synchronous native resolver invocation as well as aggregate work.
+      if (!Array.isArray(history.accounts) || history.accounts.some(account =>
+          !Array.isArray(account.rotations) || account.rotations.length > 32 ||
+          !Array.isArray(account.revocations) || account.revocations.length > 32) ||
+          !Array.isArray(history.links) || history.links.length > 128)
+        throw Error("Credential verification budget exceeded");
+      const { accounts, contextFor } = authenticatedHistoryContexts(history, structuredClone(trust), at, budget);
       const matching = history.links.filter(raw => {
         const row = record(raw);
         if (selected.kind === "wallet") return row.kind === "wallet" && row.address === selected.address;
@@ -64,7 +80,7 @@ export function createAclCredentialSource(input: AclCredentialConfig, suppliedTr
       });
       if (JSON.stringify(ids(matching)) !== JSON.stringify(ids(snapshot.links))) throw Error("Omitted credential candidate");
       const revocations = [...accounts.values()].flatMap(account => account.revocations);
-      if (JSON.stringify(revocations.map(row => JSON.stringify(row)).sort()) !== JSON.stringify(snapshot.revocations.map(row => JSON.stringify(row)).sort()))
+      if (JSON.stringify(revocations.map(row => canonical(row)).sort()) !== JSON.stringify(snapshot.revocations.map(row => canonical(row)).sort()))
         throw Error("Incomplete credential revocations");
       const principal = accounts.keys().next().value;
       if (!principal) throw Error("Missing authority accounts");
