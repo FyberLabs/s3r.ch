@@ -43,7 +43,7 @@ test('BFF confines bearer to owner calls, rejects switched context and strips ow
 test('admitted native relay forwards only its original grant to Auth TEST',async()=>{
  const {withTerminalRun}=await import('./terminal-run');
  const testOrigin='https://test.s3r.ch',testScope={...scope,sourceOrigin:testOrigin,destinationOrigin:testOrigin};
- const testEnv={...env,S3RCH_DEVICE_TRANSFER_CONFIG:JSON.stringify({v:1,scope:testScope,auth:'https://api.test.hyperme.sh/auth/sea-device-link/v1/',acl:'https://acl.example/api/v1/acl/sociacl/device-transfer/',provider:'panopticon'})};
+ const testEnv={...env,S3RCH_DEVICE_TRANSFER_CONFIG:JSON.stringify({v:1,scope:testScope,auth:'https://api.test.hyperme.sh/auth/sea-device-link/v1/',acl:'https://api.test.hyperme.sh/api/v1/acl/sociacl/device-transfer/',provider:'panopticon'})};
  const cfg=deviceConfig(testOrigin,testEnv)!,now=Math.floor(Date.now()/1000),ctx='a'.repeat(43),grant='b'.repeat(64),binding={run:'original',generation:'c'.repeat(64)};
  const key=createHash('sha256').update('s3r.ch/device-person/v1\0'+env.IDENTITY_SESSION_SECRET).digest();
  const token=await new EncryptJWT({config:cfg.digest,access:'person-bearer',sub:'person',context:ctx,nightly_run:binding}).setProtectedHeader({alg:'dir',enc:'A256GCM',typ:'s3rch-device-person-v1'}).setIssuer(testOrigin).setAudience(testOrigin).setIssuedAt(now).setExpirationTime(now+300).encrypt(key);
@@ -54,4 +54,10 @@ test('admitted native relay forwards only its original grant to Auth TEST',async
   calls++;assert.equal(String(url),cfg.auth+'sessions/'+value.session+'/offer');assert.equal(new Headers(init?.headers).get('X-Nightly-Run-Grant'),grant);assert.equal(new Headers(init?.headers).has('Cookie'),false);return Response.json({v:1,result:null});
  }),r=>r.status===200);
  assert.equal(response.status,200);assert.equal(calls,1);
+ const stateRequest=new Request(testOrigin+'/api/identity/device/state',{method:'POST',headers:request.headers,body:JSON.stringify({scope:testScope,identity:{principal:'p',pub:'p',epub:'e',rotationSeq:0}})});
+ const stateResponse=await withTerminalRun(stateRequest,{async admit(){return {binding,operation:'12345678-1234-1234-1234-123456789abc'};},async active(){return true;},async authorizeToken(){return true;},async complete(){}},()=>deviceServer(stateRequest,'state',testEnv,async(url,init)=>{
+  assert.equal(String(url),cfg.acl+'state');const headers=new Headers(init?.headers);
+  assert.equal(headers.get('X-Nightly-Run-Grant'),grant);assert.equal(headers.get('Authorization'),'Bearer person-bearer');assert.equal(headers.get('X-Tenant-ID'),testScope.tenant);assert.equal(headers.has('Cookie'),false);return Response.json({ok:true});
+ }),r=>r.status===200);
+ assert.equal(stateResponse.status,200);
 });

@@ -116,3 +116,18 @@ test("Auth relay forwards only the original admitted grant to exact TEST targets
     await assert.rejects(withTerminalRun(req, h.authority, () => terminalRelayHeaders(target), () => true));
   }
 });
+
+test("ACL grant propagation is limited to the two authenticated TEST device routes", async () => {
+  const { terminalRelayHeaders, terminalAclHeaders } = await import("./terminal-run");
+  const h = fixture(), grant = "d".repeat(64), root = "https://api.test.hyperme.sh/api/v1/acl/sociacl/device-transfer/";
+  const req = { headers: { get: () => "__Host-nightly-run-grant=" + grant } } as unknown as Request;
+  await withTerminalRun(req, h.authority, async () => {
+    for (const action of ["state", "current"]) {
+      assert.deepEqual(await terminalAclHeaders(root + action), { "X-Nightly-Run-Grant": grant });
+      await assert.rejects(terminalRelayHeaders(root + action));
+    }
+    for (const target of [root + "current?other=1", root + "other", root.replace("api.test.hyperme.sh", "api.hyperme.sh") + "state", "https://api.test.hyperme.sh/auth/me"])
+      await assert.rejects(terminalAclHeaders(target));
+  }, () => true);
+  assert.deepEqual(await terminalAclHeaders(root + "state"), {});
+});

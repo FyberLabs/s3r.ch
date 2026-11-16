@@ -1,4 +1,4 @@
-import {terminalRelayHeaders} from "./terminal-run";
+import {terminalRelayHeaders,terminalAclHeaders} from "./terminal-run";
 import {exact,sameScope,publicIdentity,publicBinding,publicRelayPayload} from './device-public';
 import {requestHost,requestIsSecure,matchesRequestOrigin} from '../request-origin';
 import {deviceConfig} from './device-config';
@@ -35,7 +35,7 @@ export async function deviceServer(request:Request,action:string,env:Record<stri
    if(action==='state'?(!sameScope(value.scope,config.scope)||!publicIdentity(value.identity)):(!publicBinding(value.binding,config.scope)||(value.expectedRevision!==undefined&&(typeof value.expectedRevision!=='string'||value.expectedRevision.length>512))))throw Error();
    outgoing.Authorization='Bearer '+person.access;outgoing['X-Tenant-ID']=config.scope.tenant;target=config.acl+action;upstream=value;limit=4*1024*1024;
   }
-  if(action==='relay')Object.assign(outgoing,await terminalRelayHeaders(target));
+  Object.assign(outgoing,await (action==='relay'?terminalRelayHeaders(target):terminalAclHeaders(target)));
   const signal=AbortSignal.any([request.signal,AbortSignal.timeout(10000)]);
   const response=await fetcher(target,{method:'POST',headers:outgoing,body:JSON.stringify(upstream),credentials:'omit',redirect:'error',cache:'no-store',signal});
   if(response.redirected||response.headers.get('content-type')?.split(';')[0]!=='application/json'){await response.body?.cancel();throw Error();}

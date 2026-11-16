@@ -104,11 +104,14 @@ export function verifyTerminalWork(original: unknown): void {
 
 /** Only the original admitted grant reaches the independently admitting Auth
  * relay. No arbitrary target, caller header, or current replacement grant. */
-export async function terminalRelayHeaders(target: string): Promise<Record<string, string>> {
+async function terminalOwnerHeaders(target: string, owner: "auth" | "acl"): Promise<Record<string, string>> {
   const current = context.getStore();
   if (current?.closed) return fail();
   if (!current?.admission) return {};
-  if (!/^https:\/\/api\.test\.hyperme\.sh\/auth\/sea-device-link\/v1\/sessions\/[A-Za-z0-9_-]{43}\/(admit|create|join|offer|send|receive|complete|completed|cancel)$/.test(target)) return fail();
+  const allowed = owner === "auth"
+    ? /^https:\/\/api\.test\.hyperme\.sh\/auth\/sea-device-link\/v1\/sessions\/[A-Za-z0-9_-]{43}\/(admit|create|join|offer|send|receive|complete|completed|cancel)$/
+    : /^https:\/\/api\.test\.hyperme\.sh\/api\/v1\/acl\/sociacl\/device-transfer\/(state|current)$/;
+  if (!allowed.test(target)) return fail();
   if (current.cookies.length > 16384) return fail();
   const grants = current.cookies.split(";").map(value => value.trim()).filter(value => value.startsWith("__Host-nightly-run-grant="));
   const grant = grants[0]?.slice("__Host-nightly-run-grant=".length);
@@ -116,4 +119,11 @@ export async function terminalRelayHeaders(target: string): Promise<Record<strin
   await active(current);
   if (current.closed) return fail();
   return { "X-Nightly-Run-Grant": grant };
+}
+
+export function terminalRelayHeaders(target: string): Promise<Record<string, string>> {
+  return terminalOwnerHeaders(target, "auth");
+}
+export function terminalAclHeaders(target: string): Promise<Record<string, string>> {
+  return terminalOwnerHeaders(target, "acl");
 }
