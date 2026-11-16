@@ -55,3 +55,22 @@ expiry across reopen, retry expiry, cancellation, consent loss, rollback cleanup
 and expiry during hashing. This is unit/contract evidence, not real-browser disk,
 provider, network-path or multi-client acceptance. #570 remains open for those
 integrations and Infra's scheduled coverage. Reader cases remain unregistered.
+
+
+## CI-only browser contract
+
+`scripts/test-ipfs-cache-browser.mjs` runs in PR CI after the existing Chromium
+installation. It uses the actual browser IndexedDB and Web Crypto implementations
+with an isolated temporary persistent profile and a loopback fixture bundle. Two
+tabs race to retain an encrypted block under one byte/entry cap; only one may
+succeed. The test reloads the page, closes the browser process and reopens its
+profile, then checks persisted ciphertext, non-extending retry TTL, expiry quota
+reclamation, consent refusal, cleanup after clock rollback and partition isolation.
+
+Consent and time are explicitly synthetic fixture inputs, not native grant or
+real elapsed-retention acceptance. All browser network requests outside the fixed
+loopback HTML/script routes fail the test. This proves the cache has no provider
+path; it does not establish a future direct IPFS transport's network behavior.
+The test is CI-only, not a scheduled reader registration or shared-host scenario.
+Physical disk limits, browser eviction, suspended-browser cleanup, provider loss
+and real multi-client replication remain separate acceptance work under #570.
