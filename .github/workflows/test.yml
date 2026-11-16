@@ -46,6 +46,15 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Native linked credential authority coverage (CI only)
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/identity/acl-credential-source-server.ts
+          --test-coverage-include=lib/identity/linked-admission-config-server.ts
+          lib/identity/acl-credential-source-server.test.ts
+          lib/identity/linked-admission-config-server.test.ts
+          lib/identity/linked-session-admission.test.ts
+          lib/identity/linked-wallet-client.test.ts
       - name: Terminal admission unit coverage
         run: >-
           node --import tsx --test --experimental-test-coverage
