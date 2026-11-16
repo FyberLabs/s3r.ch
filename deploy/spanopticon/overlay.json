@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "product": "s3r.ch",
+  "plane_overlay": "s3rch",
+  "display_name": "s3r.ch",
+  "services": [
+    "plane",
+    "keycloak"
+  ],
+  "login": {
+    "kind": "shared-issuer",
+    "providers": [
+      "microsoft",
+      "google",
+      "github"
+    ],
+    "options": [
+      "siwe",
+      "microsoft",
+      "google",
+      "github"
+    ]
+  }
+}
