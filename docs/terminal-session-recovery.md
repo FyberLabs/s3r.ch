@@ -148,3 +148,11 @@ unverified withdrawal retain pending admission. Completion failure withholds the
 response cookies. Native CI substitutes registry, storage and Azure transports
 while exercising real signing and application code. This factory is uninstalled;
 its close operation only closes its local provider and is not terminal evidence.
+
+The private prepared deployment contract is decoded by `parseTerminalOwnerConfig`
+from an explicitly supplied `S3RCH_NIGHTLY_RUN_CONFIG` JSON string. It requires
+both s3r.ch suite scopes, exact TEST origins, separate controller/owner keys, and
+a declared non-pilot SEA identity for device transfer. Duplicate members and
+unknown fields refuse. This decoder does not read process environment, install
+`/api/internal/nightly-run`, register grants or provide readiness evidence.
+The control handler and complete route inventory remain separate work.
