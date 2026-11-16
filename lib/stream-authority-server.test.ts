@@ -15,6 +15,7 @@ const tenant="11111111-1111-4111-8111-111111111111";
 async function setup() {
   const owner=await sea.pair(), viewer=await sea.pair(), outsider=await sea.pair();
   let now=1700000060, stale=false, reads=0;
+  let beforeRead: (() => Promise<void>) | undefined;
   const forum=`forum_${seaToPrincipalKey(owner.pub)}_${"a".repeat(32)}`;
   const room=`room_${seaToPrincipalKey(owner.pub)}_${"b".repeat(32)}`;
   const rows: ForumAuthoritySnapshot["rows"][number][]=[];
@@ -31,7 +32,7 @@ async function setup() {
   }
   const key=generateKeyPairSync("ed25519");
   const fetcher: typeof fetch=async (url,init) => {
-    reads++; assert.equal(String(url),"https://acl.example/api/v1/acl/sociacl/statements/stream/snapshot");
+    reads++; await beforeRead?.(); assert.equal(String(url),"https://acl.example/api/v1/acl/sociacl/statements/stream/snapshot");
     assert.equal(new Headers(init?.headers).get("X-Tenant-ID"),tenant);
     const at=JSON.parse(String(init?.body)).evaluatedAt-(stale?1:0);
     return Response.json({fence:"a".repeat(64),snapshot:{completeThrough:at,
@@ -55,7 +56,7 @@ async function setup() {
   const scope=(principal:string,action="read")=>({subject:{tenant,principal},room,action,ip:"192.0.2.1"});
   async function subject(pair:SeaPair) {const response=await call("identity",{},await token(pair));assert.equal(response.status,200);return (await response.json()).claims.principal as string;}
   return {call,subject,scope,owner,viewer,outsider,key,record,room,forum,handler,
-    advance:(n:number)=>{now+=n;},stale:()=>{stale=true;},reads:()=>reads};
+    advance:(n:number)=>{now+=n;},stale:()=>{stale=true;},reads:()=>reads, beforeRead:(fn:()=>Promise<void>)=>{beforeRead=fn;}};
 }
 test("native identity and signed current room Check bind Core scope and session expiry",async()=>{
   const h=await setup(), principal=await h.subject(h.owner), scope=h.scope(principal,"publish");
@@ -102,4 +103,28 @@ test("parent post revocation denies publishing despite a retained room post gran
   h.record("post",{...grant,object:h.forum,stated:0,hamState:1700000061});
   assert.equal((await h.call("check",{scope})).status,403);
   assert.equal((await h.call("check",{scope:h.scope(principal)})).status,200);
+});
+
+test("concurrent checks share only a new read and clock rollover rereads",async()=>{
+  const h=await setup(), principal=await h.subject(h.viewer), scope=h.scope(principal);
+  let rolled=false;
+  h.beforeRead(async()=>{await new Promise(resolve=>setTimeout(resolve,10));if(!rolled){h.advance(1);rolled=true;}});
+  const before=h.reads();
+  const responses=await Promise.all(Array.from({length:22},()=>h.call("check",{scope})));
+  assert.ok(responses.every(response=>response.status===200));
+  assert.equal(h.reads()-before,2,"one rolled-over read and one fresh cohort read");
+  h.record("see",{object:h.room,owner:h.owner.pub,accessor:h.viewer.pub,from:1700000060,until:1700000660,stated:0,hamState:1700000062});
+  assert.equal((await h.call("check",{scope})).status,403);
+  assert.equal(h.reads()-before,3,"later requests cannot reuse a completed snapshot");
+});
+
+test("requests arriving after a snapshot starts require another read",async()=>{
+  const h=await setup(), principal=await h.subject(h.viewer), scope=h.scope(principal);
+  let started!:()=>void; const entered=new Promise<void>(resolve=>{started=resolve;});
+  h.beforeRead(async()=>{started();await new Promise(resolve=>setTimeout(resolve,20));});
+  const before=h.reads(), first=h.call("check",{scope});
+  await entered;
+  const second=h.call("check",{scope});
+  assert.deepEqual((await Promise.all([first,second])).map(response=>response.status),[200,200]);
+  assert.equal(h.reads()-before,2);
 });
