@@ -27,7 +27,7 @@ test("signs one complete command under the original protected fence without publ
   assert.equal(command.ownerPub,owner);assert.equal(command.body.at,100);assert.equal(command.body.fence,plan.fence);
   const {grants,document,finalization}=command.body.payload;
   assert.deepEqual(grants.map(g=>g.claims),plan.grants);assert.deepEqual(document.snapshot,plan.snapshot);
-  for(const g of grants)assert.ok(verifyForumKeySignature(owner,g.proof.signature,Uint8Array.from(Buffer.from(g.proof.grantBytes,"hex"))));
+  for(const g of grants)assert.ok(verifyForumKeySignature(owner,Buffer.from(g.proof.signature,"hex").toString("base64url"),Uint8Array.from(Buffer.from(g.proof.grantBytes,"hex"))));
   assert.equal(document.manifest.epoch,2);assert.equal(document.manifest.previousEpoch,1);
   assert.equal(document.manifest.keyCommitment,plan.keyCommitment);assert.equal(document.manifest.settleWindowMs,plan.settleWindowMs);
   assert.equal(finalization.revisionId,document.manifest.revisionId);assert.equal(finalization.previousFinalizationId,plan.previousFinalizationId);
