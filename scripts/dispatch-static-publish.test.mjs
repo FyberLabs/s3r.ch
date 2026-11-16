@@ -137,3 +137,25 @@ test('workflows mint an infra-only Actions token and dispatch both surfaces for 
   assert.ok(production < release.indexOf('id: static-reconcile') && release.indexOf('id: static-reconcile') < reconcile);
   assert.match(release.slice(reconcile - 400, reconcile), /steps\.static-reconcile\.outputs\.token/);
 });
+
+
+test('TEST release credentials are repository scoped and isolated from deployment and static dispatch', () => {
+  const deploy = readFileSync(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
+  const start = deploy.indexOf('      - name: Mint repository-scoped TEST publication token');
+  const end = deploy.indexOf('      - name: Attest the verified test deployment manifest', start);
+  assert.ok(start > deploy.indexOf('run: bash scripts/deploy-test.sh'));
+  assert.ok(end > start);
+  const publisher = deploy.slice(start, end);
+  assert.match(publisher, /repositories: s3r\.ch\n/);
+  assert.match(publisher, /owner: FyberLabs\n/);
+  assert.match(publisher, /permission-contents: write\n/);
+  assert.match(publisher, /permission-workflows: write\n/);
+  assert.match(publisher, /vars\.S3RCH_TEST_PUBLICATION_APP_ID/);
+  assert.match(publisher, /secrets\.S3RCH_TEST_PUBLICATION_APP_PRIVATE_KEY/);
+  assert.match(publisher, /GH_TOKEN: \$\{\{ steps\.test-publication\.outputs\.token \}\}/);
+  assert.equal(publisher.includes('STATIC_DISPATCH'), false);
+  assert.equal(publisher.includes('skip-token-revoke'), false);
+  const outside = deploy.slice(0, start) + deploy.slice(end);
+  assert.equal(outside.includes('test-publication.outputs.token'), false);
+  assert.equal(outside.includes('TEST_PUBLICATION_APP_PRIVATE_KEY'), false);
+});

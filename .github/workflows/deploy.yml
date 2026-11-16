@@ -92,7 +92,21 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Deploy and verify test.s3r.ch
         run: bash scripts/deploy-test.sh
+      # A queued merge may differ from master's workflow files. GITHUB_TOKEN
+      # cannot acquire workflows:write, which GitHub requires for that target.
+      - name: Mint repository-scoped TEST publication token
+        id: test-publication
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ vars.S3RCH_TEST_PUBLICATION_APP_ID }}
+          private-key: ${{ secrets.S3RCH_TEST_PUBLICATION_APP_PRIVATE_KEY }}
+          owner: FyberLabs
+          repositories: s3r.ch
+          permission-contents: write
+          permission-workflows: write
       - name: Publish successful test release
+        env:
+          GH_TOKEN: ${{ steps.test-publication.outputs.token }}
         run: node scripts/release-channels.mjs test
       - name: Attest the verified test deployment manifest
         uses: actions/attest-build-provenance@v4.2.2
