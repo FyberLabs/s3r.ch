@@ -46,6 +46,11 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Native linked OIDC proof consumer coverage (CI only)
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/identity/linked-oidc-proof-server.ts
+          lib/identity/linked-oidc-proof-server.test.ts
       - name: Terminal admission unit coverage
         run: >-
           node --import tsx --test --experimental-test-coverage

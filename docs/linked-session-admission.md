@@ -100,3 +100,26 @@ The protected HTTP adapter additionally limits native verification to 32 rotatio
 and revocations per account, 128 domain links and 4096 work units, with monotonic
 deadline checks at account and recursive-history boundaries. Larger domains fail
 closed; records are never truncated. Revocation comparison ignores JSON key order.
+
+## Auth-owned fresh OIDC proof consumer
+
+`linked-oidc-proof-server.ts` consumes Auth #69 from the trusted backend. Before
+start, exchange, result or cancel it verifies the original SEA issuer challenge,
+including its MAC, origin, replay domain and deadline. It sends the private
+service bearer only to the fixed Auth origin and carries the existing terminal
+binding. Provider redirect intent is checked against exact configured issuer,
+client, callback, nonce, state, PKCE and fresh-login settings.
+
+A successful provider exchange returns no token through this adapter. `finish`
+reads Auth's saved proof, then calls the existing single SEA issuer for fresh
+provider verification, current complete ACL resolution and atomic replay
+consumption. A lost exchange response is reconciled using `result`, never by
+replaying the one-time provider code. Revoked or ambiguous authority refuses.
+Cancellation addresses the original attempt; it does not create another one.
+
+This backend adapter has no installed HTTP route or live configuration. The next
+consumer boundary must bind the callback state and original challenge to an
+encrypted HttpOnly browser-attempt cookie, check the current person/context on
+same-origin completion, and preserve explicit retry/cancel outcomes. Until that
+wiring and browser flow land, Auth #69 and s3r.ch #583 remain open. No reader case
+is registered by this source change.
