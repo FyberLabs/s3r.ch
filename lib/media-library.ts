@@ -221,6 +221,13 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         if(current())publish({...state,itemWrap:null,message:"The group file key was delivered. Refresh this member’s access before they open it."});
       },()=>publish({...state,message:"The saved key delivery request is retained. Check access and retry recovery."}));
     },
+    retireItemWrap(tenant:string) {
+      if(state.deletion||!state.itemWrap||!owner)return Promise.resolve();const principal=owner,selected={...state.itemWrap};
+      return operation(async(signal,current)=>{
+        await browser.retireItemWrap(tenant,principal,selected,signal);
+        if(current())publish({...state,itemWrap:null,message:"The obsolete saved delivery was cleared. File permissions were not changed; prepare a new delivery if needed."});
+      },()=>publish({...state,message:"A newer access epoch could not be confirmed. The saved delivery is retained."}));
+    },
     startItemStatus(tenant:string,object:string,predicate:"same-group"|"named-circle",set:string,reader:string) {
       if(state.deletion||state.itemGrant||state.itemEpoch||state.itemWrap||state.itemStatus||!owner||state.audience?.object!==object||!state.objects.includes(object)||!isSeaPubkey(reader)||!set)return Promise.resolve();
       const principal=owner;

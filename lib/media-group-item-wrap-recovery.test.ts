@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {IDBFactory} from "fake-indexeddb";
-import {applyItemWrap,pendingItemWrap} from "./media-group-item-wrap-recovery";
+import {applyItemWrap,pendingItemWrap,retireItemWrap} from "./media-group-item-wrap-recovery";
 import {createShareJournal,shareDigest,decryptShareJournal,encryptShareJournal} from "./media-share-journal";
 import {owner,reader,object,scope} from "./media-group-item-epoch-fixture";
 import type {ItemWrapBundle} from "./media-group-item-wrap-client";
@@ -21,7 +21,7 @@ async function fixture(){
       const body=JSON.parse(String(init?.body));assert.equal(body.payload,saved.bundle.payload);writes.push(body);
       if(lost)throw Error('lost response');return Response.json({digest:bundle.metadata.digest});
     }};
-  return {input,bundle,writes,recover:()=>{lost=false;},deny:()=>{denied=true;}};
+  return {input,bundle,metadata,writes,recover:()=>{lost=false;},deny:()=>{denied=true;}};
 }
 test("lost publication retains encrypted exact bytes until successful replay",async()=>{
   const f=await fixture();assert.equal(await pendingItemWrap(f.input),null);
@@ -49,4 +49,30 @@ test("failed persistence and aborted sessions never reach publication",async()=>
   await assert.rejects(applyItemWrap({...f.input,bundle:f.bundle,journal:{...f.input.journal,write:async()=>{throw Error('full');}}}));
   assert.equal(f.writes.length,0);
   const controller=new AbortController();controller.abort();await assert.rejects(applyItemWrap({...f.input,bundle:f.bundle,signal:controller.signal}));assert.equal(f.writes.length,0);
+});
+
+for(const field of ['groupEpoch','itemEpoch'] as const)test(`newer ${field} permits explicit local retirement of exact saved delivery`,async()=>{
+ const f=await fixture();await assert.rejects(applyItemWrap({...f.input,bundle:f.bundle}));
+ const expected=(await pendingItemWrap(f.input))!,saved=(await f.input.journal.read(f.input.signal))!;
+ await assert.rejects(retireItemWrap({...f.input,expected}));assert.deepEqual(await f.input.journal.read(f.input.signal),saved);
+ f.metadata[field]++;
+ await assert.rejects(applyItemWrap({...f.input,expected}));assert.equal(f.writes.length,1);
+ await assert.rejects(retireItemWrap({...f.input,expected:{...expected,token:'changed'}}));
+ assert.deepEqual(await f.input.journal.read(f.input.signal),saved);
+ assert.deepEqual(await retireItemWrap({...f.input,expected}),{retired:true});
+ assert.equal(await f.input.journal.read(f.input.signal),null);assert.equal(f.writes.length,1);
+ await assert.rejects(retireItemWrap({...f.input,expected}));
+});
+test("denial, cancellation and concurrent replacement retain the saved delivery",async()=>{
+ const f=await fixture();await assert.rejects(applyItemWrap({...f.input,bundle:f.bundle}));
+ const expected=(await pendingItemWrap(f.input))!,saved=(await f.input.journal.read(f.input.signal))!;f.metadata.groupEpoch++;
+ await assert.rejects(retireItemWrap({...f.input,expected,fetcher:async()=>new Response(null,{status:403})}));
+ await assert.rejects(retireItemWrap({...f.input,expected,signal:AbortSignal.abort()}));
+ assert.deepEqual(await f.input.journal.read(f.input.signal),saved);
+ const replaced=async(...args:Parameters<typeof f.input.fetcher>)=>{
+  await f.input.journal.write(saved,saved,f.input.signal);return f.input.fetcher(...args);
+ };
+ await assert.rejects(retireItemWrap({...f.input,expected,fetcher:replaced}));
+ const current=(await f.input.journal.read(f.input.signal))!;
+ assert.equal(current.revision,saved.revision+1);assert.deepEqual(current.encrypted,saved.encrypted);assert.equal(f.writes.length,1);
 });

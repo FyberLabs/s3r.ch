@@ -70,3 +70,17 @@ test("authority changes during crypto and delayed owner material fail before pub
   const delayed:typeof fetch=async(url,init)=>{const response=await g.fetcher(url,init);if(String(url).endsWith('/wrap-read'))now=102;return response;};
   await assert.rejects(createItemWrapClient(owner,delayed,()=>now).prepare(target,pair));
 });
+
+test("retirement requires fresh owner authority and a forward epoch without publishing",async()=>{
+ const f=await fixture(),bundle=await f.client.prepare(target,pair),original={...f.metadata};
+ for(const patch of [{},{groupKeyCommitment:'f'.repeat(64)},{itemEpoch:1,groupEpoch:4},{itemEpoch:3,groupEpoch:2}]){
+  f.view.metadata={...original,...patch};await assert.rejects(f.client.confirmObsolete(bundle));
+ }
+ f.view.metadata={...original,groupEpoch:4};f.view.ownerPub=reader;await assert.rejects(f.client.confirmObsolete(bundle));
+ f.view.ownerPub=owner;f.view.at=90;await assert.rejects(f.client.confirmObsolete(bundle));f.view.at=100;
+ await assert.rejects(createItemWrapClient(owner,async()=>new Response(null,{status:403}),()=>100).confirmObsolete(bundle));
+ await assert.rejects(f.client.confirmObsolete(bundle,AbortSignal.abort()));
+ assert.deepEqual(await f.client.confirmObsolete(bundle),{obsolete:true});
+ f.view.metadata={...original,itemEpoch:3};assert.deepEqual(await f.client.confirmObsolete(bundle),{obsolete:true});
+ assert.equal(f.writes.length,0);
+});

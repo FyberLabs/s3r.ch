@@ -565,6 +565,7 @@ for(const kind of ['Wrap','Status'] as const)test(`group item ${kind} controls p
   ['startItem'+kind]:async()=>{calls++;if(fail)throw Error();return {delivered:true,state:'applied'};},
   ['resumeItem'+kind]:async(_tenant:string,_owner:string,expected:typeof held)=>{assert.deepEqual(expected,saved);if(fail)throw Error();return {delivered:true,state:'applied'};},
   discardItemStatus:async()=>{if(fail)throw Error();return {state:'absent'};},
+  retireItemWrap:async()=>{if(fail)throw Error();return {retired:true};},
  } as unknown as ReturnType<typeof createPrivateMediaBrowser>;
  const f=setup({browser:()=>browser});
  const start=()=>kind==='Wrap'?f.library.startItemWrap('tenant','owned','same-group','set_test',key):f.library.startItemStatus('tenant','owned','same-group','set_test',key);
@@ -577,9 +578,11 @@ for(const kind of ['Wrap','Status'] as const)test(`group item ${kind} controls p
   await inspect();assert.deepEqual(f.state()[field],held);const count=calls;await start();assert.equal(calls,count);
   await resume();assert.deepEqual(f.state()[field],held);assert.match(f.state().message,/retained/);
   if(kind==='Status'){await f.library.discardItemStatus('tenant');assert.deepEqual(f.state().itemStatus,held);}
+  else{await f.library.retireItemWrap('tenant');assert.deepEqual(f.state().itemWrap,held);assert.match(f.state().message,/retained/);}
   fail=false;await resume();assert.equal(f.state()[field],null);
   if(kind==='Status')assert.match(f.state().message,/may have expired/);
   if(kind==='Status'){await inspect();await f.library.discardItemStatus('tenant');assert.equal(f.state().itemStatus,null);}
+  else{await inspect();await f.library.retireItemWrap('tenant');assert.equal(f.state().itemWrap,null);assert.match(f.state().message,/obsolete saved delivery was cleared/);}
   saved=null;await inspect();assert.match(f.state().message,/No saved/);
   saved=held;await inspect();f.library.requestDeletion('owned');await resume();assert.deepEqual(f.state()[field],held);
   f.library.reset();assert.equal(f.state()[field],null);

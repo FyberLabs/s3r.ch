@@ -146,6 +146,8 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
         {state.itemWrap&&<>
           <p className="break-all">Saved for {state.itemWrap.reader} in {state.itemWrap.set}.</p>
           <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeItemWrap(tenant)}>Retry group file key delivery</button>
+          <button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.retireItemWrap(tenant)}>Clear obsolete saved delivery</button>
+          <p>Clearing requires a confirmed newer file or group key. Otherwise the saved delivery is kept.</p>
           <p>Keep this saved delivery until it succeeds. Retrying preserves the original encrypted key.</p>
         </>}
       </section>
