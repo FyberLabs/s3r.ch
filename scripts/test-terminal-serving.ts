@@ -8,6 +8,7 @@ import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createHash, generateKeyPairSync } from "node:crypto";
 import path from "node:path";
+import { parseTerminalOwnerConfig } from "../lib/identity/terminal-owner-config";
 import { createIdentitySessions } from "../lib/identity/sea-session";
 import { createSeaSessionClient } from "../lib/identity/sea-session-client";
 import { signForumRecord } from "../lib/forum-sign";
@@ -80,6 +81,7 @@ try {
   for (const route of ["/", "/api/identity/session", "/api/experiments", "/api/internal/nightly-run"])
     assert.equal((await browser().request(route)).status, 503);
 } finally { await stop(); }
+parseTerminalOwnerConfig(JSON.stringify(config));
 stop = await boot(JSON.stringify(config));
 try {
   const b = browser();
@@ -134,7 +136,8 @@ try {
   env.S3RCH_STARTUP_LOGIN_ENABLED = "1";
   env.S3RCH_STARTUP_LOGIN_PROVIDER = "panopticon";
   env.S3RCH_STARTUP_AUTH_URL = "https://api.test.hyperme.sh/auth/startup/identity";
-  stop = await boot(JSON.stringify(config));
+  parseTerminalOwnerConfig(JSON.stringify(config));
+stop = await boot(JSON.stringify(config));
   try {
     const b = browser("c".repeat(64));
     assert.equal((await (await b.request("/api/identity/startup/availability")).json()).enabled, true);

@@ -1,3 +1,6 @@
+require("node:diagnostics_channel").channel("s3rch.terminal.rejection").subscribe(({ error }) => {
+  console.error("CI terminal rejection:", error);
+});
 require("node:diagnostics_channel").channel("s3rch.terminal.initialization").subscribe(({ error }) => {
   console.error("CI terminal initialization:", error);
 });

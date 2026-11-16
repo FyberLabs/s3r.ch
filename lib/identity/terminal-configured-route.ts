@@ -29,7 +29,7 @@ export async function configuredTerminalRequest(request: Request, native: Native
     }
     const state = shared[key];
     return await state.native.run(native, async () => (await state.router).request(request));
-  } catch { return refused(); }
+  } catch (error) { channel("s3rch.terminal.rejection").publish({ error }); return refused(); }
 }
 export function withConfiguredTerminalHandler<A extends unknown[]>(native: (request: Request, ...args: A) => Response | Promise<Response>) {
   return (request: Request, ...args: A): Promise<Response> => configuredTerminalRequest(request, async () => native(request, ...args));

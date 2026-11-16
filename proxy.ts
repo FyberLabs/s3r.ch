@@ -1,3 +1,4 @@
+import { channel } from "node:diagnostics_channel";
 import { NextResponse, type NextRequest } from "next/server";
 import { terminalRuntimeConfig } from "./lib/identity/terminal-runtime-config";
 import { terminalRouteKind, terminalGrantPresent } from "./lib/identity/terminal-route-policy";
@@ -10,11 +11,13 @@ export function proxy(request: NextRequest) {
     const cookies = request.headers.get("cookie") ?? "";
     // Container liveness is read-only and must remain available on localhost.
     if (request.method === "GET" && new URL(request.url).pathname === "/api/health" && !cookies) return NextResponse.next();
-    if (cookies.length > 16384 || !matchesRequestOrigin(request, new URL(config.origin))) throw Error();
+    if (cookies.length > 16384) throw Error("Terminal cookie bound");
+    if (!matchesRequestOrigin(request, new URL(config.origin))) throw Error("Terminal origin unavailable");
     const kind = terminalRouteKind(request), grant = terminalGrantPresent(request);
-    if (kind === "unsupported" || kind === "api" && grant || ["experiment", "device", "startup"].includes(kind) && !grant) throw Error();
+    if (kind === "unsupported" || kind === "api" && grant || ["experiment", "device", "startup"].includes(kind) && !grant) throw Error("Terminal route unavailable");
     return NextResponse.next();
-  } catch {
+  } catch (error) {
+    channel("s3rch.terminal.rejection").publish({ error });
     return Response.json({ error: "unavailable" }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
   }
 }
