@@ -168,6 +168,12 @@ test("upload recovery wrappers require one unlocked identity and an exclusive br
 });
 
 test("deletion uses the unlocked owner and refuses replay after identity changes",async()=>{
+  const {IDBFactory}=await import('fake-indexeddb');
+  const {createShareJournal}=await import('./media-share-journal');
+  const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator'),oldDb=Object.getOwnPropertyDescriptor(globalThis,'indexedDB');
+  try{
+  Object.defineProperty(globalThis,'indexedDB',{configurable:true,value:new IDBFactory()});
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{locks:{request:async(_name:string,_options:unknown,work:(lock:unknown)=>unknown)=>work({})}}});
   unlock();let writes=0;
   const claims={tenant,object,owner,objectVersion:1,fence:view.fence,issuedAt:100000,expiresAt:160000};
   const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
@@ -176,9 +182,17 @@ test("deletion uses the unlocked owner and refuses replay after identity changes
     writes++;return Response.json({accepted:true,command:"f".repeat(64),cleanup:"pending"});
   });
   const intent=await browser.prepareDeletion(tenant,object,owner);assert.equal(writes,0);
+  const journal=createShareJournal(undefined,'group-item-wrap'),signal=new AbortController().signal;
+  const pending=await journal.write({tenant,object,encrypted:new Uint8Array([1]),sha256:'a'.repeat(64),wrap:{} as any},null,signal);
+  await assert.rejects(browser.submitDeletion(intent),/requires recovery/);assert.equal(writes,0);
+  assert.deepEqual(await journal.read(signal),pending);await journal.remove(pending,signal);
   await browser.submitDeletion(intent);assert.equal(writes,1);
   await assert.rejects(browser.submitDeletion({...intent,ownerPub:other}));assert.equal(writes,1);
   forgetUnlockedMeshPair();await assert.rejects(browser.submitDeletion(intent));assert.equal(writes,1);
+  }finally{
+    if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else Reflect.deleteProperty(globalThis,'navigator');
+    if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
+  }
 });
 
 test("granted catalog uses the held identity and discards rotation during its request",async()=>{
