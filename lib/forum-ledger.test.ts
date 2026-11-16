@@ -61,6 +61,6 @@ test('memory tab mounts the supplied ledger, escapes content and does not mount 
   const forbidden=()=>{throw Error('roster mounted');};
   const html=renderToStaticMarkup(createElement(ForumShell,{forum:{label:'Forum',href:'/feed/squad'},tab:'memory',onTab:()=>{},
     header:null,sidebar:null,controls:createElement(forbidden),board:createElement(forbidden),list:createElement(forbidden),chat:null,memory:ledger}));
-  assert.match(html,/Business ledger/);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);
+  assert.match(html,/Business ledger/);assert.match(html,/&lt;script&gt;/);assert.equal(html.includes('<script>'),false);
   assert.match(html,/Add signed entry/);assert.doesNotMatch(html,/No shared memory/);
 });

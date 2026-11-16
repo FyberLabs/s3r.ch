@@ -1755,7 +1755,7 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
     tab, setTab, filters, query, setQuery, setSelected, notice, draft, setDraft,
     offerBody, setOfferBody, roster, visible, active, chat, needs, offers,
     alarmOn, needsCount, emergencyCount, wallet, boardProps, liveReports,
-    toggleEscalation, toggleFilter, onSend, onOffer, onAccept, onDecline, onReopen, onReply,
+    toggleEscalation, toggleFilter, onSend: async (report = false) => { await onSend(report); }, onOffer, onAccept, onDecline, onReopen, onReply,
     composerRef, viewer, prepareCancel, drawerProps, toggleSharedReport,
     roleView: businessRoles.view(), walletAddress: session?.address ?? "",
   };
