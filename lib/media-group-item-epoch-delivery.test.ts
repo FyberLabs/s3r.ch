@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {IDBFactory} from "fake-indexeddb";
 import {wrapItemDekToReaders,openItemDekReaderWrap} from "sociacl-ids";
 import {owner,reader,object,scope,plan as fixture} from "./media-group-item-epoch-fixture";
-import {createShareJournal,decryptShareJournal,shareDigest} from "./media-share-journal";
+import {createShareJournal,decryptShareJournal,encryptShareJournal,shareDigest} from "./media-share-journal";
 import {applyEpochDelivery,pendingEpochDelivery,discardEpochDelivery} from "./media-group-item-epoch-delivery";
 import {createMediaGroupService} from "./media-group-service";
 const tenant="11111111-1111-4111-8111-111111111111",pair={pub:owner,priv:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE",epub:owner,epriv:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE"};
@@ -105,4 +105,28 @@ test("substituted maintenance material and changed parent refuse before any writ
   await assert.rejects(applyEpochDelivery({...f.input,fetcher:changed,target}));assert.equal(f.writes(),0);
   const bad:typeof fetch=async()=>new Response('{}');await assert.rejects(applyEpochDelivery({...f.input,fetcher:bad,target}));
   await assert.rejects(applyEpochDelivery({...f.input,signal:AbortSignal.abort(),target}));
+});
+
+test("status failure retains saved wraps and a publication conflict stops recovery",async()=>{
+  const f=await setup();
+  const statusesUnavailable:typeof fetch=async(url,init)=>String(url).endsWith('status-view')?new Response(null,{status:403}):f.input.fetcher(url,init);
+  assert.equal((await applyEpochDelivery({...f.input,fetcher:statusesUnavailable,target})).pending,true);
+  const expected=(await pendingEpochDelivery(f.input))!;assert.ok(expected);assert.equal(f.published.size,2);
+  const conflict:typeof fetch=async(url,init)=>String(url).endsWith('share-check')?Response.json({at:100,state:'conflict',fence:'a'.repeat(64)}):f.input.fetcher(url,init);
+  await assert.rejects(applyEpochDelivery({...f.input,fetcher:conflict,expected}));assert.ok(await pendingEpochDelivery(f.input));
+  assert.equal((await applyEpochDelivery({...f.input,expected})).pending,false);assert.equal(f.views(),1);assert.equal(f.writes(),1);
+});
+test("saved replacements are bound to every current direct recipient and context",async()=>{
+  const f=await setup();f.lose();await assert.rejects(applyEpochDelivery({...f.input,target}));
+  let entry=(await f.input.journal.read(f.input.signal))!;
+  const original=await decryptShareJournal(entry,tenant,pair,'group-item-epoch-delivery');
+  const changes:((d:any)=>void)[]=[d=>{d.version=2;},d=>{d.epub=reader;},d=>{d.reference.length=1;},d=>{d.reference.sha256='9'.repeat(64);},
+    d=>{d.wraps=[];},d=>{d.wraps[0].targetId=reader;},d=>{d.wraps[0].revisionId='9'.repeat(64);},d=>{d.wraps[0].wrappedKey='bad';}];
+  for(const change of changes){
+    const draft=structuredClone(original);change(draft);
+    const encrypted=await encryptShareJournal(draft,tenant,object,pair,'group-item-epoch-delivery');
+    entry=await f.input.journal.write({...encrypted,tenant,object},entry,f.input.signal);
+    await assert.rejects(pendingEpochDelivery(f.input));
+  }
+  assert.equal(f.writes(),1);
 });
