@@ -7,10 +7,13 @@ import { PrivateMediaUpload } from "./PrivateMediaUpload";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
-  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,groups:null});
+  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,groups:null});
   const [abandon,setAbandon]=useState(false);
   useEffect(()=>{setAbandon(false);},[state.sharing?.token]);
   const [recipient,setRecipient]=useState("");
+  const [itemGroup,setItemGroup]=useState("");
+  const [itemPredicate,setItemPredicate]=useState<"same-group"|"named-circle">("same-group");
+  useEffect(()=>{setItemGroup("");setItemPredicate("same-group");},[state.audience?.object,state.loaded]);
   const [groupRecipient,setGroupRecipient]=useState("");
   useEffect(()=>{setGroupRecipient("");},[state.groups,state.loaded]);
   useEffect(()=>{setRecipient("");},[state.audience?.object,state.loaded]);
@@ -103,6 +106,16 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
           {state.groups.nextPage!==null&&<button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.loadGroups(state.groups!.nextPage!)}>Next group page</button>}
         </>}
       </section>
+      <section aria-label="Saved group permission" className="space-y-2 rounded border p-4">
+        <h2 className="font-semibold">Group permission recovery</h2>
+        <button type="button" disabled={state.busy||!!state.deletion||!state.loaded} className="underline disabled:opacity-50" onClick={()=>void library.current?.inspectItemGrant(tenant)}>Check saved group permission</button>
+        {state.itemGrant&&<>
+          <p className="break-all">Saved {state.itemGrant.withdraw?"withdrawal":"permission"} for {state.itemGrant.reader} in {state.itemGrant.set}.</p>
+          <p>Retry confirms the original request. Clearing its local copy does not undo accepted changes.</p>
+          <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeItemGrant(tenant)}>Retry group permission</button>
+          <button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.discardItemGrant(tenant)}>Clear reconciled group permission</button>
+        </>}
+      </section>
       <section aria-label="Saved group key" className="space-y-2 rounded border p-4">
         <h2 className="font-semibold">Group key delivery</h2>
         <p>Owners must also join their group before preparing a key. New keys become usable after the group's waiting period.</p>
@@ -152,6 +165,14 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
         </label>
         <p>The recipient must already be enrolled. Sharing does not create an account.</p>
         <button type="button" disabled={state.busy||!!state.sharing||!recipient.trim()} className="underline disabled:opacity-50" onClick={()=>void library.current?.share(tenant,state.audience!.object,recipient.trim())}>Share with this identity</button>
+        <details className="rounded border p-3">
+          <summary>Group permission for this recipient</summary>
+          <p>A group permission alone does not finish sharing. The file access update and key delivery must also complete. The recipient must be a current group member to receive permission.</p>
+          <label className="block">Group ID<input className="block w-full rounded border p-2" value={itemGroup} onChange={event=>setItemGroup(event.target.value)} disabled={state.busy||!!state.itemGrant} autoComplete="off" spellCheck={false}/></label>
+          <label className="block">Group type<select value={itemPredicate} onChange={event=>setItemPredicate(event.target.value as "same-group"|"named-circle")} disabled={state.busy||!!state.itemGrant} className="ml-2 rounded border p-2"><option value="same-group">Group</option><option value="named-circle">Named circle</option></select></label>
+          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!recipient.trim()||!itemGroup.trim()} className="underline disabled:opacity-50" onClick={()=>void library.current?.startItemGrant(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim(),false)}>Record group permission</button>
+          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!recipient.trim()||!itemGroup.trim()} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.startItemGrant(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim(),true)}>Withdraw group permission</button>
+        </details>
         {!state.audience.readers.length && <p>No recipient grants to cancel.</p>}
         <ul>{state.audience.readers.map(reader=><li key={reader} className="my-2 flex flex-wrap gap-3">
           <span className="break-all font-mono text-xs">{reader}</span>

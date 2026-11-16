@@ -468,3 +468,50 @@ test("group key controls require active ownership and preserve recoverable failu
   f.library.reset();assert.equal(f.state().groupKey,null);
  }finally{f.library.dispose();}
 });
+
+test("group item controls preserve recovery and distinguish recorded permission from delivery",async()=>{
+ const held={object:'owned',predicate:'same-group',set:'set_test',reader:key,withdraw:false,token:'saved'};
+ let saved:typeof held|null=held,fail=false,frozen=false,calls=0;
+ const f=setup({browser:()=>({catalog:async()=>({at:1,objects:['owned'],nextPage:null,principal:key}),
+  recipients:async()=>[],pendingItemGrant:async()=>saved,
+  startItemGrant:async(_tenant:string,_owner:string,target:{withdraw:boolean})=>{calls++;if(fail)throw Error();return {state:'applied',frozen};},
+  resumeItemGrant:async(_tenant:string,_owner:string,expected:typeof held)=>{assert.deepEqual(expected,saved);if(fail)throw Error();return {state:'applied',frozen};},
+  discardItemGrant:async()=>{if(fail)throw Error();return {state:'absent',frozen:false};},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try{
+  await f.library.startItemGrant('tenant','owned','same-group','set_test',key,false);assert.equal(calls,0);
+  await f.library.inspectItemGrant('tenant');await f.library.resumeItemGrant('tenant');await f.library.discardItemGrant('tenant');
+  await f.library.load();await f.library.recipients('owned');
+  for(const [object,set,reader] of [['other','set_test',key],['owned','',key],['owned','set_test','bad']])await f.library.startItemGrant('tenant',object,'same-group',set,reader,false);
+  assert.equal(calls,0);
+  await f.library.startItemGrant('tenant','owned','same-group','set_test',key,false);assert.match(f.state().message,/delivery still needs/);
+  await f.library.startItemGrant('tenant','owned','same-group','set_test',key,true);assert.match(f.state().message,/permission withdrawn/);
+  frozen=true;await f.library.startItemGrant('tenant','owned','same-group','set_test',key,false);assert.match(f.state().message,/frozen/);
+  fail=true;await f.library.startItemGrant('tenant','owned','same-group','set_test',key,false);assert.match(f.state().message,/Check its saved request/);
+  await f.library.inspectItemGrant('tenant');assert.deepEqual(f.state().itemGrant,held);
+  const before=calls;await f.library.startItemGrant('tenant','owned','same-group','set_test',key,false);assert.equal(calls,before);
+  await f.library.resumeItemGrant('tenant');assert.deepEqual(f.state().itemGrant,held);assert.match(f.state().message,/retained/);
+  await f.library.discardItemGrant('tenant');assert.deepEqual(f.state().itemGrant,held);assert.match(f.state().message,/cannot be cleared/);
+  fail=false;await f.library.resumeItemGrant('tenant');assert.equal(f.state().itemGrant,null);assert.match(f.state().message,/frozen/);
+  frozen=false;await f.library.inspectItemGrant('tenant');await f.library.resumeItemGrant('tenant');assert.match(f.state().message,/delivery still needs/);
+  saved={...held,withdraw:true};await f.library.inspectItemGrant('tenant');await f.library.resumeItemGrant('tenant');assert.match(f.state().message,/withdrawal confirmed/);
+  await f.library.inspectItemGrant('tenant');await f.library.discardItemGrant('tenant');assert.equal(f.state().itemGrant,null);assert.match(f.state().message,/not undone/);
+  saved=null;await f.library.inspectItemGrant('tenant');assert.match(f.state().message,/No saved/);
+  saved=held;await f.library.inspectItemGrant('tenant');f.library.requestDeletion('owned');
+  await f.library.inspectItemGrant('tenant');await f.library.resumeItemGrant('tenant');await f.library.discardItemGrant('tenant');assert.deepEqual(f.state().itemGrant,held);
+  f.library.reset();assert.equal(f.state().itemGrant,null);
+ }finally{f.library.dispose();}
+});
+
+test("late group permission recovery cannot restore private state after reset",async()=>{
+ let release!:(value:any)=>void;const waiting=new Promise(resolve=>{release=resolve;});
+ let began!:()=>void;const started=new Promise<void>(resolve=>{began=resolve;});
+ const f=setup({browser:()=>({catalog:async()=>({at:1,objects:['owned'],nextPage:null,principal:key}),
+  pendingItemGrant:async()=>{began();return await waiting;},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try{
+  await f.library.load();const work=f.library.inspectItemGrant('tenant');await started;f.library.reset();
+  release({object:'owned',predicate:'same-group',set:'set_test',reader:key,withdraw:false,token:'saved'});
+  await work;assert.equal(f.state().itemGrant,null);assert.equal(f.state().loaded,false);
+ }finally{release(null);f.library.dispose();}
+});
