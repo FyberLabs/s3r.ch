@@ -284,3 +284,19 @@ keys, decisions, blocks and pending ciphertext in an encrypted, revisioned vault
 Existing contact keyrings must be restored explicitly; this page does not create
 a replacement identity or contact secret. It uses the current unlocked identity
 and clears its private view when that identity changes or the page is hidden.
+
+### Existing identity device transfer
+
+`S3RCH_DEVICE_TRANSFER_CONFIG` is a server-only JSON object with `v:1`,
+`scope:{sourceOrigin,destinationOrigin,application,tenant,audience}`, `auth`,
+`acl`, and `provider`. Both origins must equal this site's HTTPS origin;
+application is `s3r.ch`, tenant is the configured UUID, and audience must match
+Auth and ACL. `auth` ends `/auth/sea-device-link/v1/`; `acl` ends
+`/api/v1/acl/sociacl/device-transfer/`. `provider` selects an existing configured
+OIDC provider. Missing or invalid configuration disables device transfer.
+Register `/api/identity/device/callback` on that provider's existing client and
+provision ordinary person authorization for `auth:device:transfer` and
+`acl:identity:transfer` in the owning plane. No browser action grants these scopes.
+The transfer-specific PKCE flow keeps its bearer encrypted in a five-minute
+HttpOnly cookie; ordinary wallet/OAuth cookies are never treated as that bearer.
+See [device transfer](device-transfer.md) for storage and acceptance boundaries.

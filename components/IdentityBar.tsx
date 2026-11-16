@@ -987,6 +987,7 @@ function IdentityBarInner() {
         )}
       </div>
       <SeaIdentitySession />
+      <a href="/identity/devices" className="text-sm underline">Add another device / receive identity</a>
       <StartupLinkedLogin address={session === undefined ? undefined : session?.address ?? null} />
       {showWrap ? (
         <label className="mt-3 flex items-center gap-2 text-xs text-ink-muted">

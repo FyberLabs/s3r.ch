@@ -155,3 +155,12 @@ describe("WebAuthn PRF helper", () => {
     assert.match(PRF_UNAVAILABLE_MESSAGE, /The mesh key was not wrapped/);
   });
 });
+
+describe('principal-local device protection',()=>{
+ it('uses a random local user handle without claiming a wallet address',async()=>{
+  let user:PublicKeyCredentialUserEntity|undefined;
+  const credentials={create:async(input:CredentialCreationOptions)=>{user=input.publicKey!.user;return {rawId:new Uint8Array([1,2,3]).buffer,getClientExtensionResults:()=>({prf:{results:{first:new Uint8Array(32).fill(7)}}})};},get:async()=>null} as unknown as CredentialsContainer;
+  await createPrfCredential({host:'s3r.ch',localUser:{id:new Uint8Array(32).fill(9),name:'s3r.ch receiving device'},credentials});
+  assert.equal(user!.name,'s3r.ch receiving device');assert.deepEqual(new Uint8Array(user!.id as ArrayBuffer),new Uint8Array(32).fill(9));
+ });
+});

@@ -1,3 +1,4 @@
+import { devicePersonCookie, devicePendingCookie } from './device-cookies';
 import { seaSessionCookieNames } from "./squad-session-http";
 import { startupCookieNames } from "./startup-login-cookies";
 import { cookies } from "next/headers";
@@ -71,6 +72,7 @@ export async function setIdentityCookie(
 export async function clearIdentityCookies(): Promise<void> {
   const jar = await cookies();
   const names = [
+    devicePersonCookie, devicePendingCookie,
     ...startupCookieNames(),
     ...seaSessionCookieNames(),
     nonceCookieName(true),

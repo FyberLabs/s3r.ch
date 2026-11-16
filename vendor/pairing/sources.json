@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "packages": [
+    {
+      "name": "sea-device-link",
+      "repository": "hyperme-sh/controlplane-sdk",
+      "revision": "006611d80fe60b303288447204271cde5ba35332",
+      "path": "packages/sea-device-link",
+      "file": "sea-device-link-0.0.0.tgz",
+      "sha256": "2c50dbda5cf91983a70e18433a80b23bfa2ee6d95f88e13c4ed52d0ae27d7bc9"
+    },
+    {
+      "name": "auth-sea-relay",
+      "repository": "hyperme-sh/auth-service",
+      "revision": "24a1b061106838673e5b98facd68f4a0593342b1",
+      "path": "browser/sea-relay",
+      "file": "auth-sea-relay-0.0.0.tgz",
+      "sha256": "6fd092204c27178d80c7210a877fdff1bd2aa13eef42562177040000e7aefafa"
+    },
+    {
+      "name": "sociacl-ids",
+      "repository": "FyberLabs/SociACL",
+      "revision": "1b88bfd7c313b88dd43f048e4dfe78e67d7efe4c",
+      "path": "typescript/ids",
+      "file": "sociacl-ids-0.11.1.tgz",
+      "sha256": "896e5ed40f421083e2d7e7363c1fb52758cde4e2e703dc9125ccdd1d848567cf"
+    },
+    {
+      "name": "acl-sea-device-authority",
+      "repository": "hyperme-sh/acl-service",
+      "revision": "5519668e201bd2fc472f99c21ad977e810a00dc3",
+      "path": "browser/device-transfer",
+      "file": "acl-sea-device-authority-0.0.0.tgz",
+      "sha256": "ada96d8fde36358beb8ccdd24cd09170194e40c0a593ddbf678b57095c9bad07"
+    },
+    {
+      "name": "sea-device-link-ui",
+      "repository": "hyperme-sh/controlplane-portal",
+      "revision": "70f197f1871344382d769bc6b8a30349e8ead8f4",
+      "path": "packages/sea-device-link-ui",
+      "file": "sea-device-link-ui-0.0.0.tgz",
+      "sha256": "afd0ff8b41a2f4567bbed6e3e488dc3d2146bea125987c10b07a3590de2d8691"
+    }
+  ]
+}

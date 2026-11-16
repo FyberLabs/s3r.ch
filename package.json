@@ -1,6 +1,6 @@
 {
   "name": "s3rch-website",
-  "version": "0.1.165",
+  "version": "0.1.166",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -32,10 +32,14 @@
     "react": "^19",
     "react-dom": "^19",
     "siwe": "^3.0.0",
-    "sociacl-ids": "https://github.com/FyberLabs/SociACL/releases/download/ids-test-8d75c494dd35b95b78fa012a6f26b0e56585766d/sociacl-ids-0.11.1.tgz",
+    "sociacl-ids": "file:vendor/pairing/sociacl-ids-0.11.1.tgz",
     "undici": "7.30.2",
     "viem": "^2.57.16",
-    "wagmi": "^3.7.11"
+    "wagmi": "^3.7.11",
+    "sea-device-link": "file:vendor/pairing/sea-device-link-0.0.0.tgz",
+    "auth-sea-relay": "file:vendor/pairing/auth-sea-relay-0.0.0.tgz",
+    "acl-sea-device-authority": "file:vendor/pairing/acl-sea-device-authority-0.0.0.tgz",
+    "sea-device-link-ui": "file:vendor/pairing/sea-device-link-ui-0.0.0.tgz"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.5",
