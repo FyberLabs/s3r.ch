@@ -6,7 +6,7 @@ import { createTerminalExperimentRoute } from "./terminal-experiment-route";
 const origin = "https://test.s3r.ch", tenant = "22222222-2222-2222-2222-222222222222";
 test("native experiment completion awaits accepted telemetry and refuses uncertain withdrawal", async () => {
   const signing = generateKeyPairSync("ed25519"), now = Math.floor(Date.now() / 1000);
-  const scope = { suite: "flags-s3rch-browser", subject: "11111111-1111-1111-1111-111111111111", tenant, organization: "", realm: "controlplane", issuer: "https://auth.test.hyperme.sh/realms/controlplane", clients: ["s3rch-web"], origins: [origin], identities: { sea: [] } };
+  const scope = { suite: "flags-s3rch-browser", subject: "11111111-1111-1111-1111-111111111111", tenant: "33333333-3333-3333-3333-333333333333", organization: "", realm: "controlplane", issuer: "https://auth.test.hyperme.sh/realms/controlplane", clients: ["s3rch-web"], origins: [origin], identities: { sea: [] } };
   const env = { S3RCH_EXPERIMENT_ORIGIN: origin, S3RCH_EXPERIMENT_TENANT: tenant, S3RCH_EXPERIMENT_SECRET: "a".repeat(64), S3RCH_EXPERIMENT_STORAGE_ORIGIN: "https://api.test.hyperme.sh",
     S3RCH_EXPERIMENT_CACHE_KEY: "cache-key-1234567890", S3RCH_EXPERIMENT_OUTBOX_KEY: "outbox-key-1234567890", S3RCH_EXPERIMENT_PUBLIC_KEY: signing.publicKey.export({ type: "spki", format: "pem" }).toString(),
     IDENTITY_SESSION_SECRET: "s".repeat(40), APPLICATIONINSIGHTS_CONNECTION_STRING: "InstrumentationKey=11111111-1111-4111-8111-111111111111", S3RCH_EXPERIMENT_PRIMARY_V2: "1" };
