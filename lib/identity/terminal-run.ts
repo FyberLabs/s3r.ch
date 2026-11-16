@@ -15,7 +15,7 @@ export interface TerminalRunAuthority {
   authorizeToken(admission: RunAdmission, token: RunToken): Promise<boolean>;
   complete(admission: RunAdmission): Promise<void>;
 }
-type Context = { authority: TerminalRunAuthority; admission: RunAdmission | null; closed: boolean };
+type Context = { authority: TerminalRunAuthority; admission: RunAdmission | null; cookies: string; closed: boolean };
 const context = new AsyncLocalStorage<Context>();
 const fail = (): never => { throw Error("Terminal run authority unavailable"); };
 function binding(value: unknown): RunBinding {
@@ -38,10 +38,11 @@ async function active(value: Context) {
 export async function withTerminalRun<T>(request: Request, authority: TerminalRunAuthority,
   work: () => Promise<T>, completed: (result: T) => boolean): Promise<T> {
   if (context.getStore()) return fail();
+  const cookies = request.headers?.get("cookie") ?? "";
   const admitted = await authority.admit(request);
   const admission = admitted === null ? null : Object.freeze({ binding: binding(admitted.binding), operation: admitted.operation });
   if (admission && (typeof admission.operation !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(admission.operation))) return fail();
-  const current = { authority, admission, closed: false };
+  const current = { authority, admission, cookies, closed: false };
   return context.run(current, async () => {
     try {
       await active(current);
@@ -99,4 +100,20 @@ export function verifyTerminalWork(original: unknown): void {
   if (original === undefined) { if (current) fail(); return; }
   const saved = binding(original);
   if (!current || saved.run !== current.run || saved.generation !== current.generation) fail();
+}
+
+/** Only the original admitted grant reaches the independently admitting Auth
+ * relay. No arbitrary target, caller header, or current replacement grant. */
+export async function terminalRelayHeaders(target: string): Promise<Record<string, string>> {
+  const current = context.getStore();
+  if (current?.closed) return fail();
+  if (!current?.admission) return {};
+  if (!/^https:\/\/auth\.test\.hyperme\.sh\/auth\/sea-device-link\/v1\/sessions\/[A-Za-z0-9_-]{43}\/(admit|create|join|offer|send|receive|complete|completed|cancel)$/.test(target)) return fail();
+  if (current.cookies.length > 16384) return fail();
+  const grants = current.cookies.split(";").map(value => value.trim()).filter(value => value.startsWith("__Host-nightly-run-grant="));
+  const grant = grants[0]?.slice("__Host-nightly-run-grant=".length);
+  if (grants.length !== 1 || !grant || !/^[a-f0-9]{64}$/.test(grant)) return fail();
+  await active(current);
+  if (current.closed) return fail();
+  return { "X-Nightly-Run-Grant": grant };
 }

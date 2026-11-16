@@ -97,3 +97,22 @@ test("in-flight token authority cannot outlive its enclosing completed request",
     release(); await assert.rejects(late);
   }
 });
+
+test("Auth relay forwards only the original admitted grant to exact TEST targets", async () => {
+  const { terminalRelayHeaders } = await import("./terminal-run");
+  const h = fixture(), target = "https://auth.test.hyperme.sh/auth/sea-device-link/v1/sessions/" + "a".repeat(43) + "/offer";
+  let cookies = "__Host-nightly-run-grant=" + "b".repeat(64);
+  const req = { headers: { get: () => cookies } } as unknown as Request;
+  await withTerminalRun(req, h.authority, async () => {
+    cookies = "__Host-nightly-run-grant=" + "c".repeat(64);
+    assert.deepEqual(await terminalRelayHeaders(target), { "X-Nightly-Run-Grant": "b".repeat(64) });
+    for (const bad of [target + "?next=other", target.replace("auth.test.hyperme.sh", "other.invalid"), target.replace("/offer", "/admin")])
+      await assert.rejects(terminalRelayHeaders(bad));
+    return true;
+  }, () => true);
+  assert.deepEqual(await terminalRelayHeaders(target), {});
+  for (const bad of ["", "__Host-nightly-run-grant=bad", cookies + ";" + cookies, "x".repeat(16385)]) {
+    cookies = bad;
+    await assert.rejects(withTerminalRun(req, h.authority, () => terminalRelayHeaders(target), () => true));
+  }
+});
