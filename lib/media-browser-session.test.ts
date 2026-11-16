@@ -234,7 +234,7 @@ test("sharing recovery uses a separate exclusive lock and refuses session change
     await browser.abandonShare(tenant,expected);
     await assert.rejects(browser.resumeShare(tenant,expected),/No pending/);
     await assert.rejects(browser.share(tenant,{object,owner,reader:other}));assert.equal(calls,1);
-    assert.deepEqual(names,Array(3).fill("s3rch-private-share-v1"));
+    assert.deepEqual(names,Array(3).fill(["s3rch-private-group-item-wrap-v1","s3rch-private-share-v1"]).flat());
     unlock();Object.defineProperty(globalThis,"navigator",{configurable:true,value:{locks:{request:async(_name:unknown,_options:unknown,work:(lock:unknown)=>unknown)=>work(null)}}});
     await assert.rejects(browser.resumeShare(tenant,expected),/another tab/);assert.equal(calls,1);
   } finally {
@@ -382,7 +382,7 @@ test("group key browser operations share a lock and retain encrypted recovery ac
   const admitted=await browser.resumeGroupKey(tenant,owner,pending);assert.equal(admitted.phase,'admitted');
   const published=await browser.resumeGroupKey(tenant,owner,admitted);assert.equal(published.published,1);
   await browser.finishGroupKey(tenant,owner,published);assert.equal(await browser.pendingGroupKey(tenant,owner),null);
-  assert.ok(names.every(name=>name==='s3rch-private-group-key-v1'));
+  assert.ok(names.every(name=>name==='s3rch-private-group-key-v1'||name==='s3rch-private-group-item-wrap-v1'));
   forgetUnlockedMeshPair();await assert.rejects(browser.pendingGroupKey(tenant,owner));
  }finally{
   if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else Reflect.deleteProperty(globalThis,'navigator');
@@ -418,7 +418,7 @@ test("group item grants retain exact encrypted recovery under the unlocked ident
   applied=false;await assert.rejects(browser.startItemGrant(tenant,owner,{...target,withdraw:true}));
   const cancelled=(await browser.pendingItemGrant(tenant,owner))!;assert.equal(cancelled.withdraw,true);
   assert.equal((await browser.discardItemGrant(tenant,owner,cancelled)).state,'applied');
-  assert.ok(names.every(name=>name==='s3rch-private-group-item-grant-v1'));
+  assert.ok(names.every(name=>name==='s3rch-private-group-item-grant-v1'||name==='s3rch-private-group-item-wrap-v1'));
   lock=true;await assert.rejects(browser.startItemGrant(tenant,owner,target));assert.equal(writes,2);
   await assert.rejects(browser.pendingItemGrant(tenant,owner));
   for(const priv of ['bad',pair.priv.slice(0,-1)+'F']){
@@ -444,7 +444,7 @@ test("group epoch adapter requires unlocked identity and uses its isolated journ
   const expected={...target,epoch:2,token:'missing'};
   await assert.rejects(browser.resumeItemEpoch(tenant,owner,expected));
   await assert.rejects(browser.discardItemEpoch(tenant,owner,expected));
-  assert.ok(names.every(name=>name==='s3rch-private-group-item-epoch-delivery-v1'));
+  assert.ok(names.every(name=>name==='s3rch-private-group-item-epoch-delivery-v1'||name==='s3rch-private-group-item-wrap-v1'));
   for(const priv of ['bad',pair.priv.slice(0,-1)+'F']){
    unlock();rememberUnlockedMeshPair('linked-credential',{...pair,priv});await assert.rejects(browser.startItemEpoch(tenant,owner,target));
   }
@@ -501,6 +501,28 @@ test("group item wrap session uses dedicated recovery and refuses missing author
   await assert.rejects(browser.resumeItemWrap(tenant,owner,{...target,token:'missing'}));assert.equal(calls,1);
   assert.ok(names.every(n=>n==='s3rch-private-group-item-wrap-v1'));
   forgetUnlockedMeshPair();await assert.rejects(browser.pendingItemWrap(tenant,owner));await assert.rejects(browser.startItemWrap(tenant,owner,target));
+ }finally{
+  if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else Reflect.deleteProperty(globalThis,'navigator');
+  if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
+ }
+});
+
+test("saved delivery blocks conflicting browser mutations after a fresh session",async()=>{
+ const {IDBFactory}=await import('fake-indexeddb');
+ const {createShareJournal}=await import('./media-share-journal');
+ const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator'),oldDb=Object.getOwnPropertyDescriptor(globalThis,'indexedDB');
+ try{
+  unlock();Object.defineProperty(globalThis,'indexedDB',{configurable:true,value:new IDBFactory()});
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{locks:{request:async(_name:string,_options:unknown,work:(lock:unknown)=>unknown)=>work({})}}});
+  const journal=createShareJournal(undefined,'group-item-wrap'),signal=new AbortController().signal;
+  const saved=await journal.write({tenant,object,encrypted:new Uint8Array([1]),sha256:'a'.repeat(64),wrap:{} as any},null,signal);
+  let calls=0;const browser=createPrivateMediaBrowser(()=>owner,async()=>{calls++;throw Error('must not send');});
+  const scope={predicate:'same-group' as const,set:object.replace('media_','set_')};
+  await assert.rejects(browser.startGroupKey(tenant,owner,scope),/requires recovery/);
+  await assert.rejects(browser.startItemEpoch(tenant,owner,{object,...scope}),/requires recovery/);
+  await assert.rejects(browser.share(tenant,{object,owner,reader:other}),/requires recovery/);
+  await assert.rejects(browser.resumeShare(tenant,{object,reader:other,token:'saved'}),/requires recovery/);
+  assert.equal(calls,0);assert.deepEqual(await journal.read(signal),saved);
  }finally{
   if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else Reflect.deleteProperty(globalThis,'navigator');
   if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
