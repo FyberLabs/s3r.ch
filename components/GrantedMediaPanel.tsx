@@ -22,7 +22,7 @@ export function GrantedMediaPanel({tenant}: {tenant:string}) {
       current.dispose();library.current=null;
     };
   },[tenant]);
-  const page=state?.granted;
+  const page=state?.granted,groups=state?.groupGranted;
   return <section aria-label="Granted private media" className="mt-8 space-y-3">
     <h2 className="text-base font-semibold">Private media</h2>
     <p className="text-sm text-ink-muted">Open files shared with your current identity. Access is checked again when you open a file.</p>
@@ -36,6 +36,19 @@ export function GrantedMediaPanel({tenant}: {tenant:string}) {
       {page.page>0 && <button type="button" disabled={state?.busy} className={btnSecondary} onClick={()=>void library.current?.loadGranted(page.page-1)}>Previous granted page</button>}
       {page.nextPage!==null && <button type="button" disabled={state?.busy} className={btnSecondary} onClick={()=>void library.current?.loadGranted(page.nextPage!)}>Next granted page</button>}
     </>}
+    <section aria-label="Granted through groups" className="space-y-3">
+      <h3 className="text-sm font-semibold">Shared through groups</h3>
+      <button type="button" disabled={state?.busy} className={btnSecondary} onClick={()=>void library.current?.loadGroupGranted(0)}>Refresh group media</button>
+      {groups && <>
+        <p className="text-xs text-ink-muted">Page {groups.page+1} of 16.</p>
+        {!groups.entries.length && <p>No currently available group files on this page.</p>}
+        <ul>{groups.entries.map((entry,index)=><li key={entry.object}>
+          <button type="button" disabled={state?.busy} className={btnSecondary} onClick={()=>void library.current?.openGroup(entry,tenant)}>Open group file {groups.page*4+index+1}</button>
+        </li>)}</ul>
+        {groups.page>0 && <button type="button" disabled={state?.busy} className={btnSecondary} onClick={()=>void library.current?.loadGroupGranted(groups.page-1)}>Previous group page</button>}
+        {groups.nextPage!==null && <button type="button" disabled={state?.busy} className={btnSecondary} onClick={()=>void library.current?.loadGroupGranted(groups.nextPage!)}>Next group page</button>}
+      </>}
+    </section>
     {state?.preview && <>
       <PrivateMediaPreview preview={state.preview}/>
       <button type="button" className={btnSecondary} onClick={()=>library.current?.reset()}>Close private preview</button>

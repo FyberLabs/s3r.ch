@@ -1,3 +1,12 @@
+import {objectPrincipal} from "./identity/forum-authority-records";
+import {isCanonicalObjectId} from "./identity/object-id";
+import {readGroupGranted} from "./media-group-item-catalog-client";
+import {openGroupMediaFile} from "./media-group-item-file";
+import {createItemStatusClient} from "./media-group-item-status-client";
+import {parseItemStatusCommand} from "./media-group-item-status";
+import {applyItemStatus,pendingItemStatus,discardItemStatus,type PendingItemStatus} from "./media-group-item-status-recovery";
+import {createItemWrapClient,type ItemWrapTarget} from "./media-group-item-wrap-client";
+import {applyItemWrap,pendingItemWrap,retireItemWrap,type PendingItemWrap} from "./media-group-item-wrap-recovery";
 import {applyEpochDelivery,pendingEpochDelivery,discardEpochDelivery} from "./media-group-item-epoch-delivery";
 import {parseGroupCommand} from "./media-group-command";
 import type {PendingItemEpoch} from "./media-group-item-epoch-recovery";
@@ -67,8 +76,30 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
   }
   async function locked<T>(work:()=>Promise<T>,name="s3rch-private-upload-v1") {
     if (typeof navigator === "undefined" || !navigator.locks) throw Error("This browser cannot safely resume uploads");
-    return navigator.locks.request(name, {mode:"exclusive",ifAvailable:true}, lock=>{
-      if(!lock)throw Error("An upload is active in another tab");return work();
+    const take=(check=()=>{})=>navigator.locks.request(name, {mode:"exclusive",ifAvailable:true}, lock=>{
+      if(!lock)throw Error("An upload is active in another tab");check();return work();
+    });
+    const conflicts=["s3rch-private-delete-v1","s3rch-private-share-v1","s3rch-private-group-key-v1","s3rch-private-group-item-grant-v1","s3rch-private-group-item-epoch-delivery-v1"];
+    if(!conflicts.includes(name))return take();
+    // Serialize the journal check with publication across tabs. UI state is only
+    // advisory: a lost reply or page reload must not hide an encrypted draft.
+    return navigator.locks.request("s3rch-private-group-item-wrap-v1",{mode:"exclusive",ifAvailable:true},async lock=>{
+      if(!lock)throw Error("A group file delivery is active in another tab");
+      const selected=readSingleUnlockedIdentity();
+      if(!selected||selected.pair.pub!==sessionKey())throw Error("Unlock the signed-in media identity");
+      const check=()=>{
+        const current=readSingleUnlockedIdentity();
+        if(!current||current.revision!==selected.revision||current.pair.pub!==selected.pair.pub||sessionKey()!==selected.pair.pub)
+          throw Error("Media identity changed during recovery check");
+      };
+      const pending=await createShareJournal(undefined,"group-item-wrap").read(AbortSignal.timeout(4000));
+      check();
+      // A foreign owner's retained draft must survive without disabling this
+      // identity. Unknown/corrupt object ownership still fails closed.
+      const pendingOwner=pending&&isCanonicalObjectId(pending.object)&&pending.object.startsWith("media_")?objectPrincipal(pending.object):null;
+      if(pending&&(!pendingOwner||pendingOwner===selected.pair.pub))
+        throw Error("A group file delivery requires recovery before changing access");
+      return take(check);
     });
   }
   async function epochWork(tenant:string,principal:string,change:{target?:{object:string;predicate:MediaGroupScope["predicate"];set:string};expected?:PendingItemEpoch},signal?:AbortSignal){
@@ -83,6 +114,32 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     },signal),"s3rch-private-group-item-epoch-delivery-v1");
   }
   return Object.freeze({
+    groupGrantedCatalog(principal:string,page:number,signal?:AbortSignal){
+      return run((_pair,transport,deadline)=>readGroupGranted(page,principal,transport,deadline),signal);
+    },
+    startItemWrap(tenant:string,principal:string,target:ItemWrapTarget,signal?:AbortSignal){
+      const held=parseGroupCommand("item-wrap-view",target,principal) as ItemWrapTarget;
+      return locked(()=>run(async(pair,transport,deadline)=>{
+        const input={tenant,principal,pair,fetcher:transport,signal:deadline,journal:createShareJournal(undefined,"group-item-wrap")};
+        if(await pendingItemWrap(input))throw Error("A group item key delivery requires recovery");
+        const bundle=await createItemWrapClient(principal,transport).prepare(held,pair,deadline);
+        return await applyItemWrap({...input,bundle});
+      },signal),"s3rch-private-group-item-wrap-v1");
+    },
+    pendingItemWrap(tenant:string,principal:string,signal?:AbortSignal){
+      return run((pair,transport,deadline)=>pendingItemWrap({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-item-wrap")}),signal);
+    },
+    resumeItemWrap(tenant:string,principal:string,expected:PendingItemWrap,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>applyItemWrap({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-item-wrap"),expected:held}),signal),"s3rch-private-group-item-wrap-v1");
+    },
+    retireItemWrap(tenant:string,principal:string,expected:PendingItemWrap,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>retireItemWrap({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-item-wrap"),expected:held}),signal),"s3rch-private-group-item-wrap-v1");
+    },
     startItemEpoch(tenant:string,principal:string,target:{object:string;predicate:"same-group"|"named-circle";set:string},signal?:AbortSignal){
       const held=parseGroupCommand("item-epoch-view",target,principal) as typeof target;
       return epochWork(tenant,principal,{target:held},signal);
@@ -98,6 +155,34 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
       const held=structuredClone(expected);
       return locked(()=>run((pair,transport,deadline)=>discardEpochDelivery({tenant,principal,pair,fetcher:transport,signal:deadline,
         journal:createShareJournal(undefined,"group-item-epoch-delivery"),expected:held}),signal),"s3rch-private-group-item-epoch-delivery-v1");
+    },
+    startItemStatus(tenant:string,principal:string,target:{object:string;predicate:"same-group"|"named-circle";set:string;reader:string},signal?:AbortSignal){
+      const held=parseItemStatusCommand("item-status-view",target,principal);
+      return locked(()=>run(async(pair,transport,deadline)=>{
+        const input={tenant,principal,pair,fetcher:transport,signal:deadline,journal:createShareJournal(undefined,"group-item-status")};
+        if(await pendingItemStatus(input))throw Error("A group item request requires recovery");
+        if(!/^[A-Za-z0-9_-]{43}$/.test(pair.priv))throw Error("Invalid media signing key");
+        const scalar=Uint8Array.from(atob(pair.priv.replace(/-/g,"+").replace(/_/g,"/")+"="),c=>c.charCodeAt(0));
+        try{
+          if(scalar.length!==32||btoa(String.fromCharCode(...scalar)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")!==pair.priv)throw Error("Invalid media signing key");
+          const command=await createItemStatusClient(principal,transport).prepare(held,scalar,deadline);
+          return await applyItemStatus({...input,command});
+        }finally{scalar.fill(0);}
+      },signal),"s3rch-private-group-item-status-v1");
+    },
+    pendingItemStatus(tenant:string,principal:string,signal?:AbortSignal){
+      return run((pair,transport,deadline)=>pendingItemStatus({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-item-status")}),signal);
+    },
+    resumeItemStatus(tenant:string,principal:string,expected:PendingItemStatus,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>applyItemStatus({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-item-status"),expected:held}),signal),"s3rch-private-group-item-status-v1");
+    },
+    discardItemStatus(tenant:string,principal:string,expected:PendingItemStatus,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>discardItemStatus({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-item-status"),expected:held}),signal),"s3rch-private-group-item-status-v1");
     },
     startItemGrant(tenant:string,principal:string,target:{object:string;predicate:"same-group"|"named-circle";set:string;reader:string;withdraw:boolean},signal?:AbortSignal){
       const held=parseItemGrantCommand("item-grant-view",target,principal);
@@ -270,10 +355,10 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     },
     submitDeletion(input:MediaDeletionIntent,signal?:AbortSignal){
       const intent=parseMediaDeletionIntent(input);
-      return run((pair,transport,deadline)=>{
+      return locked(()=>run((pair,transport,deadline)=>{
         if(pair.pub!==intent.ownerPub)throw Error("Deletion signing identity changed");
         return createPrivateMediaOwner(transport).submitDeletion(intent,deadline);
-      },signal);
+      },signal),"s3rch-private-delete-v1");
     },
     cleanupCatalog(page:number,signal?:AbortSignal){
       return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).cleanupCatalog(page,deadline),signal);
@@ -304,6 +389,11 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     },
     publishWrap(object:string,owner:string,reader:string,wrap:ItemReaderWrap,reference:MediaCiphertextReference,signal?:AbortSignal){
       return run((_pair,transport,deadline)=>createPrivateMediaOwner(transport).publishWrap(object,owner,reader,wrap,reference,deadline),signal);
+    },
+    openGroup(object:string,tenant:string,principal:string,scope:MediaGroupScope,signal?:AbortSignal){
+      const held=parseMediaGroupScope(scope);
+      return run((pair,transport,deadline)=>openGroupMediaFile({object,tenant,principal,scope:held,epriv:pair.epriv,epub:pair.epub,
+        fetcher:transport,signal:deadline}),signal,result=>result.bytes.fill(0));
     },
     open(object:string,tenant:string,signal?:AbortSignal){
       return run((pair,transport,deadline)=>createPrivateMediaReader(transport).open(object,tenant,pair.epriv,pair.epub,deadline),signal,

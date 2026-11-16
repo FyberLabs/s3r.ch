@@ -236,6 +236,32 @@ jobs:
           --test-coverage-include=lib/media-group-owner-wrap.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/media-group-item-epoch-delivery.test.ts lib/media-group-owner-wrap.test.ts
+      - name: Group item wrapped-key recovery coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-wrap-recovery.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-wrap-recovery.test.ts
+      - name: Group item wrapped-key publication coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-wrap-client.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-wrap-client.test.ts
+      - name: Group Granted catalog coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-catalog.ts
+          --test-coverage-include=lib/media-group-item-catalog-client.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-catalog.test.ts lib/media-group-item-catalog-client.test.ts
+      - name: Group file opening coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-file.ts
+          --test-coverage-include=lib/media-ciphertext-authorization.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-file.test.ts lib/allocated-media-service.test.ts
       - name: Group item key opening coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage

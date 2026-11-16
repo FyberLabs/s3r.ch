@@ -1,3 +1,6 @@
+import type {GroupGrantedEntry} from "./media-group-item-catalog";
+import type {PendingItemWrap} from "./media-group-item-wrap-recovery";
+import type {PendingItemStatus} from "./media-group-item-status-recovery";
 import type {PendingItemEpoch} from "./media-group-item-epoch-recovery";
 import type {PendingItemGrant} from "./media-group-item-grant-recovery";
 import type {PendingGroupKey} from "./media-group-key-recovery";
@@ -24,14 +27,17 @@ export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly stri
   groupKey: PendingGroupKey | null;
   itemGrant: PendingItemGrant | null;
   itemEpoch: PendingItemEpoch | null;
+  itemWrap: PendingItemWrap | null;
+  itemStatus: PendingItemStatus | null;
   groups: Readonly<{entries:readonly GroupCatalogEntry[];page:number;nextPage:number|null}> | null;
   sharing: Readonly<{object:string;reader:string;token:string;remove?:boolean}> | null;
+  groupGranted: Readonly<{entries:readonly GroupGrantedEntry[];page:number;nextPage:number|null}> | null;
   granted: Readonly<{objects:readonly string[];page:number;nextPage:number|null}> | null;
   cleanup: Readonly<{objects:readonly MediaCleanupItem[];page:number;nextPage:number|null}> | null;
   deletion: Readonly<{object:string;prepared:boolean}> | null;
   audience: Readonly<{object:string;readers:readonly string[]}> | null;
   preview: Readonly<{ url: string; name: string; mediaType: string; tags?:readonly string[] }> | null }>;
-const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,groups:null});
+const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,groupGranted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,itemWrap:null,itemStatus:null,groups:null});
 
 /** Private, in-memory navigation. Never persists catalog entries or plaintext. */
 export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, options: {
@@ -164,6 +170,28 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         if(current()){owner=catalog.principal;publish({...state,objects:catalog.objects,page,nextPage:catalog.nextPage,loaded:true,audience:null});}
       });
     },
+    loadGroupGranted(page=0) {
+      if(state.deletion)return Promise.resolve();
+      return operation(async(signal,current)=>{
+        if(!key)throw Error("Media reader unavailable");const principal=key;
+        const catalog=await browser.groupGrantedCatalog(principal,page,signal);
+        if(current())publish({...state,groupGranted:{entries:catalog.entries,page,nextPage:catalog.nextPage},audience:null});
+      });
+    },
+    openGroup(entry:GroupGrantedEntry,tenant:string){
+      const held={...entry},principal=key;
+      if(state.deletion||!principal||!state.groupGranted?.entries.some(row=>row.object===held.object&&row.predicate===held.predicate&&row.set===held.set))return Promise.resolve();
+      return operation(async(signal,current)=>{
+        const file=await browser.openGroup(held.object,tenant,principal,{predicate:held.predicate,set:held.set},signal);
+        try{
+          if(!current())return;
+          if(!mediaPreviewKind(file.description.mediaType)){publish({...state,message:"This file format cannot be previewed."});return;}
+          const url=makeUrl(new Blob([new Uint8Array(file.bytes)],{type:file.description.mediaType}));
+          if(!current()){revokeUrl(url);return;}
+          publish({...state,preview:{url,...file.description,...(file.description.mediaType==="image/png"?{tags:readMemePngTags(file.bytes)}:{})}});
+        }finally{file.bytes.fill(0);}
+      });
+    },
     loadGranted(page=0) {
       if(state.deletion)return Promise.resolve();
       return operation(async(signal,current)=>{
@@ -171,8 +199,66 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         if(current())publish({...state,granted:{objects:catalog.objects,page,nextPage:catalog.nextPage},audience:null});
       });
     },
+    startItemWrap(tenant:string,object:string,predicate:"same-group"|"named-circle",set:string,reader:string) {
+      if(state.deletion||state.itemGrant||state.itemEpoch||state.itemWrap||state.itemStatus||!owner||state.audience?.object!==object||!state.objects.includes(object)||!isSeaPubkey(reader)||!set)return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        await browser.startItemWrap(tenant,principal,{object,predicate,set,reader},signal);
+        if(current())publish({...state,itemWrap:null,message:"The group file key was delivered. Refresh this member’s access before they open it."});
+      },()=>publish({...state,message:"The key delivery could not be confirmed. Check its saved request before trying again."}));
+    },
+    inspectItemWrap(tenant:string) {
+      if(state.deletion||!owner)return Promise.resolve();const principal=owner;
+      return operation(async(signal,current)=>{
+        const itemWrap=await browser.pendingItemWrap(tenant,principal,signal);
+        if(current())publish({...state,itemWrap,message:itemWrap?"A key delivery request is saved. Retry to confirm it.":"No saved key delivery request."});
+      });
+    },
+    resumeItemWrap(tenant:string) {
+      if(state.deletion||!state.itemWrap||!owner)return Promise.resolve();const principal=owner,selected={...state.itemWrap};
+      return operation(async(signal,current)=>{
+        await browser.resumeItemWrap(tenant,principal,selected,signal);
+        if(current())publish({...state,itemWrap:null,message:"The group file key was delivered. Refresh this member’s access before they open it."});
+      },()=>publish({...state,message:"The saved key delivery request is retained. Check access and retry recovery."}));
+    },
+    retireItemWrap(tenant:string) {
+      if(state.deletion||!state.itemWrap||!owner)return Promise.resolve();const principal=owner,selected={...state.itemWrap};
+      return operation(async(signal,current)=>{
+        await browser.retireItemWrap(tenant,principal,selected,signal);
+        if(current())publish({...state,itemWrap:null,message:"The obsolete saved delivery was cleared. File permissions were not changed; prepare a new delivery if needed."});
+      },()=>publish({...state,message:"A newer access epoch could not be confirmed. The saved delivery is retained."}));
+    },
+    startItemStatus(tenant:string,object:string,predicate:"same-group"|"named-circle",set:string,reader:string) {
+      if(state.deletion||state.itemGrant||state.itemEpoch||state.itemWrap||state.itemStatus||!owner||state.audience?.object!==object||!state.objects.includes(object)||!isSeaPubkey(reader)||!set)return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        await browser.startItemStatus(tenant,principal,{object,predicate,set,reader},signal);
+        if(current())publish({...state,itemStatus:null,message:"This member’s current file access was confirmed. It expires shortly; refresh it when needed."});
+      },()=>publish({...state,message:"The member access could not be confirmed. Check its saved request before trying again."}));
+    },
+    inspectItemStatus(tenant:string) {
+      if(state.deletion||!owner)return Promise.resolve();const principal=owner;
+      return operation(async(signal,current)=>{
+        const itemStatus=await browser.pendingItemStatus(tenant,principal,signal);
+        if(current())publish({...state,itemStatus,message:itemStatus?"A member access request is saved. Retry to confirm it.":"No saved member access request."});
+      });
+    },
+    resumeItemStatus(tenant:string) {
+      if(state.deletion||!state.itemStatus||!owner)return Promise.resolve();const principal=owner,selected={...state.itemStatus};
+      return operation(async(signal,current)=>{
+        await browser.resumeItemStatus(tenant,principal,selected,signal);
+        if(current())publish({...state,itemStatus:null,message:"The saved member access request was reconciled. Refresh member file access again before opening; the original authorization may have expired."});
+      },()=>publish({...state,message:"The saved member access request is retained. Check access and retry recovery."}));
+    },
+    discardItemStatus(tenant:string) {
+      if(state.deletion||!state.itemStatus||!owner)return Promise.resolve();const principal=owner,selected={...state.itemStatus};
+      return operation(async(signal,current)=>{
+        await browser.discardItemStatus(tenant,principal,selected,signal);
+        if(current())publish({...state,itemStatus:null,message:"The local member access request was cleared. Accepted changes were not undone."});
+      },()=>publish({...state,message:"The saved member access request cannot be cleared yet. Retry recovery."}));
+    },
     startItemEpoch(tenant:string,object:string,predicate:"same-group"|"named-circle",set:string) {
-      if(state.deletion||state.itemGrant||state.itemEpoch||!owner||state.audience?.object!==object||!state.objects.includes(object)||!set)return Promise.resolve();
+      if(state.deletion||state.itemGrant||state.itemEpoch||state.itemWrap||!owner||state.audience?.object!==object||!state.objects.includes(object)||!set)return Promise.resolve();
       const principal=owner;
       return operation(async(signal,current)=>{
         const result=await browser.startItemEpoch(tenant,principal,{object,predicate,set},signal);
@@ -201,7 +287,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       },()=>publish({...state,message:"The saved access update cannot be cleared. Retry recovery; accepted updates need their replacement keys."}));
     },
     startItemGrant(tenant:string,object:string,predicate:"same-group"|"named-circle",set:string,reader:string,withdraw:boolean) {
-      if(state.deletion||state.itemGrant||state.itemEpoch||!owner||state.audience?.object!==object||!state.objects.includes(object)||!isSeaPubkey(reader)||!set)return Promise.resolve();
+      if(state.deletion||state.itemGrant||state.itemEpoch||state.itemWrap||!owner||state.audience?.object!==object||!state.objects.includes(object)||!isSeaPubkey(reader)||!set)return Promise.resolve();
       const principal=owner;
       return operation(async(signal,current)=>{
         const result=await browser.startItemGrant(tenant,principal,{object,predicate,set,reader,withdraw},signal);
@@ -237,7 +323,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
     },
     startGroupKey(tenant:string,set:string,predicate:"same-group"|"named-circle") {
       const entry=state.groups?.entries.find(row=>row.set===set&&row.predicate===predicate);
-      if(state.deletion||state.groupCommand||state.groupKey||!owner||!entry?.owned||!entry.active)return Promise.resolve();
+      if(state.deletion||state.itemWrap||state.groupCommand||state.groupKey||!owner||!entry?.owned||!entry.active)return Promise.resolve();
       const principal=owner;
       return operation(async(signal,current)=>{
         const groupKey=await browser.startGroupKey(tenant,principal,{set,predicate},signal);
@@ -380,7 +466,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       });
     },
     share(tenant:string,object:string,reader:string) {
-      if(state.deletion||state.sharing||state.audience?.object!==object||!state.objects.includes(object)||!owner||!isSeaPubkey(reader)||reader===owner)return Promise.resolve();
+      if(state.deletion||state.itemWrap||state.sharing||state.audience?.object!==object||!state.objects.includes(object)||!owner||!isSeaPubkey(reader)||reader===owner)return Promise.resolve();
       const principal=owner;
       return operation(async(signal,current)=>{
         const result=await browser.share(tenant,{object,owner:principal,reader},signal);
@@ -389,7 +475,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       },()=>publish({...state,sharing:null,message:"Sharing could not be confirmed. Check saved sharing before retrying; accepted changes are not undone."}));
     },
     resumeSharing(tenant:string) {
-      if(state.deletion||!state.sharing)return Promise.resolve();
+      if(state.deletion||state.itemWrap||!state.sharing)return Promise.resolve();
       const selected={...state.sharing};
       return operation(async(signal,current)=>{
         const result=await browser.resumeShare(tenant,selected,signal);
@@ -398,7 +484,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       },()=>publish({...state,message:"Sharing could not be confirmed. The saved change is retained; check access and retry."}));
     },
     abandonSharing(tenant:string) {
-      if(state.deletion||!state.sharing)return Promise.resolve();
+      if(state.deletion||state.itemWrap||!state.sharing)return Promise.resolve();
       const selected={...state.sharing};
       return operation(async(signal,current)=>{
         await browser.abandonShare(tenant,selected,signal);
@@ -414,7 +500,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       });
     },
     unshare(tenant:string,object:string,reader:string) {
-      if(state.deletion||state.sharing||state.audience?.object!==object||!state.audience.readers.includes(reader)||!owner)return Promise.resolve();
+      if(state.deletion||state.itemWrap||state.sharing||state.audience?.object!==object||!state.audience.readers.includes(reader)||!owner)return Promise.resolve();
       const principal=owner;
       return operation(async(signal,current)=>{
         const result=await browser.share(tenant,{object,owner:principal,reader,remove:true},signal);
