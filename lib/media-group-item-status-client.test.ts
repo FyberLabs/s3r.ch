@@ -15,13 +15,13 @@ const draft={object,...scope,reader};
 const status={object,accessor:reader,stated:1 as const,epoch:2,grantRevision:1,revisionId:fence,signedAt:100000,maxAgeMs:60000,zookie:{object,objectVersion:3,snapshotHash:fence}};
 
 const key=()=>{const k=new Uint8Array(32);k[31]=1;return k;};
-function backend(){
+function backend(maxAgeMs=60000){
   let at=100,applied=false,lost=false,bad=false;const calls:{action:string;body:Record<string,unknown>}[]=[];
   const fetcher:typeof fetch=async(url,init)=>{
     const action=String(url).split("/").at(-1)!,body=JSON.parse(String(init?.body));calls.push({action,body});
     assert.equal(init?.credentials,"same-origin");assert.equal(init?.redirect,"error");
     if(bad)return new Response("unavailable",{status:503});
-    if(action==="item-status-view")return Response.json({at,fence,ownerPub:owner,status});
+    if(action==="item-status-view")return Response.json({at,fence,ownerPub:owner,status:{...status,maxAgeMs}});
     if(action==="item-status-state")return Response.json({at,state:applied?"applied":"absent"});
     applied=true;if(lost)throw Error("lost reply");return Response.json({accepted:true});
   };
@@ -100,4 +100,12 @@ test("status freshness is checked again after signing and invalid responses refu
   const absent:typeof fetch=async(url)=>Response.json(String(url).endsWith("append")?{accepted:true}:{at:100,state:"absent"});
   await assert.rejects(createItemStatusClient(owner,absent,b.clock).apply(command));
   const wrong:typeof fetch=async()=>new Response("{}");await assert.rejects(createItemStatusClient(owner,wrong,b.clock).apply(command));
+});
+
+test("expired short-lived status cannot be appended but retained acceptance can be confirmed",async()=>{
+  const b=backend(1000),c=createItemStatusClient(owner,b.fetcher,b.clock),command=await c.prepare(draft,key());
+  b.time(102);await assert.rejects(c.apply(command));
+  assert.equal(b.calls.filter(row=>row.action==="item-status-append").length,0);
+  b.applied();assert.equal((await c.apply(command)).state,"applied");
+  assert.equal(b.calls.filter(row=>row.action==="item-status-view").length,1);
 });
