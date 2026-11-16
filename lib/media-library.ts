@@ -1,3 +1,4 @@
+import type {PendingItemGrant} from "./media-group-item-grant-recovery";
 import type {PendingGroupKey} from "./media-group-key-recovery";
 import { mintObjectId, parsePrincipalId } from "sociacl-ids";
 import type { GroupCatalogEntry } from "./media-group-command";
@@ -20,6 +21,7 @@ export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly stri
   consent: PendingGroupConsent | null;
   groupCommand: PendingGroupCommand | null;
   groupKey: PendingGroupKey | null;
+  itemGrant: PendingItemGrant | null;
   groups: Readonly<{entries:readonly GroupCatalogEntry[];page:number;nextPage:number|null}> | null;
   sharing: Readonly<{object:string;reader:string;token:string;remove?:boolean}> | null;
   granted: Readonly<{objects:readonly string[];page:number;nextPage:number|null}> | null;
@@ -27,7 +29,7 @@ export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly stri
   deletion: Readonly<{object:string;prepared:boolean}> | null;
   audience: Readonly<{object:string;readers:readonly string[]}> | null;
   preview: Readonly<{ url: string; name: string; mediaType: string; tags?:readonly string[] }> | null }>;
-const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,groups:null});
+const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,groups:null});
 
 /** Private, in-memory navigation. Never persists catalog entries or plaintext. */
 export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, options: {
@@ -166,6 +168,41 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         const catalog=await browser.grantedCatalog(page,signal);
         if(current())publish({...state,granted:{objects:catalog.objects,page,nextPage:catalog.nextPage},audience:null});
       });
+    },
+    startItemGrant(tenant:string,object:string,predicate:"same-group"|"named-circle",set:string,reader:string,withdraw:boolean) {
+      if(state.deletion||state.itemGrant||!owner||state.audience?.object!==object||!state.objects.includes(object)||!isSeaPubkey(reader)||!set)return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        const result=await browser.startItemGrant(tenant,principal,{object,predicate,set,reader,withdraw},signal);
+        if(current())publish({...state,itemGrant:null,message:result.frozen?
+          "The request is recorded, but this group grant is frozen. File access is unavailable through it.":
+          withdraw?"Group permission withdrawn. Separately shared access is unchanged.":
+          "Group permission recorded. File delivery still needs its access update and key delivery."});
+      },()=>publish({...state,itemGrant:null,message:"The group permission could not be confirmed. Check its saved request before trying again."}));
+    },
+    inspectItemGrant(tenant:string) {
+      if(state.deletion||!owner)return Promise.resolve();const principal=owner;
+      return operation(async(signal,current)=>{
+        const itemGrant=await browser.pendingItemGrant(tenant,principal,signal);
+        if(current())publish({...state,itemGrant,message:itemGrant?"A group permission request is saved. Retry to confirm it.":"No saved group permission request."});
+      });
+    },
+    resumeItemGrant(tenant:string) {
+      if(state.deletion||!state.itemGrant||!owner)return Promise.resolve();const selected={...state.itemGrant},principal=owner;
+      return operation(async(signal,current)=>{
+        const result=await browser.resumeItemGrant(tenant,principal,selected,signal);
+        if(current())publish({...state,itemGrant:null,message:result.frozen?
+          "The request is recorded, but this group grant is frozen.":
+          selected.withdraw?"Group permission withdrawal confirmed. Separately shared access is unchanged.":
+          "Group permission recorded. File delivery still needs its access update and key delivery."});
+      },()=>publish({...state,message:"The saved group permission request is retained. Check access and retry recovery."}));
+    },
+    discardItemGrant(tenant:string) {
+      if(state.deletion||!state.itemGrant||!owner)return Promise.resolve();const selected={...state.itemGrant},principal=owner;
+      return operation(async(signal,current)=>{
+        await browser.discardItemGrant(tenant,principal,selected,signal);
+        if(current())publish({...state,itemGrant:null,message:"The local group permission request was cleared. Accepted changes were not undone."});
+      },()=>publish({...state,message:"The saved request cannot be cleared yet. Retry recovery; it may still apply."}));
     },
     startGroupKey(tenant:string,set:string,predicate:"same-group"|"named-circle") {
       const entry=state.groups?.entries.find(row=>row.set===set&&row.predicate===predicate);
