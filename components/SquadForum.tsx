@@ -1,5 +1,7 @@
 "use client";
 
+import {ForumLedger} from "./ForumLedger";
+
 import {contactHref} from "@/lib/contact-link";
 
 import Link from "next/link";
@@ -60,7 +62,7 @@ export function SquadForum({ live, reportParents, sessionKey = null }: { live?: 
   return <SquadForumView key={view.key} view={view} reportParents={reportParents} sessionKey={sessionKey} />;
 }
 function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; reportParents?: ReportParents; sessionKey: string | null }) {
-  const { forumId, forumLabel, liveEnabled, authorLabel, seaPub, oauthLinked,
+  const { ledgerReadable, ledgerWritable, sendLedger, forumId, forumLabel, liveEnabled, authorLabel, seaPub, oauthLinked,
     vitals, setVitals, escalations, sharedReports, previewLevel, setPreviewLevel,
     tab, setTab, filters, query, setQuery, setSelected, notice, draft, setDraft,
     offerBody, setOfferBody, roster, visible, active, chat, needs, offers,
@@ -78,7 +80,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
   const shell = (
     <div>
       {hierarchy}
-      <ForumShell reports={reports} tab={tab} onTab={setTab} forum={{ label: forumLabel, href: "/feed/squad" }}
+      <ForumShell memory={ledgerReadable ? <ForumLedger key={JSON.stringify([forumId, sessionKey, viewer])} rows={chat} writable={ledgerWritable} send={sendLedger}/> : undefined} reports={reports} tab={tab} onTab={setTab} forum={{ label: forumLabel, href: "/feed/squad" }}
         header={<>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -172,7 +174,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
               </div>
         </>}
         board={<div data-testid="squad-board">
-              <BusinessRoleStrips view={roleView} roster={liveEnabled ? roster : []} onOpen={setSelected} />
+              <BusinessRoleStrips view={roleView} roster={liveEnabled ? roster : []} onOpen={setSelected} onLedger={ledgerReadable ? () => setTab("memory") : undefined} />
               <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3">
                 {!visible.length ? <p role="status" className="text-sm text-ink-muted">No contributors match these filters.</p> : null}
                 {visible.map((agent) => {
