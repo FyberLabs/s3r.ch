@@ -18,6 +18,8 @@ try {
  import {rawMediaBlockCid} from './lib/ipfs-media-blocks';
  import {sealMedia} from './lib/media-crypto';
  import {createIpfsMediaTransfer} from './lib/ipfs-media-transfer';
+ import {createCachedMediaBlocks} from './lib/ipfs-cached-blocks';
+ import {createLocalCiphertextCache} from './lib/ipfs-local-cache';
  let sample,controller,pending,calls=0,resumable,resumeMedia,resumeInput,resumeGrant,preparedDownload;
  const transport=(url,init)=>{calls++;return fetch(url,init);};
  window.fetchCalls=()=>calls;
@@ -63,6 +65,19 @@ try {
  window.resumeDownload=async()=>{
   try{const output=await preparedDownload.resume();return output.length===resumeInput.length&&output.every((byte,index)=>byte===resumeInput[index]);}catch{return false;}
  };
+ let localCache,cachedMedia,cacheAllowed=true,cacheNow=1000;
+ window.configureCache=endpoint=>{
+  const signal=new AbortController().signal,current=()=>cacheAllowed;
+  localCache=createLocalCiphertextCache({scope:'c'.repeat(64),policy:{enabled:true,maxBytes:3*1024*1024,maxEntries:4,ttlMs:1000},current,now:()=>cacheNow});
+  const provider=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,maxBytesPerMinute:8*1024*1024,current,signal},transport);
+  cachedMedia=createIpfsMediaTransfer({blocks:createCachedMediaBlocks({provider,cache:localCache,current,signal}),current,signal});
+ };
+ window.cachedRead=async()=>{try{
+  const output=await cachedMedia.download(resumeGrant.manifest,resumeGrant.key,{tenant:'afee9b29-1706-5590-bbbf-e58df8945ac0',object:'claim_'+'78'.repeat(32)});
+  return output.length===resumeInput.length&&output.every((byte,index)=>byte===resumeInput[index]);
+ }catch{return false;}};
+ window.cacheConsent=value=>{cacheAllowed=value;};window.cacheTime=value=>{cacheNow=value;};
+ window.clearCache=async()=>{localCache.close();await localCache.clear();};
  window.composed=async endpoint=>{
   const signal=new AbortController().signal,current=()=>true;
   const blocks=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,maxBytesPerMinute:8*1024*1024,current,signal},transport);
@@ -146,6 +161,15 @@ try {
  assert.deepEqual(await page.evaluate(()=>window.downloadStatus()),{state:'unavailable',verifiedBlocks:1,totalBlocks:2});
  assert.equal(await page.evaluate(()=>window.resumeDownload()),true);
  assert.equal(providerRequests.length,beforeDownload+3);assert.equal(downloadCids.length,3);assert.equal(downloadCids[1],downloadCids[2]);assert.notEqual(downloadCids[0],downloadCids[1]);
+ // Real IndexedDB reuse: offline reads send no provider request; revocation/expiry refuse reuse.
+ mode='normal';const beforeCache=providerRequests.length;
+ await page.evaluate(endpoint=>window.configureCache(endpoint),providerOrigin);
+ assert.equal(await page.evaluate(()=>window.cachedRead()),true);assert.equal(providerRequests.length,beforeCache+2);
+ mode='unavailable';assert.equal(await page.evaluate(()=>window.cachedRead()),true);assert.equal(providerRequests.length,beforeCache+2);
+ await page.evaluate(()=>window.cacheConsent(false));assert.equal(await page.evaluate(()=>window.cachedRead()),false);assert.equal(providerRequests.length,beforeCache+2);
+ await page.evaluate(()=>{window.cacheConsent(true);window.cacheTime(2000);});
+ assert.equal(await page.evaluate(()=>window.cachedRead()),false);assert.equal(providerRequests.length,beforeCache+3);
+ await page.evaluate(()=>window.clearCache());
  // Server withholds the acknowledgement; abort and browser closure must end the connection.
  mode='hold-upload';let seen=new Promise(resolve=>{noticed=resolve;}),gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
@@ -153,6 +177,6 @@ try {
  seen=new Promise(resolve=>{noticed=resolve;});gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
  await browser.close();browser=undefined;await bounded(gone);
- assert.deepEqual(appRequests.sort(),['/','/app.js']);assert.equal(providerRequests.length,20+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+ assert.deepEqual(appRequests.sort(),['/','/app.js']);assert.equal(providerRequests.length,23+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
  console.log('Direct Kubo browser success, consent/rate refusal, provider faults and interrupted acknowledgements passed (protocol substitute).');
 }finally{await browser?.close();for(const server of [app,provider])if(server)await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true});}
