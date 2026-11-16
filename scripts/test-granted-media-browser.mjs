@@ -34,7 +34,7 @@ const server=createServer(async(req,res)=>{
   if(req.url==='/api/identity/sea/session'){json({enabled:true,principal:pair.pub,expiresAt:Date.now()+120000});return;}
   if(req.url==='/api/media/config'){json({tenant});return;}
   if(req.url==='/api/media/catalog'){json({at:Math.floor(Date.now()/1000),principal:pair.pub,objects:catalog?[object]:[],nextPage:1});return;}
-  if(req.url==='/api/media/groups/item-reader-catalog'){json({at:Math.floor(Date.now()/1000),entries:[],nextPage:null});return;}
+  if(req.url==='/api/media/groups/item-reader-catalog'){json({at:Math.floor(Date.now()/1000),entries:[],nextPage:1});return;}
   if(req.url==='/api/media/read-wrap'){
    if(!allowed){json({},403);return;}
    json({context,readerEpub:pair.epub,expiresAt:Date.now()/1000+2,wrapBase64:Buffer.from(JSON.stringify({wrap:seed.wraps[0],reference:{sha256:seed.sha256,length:seed.bytes.length}})).toString('base64')});return;
