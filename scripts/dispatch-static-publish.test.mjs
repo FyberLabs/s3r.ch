@@ -149,6 +149,7 @@ test('TEST release credentials are repository scoped and isolated from deploymen
   assert.doesNotMatch(publish, /actions\/checkout|uses: \.\/|npm |scripts\/deploy-test/);
   assert.match(publish, /ref=1b476725b096df0452ab1c2cc529579b46c95b6b/);
   assert.match(publish, /sha256sum --check --status/);
+  for (const action of publish.matchAll(/uses: ([^\s]+)@([^\s]+)/g)) assert.match(action[2], /^[a-f0-9]{40}$/);
   assert.ok(publish.indexOf('sha256sum') < publish.indexOf('id: test-publication'));
   assert.ok(start > deploy.indexOf('run: bash scripts/deploy-test.sh'));
   assert.ok(end > start);
