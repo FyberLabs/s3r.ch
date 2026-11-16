@@ -36,6 +36,8 @@ function Session({session,onCancel}:{session:DeviceSession;onCancel:()=>void}){
  },[session]);
  const recoveryPassphrase=useRef<HTMLInputElement>(null),newPassphrase=useRef<HTMLInputElement>(null),confirmPassphrase=useRef<HTMLInputElement>(null),accountHandle=useRef<HTMLInputElement>(null);
  const [download,setDownload]=useState<string>();
+ const recoveryCopy=useRef<Uint8Array|undefined>(undefined);
+ useEffect(()=>()=>{recoveryCopy.current?.fill(0);recoveryCopy.current=undefined;},[]);
  useEffect(()=>()=>{if(download)URL.revokeObjectURL(download);},[download]);
  const linkedAbort=useRef(new AbortController());
  useEffect(()=>{const abort=new AbortController();linkedAbort.current=abort;return ()=>abort.abort();},[]);
@@ -69,6 +71,10 @@ function Session({session,onCancel}:{session:DeviceSession;onCancel:()=>void}){
   </section>}
   {client&&mode==='recovery'&&<section><h2>Open your encrypted recovery copy</h2>
    <p>Use the passphrase that protected this copy. It is opened on this device. A passkey protects the restored keyring locally; signing in remains a separate step.</p>
+   {session.recoveryStoreEnabled&&<button disabled={busy} onClick={()=>void work(async()=>{
+    const bytes=await client.fetchEncryptedCopy();
+    try{setRecoveryFile(new File([new Uint8Array(bytes)],'stored-recovery.json',{type:'application/json'}));return 'Stored encrypted copy loaded. Enter its passphrase to verify and restore it on this device.';}finally{bytes.fill(0);}
+   })}>Use stored recovery copy</button>}
    <label>Encrypted recovery file <input type="file" disabled={busy} onChange={e=>{setRecoveryFile(e.target.files?.[0]??null);e.target.value='';}}/></label>
    <label>Recovery passphrase <input ref={recoveryPassphrase} type="password" autoComplete="off" disabled={busy}/></label>
    <button disabled={busy||!recoveryFile} onClick={()=>void work(async()=>{
@@ -88,18 +94,25 @@ function Session({session,onCancel}:{session:DeviceSession;onCancel:()=>void}){
    <label>New recovery passphrase <input ref={newPassphrase} type="password" autoComplete="new-password" disabled={busy}/></label>
    <label>Confirm recovery passphrase <input ref={confirmPassphrase} type="password" autoComplete="new-password" disabled={busy}/></label>
    <button disabled={busy} onClick={()=>void work(async()=>{
-    setDownload(undefined);let phrase:Uint8Array|undefined,confirmation:Uint8Array|undefined,bytes:Uint8Array|undefined;
+    setDownload(undefined);recoveryCopy.current?.fill(0);recoveryCopy.current=undefined;let phrase:Uint8Array|undefined,confirmation:Uint8Array|undefined,bytes:Uint8Array|undefined;
     const first=newPassphrase.current,second=confirmPassphrase.current;
     try{
      if(!first||!second)throw Error();const a=first.value,b=second.value;first.value='';second.value='';
      phrase=encodePassphrase(a);confirmation=encodePassphrase(b);
      if(!phrase.length||phrase.length!==confirmation.length||!phrase.every((value,index)=>value===confirmation![index]))return 'Passphrases did not match. Enter both again.';
      bytes=await client.prepareEncryptedCopy(phrase,accountHandle.current?.value??'');
+     recoveryCopy.current=new Uint8Array(bytes);
      setDownload(URL.createObjectURL(new Blob([new Uint8Array(bytes)],{type:'application/json'})));
      return 'Encrypted copy prepared. Download it and verify it using “Open encrypted recovery copy” before relying on it.';
     }finally{if(first)first.value='';if(second)second.value='';phrase?.fill(0);confirmation?.fill(0);bytes?.fill(0);}
    })}>Prepare encrypted recovery file</button>
    {download&&<a href={download} download="s3rch-recovery.json">Download encrypted recovery file</a>}
+   {download&&session.recoveryStoreEnabled&&<div><p>Saving replaces the server's current recovery copy with this encrypted file. Keep the downloaded copy until you have verified recovery.</p>
+    <button disabled={busy} onClick={()=>void work(async()=>{
+     if(!recoveryCopy.current)throw Error();const result=await client.saveEncryptedCopy(recoveryCopy.current);
+     return result==='stored'?'Encrypted recovery copy saved and read back successfully. Your account keys were not rotated.':'This exact encrypted copy is already stored and has been verified. No second write was made.';
+    })}>Save and verify stored recovery copy</button>
+   </div>}
   </section>}
   {restored.map(record=><section key={record.address}><h2>Restored identity</h2><p className="break-all">{record.identity.principal}</p>
    <p>The protected copy is saved locally. Unlock verifies current authority again before sign-in.</p>
@@ -109,7 +122,7 @@ function Session({session,onCancel}:{session:DeviceSession;onCancel:()=>void}){
    <button disabled={busy||!client} onClick={()=>void work(async()=>{await client!.resume(record);return 'Saved completion acknowledged. No identity was imported again.';})}>Retry saved acknowledgement</button>{' '}
    <button disabled={busy||!client} onClick={()=>void work(async()=>{const ok=await client!.signIn(record);if(ok){identitySessionChanged();return 'Signed in with the saved identity.';}return 'Identity saved; sign-in failed. Retry sign-in without importing again.';})}>Unlock saved identity and sign in</button>
   </section>)}
-  {busy&&<button onClick={()=>{client?.dispose();setDownload(undefined);if(newPassphrase.current)newPassphrase.current.value='';if(confirmPassphrase.current)confirmPassphrase.current.value='';setRestoreFile(null);setRecoveryFile(null);if(recoveryPassphrase.current)recoveryPassphrase.current.value='';onCancel();}}>Cancel current identity operation</button>}
+  {busy&&<button onClick={()=>{client?.dispose();recoveryCopy.current?.fill(0);recoveryCopy.current=undefined;setDownload(undefined);if(newPassphrase.current)newPassphrase.current.value='';if(confirmPassphrase.current)confirmPassphrase.current.value='';setRestoreFile(null);setRecoveryFile(null);if(recoveryPassphrase.current)recoveryPassphrase.current.value='';onCancel();}}>Cancel current identity operation</button>}
   {status&&<p role="status">{status}</p>}
  </div>;
 }
