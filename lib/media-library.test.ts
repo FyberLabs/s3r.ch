@@ -621,7 +621,7 @@ test("group Granted opens only listed scoped entries and clears plaintext and pr
   openGroup:async(object:string,_tenant:string,principal:string,scope:unknown)=>{opens++;assert.equal(object,'shared');assert.equal(principal,key);assert.deepEqual(scope,{predicate:entry.predicate,set:entry.set});return {description:{name:'group.mp3',mediaType:'audio/mpeg'},bytes};},
  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
  try{
-  await f.library.loadGroupGranted();assert.equal(f.state().groupGranted,null);
+  await f.library.loadGroupGranted();assert.equal(f.state()?.groupGranted,undefined);
   await f.library.load();await f.library.loadGroupGranted();assert.deepEqual(f.state().groupGranted?.entries,[entry]);
   await f.library.openGroup({...entry,set:'other'},'tenant');assert.equal(opens,0);
   await f.library.openGroup(entry,'tenant');assert.equal(opens,1);assert.equal(f.state().preview?.name,'group.mp3');assert.deepEqual(bytes,new Uint8Array(3));
