@@ -1,4 +1,5 @@
 // Built Next HTTP/native signing contracts: CI only. Remote owners are explicit substitutes.
+import { request as httpRequest } from "node:http";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -60,10 +61,26 @@ async function boot(raw?: string) {
 function browser(grant?: string) {
   const jar = new Map<string, string>(grant ? [["__Host-nightly-run-grant", grant]] : []);
   async function request(route: string, body?: unknown, extra: Record<string, string> = {}) {
-    const response = await fetch(local + route, { method: body === undefined ? "GET" : "POST", redirect: "manual",
-      headers: { host: "test.s3r.ch", "x-forwarded-host": "test.s3r.ch", "x-forwarded-proto": "https", origin,
-        "content-type": "application/json", cookie: [...jar].map(([k,v]) => k + "=" + v).join("; "), ...extra },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    // Model the normalized TLS-terminating edge explicitly. Fetch may normalize
+    // Host back to the loopback URL; the native HTTP transport preserves it.
+    const response = await new Promise<Response>((resolve, reject) => {
+      const outgoing = httpRequest(local + route, { method: body === undefined ? "GET" : "POST",
+        headers: { host: "test.s3r.ch", "x-forwarded-host": "test.s3r.ch", "x-forwarded-proto": "https", origin,
+          "content-type": "application/json", cookie: [...jar].map(([k,v]) => k + "=" + v).join("; "), ...extra } }, incoming => {
+        const chunks: Buffer[] = [];
+        incoming.on("data", chunk => chunks.push(chunk));
+        incoming.on("error", reject);
+        incoming.on("end", () => {
+          const headers = new Headers();
+          for (let i = 0; i < incoming.rawHeaders.length; i += 2) headers.append(incoming.rawHeaders[i], incoming.rawHeaders[i + 1]);
+          const bytes = Buffer.concat(chunks);
+          resolve(new Response(bytes.length ? bytes : null, { status: incoming.statusCode!, headers }));
+        });
+      });
+      outgoing.setTimeout(10000, () => outgoing.destroy(Error("CI request timed out")));
+      outgoing.on("error", reject);
+      outgoing.end(body === undefined ? undefined : JSON.stringify(body));
+    });
     for (const cookie of response.headers.getSetCookie()) { const [key, ...values] = cookie.split(";")[0].split("="); const value = values.join("="); if (value) jar.set(key, value); else jar.delete(key); }
     return response;
   }
