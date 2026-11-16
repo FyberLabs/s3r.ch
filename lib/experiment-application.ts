@@ -34,7 +34,7 @@ function publicKey(value: string | undefined) {
   return key;
 }
 /** Only server-owned environment variables configure authority and transport. */
-export async function createExperimentApplication(env: Record<string, string | undefined>) {
+export async function createExperimentApplication(env: Record<string, string | undefined>, transport: typeof fetch = fetch) {
   const site = origin(env.S3RCH_EXPERIMENT_ORIGIN);
   const tenant = env.S3RCH_EXPERIMENT_TENANT ?? "";
   const rawSecret = env.S3RCH_EXPERIMENT_SECRET ?? "";
@@ -56,12 +56,12 @@ export async function createExperimentApplication(env: Record<string, string | u
     return { subject: claims.key, expiresAt: claims.expiresAt };
   }
   const records = createExperimentRecords({ origin: env.S3RCH_EXPERIMENT_STORAGE_ORIGIN ?? "", tenant,
-    cacheKey: env.S3RCH_EXPERIMENT_CACHE_KEY ?? "", outboxKey: env.S3RCH_EXPERIMENT_OUTBOX_KEY ?? "" });
+    cacheKey: env.S3RCH_EXPERIMENT_CACHE_KEY ?? "", outboxKey: env.S3RCH_EXPERIMENT_OUTBOX_KEY ?? "" }, transport);
   const sinks: Record<string, ExperimentSink> = {};
   for (const [name, connection, v2] of [["primary", env.APPLICATIONINSIGHTS_CONNECTION_STRING, env.S3RCH_EXPERIMENT_PRIMARY_V2],
     ["secondary", env.S3RCH_EXPERIMENT_SECONDARY_CONNECTION, env.S3RCH_EXPERIMENT_SECONDARY_V2]]) {
     if (!connection && name === "secondary") continue;
-    const client = await createManualExperimentClient(connection ?? "");
+    const client = await createManualExperimentClient(connection ?? "", transport);
     sinks[name!] = { supportedEventTypes: v2 === "1" ? ["experiment.exposure.v1", "experiment.conversion.v2"] : ["experiment.exposure.v1"],
       async send(event) { await client.trackEvent({ name: event.event_type, properties: event.payload, eventId: event.event_id }); } };
   }

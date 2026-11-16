@@ -66,6 +66,12 @@ jobs:
           --test-coverage-include=lib/identity/sea-session-client.ts
           lib/identity/terminal-sea-route.test.ts lib/identity/sea-session-client.test.ts
 
+      - name: Native terminal experiment composition coverage (CI only)
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/identity/terminal-experiment-route.ts
+          lib/identity/terminal-experiment-route.test.ts
+
       - name: Install isolated browser for media contracts
         run: |
           npx playwright-core install --with-deps chromium
