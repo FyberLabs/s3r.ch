@@ -277,6 +277,7 @@ jobs:
           node --import tsx --test --experimental-test-coverage
           --test-coverage-include=lib/identity/restore-keyring.ts
           --test-coverage-include=lib/identity/restored-keyring-storage.ts
+          --test-coverage-lines=95 --test-coverage-branches=75
           lib/identity/restore-keyring.test.ts
       - name: Wallet key creation and public export browser contract (CI only)
         run: node scripts/test-wallet-key-browser.mjs

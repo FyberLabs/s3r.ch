@@ -6,8 +6,8 @@ import {IDBFactory,IDBObjectStore} from 'fake-indexeddb';
 import {historyState} from 'sociacl-ids';
 import {importKeyring,exportKeyring,closeKeyring} from 'sociacl-ids/keyring';
 import {restoreExistingKeyring} from './restore-keyring';
-import {restoredKeyringRecords} from './restored-keyring-storage';
-import {canonical} from './device-storage';
+import {restoredKeyringRecords,openRestoredKeyring} from './restored-keyring-storage';
+import {canonical,deviceProtectionKey} from './device-storage';
 import {base64UrlToBytes} from './wrap';
 import {createIndexedDbMeshKeyStore,openMeshDb,MESH_STORE_NAME} from './idb';
 import {ensureLocalMeshKey} from './mesh';
@@ -57,4 +57,19 @@ test('an existing local record is preserved instead of replaced by a restore',as
  const f=await setup(),db=await openMeshDb(f.factory);
  await new Promise<void>((resolve,reject)=>{const tx=db.transaction(MESH_STORE_NAME,'readwrite');tx.objectStore(MESH_STORE_NAME).add({address:'existing',privateMarker:'preserved'});tx.oncomplete=()=>resolve();tx.onabort=()=>reject(Error());});db.close();
  await assert.rejects(restoreExistingKeyring(f.bytes(),f.input));assert.deepEqual(await restoredKeyringRecords(f.factory),[]);
+});
+
+test('saved copy unlock uses PRF and rejects changed authenticated metadata or wrong protection',async()=>{
+ const f=await setup(),raw=new Uint8Array(32).fill(19),key=await deviceProtectionKey(new Uint8Array(raw));
+ const input={...f.input,protect:async()=>({...await f.input.protect(),key})};
+ const {record}=await restoreExistingKeyring(f.bytes(),input);
+ const prior=Object.getOwnPropertyDescriptor(globalThis,'navigator');
+ Object.defineProperty(globalThis,'navigator',{configurable:true,value:{credentials:{get:async()=>({getClientExtensionResults:()=>({prf:{results:{first:new Uint8Array(raw)}}})})}}});
+ try{
+  const bytes=await openRestoredKeyring(record),handle=importKeyring(bytes,record.identity,f.state);
+  try{assert.deepEqual(Buffer.from(exportKeyring(handle,f.state)),Buffer.from(f.v.encodedHex,'hex'));}finally{bytes.fill(0);closeKeyring(handle);}
+  await assert.rejects(openRestoredKeyring({...record,historyAt:record.historyAt+1}));
+  raw.fill(20);await assert.rejects(openRestoredKeyring(record));
+  await assert.rejects(openRestoredKeyring({...record,generation:1} as any));
+ }finally{if(prior)Object.defineProperty(globalThis,'navigator',prior);else Reflect.deleteProperty(globalThis,'navigator');raw.fill(0);}
 });
