@@ -12,7 +12,8 @@ ownership. SEA keys are case-sensitive.
 `createIdentitySessions` is the single five-minute session issuer. Existing-key
 login proves possession of an already held SEA key. Signed-link login uses
 `linked-challenge` and `linked-exchange` under `/api/identity/sea`: the issuer binds
-a 60-second challenge to the exact credential, signed link ID and current SEA key.
+a 60-second challenge to the exact credential and an independent random subject.
+It resolves the current SEA identity only after verifying credential proof.
 The wallet signs challenge-bound SIWE; OIDC supplies a fresh pinned-provider ID
 token with the challenge nonce, exact issuer/audience/tenant/subject and fresh
 `auth_time`. The browser challenge cookie and origin must also match. Both paths

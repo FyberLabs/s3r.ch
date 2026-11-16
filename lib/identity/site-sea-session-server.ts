@@ -1,3 +1,4 @@
+import { configuredLinkedAdmission } from "./linked-admission-config-server";
 import type { LinkedSessionAdmission } from "./linked-session-admission";
 import { OAUTH_REDIRECT_URIS } from "./config";
 import { requestHost, requestIsSecure } from "../request-origin";
@@ -21,8 +22,9 @@ export async function siteSeaSession(request: Request, action: string, env: Read
   try {
     const origin = "https://" + requestHost(request);
     if (!requestIsSecure(request) || !origins.has(origin)) return reply(403, { error: "origin" });
-    // No environment boolean, request evidence, local export or metadata mapping
-    // can supply completeness. A real owning adapter must be installed in code.
+    if (action.startsWith("linked-") && !linkedAdmission) linkedAdmission = await configuredLinkedAdmission(origin, env, fetcher, clock);
+    // Private trust and a complete owning source are required; no request or
+    // owner-only export can assert login uniqueness.
     if (action.startsWith("linked-") && !linkedAdmission) return reply(503, { error: "linked-identity-unavailable" });
     const replay = configuredIdentityReplay(identitySessionNamespace(origin), env, fetcher, clock);
     if (!replay) return request.method === "GET" ? reply(200, { enabled: false, principal: null }) : reply(503, { error: "identity-unavailable" });

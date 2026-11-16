@@ -12,7 +12,7 @@ import { resolveStartupLinkedIdentity } from "./startup-linked-login";
 
 type Env = Record<string, string | undefined>;
 type Dependencies = { config?: () => Promise<StartupLoginConfig | null>; fetch?: typeof fetch;
-  key?: JWTVerifyGetKey | Uint8Array | CryptoKey; now?: number };
+  key?: JWTVerifyGetKey | Uint8Array | CryptoKey; now?: number; clock?: () => number };
 const pendingKind = "s3rch-startup-pkce-v1", credentialKind = "s3rch-startup-credential-v1";
 const ttl = 300;
 const jwks = new Map<string, JWTVerifyGetKey>();
@@ -59,7 +59,7 @@ export async function beginStartupOAuth(request: Request, env: Env = process.env
   try {
     const config = await (deps.config?.() ?? readStartupLoginConfig(env));
     if (!config) return redirect("/feed?startup=unavailable", [...clearPending(), ...clearCredential()]);
-    const secret = getIdentitySecret(env), now = Math.floor((deps.now ?? Date.now()) / 1000);
+    const secret = getIdentitySecret(env), now = Math.floor((deps.clock?.() ?? deps.now ?? Date.now()) / 1000);
     const { verifier, challenge } = createPkcePair(), state = randomBytes(32).toString("base64url"), nonce = randomBytes(32).toString("base64url");
     const { callback } = origin(request);
     const token = await sign(pendingKind, { state, nonce, verifier, callback, mapping: config.binding.mapping_sha256 }, request, secret, now);
@@ -78,7 +78,7 @@ export async function finishStartupOAuth(request: Request, env: Env = process.en
   try {
     const config = await (deps.config?.() ?? readStartupLoginConfig(env));
     if (!config) return denied();
-    const secret = getIdentitySecret(env), now = Math.floor((deps.now ?? Date.now()) / 1000);
+    const secret = getIdentitySecret(env), now = Math.floor((deps.clock?.() ?? deps.now ?? Date.now()) / 1000);
     const cookie = readCookie(request.headers.get("cookie"), [startupPendingName(true), startupPendingName(false)]);
     if (!cookie) return denied();
     const pending = await verify(cookie, pendingKind, request, secret, now), params = new URL(request.url).searchParams;
@@ -93,9 +93,10 @@ export async function finishStartupOAuth(request: Request, env: Env = process.en
       if (!jwks.has(config.provider.jwksUri)) jwks.set(config.provider.jwksUri, createRemoteJWKSet(new URL(config.provider.jwksUri)));
       key = jwks.get(config.provider.jwksUri)!;
     }
+    const verifiedAt = Math.floor((deps.clock?.() ?? deps.now ?? Date.now()) / 1000);
     const { payload } = await jwtVerify(exchanged.idToken, key, { algorithms: ["RS256", "PS256", "ES256"],
-      issuer: config.provider.issuer, audience: config.provider.clientId, currentDate: new Date(now * 1000), requiredClaims: ["sub", "exp", "iat", "nonce"] });
-    if (!Number.isSafeInteger(payload.iat) || payload.iat! > now || !Number.isSafeInteger(payload.exp) || !same(payload.nonce, pending.nonce) || typeof payload.sub !== "string" || !exchanged.accessToken ||
+      issuer: config.provider.issuer, audience: config.provider.clientId, currentDate: new Date(verifiedAt * 1000), requiredClaims: ["sub", "exp", "iat", "nonce"] });
+    if (!Number.isSafeInteger(payload.iat) || payload.iat! > verifiedAt || !Number.isSafeInteger(payload.exp) || !same(payload.nonce, pending.nonce) || typeof payload.sub !== "string" || !exchanged.accessToken ||
         (payload.azp !== undefined && payload.azp !== config.provider.clientId)) return denied();
     await verifyTerminalToken(payload, { kind: "provider-id-token", subject: payload.sub });
     const identity = await createStartupIdentityClient({ endpoint: config.endpoint, expected: config.binding, fetch: deps.fetch })
@@ -104,7 +105,7 @@ export async function finishStartupOAuth(request: Request, env: Env = process.en
     const latest = await (deps.config?.() ?? readStartupLoginConfig(env));
     if (!latest || latest.binding.mapping_sha256 !== config.binding.mapping_sha256 ||
         latest.provider.id !== config.provider.id || latest.endpoint !== config.endpoint) return denied();
-    const finishedAt = Math.floor((deps.now ?? Date.now()) / 1000);
+    const finishedAt = Math.floor((deps.clock?.() ?? deps.now ?? Date.now()) / 1000);
     await verify(cookie, pendingKind, request, secret, finishedAt);
     if (payload.exp! <= finishedAt) return denied();
     // The cookie confirms linked credentials only. It grants no mesh or owner action.
@@ -122,7 +123,7 @@ export async function readStartupCredential(request: Request, env: Env = process
     if (!config) return null;
     const cookie = readCookie(request.headers.get("cookie"), [startupCredentialName(true), startupCredentialName(false)]);
     if (!cookie) return null;
-    const payload = await verify(cookie, credentialKind, request, getIdentitySecret(env), Math.floor((deps.now ?? Date.now()) / 1000));
+    const payload = await verify(cookie, credentialKind, request, getIdentitySecret(env), Math.floor((deps.clock?.() ?? deps.now ?? Date.now()) / 1000));
     const saved = payload.identity;
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) return null;
     const row = saved as Record<string, unknown>;

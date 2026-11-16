@@ -52,18 +52,18 @@ export function createIdentitySessions(input: {
       .setJti(randomBytes(32).toString("hex")).sign(secret);
   }
   if (input.linkedAdmission && input.linkedAdmission.origin !== issuer) throw Error("Linked admission origin mismatch");
-  const linkedType = "s3rch-linked-challenge-v1" + domain;
+  const linkedType = "s3rch-linked-challenge-v2" + domain;
   async function linkedClaims(value: string) {
     if (typeof value !== "string" || value.length > 4096) throw Error("Invalid linked challenge");
     const now = clock();
     const { payload } = await jwtVerify(value, secret, { algorithms: ["HS256"], typ: linkedType,
       issuer, audience, currentDate: new Date(now * 1000), requiredClaims: ["sub", "iat", "exp", "jti"] });
     const credential = parseLinkedCredential(payload.credential);
-    if (!credential || typeof payload.linkId !== "string" || !idPattern.test(payload.linkId) || typeof payload.sub !== "string" || !isSeaPubkey(payload.sub) || isPublicSquadPrincipal(payload.sub) ||
+    if (!credential || payload.linkId !== undefined || typeof payload.sub !== "string" || !idPattern.test(payload.sub) ||
         !Number.isSafeInteger(payload.iat) || !Number.isSafeInteger(payload.exp) || payload.iat! > now || payload.exp! - payload.iat! !== 60 ||
         typeof payload.jti !== "string" || !idPattern.test(payload.jti)) throw Error("Invalid linked challenge");
     await verifyTerminalToken(payload, { kind: linkedType, subject: payload.sub });
-    return { key: payload.sub, linkId: payload.linkId, credential, token: value, id: payload.jti, issuedAt: payload.iat!, expiresAt: payload.exp! };
+    return { credential, token: value, id: payload.jti, issuedAt: payload.iat!, expiresAt: payload.exp! };
   }
   const claims = createIdentityTokenVerifier({ origin: issuer, secret: input.secret, clock }).claims;
   const agentChallengeType = "s3rch-agent-challenge-v1" + domain, agentSessionType = "s3rch-agent-session-v1";
@@ -108,11 +108,10 @@ export function createIdentitySessions(input: {
   return Object.freeze({
     async linkedChallenge(value: unknown): Promise<string | null> {
       try {
-        const credential = parseLinkedCredential(value), at = clock();
+        const credential = parseLinkedCredential(value);
         if (!credential || !input.linkedAdmission) return null;
-        const resolved = await input.linkedAdmission.resolve(credential, at);
-        if (!resolved || clock() !== at) return null;
-        const challenge = await token(linkedType, resolved.key, 60, { credential, linkId: resolved.linkId });
+        // No authority lookup or identity-dependent response before credential proof.
+        const challenge = await token(linkedType, randomBytes(32).toString("hex"), 60, { credential });
         return challenge.length <= 4096 ? challenge : null;
       } catch { return null; }
     },
@@ -122,10 +121,12 @@ export function createIdentitySessions(input: {
         if (!admission) return null;
         const proof = await linkedClaims(challenge);
         if (!await admission.verify(proof.credential, credentialProof, proof, clock())) return null;
+        let selected: { key: string; linkId: string } | undefined;
         async function current() {
           await linkedClaims(challenge);
           const at = clock(), resolved = await admission!.resolve(proof.credential, at);
-          if (clock() !== at || resolved?.key !== proof.key || resolved.linkId !== proof.linkId) throw Error("Linked authority changed");
+          if (clock() !== at || !resolved || (selected && (resolved.key !== selected.key || resolved.linkId !== selected.linkId))) throw Error("Linked authority changed");
+          selected = resolved;
           await linkedClaims(challenge);
           if (clock() !== at) throw Error("Linked authority stale");
         }
@@ -134,7 +135,7 @@ export function createIdentitySessions(input: {
         // Revocation, expiry or rotation while consuming burns the challenge and denies.
         if (!await admission.verify(proof.credential, credentialProof, proof, clock())) return null;
         await current();
-        return token(sessionType, proof.key, 300);
+        return token(sessionType, selected!.key, 300);
       } catch { return null; }
     },
     /** Caller-selected scopes may only narrow the signed grant. This challenge
