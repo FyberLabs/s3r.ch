@@ -131,3 +131,12 @@ the native encrypted-PKCE handler with a named registry transport substitution.
 No app route imports this factory. Whole-fixture route classification (including
 unrelated users), SEA/Squad/experiment composition and the root controller contract
 remain required before installation; the factory alone is not a capability.
+
+`createTerminalSeaRoute` prepares the actual SEA issuer and existing Squad session
+alias behind per-request admission, with the declared fixture SEA allowlist and
+matching Spanopticon replay tenant. It refuses linked-login paths until their
+complete owner source exists. The real browser client accepts only the exact
+optional run/generation hint shape in its signing intent; it does not treat that
+decoded hint as authenticated authority. Native CI exercises sign-in, old-run
+replay, seal and an accepted replay consume whose response is lost. An uncertain
+exchange retains pending admission. This factory remains uninstalled as well.

@@ -68,3 +68,15 @@ test("site client honors cancellation while reading and never exchanges an inter
   }});
   assert.equal(await client.signIn(pair,abort.signal),false); assert.equal(exchanges,0);
 });
+
+test("malformed terminal hints cannot broaden the browser signing intent", async () => {
+  const pair = await sea.pair(), sessions = createIdentitySessions({ origin, secret: "s".repeat(32), consume: async () => true });
+  const challenge = await sessions.challenge(pair.pub), parts = challenge.split("."), claims = JSON.parse(Buffer.from(parts[1], "base64url").toString());
+  for (const nightly_run of [null, [], "run", {}, { run: "bad run", generation: "a".repeat(64) },
+    { run: "valid", generation: "short" }, { run: "valid", generation: "a".repeat(64), extra: true }]) {
+    let calls = 0;
+    const value = [parts[0], Buffer.from(JSON.stringify({ ...claims, nightly_run })).toString("base64url"), parts[2]].join(".");
+    const client = createSeaSessionClient({ base: "/session", origin, fetch: async () => { calls++; return Response.json({ challenge: value }); } });
+    assert.equal(await client.signIn(pair), false); assert.equal(calls, 1);
+  }
+});

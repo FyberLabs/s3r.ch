@@ -42,9 +42,17 @@ export function createSeaSessionClient(input: { base: string; origin: string; fe
         const reply = await post("challenge", { key: signingPair.pub }, signal);
         if (!reply || Object.keys(reply).join() !== "challenge" || typeof reply.challenge !== "string" || reply.challenge.length > 4096) return false;
         const header = decodeProtectedHeader(reply.challenge), claims = decodeJwt(reply.challenge), now = clock();
+        const terminal = claims.nightly_run;
+        const terminalFields = terminal === undefined ? "aud,exp,iat,iss,jti,sub" : "aud,exp,iat,iss,jti,nightly_run,sub";
+        if (terminal !== undefined && (!terminal || typeof terminal !== "object" || Array.isArray(terminal) ||
+            Object.keys(terminal).sort().join() !== "generation,run" ||
+            typeof (terminal as Record<string, unknown>).run !== "string" ||
+            !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test((terminal as { run: string }).run) ||
+            typeof (terminal as Record<string, unknown>).generation !== "string" ||
+            !/^[a-f0-9]{64}$/.test((terminal as { generation: string }).generation))) return false;
         // Decoding is a signing-intent check, not server-token verification.
         // The server verifies its MAC, single-use cookie binding and SEA proof.
-        if (Object.keys(header).sort().join() !== "alg,typ" || Object.keys(claims).sort().join() !== "aud,exp,iat,iss,jti,sub" || (typeof header.typ !== "string" || !/^s3rch-identity-challenge-v1(?::[0-9a-f]{64})?$/.test(header.typ)) || header.alg !== "HS256" || claims.iss !== origin.origin || claims.aud !== origin.origin ||
+        if (Object.keys(header).sort().join() !== "alg,typ" || Object.keys(claims).sort().join() !== terminalFields || (typeof header.typ !== "string" || !/^s3rch-identity-challenge-v1(?::[0-9a-f]{64})?$/.test(header.typ)) || header.alg !== "HS256" || claims.iss !== origin.origin || claims.aud !== origin.origin ||
             claims.sub !== signingPair.pub || !Number.isSafeInteger(claims.iat) || !Number.isSafeInteger(claims.exp) ||
             claims.iat! > now || claims.exp! <= now || claims.exp! - claims.iat! !== 60 || typeof claims.jti !== "string" || !/^[0-9a-f]{64}$/.test(claims.jti)) return false;
         signal?.throwIfAborted();
