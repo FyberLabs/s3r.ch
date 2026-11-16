@@ -55,7 +55,7 @@ const digest=(v:unknown):v is string=>typeof v==="string"&&/^[a-f0-9]{64}$/.test
 export const isGroupCommand=(action:string):action is GroupCommandAction=>Object.hasOwn(groupCommandFields,action);
 
 /** Shape and authenticated-party checks. Native ACL remains the signature authority. */
-export function parseGroupCommand(action:GroupCommandAction,input:unknown,principal:string) {
+export function parseGroupCommand(action:GroupCommandAction,input:unknown,principal:string):Record<string,unknown> {
   if(action==="item-reader-catalog")return parseGroupGrantedRequest(input,principal);
   if(action==="item-wrap-view"||action==="item-wrap-publish"||action==="item-wrap-read")return parseItemWrapCommand(action,input,principal);
   if(action==="wrap-view"||action==="wrap-publish"||action==="wrap-read")return parseGroupWrapCommand(action,input,principal);
@@ -95,7 +95,7 @@ export function parseGroupCommand(action:GroupCommandAction,input:unknown,princi
 }
 
 /** Reject a mismatched preparation before a browser can sign or persist it. */
-export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,body:Record<string,unknown>,now:number,principal?:string) {
+export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,body:Record<string,unknown>,now:number,principal?:string):Record<string,unknown> {
   if(action==="item-reader-catalog"){if(!principal)return fail();return parseGroupGrantedPage(input,body.page as number,principal,now);}
   if(action==="item-wrap-view"||action==="item-wrap-publish"||action==="item-wrap-read")return parseItemWrapResult(action,input,body,now);
   if(action==="wrap-view"||action==="wrap-publish"||action==="wrap-read")return parseGroupWrapResult(action,input,body,now);
