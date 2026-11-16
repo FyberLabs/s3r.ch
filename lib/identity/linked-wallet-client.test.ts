@@ -32,7 +32,7 @@ async function setup() {
 test("wallet SIWE challenge hash, nonce and issuer URI admit through real issuer", async () => {
   const s = await setup(); assert.equal(await s.client.signIn(), true); assert.deepEqual(s.counts(), [1, 1]);
 });
-test("unavailable source refuses before wallet signing", async () => {
+test("unavailable challenge endpoint refuses before wallet signing", async () => {
   const s = await setup(); s.unavailable(); assert.equal(await s.client.signIn(), false); assert.deepEqual(s.counts(), [0, 0]);
 });
 test("closed signing intent refuses malformed, wrong-scope and expired challenges", async () => {
@@ -85,4 +85,13 @@ test("synchronous transport cancellation handles its subsequent rejection", asyn
     fetch: () => { client.cancel(); return Promise.reject(Error("transport cancelled")); } });
   assert.equal(await client.signIn(), false);
   await new Promise(resolve => setImmediate(resolve));
+});
+
+test("wallet accepts the identity-independent challenge and rejects legacy identity disclosure", async () => {
+  const s = await setup();
+  s.mutate(token => { const claims = decodeJwt(token); assert.equal(claims.linkId, undefined); assert.notEqual(claims.sub, s.fixture.principal); return token; });
+  assert.equal(await s.client.signIn(), true);
+  const legacy = await setup();
+  legacy.mutate(token => { const parts = token.split('.'); parts[0] = Buffer.from(JSON.stringify({alg:'HS256',typ:'s3rch-linked-challenge-v1'})).toString('base64url'); return parts.join('.'); });
+  assert.equal(await legacy.client.signIn(), false); assert.deepEqual(legacy.counts(), [0,0]);
 });
