@@ -104,12 +104,13 @@ export function verifyTerminalWork(original: unknown): void {
 
 /** Only the original admitted grant reaches the independently admitting Auth
  * relay. No arbitrary target, caller header, or current replacement grant. */
-async function terminalOwnerHeaders(target: string, owner: "auth" | "acl"): Promise<Record<string, string>> {
+async function terminalOwnerHeaders(target: string, owner: "auth" | "acl" | "startup"): Promise<Record<string, string>> {
   const current = context.getStore();
   if (current?.closed) return fail();
   if (!current?.admission) return {};
   const allowed = owner === "auth"
     ? /^https:\/\/api\.test\.hyperme\.sh\/auth\/sea-device-link\/v1\/sessions\/[A-Za-z0-9_-]{43}\/(admit|create|join|offer|send|receive|complete|completed|cancel)$/
+    : owner === "startup" ? /^https:\/\/api\.test\.hyperme\.sh\/auth\/startup\/identity$/
     : /^https:\/\/api\.test\.hyperme\.sh\/api\/v1\/acl\/sociacl\/device-transfer\/(state|current)$/;
   if (!allowed.test(target)) return fail();
   if (current.cookies.length > 16384) return fail();
@@ -126,4 +127,8 @@ export function terminalRelayHeaders(target: string): Promise<Record<string, str
 }
 export function terminalAclHeaders(target: string): Promise<Record<string, string>> {
   return terminalOwnerHeaders(target, "acl");
+}
+
+export function terminalStartupHeaders(target: string): Promise<Record<string, string>> {
+  return terminalOwnerHeaders(target, "startup");
 }

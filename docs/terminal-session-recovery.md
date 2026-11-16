@@ -165,3 +165,13 @@ range rather than rounding them, and validates exact positive phase receipts.
 Native HTTP/HMAC contracts run in CI with Auth transport substituted. This factory
 is uninstalled, performs no retries, and neither installs configuration nor proves
 whole-fixture coverage. Reader cases remain unregistered.
+
+`createTerminalStartupRoute` prepares the actual startup availability, PKCE start,
+OAuth callback and credential reader behind admission. It requires the configured
+TEST provider, client, tenant and SEA key to match the declared experiment scope.
+The native Auth identity reader forwards the original admitted grant only to
+GET `https://api.test.hyperme.sh/auth/startup/identity`; Auth #68 and Edge #74 own
+its independent native admission. Lost callbacks/identity responses retain pending
+work and failed completion withholds cookies. This wrapper does not fall back to
+backup OAuth. It remains uninstalled; complete identity classification and the
+owner contract merges remain required before installation.
