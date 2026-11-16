@@ -18,7 +18,7 @@ try {
  import {rawMediaBlockCid} from './lib/ipfs-media-blocks';
  import {sealMedia} from './lib/media-crypto';
  import {createIpfsMediaTransfer} from './lib/ipfs-media-transfer';
- let sample,controller,pending,calls=0,resumable,resumeMedia,resumeInput;
+ let sample,controller,pending,calls=0,resumable,resumeMedia,resumeInput,resumeGrant,preparedDownload;
  const transport=(url,init)=>{calls++;return fetch(url,init);};
  window.fetchCalls=()=>calls;
  window.exercise=async endpoint=>{
@@ -48,10 +48,20 @@ try {
  window.resumeStatus=()=>resumable.status();
  window.resumeMedia=async()=>{
   try{
-   const grant=await resumable.resume();
+   const grant=await resumable.resume();resumeGrant=grant;
    const output=await resumeMedia.download(grant.manifest,grant.key,{tenant:'afee9b29-1706-5590-bbbf-e58df8945ac0',object:'claim_'+'78'.repeat(32)});
    return output.length===resumeInput.length&&output.every((byte,index)=>byte===resumeInput[index]);
   }catch{return false;}
+ };
+ window.prepareDownloadRecovery=async endpoint=>{
+  const signal=new AbortController().signal,current=()=>true;
+  const blocks=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,maxBytesPerMinute:8*1024*1024,current,signal},transport);
+  const media=createIpfsMediaTransfer({blocks,current,signal});
+  preparedDownload=await media.prepareDownload(resumeGrant.manifest,resumeGrant.key,{tenant:'afee9b29-1706-5590-bbbf-e58df8945ac0',object:'claim_'+'78'.repeat(32)});
+ };
+ window.downloadStatus=()=>preparedDownload.status();
+ window.resumeDownload=async()=>{
+  try{const output=await preparedDownload.resume();return output.length===resumeInput.length&&output.every((byte,index)=>byte===resumeInput[index]);}catch{return false;}
  };
  window.composed=async endpoint=>{
   const signal=new AbortController().signal,current=()=>true;
@@ -63,7 +73,7 @@ try {
   return {same:output.length===input.length&&output.every((byte,index)=>byte===input[index]),blocks:JSON.parse(grant.manifest).blocks.length};
  };
  `,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,platform:'browser',format:'iife'});
- const appRequests=[],providerRequests=[],errors=[];const blocks=new Map();let appOrigin,stored,mode="normal",noticed,closed,resumePuts=0;const resumeCids=[];
+ const appRequests=[],providerRequests=[],errors=[];const blocks=new Map();let appOrigin,stored,mode="normal",noticed,closed,resumePuts=0;const resumeCids=[],downloadCids=[];
  app=createServer(tls,(req,res)=>{appRequests.push(req.url);res.setHeader('Content-Type',req.url==='/app.js'?'text/javascript':'text/html');res.end(req.url==='/app.js'?bundle.outputFiles[0].contents:'<!doctype html><link rel="icon" href="data:,"><script src="/app.js"></script>');});
  await new Promise(resolve=>app.listen(0,'127.0.0.1',resolve));appOrigin=`https://127.0.0.1:${app.address().port}`;
  provider=createServer(tls,async(req,res)=>{
@@ -71,6 +81,11 @@ try {
    providerRequests.push(req.url);assert.equal(req.method,'POST');assert.equal(req.headers.origin,appOrigin);assert.equal(req.headers.cookie,undefined);assert.equal(req.headers.referer,undefined);
    res.setHeader('Access-Control-Allow-Origin',appOrigin);
    const url=new URL(req.url,'https://fixture.invalid');
+   if(mode==='resume-get-second'&&url.pathname==='/api/v0/block/get'){
+    downloadCids.push(url.searchParams.get('arg'));
+    if(downloadCids.length===2){res.writeHead(503);res.end();return;}
+    if(downloadCids.length===3)mode='normal';
+   }
    if(mode==='unavailable'){res.writeHead(503);res.end();return;}
    if(mode==='drop-upload'){req.destroy();return;}
    if(mode==='hold-upload'){
@@ -124,6 +139,13 @@ try {
  assert.deepEqual(await page.evaluate(()=>window.resumeStatus()),{state:'unavailable',acknowledgedBlocks:1,totalBlocks:2});
  assert.equal(await page.evaluate(()=>window.resumeMedia()),true);
  assert.equal(providerRequests.length,beforeResume+5);assert.equal(resumeCids.length,3);assert.equal(resumeCids[1],resumeCids[2]);assert.notEqual(resumeCids[0],resumeCids[1]);
+ // Retain only the verified first block; explicit download resume fetches the failed second block.
+ mode='resume-get-second';const beforeDownload=providerRequests.length;
+ await page.evaluate(endpoint=>window.prepareDownloadRecovery(endpoint),providerOrigin);assert.equal(providerRequests.length,beforeDownload);
+ assert.equal(await page.evaluate(()=>window.resumeDownload()),false);
+ assert.deepEqual(await page.evaluate(()=>window.downloadStatus()),{state:'unavailable',verifiedBlocks:1,totalBlocks:2});
+ assert.equal(await page.evaluate(()=>window.resumeDownload()),true);
+ assert.equal(providerRequests.length,beforeDownload+3);assert.equal(downloadCids.length,3);assert.equal(downloadCids[1],downloadCids[2]);assert.notEqual(downloadCids[0],downloadCids[1]);
  // Server withholds the acknowledgement; abort and browser closure must end the connection.
  mode='hold-upload';let seen=new Promise(resolve=>{noticed=resolve;}),gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
@@ -131,6 +153,6 @@ try {
  seen=new Promise(resolve=>{noticed=resolve;});gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
  await browser.close();browser=undefined;await bounded(gone);
- assert.deepEqual(appRequests.sort(),['/','/app.js']);assert.equal(providerRequests.length,17+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+ assert.deepEqual(appRequests.sort(),['/','/app.js']);assert.equal(providerRequests.length,20+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
  console.log('Direct Kubo browser success, consent/rate refusal, provider faults and interrupted acknowledgements passed (protocol substitute).');
 }finally{await browser?.close();for(const server of [app,provider])if(server)await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true});}
