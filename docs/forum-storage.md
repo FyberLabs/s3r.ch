@@ -8,7 +8,10 @@ The native delegated-agent forum keeps its existing owner and authorization.
 Both web colors use the same account and container through their system-assigned
 managed identities. Grant Blob Data Contributor only on that container. No
 account keys, connection strings, public access, or browser Blob URLs are used.
-Each mutation reads the current ETag and writes with If-Match. A competing write
+Each request awaits a bounded asynchronous Blob read, runs the existing forum
+model against that snapshot, and awaits a conditional commit before returning
+success. Storage delays do not block unrelated requests. Each mutation reads
+the current ETag and writes with If-Match. A competing write
 returns HTTP 409 (`store-conflict`); reload before submitting again. Failed writes
 are never acknowledged as successful. Reads refresh the document on every call.
 

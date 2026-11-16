@@ -16,7 +16,6 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { BlobForumStore, configuredForumBlobClient } from "./forum-blob";
 import { getAddress } from "viem";
 import { isSeaPubkey } from "./identity/forum-check";
 import { CHAT_BODY_MAX } from "./chat";
@@ -326,13 +325,12 @@ export class FileForumStore implements ForumStore {
 }
 
 export function getForum(): Forum {
+  const mode = process.env.S3RCH_FORUM_STORAGE || "file";
+  if (mode !== "file" && mode !== "blob") throw new Error("Invalid forum storage mode");
+  if (mode === "blob") throw new Error("Blob forum requests require the asynchronous request boundary");
   const g = globalThis as GlobalForum;
   if (!g.__s3rchForum) {
-    const mode = process.env.S3RCH_FORUM_STORAGE || "file";
-    if (mode !== "file" && mode !== "blob") throw new Error("Invalid forum storage mode");
-    g.__s3rchForum = openForum(mode === "blob"
-      ? new BlobForumStore(configuredForumBlobClient())
-      : new FileForumStore(forumFilePath()));
+    g.__s3rchForum = openForum(new FileForumStore(forumFilePath()));
   }
   return g.__s3rchForum;
 }
