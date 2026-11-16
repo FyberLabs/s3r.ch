@@ -1,3 +1,4 @@
+import { terminalTokenClaims, verifyTerminalToken } from "./terminal-run";
 import { getAddress } from "viem";
 import { SignJWT, jwtVerify } from "jose";
 import { SESSION_TTL_SECONDS } from "./config";
@@ -17,7 +18,7 @@ export async function signSessionToken(
 ): Promise<string> {
   const address = getAddress(input.address);
   const iat = Math.floor(now / 1000);
-  return new SignJWT({ address, chainId: input.chainId })
+  return new SignJWT({ address, chainId: input.chainId, ...await terminalTokenClaims({ kind: "wallet-session", subject: address }) })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setSubject(address)
     .setIssuedAt(iat)
@@ -43,6 +44,7 @@ export async function readSessionToken(
   if (typeof payload.iat !== "number" || typeof payload.exp !== "number") {
     throw new Error("Session cookie is missing iat/exp.");
   }
+  await verifyTerminalToken(payload, { kind: "wallet-session", subject: getAddress(payload.address) });
   return {
     address: getAddress(payload.address),
     chainId: payload.chainId,

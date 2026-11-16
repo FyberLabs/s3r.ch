@@ -1,3 +1,4 @@
+import { verifyTerminalToken } from "./terminal-run";
 import { jwtVerify } from "jose";
 import { isSeaPubkey } from "./forum-check";
 import { isPublicSquadPrincipal } from "../squad-view";
@@ -19,6 +20,7 @@ export function createIdentityTokenVerifier(input: { origin: string; secret: str
     if (typeof payload.sub !== "string" || !isSeaPubkey(payload.sub) || isPublicSquadPrincipal(payload.sub) ||
         !Number.isSafeInteger(payload.iat) || !Number.isSafeInteger(payload.exp) || payload.iat! > now ||
         payload.exp! - payload.iat! !== ttl || typeof payload.jti !== "string" || !/^[0-9a-f]{64}$/.test(payload.jti)) throw Error("Invalid session");
+    await verifyTerminalToken(payload, { kind: type, subject: payload.sub });
     return { key: payload.sub, id: payload.jti, expiresAt: payload.exp! };
   }
   return Object.freeze({ claims, async authenticate(value: string): Promise<{ key: string } | null> {

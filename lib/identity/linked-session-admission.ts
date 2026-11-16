@@ -1,3 +1,4 @@
+import { verifyTerminalToken } from "./terminal-run";
 import { jwtVerify, type JWTVerifyGetKey } from "jose";
 import type { KeyObject } from "node:crypto";
 import { linkId, parseEip55, parseOidcCredential, resolveWalletLinkNow, resolveOidcLinkNow,
@@ -96,6 +97,7 @@ export function createLinkedSessionAdmission(input: { source: LinkedSessionSourc
           algorithms: ["RS256", "PS256", "ES256"], issuer: provider.issuer, audience: provider.clientId,
           currentDate: new Date(now * 1000), requiredClaims: ["sub", "iat", "exp", "nonce", "auth_time"],
         });
+        await verifyTerminalToken(payload, { kind: "provider-id-token", subject: typeof payload.sub === "string" ? payload.sub : null });
         return (payload.aud === provider.clientId || (Array.isArray(payload.aud) && payload.aud.length === 1 && payload.aud[0] === provider.clientId)) &&
           payload.sub === credential.sub && payload[provider.tenantClaim] === credential.tenant && payload.nonce === challenge.id &&
           (payload.azp === undefined || payload.azp === provider.clientId) &&
