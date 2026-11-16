@@ -171,14 +171,15 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       });
     },
     loadGroupGranted(page=0) {
-      if(state.deletion||!owner)return Promise.resolve();const principal=owner;
+      if(state.deletion)return Promise.resolve();
       return operation(async(signal,current)=>{
+        if(!key)throw Error("Media reader unavailable");const principal=key;
         const catalog=await browser.groupGrantedCatalog(principal,page,signal);
         if(current())publish({...state,groupGranted:{entries:catalog.entries,page,nextPage:catalog.nextPage},audience:null});
       });
     },
     openGroup(entry:GroupGrantedEntry,tenant:string){
-      const held={...entry},principal=owner;
+      const held={...entry},principal=key;
       if(state.deletion||!principal||!state.groupGranted?.entries.some(row=>row.object===held.object&&row.predicate===held.predicate&&row.set===held.set))return Promise.resolve();
       return operation(async(signal,current)=>{
         const file=await browser.openGroup(held.object,tenant,principal,{predicate:held.predicate,set:held.set},signal);
