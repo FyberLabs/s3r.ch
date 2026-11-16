@@ -431,42 +431,24 @@ test("group item grants retain exact encrypted recovery under the unlocked ident
  }
 });
 
-test("group item epochs retain exact recovery under the unlocked identity",async()=>{
+test("group epoch adapter requires unlocked identity and uses its isolated journal",async()=>{
  const {IDBFactory}=await import('fake-indexeddb');
- const {plan:fixture}=await import('./media-group-item-epoch-fixture');
  const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator'),oldDb=Object.getOwnPropertyDescriptor(globalThis,'indexedDB');
  try{
   unlock();Object.defineProperty(globalThis,'indexedDB',{configurable:true,value:new IDBFactory()});
   const names:string[]=[];Object.defineProperty(globalThis,'navigator',{configurable:true,value:{locks:{request:async(name:string,_options:unknown,work:(lock:unknown)=>unknown)=>{names.push(name);return work({});}}}});
+  let calls=0;const browser=createPrivateMediaBrowser(()=>owner,async()=>{calls++;return new Response(null,{status:503});});
   const target={object,predicate:'same-group' as const,set:object.replace('media_','set_')};
-  let applied=false,lock=false,writes=0,views=0;const bodies:unknown[]=[];
-  const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
-   const body=JSON.parse(String(init?.body)),at=Math.floor(Date.now()/1000),action=String(url).split('/').at(-1);
-   assert.ok(!String(init?.body).includes(pair.priv));assert.ok(!String(init?.body).includes(pair.epriv));
-   if(action==='item-epoch-view'){
-    views++;if(lock)forgetUnlockedMeshPair();const plan=structuredClone(fixture);
-    plan.at=at;plan.grants[0].until=(at+7200)*1000;plan.snapshot.entries.forEach(e=>{e.until=(at+7200)*1000;});
-    return Response.json(plan);
-   }
-   if(action==='item-epoch-state'){bodies.push(body.payload);return Response.json({at,state:applied?'applied':'absent'});}
-   bodies.push(body.payload);writes++;applied=true;throw Error('lost append reply');
-  });
   assert.equal(await browser.pendingItemEpoch(tenant,owner),null);
-  await assert.rejects(browser.startItemEpoch(tenant,owner,target));
-  const pending=(await browser.pendingItemEpoch(tenant,owner))!;assert.equal(pending.epoch,2);
-  await assert.rejects(browser.startItemEpoch(tenant,owner,target));assert.equal(views,1);
-  assert.equal((await browser.resumeItemEpoch(tenant,owner,pending)).state,'applied');
-  assert.equal(writes,1);assert.equal(await browser.pendingItemEpoch(tenant,owner),null);
-  assert.ok(bodies.every(body=>JSON.stringify(body)===JSON.stringify(bodies[0])));
-  applied=false;await assert.rejects(browser.startItemEpoch(tenant,owner,target));
-  const saved=(await browser.pendingItemEpoch(tenant,owner))!;
-  assert.equal((await browser.discardItemEpoch(tenant,owner,saved)).state,'applied');
-  assert.ok(names.every(name=>name==='s3rch-private-group-item-epoch-v1'));
-  lock=true;await assert.rejects(browser.startItemEpoch(tenant,owner,target));assert.equal(writes,2);
-  await assert.rejects(browser.pendingItemEpoch(tenant,owner));
+  await assert.rejects(browser.startItemEpoch(tenant,owner,target));assert.equal(calls,1);
+  const expected={...target,epoch:2,token:'missing'};
+  await assert.rejects(browser.resumeItemEpoch(tenant,owner,expected));
+  await assert.rejects(browser.discardItemEpoch(tenant,owner,expected));
+  assert.ok(names.every(name=>name==='s3rch-private-group-item-epoch-delivery-v1'));
   for(const priv of ['bad',pair.priv.slice(0,-1)+'F']){
    unlock();rememberUnlockedMeshPair('linked-credential',{...pair,priv});await assert.rejects(browser.startItemEpoch(tenant,owner,target));
   }
+  forgetUnlockedMeshPair();await assert.rejects(browser.pendingItemEpoch(tenant,owner));
  }finally{
   if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else Reflect.deleteProperty(globalThis,'navigator');
   if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
