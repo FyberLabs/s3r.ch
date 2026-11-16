@@ -1,3 +1,4 @@
+import {parseItemWrapCommand,parseItemWrapResult} from "./media-group-item-wrap";
 import {parseOwnerWrapResult} from "./media-group-owner-wrap";
 import {parseItemStatusCommand,parseItemStatusResult} from "./media-group-item-status";
 import {parseItemEpochCommand,parseItemEpochResult} from "./media-group-item-epoch-command";
@@ -15,6 +16,9 @@ export type GroupCatalog=Readonly<{at:number;groups:readonly GroupCatalogEntry[]
 
 export const groupCommandFields={
   catalog:["page"],
+  "item-wrap-view":["object","predicate","set","reader"],
+  "item-wrap-publish":["object","predicate","set","reader","at","fence","metadata","payload"],
+  "item-wrap-read":["object","predicate","set"],
   "item-owner-wrap-read":["object","predicate","set"],
   "item-status-view":["object","predicate","set","reader"],
   "item-status-append":["object","predicate","set","reader","at","fence","payload"],
@@ -50,6 +54,7 @@ export const isGroupCommand=(action:string):action is GroupCommandAction=>Object
 
 /** Shape and authenticated-party checks. Native ACL remains the signature authority. */
 export function parseGroupCommand(action:GroupCommandAction,input:unknown,principal:string) {
+  if(action==="item-wrap-view"||action==="item-wrap-publish"||action==="item-wrap-read")return parseItemWrapCommand(action,input,principal);
   if(action==="wrap-view"||action==="wrap-publish"||action==="wrap-read")return parseGroupWrapCommand(action,input,principal);
   if(action==="item-grant-view"||action==="item-grant-append"||action==="item-grant-state")return parseItemGrantCommand(action,input,principal);
   if(action==="item-epoch-append"||action==="item-epoch-state")return parseItemEpochCommand(action,input,principal);
@@ -88,6 +93,7 @@ export function parseGroupCommand(action:GroupCommandAction,input:unknown,princi
 
 /** Reject a mismatched preparation before a browser can sign or persist it. */
 export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,body:Record<string,unknown>,now:number,principal?:string) {
+  if(action==="item-wrap-view"||action==="item-wrap-publish"||action==="item-wrap-read")return parseItemWrapResult(action,input,body,now);
   if(action==="wrap-view"||action==="wrap-publish"||action==="wrap-read")return parseGroupWrapResult(action,input,body,now);
   if(action==="item-grant-view"||action==="item-grant-append"||action==="item-grant-state"){
     if(!principal)return fail();return parseItemGrantResult(action,input,body,now,principal);
@@ -165,5 +171,5 @@ export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,
   return v;
 }
 
-export const groupRequestLimit=(action:GroupCommandAction)=>action==="item-epoch-append"||action==="item-epoch-state"?270336:action==="item-status-view"||action==="item-owner-wrap-read"||action==="item-epoch-view"||action==="item-grant-view"?2048:action==="item-status-append"||action==="item-status-state"||action==="item-grant-append"||action==="item-grant-state"?8192:action==="wrap-publish"?92160:action==="key-append"||action==="key-state"?73728:18432;
-export const groupResponseLimit=(action:GroupCommandAction)=>action==="item-epoch-view"?262144:action==="wrap-read"||action==="item-owner-wrap-read"?92160:action==="wrap-view"||action==="key-view"||action==="item-authority-view"?73728:18432;
+export const groupRequestLimit=(action:GroupCommandAction)=>action==="item-wrap-view"||action==="item-wrap-read"?2048:action==="item-wrap-publish"?92160:action==="item-epoch-append"||action==="item-epoch-state"?270336:action==="item-status-view"||action==="item-owner-wrap-read"||action==="item-epoch-view"||action==="item-grant-view"?2048:action==="item-status-append"||action==="item-status-state"||action==="item-grant-append"||action==="item-grant-state"?8192:action==="wrap-publish"?92160:action==="key-append"||action==="key-state"?73728:18432;
+export const groupResponseLimit=(action:GroupCommandAction)=>action==="item-wrap-read"?92160:action==="item-epoch-view"?262144:action==="wrap-read"||action==="item-owner-wrap-read"?92160:action==="wrap-view"||action==="key-view"||action==="item-authority-view"?73728:18432;

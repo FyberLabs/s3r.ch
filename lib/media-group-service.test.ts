@@ -198,3 +198,26 @@ test("epoch browser transport refuses stale, failed, oversized or aborted respon
   const controller=new AbortController();controller.abort();
   await assert.rejects(read(async()=>{throw Error("must not fetch");},controller.signal));
 });
+
+test("item wrap proxy retains both epochs and refuses stale delivery or foreign writers",async()=>{
+  const target={object,...scope},metadata={itemEpoch:2,itemRevisionId:'a'.repeat(64),itemDigest:'b'.repeat(64),groupEpoch:3,groupRevisionId:'c'.repeat(64),groupKeyCommitment:'d'.repeat(64)};
+  const publication={...target,reader:other,at:100,fence,metadata:{...metadata,digest:'f'.repeat(64)},payload:btoa('opaque')};
+  const read={payload:publication.payload,object,predicate:scope.predicate,set_id:scope.set,item_epoch:2,item_revision_id:metadata.itemRevisionId,
+    item_digest:metadata.itemDigest,group_epoch:3,group_revision_id:metadata.groupRevisionId,group_key_commitment:metadata.groupKeyCommitment,expires_at:102};
+  const cases:readonly [GroupCommandAction,Record<string,unknown>,unknown][]=[
+    ['item-wrap-view',{...target,reader:other},{at:100,fence,ownerPub:owner,metadata}],
+    ['item-wrap-publish',publication,{digest:publication.metadata.digest}],['item-wrap-read',target,read],
+  ];
+  for(const [action,body,output] of cases){
+    const response=await service(async(url,init)=>{
+      assert.equal(String(url),config.origin+'/api/v1/acl/sociacl/media/groups/'+action);
+      assert.deepEqual(JSON.parse(String(init?.body)),body);assert.equal(new Headers(init?.headers).get('x-api-key'),'private-key');
+      return Response.json(output);
+    })(action,request(body));
+    assert.equal(response.status,200);assert.deepEqual(await response.json(),output);
+    assert.equal(response.headers.get('cache-control'),'private, no-store');
+  }
+  assert.equal((await service(async()=>Response.json({...read,expires_at:100}))('item-wrap-read',request(target))).status,503);
+  assert.equal((await service(async()=>{throw Error('must not fetch');})('item-wrap-publish',request({...publication,reader:'bad'}))).status,400);
+  assert.equal((await service(async()=>new Response(' '.repeat(92161),{headers:{'content-type':'application/json'}}))('item-wrap-read',request(target))).status,503);
+});

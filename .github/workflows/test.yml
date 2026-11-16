@@ -236,6 +236,12 @@ jobs:
           --test-coverage-include=lib/media-group-owner-wrap.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/media-group-item-epoch-delivery.test.ts lib/media-group-owner-wrap.test.ts
+      - name: Group item wrap shape coverage
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-wrap.ts
+          --test-coverage-lines=95 --test-coverage-branches=90
+          lib/media-group-item-wrap.test.ts
       - name: Group item status signing and recovery coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
