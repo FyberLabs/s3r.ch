@@ -383,6 +383,11 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build
 
+      - name: Verify public feed stays static until identity opt-in
+        run: |
+          npx playwright-core install --with-deps chromium
+          node scripts/test-static-feed.mjs
+
   image:
     # Builds the release Dockerfile and boots it with no Panopticon settings.
     runs-on: ubuntu-latest

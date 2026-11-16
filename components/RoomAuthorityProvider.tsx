@@ -3,7 +3,7 @@ import { roomAuthorityDiagnosticsBlock } from "@/lib/room-authority-diagnostics"
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { mineOwnerChanged } from "@/lib/mine-session";
-import { useIdentitySessionState } from "./useIdentitySession";
+import type { IdentitySession } from "./useIdentitySession";
 import { createForumAuthority } from "@/lib/identity/forum-authority";
 import { observeUnlockedForumSigner } from "@/lib/identity/browser-forum-signer";
 import { createSquadBrowserSource } from "@/lib/squad-browser-source";
@@ -45,8 +45,9 @@ function controller(config: Config, session: () => string | null) {
   };
 }
 const Context = createContext<{ current: Controller | null; revision: number }>({ current: null, revision: 0 });
-export function RoomAuthorityProvider({ children }: { children: ReactNode }) {
-  const session = useIdentitySessionState();
+export function RoomAuthorityProvider({ children, session }: {
+  children: ReactNode; session: IdentitySession | null | undefined;
+}) {
   const observed = session === undefined ? undefined : session?.owner ?? null;
   const [key, setKey] = useState<string | null>(null);
   // An unresolved refresh fences the reader/signer but preserves same-identity
