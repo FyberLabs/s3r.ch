@@ -39,3 +39,12 @@ export async function applyItemWrap(input:Input&{bundle?:ItemWrapBundle;expected
   await createItemWrapClient(input.principal,input.fetcher,input.clock).publish(held.draft.bundle,input.signal);
   input.signal.throwIfAborted();await input.journal.remove(held.entry,input.signal);return {delivered:true as const};
 }
+
+/** Retire only the local draft after current owner authority proves a newer
+ * epoch. Published history and ciphertext are untouched; uncertain reads retain it. */
+export async function retireItemWrap(input:Input&{expected:PendingItemWrap}){
+  const expected=structuredClone(input.expected),held=await load(input);if(!held)return fail();
+  matches(held.draft,held.entry,expected);
+  await createItemWrapClient(input.principal,input.fetcher,input.clock).confirmObsolete(held.draft.bundle,input.signal);
+  input.signal.throwIfAborted();await input.journal.remove(held.entry,input.signal);return {retired:true as const};
+}

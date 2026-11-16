@@ -72,6 +72,18 @@ export function createItemWrapClient(principal:string,fetcher:typeof fetch=fetch
         }finally{group.key.fill(0);}
       }finally{opened.value.fill(0);}
     },
+    async confirmObsolete(input:ItemWrapBundle,signal?:AbortSignal){
+      const b=await parseItemWrapBundle(input,principal),held=deadline(signal);
+      const view=await request("item-wrap-view",{object:b.object,predicate:b.predicate,set:b.set,reader:b.reader},held);
+      const current=view.metadata as Record<string,unknown>;
+      if(view.ownerPub!==b.ownerPub)return fail();
+      const item=current.itemEpoch as number,group=current.groupEpoch as number;
+      const savedItem=b.metadata.itemEpoch as number,savedGroup=b.metadata.groupEpoch as number;
+      // Only a forward authoritative epoch makes saved bytes permanently stale.
+      // A denial, changed same-epoch metadata or rollback is not retirement proof.
+      if(item<savedItem||group<savedGroup||(item===savedItem&&group===savedGroup))return fail();
+      held.throwIfAborted();return {obsolete:true as const};
+    },
     async publish(input:ItemWrapBundle,signal?:AbortSignal){
       const b=await parseItemWrapBundle(input,principal),held=deadline(signal),target={object:b.object,predicate:b.predicate,set:b.set,reader:b.reader};
       const view=await request("item-wrap-view",target,held),metadata=view.metadata as Record<string,unknown>;

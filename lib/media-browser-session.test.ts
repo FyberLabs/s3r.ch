@@ -513,6 +513,7 @@ test("group item wrap session uses dedicated recovery and refuses missing author
   let calls=0;const browser=createPrivateMediaBrowser(()=>owner,async()=>{calls++;return new Response(null,{status:503});});
   assert.equal(await browser.pendingItemWrap(tenant,owner),null);await assert.rejects(browser.startItemWrap(tenant,owner,target));assert.equal(calls,1);
   await assert.rejects(browser.resumeItemWrap(tenant,owner,{...target,token:'missing'}));assert.equal(calls,1);
+  await assert.rejects(browser.retireItemWrap(tenant,owner,{...target,token:'missing'}));assert.equal(calls,1);
   assert.ok(names.every(n=>n==='s3rch-private-group-item-wrap-v1'));
   forgetUnlockedMeshPair();await assert.rejects(browser.pendingItemWrap(tenant,owner));await assert.rejects(browser.startItemWrap(tenant,owner,target));
  }finally{

@@ -6,7 +6,7 @@ import {createItemStatusClient} from "./media-group-item-status-client";
 import {parseItemStatusCommand} from "./media-group-item-status";
 import {applyItemStatus,pendingItemStatus,discardItemStatus,type PendingItemStatus} from "./media-group-item-status-recovery";
 import {createItemWrapClient,type ItemWrapTarget} from "./media-group-item-wrap-client";
-import {applyItemWrap,pendingItemWrap,type PendingItemWrap} from "./media-group-item-wrap-recovery";
+import {applyItemWrap,pendingItemWrap,retireItemWrap,type PendingItemWrap} from "./media-group-item-wrap-recovery";
 import {applyEpochDelivery,pendingEpochDelivery,discardEpochDelivery} from "./media-group-item-epoch-delivery";
 import {parseGroupCommand} from "./media-group-command";
 import type {PendingItemEpoch} from "./media-group-item-epoch-recovery";
@@ -133,6 +133,11 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     resumeItemWrap(tenant:string,principal:string,expected:PendingItemWrap,signal?:AbortSignal){
       const held=structuredClone(expected);
       return locked(()=>run((pair,transport,deadline)=>applyItemWrap({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-item-wrap"),expected:held}),signal),"s3rch-private-group-item-wrap-v1");
+    },
+    retireItemWrap(tenant:string,principal:string,expected:PendingItemWrap,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>retireItemWrap({tenant,principal,pair,fetcher:transport,signal:deadline,
         journal:createShareJournal(undefined,"group-item-wrap"),expected:held}),signal),"s3rch-private-group-item-wrap-v1");
     },
     startItemEpoch(tenant:string,principal:string,target:{object:string;predicate:"same-group"|"named-circle";set:string},signal?:AbortSignal){
