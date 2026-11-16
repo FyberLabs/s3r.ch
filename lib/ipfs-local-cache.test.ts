@@ -57,3 +57,11 @@ test("expiry is checked again after asynchronous integrity verification",async(t
  t.mock.method(crypto.subtle,'digest',async(...args:Parameters<typeof digest>)=>{const result=await digest(...args);s.time(2000);return result;});
  assert.equal(await cache.get(cid),null);
 });
+test("hashing and cleanup share the per-instance outstanding-operation bound",async(t)=>{
+ const s=setup(),cache=createLocalCiphertextCache({scope,policy,...s}),cid=await rawMediaBlockCid(block);
+ const digest=crypto.subtle.digest.bind(crypto.subtle),releases:Array<()=>void>=[];
+ t.mock.method(crypto.subtle,'digest',async(...args:Parameters<typeof digest>)=>{await new Promise<void>(resolve=>releases.push(resolve));return digest(...args);});
+ const pending=Array.from({length:4},()=>cache.put(cid,block));
+ await assert.rejects(cache.put(cid,block));await assert.rejects(cache.clear());
+ releases.forEach(release=>release());await Promise.all(pending);await cache.clear();
+});

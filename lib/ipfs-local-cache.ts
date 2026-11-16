@@ -100,6 +100,9 @@ export function createLocalCiphertextCache(input:{scope:string; policy:LocalCiph
    }finally{pending--;}
   },
   // Erasure remains available after opt-out/close; never requires a grant.
-  async clear():Promise<void>{await transact("clear","");},
+  async clear():Promise<void>{
+   if(pending>=4)throw unavailable();pending++;
+   try{await transact("clear","");}finally{pending--;}
+  },
  });
 }
