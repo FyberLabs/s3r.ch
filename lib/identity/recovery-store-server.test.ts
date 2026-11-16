@@ -33,7 +33,7 @@ test('recovery forwards only the authenticated person and fixed owner route',asy
 test('recovery stays off without explicit config and refuses foreign contexts/private inputs',async()=>{
  const req=await fixture();let calls=0;const never=async()=>{calls++;throw Error();};
  assert.equal((await deviceServer(req({slot:'current'}),'recovery-read',{...env,S3RCH_RECOVERY_STORE_ENABLED:undefined},never)).status,503);
- for(const headers of [{'x-device-context':'wrong'},{cookie:''},{origin:'https://foreign.example'}])assert.ok([401,403].includes((await deviceServer(req({slot:'current'},headers),'recovery-read',env,never)).status));
+ for(const headers of [{'x-device-context':'wrong'},{cookie:''},{origin:'https://foreign.example'}] as Record<string,string>[])assert.ok([401,403].includes((await deviceServer(req({slot:'current'},headers),'recovery-read',env,never)).status));
  for(const body of [{slot:'../wraps'},{slot:'current',principal:p},{passphrase:'secret'}])assert.equal((await deviceServer(req(body),'recovery-read',env,never)).status,503);
  assert.equal((await deviceServer(req({action:'put',row:{...row,priv:'secret'},signature:'00'.repeat(64)}),'recovery-put',env,never)).status,503);assert.equal(calls,0);
 });
