@@ -1,3 +1,4 @@
+import { uniqueJson } from "./identity/forum-witness-json";
 import { context, ROOT_CONTEXT } from "@opentelemetry/api";
 import { createExperimentPermission, createExperimentEmitter, type ExperimentEventType, type ExperimentPayload, type ExperimentEmissionPolicy } from "./experiment-contract";
 
@@ -45,17 +46,42 @@ export async function createManualExperimentClient(connectionString: string, tra
     async trackEvent(event: { name: ExperimentEventType; properties: ExperimentPayload; eventId?: string }) {
       if (active >= 8) throw Error("Experiment telemetry busy");
       active++;
+      const signal = AbortSignal.timeout(2000);
       try {
         const response = await context.with(ROOT_CONTEXT, () => transport(endpoint, {
-          method: "POST", redirect: "error", credentials: "omit", signal: AbortSignal.timeout(2000),
+          method: "POST", redirect: "error", credentials: "omit", signal,
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ ver: 1, name: "Microsoft.ApplicationInsights.Event", time: new Date().toISOString(),
             sampleRate: 100, iKey: fields.get("instrumentationkey"), tags: { "ai.cloud.role": "s3rch" },
             data: { baseType: "EventData", baseData: { ver: 2, name: event.name, properties: { ...event.properties, ...(event.eventId ? { event_id: event.eventId } : {}) } } } }),
         }));
         // A single-event request must be fully accepted; partial acceptance is failure.
-        await response.body?.cancel();
-        if (response.status !== 200) throw Error("Experiment telemetry rejected");
+        if (response.status !== 200 || !response.body) {
+          await response.body?.cancel();
+          throw Error("Experiment telemetry rejected");
+        }
+        const reader = response.body.getReader(), chunks: Uint8Array[] = [];
+        let size = 0;
+        const cancel = () => { void reader.cancel().catch(() => {}); };
+        signal.addEventListener("abort", cancel, { once: true });
+        try {
+          while (true) {
+            signal.throwIfAborted();
+            const part = await reader.read();
+            signal.throwIfAborted();
+            if (part.done) break;
+            size += part.value.length;
+            if (size > 4096) throw Error("Experiment telemetry receipt too large");
+            chunks.push(part.value);
+          }
+          const receipt = uniqueJson(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))) as Record<string, unknown>;
+          if (!receipt || receipt.itemsReceived !== 1 || receipt.itemsAccepted !== 1 ||
+              !Array.isArray(receipt.errors) || receipt.errors.length !== 0) throw Error("Experiment telemetry acceptance unknown");
+        } finally {
+          signal.removeEventListener("abort", cancel);
+          await reader.cancel().catch(() => {});
+          reader.releaseLock();
+        }
       } finally { active--; }
     },
     async flush() { /* Every emit awaits its own bounded request; there is no queue. */ },

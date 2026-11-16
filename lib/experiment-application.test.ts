@@ -29,7 +29,7 @@ test("product consumption preserves anonymous assignment through verified SEA si
       if(found?headers.get("if-match")!==`"${found.revision}"`:headers.get("if-none-match")!=="*")return new Response(null,{status:412});
       records.set(target,{value:String(init?.body),revision:(++sequence).toString(16).padStart(64,"0")});return new Response(null,{status:found?204:201});
     }
-    assert.equal(target,"https://dc.applicationinsights.azure.com/v2/track");telemetry.push(JSON.parse(String(init?.body)).data.baseData);return new Response(null,{status:200});
+    assert.equal(target,"https://dc.applicationinsights.azure.com/v2/track");telemetry.push(JSON.parse(String(init?.body)).data.baseData);return Response.json({itemsReceived:1,itemsAccepted:1,errors:[]});
   };
   const app=await createExperimentApplication(env),jar=new Map<string,string>();
   const cookie=()=>[...jar].map(([k,v])=>`${k}=${v}`).join("; ");
