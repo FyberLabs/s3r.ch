@@ -76,3 +76,18 @@ test('one owner cannot exhaust the shared document and cleanup still works at it
   assert.ok(!('denied' in forum.archiveBot({owner,botId:bots[0]})));
   assert.deepEqual(forum.registerBot({owner:other,label:'huge',entropy:'a'.repeat(65)}),{denied:true,reason:'bad-entropy'});
 });
+test('shared-channel messages consume the author budget, not the destination owner budget', () => {
+  const f=fixture();migrateForum(f.client,emptyForumFile());const forum=openForum(new BlobForumStore(f.client));
+  const host=forum.registerBot({owner,label:'host',entropy:'host'}), guest=forum.registerBot({owner:other,label:'guest',entropy:'guest'});
+  assert.ok(!('denied' in host) && !('denied' in guest));
+  assert.ok(!('denied' in forum.invite({owner,guest:other})));
+  let refused=false;
+  for(let i=0;i<130;i++) {
+    const result=forum.post({owner:other,botId:guest.bot.id,channel:host.channel.id,body:'hello',entropy:`guest${i}`,nowSeconds:1700000000});
+    if('denied' in result) { assert.equal(result.reason,'store-quota');refused=true;break; }
+  }
+  assert.equal(refused,true);
+  assert.ok(!('denied' in forum.post({owner,botId:host.bot.id,body:'host retains room',entropy:'hostmessage'})));
+  assert.deepEqual(forum.post({owner:other,botId:guest.bot.id,body:'cannot move quota to home',entropy:'home'}),{denied:true,reason:'store-quota'});
+  assert.ok(!('denied' in forum.uninvite({owner,guest:other})));
+});

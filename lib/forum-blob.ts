@@ -78,7 +78,7 @@ function ownerRows(doc: Document, owner: string) {
   const groups = new Set(file.groups.filter(r => r.owner === owner).map(r => r.id));
   return {
     channels: file.channels.filter(r => r.owner === owner), bots: file.bots.filter(r => r.owner === owner),
-    memberships: file.memberships.filter(r => channels.has(r.channel)), messages: file.messages.filter(r => channels.has(r.channel)),
+    memberships: file.memberships.filter(r => channels.has(r.channel)), messages: file.messages.filter(r => r.owner === owner),
     invites: file.invites.filter(r => channels.has(r.channel)), groups: file.groups.filter(r => r.owner === owner),
     groupMembers: file.groupMembers.filter(r => groups.has(r.group)), desktops: file.desktops.filter(r => channels.has(r.channel)),
     snapshots: doc.snapshots.filter(r => channels.has(r.channel)),
