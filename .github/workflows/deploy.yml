@@ -19,6 +19,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Fetch public synthetic device-transfer vectors
+        run: node scripts/fetch-pairing-vectors.mjs
       - run: npm test
   deploy:
     if: github.ref == 'refs/heads/master'

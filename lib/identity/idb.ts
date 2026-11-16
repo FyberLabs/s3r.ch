@@ -34,6 +34,7 @@ export type WrappedMeshKeyRecord = MeshKeyRecordBase & {
 export type MeshKeyRecord = PlaintextMeshKeyRecord | WrappedMeshKeyRecord;
 
 export type MeshKeyStore = {
+  hasImportedIdentity?(): Promise<boolean>;
   get(address: string): Promise<MeshKeyRecord | null>;
   put(record: MeshKeyRecord): Promise<void>;
 };
@@ -168,6 +169,11 @@ export function createIndexedDbMeshKeyStore(
   factory: IDBFactory | undefined = globalThis.indexedDB,
 ): MeshKeyStore {
   return {
+    async hasImportedIdentity() {
+      const rows = await idbRequest(factory, "readonly", store => store.getAll(null,65));
+      if(rows.length>64) throw Error("Identity storage unavailable");
+      return rows.some(row=>row?.kind === "sea-keyring-v1");
+    },
     async get(address: string) {
       let checksum: string;
       try {
@@ -181,7 +187,12 @@ export function createIndexedDbMeshKeyStore(
     async put(record: MeshKeyRecord) {
       assertCompleteMeshKeyRecord(record);
       const stored = normalizeRecord(record);
-      await idbRequest(factory, "readwrite", (store) => store.put(stored));
+      const db=await openMeshDb(requireFactory(factory));
+      await new Promise<void>((resolve,reject)=>{
+        const tx=db.transaction(MESH_STORE_NAME,'readwrite'),store=tx.objectStore(MESH_STORE_NAME),get=store.getAll(null,65);
+        get.onsuccess=()=>{if(get.result.length>64||get.result.some(row=>row?.kind==='sea-keyring-v1'&&row.seaPub!==stored.seaPub)){tx.abort();return;}store.put(stored);};
+        tx.oncomplete=()=>{db.close();resolve();};tx.onabort=()=>{db.close();reject(Error('Imported identity must be unlocked instead'));};
+      });
     },
   };
 }
@@ -216,7 +227,7 @@ function requireFactory(factory: IDBFactory | undefined): IDBFactory {
   return factory;
 }
 
-function openMeshDb(factory: IDBFactory): Promise<IDBDatabase> {
+export function openMeshDb(factory: IDBFactory): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = factory.open(MESH_IDB_NAME, MESH_IDB_VERSION);
     request.onupgradeneeded = () => {

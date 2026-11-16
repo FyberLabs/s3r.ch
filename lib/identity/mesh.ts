@@ -56,6 +56,9 @@ export async function ensureLocalMeshKey(
     return { record: existing, created: false };
   }
 
+  if (await meshStage("storage", async () => !!(await store.hasImportedIdentity?.()))) {
+    throw new MeshKeySetupError("storage");
+  }
   const pair = await meshStage("key-generation", input.createPair ?? createSeaPair);
   const signedPayload = buildMeshLinkStatement({
     domain: input.domain,

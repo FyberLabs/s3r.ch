@@ -1,3 +1,4 @@
+import {parseItemGrantCommand,parseItemGrantResult} from "./media-group-item-grant";
 import {parseGroupWrapCommand,parseGroupWrapResult} from "./media-group-wrap";
 import {parseGroupKeyCommand,parseGroupKeyView} from "./media-group-key";
 import {parseMediaGroupScope,parseMediaGroupPolicy,parseMediaGroupView} from "./media-group";
@@ -10,6 +11,9 @@ export type GroupCatalog=Readonly<{at:number;groups:readonly GroupCatalogEntry[]
 
 export const groupCommandFields={
   catalog:["page"],
+  "item-grant-view":["object","predicate","set","reader","withdraw"],
+  "item-grant-append":["object","predicate","set","at","fence","payload"],
+  "item-grant-state":["object","predicate","set","payload"],
   "item-view":["object","predicate","set"],
   "item-authority-view":["object"],
   allocate:["predicate","set"],
@@ -36,6 +40,7 @@ export const isGroupCommand=(action:string):action is GroupCommandAction=>Object
 /** Shape and authenticated-party checks. Native ACL remains the signature authority. */
 export function parseGroupCommand(action:GroupCommandAction,input:unknown,principal:string) {
   if(action==="wrap-view"||action==="wrap-publish"||action==="wrap-read")return parseGroupWrapCommand(action,input,principal);
+  if(action==="item-grant-view"||action==="item-grant-append"||action==="item-grant-state")return parseItemGrantCommand(action,input,principal);
   const body=structuredClone(input);
   if(!isSeaPubkey(principal)||!exact(body,groupCommandFields[action]))return fail();
   if(action==="catalog"){if(!integer(body.page)||body.page>15)return fail();return body;}
@@ -71,6 +76,9 @@ export function parseGroupCommand(action:GroupCommandAction,input:unknown,princi
 /** Reject a mismatched preparation before a browser can sign or persist it. */
 export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,body:Record<string,unknown>,now:number,principal?:string) {
   if(action==="wrap-view"||action==="wrap-publish"||action==="wrap-read")return parseGroupWrapResult(action,input,body,now);
+  if(action==="item-grant-view"||action==="item-grant-append"||action==="item-grant-state"){
+    if(!principal)return fail();return parseItemGrantResult(action,input,body,now,principal);
+  }
   const value=structuredClone(input);
   if(action==="catalog") {
     if(!principal||!exact(value,["at","groups","nextPage","principal"])||value.principal!==principal||
@@ -137,5 +145,5 @@ export function parseGroupCommandResult(action:GroupCommandAction,input:unknown,
   return v;
 }
 
-export const groupRequestLimit=(action:GroupCommandAction)=>action==="wrap-publish"?92160:action==="key-append"||action==="key-state"?73728:18432;
+export const groupRequestLimit=(action:GroupCommandAction)=>action==="item-grant-view"?2048:action==="item-grant-append"||action==="item-grant-state"?8192:action==="wrap-publish"?92160:action==="key-append"||action==="key-state"?73728:18432;
 export const groupResponseLimit=(action:GroupCommandAction)=>action==="wrap-read"?92160:action==="wrap-view"||action==="key-view"||action==="item-authority-view"?73728:18432;
