@@ -31,7 +31,7 @@ test("server publisher uses isolated Azure authority and closed rows", async () 
   const transport: typeof fetch = async (url, init) => {
     calls.push({ url: String(url), init: init! });
     assert.equal(init?.redirect, "error"); assert.equal(init?.credentials, "omit");
-    if (String(url).includes("login.microsoftonline.com")) return new Response(JSON.stringify({ access_token: "server-ingest-token", token_type: "Bearer", expires_in: 3600 }));
+    if (new URL(String(url)).hostname === "login.microsoftonline.com") return new Response(JSON.stringify({ access_token: "server-ingest-token", token_type: "Bearer", expires_in: 3600 }));
     assert.equal(new Headers(init?.headers).get("authorization"), "Bearer server-ingest-token");
     assert.equal(String(init?.body).includes(binding.secret), false);
     assert.equal(String(init?.body).includes("Tenant"), false);
