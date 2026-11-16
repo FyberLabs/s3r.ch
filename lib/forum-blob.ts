@@ -43,12 +43,12 @@ export class BlobForumStore implements ForumStore {
       return { ok: true, file: structuredClone(parsed.file) };
     } catch { return { ok: false, reason: "store-unreadable" }; }
   }
-  save(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer }, cleanup = false): void {
+  save(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer | null }, cleanup = false): void {
     if (!this.etag || !this.document) throw new Error("Forum read required before write");
     const snapshots = this.document.snapshots.filter(row =>
       file.desktops.some(d => d.channel === row.channel && d.snapshot?.handle === row.handle) &&
       (!snapshot || row.channel !== snapshot.channel));
-    if (snapshot) snapshots.push({ ...snapshot, bytes: snapshot.bytes.toString("base64") });
+    if (snapshot?.bytes) snapshots.push({ ...snapshot, bytes: snapshot.bytes.toString("base64") });
     const doc: Document = { schema: 1, forum: file, snapshots };
     const text = JSON.stringify(doc);
     enforceQuota(doc, this.document, cleanup);

@@ -54,6 +54,9 @@ test('ledger and private snapshot survive a color change and retain authorizatio
   const restarted=openForum(new BlobForumStore(f.client));
   assert.deepEqual(restarted.readSnapshot({owner,handle:'abc123def0'})?.bytes,bytes);
   assert.equal(restarted.readSnapshot({owner:other,handle:'abc123def0'}),null);
+  assert.ok(!('denied' in restarted.publishDesktop({owner,session:'11111111-1111-4111-8111-111111111111',
+    snapshot:{handle:'abc123def0',mime:'image/png',seq:2},thinking:[],files:[],secrets:[]})));
+  assert.equal(openForum(new BlobForumStore(f.client)).readSnapshot({owner,handle:'abc123def0'}),null);
 });
 test('oversize mutation leaves the prior document intact', () => {
   const f=fixture();migrateForum(f.client,emptyForumFile());const store=new BlobForumStore(f.client);

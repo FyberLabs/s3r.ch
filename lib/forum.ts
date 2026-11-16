@@ -155,7 +155,7 @@ export type StoreLoad =
 
 export type ForumStore = {
   load(): StoreLoad;
-  save(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer }, cleanup?: boolean): void;
+  save(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer | null }, cleanup?: boolean): void;
   readSnapshot?(channel: string, handle: string): Buffer | null;
 };
 
@@ -351,7 +351,7 @@ export function openForum(store: ForumStore): Forum {
     return { ok: true, file: loaded.file };
   }
 
-  function commit(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer }, cleanup = false): Denied | null {
+  function commit(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer | null }, cleanup = false): Denied | null {
     try {
       store.save(file, snapshot, cleanup);
       return null;
@@ -573,7 +573,7 @@ export function openForum(store: ForumStore): Forum {
     };
     file.desktops = file.desktops.filter((row) => row.channel !== channel.id);
     file.desktops.push(desktop);
-    const saved = commit(file, png && input.snapshot ? { channel: channel.id, handle: input.snapshot.handle, bytes: png } : undefined);
+    const saved = commit(file, { channel: channel.id, handle: input.snapshot?.handle ?? "", bytes: png });
     if (saved) return saved;
     for (const [key, held] of heldPng) {
       if (held.channel === channel.id) heldPng.delete(key);

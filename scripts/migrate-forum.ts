@@ -9,4 +9,4 @@ try { migrateForum(client, JSON.parse(readFileSync(source, "utf8"))); }
 finally { await client.close?.(); }
 
 }
-main().catch(() => { console.error("Forum migration refused; source and destination preserved."); process.exitCode = 1; });
+main().catch(() => { console.error("Forum migration did not confirm success; inspect the destination before retrying."); process.exitCode = 1; });
