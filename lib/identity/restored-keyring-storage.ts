@@ -20,6 +20,21 @@ export async function restoredKeyringRecords(factory=globalThis.indexedDB):Promi
   tx.oncomplete=()=>{db.close();if(get.result.length>64)reject(Error('Identity storage unavailable'));else resolve(get.result.filter(isRestoredKeyringRecord));};
   tx.onabort=()=>{db.close();reject(Error('Identity storage unavailable'));};});
 }
+/** Read-only eligibility before creating a passkey. The final write still owns
+ * the transactional conflict check; this preflight never authorizes overwrite. */
+export async function preflightRestoredKeyring(input:{identity:Identity;scope:Scope;keyring:Uint8Array;factory?:IDBFactory}){
+ const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',new Uint8Array(input.keyring)));
+ const payloadHash=Array.from(hash,b=>b.toString(16).padStart(2,'0')).join('');
+ const db=await openMeshDb(input.factory??globalThis.indexedDB);
+ return await new Promise<RestoredKeyringRecord|null>((resolve,reject)=>{
+  const tx=db.transaction(MESH_STORE_NAME,'readonly'),get=tx.objectStore(MESH_STORE_NAME).getAll(null,2);
+  tx.oncomplete=()=>{db.close();const rows=get.result;if(!rows.length){resolve(null);return;}
+   const prior=rows[0];if(rows.length!==1||!isRestoredKeyringRecord(prior)||!same(prior.identity,input.identity)||!same(prior.scope,input.scope)||prior.payloadHash!==payloadHash){reject(Error('Existing identity restore conflict'));return;}
+   resolve(prior);
+  };
+  tx.onabort=()=>{db.close();reject(Error('Identity storage unavailable'));};
+ });
+}
 export async function openRestoredKeyring(record:RestoredKeyringRecord){
  if(!isRestoredKeyringRecord(record))return fail();
  const p=record.protection,raw=await evaluatePrf({rpId:p.rpId,credentialId:base64UrlToBytes(p.credentialId),prfSalt:base64UrlToBytes(p.prfSalt)});
