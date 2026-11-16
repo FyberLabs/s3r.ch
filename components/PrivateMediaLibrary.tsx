@@ -7,7 +7,7 @@ import { PrivateMediaUpload } from "./PrivateMediaUpload";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
-  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,groups:null});
+  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,groups:null});
   const [abandon,setAbandon]=useState(false);
   useEffect(()=>{setAbandon(false);},[state.sharing?.token]);
   const [recipient,setRecipient]=useState("");
@@ -116,6 +116,16 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
           <button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.discardItemGrant(tenant)}>Clear reconciled group permission</button>
         </>}
       </section>
+      <section aria-label="Saved group access update" className="space-y-2 rounded border p-4">
+        <h2 className="font-semibold">Group access recovery</h2>
+        <button type="button" disabled={state.busy||!!state.deletion||!state.loaded} className="underline disabled:opacity-50" onClick={()=>void library.current?.inspectItemEpoch(tenant)}>Check saved group access update</button>
+        {state.itemEpoch&&<>
+          <p className="break-all">Saved access update for {state.itemEpoch.object} in {state.itemEpoch.set}.</p>
+          <p>Retry confirms the original request and restores direct access. Accepted updates keep their replacement keys until delivery completes.</p>
+          <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeItemEpoch(tenant)}>Retry group access update</button>
+          <button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.discardItemEpoch(tenant)}>Clear expired unapplied update</button>
+        </>}
+      </section>
       <section aria-label="Saved group key" className="space-y-2 rounded border p-4">
         <h2 className="font-semibold">Group key delivery</h2>
         <p>Owners must also join their group before preparing a key. New keys become usable after the group's waiting period.</p>
@@ -168,10 +178,12 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
         <details className="rounded border p-3">
           <summary>Group permission for this recipient</summary>
           <p>A group permission alone does not finish sharing. The file access update and key delivery must also complete. The recipient must be a current group member to receive permission.</p>
-          <label className="block">Group ID<input className="block w-full rounded border p-2" value={itemGroup} onChange={event=>setItemGroup(event.target.value)} disabled={state.busy||!!state.itemGrant} autoComplete="off" spellCheck={false}/></label>
-          <label className="block">Group type<select value={itemPredicate} onChange={event=>setItemPredicate(event.target.value as "same-group"|"named-circle")} disabled={state.busy||!!state.itemGrant} className="ml-2 rounded border p-2"><option value="same-group">Group</option><option value="named-circle">Named circle</option></select></label>
-          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!recipient.trim()||!itemGroup.trim()} className="underline disabled:opacity-50" onClick={()=>void library.current?.startItemGrant(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim(),false)}>Record group permission</button>
-          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!recipient.trim()||!itemGroup.trim()} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.startItemGrant(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim(),true)}>Withdraw group permission</button>
+          <label className="block">Group ID<input className="block w-full rounded border p-2" value={itemGroup} onChange={event=>setItemGroup(event.target.value)} disabled={state.busy||!!state.itemGrant||!!state.itemEpoch} autoComplete="off" spellCheck={false}/></label>
+          <label className="block">Group type<select value={itemPredicate} onChange={event=>setItemPredicate(event.target.value as "same-group"|"named-circle")} disabled={state.busy||!!state.itemGrant||!!state.itemEpoch} className="ml-2 rounded border p-2"><option value="same-group">Group</option><option value="named-circle">Named circle</option></select></label>
+          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!!state.itemEpoch||!recipient.trim()||!itemGroup.trim()} className="underline disabled:opacity-50" onClick={()=>void library.current?.startItemGrant(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim(),false)}>Record group permission</button>
+          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!!state.itemEpoch||!recipient.trim()||!itemGroup.trim()} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.startItemGrant(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim(),true)}>Withdraw group permission</button>
+          <p>After recording permissions, update the file's group access. Key delivery remains a separate step after its waiting period.</p>
+          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!!state.itemEpoch||!itemGroup.trim()} className="underline disabled:opacity-50" onClick={()=>void library.current?.startItemEpoch(tenant,state.audience!.object,itemPredicate,itemGroup.trim())}>Update file group access</button>
         </details>
         {!state.audience.readers.length && <p>No recipient grants to cancel.</p>}
         <ul>{state.audience.readers.map(reader=><li key={reader} className="my-2 flex flex-wrap gap-3">

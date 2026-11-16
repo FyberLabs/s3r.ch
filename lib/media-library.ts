@@ -1,3 +1,4 @@
+import type {PendingItemEpoch} from "./media-group-item-epoch-recovery";
 import type {PendingItemGrant} from "./media-group-item-grant-recovery";
 import type {PendingGroupKey} from "./media-group-key-recovery";
 import { mintObjectId, parsePrincipalId } from "sociacl-ids";
@@ -22,6 +23,7 @@ export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly stri
   groupCommand: PendingGroupCommand | null;
   groupKey: PendingGroupKey | null;
   itemGrant: PendingItemGrant | null;
+  itemEpoch: PendingItemEpoch | null;
   groups: Readonly<{entries:readonly GroupCatalogEntry[];page:number;nextPage:number|null}> | null;
   sharing: Readonly<{object:string;reader:string;token:string;remove?:boolean}> | null;
   granted: Readonly<{objects:readonly string[];page:number;nextPage:number|null}> | null;
@@ -29,7 +31,7 @@ export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly stri
   deletion: Readonly<{object:string;prepared:boolean}> | null;
   audience: Readonly<{object:string;readers:readonly string[]}> | null;
   preview: Readonly<{ url: string; name: string; mediaType: string; tags?:readonly string[] }> | null }>;
-const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,groups:null});
+const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,groups:null});
 
 /** Private, in-memory navigation. Never persists catalog entries or plaintext. */
 export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, options: {
@@ -169,8 +171,37 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         if(current())publish({...state,granted:{objects:catalog.objects,page,nextPage:catalog.nextPage},audience:null});
       });
     },
+    startItemEpoch(tenant:string,object:string,predicate:"same-group"|"named-circle",set:string) {
+      if(state.deletion||state.itemGrant||state.itemEpoch||!owner||state.audience?.object!==object||!state.objects.includes(object)||!set)return Promise.resolve();
+      const principal=owner;
+      return operation(async(signal,current)=>{
+        const result=await browser.startItemEpoch(tenant,principal,{object,predicate,set},signal);
+        if(current())publish({...state,itemEpoch:null,message:result.pending?"Group access update accepted. Replacement keys remain saved until the waiting period and direct delivery complete. Check its saved request.":"Group access update accepted and direct access restored. Group key delivery still needs to finish."});
+      },()=>publish({...state,itemEpoch:null,message:"The group access update could not be confirmed. Check its saved request before trying again."}));
+    },
+    inspectItemEpoch(tenant:string) {
+      if(state.deletion||!owner)return Promise.resolve();const principal=owner;
+      return operation(async(signal,current)=>{
+        const itemEpoch=await browser.pendingItemEpoch(tenant,principal,signal);
+        if(current())publish({...state,itemEpoch,message:itemEpoch?"A group access update is saved. Retry to confirm it.":"No saved group access update."});
+      });
+    },
+    resumeItemEpoch(tenant:string) {
+      if(state.deletion||!state.itemEpoch||!owner)return Promise.resolve();const selected={...state.itemEpoch},principal=owner;
+      return operation(async(signal,current)=>{
+        const result=await browser.resumeItemEpoch(tenant,principal,selected,signal);
+        if(current())publish({...state,itemEpoch:null,message:result.pending?"Replacement keys remain saved. Retry after the waiting period to finish direct delivery.":"Group access update confirmed and direct access restored. Group key delivery still needs to finish."});
+      },()=>publish({...state,message:"The saved group access update is retained. Check access and retry recovery."}));
+    },
+    discardItemEpoch(tenant:string) {
+      if(state.deletion||!state.itemEpoch||!owner)return Promise.resolve();const selected={...state.itemEpoch},principal=owner;
+      return operation(async(signal,current)=>{
+        await browser.discardItemEpoch(tenant,principal,selected,signal);
+        if(current())publish({...state,itemEpoch:null,message:"The unapplied local group access update was cleared."});
+      },()=>publish({...state,message:"The saved access update cannot be cleared. Retry recovery; accepted updates need their replacement keys."}));
+    },
     startItemGrant(tenant:string,object:string,predicate:"same-group"|"named-circle",set:string,reader:string,withdraw:boolean) {
-      if(state.deletion||state.itemGrant||!owner||state.audience?.object!==object||!state.objects.includes(object)||!isSeaPubkey(reader)||!set)return Promise.resolve();
+      if(state.deletion||state.itemGrant||state.itemEpoch||!owner||state.audience?.object!==object||!state.objects.includes(object)||!isSeaPubkey(reader)||!set)return Promise.resolve();
       const principal=owner;
       return operation(async(signal,current)=>{
         const result=await browser.startItemGrant(tenant,principal,{object,predicate,set,reader,withdraw},signal);

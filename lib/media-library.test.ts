@@ -515,3 +515,44 @@ test("late group permission recovery cannot restore private state after reset",a
   await work;assert.equal(f.state().itemGrant,null);assert.equal(f.state().loaded,false);
  }finally{release(null);f.library.dispose();}
 });
+
+test("group access controls preserve uncertain updates and never claim file delivery",async()=>{
+ const held={object:'owned',predicate:'same-group',set:'set_test',epoch:2,token:'saved'};
+ let saved:typeof held|null=held,fail=false,calls=0;
+ const f=setup({browser:()=>({catalog:async()=>({at:1,objects:['owned'],nextPage:null,principal:key}),
+  recipients:async()=>[],pendingItemEpoch:async()=>saved,
+  startItemEpoch:async()=>{calls++;if(fail)throw Error();return {state:'applied',pending:true};},
+  resumeItemEpoch:async(_tenant:string,_owner:string,expected:typeof held)=>{assert.deepEqual(expected,saved);if(fail)throw Error();return {state:'applied',pending:true};},
+  discardItemEpoch:async()=>{if(fail)throw Error();return {state:'absent'};},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try{
+  await f.library.startItemEpoch('tenant','owned','same-group','set_test');assert.equal(calls,0);
+  await f.library.inspectItemEpoch('tenant');await f.library.resumeItemEpoch('tenant');await f.library.discardItemEpoch('tenant');
+  await f.library.load();await f.library.recipients('owned');
+  for(const [object,set] of [['other','set_test'],['owned','']])await f.library.startItemEpoch('tenant',object,'same-group',set);
+  assert.equal(calls,0);await f.library.startItemEpoch('tenant','owned','same-group','set_test');assert.match(f.state().message,/remain saved/);
+  fail=true;await f.library.startItemEpoch('tenant','owned','same-group','set_test');assert.match(f.state().message,/Check its saved request/);
+  await f.library.inspectItemEpoch('tenant');assert.deepEqual(f.state().itemEpoch,held);
+  const before=calls;await f.library.startItemEpoch('tenant','owned','same-group','set_test');assert.equal(calls,before);
+  await f.library.resumeItemEpoch('tenant');assert.deepEqual(f.state().itemEpoch,held);assert.match(f.state().message,/retained/);
+  await f.library.discardItemEpoch('tenant');assert.deepEqual(f.state().itemEpoch,held);assert.match(f.state().message,/cannot be cleared/);
+  fail=false;await f.library.resumeItemEpoch('tenant');assert.equal(f.state().itemEpoch,null);assert.match(f.state().message,/remain saved/);
+  await f.library.inspectItemEpoch('tenant');await f.library.discardItemEpoch('tenant');assert.equal(f.state().itemEpoch,null);assert.match(f.state().message,/unapplied/);
+  saved=null;await f.library.inspectItemEpoch('tenant');assert.match(f.state().message,/No saved/);
+  saved=held;await f.library.inspectItemEpoch('tenant');f.library.requestDeletion('owned');
+  await f.library.inspectItemEpoch('tenant');await f.library.resumeItemEpoch('tenant');await f.library.discardItemEpoch('tenant');assert.deepEqual(f.state().itemEpoch,held);
+  f.library.reset();assert.equal(f.state().itemEpoch,null);
+ }finally{f.library.dispose();}
+});
+test("late group access recovery cannot restore state after reset",async()=>{
+ let release!:(value:any)=>void;const waiting=new Promise(resolve=>{release=resolve;});
+ let began!:()=>void;const started=new Promise<void>(resolve=>{began=resolve;});
+ const f=setup({browser:()=>({catalog:async()=>({at:1,objects:['owned'],nextPage:null,principal:key}),
+  pendingItemEpoch:async()=>{began();return await waiting;},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try{
+  await f.library.load();const work=f.library.inspectItemEpoch('tenant');await started;f.library.reset();
+  release({object:'owned',predicate:'same-group',set:'set_test',epoch:2,token:'saved'});
+  await work;assert.equal(f.state().itemEpoch,null);assert.equal(f.state().loaded,false);
+ }finally{release(null);f.library.dispose();}
+});

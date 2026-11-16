@@ -430,3 +430,27 @@ test("group item grants retain exact encrypted recovery under the unlocked ident
   if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
  }
 });
+
+test("group epoch adapter requires unlocked identity and uses its isolated journal",async()=>{
+ const {IDBFactory}=await import('fake-indexeddb');
+ const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator'),oldDb=Object.getOwnPropertyDescriptor(globalThis,'indexedDB');
+ try{
+  unlock();Object.defineProperty(globalThis,'indexedDB',{configurable:true,value:new IDBFactory()});
+  const names:string[]=[];Object.defineProperty(globalThis,'navigator',{configurable:true,value:{locks:{request:async(name:string,_options:unknown,work:(lock:unknown)=>unknown)=>{names.push(name);return work({});}}}});
+  let calls=0;const browser=createPrivateMediaBrowser(()=>owner,async()=>{calls++;return new Response(null,{status:503});});
+  const target={object,predicate:'same-group' as const,set:object.replace('media_','set_')};
+  assert.equal(await browser.pendingItemEpoch(tenant,owner),null);
+  await assert.rejects(browser.startItemEpoch(tenant,owner,target));assert.equal(calls,1);
+  const expected={...target,epoch:2,token:'missing'};
+  await assert.rejects(browser.resumeItemEpoch(tenant,owner,expected));
+  await assert.rejects(browser.discardItemEpoch(tenant,owner,expected));
+  assert.ok(names.every(name=>name==='s3rch-private-group-item-epoch-delivery-v1'));
+  for(const priv of ['bad',pair.priv.slice(0,-1)+'F']){
+   unlock();rememberUnlockedMeshPair('linked-credential',{...pair,priv});await assert.rejects(browser.startItemEpoch(tenant,owner,target));
+  }
+  forgetUnlockedMeshPair();await assert.rejects(browser.pendingItemEpoch(tenant,owner));
+ }finally{
+  if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else Reflect.deleteProperty(globalThis,'navigator');
+  if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
+ }
+});
