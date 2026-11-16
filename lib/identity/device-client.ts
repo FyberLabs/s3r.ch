@@ -1,3 +1,4 @@
+import {prepareEncryptedRecovery} from './prepare-encrypted-recovery';
 import {restoreEncryptedRecovery} from './restore-encrypted-recovery';
 import {restoreExistingKeyring} from './restore-keyring';
 import {restoredKeyringRecords,openRestoredKeyring,type RestoredKeyringRecord} from './restored-keyring-storage';
@@ -58,6 +59,14 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
   },
  };
  return {adapters,
+  async prepareEncryptedCopy(passphrase:Uint8Array,accountHandle:string){
+   guard();const phrase=new Uint8Array(passphrase);
+   let opened:Awaited<ReturnType<typeof adapters.unlock>>|undefined;
+   try{
+    opened=await adapters.unlock(abort.signal);guard();
+    return await prepareEncryptedRecovery(opened.keyring,opened.identity,phrase,accountHandle,{current,signal:abort.signal,keyringState:identity=>authority.keyringState(identity)});
+   }finally{phrase.fill(0);opened?.keyring.fill(0);}
+  },
   async restoreCompleteSource(bytes:Uint8Array){
    guard();
    const result=await restoreExistingKeyring(bytes,{scope:session.scope,current,signal:abort.signal,
