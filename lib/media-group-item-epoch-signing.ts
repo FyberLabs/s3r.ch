@@ -1,3 +1,4 @@
+import {parseSignedItemEpoch} from "./media-group-item-epoch-command";
 import {signPrivateMediaGrant,signPrivateMediaEpoch,signPrivateMediaFinalization} from "sociacl-ids/private-media";
 import {readGroupItemEpochPlan} from "./media-group-item-client";
 import {parseGroupItemEpochPlan} from "./media-group-item-epoch";
@@ -25,6 +26,6 @@ export async function prepareGroupItemEpoch(object:string,scopeInput:MediaGroupS
     parseGroupItemEpochPlan(plan,object,owner,scope,clock());
     const payload={grants,document,finalization};
     if(new TextEncoder().encode(JSON.stringify(payload)).length>262144)throw Error("Group item command too large");
-    return {ownerPub,body:{object,...scope,at:plan.at as number,fence:plan.fence as string,payload}};
+    return parseSignedItemEpoch({ownerPub,plan,body:{object,...scope,at:plan.at as number,fence:plan.fence as string,payload}},owner);
   }finally{key.fill(0);}
 }
