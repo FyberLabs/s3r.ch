@@ -16,3 +16,8 @@ remain the existing s3r.ch owner's responsibility. Phone machine enrollment is
 not a SEA identity. This package accepts React nodes, not raw private keys or
 machine credentials. Native consumers must dispose identity-bound data adapters
 on account changes before mounting another identity's content.
+
+`MessageComposer` is the shared controlled text-entry surface. The host owns
+the draft, authorization, cancellation and send result. Submitting never
+clears a draft automatically. It accepts no identity, credentials, URLs or
+transport objects; mobile callers keep those in their native bridge.

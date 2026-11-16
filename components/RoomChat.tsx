@@ -20,7 +20,8 @@ import {
 import { useBrand } from "@/components/brand";
 import { useSeeAcl } from "@/components/SeeAclProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
-import { btnPrimary, field, panel } from "@/lib/brand-ui";
+import { panel } from "@/lib/brand-ui";
+import { MessageComposer } from "../packages/forum-ui/src";
 
 export function RoomChat({
   roomId,
@@ -156,27 +157,8 @@ function ChatCompose({
 
   return (
     <div className="mt-4">
-      <label className="block text-sm text-ink">
-        Message
-        <input
-          type="text"
-          value={body}
-          maxLength={CHAT_BODY_MAX}
-          onChange={(event) => setBody(event.target.value)}
-          placeholder="short message"
-          className={`mt-1 w-full ${field}`}
-        />
-      </label>
-      <div className="mt-3">
-        <button
-          type="button"
-          disabled={busy || !body.trim()}
-          onClick={() => void submit()}
-          className={btnPrimary}
-        >
-          Send
-        </button>
-      </div>
+      <MessageComposer value={body} onChange={setBody} busy={busy} maxLength={CHAT_BODY_MAX}
+        placeholder="short message" onSend={() => void submit()} className="" />
       {message ? <p className="mt-3 text-xs text-ink-muted">{message}</p> : null}
     </div>
   );
