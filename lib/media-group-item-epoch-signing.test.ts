@@ -25,21 +25,22 @@ test("signs one complete command under the original protected fence without publ
   },()=>100,key);
   assert.equal(calls,1);assert.deepEqual(key,new Uint8Array(32));
   assert.equal(command.ownerPub,owner);assert.equal(command.body.at,100);assert.equal(command.body.fence,plan.fence);
-  const {grants,document,finalization}=command.body.payload;
+  const {grants,document,finalization}=command.body.payload as {grants:{claims:unknown;proof:{signature:string;grantBytes:string}}[];document:{snapshot:unknown;manifest:Record<string,unknown>};finalization:Record<string,unknown>};
   assert.deepEqual(grants.map(g=>g.claims),plan.grants);assert.deepEqual(document.snapshot,plan.snapshot);
   for(const g of grants)assert.ok(verifyForumKeySignature(owner,Buffer.from(g.proof.signature,"hex").toString("base64url"),Uint8Array.from(Buffer.from(g.proof.grantBytes,"hex"))));
   assert.equal(document.manifest.epoch,2);assert.equal(document.manifest.previousEpoch,1);
   assert.equal(document.manifest.keyCommitment,plan.keyCommitment);assert.equal(document.manifest.settleWindowMs,plan.settleWindowMs);
   assert.equal(finalization.revisionId,document.manifest.revisionId);assert.equal(finalization.previousFinalizationId,plan.previousFinalizationId);
   assert.deepEqual(finalization.candidateRevisionIds,[document.manifest.revisionId]);
-  assert.deepEqual(Object.keys(command),["ownerPub","body"]);
+  assert.deepEqual(Object.keys(command),["ownerPub","plan","body"]);
   assert.deepEqual(Object.keys(command.body),["object","predicate","set","at","fence","payload"]);
 });
 test("detached metadata repair signs no live group recipients",async()=>{
   const detached={...plan,groupReaders:[],snapshot:{entries:[direct,{...group,stated:0}],objectSet:{...plan.snapshot.objectSet,stated:0,hamState:2}}};
   const command=await prepare(async()=>Response.json(detached));
-  assert.equal(command.body.payload.document.snapshot.objectSet?.stated,0);
-  assert.equal(command.body.payload.document.snapshot.entries.find(e=>e.accessor===reader)?.stated,0);
+  const snapshot=(command.body.payload as {document:{snapshot:{objectSet:{stated:number};entries:{accessor:string;stated:number}[]}}}).document.snapshot;
+  assert.equal(snapshot.objectSet.stated,0);
+  assert.equal(snapshot.entries.find(e=>e.accessor===reader)?.stated,0);
 });
 test("stale or incomplete preparation and wrong current signer refuse without retry",async()=>{
   for(const value of [{...plan,at:95},{...plan,groupReaders:[]},{...plan,ownerPub:reader}]){
