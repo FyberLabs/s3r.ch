@@ -65,10 +65,10 @@ Pure mock unit coverage covers these transitions. Native signing contracts use t
 real production token code in PR CI only; they substitute the registry and SEA
 fixture identities. This is not PostgreSQL, provider, HTTP-adapter or hosted proof.
 
-Outstanding before installation: the Auth-owned PostgreSQL registry/client,
-controller authentication, configured fixture policy, route wrappers, Auth relay propagation,
-and experiment outbox commit composition. No capability can be advertised from
-these hooks alone. #552 remains open.
+The following sections describe subsequent registry-client, forwarding, outbox
+and route-composition slices. Controller authentication, whole-fixture route
+classification and installed owner acceptance still gate installation. No capability
+can be advertised from token hooks alone. #552 remains open.
 
 The bounded `terminal-run-client.ts` implements the agreed Auth registry HTTP
 protocol with a service-specific HMAC key, strict configured immutable fixture
@@ -102,11 +102,10 @@ that grant and checks the pending operation within its native relay transaction.
 No browser Cookie header or client-selected grant header crosses this boundary.
 The s3r.ch helper refuses foreign targets and closed request continuations.
 
-This does not cover the device `state` and `current` ACL calls. Their tenant-token
-attribution and native commit/verifier contract remain with the shared authorization
-owner. Installation must wait for that checked-in contract and complete native
-route wrappers. The current source does not install a controller endpoint, read
-new deployment credentials, register reader cases, or advertise a capability.
+The subsequent ACL forwarding slice below covers device `state` and `current`.
+Their native commit/verifier enforcement remains with the shared authorization
+owner. The current source does not install a controller endpoint, read new
+deployment credentials, register reader cases, or advertise a capability.
 
 Auth registry and relay service requests use `https://api.test.hyperme.sh`;
 the provider issuer remains `https://auth.test.hyperme.sh/realms/controlplane`.
@@ -129,8 +128,8 @@ completion or seal withholds the response and its newly issued cookies. CI cover
 the native encrypted-PKCE handler with a named registry transport substitution.
 
 No app route imports this factory. Whole-fixture route classification (including
-unrelated users), SEA/Squad/experiment composition and the root controller contract
-remain required before installation; the factory alone is not a capability.
+unrelated users and startup alternatives), controller composition and integrated
+owner acceptance remain required before installation; the factory alone is not a capability.
 
 `createTerminalSeaRoute` prepares the actual SEA issuer and existing Squad session
 alias behind per-request admission, with the declared fixture SEA allowlist and
@@ -148,3 +147,11 @@ unverified withdrawal retain pending admission. Completion failure withholds the
 response cookies. Native CI substitutes registry, storage and Azure transports
 while exercising real signing and application code. This factory is uninstalled;
 its close operation only closes its local provider and is not terminal evidence.
+
+The private prepared deployment contract is decoded by `parseTerminalOwnerConfig`
+from an explicitly supplied `S3RCH_NIGHTLY_RUN_CONFIG` JSON string. It requires
+both s3r.ch suite scopes, exact TEST origins, separate controller/owner keys, and
+a declared non-pilot SEA identity for device transfer. Duplicate members and
+unknown fields refuse. This decoder does not read process environment, install
+`/api/internal/nightly-run`, register grants or provide readiness evidence.
+The control handler and complete route inventory remain separate work.
