@@ -248,6 +248,12 @@ jobs:
           --test-coverage-include=lib/media-group-item-wrap-client.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/media-group-item-wrap-client.test.ts
+      - name: Group file opening coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-file.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-file.test.ts
       - name: Group item key opening coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
