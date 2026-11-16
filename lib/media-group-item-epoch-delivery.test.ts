@@ -77,3 +77,32 @@ test("owner-maintenance proxy is authenticated and returns bounded opaque contex
   assert.equal((await service('item-owner-wrap-read',request(target))).status,200);
   assert.equal((await service('item-owner-wrap-read',request({...target,reader}))).status,400);assert.equal(calls,1);
 });
+
+test("expired unapplied updates may be discarded after exact-state confirmation",async()=>{
+  const f=await setup();
+  const unavailable:typeof fetch=async(url,init)=>String(url).endsWith('item-epoch-state')?new Response(null,{status:503}):f.input.fetcher(url,init);
+  await assert.rejects(applyEpochDelivery({...f.input,fetcher:unavailable,target}));
+  const expected=(await pendingEpochDelivery(f.input))!;assert.ok(expected);assert.equal(f.writes(),0);
+  await assert.rejects(discardEpochDelivery({...f.input,expected}));
+  f.time(105);assert.equal((await discardEpochDelivery({...f.input,expected})).state,'absent');
+  assert.equal(await pendingEpochDelivery(f.input),null);
+  await assert.rejects(discardEpochDelivery({...f.input,expected}));await assert.rejects(applyEpochDelivery(f.input));
+});
+test("substituted maintenance material and changed parent refuse before any write",async()=>{
+  const f=await setup();
+  for(const patch of [{reader_epub:reader},{key_commitment:'9'.repeat(64)},{epoch:2},{payload:'YWJj'},{item_digest:'f'.repeat(64)}]){
+    const fetcher:typeof fetch=async(url,init)=>{
+      const response=await f.input.fetcher(url,init);
+      return String(url).endsWith('item-owner-wrap-read')?Response.json({...await response.json(),...patch}):response;
+    };
+    await assert.rejects(applyEpochDelivery({...f.input,fetcher,target}));assert.equal(f.writes(),0);
+  }
+  let reads=0;
+  const changed:typeof fetch=async(url,init)=>{
+    const response=await f.input.fetcher(url,init);
+    return String(url).endsWith('item-owner-wrap-read')&&++reads>1?Response.json({...await response.json(),revision_id:'9'.repeat(64)}):response;
+  };
+  await assert.rejects(applyEpochDelivery({...f.input,fetcher:changed,target}));assert.equal(f.writes(),0);
+  const bad:typeof fetch=async()=>new Response('{}');await assert.rejects(applyEpochDelivery({...f.input,fetcher:bad,target}));
+  await assert.rejects(applyEpochDelivery({...f.input,signal:AbortSignal.abort(),target}));
+});
