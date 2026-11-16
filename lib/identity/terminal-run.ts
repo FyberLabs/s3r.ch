@@ -17,6 +17,20 @@ export interface TerminalRunAuthority {
 }
 type Context = { authority: TerminalRunAuthority; admission: RunAdmission | null; cookies: string; closed: boolean };
 const context = new AsyncLocalStorage<Context>();
+type IdentityPolicy = { requiresAdmission: (token: RunToken) => boolean; closed: boolean };
+const identityPolicy = new AsyncLocalStorage<IdentityPolicy>();
+/** Internal seam for an explicit deployment-owned fixture classifier, independent
+ * of browser grant presence. Never installed by a token reader itself. */
+export async function withTerminalIdentityPolicy<T>(requiresAdmission: (token: RunToken) => boolean, work: () => Promise<T>): Promise<T> {
+  if (identityPolicy.getStore()) return fail();
+  const policy = { requiresAdmission, closed: false };
+  return identityPolicy.run(policy, async () => { try { return await work(); } finally { policy.closed = true; } });
+}
+function checkIdentityPolicy(token: RunToken, admitted: boolean) {
+  const policy = identityPolicy.getStore();
+  if (policy && (policy.closed || (!admitted && policy.requiresAdmission(Object.freeze({ ...token }))))) fail();
+}
+
 const fail = (): never => { throw Error("Terminal run authority unavailable"); };
 function binding(value: unknown): RunBinding {
   if (!value || typeof value !== "object" || Array.isArray(value)) return fail();
@@ -58,12 +72,14 @@ export async function withTerminalRun<T>(request: Request, authority: TerminalRu
 }
 async function tokenContext(token: RunToken) {
   const current = context.getStore();
+  checkIdentityPolicy(token, !!current?.admission);
   if (current?.admission) {
     await active(current);
     if (await current.authority.authorizeToken(current.admission, Object.freeze({ ...token })) !== true) fail();
     await active(current);
   }
   if (current?.closed) fail();
+  checkIdentityPolicy(token, !!current?.admission);
   return current;
 }
 /** Called before signing. The binding is copied from authenticated admission. */
@@ -79,6 +95,7 @@ export async function verifyTerminalToken(claims: Record<string, unknown>, token
   const current = context.getStore(), supplied = claims.nightly_run;
   if (supplied === undefined) {
     if (current?.admission) fail();
+    await tokenContext(token);
     return;
   }
   const original = binding(supplied);

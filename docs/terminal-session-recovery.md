@@ -175,3 +175,14 @@ its independent native admission. Lost callbacks/identity responses retain pendi
 work and failed completion withholds cookies. This wrapper does not fall back to
 backup OAuth. It remains uninstalled; complete identity classification and the
 owner contract merges remain required before installation.
+
+`createTerminalFixturePolicy` is an explicit, uninstalled native identity guard
+independent of browser grant presence. Configured SEA/OIDC subjects cannot mint
+or verify ordinary unbound credentials under that guard. Admitted credentials
+still require original run and owner authorization. Unrelated identities and
+anonymous precursors retain legacy behavior, but a precursor cannot replace the
+subsequent verified fixture-subject check. The policy snapshots scope, refuses
+nested replacement and closes inherited async contexts on exit. Native SEA CI
+proves old fixture credentials fail while unrelated credentials still verify.
+No route dispatcher installs this guard yet; the complete route inventory must
+enclose every native fixture issuer/verifier before deployment activation.
