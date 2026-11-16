@@ -19,7 +19,7 @@ test('downloaded ciphertext round-trips complete historical material and snapsho
  material.fill(0);pass.fill(0);
  const bytes=await pending,value=JSON.parse(new TextDecoder().decode(bytes));
  assert.deepEqual(Object.keys(value).sort(),['ciphertext','epub','principal','rotationSeq','signingPub','version']);
- const handle=await openRecoveryKeyring(f.pass(),{...value,bytes:new Uint8Array(Buffer.from(value.ciphertext,'base64url'))},f.identity,f.state);
+ const handle=await openRecoveryKeyring(f.pass(),{principal:value.principal,signingPub:value.signingPub,epub:value.epub,rotationSeq:value.rotationSeq,bytes:new Uint8Array(Buffer.from(value.ciphertext,'base64url'))},f.identity,f.state);
  try{assert.deepEqual(exportKeyring(handle,f.state),f.material());}finally{closeKeyring(handle);}
 });
 test('weak or known-handle passphrases, stale ownership, malformed material and cancellation refuse downloads',async()=>{
