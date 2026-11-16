@@ -111,6 +111,9 @@ jobs:
       - name: Local ciphertext cache browser contracts (CI only)
         timeout-minutes: 2
         run: node scripts/test-ipfs-cache-browser.mjs
+
+      - name: Direct Kubo browser contract (CI only)
+        run: node scripts/test-ipfs-kubo-browser.mjs
       - name: Public media browser contracts (CI only)
         run: node scripts/test-public-media-browser.mjs
       - name: Private upload browser recovery contract (CI only)
