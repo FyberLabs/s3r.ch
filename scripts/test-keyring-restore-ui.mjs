@@ -54,6 +54,7 @@ try{
  assert.equal(await page.evaluate(()=>window.fixture.recoveries),1);
  assert.equal(await page.evaluate(()=>window.fixture.recoveryBytes.every(b=>b===0)),true);
  assert.equal(await page.evaluate(()=>window.fixture.linked.some(v=>JSON.stringify(v).includes('password'))),false);
+ await page.evaluate(()=>{window.fixture.revoked=[];const original=URL.revokeObjectURL;URL.revokeObjectURL=url=>{window.fixture.revoked.push(url);original.call(URL,url);};});
  await page.getByRole('button',{name:'Create encrypted recovery copy',exact:true}).click();
  await page.getByLabel('New recovery passphrase',{exact:true}).fill('strong synthetic copy phrase');
  await page.getByLabel('Confirm recovery passphrase',{exact:true}).fill('different');
@@ -68,5 +69,8 @@ try{
  assert.equal(await page.evaluate(()=>window.fixture.preparedHandle),'public-handle');
  assert.equal(await page.evaluate(()=>window.fixture.preparedPass.every(b=>b===0)),true);
  assert.equal(await page.getByLabel('Confirm recovery passphrase',{exact:true}).inputValue(),'');
+ const download=await page.getByRole('link',{name:'Download encrypted recovery file',exact:true}).getAttribute('href');
+ await page.evaluate(()=>window.dispatchEvent(new Event('s3rch-session-changed')));
+ await page.waitForFunction(url=>window.fixture.revoked.includes(url),download);
  assert.deepEqual(errors,[]);console.log('Restore UI: explicit import, independent failed sign-in, preserved copy and cancellation passed');
 }finally{await browser?.close();await new Promise(r=>server.close(r));}
