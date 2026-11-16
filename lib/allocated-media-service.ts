@@ -1,3 +1,4 @@
+import {authorizeMediaCiphertext} from "./media-ciphertext-authorization";
 import type { AllocatedMediaStore } from "./allocated-media-store-server";
 import { createMediaObjectService } from "./media-object-service";
 import { createMediaRegistrationService } from "./media-registration-service";
@@ -8,21 +9,21 @@ type WrapService=(request:Request)=>Promise<Response>;
 /** Only pass the strict fixed-subject owner/wrap services, never raw upstream fetch. */
 export function createAllocatedMediaService(input:{
   origin:string;allocated:AllocatedMediaStore;
-  owner:()=>OwnerService|null;wrap:()=>WrapService|null;
+  owner:()=>OwnerService|null;wrap:()=>WrapService|null;group?:()=>OwnerService|null;
 }) {
   const forbidden=async():Promise<never>=>{throw Error("Legacy media storage disabled");};
   async function authorize(request:Request,object:string,action:"read"|"write"|"register",signal:AbortSignal,candidate?:UnverifiedObjectRecord) {
-    const owner=input.owner(),wrap=action==="read"?input.wrap():null;
-    if(action==="read"?!wrap:!owner)return false;
+    if(action==="read")return authorizeMediaCiphertext({origin:input.origin,request,object,signal,wrap:input.wrap,group:input.group});
+    const owner=input.owner();if(!owner)return false;
     signal.throwIfAborted();
     const headers=new Headers(request.headers);
     headers.set("origin",input.origin);headers.set("content-type","application/json");
     headers.delete("content-length");headers.delete("content-encoding");
     const operation=candidate?"registration":"view";
-    const internal=new Request(input.origin+"/api/media/"+(action==="read"?"read-wrap":"owner/"+operation),{
+    const internal=new Request(input.origin+"/api/media/"+("owner/"+operation),{
       method:"POST",headers,signal,body:JSON.stringify(candidate?{object,record:candidate}:{object}),
     });
-    const response=action==="read"?await wrap!(internal):await owner!(operation,internal);
+    const response=await owner(operation,internal);
     try{signal.throwIfAborted();return response.status===200;}
     finally{await response.body?.cancel().catch(()=>{});}
   }

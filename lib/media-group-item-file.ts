@@ -11,7 +11,7 @@ const same=(a:Key,b:Key)=>a.object===b.object&&a.epoch===b.epoch&&a.revisionId==
 export async function openGroupMediaFile(input:Input){
   const held={...input,scope:parseMediaGroupScope(input.scope),signal:AbortSignal.any([input.signal,AbortSignal.timeout(120000)])};
   const initial=await openGroupItem(held);initial.key.fill(0);
-  const stored=await createMediaHttpClient(held.fetcher).get(held.object,initial.reference,held.signal);
+  const stored=await createMediaHttpClient(held.fetcher).get(held.object,initial.reference,held.signal,held.scope);
   const current=await openGroupItem(held);
   let opened:Awaited<ReturnType<typeof openMediaFileWithKey>>|undefined;
   try{
