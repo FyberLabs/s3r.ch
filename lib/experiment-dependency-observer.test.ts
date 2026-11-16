@@ -8,7 +8,7 @@ const context = () => ({variant:"create",recordName:"s3rch-outbox-"+"b".repeat(6
 const reply = (status=200,body="record",headers:Record<string,string>={}) => new Response(body,{status,
  headers:{"x-experiment-action":action,etag:'"'+"c".repeat(64)+'"',...headers}});
 test("disabled and unsampled observers do not touch the transport or publisher",async()=>{
- const disabled = createExperimentDependencyObserver({get binding(){throw Error("credential read");}});
+ const disabled = createExperimentDependencyObserver({get binding():never{throw Error("credential read");}});
  assert.equal(await disabled.read(context()),null);
  const observer = createExperimentDependencyObserver({enabled:true,binding:{...binding,sampleEvery:2},
   createAction:()=>"12345678-1234-4234-8234-123456789abd",transport:async()=>{assert.fail();},publish:()=>{assert.fail();}});
