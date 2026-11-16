@@ -46,6 +46,9 @@ export function createItemStatusClient(principal:string,fetcher:typeof fetch=fet
       const command=parseSignedItemStatus(input,principal),held=deadline(signal),current=await state(command,held);
       if(current.state==="applied")return current;
       if(current.at<(command.body.at as number)||current.at-(command.body.at as number)>4)return fail();
+      const payload=command.body.payload as {signedAt:number;maxAgeMs:number};
+      const now=clock();
+      if(!Number.isFinite(now)||now*1000>=payload.signedAt+payload.maxAgeMs)return fail();
       // Preserve the original signed draft and fence on every retry.
       await request("item-status-append",command.body,held);
       const result=await state(command,held);
