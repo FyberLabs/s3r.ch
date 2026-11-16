@@ -1,3 +1,4 @@
+import type {GroupGrantedEntry} from "./media-group-item-catalog";
 import type {PendingItemWrap} from "./media-group-item-wrap-recovery";
 import type {PendingItemStatus} from "./media-group-item-status-recovery";
 import type {PendingItemEpoch} from "./media-group-item-epoch-recovery";
@@ -30,12 +31,13 @@ export type MediaLibraryState = Readonly<{ busy: boolean; objects: readonly stri
   itemStatus: PendingItemStatus | null;
   groups: Readonly<{entries:readonly GroupCatalogEntry[];page:number;nextPage:number|null}> | null;
   sharing: Readonly<{object:string;reader:string;token:string;remove?:boolean}> | null;
+  groupGranted: Readonly<{entries:readonly GroupGrantedEntry[];page:number;nextPage:number|null}> | null;
   granted: Readonly<{objects:readonly string[];page:number;nextPage:number|null}> | null;
   cleanup: Readonly<{objects:readonly MediaCleanupItem[];page:number;nextPage:number|null}> | null;
   deletion: Readonly<{object:string;prepared:boolean}> | null;
   audience: Readonly<{object:string;readers:readonly string[]}> | null;
   preview: Readonly<{ url: string; name: string; mediaType: string; tags?:readonly string[] }> | null }>;
-const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,itemWrap:null,itemStatus:null,groups:null});
+const empty = (): MediaLibraryState => ({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,groupGranted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,itemWrap:null,itemStatus:null,groups:null});
 
 /** Private, in-memory navigation. Never persists catalog entries or plaintext. */
 export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, options: {
@@ -166,6 +168,27 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       return operation(async(signal,current)=>{
         const catalog=await browser.catalog(page,signal);
         if(current()){owner=catalog.principal;publish({...state,objects:catalog.objects,page,nextPage:catalog.nextPage,loaded:true,audience:null});}
+      });
+    },
+    loadGroupGranted(page=0) {
+      if(state.deletion||!owner)return Promise.resolve();const principal=owner;
+      return operation(async(signal,current)=>{
+        const catalog=await browser.groupGrantedCatalog(principal,page,signal);
+        if(current())publish({...state,groupGranted:{entries:catalog.entries,page,nextPage:catalog.nextPage},audience:null});
+      });
+    },
+    openGroup(entry:GroupGrantedEntry,tenant:string){
+      const held={...entry},principal=owner;
+      if(state.deletion||!principal||!state.groupGranted?.entries.some(row=>row.object===held.object&&row.predicate===held.predicate&&row.set===held.set))return Promise.resolve();
+      return operation(async(signal,current)=>{
+        const file=await browser.openGroup(held.object,tenant,principal,{predicate:held.predicate,set:held.set},signal);
+        try{
+          if(!current())return;
+          if(!mediaPreviewKind(file.description.mediaType)){publish({...state,message:"This file format cannot be previewed."});return;}
+          const url=makeUrl(new Blob([new Uint8Array(file.bytes)],{type:file.description.mediaType}));
+          if(!current()){revokeUrl(url);return;}
+          publish({...state,preview:{url,...file.description,...(file.description.mediaType==="image/png"?{tags:readMemePngTags(file.bytes)}:{})}});
+        }finally{file.bytes.fill(0);}
       });
     },
     loadGranted(page=0) {

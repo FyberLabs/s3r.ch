@@ -7,7 +7,7 @@ import { PrivateMediaUpload } from "./PrivateMediaUpload";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
-  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,itemWrap:null,itemStatus:null,groups:null});
+  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,groupGranted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,itemWrap:null,itemStatus:null,groups:null});
   const [abandon,setAbandon]=useState(false);
   useEffect(()=>{setAbandon(false);},[state.sharing?.token]);
   const [recipient,setRecipient]=useState("");
@@ -59,6 +59,20 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
           </li>)}</ul>
           {state.granted.page>0 && <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadGranted(state.granted!.page-1)}>Previous granted page</button>}
           {state.granted.nextPage!==null && <button type="button" disabled={state.busy || !!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.loadGranted(state.granted!.nextPage!)}>Next granted page</button>}
+        </>}
+      </section>
+      <section aria-labelledby="media-group-granted-title" className="space-y-3 rounded border p-4">
+        <h2 id="media-group-granted-title" className="font-semibold">Granted through groups</h2>
+        <p>Refresh your media first. Group files appear only while membership, permission and owner-confirmed access are current.</p>
+        <button type="button" disabled={state.busy||!!state.deletion||!state.loaded} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadGroupGranted()}>Refresh group Granted</button>
+        {state.groupGranted&&<>
+          <p>Page {state.groupGranted.page+1} of 16.</p>
+          {!state.groupGranted.entries.length&&<p>No currently accessible group files on this page.</p>}
+          <ul>{state.groupGranted.entries.map((entry,index)=><li key={entry.object}>
+            <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.openGroup(entry,tenant)}>Open group file {state.groupGranted!.page*4+index+1}</button>
+          </li>)}</ul>
+          {state.groupGranted.page>0&&<button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadGroupGranted(state.groupGranted!.page-1)}>Previous group Granted page</button>}
+          {state.groupGranted.nextPage!==null&&<button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.loadGroupGranted(state.groupGranted!.nextPage!)}>Next group Granted page</button>}
         </>}
       </section>
       <section aria-labelledby="media-cleanup-title" className="space-y-3 rounded border p-4">
