@@ -11,9 +11,10 @@ contains only that private repository's reusable package, not plane configuratio
 The source must have complete canonical SociACL material. Previously received
 identities unlock with their local PRF passkey. Older wallet-keyed records contain
 only a SEA pair and cannot reconstruct retired encryption keys or content epochs.
-For those records, unlock the existing identity and select its complete canonical
-keyring export. The app verifies it against the signed-in owner's current Auth/ACL
-history. It never creates replacement history or translates a wallet address into
+For those records, unlock the existing identity and select its complete SociACL `KeyringMaterial` JSON
+export. The app verifies all four current key fields match the unlocked pair, then admits
+the full fields through SociACL against the transfer owner's current Auth/ACL
+history. No contact-vault service is required. It never creates replacement history or translates a wallet address into
 a principal. An incomplete legacy record is refused, not silently upgraded.
 
 The destination creates its own PRF passkey and atomically writes the encrypted

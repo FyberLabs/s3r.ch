@@ -1,3 +1,4 @@
+import {exportDeviceSource} from './device-source';
 import {activateDeviceKeyring} from './device-activation';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
@@ -13,7 +14,10 @@ test('actual SDK transfer preserves rotated keyring and historical decryption th
  const vectors=fixture('browser-keyring'),records=fixture('records'),v=vectors.accept[1],{principal,pub,epub,rotationSeq}=v.fields,identity={principal,pub,epub,rotationSeq};let revoked=false;
  const state=():any=>{if(revoked)throw Error();return {rotations:v.rotationNames.map((name:string)=>records.accept.find((r:any)=>r.name===name).input),context:{jwks:records.context.jwks,links:new Map(records.context.links),revocations:[],now:records.context.now,policy:records.context.policy,pinnedIss:new Set(records.context.pinnedIss),genesisEpubBindings:v.genesisBindings,history:(p:any,at:number,until:number)=>records.context.authenticatedAccounts.includes(p)?{ok:true,value:historyState(p,[],at,until)}:{ok:false,reason:'missing-history'}}};};
  const authority={async validateKeyring(bytes:Uint8Array,id:any){validateKeyring(bytes,id,state);},async current(binding:any){state();return {revision:'synthetic-owner',validUntil:binding.expiresAt};}};
- const source=admitKeyring(v.fields,identity,state),bytes=exportKeyring(source,state);closeKeyring(source);
+ const pair={pub,epub,priv:v.fields.priv,epriv:v.fields.epriv};
+ const exported=await exportDeviceSource(v.fields,pair,{current:()=>true,keyringState:async expected=>{assert.deepEqual(expected,identity);return state;}}),bytes=exported.keyring;
+ await assert.rejects(exportDeviceSource({...v.fields,retired:[]},pair,{current:()=>true,keyringState:async()=>state}));
+ await assert.rejects(exportDeviceSource(v.fields,{...pair,pub:'other'},{current:()=>true,keyringState:async()=>{throw Error('must not query');}}));
  const scope={sourceOrigin:'https://s3r.ch',destinationOrigin:'https://s3r.ch',application:'s3r.ch',tenant:'fixture',audience:'fixture'};
  const receiver=await Receiver.create(scope),sender=await Sender.create({request:receiver.request,expectedScope:scope,identity,keyring:bytes,authority});bytes.fill(0);
  await receiver.bind(sender.offer);sender.confirm(receiver.comparison);receiver.confirm(sender.comparison);

@@ -7,7 +7,7 @@ import {importKeyring,exportKeyring,closeKeyring} from 'sociacl-ids/keyring';
 import {createDeviceStorage,deviceRecords,prepareDeviceProtection,unlockDeviceRecord,same,type DeviceRecord} from './device-storage';
 import {readBoundedIdentityJson} from './bounded-json';
 import {readSingleUnlockedIdentity,readUnlockedMeshRevision,rememberUnlockedMeshPair} from './unlocked-mesh';
-import {openContactDocuments} from '../contact-document-client';
+import {exportDeviceSource} from './device-source';
 import {createSeaSessionClient} from './sea-session-client';
 const fail=():never=>{throw Error('Device identity unavailable');};
 export type DeviceSession={scope:Scope;authorized:boolean;subject:string|null;context:string|null;expiresAt:number|null};
@@ -50,15 +50,14 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
  };
  return {adapters,
   /** Existing pair-only installations cannot invent missing retired keys, lanes
-   * or content epoch. Admit a complete canonical local export against the current
+   * or content epoch. Admit a complete local material export against the current
    * signed-in identity, with no plaintext persistence or recovery server. */
   async selectCompleteSource(bytes:Uint8Array){
    guard();source?.fill(0);source=undefined;sourceIdentity=undefined;
    const selected=readSingleUnlockedIdentity();if(!selected)return fail();
-   const documents=await openContactDocuments(selected.pair,current,abort.signal);guard();
-   const doc=await documents.read(documents.configuration.principal,'vault',abort.signal);guard();
-   const identity={principal:documents.configuration.principal,pub:selected.pair.pub,epub:selected.pair.epub,rotationSeq:doc.head.sequence};
-   const value=await exported(bytes,identity);guard();source=value.keyring;sourceIdentity=identity;
+   const material=JSON.parse(new TextDecoder('utf8',{fatal:true}).decode(bytes));
+   const value=await exportDeviceSource(material,selected.pair,{current,keyringState:identity=>authority.keyringState(identity)});
+   try{guard();source=value.keyring;sourceIdentity=value.identity;}catch(e){value.keyring.fill(0);throw e;}
   },
   async resume(record:DeviceRecord){
    guard();if(!same(record.binding.scope,session.scope))return fail();const opened=await unlockDeviceRecord(record);let transport:ReturnType<typeof createRelay>|undefined;
