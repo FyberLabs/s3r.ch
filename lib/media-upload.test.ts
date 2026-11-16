@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { IDBFactory } from "fake-indexeddb";
 import { uploadMedia, pendingMediaUpload, discardMediaUpload } from "./media-upload";
 import { createUploadJournal, decryptUploadJournal } from "./media-upload-journal";
+import { MediaQuotaExceeded } from "./media-client";
 const owner="axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU";
 const pair={pub:owner,priv:"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE",
   epub:"EMvdmXTv89JPyMx5n3blU3L_D70U-6JoVaVzTvSzgYg.B_b0CP3o9X3I7tWrxA_F1VhXpjeMuIJCtQWnOh7LN5c",epriv:"6EXhKuFCyTddo7uvYddNjXON5iKEMV7v8bCol7XOHt8"};
@@ -116,3 +117,40 @@ test("allocation refusal preserves the encrypted draft without granting or uploa
   assert.equal(result.object,held.object);assert.equal(confirmed,1);
   assert.equal(f.writes.filter(action=>action==="allocate").length,1);
 });
+
+for (const refusedStage of ["register", "put"] as const) {
+  test(`quota refusal during ${refusedStage} retains the same encrypted upload for explicit retry`, async () => {
+    const f = fixture();
+    let refuse = true, attempts = 0, canceled = 0;
+    const fetcher: typeof fetch = async (url, init) => {
+      const objectRoute = /^\/api\/media\/media_/.test(String(url));
+      const selected = objectRoute && init?.method === (refusedStage === "register" ? "POST" : "PUT");
+      if (selected) {
+        attempts++;
+        if (refuse) return new Response(new ReadableStream({
+          cancel() { canceled++; },
+        }), { status: 507 });
+      }
+      return f.fetcher(url, init);
+    };
+    await assert.rejects(uploadMedia({ tenant, pair, signal, journal: f.journal, fetcher, file: file() }), MediaQuotaExceeded);
+    assert.equal(attempts, 1, "quota refusal must not retry automatically");
+    assert.equal(canceled, 1, "discard provider error body without consuming it");
+    const held = (await f.journal.read(signal))!;
+    assert.ok(held);
+    const before = await decryptUploadJournal(held, tenant, pair) as {fileKey: number[]; grant: unknown; epoch: unknown; wrap: unknown};
+    try {
+      assert.ok(before.grant && before.epoch && before.wrap);
+      assert.equal(f.writes.filter(value => value === "put").length, 0);
+      assert.equal((await pendingMediaUpload(f.journal, tenant, pair, signal))?.object, held.object);
+      refuse = false;
+      const result = await uploadMedia({ tenant, pair, signal, journal: f.journal, fetcher });
+      assert.equal(result.object, held.object);
+      assert.equal(attempts, 2);
+      for (const operation of ["allocate", "grant", "epoch", "publish-wrap", "put"]) {
+        assert.equal(f.writes.filter(value => value === operation).length, 1, operation);
+      }
+      assert.equal(await f.journal.read(signal), null);
+    } finally { before.fileKey.fill(0); }
+  });
+}
