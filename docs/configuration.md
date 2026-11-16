@@ -12,6 +12,7 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 
 | Setting | Required | Default | Secret | What it does |
 | --- | --- | --- | --- | --- |
+| `S3RCH_DEVICE_TRANSFER_CONFIG` | for device transfer | unset | no | Exact scope, Auth/ACL routes and existing OIDC provider; see below. |
 | `S3RCH_EXPERIMENTS_ENABLED` | no | unset | no | Set to 1 to enable the optional landing experiment. Withdrawal remains available after disabling. |
 | `S3RCH_EXPERIMENT_ORIGIN` | for experiments | unset | no | Exact canonical HTTPS site origin. |
 | `S3RCH_EXPERIMENT_TENANT` | for experiments | unset | no | Nonzero tenant UUID for private experiment records. |

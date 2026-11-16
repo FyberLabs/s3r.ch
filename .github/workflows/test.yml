@@ -37,6 +37,9 @@ jobs:
       - name: Check scheduled experiment harness
         run: node --check scripts/test-experiment-browser.mjs && node --test scripts/experiment-browser-fixture.test.mjs scripts/experiment-expiry-probes.test.mjs
 
+      - name: Verify pairing owner artifacts
+        run: node scripts/check-pairing-packages.mjs && node --check scripts/test-device-transfer.mjs && node --check scripts/device-transfer-scenario.mjs
+
       - name: Run tests
         run: npm test
 

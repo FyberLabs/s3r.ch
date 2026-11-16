@@ -1,5 +1,5 @@
 import {exact,sameScope,publicIdentity,publicBinding,publicRelayPayload} from './device-public';
-import {requestHost,requestIsSecure} from '../request-origin';
+import {requestHost,requestIsSecure,matchesRequestOrigin} from '../request-origin';
 import {deviceConfig} from './device-config';
 import {readDevicePerson,devicePersonOAuth,personClearCookies} from './device-person';
 import {readBoundedIdentityJson} from './bounded-json';
@@ -12,7 +12,7 @@ async function body(request:Request){
 export async function deviceServer(request:Request,action:string,env:Record<string,string|undefined>=process.env,fetcher:typeof fetch=fetch){
  try{
   if(!requestIsSecure(request))return reply(403,{error:'unavailable'});
-  const origin='https://'+requestHost(request),config=deviceConfig(origin,env);if(!config)return reply(503,{error:'unavailable'});
+  const origin='https://'+requestHost(request),config=deviceConfig(origin,env);if(!matchesRequestOrigin(request,new URL(origin)))return reply(403,{error:'unavailable'});if(!config)return reply(503,{error:'unavailable'});
   if(request.method==='GET'&&(action==='authorize'||action==='callback'))return devicePersonOAuth(request,action,config,origin,env,{fetch:fetcher});
   if(request.method==='POST'&&request.headers.get('origin')!==origin)return reply(403,{error:'unavailable'});
   if(action==='logout'&&request.method==='POST'){const r=reply(200,{ok:true});for(const c of personClearCookies())r.headers.append('Set-Cookie',c);return r;}

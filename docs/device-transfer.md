@@ -42,3 +42,17 @@ an existing complete source keyring, eligible person on each browser, configured
 services and a PRF-capable destination. Infra owns fixture setup/readiness/teardown.
 No substituted tenant, injected bearer, preauthenticated browser or manual shared
 TEST run establishes acceptance. PR unit/contract CI and review govern merge.
+
+The checked-in `scripts/test-device-transfer.mjs` is scheduled-only and remains
+unregistered until Infra #1559 provides `DEVICE_TRANSFER_FIXTURE_DRIVER`. That
+owner module must export setup/readiness/teardown. Its setup result supplies two
+independent clean browser pages (`source`, `receiver`), canonical `origin`, and
+real UI drivers `authenticate`, `unlockSource`, `completePrf`, `scanQr`, and
+`assertIdentityAndAccess`. The last asserts same stable principal/current keys,
+historical decryption, unchanged authorized scope and denied outside scope before
+and after transfer. `scanQr` must exercise camera capture of the displayed QR;
+mocking the scanner does not qualify that case. PRF setup must be real supported
+protection, with explicit failure for unsupported clients. Setup owns any source
+local fixture material and teardown removes temporary downloads/credentials.
+The scenario covers QR cancellation, camera-free transfer, lost acknowledgement,
+reload, reconciliation and existing-issuer sign-in. Missing driver is blocked.

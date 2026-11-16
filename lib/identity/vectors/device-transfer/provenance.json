@@ -1,0 +1,9 @@
+{
+  "repository": "FyberLabs/SociACL",
+  "revision": "16ee447e4ca21b98d1c2042eb33133b3a3785b03",
+  "files": {
+    "records.json": "59587a62aaec7e80d77f4cfcb79129ce9def841ad7f5bb87c8befc38e81b714e",
+    "browser-keyring.json": "85fbb689c2e65519d30f7c3f7ac2ba23de38563f71dec99dce98b7d341cec117",
+    "account-keyring.json": "4b28eb12cf94765868700d0636c413d41ff3649e5df5552608b93d79ba5e0396"
+  }
+}
