@@ -389,3 +389,44 @@ test("group key browser operations share a lock and retain encrypted recovery ac
   if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
  }
 });
+
+test("group item grants retain exact encrypted recovery under the unlocked identity",async()=>{
+ const {IDBFactory}=await import('fake-indexeddb');
+ const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator'),oldDb=Object.getOwnPropertyDescriptor(globalThis,'indexedDB');
+ try{
+  unlock();Object.defineProperty(globalThis,'indexedDB',{configurable:true,value:new IDBFactory()});
+  const names:string[]=[];Object.defineProperty(globalThis,'navigator',{configurable:true,value:{locks:{request:async(name:string,_options:unknown,work:(lock:unknown)=>unknown)=>{names.push(name);return work({});}}}});
+  const target={object,predicate:'same-group' as const,set:object.replace('media_','set_'),reader:other,withdraw:false};
+  let applied=false,lock=false,writes=0,views=0;const bodies:unknown[]=[];
+  const browser=createPrivateMediaBrowser(()=>owner,async(url,init)=>{
+   const body=JSON.parse(String(init?.body)),at=Math.floor(Date.now()/1000),action=String(url).split('/').at(-1);
+   assert.ok(!String(init?.body).includes(pair.priv));assert.ok(!String(init?.body).includes(pair.epriv));
+   if(action==='item-grant-view'){
+    views++;if(lock)forgetUnlockedMeshPair();
+    return Response.json({at,fence:view.fence,ownerPub:owner,grant:{...grant,accessor:other,epoch:2,from:at*1000,until:(at+7200)*1000,stated:body.withdraw?0:1}});
+   }
+   if(action==='item-grant-state'){bodies.push(body.payload);return Response.json({at,state:applied?'applied':'absent',frozen:false});}
+   bodies.push(body.payload);writes++;applied=true;throw Error('lost append reply');
+  });
+  assert.equal(await browser.pendingItemGrant(tenant,owner),null);
+  await assert.rejects(browser.startItemGrant(tenant,owner,target));
+  const pending=(await browser.pendingItemGrant(tenant,owner))!;assert.equal(pending.reader,other);
+  await assert.rejects(browser.startItemGrant(tenant,owner,target));assert.equal(views,1);
+  const result=await browser.resumeItemGrant(tenant,owner,pending);assert.equal(result.state,'applied');
+  assert.equal(writes,1);assert.equal(await browser.pendingItemGrant(tenant,owner),null);
+  assert.ok(bodies.every(body=>JSON.stringify(body)===JSON.stringify(bodies[0])));
+  applied=false;await assert.rejects(browser.startItemGrant(tenant,owner,{...target,withdraw:true}));
+  const cancelled=(await browser.pendingItemGrant(tenant,owner))!;assert.equal(cancelled.withdraw,true);
+  assert.equal((await browser.discardItemGrant(tenant,owner,cancelled)).state,'applied');
+  assert.ok(names.every(name=>name==='s3rch-private-group-item-grant-v1'));
+  lock=true;await assert.rejects(browser.startItemGrant(tenant,owner,target));assert.equal(writes,2);
+  await assert.rejects(browser.pendingItemGrant(tenant,owner));
+  for(const priv of ['bad',pair.priv.slice(0,-1)+'F']){
+   unlock();rememberUnlockedMeshPair('linked-credential',{...pair,priv});
+   await assert.rejects(browser.startItemGrant(tenant,owner,target));
+  }
+ }finally{
+  if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else Reflect.deleteProperty(globalThis,'navigator');
+  if(oldDb)Object.defineProperty(globalThis,'indexedDB',oldDb);else Reflect.deleteProperty(globalThis,'indexedDB');
+ }
+});

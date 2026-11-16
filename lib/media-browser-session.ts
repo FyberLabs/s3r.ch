@@ -1,3 +1,6 @@
+import {createItemGrantClient} from "./media-group-item-grant-client";
+import {parseItemGrantCommand} from "./media-group-item-grant";
+import {applyItemGrant,pendingItemGrant,discardItemGrant,type PendingItemGrant} from "./media-group-item-grant-recovery";
 import {createGroupKeyClient} from "./media-group-key-client";
 import {applyGroupKey,pendingGroupKey,deliverGroupKey,finishGroupKeyDelivery,discardGroupKey,type PendingGroupKey} from "./media-group-key-recovery";
 import {applyGroupCommand as applyDurableGroupCommand,pendingGroupCommand,discardGroupCommand,type PendingGroupCommand} from "./media-group-command-recovery";
@@ -66,6 +69,34 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     });
   }
   return Object.freeze({
+    startItemGrant(tenant:string,principal:string,target:{object:string;predicate:"same-group"|"named-circle";set:string;reader:string;withdraw:boolean},signal?:AbortSignal){
+      const held=parseItemGrantCommand("item-grant-view",target,principal);
+      return locked(()=>run(async(pair,transport,deadline)=>{
+        const input={tenant,principal,pair,fetcher:transport,signal:deadline,journal:createShareJournal(undefined,"group-item-grant")};
+        if(await pendingItemGrant(input))throw Error("A group item request requires recovery");
+        if(!/^[A-Za-z0-9_-]{43}$/.test(pair.priv))throw Error("Invalid media signing key");
+        const scalar=Uint8Array.from(atob(pair.priv.replace(/-/g,"+").replace(/_/g,"/")+"="),c=>c.charCodeAt(0));
+        try{
+          if(scalar.length!==32||btoa(String.fromCharCode(...scalar)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")!==pair.priv)throw Error("Invalid media signing key");
+          const command=await createItemGrantClient(principal,transport).prepare(held,scalar,deadline);
+          return await applyItemGrant({...input,command});
+        }finally{scalar.fill(0);}
+      },signal),"s3rch-private-group-item-grant-v1");
+    },
+    pendingItemGrant(tenant:string,principal:string,signal?:AbortSignal){
+      return run((pair,transport,deadline)=>pendingItemGrant({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-item-grant")}),signal);
+    },
+    resumeItemGrant(tenant:string,principal:string,expected:PendingItemGrant,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>applyItemGrant({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-item-grant"),expected:held}),signal),"s3rch-private-group-item-grant-v1");
+    },
+    discardItemGrant(tenant:string,principal:string,expected:PendingItemGrant,signal?:AbortSignal){
+      const held=structuredClone(expected);
+      return locked(()=>run((pair,transport,deadline)=>discardItemGrant({tenant,principal,pair,fetcher:transport,signal:deadline,
+        journal:createShareJournal(undefined,"group-item-grant"),expected:held}),signal),"s3rch-private-group-item-grant-v1");
+    },
     startGroupKey(tenant:string,principal:string,scope:MediaGroupScope,signal?:AbortSignal){
       const held=parseMediaGroupScope(scope);
       return locked(()=>run(async(pair,transport,deadline)=>{
