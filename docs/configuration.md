@@ -347,3 +347,5 @@ backend and one-time challenge consumption remain required.
 Auth #69's provider orchestration and #583's restoration browser flow are separate
 consumers. This setting alone does not activate them, provision credentials, or
 register reader cases. No private file is included in the image or this repository.
+
+`S3RCH_RECOVERY_STORE_ENABLED=true` explicitly enables authenticated recovery current/pending reads and signed current-copy puts through the device-person session. It defaults off and requires the existing device-transfer configuration plus ACL signed-store subject bindings. Only ciphertext and public CAS metadata cross this boundary; the browser keeps passphrases and key material. This setting does not provision storage, enroll identities, enable rotation or register readers.
