@@ -9,7 +9,7 @@ const root=process.cwd(),out=resolve('vendor/pairing'),temp=mkdtempSync(join(tmp
 const inputs=[
  ['hyperme-sh/controlplane-sdk','006611d80fe60b303288447204271cde5ba35332','packages/sea-device-link','sea-device-link'],
  ['hyperme-sh/auth-service','24a1b061106838673e5b98facd68f4a0593342b1','browser/sea-relay','auth-sea-relay'],
- ['FyberLabs/SociACL','d0844508ca1145ecb35a99aead9cf67141096b60','typescript/ids','sociacl-ids'],
+ ['FyberLabs/SociACL','85d553dda2e7199a899b8807d09d21e8a0318837','typescript/ids','sociacl-ids'],
  ['hyperme-sh/acl-service','5519668e201bd2fc472f99c21ad977e810a00dc3','browser/device-transfer','acl-sea-device-authority'],
  ['hyperme-sh/controlplane-portal','70f197f1871344382d769bc6b8a30349e8ead8f4','packages/sea-device-link-ui','sea-device-link-ui'],
 ];
@@ -36,6 +36,11 @@ try{
  const pkg=JSON.parse(readFileSync('package.json','utf8'));
  for(const item of manifest)pkg.dependencies[item.name]='file:vendor/pairing/'+item.file;
  writeFileSync('package.json',JSON.stringify(pkg,null,2)+'\n');
+ // File packages can change bytes while retaining their owner version. Remove
+ // only their stale lock entries so npm reads the freshly packed manifests.
+ const lock=JSON.parse(readFileSync('package-lock.json','utf8'));
+ for(const item of manifest)delete lock.packages['node_modules/'+item.name];
+ writeFileSync('package-lock.json',JSON.stringify(lock,null,2)+'\n');
  run('npm',['install','--package-lock-only','--ignore-scripts','--no-audit','--no-fund'],root);
  mkdirSync('pairing-prepared',{recursive:true});cpSync('vendor/pairing','pairing-prepared/vendor/pairing',{recursive:true});
  cpSync('package.json','pairing-prepared/package.json');cpSync('package-lock.json','pairing-prepared/package-lock.json');

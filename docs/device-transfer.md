@@ -82,3 +82,19 @@ requires the declared fixture and scheduled run. First enrollment remains owned
 separately. Encrypted remote recovery retrieval, passphrase migration and the
 linked-OIDC browser broker are still outstanding under #583; this slice does not
 close that issue or register reader cases.
+
+### Open an encrypted recovery copy
+
+The authorized device page offers **Open encrypted recovery copy**. Its local JSON
+transport has exact fields `version:1`, `principal`, `signingPub`, `epub`,
+`rotationSeq`, and `ciphertext` (canonical unpadded base64url of the existing SociACL
+recovery envelope). This wraps the shared library's ciphertext without changing
+its cryptographic format. Use the original passphrase; legacy weak passphrases
+remain valid for opening and are not approved for creating a new recovery copy.
+
+Current authenticated owner history must confirm the identity before local passkey
+protection is requested. Exact retries reuse the existing protected copy. Another
+identity is never overwritten. Passphrase and plaintext remain in the browser;
+mutable buffers are cleared, and account changes/cancellation refuse delivery.
+JavaScript strings cannot be guaranteed erased. Unlock/sign-in is still explicit.
+This slice does not fetch remote recovery copies or rotate keys/passphrases.

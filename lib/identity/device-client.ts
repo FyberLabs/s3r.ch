@@ -1,3 +1,4 @@
+import {restoreEncryptedRecovery} from './restore-encrypted-recovery';
 import {restoreExistingKeyring} from './restore-keyring';
 import {restoredKeyringRecords,openRestoredKeyring,type RestoredKeyringRecord} from './restored-keyring-storage';
 import {activateDeviceKeyring} from './device-activation';
@@ -60,6 +61,11 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
   async restoreCompleteSource(bytes:Uint8Array){
    guard();
    const result=await restoreExistingKeyring(bytes,{scope:session.scope,current,signal:abort.signal,
+    keyringState:identity=>authority.keyringState(identity),protect:()=>prepareDeviceProtection(new URL(origin).hostname)});
+   guard();onStored();return result.outcome;
+  },
+  async restoreEncryptedSource(bytes:Uint8Array,passphrase:Uint8Array){
+   guard();const result=await restoreEncryptedRecovery(bytes,passphrase,{scope:session.scope,current,signal:abort.signal,
     keyringState:identity=>authority.keyringState(identity),protect:()=>prepareDeviceProtection(new URL(origin).hostname)});
    guard();onStored();return result.outcome;
   },
