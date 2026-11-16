@@ -49,3 +49,31 @@ test("aborted requests never perform IO",async()=>{
   const h=await fixture(),controller=new AbortController();controller.abort();
   await assert.rejects(h.source.read(h.credential,f.now,controller.signal));
 });
+
+test("oversized synchronous history work refuses before native verification", async () => {
+  const h = await fixture();
+  h.document.snapshot.history.accounts[0].rotations = Array.from({length:33}, () => ({}));
+  await assert.rejects(h.source.read(h.credential, f.now, new AbortController().signal), /budget/);
+});
+test("history verification honors cooperative cancellation before native work", async () => {
+  const { authenticatedHistoryContexts } = await import("./acl-delegation-source-server");
+  const h = await fixture(); let calls = 0;
+  assert.throws(() => authenticatedHistoryContexts(h.document.snapshot.history, h.h.trust, f.now,
+    () => { if (++calls === 3) throw Error("cancelled budget"); }), /cancelled budget/);
+  assert.equal(calls, 3);
+});
+
+test("revocation completeness is independent of JSON property order", async () => {
+  const { signingBytes, signWithKeyring, linkId } = await import("sociacl-ids");
+  const h = await fixture(), id = linkId(h.h.oidc); assert.ok(id.ok);
+  const row = {v:1 as const, kind:"revoke" as const, principal:h.h.oidc.principal, linkId:id.value, issuedAt:f.now};
+  const bytes = signingBytes(row); assert.ok(bytes.ok);
+  const key = new Uint8Array(32); key[31] = 103;
+  const sig = signWithKeyring(key, bytes.value, row.principal); assert.ok(sig.ok);
+  const signed = {...row, keySig:sig.value};
+  h.document.snapshot.history.accounts[0].revocations = [signed];
+  h.document.snapshot.revocations = [Object.fromEntries(Object.entries(signed).reverse())];
+  assert.ok(await h.source.read(h.credential, f.now, new AbortController().signal));
+  h.document.snapshot.revocations = [];
+  await assert.rejects(h.source.read(h.credential, f.now, new AbortController().signal), /revocations/);
+});
