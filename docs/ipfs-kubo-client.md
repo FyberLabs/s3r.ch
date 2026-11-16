@@ -1,0 +1,15 @@
+# Direct Kubo block transport (#570)
+
+`createKuboBlockClient` is an unmounted browser adapter for a user-selected HTTPS Kubo RPC origin. It calls the documented [block put/get API](https://docs.ipfs.tech/reference/kubo/rpc/#api-v0-block-put) directly. There is no s3r.ch API proxy, default provider, gateway fallback, pinning or provisioning. No reader case is registered.
+
+The caller must supply an explicitly approved endpoint, an authenticated current private grant, ciphertext from `sealMedia`, expected block CID/length from the authenticated manifest, and current consent. `current()` is checked before dispatch, while reading, and before returning. Abort the supplied signal immediately on revocation/account change; changing a callback alone cannot cancel an outstanding network read. The adapter does not authenticate grants, prove endpoint ownership, distinguish company aliases, or prove that input bytes are encrypted. Do not install it server-side or expose arbitrary endpoint input through a server route.
+
+Endpoint configuration accepts only HTTPS origins without userinfo, paths, queries or fragments. Cookies, browser credentials and referrers are omitted; redirects are errors. This version does not accept provider tokens. The user's endpoint must permit the application origin through CORS and enforce its own access controls. **Do not expose the unrestricted Kubo administrative RPC publicly to make this adapter work.** A provider must expose only the required operations through its independently secured access boundary. That deployment is not created here.
+
+Uploads explicitly select raw SHA-256 and `pin=false`; a matching receipt proves only acknowledged storage, not durability. The provider may garbage-collect unpinned bytes. Downloads must match both expected size and raw CID. `assembleMediaBlocks` and `openMedia` still must verify the complete ciphertext and authenticated encryption before display.
+
+Each instance has two pending slots, 128 lifetime attempts, a caller-selected lifetime payload budget capped at 64 MiB, 1 MiB blocks, 1 KiB upload receipts and a ten-second operation deadline. Reservations include failed attempts. These are payload/admission limits, not wire bandwidth accounting; multipart/TLS overhead and browser buffering are outside the bound. There is no automatic retry. Use one instance per approved transfer session; constructing more instances does not enforce a cross-tab or account quota. An abort-ignoring injected transport retains its slot until settled.
+
+Unit tests cover protocol, integrity, endpoint validation, budget consumption, consent/cancellation and occupied slots. PR CI runs real Chromium against a separate HTTPS loopback origin with actual multipart/CORS requests and real encrypted media. Its provider is an explicit Kubo protocol substitute, not live Kubo or provider acceptance. TLS trust is relaxed only inside that isolated fixture.
+
+Remaining #570 work includes native consent/grant mounting, provider access configuration and live evidence, shared transfer policy, multi-client provider/cache behavior and scheduled acceptance. Login and group sharing remain with their owners.
