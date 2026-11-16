@@ -1,5 +1,5 @@
 "use client";
-import { useRoomAuthority } from "./RoomAuthorityProvider";
+import { RoomAuthorityProvider, useRoomAuthority } from "./RoomAuthorityProvider";
 import { isForumObjectId } from "@/lib/identity/forum-check";
 import { publishCurrentRoomChat, roomChatPublicationAllowed } from "@/lib/room-chat-publication";
 import { createRoomChatSubscription } from "@/lib/room-chat-receive-queue";
@@ -127,10 +127,12 @@ export function FeedStream() {
         <button type="button" className={btnSecondary} onClick={() => setAccountOpen(true)}>Account and posting</button>
       )}
     <div hidden={observingIdentity && identity === undefined && owner !== null}>
+    <RoomAuthorityProvider session={observingIdentity ? identity : null}>
     <FeedStreamBody key={owner ?? "signed-out"} identity={identity}
       tab={tab} setTab={setTab} accountOpen={accountOpen} setAccountOpen={setAccountOpen}
       sharePeers={sharePeers} setSharePeers={setSharePeers}
       openRoomId={openRoomId} setOpenRoomId={setOpenRoomId} />
+    </RoomAuthorityProvider>
     </div>
   </div>;
 }
