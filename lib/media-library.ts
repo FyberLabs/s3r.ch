@@ -216,7 +216,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       if(state.deletion||!state.itemStatus||!owner)return Promise.resolve();const principal=owner,selected={...state.itemStatus};
       return operation(async(signal,current)=>{
         await browser.resumeItemStatus(tenant,principal,selected,signal);
-        if(current())publish({...state,itemStatus:null,message:"This member’s current file access was confirmed. It expires shortly; refresh it when needed."});
+        if(current())publish({...state,itemStatus:null,message:"The saved member access request was reconciled. Refresh member file access again before opening; the original authorization may have expired."});
       },()=>publish({...state,message:"The saved member access request is retained. Check access and retry recovery."}));
     },
     discardItemStatus(tenant:string) {
@@ -227,7 +227,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       },()=>publish({...state,message:"The saved member access request cannot be cleared yet. Retry recovery."}));
     },
     startItemEpoch(tenant:string,object:string,predicate:"same-group"|"named-circle",set:string) {
-      if(state.deletion||state.itemGrant||state.itemEpoch||!owner||state.audience?.object!==object||!state.objects.includes(object)||!set)return Promise.resolve();
+      if(state.deletion||state.itemGrant||state.itemEpoch||state.itemWrap||!owner||state.audience?.object!==object||!state.objects.includes(object)||!set)return Promise.resolve();
       const principal=owner;
       return operation(async(signal,current)=>{
         const result=await browser.startItemEpoch(tenant,principal,{object,predicate,set},signal);
@@ -256,7 +256,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       },()=>publish({...state,message:"The saved access update cannot be cleared. Retry recovery; accepted updates need their replacement keys."}));
     },
     startItemGrant(tenant:string,object:string,predicate:"same-group"|"named-circle",set:string,reader:string,withdraw:boolean) {
-      if(state.deletion||state.itemGrant||state.itemEpoch||!owner||state.audience?.object!==object||!state.objects.includes(object)||!isSeaPubkey(reader)||!set)return Promise.resolve();
+      if(state.deletion||state.itemGrant||state.itemEpoch||state.itemWrap||!owner||state.audience?.object!==object||!state.objects.includes(object)||!isSeaPubkey(reader)||!set)return Promise.resolve();
       const principal=owner;
       return operation(async(signal,current)=>{
         const result=await browser.startItemGrant(tenant,principal,{object,predicate,set,reader,withdraw},signal);
@@ -435,7 +435,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       });
     },
     share(tenant:string,object:string,reader:string) {
-      if(state.deletion||state.sharing||state.audience?.object!==object||!state.objects.includes(object)||!owner||!isSeaPubkey(reader)||reader===owner)return Promise.resolve();
+      if(state.deletion||state.itemWrap||state.sharing||state.audience?.object!==object||!state.objects.includes(object)||!owner||!isSeaPubkey(reader)||reader===owner)return Promise.resolve();
       const principal=owner;
       return operation(async(signal,current)=>{
         const result=await browser.share(tenant,{object,owner:principal,reader},signal);
@@ -444,7 +444,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       },()=>publish({...state,sharing:null,message:"Sharing could not be confirmed. Check saved sharing before retrying; accepted changes are not undone."}));
     },
     resumeSharing(tenant:string) {
-      if(state.deletion||!state.sharing)return Promise.resolve();
+      if(state.deletion||state.itemWrap||!state.sharing)return Promise.resolve();
       const selected={...state.sharing};
       return operation(async(signal,current)=>{
         const result=await browser.resumeShare(tenant,selected,signal);
@@ -453,7 +453,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       },()=>publish({...state,message:"Sharing could not be confirmed. The saved change is retained; check access and retry."}));
     },
     abandonSharing(tenant:string) {
-      if(state.deletion||!state.sharing)return Promise.resolve();
+      if(state.deletion||state.itemWrap||!state.sharing)return Promise.resolve();
       const selected={...state.sharing};
       return operation(async(signal,current)=>{
         await browser.abandonShare(tenant,selected,signal);
@@ -469,7 +469,7 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       });
     },
     unshare(tenant:string,object:string,reader:string) {
-      if(state.deletion||state.sharing||state.audience?.object!==object||!state.audience.readers.includes(reader)||!owner)return Promise.resolve();
+      if(state.deletion||state.itemWrap||state.sharing||state.audience?.object!==object||!state.audience.readers.includes(reader)||!owner)return Promise.resolve();
       const principal=owner;
       return operation(async(signal,current)=>{
         const result=await browser.share(tenant,{object,owner:principal,reader,remove:true},signal);
