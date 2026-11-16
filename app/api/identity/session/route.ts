@@ -1,3 +1,4 @@
+import { withConfiguredTerminalHandler } from "@/lib/identity/terminal-configured-route";
 import {
   identitySecretOrThrow,
   readSessionFromRequest,
@@ -13,7 +14,7 @@ export const runtime = "nodejs";
  * `address` is the wallet that signed. `owner` is the sociacl owner of
  * Gun and Check objects. The mesh key stays on `address`.
  */
-export async function GET(request: Request) {
+async function nativeGET(request: Request) {
   let secret: string;
   try {
     secret = identitySecretOrThrow();
@@ -49,3 +50,5 @@ export async function GET(request: Request) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 }
+
+export const GET = withConfiguredTerminalHandler(nativeGET);
