@@ -42,3 +42,16 @@ test("missing authority and revoked source deny before and after storage",async(
   assert.equal((await changed(request("POST"),object)).status,403);
   assert.equal((await changed(request("PUT","https://evil.example"),object)).status,403);assert.equal(puts,0);
 });
+
+test("group query never falls back to direct wraps or admits malformed scope",async()=>{
+ let direct=0,group=0,reads=0;
+ const service=createAllocatedMediaService({origin:'https://s3r.ch',owner:()=>null,
+  wrap:()=>async()=>{direct++;return new Response(null,{status:200});},
+  group:()=>async(action,request)=>{group++;assert.equal(action,'item-wrap-read');assert.deepEqual(await request.json(),{object,predicate:'same-group',set:object.replace('media_','set_')});return new Response(null,{status:403});},
+  allocated:{reference:async()=>({digest,length:33}),get:async()=>{reads++;return bytes;},put:async()=>{throw Error();}}});
+ const query=new URLSearchParams({predicate:'same-group',set:object.replace('media_','set_')});
+ const get=(suffix:string)=>service(new Request('https://s3r.ch/api/media/'+object+'?'+suffix,{headers:{origin:'https://s3r.ch'}}),object);
+ assert.equal((await get(String(query))).status,403);assert.equal(group,1);
+ for(const suffix of ['predicate=same-group',String(query)+'&set=other',String(query)+'&reader=injected','predicate=public&set=invalid'])assert.equal((await get(suffix)).status,403);
+ assert.equal(group,1);assert.equal(direct,0);assert.equal(reads,0);
+});
