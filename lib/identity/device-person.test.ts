@@ -35,5 +35,7 @@ test('BFF confines bearer to owner calls, rejects switched context and strips ow
  const sender={...receiver,headers:{...receiver.headers,'X-Pairing-Role':'sender'}};
  const refused=await deviceServer(req(sender),'relay',env,async(_url,init)=>{assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer person-bearer');return Response.json({secret:'owner-details'},{status:403});});
  assert.deepEqual(await refused.json(),{error:'unavailable'});assert.equal(refused.status,403);
+ const stateBody={scope,identity:{principal:'p',pub:'p',epub:'e',rotationSeq:0}};
+ assert.equal((await deviceServer(req(stateBody),'state',env,async(url,init)=>{assert.equal(String(url),config.acl+'state');assert.equal(new Headers(init?.headers).get('X-Tenant-ID'),scope.tenant);assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer person-bearer');return Response.json({ok:true});})).status,200);
  const privateBody={...receiver,payload:{priv:'must-not-forward'}};assert.equal((await deviceServer(req(privateBody),'relay',env,fetcher)).status,503);assert.equal(calls,1);
 });
