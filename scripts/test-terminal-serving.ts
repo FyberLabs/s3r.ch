@@ -13,7 +13,8 @@ import { createSeaSessionClient } from "../lib/identity/sea-session-client";
 import { signForumRecord } from "../lib/forum-sign";
 import { seaSessionCookieNames } from "../lib/identity/sea-session-http";
 import type { SeaPair } from "../lib/identity/sea";
-const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
+async function main() {
+const sea = createRequire(path.resolve("package.json"))("gun/sea") as { pair(): Promise<SeaPair> };
 const origin = "https://test.s3r.ch", issuer = "https://auth.test.hyperme.sh/realms/controlplane", tenant = "22222222-2222-2222-2222-222222222222";
 const pair = await sea.pair(), other = await sea.pair(), unrelated = await sea.pair(), signing = generateKeyPairSync("ed25519");
   const common = { subject: "11111111-1111-1111-1111-111111111111", tenant, organization: "", realm: "controlplane", issuer, clients: ["s3rch-web"], origins: [origin], identities: { sea: [pair.pub] } };
@@ -145,3 +146,6 @@ try {
   } finally { await stop(); }
 } finally { await rm(directory, { recursive: true, force: true }); }
 console.log("Built Next terminal entry contracts passed");
+
+}
+void main().catch(error => { console.error(error); process.exitCode = 1; });
