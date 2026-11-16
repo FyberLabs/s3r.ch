@@ -21,7 +21,7 @@ export async function deviceTransferScenario({source,receiver,origin,authenticat
   await receiver.getByRole('button',{name:'Check source admission and offer',exact:true}).click();
   await source.getByRole('button',{name:'Connect after receiver activation',exact:true}).click();
   await receiver.getByRole('button',{name:'Check source admission and offer',exact:true}).click();
-  const comparison=await source.locator('.sea-device-link > p > code').textContent(),other=await receiver.locator('.sea-device-link > p > code').textContent();assert.equal(comparison,other);assert.match(comparison,/^[a-f0-9]{8}(-[a-f0-9]{8}){7}$/);
+  const comparison=await source.locator('.sea-device-link > fieldset > p > code').textContent(),other=await receiver.locator('.sea-device-link > fieldset > p > code').textContent();assert.equal(comparison,other);assert.match(comparison,/^[a-f0-9]{8}(-[a-f0-9]{8}){7}$/);
   for(const page of [source,receiver]){await page.getByLabel('Full comparison from the other device').fill(comparison);await page.getByRole('button',{name:'Confirm identity, destination and comparison',exact:true}).click();}
   await source.getByRole('button',{name:'Send encrypted identity',exact:true}).click();
   // Lose only acknowledgement, after the atomic import has completed.
