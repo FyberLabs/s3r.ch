@@ -1,3 +1,4 @@
+import {IDBFactory as FakeIDBFactory} from 'fake-indexeddb';
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
@@ -171,91 +172,8 @@ describe("IndexedDB mesh key helper (node fake factory)", () => {
   });
 });
 
-type StoreData = { keyPath: string; rows: Map<IDBValidKey, unknown> };
-
-class FakeDb {
-  readonly name: string;
-  readonly stores = new Map<string, StoreData>();
-
-  constructor(name: string) {
-    this.name = name;
-  }
-
-  get objectStoreNames() {
-    return {
-      contains: (storeName: string) => this.stores.has(storeName),
-    };
-  }
-
-  createObjectStore(storeName: string, options: { keyPath: string }) {
-    this.stores.set(storeName, { keyPath: options.keyPath, rows: new Map() });
-  }
-
-  transaction(storeName: string) {
-    const data = this.stores.get(storeName);
-    if (!data) throw new Error(`missing store ${storeName}`);
-    const tx = {
-      objectStore: () => ({
-        get: (key: IDBValidKey) => succeed(data.rows.get(key), () => tx.oncomplete?.(new Event("complete"))),
-        put: (value: Record<string, unknown>) => {
-          const key = value[data.keyPath] as IDBValidKey;
-          data.rows.set(key, value);
-          return succeed(key, () => tx.oncomplete?.(new Event("complete")));
-        },
-      }),
-      oncomplete: null as ((ev: Event) => void) | null,
-      onabort: null as ((ev: Event) => void) | null,
-      error: null,
-    };
-    return tx;
-  }
-
-  close() {}
-}
-
-function succeed<T>(result: T, complete: () => void = () => {}) {
-  const request: {
-    result: T;
-    error: null;
-    onsuccess: ((ev: Event) => void) | null;
-    onerror: ((ev: Event) => void) | null;
-  } = { result, error: null, onsuccess: null, onerror: null };
-  queueMicrotask(() => { request.onsuccess?.(new Event("success")); queueMicrotask(complete); });
-  return request;
-}
-
 function createFakeIdbFactory(): IDBFactory {
-  const dbs = new Map<string, FakeDb>();
-  return {
-    open(name: string) {
-      const request: {
-        result: FakeDb | undefined;
-        error: null;
-        onsuccess: ((ev: Event) => void) | null;
-        onerror: ((ev: Event) => void) | null;
-        onupgradeneeded: ((ev: Event) => void) | null;
-      } = {
-        result: undefined,
-        error: null,
-        onsuccess: null,
-        onerror: null,
-        onupgradeneeded: null,
-      };
-      queueMicrotask(() => {
-        let db = dbs.get(name);
-        const created = !db;
-        if (!db) {
-          db = new FakeDb(name);
-          dbs.set(name, db);
-        }
-        request.result = db;
-        if (created || !db.stores.has(MESH_STORE_NAME)) {
-          request.onupgradeneeded?.(new Event("upgradeneeded"));
-        }
-        request.onsuccess?.(new Event("success"));
-      });
-      assert.equal(name, MESH_IDB_NAME);
-      return request;
-    },
-  } as unknown as IDBFactory;
+  const factory=new FakeIDBFactory(),open=factory.open.bind(factory);
+  factory.open=(name,version)=>{assert.equal(name,MESH_IDB_NAME);return open(name,version);};
+  return factory;
 }

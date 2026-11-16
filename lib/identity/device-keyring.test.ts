@@ -5,11 +5,11 @@ import {readFileSync} from 'node:fs';
 import {IDBFactory} from 'fake-indexeddb';
 import {historyState,wrapItemDekToReaders} from 'sociacl-ids';
 import {admitKeyring,exportKeyring,importKeyring,closeKeyring,validateKeyring,openKeyringContent} from 'sociacl-ids/keyring';
-import {Sender,Receiver,reconcile} from 'sea-device-link';
 import {createDeviceStorage,deviceRecords,canonical} from './device-storage';
 import {base64UrlToBytes} from './wrap';
-const fixture=(name:string)=>JSON.parse(readFileSync(new URL('../../.pairing-test-vectors/'+name+'.json',import.meta.url),'utf8'));
+const fixture=(name:string)=>JSON.parse(readFileSync(new URL('../.pairing-test-vectors/'+name+'.json',import.meta.url),'utf8'));
 test('actual SDK transfer preserves rotated keyring and historical decryption through protected app storage',async()=>{
+ const {Sender,Receiver,reconcile}=await import('sea-device-link');
  const vectors=fixture('browser-keyring'),records=fixture('records'),v=vectors.accept[1],{principal,pub,epub,rotationSeq}=v.fields,identity={principal,pub,epub,rotationSeq};let revoked=false;
  const state=():any=>{if(revoked)throw Error();return {rotations:v.rotationNames.map((name:string)=>records.accept.find((r:any)=>r.name===name).input),context:{jwks:records.context.jwks,links:new Map(records.context.links),revocations:[],now:records.context.now,policy:records.context.policy,pinnedIss:new Set(records.context.pinnedIss),genesisEpubBindings:v.genesisBindings,history:(p:any,at:number,until:number)=>records.context.authenticatedAccounts.includes(p)?{ok:true,value:historyState(p,[],at,until)}:{ok:false,reason:'missing-history'}}};};
  const authority={async validateKeyring(bytes:Uint8Array,id:any){validateKeyring(bytes,id,state);},async current(binding:any){state();return {revision:'synthetic-owner',validUntil:binding.expiresAt};}};
