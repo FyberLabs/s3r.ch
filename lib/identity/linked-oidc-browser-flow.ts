@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {matchesRequestOrigin} from '../request-origin';
 import {EncryptJWT,jwtDecrypt} from 'jose';
 import {readBoundedIdentityJson} from './bounded-json';
 import {terminalTokenClaims,verifyTerminalToken} from './terminal-run';
@@ -39,7 +40,7 @@ export function createLinkedOidcBrowserFlow(input:{origin:string;providerOrigin:
  }
  return async(request:Request,action:string):Promise<Response>=>{
   try{
-   if(request.method!=='POST'||new URL(request.url).origin!==origin)return reply(403,{error:'unavailable'});
+   if(request.method!=='POST'||!matchesRequestOrigin(request,new URL(origin)))return reply(403,{error:'unavailable'});
    const callback=action==='callback';
    if(request.headers.get('origin')!==(callback?providerOrigin:origin))return reply(403,{error:'origin'});
    if(!['start','callback','finish','cancel'].includes(action))return reply(404,{error:'not-found'});

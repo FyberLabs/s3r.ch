@@ -44,3 +44,21 @@ test('cancel and expired local cleanup never claim an unconfirmed remote cancell
  assert.equal((await h.flow(h.request('finish',{},cookie),'finish')).status,503);
  const g=await setup(),old=await g.start();g.expire();const expired=await g.flow(g.request('cancel',{},old),'cancel');assert.deepEqual(await expired.json(),{status:'local-cleared-remote-unknown'});
 });
+
+test('normalized TLS ingress supports all actions and rejects mismatched host or protocol',async()=>{
+ const proxy=(request:Request,overrides:Record<string,string>={})=>{
+  const headers=new Headers(request.headers);headers.set('host','s3r.ch');headers.set('x-forwarded-host','s3r.ch');headers.set('x-forwarded-proto','https');
+  for(const [name,value] of Object.entries(overrides))headers.set(name,value);
+  return new Request('http://next.internal:3000'+new URL(request.url).pathname,{method:'POST',headers,body:request.body,duplex:'half'} as RequestInit);
+ };
+ const h=await setup();
+ for(const override of [{'host':'foreign.example'},{'x-forwarded-host':'foreign.example'},{'x-forwarded-proto':'http'}]){
+  assert.equal((await h.flow(proxy(h.request('start'),override),'start')).status,403);
+ }
+ const started=await h.flow(proxy(h.request('start')),'start');assert.equal(started.status,200);
+ const cookie=started.headers.getSetCookie()[0].split(';')[0];
+ assert.equal((await h.flow(proxy(h.request('callback','state='+('s'.repeat(43))+'&code=code',cookie,h.providerOrigin)),'callback')).status,303);
+ assert.equal((await h.flow(proxy(h.request('finish',{},cookie)),'finish')).status,200);
+ const g=await setup(),pending=await g.start();
+ assert.deepEqual(await (await g.flow(proxy(g.request('cancel',{},pending)),'cancel')).json(),{status:'cancelled'});
+});
