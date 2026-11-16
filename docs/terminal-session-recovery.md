@@ -228,3 +228,29 @@ tenant. Native configuration validates it and binds privacy tokens, records and
 cache/runtime namespaces; request bodies cannot override it. CI uses a fourth
 distinct product-record tenant, refuses a caller tenant field without changing
 the outbox, and retains original-run/successor refusal coverage.
+
+### Default-off Next entry integration
+
+The Next route entrypoints now call the dispatcher when private
+`S3RCH_NIGHTLY_RUN_CONFIG` is present. With the setting absent, native handlers
+remain in use. Malformed or changed process configuration refuses requests; a
+failed dispatcher initialization never falls back. The proxy only rejects
+unsupported paths and invalid ingress. It does not establish authority through
+headers or assume shared context with route workers.
+
+Native token readers independently classify configured fixture identities, even
+outside wrapped handlers and when the grant cookie is absent. Compiled route
+bundles share process-local AsyncLocalStorage instances by stable symbols;
+authority and native callbacks remain request-local. Different workers each
+require their own authenticated admission. Read-only container health without
+cookies remains available on localhost. The existing pages render identity on
+the client through guarded API routes; future server identity reads inherit the
+native token guard rather than trusted forwarding headers.
+
+The build job launches the actual standalone Next server with synthetic owner
+transports. It covers absent/malformed configuration, old fixture credential
+refusal, unrelated identities, unsupported mutations, concurrent admitted SEA
+suites across route bundles, auxiliary session reads and removal of grants.
+These are isolated CI contracts, not deployed acceptance. No configuration,
+credentials, capabilities, reader registrations or live activation are installed
+by this source change. Scheduled owner acceptance remains required for #552.

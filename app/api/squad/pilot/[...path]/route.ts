@@ -1,10 +1,11 @@
+import { withConfiguredTerminalHandler } from "@/lib/identity/terminal-configured-route";
 import { readSeaRequestSession } from "@/lib/identity/sea-request-session";
 import { parseSquadPilotConfig, publicSquadPilotConfig } from "@/lib/squad-pilot-config";
 import { siteSeaSession } from "@/lib/identity/site-sea-session-server";
 import { getSquadPilotServer, squadPilotReady } from "@/lib/squad-pilot-server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export async function GET(request: Request, context: { params: Promise<{ path: string[] }> }) {
+async function nativeGET(request: Request, context: { params: Promise<{ path: string[] }> }) {
   const headers = { "Cache-Control": "no-store" };
   try {
     const { path } = await context.params;
@@ -20,7 +21,7 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
     return Response.json({ ready }, { status: ready ? 200 : 503, headers });
   } catch { return Response.json({ ready: false }, { status: 503, headers }); }
 }
-export async function POST(request: Request, context: { params: Promise<{ path: string[] }> }) {
+async function nativePOST(request: Request, context: { params: Promise<{ path: string[] }> }) {
   const reply = (status: number) => Response.json({ error: "pilot-unavailable" }, { status, headers: { "Cache-Control": "no-store" } });
   try {
     const { path } = await context.params;
@@ -34,3 +35,6 @@ export async function POST(request: Request, context: { params: Promise<{ path: 
     return reply(404);
   } catch { return reply(503); }
 }
+
+export const GET = withConfiguredTerminalHandler(nativeGET);
+export const POST = withConfiguredTerminalHandler(nativePOST);

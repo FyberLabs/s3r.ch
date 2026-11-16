@@ -1,3 +1,4 @@
+import { terminalRouteKind, terminalGrantPresent } from "./terminal-route-policy";
 import { matchesRequestOrigin } from "../request-origin";
 import { parseTerminalOwnerConfig } from "./terminal-owner-config";
 import { createTerminalOwnerControl } from "./terminal-owner-control";
@@ -9,9 +10,6 @@ import { createTerminalExperimentRoute } from "./terminal-experiment-route";
 import { createTerminalHttpAuthority } from "./terminal-run-client";
 import { withTerminalRun } from "./terminal-run";
 const refused = () => Response.json({ error: "unavailable" }, { status: 503, headers: { "Cache-Control": "private, no-store" } });
-const seaPath = (path: string) => /^\/api\/identity\/sea\/(session|challenge|exchange|logout)$/.test(path) || /^\/api\/squad\/pilot\/session\/(challenge|exchange|logout)$/.test(path);
-const auxiliary = (request: Request, path: string) => request.method === "GET" && ["/api/identity/session", "/api/identity/oauth/session", "/api/identity/providers"].includes(path) ||
-  request.method === "POST" && path === "/api/identity/logout";
 /** Uninstalled top-level native dispatcher. The native callback is the application's
  * ordinary handler/renderer, always enclosed by fixture policy. Do not install
  * only selected identity routes: doing so would leave a missing-grant bypass. */
@@ -31,16 +29,16 @@ export async function createTerminalServingRouter(input: { config: string; env: 
     async request(request: Request): Promise<Response> {
       try {
         if (closed || !matchesRequestOrigin(request, origin)) return refused();
-        const path = new URL(request.url).pathname, cookies = request.headers.get("cookie") ?? "";
+        const kind = terminalRouteKind(request), cookies = request.headers.get("cookie") ?? "";
         if (cookies.length > 16384) return refused();
-        if (path === "/api/internal/nightly-run") return control(request);
-        const grant = cookies.split(";").some(cookie => cookie.trim().startsWith("__Host-nightly-run-grant="));
+        if (kind === "control") return control(request);
+        const grant = terminalGrantPresent(request);
         return await policy(async () => {
-          if (path === "/api/experiments" || path.startsWith("/api/experiments/")) return grant ? experiment.request(request) : refused();
-          if (path.startsWith("/api/identity/device/")) return grant ? device(request) : refused();
-          if (path.startsWith("/api/identity/startup/") || path === "/api/identity/oauth/callback") return grant ? startup(request) : refused();
-          if (seaPath(path)) return grant ? sea(request) : native(request);
-          if (auxiliary(request, path)) {
+          if (kind === "experiment") return grant ? experiment.request(request) : refused();
+          if (kind === "device") return grant ? device(request) : refused();
+          if (kind === "startup") return grant ? startup(request) : refused();
+          if (kind === "sea") return grant ? sea(request) : native(request);
+          if (kind === "auxiliary") {
             if (!grant) return native(request);
             if (request.method === "POST" && request.headers.get("origin") !== origin.origin) return refused();
             const authority = createTerminalHttpAuthority({ serviceKey, scopes }, fetcher);
@@ -48,7 +46,7 @@ export async function createTerminalServingRouter(input: { config: string; env: 
           }
           // Unsupported wallet/link/delegation mutations are unavailable under
           // TEST owner configuration; never invent a wallet-to-SEA fixture map.
-          if (path.startsWith("/api/identity/") || grant && path.startsWith("/api/")) return refused();
+          if (kind === "unsupported" || grant && kind === "api") return refused();
           return native(request);
         });
       } catch { return refused(); }

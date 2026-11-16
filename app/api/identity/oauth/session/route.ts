@@ -1,3 +1,4 @@
+import { withConfiguredTerminalHandler } from "@/lib/identity/terminal-configured-route";
 import { secretFailureResponse } from "@/lib/identity/http";
 import { ownerForOAuth } from "@/lib/identity/link";
 import { readBackupFromRequest } from "@/lib/identity/oauth";
@@ -6,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /** Backup session view. No Keycloak subject and no provider tokens. */
-export async function GET(request: Request) {
+async function nativeGET(request: Request) {
   try {
     const backup = await readBackupFromRequest(request);
     if (!backup) return Response.json({ error: "unauthorized" }, { status: 401 });
@@ -24,3 +25,5 @@ export async function GET(request: Request) {
     );
   }
 }
+
+export const GET = withConfiguredTerminalHandler(nativeGET);
