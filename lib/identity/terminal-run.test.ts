@@ -80,3 +80,20 @@ test("admission and identity checks refuse corrupt or changing owner responses",
   await assert.rejects(racing.invoke(() => terminalTokenClaims(token)));
   assert.equal(racing.state.completed, 0);
 });
+
+test("in-flight token authority cannot outlive its enclosing completed request", async () => {
+  for (const verify of [false, true]) {
+    const h = fixture(); let reads = 0, release!: () => void, entered!: () => void;
+    const waiting = new Promise<void>(resolve => { entered = resolve; });
+    const paused = new Promise<void>(resolve => { release = resolve; });
+    h.authority.active = async () => { if (++reads === 3) { entered(); await paused; } return true; };
+    let late!: Promise<unknown>;
+    await h.invoke(async () => {
+      late = verify ? verifyTerminalToken({ nightly_run: { run: "1-1-suite", generation: "a".repeat(64) } }, token) : terminalTokenClaims(token);
+      await waiting;
+      return true;
+    });
+    assert.equal(h.state.completed, 1);
+    release(); await assert.rejects(late);
+  }
+});

@@ -28,6 +28,7 @@ function binding(value: unknown): RunBinding {
 async function active(value: Context) {
   if (value.closed) fail();
   if (value.admission && await value.authority.active(value.admission) !== true) fail();
+  if (value.closed) fail();
 }
 /** The caller supplies a native success predicate. Error responses, swallowed
  * failures and unknown remote outcomes must return false. No finally completion.
@@ -61,11 +62,13 @@ async function tokenContext(token: RunToken) {
     if (await current.authority.authorizeToken(current.admission, Object.freeze({ ...token })) !== true) fail();
     await active(current);
   }
+  if (current?.closed) fail();
   return current;
 }
 /** Called before signing. The binding is copied from authenticated admission. */
 export async function terminalTokenClaims(token: RunToken): Promise<Record<string, unknown>> {
   const current = await tokenContext(token);
+  if (current?.closed) fail();
   return current?.admission ? { nightly_run: { ...current.admission.binding } } : {};
 }
 /** Called after cryptographic verification, including pending challenges.
@@ -80,4 +83,5 @@ export async function verifyTerminalToken(claims: Record<string, unknown>, token
   const original = binding(supplied);
   if (!current?.admission || original.run !== current.admission.binding.run || original.generation !== current.admission.binding.generation) fail();
   await tokenContext(token);
+  if (current.closed) fail();
 }
