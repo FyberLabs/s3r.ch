@@ -34,6 +34,7 @@ const server=createServer(async(req,res)=>{
   if(req.url==='/api/identity/sea/session'){json({enabled:true,principal:pair.pub,expiresAt:Date.now()+120000});return;}
   if(req.url==='/api/media/config'){json({tenant});return;}
   if(req.url==='/api/media/catalog'){json({at:Math.floor(Date.now()/1000),principal:pair.pub,objects:catalog?[object]:[],nextPage:1});return;}
+  if(req.url==='/api/media/groups/item-reader-catalog'){json({at:Math.floor(Date.now()/1000),entries:[],nextPage:null});return;}
   if(req.url==='/api/media/read-wrap'){
    if(!allowed){json({},403);return;}
    json({context,readerEpub:pair.epub,expiresAt:Date.now()/1000+2,wrapBase64:Buffer.from(JSON.stringify({wrap:seed.wraps[0],reference:{sha256:seed.sha256,length:seed.bytes.length}})).toString('base64')});return;
@@ -49,6 +50,8 @@ try{
  await page.goto(`http://127.0.0.1:${server.address().port}`);seed=await page.evaluate(()=>window.seed());
  const refresh=()=>page.getByRole('button',{name:'Refresh granted media'}).click();
  const open=()=>page.getByRole('button',{name:'Open shared file 1',exact:true}).click();
+ await page.getByRole('button',{name:'Refresh group media',exact:true}).click();
+ await page.getByText('No currently available group files on this page.',{exact:true}).waitFor();
  await refresh();await open();await page.getByRole('heading',{name,exact:true}).waitFor();
  const url=await page.getByRole('article',{name:'Private media post'}).locator(kind==='image'?'img':kind).getAttribute('src');assert.ok(url.startsWith('blob:'));assert.equal(downloads,1);
  if(kind==='audio'){await page.getByLabel('Audio tags').waitFor();assert.equal(await page.getByLabel('Audio tags').textContent(),'#team · #demo');}
