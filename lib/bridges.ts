@@ -29,7 +29,7 @@ export const BRIDGE_MATRIX: NetworkBridge[] = [
     network: "ActivityPub",
     pull: "yes",
     repost: "yes",
-    thisSlice: "public seeder + signed-in browser pull via actor outbox first page; /api/ingest or allowlisted extension/relay",
+    thisSlice: "public seeder + signed-in browser pull via actor outbox first page; /api/ingest or allowlisted extension/relay; explicit owner-scoped Mastodon API publishing",
   },
   {
     network: "ATProto / Bluesky",
@@ -95,7 +95,7 @@ export type OutboundResult =
 
 /**
  * Documented outbound post interface.
- * Farcaster + ATProto and owner-scoped Nostr are wired. Others stay unimplemented.
+ * Farcaster + ATProto and owner-scoped Nostr/Mastodon are wired. Others stay unimplemented.
  * Share-into-mesh does not call post().
  */
 export interface OutboundAdapter {

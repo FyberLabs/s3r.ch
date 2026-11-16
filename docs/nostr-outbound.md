@@ -36,8 +36,8 @@ acknowledgement is not proof of federation, permanent storage, or a reader visit
 Unit tests use a substituted WebSocket relay and real Schnorr signatures. They
 cover exact signed content, owner isolation, missing credentials, negative and
 wrong-ID acknowledgements, timeout, abort, and resource bounds. These tests run
-in PR CI; no live relay or shared-host scenario is run manually. ActivityPub,
-scheduling (#309), and nightly provider acceptance remain outstanding. #455 stays
+in PR CI; no live relay or shared-host scenario is run manually. Mastodon API publishing is documented in [Mastodon outbound](mastodon-outbound.md);
+scheduling (#309) and nightly provider/federation acceptance remain outstanding. #455 stays
 open and private reader cases remain unregistered.
 
 A CI-only loopback TCP peer completes the WebSocket upgrade, then ignores all
