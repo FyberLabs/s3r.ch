@@ -253,4 +253,5 @@ refusal, unrelated identities, unsupported mutations, concurrent admitted SEA
 suites across route bundles, auxiliary session reads and removal of grants.
 These are isolated CI contracts, not deployed acceptance. No configuration,
 credentials, capabilities, reader registrations or live activation are installed
-by this source change. Scheduled owner acceptance remains required for #552.
+by this source change. Green CI, clean reviews and merged source complete the
+implementation slice; scheduled owner acceptance supplies separate deployed evidence.

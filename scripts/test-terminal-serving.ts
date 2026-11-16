@@ -30,19 +30,28 @@ async function legacy(key: SeaPair) { const challenge = await sessions.challenge
 const oldFixture = await legacy(pair), oldUnrelated = await legacy(unrelated);
 const port = "3939", local = "http://127.0.0.1:" + port;
 async function boot(raw?: string) {
-  const childEnv = { PATH: process.env.PATH, NODE_ENV: "production", HOSTNAME: "127.0.0.1", PORT: port, ...env,
+  const childEnv: NodeJS.ProcessEnv = { PATH: process.env.PATH, NODE_ENV: "production", HOSTNAME: "127.0.0.1", PORT: port, ...env,
     ...(raw === undefined ? {} : { S3RCH_NIGHTLY_RUN_CONFIG: raw }) };
   const child = spawn(process.execPath, ["--require", path.resolve("scripts/terminal-owner-fixture.cjs"), "server.js"], {
     cwd: path.resolve(".next/standalone"), env: childEnv, stdio: ["ignore", "pipe", "pipe"] });
   let log = ""; child.stdout.on("data", value => log += value); child.stderr.on("data", value => log += value);
-  let ready = false;
-  for (let i = 0; i < 150; i++) {
-    if (child.exitCode !== null) throw Error(log);
-    if (log.includes("Ready in")) { ready = true; break; }
-    await delay(100);
-  }
-  assert.ok(ready, log);
-  return async () => { if (child.exitCode === null) { const exited = once(child, "exit"); child.kill("SIGTERM"); await exited; } };
+  const stop = async () => {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    const exited = once(child, "exit");
+    child.kill("SIGTERM");
+    const force = setTimeout(() => child.kill("SIGKILL"), 5000);
+    try { await exited; } finally { clearTimeout(force); }
+  };
+  try {
+    let ready = false;
+    for (let i = 0; i < 150; i++) {
+      if (child.exitCode !== null) throw Error(log);
+      if (log.includes("Ready in")) { ready = true; break; }
+      await delay(100);
+    }
+    assert.ok(ready, log);
+    return stop;
+  } catch (error) { await stop(); throw error; }
 }
 function browser(grant?: string) {
   const jar = new Map<string, string>(grant ? [["__Host-nightly-run-grant", grant]] : []);
