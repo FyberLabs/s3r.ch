@@ -11,7 +11,7 @@ export function recoveryPut(value:any):boolean{
  return exact(value,'action row signature')&&value.action==='put'&&recoveryRow(value.row)&&typeof value.signature==='string'&&/^[0-9a-f]{128}$/.test(value.signature);
 }
 export function recoveryView(value:any):boolean{
- return exact(value,'generation head row')&&integer(value.generation)&&exact(value.head,'sequence currentKey currentEpub')&&integer(value.head.sequence)&&principal(value.head.currentKey)&&
+ return exact(value,'generation head row')&&integer(value.generation)&&(exact(value.head,'sequence currentKey currentEpub')||(exact(value.head,'sequence currentKey currentEpub diagnostics')&&Array.isArray(value.head.diagnostics)&&value.head.diagnostics.length===0))&&integer(value.head.sequence)&&principal(value.head.currentKey)&&
   (value.head.currentEpub===null||principal(value.head.currentEpub))&&(value.row===null||recoveryRow(value.row));
 }
 export function recoveryGeneration(value:any):boolean{return exact(value,'generation')&&integer(value.generation);}

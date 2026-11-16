@@ -22,9 +22,9 @@ test('recovery forwards only the authenticated person and fixed owner route',asy
  const result=await deviceServer(req({slot:'current'}),'recovery-read',env,async(url,init)=>{
   calls++;assert.equal(String(url),'https://acl.example/api/v1/acl/sociacl/keyring/recovery/rows/current');assert.equal(init?.method,'GET');assert.equal(init?.body,undefined);
   const headers=new Headers(init?.headers);assert.equal(headers.get('authorization'),'Bearer person-bearer');assert.equal(headers.get('x-tenant-id'),scope.tenant);assert.equal(headers.has('cookie'),false);
-  assert.equal(init?.redirect,'error');assert.equal(init?.cache,'no-store');return Response.json({generation:0,head:{sequence:0,currentKey:p,currentEpub:p},row:null});
+  assert.equal(init?.redirect,'error');assert.equal(init?.cache,'no-store');return Response.json({generation:0,head:{sequence:0,currentKey:p,currentEpub:p,diagnostics:[]},row:null});
  });
- assert.equal(result.status,200);assert.equal(calls,1);assert.match(result.headers.get('cache-control')!,/no-store/);
+ assert.equal(result.status,200);assert.equal(calls,1);assert.match(result.headers.get('cache-control')!,/no-store/);assert.deepEqual((await result.json()).head,{sequence:0,currentKey:p,currentEpub:p});
  const operation={action:'put',row,signature:'00'.repeat(64)};
  const written=await deviceServer(req(operation),'recovery-put',env,async(url,init)=>{
   assert.equal(String(url),'https://acl.example/api/v1/acl/sociacl/keyring/recovery/operations');assert.equal(init?.method,'POST');assert.deepEqual(JSON.parse(String(init?.body)),operation);return Response.json({generation:1});

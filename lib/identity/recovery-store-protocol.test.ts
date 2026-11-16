@@ -11,6 +11,7 @@ test('recovery wire accepts only bounded public ciphertext and CAS metadata',()=
  for(const bad of [{action:'commit',row,signature:'00'.repeat(64)},{action:'put',row,signature:'short'},
   {action:'put',row,signature:'00'.repeat(64),passphrase:'secret'}])assert.equal(recoveryPut(bad),false);
  const view={generation:1,head:{sequence:0,currentKey:p,currentEpub:p},row};
+ assert.ok(recoveryView({...view,head:{...view.head,diagnostics:[]}}));assert.equal(recoveryView({...view,head:{...view.head,diagnostics:[{reason:'invalid'}]}}),false);assert.equal(recoveryView({...view,head:{...view.head,diagnostics:'bad'}}),false);
  assert.ok(recoveryView(view));assert.ok(recoveryView({...view,row:null,head:{...view.head,currentEpub:null}}));
  for(const bad of [{...view,generation:-1},{...view,head:{...view.head,currentKey:'invalid'}},{...view,head:{...view.head,sequence:Infinity}},
   {...view,row:{...row,priv:'secret'}},{...view,private:'secret'}])assert.equal(recoveryView(bad),false);

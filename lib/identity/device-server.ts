@@ -55,6 +55,7 @@ export async function deviceServer(request:Request,action:string,env:Record<stri
   if(!response.ok){await response.body?.cancel();return reply([400,401,403,404,409,410,413,429,503].includes(response.status)?response.status:503,{error:'unavailable'});}
   const result=await readBoundedIdentityJson(response,limit,signal);
   if(recovery&&!(action==='recovery-read'?recoveryView(result):recoveryGeneration(result)))throw Error();
+  if(action==='recovery-read'){const view=result as {generation:number;head:{sequence:number;currentKey:string;currentEpub:string|null};row:unknown};return reply(200,{generation:view.generation,head:{sequence:view.head.sequence,currentKey:view.head.currentKey,currentEpub:view.head.currentEpub},row:view.row});}
   return reply(200,result);
  }catch{return reply(503,{error:'unavailable'});}
 }
