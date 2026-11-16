@@ -18,7 +18,7 @@ export async function deviceServer(request:Request,action:string,env:Record<stri
   if(request.method==='POST'&&request.headers.get('origin')!==origin)return reply(403,{error:'unavailable'});
   if(action==='logout'&&request.method==='POST'){const r=reply(200,{ok:true});for(const c of personClearCookies())r.headers.append('Set-Cookie',c);return r;}
   const person=await readDevicePerson(request,config,origin,env);
-  if(request.method==='GET'&&action==='config')return reply(200,{scope:config.scope,authorized:!!person,subject:person?.subject??null,context:person?.context??null,expiresAt:person?.expiresAt??null});
+  if(request.method==='GET'&&action==='config')return reply(200,{scope:config.scope,authorized:!!person,linkedOidcEnabled:!!env.S3RCH_LINKED_OIDC_CONFIG_FILE,subject:person?.subject??null,context:person?.context??null,expiresAt:person?.expiresAt??null});
   if(request.method!=='POST'||!['relay','state','current'].includes(action))return reply(404,{error:'unavailable'});
   if(!person||!person.context||request.headers.get('x-device-context')!==person.context)return reply(401,{error:'authorization-required'});
   const value:any=await body(request);let target:string,upstream:unknown,limit:number;const outgoing:Record<string,string>={'Content-Type':'application/json',Accept:'application/json',Origin:origin};

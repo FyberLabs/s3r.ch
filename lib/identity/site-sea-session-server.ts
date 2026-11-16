@@ -1,3 +1,4 @@
+import { configuredLinkedOidcFlow } from "./linked-oidc-config-server";
 import { configuredLinkedAdmission } from "./linked-admission-config-server";
 import type { LinkedSessionAdmission } from "./linked-session-admission";
 import { OAUTH_REDIRECT_URIS } from "./config";
@@ -18,10 +19,14 @@ export async function siteSeaSession(request: Request, action: string, env: Read
   fetcher: typeof fetch = fetch, clock = () => Math.floor(Date.now() / 1000),
   linkedAdmission?: LinkedSessionAdmission) {
   if (!((request.method === "GET" && action === "session") ||
-      (request.method === "POST" && ["challenge", "exchange", "linked-challenge", "linked-exchange", "logout"].includes(action)))) return reply(404, { error: "not-found" });
+      (request.method === "POST" && ["challenge", "exchange", "linked-challenge", "linked-exchange", "linked-oidc-start", "linked-oidc-callback", "linked-oidc-finish", "linked-oidc-cancel", "logout"].includes(action)))) return reply(404, { error: "not-found" });
   try {
     const origin = "https://" + requestHost(request);
     if (!requestIsSecure(request) || !origins.has(origin)) return reply(403, { error: "origin" });
+    if (action.startsWith("linked-oidc-")) {
+      const flow = await configuredLinkedOidcFlow(origin, { ...env }, fetcher, clock);
+      return flow ? flow(request, action.slice("linked-oidc-".length)) : reply(503, { error: "linked-identity-unavailable" });
+    }
     if (action.startsWith("linked-") && !linkedAdmission) linkedAdmission = await configuredLinkedAdmission(origin, env, fetcher, clock);
     // Private trust and a complete owning source are required; no request or
     // owner-only export can assert login uniqueness.

@@ -117,9 +117,34 @@ consumption. A lost exchange response is reconciled using `result`, never by
 replaying the one-time provider code. Revoked or ambiguous authority refuses.
 Cancellation addresses the original attempt; it does not create another one.
 
-This backend adapter has no installed HTTP route or live configuration. The next
-consumer boundary must bind the callback state and original challenge to an
-encrypted HttpOnly browser-attempt cookie, check the current person/context on
-same-origin completion, and preserve explicit retry/cancel outcomes. Until that
-wiring and browser flow land, Auth #69 and s3r.ch #583 remain open. No reader case
-is registered by this source change.
+The default-off browser boundary below binds the callback state and original
+challenge to an encrypted HttpOnly attempt cookie and checks the current person
+context on completion. No live configuration or reader case is installed by
+source wiring. Encrypted lost-device recovery remains tracked by s3r.ch #583.
+
+## Browser-bound OIDC completion
+
+The existing-person device page now offers **Verify linked account for sign-in**,
+**Complete linked account sign-in**, and **Cancel linked account attempt** when
+`S3RCH_LINKED_OIDC_CONFIG_FILE` is configured. The existing authenticated person
+supplies the exact issuer/tenant/subject; there is no email lookup or user-selected
+replacement principal. The original issuer challenge and provider state are bound
+in an encrypted HttpOnly, Secure, SameSite=None cookie for the form-post callback.
+The callback redirects to the fixed devices page without provider code or tokens.
+Same-origin completion checks the unchanged person context before and after using
+Auth's saved proof. A lost provider response can be completed from that proof;
+replaying the provider code is never an automatic retry. A consumed SEA challenge
+cannot issue a second session. Remote cancellation uncertainty is shown separately
+from clearing the local attempt. Account changes abort pending browser requests.
+
+The absolute owner-only config file is compact recursively key-sorted JSON plus a
+newline, with exact fields `version:1`, `origin`, `authOrigin`, `serviceToken`,
+`issuer`, `tenant`, `clientId`, `authorizationEndpoint`, `redirectUri`. It must match
+the existing device-person provider and configured linked-admission provider. The
+callback is exactly `origin + /api/identity/sea/linked-oidc-callback`. The service
+bearer stays in this file/server transport. Missing config leaves every new action
+unavailable without outbound IO. No file or credential is staged by source wiring.
+
+The existing terminal dispatcher continues refusing unregistered linked-login
+cases; this change does not expand its inbound route allowlist or register reader
+cases. Declared fixture acceptance and live configuration remain owner tasks.

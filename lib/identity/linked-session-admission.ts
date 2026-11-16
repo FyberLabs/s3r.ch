@@ -50,6 +50,9 @@ export function createLinkedSessionAdmission(input: { source: LinkedSessionSourc
   const source = input.source;
   return Object.freeze({
     origin: origin.origin,
+    supportsOidc(issuer: string, tenant: string, clientId: string) {
+      return providers.filter(p => p.issuer === issuer && p.tenant === tenant && p.clientId === clientId).length === 1;
+    },
     async resolve(credential: LinkedCredential, at: number): Promise<Readonly<{ key: string; linkId: string }> | null> {
       if (!source || !parseLinkedCredential(credential) || !Number.isSafeInteger(at) || at < 0) return null;
       const signal = AbortSignal.timeout(5000);
