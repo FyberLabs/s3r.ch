@@ -78,4 +78,40 @@ fixture covers the external link and its removal on expiry without external
 network requests. These are isolated fixtures, not shared TEST qualification.
 
 Protocol: [Bluesky statusView](https://github.com/bluesky-social/atproto/blob/main/lexicons/app/bsky/actor/defs.json).
-ActivityPub and room/private-stream coverage remain open under #410/#306.
+Room/private-stream coverage remains open under #410/#306.
+
+
+## ActivityPub live video
+
+The existing fixed `PUBLIC_ACTIVITYPUB_ACTORS` list also supplies discovery for
+PeerTube-compatible ActivityPub `Video` objects. This does not add a new followed
+account or accept visitor-selected URLs. Other ActivityPub live extensions are
+not inferred from ordinary posts or video attachments.
+
+Each poll fetches the actor, its same-origin outbox and at most one first page.
+It scans at most 20 activities and refetches at most four distinct same-origin
+objects named by that actor's Create, Update or Announce activities. Embedded
+video metadata is discovery only. Canonical retrieval uses the existing bounded
+public fetcher and rejects redirects to another authority. Actor identity,
+video identity, attribution, explicit public audience and nonsensitive status
+must match. Only `isLiveBroadcast: true` and published state `1` are displayed;
+waiting, ended, replay and unsupported states are hidden.
+
+This trusts the origin over HTTPS, not an independently verified ActivityPub
+signature. It is a bounded discovery window, not a complete subscription history.
+A successful empty/non-live window removes previous entries. A failed poll retains
+only the prior observations until their five-minute expiry; it never renews them.
+Polling coalesces concurrent requests and runs at most once per minute, with four
+configured actors maximum. No new request starts after the per-actor 30-second
+discovery budget; each active request retains the existing fetch timeout/byte cap.
+
+Entries open the origin's external player with no referrer. No thumbnail, direct
+media stream or cumulative view count is used. The UI says “Live at last check”:
+a permanent live video's publication date does not establish the current stream
+start. Source responses and polling are substituted in mock unit tests; the
+existing CI-only browser fixture substitutes directory responses and verifies
+external links, labels and expiry. Neither proves provider availability or
+private-room permission enforcement.
+
+Protocol references: [PeerTube ActivityPub Video and activities](https://docs.joinpeertube.org/api/activitypub)
+and [published, waiting and ended state values](https://docs.joinpeertube.org/api-rest-reference/api/my-subscriptions.html).
