@@ -5,6 +5,7 @@ FROM base AS deps
 WORKDIR /app
 RUN apk add --no-cache libc6-compat
 COPY package.json package-lock.json ./
+COPY vendor/pairing ./vendor/pairing
 RUN npm ci
 
 FROM base AS builder

@@ -35,8 +35,7 @@ export type PrfAvailability =
   | { available: true }
   | { available: false; reason: string };
 
-export type CreatePrfCredentialInput = {
-  address: string;
+export type CreatePrfCredentialInput = ({ address: string } | { localUser: { id: Uint8Array; name: string } }) & {
   rpId?: SeaWrapRpId;
   host?: string;
   prfSalt?: Uint8Array;
@@ -109,19 +108,21 @@ export async function createPrfCredential(
     throw new PrfUnavailableError();
   }
   const rpId = input.rpId ?? resolveRpId(input.host ?? globalThis.location?.host ?? "");
-  const address = getAddress(input.address);
+  const address = "address" in input ? getAddress(input.address) : null;
+  const localUser = "localUser" in input ? input.localUser : null;
+  if (localUser && (!(localUser.id instanceof Uint8Array) || localUser.id.length !== 32 || !/^[a-zA-Z0-9 .-]{1,64}$/.test(localUser.name))) throw new PrfUnavailableError();
   const prfSalt = input.prfSalt
     ? Uint8Array.from(input.prfSalt)
     : crypto.getRandomValues(new Uint8Array(32));
   const challenge = crypto.getRandomValues(new Uint8Array(32));
-  const userId = hexToBytes(address);
+  const userId = address ? hexToBytes(address) : localUser!.id;
 
   const publicKey = {
     rp: { id: rpId, name: "s3r.ch" },
     user: {
       id: copyBuffer(userId),
-      name: address,
-      displayName: `s3r.ch mesh wrap ${address.slice(0, 6)}…${address.slice(-4)}`,
+      name: address ?? localUser!.name,
+      displayName: address ? `s3r.ch mesh wrap ${address.slice(0, 6)}…${address.slice(-4)}` : localUser!.name,
     },
     challenge: copyBuffer(challenge),
     pubKeyCredParams: [
