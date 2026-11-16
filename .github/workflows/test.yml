@@ -51,6 +51,15 @@ jobs:
           node --import tsx --test --experimental-test-coverage
           --test-coverage-include=lib/identity/linked-oidc-proof-server.ts
           lib/identity/linked-oidc-proof-server.test.ts
+      - name: Native linked credential authority coverage (CI only)
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/identity/acl-credential-source-server.ts
+          --test-coverage-include=lib/identity/linked-admission-config-server.ts
+          lib/identity/acl-credential-source-server.test.ts
+          lib/identity/linked-admission-config-server.test.ts
+          lib/identity/linked-session-admission.test.ts
+          lib/identity/linked-wallet-client.test.ts
       - name: Terminal admission unit coverage
         run: >-
           node --import tsx --test --experimental-test-coverage
@@ -282,6 +291,7 @@ jobs:
           node --import tsx --test --experimental-test-coverage
           --test-coverage-include=lib/identity/restore-keyring.ts
           --test-coverage-include=lib/identity/restored-keyring-storage.ts
+          --test-coverage-lines=95 --test-coverage-branches=75
           lib/identity/restore-keyring.test.ts
       - name: Wallet key creation and public export browser contract (CI only)
         run: node scripts/test-wallet-key-browser.mjs
