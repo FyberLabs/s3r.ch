@@ -5,7 +5,7 @@ import { shortSea, type SquadAgent } from "@/lib/forum-squad";
 import { btnSecondary } from "@/lib/brand-ui";
 
 /** Membership labels never grant authority to commission, publish or assign. */
-export function BusinessRoleStrips(props: { view: BusinessRoleView; roster: readonly SquadAgent[]; onOpen: (principal: string) => void }) {
+export function BusinessRoleStrips(props: { view: BusinessRoleView; roster: readonly SquadAgent[]; onOpen: (principal: string) => void; onLedger?: () => void }) {
   const ready = props.view.state === "ready";
   return <section aria-label="Business roles" className="mt-4 min-w-0">
     <h2 className="text-sm font-semibold text-ink">Business roles</h2>
@@ -30,6 +30,7 @@ export function BusinessRoleStrips(props: { view: BusinessRoleView; roster: read
           </> : <p className="mt-2 text-xs text-ink-muted">No verified assignment available.</p>}
           <p className="mt-3 text-sm">{role.sources}</p>
           <p className="text-xs text-ink-muted">No verified source connected.</p>
+          {role.token === "president" && props.onLedger && <button type="button" className={`${btnSecondary} mt-2`} onClick={props.onLedger}>Open business ledger</button>}
           <p id={noteId} className="mt-3 text-xs text-ink-muted">Role actions require their own authorization. They are not available yet.</p>
           <button type="button" disabled aria-describedby={noteId} className={`${btnSecondary} mt-2 cursor-not-allowed opacity-60`}>{role.action}</button>
         </article>;

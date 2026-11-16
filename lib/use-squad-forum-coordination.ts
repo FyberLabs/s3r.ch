@@ -1,5 +1,7 @@
 "use client";
 
+import {parseLedgerEntry} from "./forum-ledger";
+
 import {
   acceptForumOffer, declineForumOffer, continueForumOfferCancellation,
   offerForumHelp, reopenForumNeed,
@@ -1627,33 +1629,35 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
 
   const statementSending = useRef(false);
   const stagedStatement = useRef<ReturnType<typeof buildForumStatement>>(null);
-  async function onSend(report = false) {
-    if (statementSending.current) return;
-    if (report && liveEnabled) return;
+  async function onSend(report = false, ledgerBody?: string): Promise<boolean> {
+    if (statementSending.current) return false;
+    if (report && liveEnabled) return false;
+    if (ledgerBody !== undefined && (!liveEnabled || !parseLedgerEntry(ledgerBody))) return false;
+    const body = ledgerBody ?? draft;
     const writer = signingPrincipal();
     if (!writer) {
       setNotice("A mesh key on this browser is required.");
-      return;
+      return false;
     }
     const now = Math.floor(Date.now() / 1000);
     const prior = stagedStatement.current;
-    const item = liveEnabled && prior && prior.author === writer && prior.body === draft.trim() && prior.tags.includes(`forum:${forumId}`) && now - prior.ts <= 300 ? prior : buildForumStatement({
+    const item = liveEnabled && prior && prior.author === writer && prior.body === body.trim() && prior.tags.includes(`forum:${forumId}`) && now - prior.ts <= 300 ? prior : buildForumStatement({
       forumId: forumId,
       author: writer,
-      body: draft,
+      body,
       extras: report ? ["report"] : [],
       now,
       entropy: entropy(),
     });
     if (!item) {
       setNotice("Statement was not accepted.");
-      return;
+      return false;
     }
     if (!liveEnabled) {
       setLocalChat(prev => retainForumChat(prev, item));
       setDraft("");
       setNotice("Statement kept on this browser until mesh publish.");
-      return;
+      return false;
     }
     const node = toGunNode(item);
     stagedStatement.current = item;
@@ -1663,14 +1667,14 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       // Gun chat. Re-read complete authority before the existing signed put.
       if (!authority?.admitStatement || !await authority.admitStatement(item) || signingPrincipal() !== writer) {
         setNotice("Statement not sent. Current forum authority was unavailable.");
-        return;
+        return false;
       }
       let soul: string;
       try {
         soul = forumStatementSoul(item.id);
       } catch {
         setNotice("Statement was not accepted.");
-        return;
+        return false;
       }
       const wrote = await putAuthedRecord(soul, node, writer, () => {
         const now = Math.floor(Date.now() / 1000);
@@ -1682,7 +1686,8 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       if (wrote === "denied" || wrote === "local") setNotice("Statement not sent. Current post authority or a mesh signature was unavailable.");
       else if (wrote === "offline") setNotice("Statement not sent. The mesh peer was not ready.");
       else setNotice("Statement sent.");
-    } catch { setNotice("Statement not sent. Reconnect or retry when current forum authority is available."); }
+      return wrote === "signed";
+    } catch { setNotice("Statement not sent. Reconnect or retry when current forum authority is available."); return false; }
     finally { statementSending.current = false; }
   }
 
@@ -1743,12 +1748,14 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
     active: meshStatus.has(active.status.seaPubkey) && admitted.has(active.status.seaPubkey) && !removedAgents.has(active.status.seaPubkey),
     getPair: () => signerRef.current?.current() ?? null,
   } : null;
-  return { forumId, forumLabel, liveEnabled, authorLabel, seaPub, oauthLinked,
+  const ledgerReadable = !!(liveEnabled && viewer && proofs.ready() && authority?.graph.checkForumSee(forumId, viewer, Math.floor(Date.now()/1000)).allowed);
+  const ledgerWritable = !!(ledgerReadable && viewer && authority?.graph.checkPost(forumId, viewer, Math.floor(Date.now()/1000)).allowed);
+  return { ledgerReadable, ledgerWritable, sendLedger: (body: string) => onSend(false, body), forumId, forumLabel, liveEnabled, authorLabel, seaPub, oauthLinked,
     vitals, setVitals, escalations, sharedReports, previewLevel, setPreviewLevel,
     tab, setTab, filters, query, setQuery, setSelected, notice, draft, setDraft,
     offerBody, setOfferBody, roster, visible, active, chat, needs, offers,
     alarmOn, needsCount, emergencyCount, wallet, boardProps, liveReports,
-    toggleEscalation, toggleFilter, onSend, onOffer, onAccept, onDecline, onReopen, onReply,
+    toggleEscalation, toggleFilter, onSend: async (report = false) => { await onSend(report); }, onOffer, onAccept, onDecline, onReopen, onReply,
     composerRef, viewer, prepareCancel, drawerProps, toggleSharedReport,
     roleView: businessRoles.view(), walletAddress: session?.address ?? "",
   };
