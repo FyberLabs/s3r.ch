@@ -111,3 +111,10 @@ new deployment credentials, register reader cases, or advertise a capability.
 Auth registry and relay service requests use `https://api.test.hyperme.sh`;
 the provider issuer remains `https://auth.test.hyperme.sh/realms/controlplane`.
 These distinct service and provider origins must not be interchanged.
+
+ACL forwarding consumes the checked-in owner contract from ACL #187: only POST
+`/api/v1/acl/sociacl/device-transfer/state` and `/current` on
+`https://api.test.hyperme.sh` receive the original admitted grant. Existing bearer,
+tenant, origin and device-context checks remain required. The native ACL worker
+must independently verify the admitted subject, tenant and source/destination
+origins. This forwarding source does not install that worker or the s3r.ch wrapper.
