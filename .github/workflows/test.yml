@@ -441,6 +441,9 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build
 
+      - name: Built Next terminal entry contracts (CI only)
+        run: node --import tsx scripts/test-terminal-serving.ts
+
       - name: Verify public feed stays static until identity opt-in
         run: |
           npx playwright-core install --with-deps chromium

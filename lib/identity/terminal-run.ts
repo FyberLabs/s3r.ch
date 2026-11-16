@@ -1,3 +1,4 @@
+import { requireConfiguredAdmission } from "./terminal-runtime-config";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 export type RunBinding = Readonly<{ run: string; generation: string }>;
@@ -16,9 +17,12 @@ export interface TerminalRunAuthority {
   complete(admission: RunAdmission): Promise<void>;
 }
 type Context = { authority: TerminalRunAuthority; admission: RunAdmission | null; cookies: string; closed: boolean };
-const context = new AsyncLocalStorage<Context>();
+const admissionKey = Symbol.for("s3rch.terminal.admission.v1");
+const policyKey = Symbol.for("s3rch.terminal.policy.v1");
+const shared = globalThis as typeof globalThis & { [admissionKey]?: AsyncLocalStorage<Context>; [policyKey]?: AsyncLocalStorage<IdentityPolicy> };
+const context = shared[admissionKey] ??= new AsyncLocalStorage<Context>();
 type IdentityPolicy = { requiresAdmission: (token: RunToken) => boolean; closed: boolean };
-const identityPolicy = new AsyncLocalStorage<IdentityPolicy>();
+const identityPolicy = shared[policyKey] ??= new AsyncLocalStorage<IdentityPolicy>();
 /** Internal seam for an explicit deployment-owned fixture classifier, independent
  * of browser grant presence. Never installed by a token reader itself. */
 export async function withTerminalIdentityPolicy<T>(requiresAdmission: (token: RunToken) => boolean, work: () => Promise<T>): Promise<T> {
@@ -27,6 +31,7 @@ export async function withTerminalIdentityPolicy<T>(requiresAdmission: (token: R
   return identityPolicy.run(policy, async () => { try { return await work(); } finally { policy.closed = true; } });
 }
 function checkIdentityPolicy(token: RunToken, admitted: boolean) {
+  requireConfiguredAdmission(token, admitted);
   const policy = identityPolicy.getStore();
   if (policy && (policy.closed || (!admitted && policy.requiresAdmission(Object.freeze({ ...token }))))) fail();
 }
