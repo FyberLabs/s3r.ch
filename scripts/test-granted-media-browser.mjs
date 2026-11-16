@@ -1,3 +1,4 @@
+import {writeNightlyCaseResults} from "./nightly-case-results.mjs";
 // Synthetic reader UI/crypto contract; hosted identities and storage are separate.
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -7,6 +8,11 @@ import {execFileSync} from 'node:child_process';
 import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+const names=['direct-open','unmount-cleanup','direct-revocation','direct-catalog-removal','direct-session-cleanup','group-open','group-revocation','group-catalog-removal','group-session-cleanup'];
+const cases=names.map(name=>({name,status:'blocked'}));
+async function runCase(name,work){const row=cases.find(row=>row.name===name);try{await work();row.status='passed';}catch{row.status='failed';throw Error('granted-media-case-failed');}}
+let fixtureRoot;
+async function main(){
 if(process.env.GITHUB_ACTIONS!=='true')throw Error('Granted media browser contracts run in CI only');
 const pair={pub:'axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU',priv:'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE',
  epub:'EMvdmXTv89JPyMx5n3blU3L_D70U-6JoVaVzTvSzgYg.B_b0CP3o9X3I7tWrxA_F1VhXpjeMuIJCtQWnOh7LN5c',epriv:'6EXhKuFCyTddo7uvYddNjXON5iKEMV7v8bCol7XOHt8'};
@@ -16,7 +22,7 @@ const groupObject=object.slice(0,-32)+'2'.repeat(32);
 const tenant='11111111-1111-4111-8111-111111111111',context={object,epoch:1,revisionId:'b'.repeat(64)};
 const kind=process.env.S3RCH_GRANTED_FIXTURE??'image';
 if(!['image','audio','video'].includes(kind))throw Error('Invalid fixture kind');
-const fixtureRoot=mkdtempSync(join(tmpdir(),'s3rch-granted-ci-'));
+fixtureRoot=mkdtempSync(join(tmpdir(),'s3rch-granted-ci-'));
 let bytes64='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6sH8AAAAASUVORK5CYII=';
 const mediaType=kind==='audio'?'audio/wav':kind==='video'?'video/webm':'image/png',name='Shared '+kind;
 if(kind!=='image'){
@@ -63,6 +69,7 @@ try{
  const open=()=>page.getByRole('button',{name:'Open shared file 1',exact:true}).click();
  await page.getByRole('button',{name:'Refresh group media',exact:true}).click();
  await page.getByText('No currently available group files on this page.',{exact:true}).waitFor();
+ await runCase('direct-open',async()=>{
  await refresh();await open();await page.getByRole('heading',{name,exact:true}).waitFor();
  const url=await page.getByRole('article',{name:'Private media post'}).locator(kind==='image'?'img':kind).getAttribute('src');assert.ok(url.startsWith('blob:'));assert.equal(downloads,1);
  if(kind==='audio'){await page.getByLabel('Audio tags').waitFor();assert.equal(await page.getByLabel('Audio tags').textContent(),'#team · #demo');}
@@ -70,24 +77,49 @@ try{
   await page.locator(kind).evaluate(async element=>{window.lastPlayer=element;await element.play();});
   await page.waitForFunction(()=>window.lastPlayer.currentTime>0.1);
  }
+ });
+ await runCase('unmount-cleanup',async()=>{
  await page.evaluate(()=>window.hide());await page.waitForFunction(()=>window.revoked.length===1);assert.equal(await page.getByRole('article').count(),0);
  if(kind!=='image')assert.equal(await page.evaluate(()=>window.lastPlayer.paused&&!window.lastPlayer.hasAttribute('src')),true);
+ });
+ await runCase('direct-revocation',async()=>{
  await page.evaluate(()=>window.show());await refresh();allowed=false;await open();
  await page.getByRole('status').filter({hasText:'Media is unavailable.'}).waitFor();assert.equal(downloads,1);assert.equal(await page.getByRole('article').count(),0);
+ });
+ await runCase('direct-catalog-removal',async()=>{
  catalog=false;await refresh();await page.getByText('No currently available shared files on this page.').waitFor();
+ });
+ await runCase('direct-session-cleanup',async()=>{
  allowed=true;catalog=true;await refresh();await open();await page.getByRole('article').waitFor();
  await page.evaluate(()=>window.dispatchEvent(new Event('s3rch-session-changed')));
  await page.waitForFunction(()=>window.revoked.length===2);assert.equal(await page.getByRole('article').count(),0);
+ });
  groupSeed=await page.evaluate(()=>window.groupSeed());groupCatalog=true;
  const groupRefresh=()=>page.getByRole('button',{name:'Refresh group media',exact:true}).click();
  const groupOpen=()=>page.getByRole('button',{name:'Open group file 1',exact:true}).click();
+ await runCase('group-open',async()=>{
  await groupRefresh();await groupOpen();await page.getByRole('heading',{name:'Group '+kind,exact:true}).waitFor();
  assert.equal(groupDownloads,1);assert.ok((await page.getByRole('article',{name:'Private media post'}).locator(kind==='image'?'img':kind).getAttribute('src')).startsWith('blob:'));
+ });
+ await runCase('group-revocation',async()=>{
  groupAllowed=false;await groupRefresh();await groupOpen();
  await page.getByRole('status').filter({hasText:'Media is unavailable.'}).waitFor();assert.equal(groupDownloads,1);assert.equal(await page.getByRole('article').count(),0);
+ });
+ await runCase('group-catalog-removal',async()=>{
  groupCatalog=false;await groupRefresh();await page.getByText('No currently available group files on this page.',{exact:true}).waitFor();
+ });
+ await runCase('group-session-cleanup',async()=>{
  groupAllowed=true;groupCatalog=true;await groupRefresh();await groupOpen();await page.getByRole('heading',{name:'Group '+kind,exact:true}).waitFor();
  const before=await page.evaluate(()=>window.revoked.length);await page.evaluate(()=>window.dispatchEvent(new Event('s3rch-session-changed')));
  await page.waitForFunction(count=>window.revoked.length===count+1,before);assert.equal(await page.getByRole('article').count(),0);
+ });
  assert.deepEqual(errors,[]);console.log('Granted media UI, denied open, session reset and unmount cleanup contracts passed; hosted services not qualified');
 }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));rmSync(fixtureRoot,{recursive:true,force:true});}
+
+}
+await main().catch(()=>{process.exitCode=1;}).finally(()=>{
+ if(fixtureRoot)rmSync(fixtureRoot,{recursive:true,force:true});
+ const requested=process.env.S3RCH_GRANTED_FIXTURE??'image',kind=['image','audio','video'].includes(requested)?requested:'invalid';
+ const report=writeNightlyCaseResults({suite:'granted-media-'+kind,expectedCases:names,cases});
+ console.log(JSON.stringify(report));if(report.status!=='passed')process.exitCode=1;
+});
