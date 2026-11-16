@@ -18,7 +18,7 @@ try {
  import {rawMediaBlockCid} from './lib/ipfs-media-blocks';
  import {sealMedia} from './lib/media-crypto';
  import {createIpfsMediaTransfer} from './lib/ipfs-media-transfer';
- let sample,controller,pending,calls=0;
+ let sample,controller,pending,calls=0,resumable,resumeMedia,resumeInput;
  const transport=(url,init)=>{calls++;return fetch(url,init);};
  window.fetchCalls=()=>calls;
  window.exercise=async endpoint=>{
@@ -39,6 +39,20 @@ try {
   pending=client.put(sample.bytes).then(()=>false,()=>true);
  };
  window.cancelUpload=async()=>{controller.abort();return pending;};
+ window.prepareResume=async endpoint=>{
+  const signal=new AbortController().signal,current=()=>true;
+  const blocks=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,maxBytesPerMinute:8*1024*1024,current,signal},transport);
+  resumeMedia=createIpfsMediaTransfer({blocks,current,signal});resumeInput=new Uint8Array(1024*1024+7).fill(51);
+  resumable=await resumeMedia.prepareUpload(resumeInput,{tenant:'afee9b29-1706-5590-bbbf-e58df8945ac0',object:'claim_'+'78'.repeat(32)});
+ };
+ window.resumeStatus=()=>resumable.status();
+ window.resumeMedia=async()=>{
+  try{
+   const grant=await resumable.resume();
+   const output=await resumeMedia.download(grant.manifest,grant.key,{tenant:'afee9b29-1706-5590-bbbf-e58df8945ac0',object:'claim_'+'78'.repeat(32)});
+   return output.length===resumeInput.length&&output.every((byte,index)=>byte===resumeInput[index]);
+  }catch{return false;}
+ };
  window.composed=async endpoint=>{
   const signal=new AbortController().signal,current=()=>true;
   const blocks=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,maxBytesPerMinute:8*1024*1024,current,signal},transport);
@@ -49,7 +63,7 @@ try {
   return {same:output.length===input.length&&output.every((byte,index)=>byte===input[index]),blocks:JSON.parse(grant.manifest).blocks.length};
  };
  `,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,platform:'browser',format:'iife'});
- const appRequests=[],providerRequests=[],errors=[];const blocks=new Map();let appOrigin,stored,mode="normal",noticed,closed;
+ const appRequests=[],providerRequests=[],errors=[];const blocks=new Map();let appOrigin,stored,mode="normal",noticed,closed,resumePuts=0;const resumeCids=[];
  app=createServer(tls,(req,res)=>{appRequests.push(req.url);res.setHeader('Content-Type',req.url==='/app.js'?'text/javascript':'text/html');res.end(req.url==='/app.js'?bundle.outputFiles[0].contents:'<!doctype html><link rel="icon" href="data:,"><script src="/app.js"></script>');});
  await new Promise(resolve=>app.listen(0,'127.0.0.1',resolve));appOrigin=`https://127.0.0.1:${app.address().port}`;
  provider=createServer(tls,async(req,res)=>{
@@ -70,6 +84,11 @@ try {
     // CID calculation uses the same public raw codec, executed by the browser separately.
     const {createHash}=await import('node:crypto');const raw=Buffer.concat([Buffer.from([1,0x55,0x12,32]),createHash('sha256').update(stored).digest()]);
     let bits=0,value=0,cid='b';for(const byte of raw){value=(value<<8)|byte;bits+=8;while(bits>=5){bits-=5;cid+='abcdefghijklmnopqrstuvwxyz234567'[(value>>>bits)&31];}value&=(1<<bits)-1;}if(bits)cid+='abcdefghijklmnopqrstuvwxyz234567'[(value<<(5-bits))&31];
+    if(mode==='resume-second'){
+     resumeCids.push(cid);resumePuts++;
+     if(resumePuts===2){res.writeHead(503);res.end();return;}
+     if(resumePuts===3)mode='normal';
+    }
     blocks.set(cid,stored);res.setHeader('Content-Type','application/json');res.end(JSON.stringify({Key:cid,Size:stored.length}));
    }else{assert.equal(url.pathname,'/api/v0/block/get');const selected=blocks.get(url.searchParams.get('arg'));assert.ok(selected);const body=Buffer.from(selected);if(mode==='tamper')body[body.length-1]^=1;res.end(mode==='truncate'?body.subarray(0,body.length-1):body);}
   }catch(error){errors.push(String(error));res.writeHead(500);res.end();}
@@ -98,6 +117,13 @@ try {
   }else assert.equal(received,1,'one provider request on '+fault);
  }
  async function bounded(promise){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('fixture deadline')),5000);})]);}finally{clearTimeout(timer);}}
+ // Explicit resume reuses the failed ciphertext, without resending the first block.
+ mode='resume-second';const beforeResume=providerRequests.length;
+ await page.evaluate(endpoint=>window.prepareResume(endpoint),providerOrigin);assert.equal(providerRequests.length,beforeResume);
+ assert.equal(await page.evaluate(()=>window.resumeMedia()),false);
+ assert.deepEqual(await page.evaluate(()=>window.resumeStatus()),{state:'unavailable',acknowledgedBlocks:1,totalBlocks:2});
+ assert.equal(await page.evaluate(()=>window.resumeMedia()),true);
+ assert.equal(providerRequests.length,beforeResume+5);assert.equal(resumeCids.length,3);assert.equal(resumeCids[1],resumeCids[2]);assert.notEqual(resumeCids[0],resumeCids[1]);
  // Server withholds the acknowledgement; abort and browser closure must end the connection.
  mode='hold-upload';let seen=new Promise(resolve=>{noticed=resolve;}),gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
@@ -105,6 +131,6 @@ try {
  seen=new Promise(resolve=>{noticed=resolve;});gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
  await browser.close();browser=undefined;await bounded(gone);
- assert.deepEqual(appRequests.sort(),['/','/app.js']);assert.equal(providerRequests.length,12+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+ assert.deepEqual(appRequests.sort(),['/','/app.js']);assert.equal(providerRequests.length,17+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
  console.log('Direct Kubo browser success, consent/rate refusal, provider faults and interrupted acknowledgements passed (protocol substitute).');
 }finally{await browser?.close();for(const server of [app,provider])if(server)await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true});}
