@@ -95,7 +95,7 @@ export function createStreamAuthority(input: {
       if (value.operation === "identity") claims = { ...base, tenant, principal:subject };
       else {
         if (!authority.graph.checkDirectSee(room!,principal,at).allowed ||
-            (value.scope.action === "publish" && !authority.graph.checkPost(room!,principal,at).allowed)) throw Error();
+            (value.scope.action === "publish" && (!authority.graph.checkPost(forum,principal,at).allowed || !authority.graph.checkPost(room!,principal,at).allowed))) throw Error();
         claims = { ...base, scope:value.scope, allowed:true, validUntil:Math.min(at+3600,proof.expiresAt),
           revision:createHash("sha256").update(streamCanonical({ fence, principal, scope:value.scope })).digest("hex") };
       }

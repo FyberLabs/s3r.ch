@@ -54,7 +54,7 @@ async function setup() {
   }
   const scope=(principal:string,action="read")=>({subject:{tenant,principal},room,action,ip:"192.0.2.1"});
   async function subject(pair:SeaPair) {const response=await call("identity",{},await token(pair));assert.equal(response.status,200);return (await response.json()).claims.principal as string;}
-  return {call,subject,scope,owner,viewer,outsider,key,record,room,handler,
+  return {call,subject,scope,owner,viewer,outsider,key,record,room,forum,handler,
     advance:(n:number)=>{now+=n;},stale:()=>{stale=true;},reads:()=>reads};
 }
 test("native identity and signed current room Check bind Core scope and session expiry",async()=>{
@@ -91,4 +91,15 @@ test("private owner refuses oversized and wrong-shape requests",async()=>{
   assert.equal((await h.call("identity",{principal:h.owner.pub})).status,403);
   assert.equal((await h.handler(new Request("https://owner.example/internal/streams/authority",{method:"POST",
     headers:{"Content-Type":"application/json","X-Stream-Service-Key":"c".repeat(32)},body:"x".repeat(4097)}))).status,403);
+});
+
+
+test("parent post revocation denies publishing despite a retained room post grant",async()=>{
+  const h=await setup(), principal=await h.subject(h.viewer), scope=h.scope(principal,"publish");
+  const grant={owner:h.owner.pub,accessor:h.viewer.pub,from:1700000060,until:1700000660,stated:1,hamState:1700000060};
+  for(const object of [h.forum,h.room])h.record("post",{...grant,object});
+  assert.equal((await h.call("check",{scope})).status,200);
+  h.record("post",{...grant,object:h.forum,stated:0,hamState:1700000061});
+  assert.equal((await h.call("check",{scope})).status,403);
+  assert.equal((await h.call("check",{scope:h.scope(principal)})).status,200);
 });

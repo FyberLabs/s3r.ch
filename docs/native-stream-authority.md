@@ -10,7 +10,7 @@ private Core-to-owner channel. Core receives a sealed subject containing the SEA
 key, native session identifier and expiry. Each later Check verifies that seal,
 resolves the current canonical principal, requires the same current writer key,
 and checks parent-forum membership plus direct room read authority; publishing
-also requires room post authority. Rotation, cancellation, expired sessions,
+also requires both parent-forum and room post authority. Rotation, cancellation, expired sessions,
 stale snapshots, mismatched tenants and unavailable sources refuse access. The
 opaque subject prevents a previous session from silently borrowing a newer one.
 Its value is private credential material and must never enter diagnostics.
