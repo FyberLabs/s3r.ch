@@ -613,3 +613,25 @@ test("pending group file delivery blocks epoch-changing actions",async()=>{
   assert.equal(writes,0);assert.deepEqual(f.state().itemWrap,held);
  }finally{f.library.dispose();}
 });
+
+test("group Granted opens only listed scoped entries and clears plaintext and preview",async()=>{
+ const entry={object:'shared',predicate:'same-group' as const,set:'set_group'},bytes=new Uint8Array([1,2,3]);let opens=0;
+ const f=setup({browser:()=>({catalog:async()=>({at:1,objects:[],nextPage:null,principal:key}),
+  groupGrantedCatalog:async()=>({at:1,entries:[entry],nextPage:null}),
+  openGroup:async(object:string,_tenant:string,principal:string,scope:unknown)=>{opens++;assert.equal(object,'shared');assert.equal(principal,key);assert.deepEqual(scope,{predicate:entry.predicate,set:entry.set});return {description:{name:'group.mp3',mediaType:'audio/mpeg'},bytes};},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try{
+  await f.library.loadGroupGranted();assert.equal(f.state().groupGranted,null);
+  await f.library.load();await f.library.loadGroupGranted();assert.deepEqual(f.state().groupGranted?.entries,[entry]);
+  await f.library.openGroup({...entry,set:'other'},'tenant');assert.equal(opens,0);
+  await f.library.openGroup(entry,'tenant');assert.equal(opens,1);assert.equal(f.state().preview?.name,'group.mp3');assert.deepEqual(bytes,new Uint8Array(3));
+  f.library.reset();assert.equal(f.state().groupGranted,null);assert.equal(f.state().preview,null);
+ }finally{f.library.dispose();}
+});
+test("late group Granted catalogs cannot restore an old session",async()=>{
+ let release!:(value:any)=>void,began!:()=>void;const waiting=new Promise(resolve=>{release=resolve;}),started=new Promise<void>(resolve=>{began=resolve;});
+ const f=setup({browser:()=>({catalog:async()=>({at:1,objects:[],nextPage:null,principal:key}),groupGrantedCatalog:async()=>{began();return await waiting;},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try{await f.library.load();const work=f.library.loadGroupGranted();await started;f.library.reset();release({at:1,entries:[],nextPage:null});await work;assert.equal(f.state().groupGranted,null);}
+ finally{release(null);f.library.dispose();}
+});

@@ -1,3 +1,4 @@
+import {readGroupGranted} from "./media-group-item-catalog-client";
 import {openGroupMediaFile} from "./media-group-item-file";
 import {createItemStatusClient} from "./media-group-item-status-client";
 import {parseItemStatusCommand} from "./media-group-item-status";
@@ -99,6 +100,9 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     },signal),"s3rch-private-group-item-epoch-delivery-v1");
   }
   return Object.freeze({
+    groupGrantedCatalog(principal:string,page:number,signal?:AbortSignal){
+      return run((_pair,transport,deadline)=>readGroupGranted(page,principal,transport,deadline),signal);
+    },
     startItemWrap(tenant:string,principal:string,target:ItemWrapTarget,signal?:AbortSignal){
       const held=parseGroupCommand("item-wrap-view",target,principal) as ItemWrapTarget;
       return locked(()=>run(async(pair,transport,deadline)=>{

@@ -248,6 +248,13 @@ jobs:
           --test-coverage-include=lib/media-group-item-wrap-client.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/media-group-item-wrap-client.test.ts
+      - name: Group Granted catalog coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-catalog.ts
+          --test-coverage-include=lib/media-group-item-catalog-client.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-catalog.test.ts lib/media-group-item-catalog-client.test.ts
       - name: Group file opening coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
