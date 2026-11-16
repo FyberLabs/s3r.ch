@@ -83,5 +83,5 @@ export async function verifyTerminalToken(claims: Record<string, unknown>, token
   const original = binding(supplied);
   if (!current?.admission || original.run !== current.admission.binding.run || original.generation !== current.admission.binding.generation) fail();
   await tokenContext(token);
-  if (current.closed) fail();
+  if (current?.closed) fail();
 }

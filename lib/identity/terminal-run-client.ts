@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { uniqueJson } from "./forum-witness-json";
 import { isSeaPubkey } from "./forum-check";
 import { isPublicSquadPrincipal } from "../squad-view";
-import type { RunAdmission, TerminalRunAuthority } from "./terminal-run";
+import type { RunAdmission, RunToken, TerminalRunAuthority } from "./terminal-run";
 
 const refused = (): never => { throw Error("Terminal run authority unavailable"); };
 const hex = /^[a-f0-9]{64}$/;
@@ -85,16 +85,16 @@ export function createTerminalHttpAuthority(config: { serviceKey: string; scopes
       admitted = Object.freeze({ binding: Object.freeze({ run: result.run, generation: result.generation }), operation: result.operation });
       return admitted;
     },
-    async active(admission) {
+    async active(admission: RunAdmission) {
       same(admission);
       return receipt(await command("verify", { ...admission.binding }), admission, "active").active === true;
     },
-    async complete(admission) {
+    async complete(admission: RunAdmission) {
       same(admission);
       const result = receipt(await command("complete", { ...admission.binding, operation: admission.operation }), admission, "operation completed");
       if (result.operation !== admission.operation || result.completed !== true) refused();
     },
-    async authorizeToken(admission, token) {
+    async authorizeToken(admission: RunAdmission, token: RunToken) {
       same(admission);
       if (!scope) return false;
       if (/^s3rch-(identity|linked|agent)-(challenge|session)-v1(?::[a-f0-9]{64})?$/.test(token.kind))
