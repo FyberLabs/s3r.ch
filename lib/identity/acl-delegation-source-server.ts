@@ -14,7 +14,7 @@ const record = (input: unknown): Record<string, unknown> => {
 
 /** Configuration supplies trust; the service supplies complete history. A service
  * snapshot cannot install witness keys or turn an omitted account into genesis. */
-function contexts(snapshot: ForumRecoverySnapshot, trust: DelegationTrust, at: number) {
+export function authenticatedHistoryContexts(snapshot: ForumRecoverySnapshot, trust: DelegationTrust, at: number) {
   if (snapshot.completeThrough !== at || !Array.isArray(snapshot.accounts) || !snapshot.accounts.length ||
       snapshot.accounts.length > 64 || !Array.isArray(snapshot.links) || snapshot.links.length > 4096) throw Error("Invalid history");
   const accounts = new Map<PrincipalId, ForumRecoverySnapshot["accounts"][number]>(snapshot.accounts.map(account => {
@@ -82,7 +82,7 @@ export function createAclDelegationSource(config: AclStatementConfig, audience: 
     if (!/^[0-9a-f]{64}$/.test(id)) return null;
     const { snapshot } = await source.read(at, AbortSignal.timeout(1500));
     if (snapshot.audience !== audience) throw Error("Wrong delegation audience");
-    const { accounts, contextFor } = contexts(snapshot.history, structuredClone(trust), at);
+    const { accounts, contextFor } = authenticatedHistoryContexts(snapshot.history, structuredClone(trust), at);
     const delegations = new Map<string, ReturnType<typeof parseAgentDelegation> extends Result<infer T> ? T : never>();
     const revocations: ReturnType<typeof parseAgentRevocation> extends Result<infer T> ? T[] : never = [];
     for (const raw of snapshot.rows) {
