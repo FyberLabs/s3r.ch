@@ -218,6 +218,13 @@ jobs:
           --test-coverage-include=lib/media-group-item-grant-recovery.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/media-group-item-grant.test.ts lib/media-group-item-grant-client.test.ts
+      - name: Group item epoch preparation and signing coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-epoch.ts
+          --test-coverage-include=lib/media-group-item-epoch-signing.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-epoch.test.ts lib/media-group-item-epoch-signing.test.ts
       - name: Independent group command contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage
