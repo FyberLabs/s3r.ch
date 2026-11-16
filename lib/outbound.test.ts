@@ -47,12 +47,12 @@ function native(body = "hello mesh") {
 }
 
 describe("parseOutboundRequest", () => {
-  it("accepts farcaster / atproto and rejects unknown networks", () => {
+  it("accepts Farcaster, ATProto and Nostr and rejects unknown networks", () => {
     const item = native();
     const ok = parseOutboundRequest({ network: "farcaster", item });
     assert.equal(ok.ok, true);
     if (ok.ok) assert.equal(ok.network, "farcaster");
-    assert.equal(parseOutboundRequest({ network: "nostr", item }).ok, false);
+    assert.equal(parseOutboundRequest({ network: "nostr", item }).ok, true);
     assert.equal(parseOutboundRequest({ network: "activitypub", item }).ok, false);
     assert.equal(parseOutboundRequest({}).ok, false);
     assert.equal(parseOutboundRequest("x").ok, false);
@@ -356,18 +356,18 @@ describe("atprotoPostText", () => {
 });
 
 describe("createOutboundAdapters", () => {
-  it("wires Farcaster + ATProto; leaves ActivityPub / Nostr unimplemented", async () => {
+  it("wires Farcaster + ATProto; leaves ActivityPub unimplemented", async () => {
     const adapters = createOutboundAdapters({ env: {} });
     const status = outboundStatus(adapters);
     assert.deepEqual(
       status.map((row) => row.id),
-      ["farcaster", "atproto"],
+      ["farcaster", "atproto", "nostr"],
     );
     assert.equal(status.every((row) => row.enabled === false), true);
     const ap = adapters.find((row) => row.network === "ActivityPub");
     assert.ok(ap instanceof UnimplementedOutbound);
     const nostr = adapters.find((row) => row.network === "Nostr");
-    assert.ok(nostr instanceof UnimplementedOutbound);
+    assert.equal(nostr?.enabled, false);
     const skipped = await postOutbound(adapters, "farcaster", { body: "gm" });
     assert.equal(skipped.ok, false);
     const farcaster = adapterForNetwork(adapters, "farcaster");

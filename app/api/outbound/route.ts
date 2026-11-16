@@ -12,14 +12,14 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * Explicit Farcaster / ATProto outbound. SIWE required.
+ * Explicit Farcaster / ATProto / Nostr outbound. Verified SEA session required.
  * Does not write Gun. Share-into-mesh does not call this.
  * Credentials stay in server env — never NEXT_PUBLIC, never on Gun.
  */
 export async function GET(request: Request) {
   const session = await requireSession(request);
   if (!session.ok) return session.response;
-  const adapters = createOutboundAdapters();
+  const adapters = createOutboundAdapters({owner:session.owner, signal:request.signal});
   return Response.json({ adapters: outboundStatus(adapters) });
 }
 
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "You can only post your own note." }, { status: 403 });
   }
 
-  const adapters = createOutboundAdapters();
+  const adapters = createOutboundAdapters({owner:session.owner, signal:request.signal});
   const adapter = adapterForNetwork(adapters, parsed.network);
   if (!adapter) {
     return Response.json({ error: "Unknown network." }, { status: 400 });

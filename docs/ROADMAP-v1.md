@@ -18,7 +18,7 @@ Summaries only. Do not treat this list as a new spec.
 - **Unshare.** Own-only HAM tombstone or claim republish. Observation can wait. Not a grant revoke. Not instant everywhere.
 - **Browser pull + bridges prep.** Signed-in pull of the documented public sources through `/api/ingest` or the allowlisted extension / `127.0.0.1` relay. Admit onto Mine. Share is a separate put. [pull-relay.md](pull-relay.md).
 - **Panopticon TURN allocate.** Session-gated `POST /api/turn/allocate`, fail-soft. Empty env stays STUN-only. This repo does not deploy coturn. [durable-graph-and-turn.md](durable-graph-and-turn.md). Oracles attest and payments receipt/intent hops are the same consume pattern (fail-soft, no paywall). [oracles-and-payments-prep.md](oracles-and-payments-prep.md).
-- **Outbound Farcaster / ATProto when env is set.** Explicit SIWE `POST /api/outbound` on an owned native post. Missing creds fail closed. Not an auto-bridge. ActivityPub and Nostr outbound are not wired.
+- **Outbound Farcaster / ATProto when env is set.** Explicit SIWE `POST /api/outbound` on an owned native post. Missing creds fail closed. Not an auto-bridge. Nostr also supports immediate owner-scoped publishing; see [Nostr outbound](nostr-outbound.md). ActivityPub remains unwired.
 
 ## Remaining v1
 
@@ -66,7 +66,7 @@ Summaries only. Do not treat this list as a new spec.
 
 - **ERC-1271 SIWE on non-mainnet chains.** Mainnet ERC-1271 / EIP-6492 already verifies. Any other `chainId` stays EOA-only. [identity.md](identity.md).
 - **OAuth backup link.** Wallet / SIWE stays primary. The Keycloak client, start/callback, secondary Continue controls, and two-way handle binding ship ([oauth-idp.md](oauth-idp.md)). An unlinked backup session is not the forum owner. Gun and Check objects are owned by the sociacl address. Gun mesh keys stay on the signing wallet. The older Hypermesh wallet-door note stays related but separate.
-- **Full ActivityPub / Nostr outbound.** Inbound pull ships. Farcaster and ATProto outbound ship when env is set. Posting to ActivityPub or Nostr does not.
+- **Full ActivityPub / Nostr outbound.** Inbound pull ships. Farcaster and ATProto outbound ship when env is set. Nostr immediate owner-scoped posting now ships; ActivityPub and scheduling remain outstanding.
 - **Popular / Novel search API.** Discover stays a browse of tags already on Public and Network. No `/api/search`. No engagement columns.
 
 ### 6. Work and media

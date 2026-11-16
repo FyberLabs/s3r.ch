@@ -103,7 +103,7 @@ Components here are written so they can be extracted into a shared kit later. Th
 - Friend-of-friend, Social Light hop UI, Elect / wills / Case C, or any verb beyond `see`. Hop may factor Check in TS; it is not a grant and has no public-page UI.
 - NextAuth or email magic link on this app. Email / phone confirm is a held claim after SIWE, not a session. Keycloak OAuth backup is a separate cookie ([oauth-idp.md](oauth-idp.md)), not an email login and not the Gun owner.
 - Meetings, live streams, hop UI, Elect / wills / Case C. Live chat and presence over Gun subscriptions ship; they are not a TURN/WebRTC mesh. `gun/lib/webrtc` + STUN + signed-in allocate ships as a hop. Allocate is not a public mesh.
-- ActivityPub / Nostr / RSS / RSS3 outbound. Farcaster + ATProto outbound **do** ship as an explicit SIWE action (not auto-bridge). Inbound pull for those networks stays a separate path. Native post ≠ bridging out.
+- ActivityPub / RSS / RSS3 outbound. Nostr is available through an explicitly owner-scoped server signer; see [Nostr outbound](nostr-outbound.md). Farcaster + ATProto outbound **do** ship as an explicit SIWE action (not auto-bridge). Inbound pull for those networks stays a separate path. Native post ≠ bridging out.
 - Popular / Novel columns, likes / views / engagement scores. Network **does** ship as the live mesh view (not a finished P2P mesh claim).
 - Instant mesh-wide delete, or an Azure `/api/unshare`. Unshare is a client Gun tombstone / republish. Observation can wait. Check revoke stays dest ACL.
 - Dumping user posts into the public seed / `GET /api/feed` snapshot / lab seeder by default.
@@ -201,7 +201,7 @@ WalletConnect is **gated**. Never commit a Reown project id to this repo or CI. 
 | `components/GunPeerProvider.tsx` | Thin `/feed` Gun handle so IdentityBar can put a user node on the same browser Gun FeedStream constructed |
 | `lib/compose.ts` | Native post builder + admit-before-overlay / admit-before-share / admit-before-unshare. Empty body rejected. Does not call OutboundAdapter |
 | `lib/outbound.ts` | UI-safe parse / own-native gate / draft. Not hub signing |
-| `lib/outbound-adapters.ts` | Server factory: Farcaster + ATProto live; ActivityPub / Nostr unimplemented |
+| `lib/outbound-adapters.ts` | Server factory: Farcaster + ATProto live; Nostr owner-scoped; ActivityPub unimplemented |
 | `lib/farcaster-outbound.ts` | Hub `submitMessage` CastAdd. `FARCASTER_FID` + `FARCASTER_SIGNER_KEY`. Never `NEXT_PUBLIC_*` |
 | `lib/atproto-outbound.ts` | PDS `createSession` + `createRecord`. `ATPROTO_IDENTIFIER` + `ATPROTO_APP_PASSWORD`. JWT not stored |
 | `app/api/outbound` | SIWE `GET` status + `POST` `{ network, item }`. Own native only. 401 without session |

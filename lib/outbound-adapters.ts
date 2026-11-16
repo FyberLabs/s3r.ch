@@ -2,6 +2,7 @@
  * Server-only outbound adapter factory. Do not import from client components.
  */
 
+import { NostrOutbound } from "./nostr-outbound";
 import { AtprotoOutbound, type AtprotoOutboundOptions } from "./atproto-outbound";
 import { UnimplementedOutbound, type OutboundAdapter } from "./bridges";
 import {
@@ -10,6 +11,8 @@ import {
 } from "./farcaster-outbound";
 
 export type CreateOutboundAdaptersOptions = {
+  owner?: string;
+  signal?: AbortSignal;
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
   farcaster?: FarcasterOutboundOptions;
@@ -26,7 +29,7 @@ export function createOutboundAdapters(
     new UnimplementedOutbound("RSS / Atom"),
     new UnimplementedOutbound("ActivityPub"),
     new AtprotoOutbound({ env, fetch: fetchFn, ...options.atproto }),
-    new UnimplementedOutbound("Nostr"),
+    new NostrOutbound({env, owner: options.owner, signal: options.signal}),
     new FarcasterOutbound({ env, fetch: fetchFn, ...options.farcaster }),
   ];
 }

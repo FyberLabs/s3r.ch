@@ -1,6 +1,6 @@
 /**
  * Explicit outbound posting. Not inbound pull, not share-into-mesh,
- * not a grant, not delivery. SIWE session required at the route.
+ * not a grant, not delivery. Verified SEA session required at the route.
  * Credentials stay server-side. Sharing a post does not call this.
  *
  * This file is UI-safe (no hub signer / PDS clients).
@@ -11,10 +11,11 @@ import { ownsNativePost } from "./compose";
 import { isFeedSource, type FeedItem } from "./feed-types";
 import type { OutboundAdapter, OutboundDraft, OutboundResult } from "./bridges";
 
-export const OUTBOUND_NETWORK_IDS = ["farcaster", "atproto"] as const;
+export const OUTBOUND_NETWORK_IDS = ["farcaster", "atproto", "nostr"] as const;
 export type OutboundNetworkId = (typeof OUTBOUND_NETWORK_IDS)[number];
 
 export const OUTBOUND_NETWORK_LABEL: Record<OutboundNetworkId, string> = {
+  nostr: "Nostr",
   farcaster: "Farcaster",
   atproto: "ATProto / Bluesky",
 };
@@ -38,7 +39,7 @@ export type ParsedOutboundRequest =
   | { ok: false; error: string };
 
 export function isOutboundNetworkId(value: unknown): value is OutboundNetworkId {
-  return value === "farcaster" || value === "atproto";
+  return value === "farcaster" || value === "atproto" || value === "nostr";
 }
 
 /** Own native s3r.ch post only. Pulled rows and grants cannot outbound. */
