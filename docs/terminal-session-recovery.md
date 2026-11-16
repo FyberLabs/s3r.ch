@@ -118,3 +118,16 @@ ACL forwarding consumes the checked-in owner contract from ACL #187: only POST
 tenant, origin and device-context checks remain required. The native ACL worker
 must independently verify the admitted subject, tenant and source/destination
 origins. This forwarding source does not install that worker or the s3r.ch wrapper.
+
+`createTerminalDeviceRoute` is an explicit, uninstalled composition of the actual
+device handler and authenticated per-request registry client. It checks the native
+TEST tenant, provider/client and fixed Auth/ACL targets before construction. Each
+request passes normalized ingress and exact method/path checks before admission.
+Confirmed authorization/callback redirects require the native nonempty credential
+cookie; failed redirects and unknown outcomes retain pending admission. A lost
+completion or seal withholds the response and its newly issued cookies. CI covers
+the native encrypted-PKCE handler with a named registry transport substitution.
+
+No app route imports this factory. Whole-fixture route classification (including
+unrelated users), SEA/Squad/experiment composition and the root controller contract
+remain required before installation; the factory alone is not a capability.

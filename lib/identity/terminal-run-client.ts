@@ -1,3 +1,4 @@
+import { matchesRequestOrigin } from "../request-origin";
 import { createHmac } from "node:crypto";
 import { uniqueJson } from "./forum-witness-json";
 import { isSeaPubkey } from "./forum-check";
@@ -68,7 +69,7 @@ export function createTerminalHttpAuthority(config: { serviceKey: string; scopes
   }
   return Object.freeze({
     async admit(request: Request) {
-      if (used || new URL(request.url).origin !== "https://test.s3r.ch") return refused();
+      if (used || !matchesRequestOrigin(request, new URL("https://test.s3r.ch"))) return refused();
       used = true;
       const cookies = request.headers.get("cookie") ?? "";
       if (cookies.length > 16384) return refused();
