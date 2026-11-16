@@ -36,6 +36,11 @@ try{
  const pkg=JSON.parse(readFileSync('package.json','utf8'));
  for(const item of manifest)pkg.dependencies[item.name]='file:vendor/pairing/'+item.file;
  writeFileSync('package.json',JSON.stringify(pkg,null,2)+'\n');
+ // File packages can change bytes while retaining their owner version. Remove
+ // only their stale lock entries so npm reads the freshly packed manifests.
+ const lock=JSON.parse(readFileSync('package-lock.json','utf8'));
+ for(const item of manifest)delete lock.packages['node_modules/'+item.name];
+ writeFileSync('package-lock.json',JSON.stringify(lock,null,2)+'\n');
  run('npm',['install','--package-lock-only','--ignore-scripts','--no-audit','--no-fund'],root);
  mkdirSync('pairing-prepared',{recursive:true});cpSync('vendor/pairing','pairing-prepared/vendor/pairing',{recursive:true});
  cpSync('package.json','pairing-prepared/package.json');cpSync('package-lock.json','pairing-prepared/package-lock.json');
