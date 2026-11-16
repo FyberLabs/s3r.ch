@@ -12,7 +12,7 @@ export const same=(a:unknown,b:unknown)=>canonical(a)===canonical(b);
 export function isDeviceRecord(v:unknown):v is DeviceRecord {
  const r=v as DeviceRecord;
  return !!r&&r.kind==='sea-keyring-v1'&&r.address===deviceRecordKey(r.principal)&&r.seaPub===r.binding?.identity.pub&&r.principal===r.binding?.identity.principal&&
-  r.completion?.transcript===r.binding?.transcript&&typeof r.sealed==='string'&&r.sealed.length<=800000&&/^[a-f0-9]{64}$/.test(r.payloadHash)&&r.protection?.version===1;
+  r.completion?.transcript===r.binding?.transcript&&typeof r.sealed==='string'&&r.sealed.length<=1000000&&/^[a-f0-9]{64}$/.test(r.payloadHash)&&r.protection?.version===1;
 }
 export async function deviceRecords(factory=globalThis.indexedDB):Promise<DeviceRecord[]> {
  const db=await openMeshDb(factory);

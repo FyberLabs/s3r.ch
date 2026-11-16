@@ -1,3 +1,4 @@
+import {activateDeviceKeyring} from './device-activation';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
@@ -7,7 +8,7 @@ import {admitKeyring,exportKeyring,importKeyring,closeKeyring,validateKeyring,op
 import {Sender,Receiver,reconcile} from 'sea-device-link';
 import {createDeviceStorage,deviceRecords,canonical} from './device-storage';
 import {base64UrlToBytes} from './wrap';
-const fixture=(name:string)=>JSON.parse(readFileSync(new URL('./vectors/device-transfer/'+name+'.json',import.meta.url),'utf8'));
+const fixture=(name:string)=>JSON.parse(readFileSync(new URL('../../.pairing-test-vectors/'+name+'.json',import.meta.url),'utf8'));
 test('actual SDK transfer preserves rotated keyring and historical decryption through protected app storage',async()=>{
  const vectors=fixture('browser-keyring'),records=fixture('records'),v=vectors.accept[1],{principal,pub,epub,rotationSeq}=v.fields,identity={principal,pub,epub,rotationSeq};let revoked=false;
  const state=():any=>{if(revoked)throw Error();return {rotations:v.rotationNames.map((name:string)=>records.accept.find((r:any)=>r.name===name).input),context:{jwks:records.context.jwks,links:new Map(records.context.links),revocations:[],now:records.context.now,policy:records.context.policy,pinnedIss:new Set(records.context.pinnedIss),genesisEpubBindings:v.genesisBindings,history:(p:any,at:number,until:number)=>records.context.authenticatedAccounts.includes(p)?{ok:true,value:historyState(p,[],at,until)}:{ok:false,reason:'missing-history'}}};};
@@ -29,5 +30,9 @@ test('actual SDK transfer preserves rotated keyring and historical decryption th
  const wrapped=await wrapItemDekToReaders(dek,context,[{account:principal,pub,identityPub:pub,epub:v.fields.genesisEpub}],[principal]);assert.ok(wrapped.ok);
  assert.deepEqual(await openKeyringContent(handle,wrapped.value[0],context),dek);
  await assert.rejects(openKeyringContent(handle,wrapped.value[0],{...context,epoch:9}));
+ let remembered=false;const saved=(await deviceRecords(factory))[0].sealed;
+ assert.equal(await activateDeviceKeyring(exportKeyring(handle,state),identity,state,{current:()=>true,signIn:async pair=>{assert.equal(pair.pub,pub);return false;},remember:()=>{remembered=true;}}),false);
+ assert.equal(remembered,false);assert.equal((await deviceRecords(factory))[0].sealed,saved);
+ assert.equal(await activateDeviceKeyring(exportKeyring(handle,state),identity,state,{current:()=>true,signIn:async()=>true,remember:()=>{remembered=true;}}),true);assert.equal(remembered,true);
  revoked=true;assert.throws(()=>exportKeyring(handle,state));closeKeyring(handle);
 });

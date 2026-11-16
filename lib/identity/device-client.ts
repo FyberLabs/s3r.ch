@@ -1,8 +1,9 @@
+import {activateDeviceKeyring} from './device-activation';
 import {createAuthority} from 'acl-sea-device-authority';
 import {createRelay} from 'auth-sea-relay';
 import {reconcile,type Identity,type Scope} from 'sea-device-link';
 import type {Adapters} from 'sea-device-link-ui';
-import {importKeyring,exportKeyring,exportCurrentPair,closeKeyring} from 'sociacl-ids/keyring';
+import {importKeyring,exportKeyring,closeKeyring} from 'sociacl-ids/keyring';
 import {createDeviceStorage,deviceRecords,prepareDeviceProtection,unlockDeviceRecord,same,type DeviceRecord} from './device-storage';
 import {readBoundedIdentityJson} from './bounded-json';
 import {readSingleUnlockedIdentity,readUnlockedMeshRevision,rememberUnlockedMeshPair} from './unlocked-mesh';
@@ -66,12 +67,10 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
   async signIn(record:DeviceRecord){
    guard();if(!same(record.binding.scope,session.scope))return fail();const opened=await unlockDeviceRecord(record);
    try{
-    guard();const state=await authority.keyringState(record.binding.identity);guard();const handle=importKeyring(opened.keyring,record.binding.identity,state);
-    try{
-     const pair=exportCurrentPair(handle,state),ok=await createSeaSessionClient({base:'/api/identity/sea',origin}).signIn(pair,abort.signal);guard();
-     if(!ok)return false;
-     rememberUnlockedMeshPair(record.address,pair);return true;
-    }finally{closeKeyring(handle);}
+    guard();const state=await authority.keyringState(record.binding.identity);guard();
+    return await activateDeviceKeyring(opened.keyring,record.binding.identity,state,{current,
+     signIn:pair=>createSeaSessionClient({base:'/api/identity/sea',origin}).signIn(pair,abort.signal),
+     remember:pair=>rememberUnlockedMeshPair(record.address,pair)});
    }finally{opened.keyring.fill(0);}
   },
   dispose(){disposed=true;abort.abort();authority.close();for(const r of relays)r.close();relays.clear();protection=undefined;receiverCapability=undefined;source?.fill(0);source=undefined;sourceIdentity=undefined;},
