@@ -20,6 +20,7 @@ try {
  import {createIpfsMediaTransfer} from './lib/ipfs-media-transfer';
  import {createCachedMediaBlocks} from './lib/ipfs-cached-blocks';
  import {createLocalCiphertextCache} from './lib/ipfs-local-cache';
+ import {createSharedTransferBudget} from './lib/ipfs-transfer-budget';
  let sample,controller,pending,calls=0,resumable,resumeMedia,resumeInput,resumeGrant,preparedDownload;
  const transport=(url,init)=>{calls++;return fetch(url,init);};
  window.fetchCalls=()=>calls;
@@ -78,6 +79,15 @@ try {
  }catch{return false;}};
  window.cacheConsent=value=>{cacheAllowed=value;};window.cacheTime=value=>{cacheNow=value;};
  window.clearCache=async()=>{localCache.close();await localCache.clear();};
+ let budgetNow=1000;
+ window.budgetTime=value=>{budgetNow=value;};
+ window.budgetSample=()=>({cid:JSON.parse(resumeGrant.manifest).blocks[0],size:1024*1024});
+ window.sharedRead=async({endpoint,cid,size})=>{
+  const current=()=>true,signal=new AbortController().signal;
+  const sharedBudget=createSharedTransferBudget({maxBytesPerMinute:size,current,now:()=>budgetNow});
+  const client=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,current,signal,sharedBudget},transport);
+  try{return (await client.get(cid,size)).length===size;}catch{return false;}finally{sharedBudget.close();}
+ };
  window.composed=async endpoint=>{
   const signal=new AbortController().signal,current=()=>true;
   const blocks=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,maxBytesPerMinute:8*1024*1024,current,signal},transport);
@@ -170,6 +180,17 @@ try {
  await page.evaluate(()=>{window.cacheConsent(true);window.cacheTime(2000);});
  assert.equal(await page.evaluate(()=>window.cachedRead()),false);assert.equal(providerRequests.length,beforeCache+3);
  await page.evaluate(()=>window.clearCache());
+ // Actual separate tabs race one persistent payload allowance before dispatch.
+ mode='normal';const beforeBudget=providerRequests.length;
+ const other=await context.newPage();other.on('pageerror',error=>errors.push(error.message));await other.goto(appOrigin);await other.waitForFunction(()=>!!window.sharedRead);
+ const budgetArgs={endpoint:providerOrigin,...await page.evaluate(()=>window.budgetSample())};
+ const admissions=await Promise.all([page,other].map(tab=>tab.evaluate(args=>window.sharedRead(args),budgetArgs)));
+ assert.equal(admissions.filter(Boolean).length,1);assert.equal(providerRequests.length,beforeBudget+1);
+ await other.reload();await other.waitForFunction(()=>!!window.sharedRead);
+ assert.equal(await other.evaluate(args=>window.sharedRead(args),budgetArgs),false);assert.equal(providerRequests.length,beforeBudget+1);
+ await other.evaluate(()=>window.budgetTime(61000));assert.equal(await other.evaluate(args=>window.sharedRead(args),budgetArgs),true);assert.equal(providerRequests.length,beforeBudget+2);
+ assert.equal(await page.evaluate(args=>window.sharedRead(args),budgetArgs),false,'persisted watermark refuses older tab clock');assert.equal(providerRequests.length,beforeBudget+2);
+ await other.close();
  // Server withholds the acknowledgement; abort and browser closure must end the connection.
  mode='hold-upload';let seen=new Promise(resolve=>{noticed=resolve;}),gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
@@ -177,6 +198,6 @@ try {
  seen=new Promise(resolve=>{noticed=resolve;});gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
  await browser.close();browser=undefined;await bounded(gone);
- assert.deepEqual(appRequests.sort(),['/','/app.js']);assert.equal(providerRequests.length,23+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+ assert.deepEqual(appRequests.sort(),['/','/','/','/app.js','/app.js','/app.js']);assert.equal(providerRequests.length,25+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
  console.log('Direct Kubo browser success, consent/rate refusal, provider faults and interrupted acknowledgements passed (protocol substitute).');
 }finally{await browser?.close();for(const server of [app,provider])if(server)await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true});}

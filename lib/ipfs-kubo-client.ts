@@ -7,13 +7,15 @@ export function createKuboBlockClient(options: {
   maxBytes: number;
   /** Combined upload/download payload admitted in any rolling minute. Defaults to 1 MiB. */
   maxBytesPerMinute?: number;
+  /** Optional shared tab budget; failure refuses network dispatch. */
+  sharedBudget?: {reserve(bytes: number, signal: AbortSignal): Promise<void>};
 }, transport: typeof fetch = fetch) {
   const endpoint = new URL(options.endpoint);
   const rate = options.maxBytesPerMinute ?? IPFS_MEDIA_BLOCK_BYTES;
   if (!Number.isSafeInteger(rate) || rate < 1 || rate > 8 * IPFS_MEDIA_BLOCK_BYTES) throw denied();
   if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.pathname !== "/" || endpoint.search || endpoint.hash ||
       !Number.isSafeInteger(options.maxBytes) || options.maxBytes < 1 || options.maxBytes > 64 * IPFS_MEDIA_BLOCK_BYTES) throw denied();
-  const origin = endpoint.origin, current = options.current, signal = options.signal;
+  const origin = endpoint.origin, current = options.current, signal = options.signal, sharedBudget = options.sharedBudget;
   let remaining = options.maxBytes, active = 0, attempts = 0, lastTime = -Infinity;
   const admitted: {at: number; bytes: number}[] = [];
   function check() { if (signal.aborted || !current()) throw denied(); }
@@ -37,7 +39,7 @@ export function createKuboBlockClient(options: {
       timer = setTimeout(cancel, 10_000);
     });
     const pending = (async () => {
-      try { check(); const result = await work(controller.signal); check(); if (controller.signal.aborted) throw denied(); return result; }
+      try { check(); if (sharedBudget) await sharedBudget.reserve(size, controller.signal); check(); if (controller.signal.aborted) throw denied(); const result = await work(controller.signal); check(); if (controller.signal.aborted) throw denied(); return result; }
       finally { active--; }
     })();
     // Keep the slot occupied until even an abort-ignoring injected transport settles.
@@ -63,9 +65,10 @@ export function createKuboBlockClient(options: {
   }
   return Object.freeze({
     async put(block: Uint8Array): Promise<string> {
-      if (!(block instanceof Uint8Array)) throw denied();
-      return run(block.length, async signal => {
-        const bytes = new Uint8Array(block);
+      if (!(block instanceof Uint8Array) || block.length < 1 || block.length > IPFS_MEDIA_BLOCK_BYTES) throw denied();
+      // Capture bytes and size before shared admission can yield to caller mutation/resizing.
+      const bytes = new Uint8Array(block);
+      return run(bytes.length, async signal => {
         const cid = await rawMediaBlockCid(bytes);
         const body = new FormData(); body.append("file", new Blob([bytes]), "block");
         const reply = await request("/api/v0/block/put?cid-codec=raw&mhtype=sha2-256&mhlen=32&pin=false&allow-big-block=false", signal, 1024, body);
