@@ -72,7 +72,7 @@ test("actual device callback refuses an old provider run and preserves original 
   async function exchange(run: string) {
     const idToken = await new SignJWT({ nonce: url.searchParams.get("nonce"), nightly_run: { run, generation: "a".repeat(64) } })
       .setProtectedHeader({ alg: "ES256" }).setIssuer(config.provider.issuer).setAudience(config.provider.clientId).setSubject("person").setIssuedAt(now).setExpirationTime(now + 600).sign(keys.privateKey);
-    return h.run(() => devicePersonOAuth(callback, "callback", config, origin, env, { now: () => now, verifyKey: keys.publicKey,
+    return h.run(() => devicePersonOAuth(callback, "callback", config, origin, env, { now: () => now, verifyKey: async () => keys.publicKey,
       fetch: async () => Response.json({ id_token: idToken, access_token: "fixture-bearer", token_type: "Bearer" }) }));
   }
   assert.match((await exchange("old-run")).headers.get("location")!, /unavailable/);

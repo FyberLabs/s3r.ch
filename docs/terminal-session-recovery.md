@@ -70,3 +70,12 @@ controller authentication, configured fixture policy, route wrappers, complete
 OAuth/startup/nonce/confirmation alternative-path coverage, Auth relay propagation,
 and experiment outbox commit composition. No capability can be advertised from
 these hooks alone. #552 remains open.
+
+The bounded `terminal-run-client.ts` implements the agreed Auth registry HTTP
+protocol with a service-specific HMAC key, strict configured immutable fixture
+scope, original-run receipt checks and no cached verification. Its construction
+is per request. It refuses missing/duplicate grants and unsupported native identity
+kinds. The adapter is TEST-only and uninstalled; it does not add a controller route,
+fixture configuration, schema, credentials or activation. HTTP/HMAC contracts run
+only in CI with named in-process transport substitution; the Auth owner supplies
+actual PostgreSQL and transaction-race evidence independently.
