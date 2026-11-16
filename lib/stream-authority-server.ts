@@ -1,5 +1,5 @@
 /** Private backend binding only. No Next route, UI or default activation. */
-import { createHash, createHmac, sign, timingSafeEqual, type KeyObject } from "node:crypto";
+import { createHash, createPublicKey, sign, verify, timingSafeEqual, type KeyObject } from "node:crypto";
 import { isIP } from "node:net";
 import { createIdentityTokenVerifier } from "./identity/sea-session-verifier";
 import { createForumAuthority, type ForumAuthorityConfig } from "./identity/forum-authority";
@@ -32,16 +32,17 @@ export function createStreamAuthority(input: {
   // This opaque Core subject binds the actual SEA key, native session ID and
   // expiry. Each Check resolves its current canonical principal from history;
   // rotation, expired proof and cross-tenant reuse cannot preserve admission.
-  const mac = (value: string) => createHmac("sha256", serviceKey).update("s3rch-stream-subject-v1\0" + tenant + "\0" + value).digest("base64url");
+  const subjectKey = createPublicKey(signingKey);
+  const subjectBytes = (value: string) => Buffer.from("s3rch-stream-subject-v1\0" + tenant + "\0" + value);
   const seal = (proof: { key: string; id: string; expiresAt: number }) => {
     const value = `s1.${proof.key}.${proof.expiresAt}.${proof.id}`;
-    return value + "." + mac(value);
+    return value + "." + sign(null,subjectBytes(value),signingKey).toString("base64url");
   };
   const unseal = (value: unknown, at: number) => {
     if (typeof value !== "string" || value.length > 256) throw Error();
     const parts = value.split("."), payload = parts.slice(0, -1).join(".");
     if (parts.length !== 6 || parts[0] !== "s1" || !/^[0-9a-f]{64}$/.test(parts[4]) ||
-        !/^[1-9][0-9]{0,15}$/.test(parts[3]) || !equal(parts[5], mac(payload))) throw Error();
+        !/^[1-9][0-9]{0,15}$/.test(parts[3]) || (!/^[A-Za-z0-9_-]{86}$/.test(parts[5]) || !verify(null,subjectBytes(payload),subjectKey,Buffer.from(parts[5],"base64url")))) throw Error();
     const expiresAt = Number(parts[3]);
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= at || expiresAt > at + 300) throw Error();
     return { key: parts[1] + "." + parts[2], expiresAt };

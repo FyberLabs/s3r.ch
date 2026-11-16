@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
-import { generateKeyPairSync, verify, createPrivateKey, sign } from "node:crypto";
+import { generateKeyPairSync, verify, createPrivateKey, createHmac, sign } from "node:crypto";
 import { createStreamAuthority, streamCanonical } from "./stream-authority-server";
 import { createIdentitySessions } from "./identity/sea-session";
 import { signForumRecord } from "./forum-sign";
@@ -81,6 +81,9 @@ test("forged, cross-tenant, stale, ungranted and unauthenticated requests deny",
   assert.equal((await h.call("check",{scope:{...scope,subject:{tenant:"22222222-2222-4222-8222-222222222222",principal}}})).status,403);
   assert.equal((await h.call("check",{scope},undefined,"wrong")).status,403);
   await assert.rejects(h.subject(h.outsider));
+  const payload=`s1.${h.owner.pub}.1700000360.${"a".repeat(64)}`;
+  const forged=payload+"."+createHmac("sha256","c".repeat(32)).update("s3rch-stream-subject-v1\0"+tenant+"\0"+payload).digest("base64url");
+  assert.equal((await h.call("check",{scope:h.scope(forged,"publish")})).status,403);
   h.stale();assert.equal((await h.call("check",{scope})).status,403);
 });
 test("private owner refuses oversized and wrong-shape requests",async()=>{
