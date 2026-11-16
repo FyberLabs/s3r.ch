@@ -65,9 +65,10 @@ export function createKuboBlockClient(options: {
   }
   return Object.freeze({
     async put(block: Uint8Array): Promise<string> {
-      if (!(block instanceof Uint8Array)) throw denied();
-      return run(block.length, async signal => {
-        const bytes = new Uint8Array(block);
+      if (!(block instanceof Uint8Array) || block.length < 1 || block.length > IPFS_MEDIA_BLOCK_BYTES) throw denied();
+      // Capture bytes and size before shared admission can yield to caller mutation/resizing.
+      const bytes = new Uint8Array(block);
+      return run(bytes.length, async signal => {
         const cid = await rawMediaBlockCid(bytes);
         const body = new FormData(); body.append("file", new Blob([bytes]), "block");
         const reply = await request("/api/v0/block/put?cid-codec=raw&mhtype=sha2-256&mhlen=32&pin=false&allow-big-block=false", signal, 1024, body);

@@ -43,3 +43,17 @@ test("unavailable shared storage is fail-closed and never bypasses to provider",
   const client=createKuboBlockClient({endpoint:'https://provider.example',maxBytes:100,current:()=>true,signal:signal(),sharedBudget:budget},async()=>{calls++;return new Response();});
   await assert.rejects(client.get(await rawMediaBlockCid(new Uint8Array([1])),1));assert.equal(calls,0);budget.close();
 });
+
+test("shared admission cannot change upload content or undercharge a resized caller buffer",async()=>{
+  for(const resizable of [false,true]){
+    const buffer=resizable?new ArrayBuffer(1,{maxByteLength:1024}):new ArrayBuffer(1),input=new Uint8Array(buffer);input[0]=7;
+    const cid=await rawMediaBlockCid(new Uint8Array([7]));let release!:()=>void;
+    const gate=new Promise<void>(resolve=>{release=resolve;}),reserved:number[]=[];
+    const client=createKuboBlockClient({endpoint:'https://provider.example',maxBytes:1,maxBytesPerMinute:1,current:()=>true,signal:signal(),sharedBudget:{async reserve(bytes){reserved.push(bytes);await gate;}}},async(_url,init)=>{
+      const file=(init!.body as FormData).get('file') as File;
+      assert.equal(file.size,1);assert.deepEqual(new Uint8Array(await file.arrayBuffer()),new Uint8Array([7]));return Response.json({Key:cid,Size:1});
+    });
+    const upload=client.put(input);if(resizable)buffer.resize(1024);input.fill(9);release();
+    assert.equal(await upload,cid);assert.deepEqual(reserved,[1]);await assert.rejects(client.put(new Uint8Array([7])));
+  }
+});
