@@ -27,10 +27,11 @@ jobs:
     needs: test
     runs-on: [self-hosted, linux, x64]
     environment: test
+    outputs:
+      image_digest: ${{ steps.selected.outputs.digest }}
     permissions:
-      contents: write
+      contents: read
       packages: write
-      attestations: write
       id-token: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -72,6 +73,7 @@ jobs:
             NEXT_PUBLIC_SEED_PEER_URL=${{ vars.NEXT_PUBLIC_SEED_PEER_URL }}
             NEXT_PUBLIC_WC_PROJECT_ID=${{ vars.NEXT_PUBLIC_WC_PROJECT_ID }}
       - name: Select immutable candidate
+        id: selected
         env:
           REUSED_DIGEST: ${{ steps.candidate.outputs.digest }}
           BUILT_DIGEST: ${{ steps.build.outputs.digest }}
@@ -79,6 +81,7 @@ jobs:
           digest="${REUSED_DIGEST:-$BUILT_DIGEST}"
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           echo "IMAGE_DIGEST=$digest" >> "$GITHUB_ENV"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
       - name: Verify public package and smoke exact image
         run: |
           anonymous="$(mktemp -d)"
@@ -92,6 +95,26 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Deploy and verify test.s3r.ch
         run: bash scripts/deploy-test.sh
+
+  publish:
+    needs: deploy
+    if: github.ref == 'refs/heads/master'
+    # Public repository: a fresh hosted VM isolates the reusable key from all
+    # checked-out deployment code and persistent self-hosted runner state.
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      IMAGE_DIGEST: ${{ needs.deploy.outputs.image_digest }}
+    steps:
+      - name: Fetch independently pinned publication helper
+        run: |
+          gh api repos/FyberLabs/s3r.ch/contents/scripts/release-channels.mjs?ref=1b476725b096df0452ab1c2cc529579b46c95b6b --jq .content | base64 --decode > "$RUNNER_TEMP/trusted-release-channels.mjs"
+          printf '%s  %s\n' 8ca0708ab96c340cd24feb2208486d4b8eda6da39e523b22bccf103e72a4da03 "$RUNNER_TEMP/trusted-release-channels.mjs" | sha256sum --check --status
       # A queued merge may differ from master's workflow files. GITHUB_TOKEN
       # cannot acquire workflows:write, which GitHub requires for that target.
       - name: Mint repository-scoped TEST publication token
@@ -107,7 +130,7 @@ jobs:
       - name: Publish successful test release
         env:
           GH_TOKEN: ${{ steps.test-publication.outputs.token }}
-        run: node scripts/release-channels.mjs test
+        run: node "$RUNNER_TEMP/trusted-release-channels.mjs" test
       - name: Attest the verified test deployment manifest
         uses: actions/attest-build-provenance@v4.2.2
         with:
@@ -115,7 +138,7 @@ jobs:
           github-token: ${{ github.token }}
 
   static:
-    needs: deploy
+    needs: [deploy, publish]
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 45

@@ -13,8 +13,12 @@ its private key as TEST environment secret S3RCH_TEST_PUBLICATION_APP_PRIVATE_KE
 Never commit the private key. App creation/installation and permission grants are
 separate operator actions; this change does not perform them.
 
-The deploy workflow mints a short-lived installation token only after deployment
-verification and passes it only to the existing automatic TEST release step.
+The deploy workflow uses a separate fresh GitHub-hosted publication job after
+deployment verification. It checks out no source and executes no code from the
+merged revision. Its publication helper is fetched at a fixed reviewed commit
+and SHA-256 verified before the App key is used. It receives only the validated
+image digest from deployment and independently verifies registry channels.
+The short-lived installation token is passed only to the TEST release step.
 The action revokes the token during cleanup. Build, image push, deployment,
 attestation and static dispatch retain their existing identities. The infra-only
 static dispatch App must not be reused or granted extra permissions.

@@ -128,7 +128,7 @@ test('workflows mint an infra-only Actions token and dispatch both surfaces for 
   assert.match(deploy, /node scripts\/dispatch-static-publish\.mjs test/);
   assert.match(release, /node scripts\/dispatch-static-publish\.mjs release/);
   assert.match(release, /node scripts\/dispatch-static-publish\.mjs reconcile/);
-  assert.match(deploy, /needs: deploy/);
+  assert.match(deploy, /needs: \[deploy, publish\]/);
   const promote = release.indexOf('release-channels.mjs promote');
   const production = release.indexOf('dispatch-static-publish.mjs release');
   const reconcile = release.indexOf('dispatch-static-publish.mjs reconcile');
@@ -143,6 +143,13 @@ test('TEST release credentials are repository scoped and isolated from deploymen
   const deploy = readFileSync(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
   const start = deploy.indexOf('      - name: Mint repository-scoped TEST publication token');
   const end = deploy.indexOf('      - name: Attest the verified test deployment manifest', start);
+  const publish = deploy.slice(deploy.indexOf('\n  publish:'), deploy.indexOf('\n  static:'));
+  assert.match(publish, /needs: deploy/);
+  assert.match(publish, /runs-on: ubuntu-latest/);
+  assert.doesNotMatch(publish, /actions\/checkout|uses: \.\/|npm |scripts\/deploy-test/);
+  assert.match(publish, /ref=1b476725b096df0452ab1c2cc529579b46c95b6b/);
+  assert.match(publish, /sha256sum --check --status/);
+  assert.ok(publish.indexOf('sha256sum') < publish.indexOf('id: test-publication'));
   assert.ok(start > deploy.indexOf('run: bash scripts/deploy-test.sh'));
   assert.ok(end > start);
   const publisher = deploy.slice(start, end);
@@ -158,4 +165,5 @@ test('TEST release credentials are repository scoped and isolated from deploymen
   const outside = deploy.slice(0, start) + deploy.slice(end);
   assert.equal(outside.includes('test-publication.outputs.token'), false);
   assert.equal(outside.includes('TEST_PUBLICATION_APP_PRIVATE_KEY'), false);
+  assert.equal(deploy.slice(0, deploy.indexOf('\n  publish:')).includes('TEST_PUBLICATION_APP'), false);
 });
