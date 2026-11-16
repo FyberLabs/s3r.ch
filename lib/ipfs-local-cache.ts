@@ -61,14 +61,15 @@ export function createLocalCiphertextCache(input:{scope:string; policy:LocalCiph
        if(kind==="clear") {if(row?.scope===scope)entry.delete();entry.continue();return;}
        if(typeof row?.scope!=="string"||typeof row.cid!=="string"||row.id!==row.scope+":"+row.cid||!(row.bytes instanceof Uint8Array)||row.bytes.length<1||row.bytes.length>IPFS_MEDIA_BLOCK_BYTES||
          !Number.isSafeInteger(row.created)||!Number.isSafeInteger(row.expires)||row.created>at||row.expires<=row.created||row.expires-row.created>MAX_TTL)throw unavailable();
-       if(row.expires<=at||(kind==="clear"&&row.scope===scope))entry.delete();
+       if(row.expires<=at)entry.delete();
        else {count++;total+=row.bytes.length;if(row.id===scope+":"+cid)existing=row;}
        entry.continue();return;
       }
       if(total>MAX_BYTES||count>MAX_ENTRIES)throw unavailable();
       if(kind==="get"&&existing)result={bytes:new Uint8Array(existing.bytes),expires:existing.expires,checkedAt:at};
       if(kind==="put") {
-       const size=bytes!.length;
+       if(!bytes)throw unavailable();
+       const size=bytes.length;
        if(total-(existing?.bytes.length??0)+size>policy.maxBytes||count+(existing?0:1)>policy.maxEntries)throw unavailable();
        // A retry never extends retention for an existing CID.
        store.put({id:scope+":"+cid,scope,cid,bytes,created:existing?.created??at,expires:Math.min(existing?.expires??at+policy.ttlMs,at+policy.ttlMs)} satisfies Row);
