@@ -42,10 +42,11 @@ test("foreign keys, paths, owners, actions, scope and unsafe fences never reach 
     ...[0, -1, true, 1.5, 2 ** 53].map(fence => ({ ...command(), fence })), { ...command(), grant: "bad" },
     { ...command(), scope: { ...scope, tenant: "33333333-3333-3333-3333-333333333333" } }];
   for (const value of malformed) assert.equal((await route(request(value))).status, 409);
-  for (const change of [{ key: config.ownerKey }, { path: "https://s3r.ch/api/internal/nightly-run" }, { path: config.origin + "/other" },
+  const invalidRequests: Parameters<typeof request>[1][] = [{ key: config.ownerKey }, { path: "https://s3r.ch/api/internal/nightly-run" }, { path: config.origin + "/other" },
     { path: config.origin + "/api/internal/nightly-run?extra=1" }, { method: "GET" }, { headers: { "X-Nightly-Controller-Signature": "bad" } },
     { headers: { "Content-Type": "text/plain" } }, { headers: { "Content-Encoding": "gzip" } },
-    { raw: " ".repeat(16385) }, { raw: '{"version":1,"version":1}' }]) assert.equal((await route(request(command(), change))).status, 409);
+    { raw: " ".repeat(16385) }, { raw: '{"version":1,"version":1}' }];
+  for (const change of invalidRequests) assert.equal((await route(request(command(), change))).status, 409);
   assert.equal(calls, 0);
 });
 test("unknown, forged and ambiguous receipts cannot become terminal proof", async () => {
