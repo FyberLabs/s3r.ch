@@ -17,6 +17,7 @@ try {
  import {createKuboBlockClient} from './lib/ipfs-kubo-client';
  import {rawMediaBlockCid} from './lib/ipfs-media-blocks';
  import {sealMedia} from './lib/media-crypto';
+ import {createIpfsMediaTransfer} from './lib/ipfs-media-transfer';
  let sample,controller,pending,calls=0;
  const transport=(url,init)=>{calls++;return fetch(url,init);};
  window.fetchCalls=()=>calls;
@@ -38,8 +39,17 @@ try {
   pending=client.put(sample.bytes).then(()=>false,()=>true);
  };
  window.cancelUpload=async()=>{controller.abort();return pending;};
+ window.composed=async endpoint=>{
+  const signal=new AbortController().signal,current=()=>true;
+  const blocks=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,maxBytesPerMinute:8*1024*1024,current,signal},transport);
+  const media=createIpfsMediaTransfer({blocks,current,signal});
+  const binding={tenant:'afee9b29-1706-5590-bbbf-e58df8945ac0',object:'claim_'+'56'.repeat(32)};
+  const input=new Uint8Array(1024*1024+7).fill(43),grant=await media.upload(input,binding);
+  const output=await media.download(grant.manifest,grant.key,binding);
+  return {same:output.length===input.length&&output.every((byte,index)=>byte===input[index]),blocks:JSON.parse(grant.manifest).blocks.length};
+ };
  `,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,platform:'browser',format:'iife'});
- const appRequests=[],providerRequests=[],errors=[];let appOrigin,stored,mode="normal",noticed,closed;
+ const appRequests=[],providerRequests=[],errors=[];const blocks=new Map();let appOrigin,stored,mode="normal",noticed,closed;
  app=createServer(tls,(req,res)=>{appRequests.push(req.url);res.setHeader('Content-Type',req.url==='/app.js'?'text/javascript':'text/html');res.end(req.url==='/app.js'?bundle.outputFiles[0].contents:'<!doctype html><link rel="icon" href="data:,"><script src="/app.js"></script>');});
  await new Promise(resolve=>app.listen(0,'127.0.0.1',resolve));appOrigin=`https://127.0.0.1:${app.address().port}`;
  provider=createServer(tls,async(req,res)=>{
@@ -60,8 +70,8 @@ try {
     // CID calculation uses the same public raw codec, executed by the browser separately.
     const {createHash}=await import('node:crypto');const raw=Buffer.concat([Buffer.from([1,0x55,0x12,32]),createHash('sha256').update(stored).digest()]);
     let bits=0,value=0,cid='b';for(const byte of raw){value=(value<<8)|byte;bits+=8;while(bits>=5){bits-=5;cid+='abcdefghijklmnopqrstuvwxyz234567'[(value>>>bits)&31];}value&=(1<<bits)-1;}if(bits)cid+='abcdefghijklmnopqrstuvwxyz234567'[(value<<(5-bits))&31];
-    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({Key:cid,Size:stored.length}));
-   }else{assert.equal(url.pathname,'/api/v0/block/get');assert.ok(stored);const body=Buffer.from(stored);if(mode==='tamper')body[body.length-1]^=1;res.end(mode==='truncate'?body.subarray(0,body.length-1):body);}
+    blocks.set(cid,stored);res.setHeader('Content-Type','application/json');res.end(JSON.stringify({Key:cid,Size:stored.length}));
+   }else{assert.equal(url.pathname,'/api/v0/block/get');const selected=blocks.get(url.searchParams.get('arg'));assert.ok(selected);const body=Buffer.from(selected);if(mode==='tamper')body[body.length-1]^=1;res.end(mode==='truncate'?body.subarray(0,body.length-1):body);}
   }catch(error){errors.push(String(error));res.writeHead(500);res.end();}
  });
  await new Promise(resolve=>provider.listen(0,'127.0.0.1',resolve));const providerOrigin=`https://127.0.0.1:${provider.address().port}`;
@@ -71,9 +81,11 @@ try {
  const result=await page.evaluate(endpoint=>window.exercise(endpoint),providerOrigin);
  assert.equal(result.cid,result.expected);assert.equal(result.same,true);assert.equal(result.refused,true);
  assert.equal(providerRequests.length,2);
+ const composed=await page.evaluate(endpoint=>window.composed(endpoint),providerOrigin);
+ assert.deepEqual(composed,{same:true,blocks:2});assert.equal(providerRequests.length,6);
  // Admission exhaustion must cause zero provider traffic.
  assert.equal(await page.evaluate(endpoint=>window.failure(endpoint,false,1),providerOrigin),true);
- assert.equal(providerRequests.length,2);
+ assert.equal(providerRequests.length,6);
  let networkRetries=0;
  for(const fault of ['tamper','truncate','unavailable','drop-upload']){
   mode=fault;const before=providerRequests.length,fetchBefore=await page.evaluate(()=>window.fetchCalls());
@@ -93,6 +105,6 @@ try {
  seen=new Promise(resolve=>{noticed=resolve;});gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
  await browser.close();browser=undefined;await bounded(gone);
- assert.deepEqual(appRequests.sort(),['/','/app.js']);assert.equal(providerRequests.length,8+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+ assert.deepEqual(appRequests.sort(),['/','/app.js']);assert.equal(providerRequests.length,12+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
  console.log('Direct Kubo browser success, consent/rate refusal, provider faults and interrupted acknowledgements passed (protocol substitute).');
 }finally{await browser?.close();for(const server of [app,provider])if(server)await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true});}
