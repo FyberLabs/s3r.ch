@@ -7,9 +7,9 @@ async function setup(){
  const f=await linkedSessionFixture('oidc');if(f.credential.kind!=='oidc')throw Error();
  const origin='https://s3r.ch',providerOrigin='https://id.example';let context='person-context',now=200,saved=false,lost=false,cancelled=false,exchanges=0;
  const broker={async start(token:string){return {authorizationUrl:providerOrigin+'/authorize?state='+('s'.repeat(43)),state:'s'.repeat(43),expiresAt:260};},
-  async exchange(){exchanges++;if(cancelled)throw Error();saved=true;if(lost)throw Error('lost');},
+  async exchange(){exchanges++;if(cancelled)throw Error();saved=true;if(lost)throw Error('lost');return undefined;},
   async finish(token:string){if(!saved||cancelled)throw Error();const result=await f.sessions.exchangeLinked(token,await f.proof(token));if(!result)throw Error();return result;},
-  async cancel(){cancelled=true;}};
+  async cancel(){cancelled=true;return undefined;}};
  const flow=createLinkedOidcBrowserFlow({origin,providerOrigin,configDigest:'a'.repeat(64),secret:'x'.repeat(32),sessions:f.sessions,broker,
   person:async()=>({credential:f.credential as any,context,expiresAt:500}),clock:()=>now});
  const request=(action:string,body:unknown={},cookie='',from=origin)=>new Request(origin+'/api/identity/linked-oidc/'+action,{method:'POST',headers:{origin:from,'x-device-context':context,'content-type':action==='callback'?'application/x-www-form-urlencoded':'application/json',cookie},body:action==='callback'?String(body):JSON.stringify(body)});
