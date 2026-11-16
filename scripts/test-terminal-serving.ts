@@ -4,7 +4,9 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 import { createRequire } from "node:module";
-import { generateKeyPairSync } from "node:crypto";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import path from "node:path";
 import { createIdentitySessions } from "../lib/identity/sea-session";
 import { createSeaSessionClient } from "../lib/identity/sea-session-client";
@@ -20,7 +22,7 @@ const pair = await sea.pair(), other = await sea.pair(), unrelated = await sea.p
   const env: Record<string, string> = { IDENTITY_SESSION_SECRET: "s".repeat(40), S3RCH_OAUTH_ISSUER: issuer, S3RCH_OAUTH_CLIENT_ID: "s3rch-web",
     S3RCH_DEVICE_TRANSFER_CONFIG: JSON.stringify({ v: 1, scope: { sourceOrigin: origin, destinationOrigin: origin, application: "s3r.ch", tenant: scopes["s3rch-device-transfer"].tenant, audience: "device" }, auth: "https://api.test.hyperme.sh/auth/sea-device-link/v1/", acl: "https://api.test.hyperme.sh/api/v1/acl/sociacl/device-transfer/", provider: "panopticon" }),
     S3RCH_IDENTITY_REPLAY_BACKEND: "spanopticon", S3RCH_IDENTITY_REPLAY_ORIGIN: "https://api.test.hyperme.sh", S3RCH_IDENTITY_REPLAY_TENANT_ID: "55555555-5555-5555-5555-555555555555", S3RCH_IDENTITY_REPLAY_API_KEY: "dedicated-replay",
-    S3RCH_EXPERIMENT_ORIGIN: origin, S3RCH_EXPERIMENT_TENANT: "66666666-6666-6666-6666-666666666666", S3RCH_EXPERIMENT_SECRET: "d".repeat(64), S3RCH_EXPERIMENT_STORAGE_ORIGIN: "https://api.test.hyperme.sh",
+    S3RCH_EXPERIMENTS_ENABLED: "1", S3RCH_EXPERIMENT_ORIGIN: origin, S3RCH_EXPERIMENT_TENANT: "66666666-6666-6666-6666-666666666666", S3RCH_EXPERIMENT_SECRET: "d".repeat(64), S3RCH_EXPERIMENT_STORAGE_ORIGIN: "https://api.test.hyperme.sh",
     S3RCH_EXPERIMENT_CACHE_KEY: "cache-key-1234567890", S3RCH_EXPERIMENT_OUTBOX_KEY: "outbox-key-1234567890", S3RCH_EXPERIMENT_PUBLIC_KEY: signing.publicKey.export({ type: "spki", format: "pem" }).toString(),
     APPLICATIONINSIGHTS_CONNECTION_STRING: "InstrumentationKey=11111111-1111-4111-8111-111111111111" };
 
@@ -95,12 +97,51 @@ try {
     const client = createSeaSessionClient({ origin, base: "/api/identity/sea", fetch: async (url, init) => b.request(new URL(String(url), origin).pathname, init?.body ? JSON.parse(String(init.body)) : undefined) });
     assert.equal(await client.signIn(key), true);
     assert.equal((await (await b.request("/api/identity/session")).json()).owner, key.pub);
+    await client.logout();
+    assert.equal(await client.signIn(key), true);
     b.jar.delete("__Host-nightly-run-grant");
     assert.equal((await b.request("/api/identity/session")).status, 401);
   }));
+  const consent = browser("c".repeat(64));
+  assert.equal((await consent.request("/api/experiments", { action: "consent", allowed: true })).status, 200);
+  consent.jar.delete("__Host-nightly-run-grant");
+  assert.equal((await consent.request("/api/experiments", { action: "consent", allowed: false })).status, 503);
+  const alias = browser("c".repeat(64));
+  const aliasClient = createSeaSessionClient({ origin, base: "/api/squad/pilot/session", fetch: async (url, init) => alias.request(new URL(String(url), origin).pathname, init?.body ? JSON.parse(String(init.body)) : undefined) });
+  assert.equal(await aliasClient.signIn(pair), true);
+  assert.equal((await (await alias.request("/api/identity/session")).json()).owner, pair.pub);
   assert.equal((await browser("f".repeat(64)).request("/api/identity/device/authorize")).status, 302);
   assert.equal((await browser("c".repeat(64)).request("/api/identity/startup/availability")).status, 503); // no private startup mapping
   assert.equal((await browser("c".repeat(64)).request("/api/unknown")).status, 503);
   assert.equal((await fetch(local + "/api/health")).status, 200);
 } finally { await stop(); }
+// Real protected startup file, without substituting the configuration reader.
+const directory = await mkdtemp(path.join(tmpdir(), "s3rch-terminal-startup-"));
+try {
+  function canonical(value: unknown): string {
+    if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
+    if (value && typeof value === "object") return "{" + Object.keys(value).sort().map(key => JSON.stringify(key) + ":" + canonical((value as Record<string, unknown>)[key])).join(",") + "}";
+    return JSON.stringify(value);
+  }
+  const doc = JSON.parse(await readFile("lib/identity/vectors/startup-deployment.json", "utf8"));
+  doc.binding.sea_public_key = pair.pub;
+  doc.owner.broker.issuer = issuer;
+  doc.binding_sha256 = createHash("sha256").update(canonical(doc.binding) + "\n").digest("hex");
+  config.scopes["flags-s3rch-browser"].tenant = doc.owner.tenant_id;
+  env.STARTUP_IDENTITY_CONFIG_FILE = path.join(directory, "startup.json");
+  await writeFile(env.STARTUP_IDENTITY_CONFIG_FILE, canonical(doc) + "\n", { mode: 0o600 });
+  env.S3RCH_STARTUP_LOGIN_ENABLED = "1";
+  env.S3RCH_STARTUP_LOGIN_PROVIDER = "panopticon";
+  env.S3RCH_STARTUP_AUTH_URL = "https://api.test.hyperme.sh/auth/startup/identity";
+  stop = await boot(JSON.stringify(config));
+  try {
+    const b = browser("c".repeat(64));
+    assert.equal((await (await b.request("/api/identity/startup/availability")).json()).enabled, true);
+    assert.equal((await b.request("/api/identity/startup/start")).status, 302);
+    assert.equal((await b.request("/api/identity/startup/session")).status, 401);
+    const denied = await b.request("/api/identity/oauth/callback?error=access_denied");
+    assert.equal(denied.status, 302);
+    assert.notEqual(denied.headers.get("location"), "/feed?startup=linked");
+  } finally { await stop(); }
+} finally { await rm(directory, { recursive: true, force: true }); }
 console.log("Built Next terminal entry contracts passed");
