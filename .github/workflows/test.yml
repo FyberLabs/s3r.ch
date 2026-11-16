@@ -72,6 +72,13 @@ jobs:
           --test-coverage-include=lib/identity/terminal-startup-route.ts
           lib/identity/terminal-startup-route.test.ts
 
+      - name: Terminal fixture policy coverage
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/identity/terminal-fixture-policy.ts
+          --test-coverage-lines=95 --test-coverage-branches=90
+          lib/identity/terminal-fixture-policy.test.ts
+
       - name: Native terminal device composition coverage (CI only)
         run: >-
           node --import tsx --test --experimental-test-coverage
