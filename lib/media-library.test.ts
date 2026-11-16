@@ -578,6 +578,7 @@ for(const kind of ['Wrap','Status'] as const)test(`group item ${kind} controls p
   await resume();assert.deepEqual(f.state()[field],held);assert.match(f.state().message,/retained/);
   if(kind==='Status'){await f.library.discardItemStatus('tenant');assert.deepEqual(f.state().itemStatus,held);}
   fail=false;await resume();assert.equal(f.state()[field],null);
+  if(kind==='Status')assert.match(f.state().message,/may have expired/);
   if(kind==='Status'){await inspect();await f.library.discardItemStatus('tenant');assert.equal(f.state().itemStatus,null);}
   saved=null;await inspect();assert.match(f.state().message,/No saved/);
   saved=held;await inspect();f.library.requestDeletion('owned');await resume();assert.deepEqual(f.state()[field],held);
@@ -594,4 +595,19 @@ for(const kind of ['Wrap','Status'] as const)test(`late group ${kind} recovery c
   release({object:'owned',predicate:'same-group',set:'set_test',reader:key,token:'saved'});await work;
   assert.equal(f.state().itemWrap,null);assert.equal(f.state().itemStatus,null);assert.equal(f.state().loaded,false);
  }finally{release(null);f.library.dispose();}
+});
+
+
+test("pending group file delivery blocks epoch-changing actions",async()=>{
+ let writes=0;const held={object:'owned',predicate:'same-group',set:'set_test',reader:key,token:'saved'};
+ const f=setup({browser:()=>({catalog:async()=>({at:1,objects:['owned'],nextPage:null,principal:key}),recipients:async()=>[key],
+  pendingItemWrap:async()=>held,startItemEpoch:async()=>{writes++;},startItemGrant:async()=>{writes++;},share:async()=>{writes++;},
+ } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
+ try{
+  await f.library.load();await f.library.recipients('owned');await f.library.inspectItemWrap('tenant');
+  await f.library.startItemEpoch('tenant','owned','same-group','set_test');
+  await f.library.startItemGrant('tenant','owned','same-group','set_test',key,false);
+  await f.library.share('tenant','owned',key);await f.library.unshare('tenant','owned',key);
+  assert.equal(writes,0);assert.deepEqual(f.state().itemWrap,held);
+ }finally{f.library.dispose();}
 });
