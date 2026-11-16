@@ -42,7 +42,7 @@ export const BRIDGE_MATRIX: NetworkBridge[] = [
     network: "Nostr",
     pull: "yes",
     repost: "yes",
-    thisSlice: "public seeder + signed-in browser pull via NIP-01 kind 1 REQ; /api/ingest or allowlisted extension/relay",
+    thisSlice: "public seeder + signed-in browser pull via NIP-01 kind 1 REQ; /api/ingest or allowlisted extension/relay; explicit owner-scoped Nostr outbound with relay acknowledgement",
   },
   {
     network: "Farcaster",
@@ -95,7 +95,7 @@ export type OutboundResult =
 
 /**
  * Documented outbound post interface.
- * Farcaster + ATProto are wired (SIWE + server env). Others stay unimplemented.
+ * Farcaster + ATProto and owner-scoped Nostr are wired. Others stay unimplemented.
  * Share-into-mesh does not call post().
  */
 export interface OutboundAdapter {

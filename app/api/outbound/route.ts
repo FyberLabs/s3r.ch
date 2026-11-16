@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * Explicit Farcaster / ATProto outbound. SIWE required.
+ * Explicit Farcaster / ATProto / Nostr outbound. Verified SEA session required.
  * Does not write Gun. Share-into-mesh does not call this.
  * Credentials stay in server env — never NEXT_PUBLIC, never on Gun.
  */

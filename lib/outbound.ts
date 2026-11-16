@@ -1,6 +1,6 @@
 /**
  * Explicit outbound posting. Not inbound pull, not share-into-mesh,
- * not a grant, not delivery. SIWE session required at the route.
+ * not a grant, not delivery. Verified SEA session required at the route.
  * Credentials stay server-side. Sharing a post does not call this.
  *
  * This file is UI-safe (no hub signer / PDS clients).
