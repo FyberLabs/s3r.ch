@@ -1,3 +1,5 @@
+import {restoreExistingKeyring} from './restore-keyring';
+import {restoredKeyringRecords,openRestoredKeyring,type RestoredKeyringRecord} from './restored-keyring-storage';
 import {activateDeviceKeyring} from './device-activation';
 import {createAuthority} from 'acl-sea-device-authority';
 import {createRelay} from 'auth-sea-relay';
@@ -43,12 +45,33 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
   async unlock(signal){
    guard();signal.throwIfAborted();
    if(source&&sourceIdentity)return exported(source,sourceIdentity);
+   const restored=await restoredKeyringRecords();guard();
+   if(restored.length){
+    if(restored.length!==1||!same(restored[0].scope,session.scope))return fail();
+    const bytes=await openRestoredKeyring(restored[0]);
+    try{guard();signal.throwIfAborted();return await exported(bytes,restored[0].identity);}finally{bytes.fill(0);}
+   }
    const records=await deviceRecords();guard();if(records.length!==1||!same(records[0].binding.scope,session.scope))return fail();
    const opened=await unlockDeviceRecord(records[0]);
    try{guard();signal.throwIfAborted();return await exported(opened.keyring,records[0].binding.identity);}finally{opened.keyring.fill(0);}
   },
  };
  return {adapters,
+  async restoreCompleteSource(bytes:Uint8Array){
+   guard();
+   const result=await restoreExistingKeyring(bytes,{scope:session.scope,current,signal:abort.signal,
+    keyringState:identity=>authority.keyringState(identity),protect:()=>prepareDeviceProtection(new URL(origin).hostname)});
+   guard();onStored();return result.outcome;
+  },
+  async signInRestored(record:RestoredKeyringRecord){
+   guard();if(!same(record.scope,session.scope))return fail();const bytes=await openRestoredKeyring(record);
+   try{
+    guard();const state=await authority.keyringState(record.identity);guard();
+    return await activateDeviceKeyring(bytes,record.identity,state,{current,
+     signIn:pair=>createSeaSessionClient({base:'/api/identity/sea',origin}).signIn(pair,abort.signal),
+     remember:pair=>rememberUnlockedMeshPair(record.address,pair)});
+   }finally{bytes.fill(0);}
+  },
   /** Existing pair-only installations cannot invent missing retired keys, lanes
    * or content epoch. Admit a complete local material export against the current
    * signed-in identity, with no plaintext persistence or recovery server. */
