@@ -1,3 +1,5 @@
+import {createAllocatedMediaService} from "./allocated-media-service";
+import {createMediaGroupService} from "./media-group-service";
 // File crypto, group authorization and HTTP contracts execute only in CI.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -20,6 +22,15 @@ async function fixture(){
   }
   const current=await item(2,'a'.repeat(64)),changed=await item(3,'e'.repeat(64));sealed.key.fill(0);groupKey.fill(0);
   let now=100,groups=0,mode='normal';const calls:string[]=[];
+  let authorizedReads=0,directReads=0;
+  const groupService=createMediaGroupService({origin:'https://acl.example',tenant,readers:[{principal:reader,apiKey:'fixture-only'}]},'https://s3r.ch',async()=>reader,
+    async(url,init)=>{assert.ok(String(url).endsWith('/item-wrap-read'));assert.equal(new Headers(init?.headers).get('X-Api-Key'),'fixture-only');
+      assert.deepEqual(JSON.parse(init?.body as string),{object,...scope});authorizedReads++;
+      if(mode==='deny-download'||(mode==='revoke-download'&&authorizedReads===2))return new Response(null,{status:403});
+      return Response.json({...current,expires_at:now+2});},()=>now);
+  const objectService=createAllocatedMediaService({origin:'https://s3r.ch',owner:()=>null,
+    wrap:()=>async()=>{directReads++;return new Response(null,{status:403});},group:()=>groupService,
+    allocated:{reference:async()=>({digest:reference.sha256,length:reference.length}),get:async()=>sealed.bytes,put:async()=>{throw Error('read only');}}});
   const input={tenant,principal:reader,object,scope,epriv,epub,clock:()=>now,signal:new AbortController().signal,
     fetcher:async(url:unknown,init?:RequestInit)=>{
       const path=String(url);calls.push(path);assert.equal(init?.credentials,'same-origin');assert.equal(init?.redirect,'error');
@@ -28,19 +39,20 @@ async function fixture(){
         if(mode==='revoke'&&groups===3)return new Response(null,{status:403});
         return Response.json({...((mode==='change-before'&&groups>=2)||(mode==='change-after'&&groups===3)?changed:current),expires_at:now+2});
       }
-      now=200;return new Response(new Uint8Array(sealed.bytes),{headers:{'content-type':'application/octet-stream','content-length':String(reference.length),etag:'"'+reference.sha256+'"'}});
+      now=200;const headers=new Headers(init?.headers);headers.set('origin','https://s3r.ch');return objectService(new Request('https://s3r.ch'+path,{...init,headers}),object);
     }};
-  return {input,calls,setMode:(value:string)=>{mode=value;}};
+  return {input,calls,authorization:()=>({authorizedReads,directReads}),setMode:(value:string)=>{mode=value;}};
 }
 test("group file fetch obtains fresh authorization after transfer and after decryption",async()=>{
   const f=await fixture(),file=await openGroupMediaFile(f.input);
   assert.deepEqual(file.bytes,plain);assert.deepEqual(file.description,description);file.bytes.fill(0);
+  assert.deepEqual(f.authorization(),{authorizedReads:2,directReads:0});
   assert.equal(f.calls.filter(p=>p.endsWith('/wrap-read')).length,3);
   assert.equal(f.calls.filter(p=>p.endsWith('/item-wrap-read')).length,6);
-  assert.equal(f.calls[3],'/api/media/'+encodeURIComponent(object));
+  assert.equal(f.calls[3],'/api/media/'+encodeURIComponent(object)+'?'+new URLSearchParams(scope));
 });
 test("changed epochs and post-decryption revocation never return a file",async()=>{
-  for(const mode of ['change-before','change-after','revoke']){const f=await fixture();f.setMode(mode);await assert.rejects(openGroupMediaFile(f.input));}
+  for(const mode of ['change-before','change-after','revoke','deny-download','revoke-download']){const f=await fixture();f.setMode(mode);await assert.rejects(openGroupMediaFile(f.input));}
 });
 test("wrong tenant binding, cancellation and failed ciphertext transfer refuse",async()=>{
   const f=await fixture();await assert.rejects(openGroupMediaFile({...f.input,tenant:'22222222-2222-4222-8222-222222222222'}));

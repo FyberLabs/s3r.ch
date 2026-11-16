@@ -1,3 +1,4 @@
+import {parseMediaGroupScope,type MediaGroupScope} from "./media-group";
 import { isCanonicalObjectId } from "./identity/object-id";
 import { parseForumObjectRecord, type UnverifiedObjectRecord } from "./identity/forum-object-record";
 import { MEDIA_STORED_MAX } from "./media-crypto";
@@ -53,8 +54,9 @@ export function createMediaHttpClient(fetcher: typeof fetch = fetch) {
       // script-controlled header. No plaintext metadata or key material is sent.
       return write(object, "PUT", held, { "Content-Type": "application/octet-stream", "X-Media-SHA256": reference.sha256 }, deadline);
     },
-    async get(object: string, expected: MediaCiphertextReference, signal?: AbortSignal): Promise<Uint8Array> {
-      const url = address(object), reference = { ...expected };
+    async get(object: string, expected: MediaCiphertextReference, signal?: AbortSignal, group?:MediaGroupScope): Promise<Uint8Array> {
+      const scope=group?parseMediaGroupScope(group):undefined;
+      const url = address(object)+(scope?"?"+new URLSearchParams({predicate:scope.predicate,set:scope.set}):""), reference = { ...expected };
       if (!referenceOK(reference)) throw Error("Invalid media reference");
       const deadline = signalFor(signal); deadline.throwIfAborted();
       const response = await fetcher(url, { method: "GET", headers: { Accept: "application/octet-stream" },
