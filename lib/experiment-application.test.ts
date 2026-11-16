@@ -1,3 +1,6 @@
+import {mkdtemp,writeFile,rm} from "node:fs/promises";
+import {join} from "node:path";
+import {tmpdir} from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign } from "node:crypto";
@@ -10,7 +13,18 @@ const env={S3RCH_EXPERIMENT_ORIGIN:site,S3RCH_EXPERIMENT_TENANT:tenant,S3RCH_EXP
   S3RCH_EXPERIMENT_STORAGE_ORIGIN:"https://storage.example.test",S3RCH_EXPERIMENT_CACHE_KEY:"cache-key-1234567890",S3RCH_EXPERIMENT_OUTBOX_KEY:"outbox-key-1234567890",
   S3RCH_EXPERIMENT_PUBLIC_KEY:signing.publicKey.export({type:"spki",format:"pem"}).toString(),IDENTITY_SESSION_SECRET:"private-unit-identity-root-1234567890",
   APPLICATIONINSIGHTS_CONNECTION_STRING:"InstrumentationKey=11111111-1111-4111-8111-111111111111",S3RCH_EXPERIMENT_PRIMARY_V2:"1"};
-test("product consumption preserves anonymous assignment through verified SEA sign-in and revokes pending data",async()=>{
+for(const mode of ["disabled","active","withdrawn","invalid","failed"]) test(`native product operation with measurements ${mode}`,async()=>{
+  const dir=await mkdtemp(join(tmpdir(),"s3rch-measurement-"));
+  const appEnv:Record<string,string>={...env};let observations=0,uploads=0,retention=0;
+  const rows:Array<Record<string,unknown>>=[];
+  if(mode!=="disabled") {
+    await writeFile(join(dir,"relay"),"b".repeat(64),{mode:0o600});await writeFile(join(dir,"ingest"),"private-ingestion-credential",{mode:0o600});
+    Object.assign(appEnv,{S3RCH_MEASUREMENTS_ENABLED:"1",S3RCH_MEASUREMENTS_TENANT:tenant,
+      S3RCH_MEASUREMENTS_SECRET_FILE:join(dir,"ingest"),S3RCH_MEASUREMENTS_RELAY_SECRET_FILE:join(dir,"relay"),
+      S3RCH_MEASUREMENTS_INGESTION_ENDPOINT:"https://test.ingest.monitor.azure.com",S3RCH_MEASUREMENTS_DCR_ID:"dcr-"+"c".repeat(32),
+      S3RCH_MEASUREMENTS_DIRECTORY:tenant,S3RCH_MEASUREMENTS_CLIENT_ID:"22345678-1234-4234-8234-123456789abc",
+      S3RCH_MEASUREMENTS_RELAY_ORIGIN:"https://measurements.example.test",S3RCH_MEASUREMENTS_SAMPLE_EVERY:"1"});
+  }
   const original=globalThis.fetch, records=new Map<string,{value:string;revision:string}>();let sequence=0;
   const telemetry:Array<{name:string;properties:Record<string,string>}>=[];
   const now=Math.floor(Date.now()/1000);
@@ -18,6 +32,22 @@ test("product consumption preserves anonymous assignment through verified SEA si
     experiments:[{key:"landing-message",control:"control",variants:["control","create"],weights:[0,1],disabled:false}]});
   globalThis.fetch=async(url,init)=>{
     const target=String(url),headers=new Headers(init?.headers);
+    if(target==="https://measurements.example.test/v1/observe") {
+      observations++;assert.notEqual(mode,"disabled");assert.equal(headers.get("authorization"),"Bearer "+"b".repeat(64));assert.equal(headers.has("x-api-key"),false);
+      const a=JSON.parse(headers.get("x-experiment-attribution")!);
+      assert.deepEqual(Object.keys(a).sort(),["action","experiment","issued","operation","target","variant"]);
+      assert.equal(a.experiment,"landing-message");assert.equal(a.variant,"create");assert.equal(a.operation,"s3rch-outbox-read");assert.match(a.target,/^[a-f0-9]{64}$/);
+      assert.notEqual(a.action,"12345678-1234-4234-8234-123456789abc");
+      const found=mode==="withdrawn"?{value:JSON.stringify({version:1,expires:retention,revoked:true,rows:[]}),revision:"b".repeat(64)}:
+        mode==="invalid"?{value:"invalid-json",revision:"b".repeat(64)}:records.get("https://storage.example.test/api/v1/storage/records/experiments/s3rch-outbox-"+a.target);
+      return new Response(found?.value??null,{status:mode==="failed"?503:found?200:404,headers:{"x-experiment-action":a.action,...(found?{etag:`"${found.revision}"`}:{})}});
+    }
+    if(target.startsWith("https://login.microsoftonline.com/"))return Response.json({access_token:"private-server-token",token_type:"Bearer",expires_in:3600});
+    if(target.startsWith("https://test.ingest.monitor.azure.com/")) {
+      uploads++;assert.equal(headers.get("authorization"),"Bearer private-server-token");
+      const batch=JSON.parse(String(init?.body));for(const row of batch)assert.deepEqual(Object.keys(row).sort(),["ActionId","Experiment","Metric","ObservedAt","Value","Variant"]);rows.push(...batch);
+      return new Response(null,{status:204});
+    }
     if(target.endsWith("experiments/s3rch-cache")){
       assert.equal(headers.get("x-api-key"),env.S3RCH_EXPERIMENT_CACHE_KEY);
       return Response.json({payload,signature:sign(null,Buffer.from(payload),signing.privateKey).toString("base64url")});
@@ -31,7 +61,7 @@ test("product consumption preserves anonymous assignment through verified SEA si
     }
     assert.equal(target,"https://dc.applicationinsights.azure.com/v2/track");telemetry.push(JSON.parse(String(init?.body)).data.baseData);return Response.json({itemsReceived:1,itemsAccepted:1,errors:[]});
   };
-  const app=await createExperimentApplication(env),jar=new Map<string,string>();
+  const app=await createExperimentApplication(appEnv),jar=new Map<string,string>();
   const cookie=()=>[...jar].map(([k,v])=>`${k}=${v}`).join("; ");
   async function post(body:unknown,enabled=true){
     const response=await app.post(new Request(site+"/api/experiments",{method:"POST",headers:{origin:site,"content-type":"application/json",cookie:cookie()},body:JSON.stringify(body)}),enabled);
@@ -53,7 +83,18 @@ test("product consumption preserves anonymous assignment through verified SEA si
     assert.equal((await post({action:"consent",allowed:true})).status,200);
     const [first,other]=await Promise.all([post({action:"evaluate"}),post({action:"evaluate"})]);
     const shown=await first.json();assert.equal(shown.variant,"create");assert.equal((await other.json()).cohort,shown.cohort);
-    assert.equal((await post({action:"exposure",display:shown.display,eventId:"12345678-1234-4234-8234-123456789abc"})).status,200);
+    assert.equal(observations,0,"evaluate/cache/initial consent reads are not measured");
+    assert.equal((await post({action:"exposure",display:"forged",eventId:"12345678-1234-4234-8234-123456789abc"})).status,400);assert.equal(observations,0);
+    const privacy=createExperimentPrivacy({tenant,origin:site,secret:Buffer.from(env.S3RCH_EXPERIMENT_SECRET,"hex")});retention=(await privacy.privacy(cookie()))!.retentionUntil;
+    const exposed=await post({action:"exposure",display:shown.display,eventId:"12345678-1234-4234-8234-123456789abc"});
+    await new Promise(resolve=>setImmediate(resolve));
+    if(["withdrawn","invalid","failed"].includes(mode)) {
+      assert.equal(exposed.status,503);assert.ok(observations>0);assert.equal(telemetry.length,0);
+      if(mode==="failed"){assert.ok(uploads>0);assert.ok(rows.some(row=>row.Metric==="dependency_failure_rate"&&row.Value===1));}
+      else assert.equal(uploads,0,"revoked or invalid ledger discards staged observations");return;
+    }
+    assert.equal(exposed.status,200);
+    assert.equal(observations>0,mode==="active");assert.equal(uploads>0,mode==="active");
     assert.equal((await post({action:"conversion",display:shown.display,eventId:"22345678-1234-4234-8234-123456789abc"})).status,400);
     const pair=await createRequire(import.meta.url)("gun/sea").pair();jar.set("__Host-s3rch-squad-session",await native(pair.pub));
     const signed=await (await post({action:"evaluate"})).json();assert.equal(signed.cohort,shown.cohort);assert.equal(signed.authenticated,true);assert.ok(signed.expiresAt<=now+300);
@@ -79,5 +120,5 @@ test("product consumption preserves anonymous assignment through verified SEA si
     const nearExpiry=createExperimentPrivacy({tenant,origin:site,secret:Buffer.from(env.S3RCH_EXPERIMENT_SECRET,"hex"),clock:()=>now-86390});
     const consent=(await nearExpiry.consent()).split(";")[0];jar.set(consent.slice(0,consent.indexOf("=")),consent.slice(consent.indexOf("=")+1));
     const bounded=await (await post({action:"evaluate"})).json();assert.ok(bounded.expiresAt<=now+10);
-  }finally{await app.close();globalThis.fetch=original;}
+  }finally{await app.close();globalThis.fetch=original;await rm(dir,{recursive:true,force:true});}
 });

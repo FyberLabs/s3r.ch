@@ -26,6 +26,16 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 | `S3RCH_EXPERIMENT_PRIMARY_V2` | no | unset | no | Set to 1 only when the primary first-party destination supports named conversion v2. |
 | `S3RCH_EXPERIMENT_SECONDARY_CONNECTION` | no | unset | yes | Optional secondary Application Insights connection string. Primary uses APPLICATIONINSIGHTS_CONNECTION_STRING. |
 | `S3RCH_EXPERIMENT_SECONDARY_V2` | no | unset | no | Set to 1 only when the configured secondary destination supports named conversion v2. |
+| `S3RCH_MEASUREMENTS_ENABLED` | no | unset | no | Exact 1 enables private server dependency observation; activation remains separately owned. |
+| `S3RCH_MEASUREMENTS_TENANT` | when measurements enabled | unset | no | Must equal the native experiment tenant. |
+| `S3RCH_MEASUREMENTS_SECRET_FILE` | when measurements enabled | unset | yes | Absolute private same-UID regular file for separate Azure ingestion client secret; no symlinks or group/world permissions. |
+| `S3RCH_MEASUREMENTS_RELAY_SECRET_FILE` | when measurements enabled | unset | yes | Separate private file containing the relay 64-hex bearer; must differ from current/previous experiment, identity and storage keys. |
+| `S3RCH_MEASUREMENTS_INGESTION_ENDPOINT` | when measurements enabled | unset | no | Dedicated HTTPS Azure Monitor ingestion origin; no arbitrary destination/path. |
+| `S3RCH_MEASUREMENTS_DCR_ID` | when measurements enabled | unset | no | Dedicated server measurement rule ID, dcr- plus 32 lowercase hex characters. |
+| `S3RCH_MEASUREMENTS_DIRECTORY` | when measurements enabled | unset | no | Azure credential directory UUID. |
+| `S3RCH_MEASUREMENTS_CLIENT_ID` | when measurements enabled | unset | no | Separate Azure server-ingestion client UUID. |
+| `S3RCH_MEASUREMENTS_RELAY_ORIGIN` | when measurements enabled | unset | no | Private HTTPS relay origin; operation and target shape are compiled server-side. |
+| `S3RCH_MEASUREMENTS_SAMPLE_EVERY` | no | 100 | no | UUID-based sampling divisor 1 through 10000; unsampled calls use the existing direct path. |
 | `GUN_FILE` | no | `data/radata` under the process cwd; the image sets `/app/data/radata` | no | Directory for this process's Gun radisk. Create it on a persistent volume. |
 | `GUN_SNAPSHOT` | no | `data/snapshot.json` under the cwd; the image sets `/app/data/snapshot.json` | no | JSON cache of seeder public items. |
 | `PANOPTICON_API_KEY` | no | unset | yes | `X-Api-Key` for the TURN, oracles, and payments hops. All three of this key, `PANOPTICON_TENANT_ID`, and that hop's base must be set or the hop stays unconfigured. |

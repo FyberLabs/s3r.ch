@@ -1,3 +1,5 @@
+import { createS3rchMeasurements } from "./experiment-measurements";
+import { terminalWorkBinding, verifyTerminalWork } from "./identity/terminal-run";
 import { createHmac, createPublicKey, randomUUID } from "node:crypto";
 import { matchesBrowserOrigin, matchesRequestOrigin } from "./request-origin";
 import { anonymousExperimentCookie } from "./experiment-state";
@@ -55,8 +57,9 @@ export async function createExperimentApplication(env: Record<string, string | u
     const claims = await verifier.claims(token, "s3rch-identity-session-v1", 300);
     return { subject: claims.key, expiresAt: claims.expiresAt };
   }
+  const measurements = await createS3rchMeasurements(env, transport);
   const records = createExperimentRecords({ origin: env.S3RCH_EXPERIMENT_STORAGE_ORIGIN ?? "", tenant,
-    cacheKey: env.S3RCH_EXPERIMENT_CACHE_KEY ?? "", outboxKey: env.S3RCH_EXPERIMENT_OUTBOX_KEY ?? "" }, transport);
+    cacheKey: env.S3RCH_EXPERIMENT_CACHE_KEY ?? "", outboxKey: env.S3RCH_EXPERIMENT_OUTBOX_KEY ?? "", measureRead: measurements?.read }, transport);
   const sinks: Record<string, ExperimentSink> = {};
   for (const [name, connection, v2] of [["primary", env.APPLICATIONINSIGHTS_CONNECTION_STRING, env.S3RCH_EXPERIMENT_PRIMARY_V2],
     ["secondary", env.S3RCH_EXPERIMENT_SECONDARY_CONNECTION, env.S3RCH_EXPERIMENT_SECONDARY_V2]]) {
@@ -68,11 +71,11 @@ export async function createExperimentApplication(env: Record<string, string | u
   const provider = await createCachedExperimentProvider({ records: records.cache, publicKey: publicKey(env.S3RCH_EXPERIMENT_PUBLIC_KEY), domain: `s3rch-${tenant.replaceAll("-", "")}` });
   let active = 0;
   function outbox(privacy: { id: string; retentionUntil: number }, identityExpires = Infinity) {
-    return createExperimentOutbox({ store: records.outbox, consentId: privacy.id, retentionUntil: privacy.retentionUntil, sinks,
+    return createExperimentOutbox({ measurementValidity: measurements?.accepted, store: records.outbox, consentId: privacy.id, retentionUntil: privacy.retentionUntil, sinks,
       permitted: () => Date.now() < privacy.retentionUntil && Date.now() < identityExpires * 1000, healthy: key => provider.guardrailHealthy(key) });
   }
   return Object.freeze({
-    close: provider.close,
+    close() { measurements?.close(); return provider.close(); },
     async get(request: Request, enabled = true) {
       if (!matchesRequestOrigin(request, new URL(site))) return result({ enabled: false }, 403);
       const privacy = await sessions.privacy(request.headers.get("cookie") ?? "");
@@ -118,7 +121,10 @@ export async function createExperimentApplication(env: Record<string, string | u
         const queue = outbox(privacy, principal.expiresAt);
         if (!await queue.active()) return result({ variant: "control", consented: false }, 200, clearExperimentCookies());
         const displayed = typeof body.display === "string" ? await sessions.displayed(body.display, privacy.id) : null;
+        const nativeBinding = terminalWorkBinding();
         const open = createExperimentRuntime({ tenant, secret: createHmac("sha256", secret).update(privacy.id).digest(), previousSecrets: previousSecrets.map(key => createHmac("sha256", key).update(privacy.id).digest()), provider, experiments: s3rchExperiments,
+          measure: measurements ? (scope, work) => measurements.run({ ...scope, signal: request.signal,
+            current: () => { try { verifyTerminalWork(nativeBinding); return !request.signal.aborted && scope.current() && Date.now() < principal.expiresAt * 1000; } catch { return false; } } }, work) : undefined,
           outbox: queue, sinks: [{ supportedEventTypes: Object.values(sinks).every(s => s.supportedEventTypes.includes("experiment.conversion.v2")) ? ["experiment.exposure.v1", "experiment.conversion.v2"] : ["experiment.exposure.v1"],
             async send(event) { await queue.flush(event.event_id); } }] });
         const context = await open({ cookies, verifiedPrincipal: principal.subject, privacy: () => ({ consent: Date.now() < principal.expiresAt * 1000, deletionRequested: false, retentionUntil: privacy.retentionUntil }),

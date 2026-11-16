@@ -22,6 +22,7 @@ export function createExperimentRuntime(input: {
   tenant: string; secret: Uint8Array; previousSecrets?: readonly Uint8Array[];
   provider: Provider; experiments: readonly ProductExperiment[];
   outbox: ExperimentOutbox; sinks: readonly ExperimentSink[];
+  measure?: <T>(scope: { experiment: string; variant: string; current(): boolean }, work: () => Promise<T>) => Promise<T>;
   clock?: () => number;
 }) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(input.tenant) ||
@@ -71,12 +72,17 @@ export function createExperimentRuntime(input: {
         if (!payload || !permitted() || !input.provider.guardrailHealthy(key)) return false;
         const event = Object.freeze({ event_id: actionId, event_type: type, payload });
         try {
-          await input.outbox.retain(event);
-          for (const sink of sinks) {
-            if (!permitted() || !input.provider.guardrailHealthy(key)) return false;
-            await sink.send(event);
-          }
-          return true;
+          const deliver = async () => {
+            await input.outbox.retain(event);
+            for (const sink of sinks) {
+              if (!permitted() || !input.provider.guardrailHealthy(key)) return false;
+              await sink.send(event);
+            }
+            return true;
+          };
+          // Only verified native assignment/consent enters measurement scope.
+          return await (input.measure ? input.measure({ experiment: key, variant: payload.variant,
+            current: () => permitted() && input.provider.guardrailHealthy(key) }, deliver) : deliver());
         } catch { return false; }
       },
     });

@@ -20,6 +20,7 @@ function validEvent(event: ExperimentEvent): boolean {
 /** One bounded record per consent session. Storage and sink failures propagate;
  * the caller must not report delivery until all configured sinks accept it. */
 export function createExperimentOutbox(input: {
+  measurementValidity?: (accepted: boolean) => void;
   store: ExperimentRecordStore; consentId: string; retentionUntil: number;
   sinks: Readonly<Record<string, ExperimentSink>>; permitted(): boolean; healthy?(key: string): boolean; clock?: () => number;
 }) {
@@ -31,15 +32,18 @@ export function createExperimentOutbox(input: {
   async function load() {
     const original = terminalWorkBinding();
     const record = await input.store.read(name);
+    try {
     verifyTerminalWork(original);
-    if (!record) return { ledger: { ...(original ? { nightly_run: original } : {}), version: 1, expires: input.retentionUntil, revoked: false, rows: [] } as Ledger, revision: null };
+    if (!record) { input.measurementValidity?.(true); return { ledger: { ...(original ? { nightly_run: original } : {}), version: 1, expires: input.retentionUntil, revoked: false, rows: [] } as Ledger, revision: null }; }
     if (record.value.length > 65536) throw Error("Invalid experiment outbox");
     const ledger = JSON.parse(record.value) as Ledger;
     if (!ledger || Object.keys(ledger).sort().join() !== (ledger.nightly_run === undefined ? "expires,revoked,rows,version" : "expires,nightly_run,revoked,rows,version") || ledger.version !== 1 || ledger.expires !== input.retentionUntil || typeof ledger.revoked !== "boolean" || !Array.isArray(ledger.rows) || ledger.rows.length > 64 ||
         ledger.rows.some(r => !r || !Number.isSafeInteger(r.expires) || !Array.isArray(r.delivered) ||
           r.delivered.some(k => typeof k !== "string") || Object.keys(r).sort().join() !== "delivered,event,expires" || !validEvent(r.event))) throw Error("Invalid experiment outbox");
     verifyTerminalWork(ledger.nightly_run);
+    input.measurementValidity?.(!ledger.revoked);
     return { ledger, revision: record.revision };
+    } catch (error) { input.measurementValidity?.(false); throw error; }
   }
   async function update(change: (rows: Row[]) => void) {
     for (let attempt = 0; attempt < 4; attempt++) {
