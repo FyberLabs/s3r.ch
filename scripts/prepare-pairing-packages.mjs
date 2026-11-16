@@ -17,8 +17,12 @@ const run=(cmd,args,cwd)=>execFileSync(cmd,args,{cwd,stdio:'inherit'});
 mkdirSync(out,{recursive:true});const manifest=[];const files={};
 try{
  for(const [repo,revision,path,name] of inputs){
-  const checkout=join(temp,name);run('git',['clone','--no-checkout','https://github.com/'+repo+'.git',checkout],root);
-  run('git',['checkout','--detach',revision],checkout);const cwd=join(checkout,path);
+  const checkout=join(temp,name),cwd=join(checkout,path);
+  if(name==='sea-device-link-ui'){
+   const archive=join(out,'ui-source.tar');
+   if(createHash('sha256').update(readFileSync(archive)).digest('hex')!=='3fb364fc72bb8d7c7bd37247d49e5733590ed7a687349699819546a7cb0de75a')throw Error('UI source digest mismatch');
+   mkdirSync(cwd,{recursive:true});run('tar',['-xf',archive,'-C',cwd],root);
+  }else{run('git',['clone','--no-checkout','https://github.com/'+repo+'.git',checkout],root);run('git',['checkout','--detach',revision],checkout);}
   if(name==='sea-device-link'||name==='sociacl-ids'){run('npm',['ci','--ignore-scripts'],cwd);run('npm',['run','build'],cwd);}
   if(name==='sea-device-link-ui'){
    run('npm',['install','--no-save','--ignore-scripts','--package-lock=false','--no-audit',files['sea-device-link'],files['auth-sea-relay'],'react@19.2.3','react-dom@19.2.3'],cwd);
