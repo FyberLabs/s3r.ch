@@ -616,7 +616,7 @@ test("pending group file delivery blocks epoch-changing actions",async()=>{
 
 test("group Granted opens only listed scoped entries and clears plaintext and preview",async()=>{
  const entry={object:'shared',predicate:'same-group' as const,set:'set_group'},bytes=new Uint8Array([1,2,3]);let opens=0;
- const f=setup({browser:()=>({catalog:async()=>({at:1,objects:[],nextPage:null,principal:key}),
+ const f=setup({makeUrl:blob=>{assert.equal(blob.type,'audio/mpeg');return 'blob:group';},browser:()=>({catalog:async()=>({at:1,objects:[],nextPage:null,principal:key}),
   groupGrantedCatalog:async()=>({at:1,entries:[entry],nextPage:null}),
   openGroup:async(object:string,_tenant:string,principal:string,scope:unknown)=>{opens++;assert.equal(object,'shared');assert.equal(principal,key);assert.deepEqual(scope,{predicate:entry.predicate,set:entry.set});return {description:{name:'group.mp3',mediaType:'audio/mpeg'},bytes};},
  } as unknown as ReturnType<typeof createPrivateMediaBrowser>)});
