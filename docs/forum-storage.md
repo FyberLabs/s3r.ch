@@ -13,7 +13,14 @@ returns HTTP 409 (`store-conflict`); reload before submitting again. Failed writ
 are never acknowledged as successful. Reads refresh the document on every call.
 
 The envelope is schema 1, with the existing version-1 ledger and private snapshot
-bytes committed together. The entire document is limited to 1 MiB. A full store
+bytes committed together. Each owner has a 64 KiB growth budget (including private snapshot bytes), at
+most 16 bots, 128 messages, 32 invites, eight groups and 64 group members.
+Entropy identifiers are bounded to 64 characters. A quota refusal returns 429.
+The document reserves 64 KiB for archiving and access revocation, which remain
+available when growth is refused. Existing migrated rows remain readable and
+can be cleaned up; migration does not truncate them.
+
+The entire document is limited to 1 MiB. A full store
 refuses a mutation without truncating or replacing existing data. Unknown schemas,
 missing documents, denied access and malformed content fail closed. Health reports
 `dependencies.forum` with `storage=blob`, `concurrency=etag` and read availability;

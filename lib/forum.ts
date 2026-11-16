@@ -155,7 +155,7 @@ export type StoreLoad =
 
 export type ForumStore = {
   load(): StoreLoad;
-  save(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer }): void;
+  save(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer }, cleanup?: boolean): void;
   readSnapshot?(channel: string, handle: string): Buffer | null;
 };
 
@@ -351,12 +351,12 @@ export function openForum(store: ForumStore): Forum {
     return { ok: true, file: loaded.file };
   }
 
-  function commit(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer }): Denied | null {
+  function commit(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer }, cleanup = false): Denied | null {
     try {
-      store.save(file, snapshot);
+      store.save(file, snapshot, cleanup);
       return null;
     } catch (error) {
-      return { denied: true, reason: (error as { code?: string }).code === "blob-conflict" ? "store-conflict" : "store-unreadable" };
+      return { denied: true, reason: (error as { code?: string }).code === "blob-conflict" ? "store-conflict" : (error as { code?: string }).code === "forum-quota" ? "store-quota" : "store-unreadable" };
     }
   }
 
@@ -437,7 +437,7 @@ export function openForum(store: ForumStore): Forum {
     if (bot.status !== "archived") {
       bot.status = "archived";
       bot.archivedAt = nowSeconds(input.nowSeconds);
-      const saved = commit(file);
+      const saved = commit(file, undefined, true);
       if (saved) return saved;
     }
     return { bot: toView(file, bot) };
@@ -640,7 +640,7 @@ export function openForum(store: ForumStore): Forum {
     file.invites = file.invites.filter((row) => !(row.channel === channel.id && row.guest === guest));
     const removed = file.invites.length !== before;
     if (removed) {
-      const saved = commit(file);
+      const saved = commit(file, undefined, true);
       if (saved) return saved;
     }
     return { channel, guest, removed };
@@ -708,7 +708,7 @@ export function openForum(store: ForumStore): Forum {
     );
     const removed = file.groupMembers.length !== before;
     if (removed) {
-      const saved = commit(file);
+      const saved = commit(file, undefined, true);
       if (saved) return saved;
     }
     return { group, member, removed };
@@ -1427,7 +1427,7 @@ function cleanLabel(value: string): string | null {
 
 function cleanEntropy(value: string | undefined): string | null {
   const entropy = (value ?? shortEntropy()).trim().toLowerCase();
-  if (!/^[a-z0-9]+$/.test(entropy)) return null;
+  if (!/^[a-z0-9]{1,64}$/.test(entropy)) return null;
   return entropy;
 }
 
@@ -1465,7 +1465,7 @@ function asSeconds(value: unknown): number | undefined {
 function mapResult(result: Denied | object): ForumHttpResult {
   if ("denied" in result && result.denied) {
     const reason = result.reason;
-    const status = reason === "store-conflict" ? 409 :
+    const status = reason === "store-conflict" ? 409 : reason === "store-quota" ? 429 :
       reason === "store-unreadable" || reason === "unknown-version"
         ? 500
         : reason === "bad-owner" ||

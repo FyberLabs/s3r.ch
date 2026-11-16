@@ -61,3 +61,15 @@ test('oversize mutation leaves the prior document intact', () => {
   assert.throws(()=>store.save(value.file,{channel:'test',handle:'test',bytes:Buffer.alloc(1048576)}),/capacity/);
   assert.equal(f.read(),before);
 });
+test('one owner cannot exhaust the shared document and cleanup still works at its quota', () => {
+  const f=fixture();migrateForum(f.client,emptyForumFile());const forum=openForum(new BlobForumStore(f.client));
+  const bots: string[]=[];
+  for(let i=0;i<16;i++) {
+    const result=forum.registerBot({owner,label:`bot${i}`,entropy:`b${i}`});
+    assert.ok(!('denied' in result));bots.push(result.bot.id);
+  }
+  assert.deepEqual(forum.registerBot({owner,label:'excess',entropy:'excess'}),{denied:true,reason:'store-quota'});
+  assert.ok(!('denied' in forum.registerBot({owner:other,label:'other',entropy:'other'})));
+  assert.ok(!('denied' in forum.archiveBot({owner,botId:bots[0]})));
+  assert.deepEqual(forum.registerBot({owner:other,label:'huge',entropy:'a'.repeat(65)}),{denied:true,reason:'bad-entropy'});
+});

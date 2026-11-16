@@ -43,7 +43,7 @@ export class BlobForumStore implements ForumStore {
       return { ok: true, file: structuredClone(parsed.file) };
     } catch { return { ok: false, reason: "store-unreadable" }; }
   }
-  save(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer }): void {
+  save(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer }, cleanup = false): void {
     if (!this.etag || !this.document) throw new Error("Forum read required before write");
     const snapshots = this.document.snapshots.filter(row =>
       file.desktops.some(d => d.channel === row.channel && d.snapshot?.handle === row.handle) &&
@@ -51,6 +51,7 @@ export class BlobForumStore implements ForumStore {
     if (snapshot) snapshots.push({ ...snapshot, bytes: snapshot.bytes.toString("base64") });
     const doc: Document = { schema: 1, forum: file, snapshots };
     const text = JSON.stringify(doc);
+    enforceQuota(doc, this.document, cleanup);
     if (Buffer.byteLength(text) > MAX_FORUM_BYTES) throw new Error("Forum document capacity exceeded");
     const result = this.client.upload(FORUM_BLOB, text, { ifMatch: this.etag });
     this.etag = result.etag; this.document = structuredClone(doc);
@@ -68,4 +69,32 @@ export function migrateForum(client: IdentityBlobClient, file: unknown): void {
   const text = JSON.stringify({ schema: 1, forum: parsed.file, snapshots: [] });
   if (Buffer.byteLength(text) > MAX_FORUM_BYTES) throw new Error("Forum document capacity exceeded");
   client.upload(FORUM_BLOB, text, { ifNoneMatch: "*" });
+}
+
+function quota(): never { throw Object.assign(new Error("Forum quota exceeded"), {code:"forum-quota"}); }
+function ownerRows(doc: Document, owner: string) {
+  const file = doc.forum;
+  const channels = new Set(file.channels.filter(r => r.owner === owner).map(r => r.id));
+  const groups = new Set(file.groups.filter(r => r.owner === owner).map(r => r.id));
+  return {
+    channels: file.channels.filter(r => r.owner === owner), bots: file.bots.filter(r => r.owner === owner),
+    memberships: file.memberships.filter(r => channels.has(r.channel)), messages: file.messages.filter(r => channels.has(r.channel)),
+    invites: file.invites.filter(r => channels.has(r.channel)), groups: file.groups.filter(r => r.owner === owner),
+    groupMembers: file.groupMembers.filter(r => groups.has(r.group)), desktops: file.desktops.filter(r => channels.has(r.channel)),
+    snapshots: doc.snapshots.filter(r => channels.has(r.channel)),
+  };
+}
+function enforceQuota(next: Document, old: Document, cleanup: boolean) {
+  // Only the archive/revocation model operations set cleanup. They cannot add
+  // bots, messages, invites or snapshots. Reserve space for archival metadata.
+  if (cleanup) return;
+  if (Buffer.byteLength(JSON.stringify(next)) > MAX_FORUM_BYTES - 65536) quota();
+  for (const owner of new Set(next.forum.channels.map(r => r.owner))) {
+    const rows=ownerRows(next,owner), previous=ownerRows(old,owner);
+    const limits={channels:1,bots:16,memberships:16,messages:128,invites:32,groups:8,groupMembers:64,desktops:1,snapshots:1};
+    for (const key of Object.keys(limits) as (keyof typeof limits)[]) {
+      if (rows[key].length > Math.max(limits[key],previous[key].length)) quota();
+    }
+    if (Buffer.byteLength(JSON.stringify(rows)) > Math.max(65536,Buffer.byteLength(JSON.stringify(previous)))) quota();
+  }
 }
