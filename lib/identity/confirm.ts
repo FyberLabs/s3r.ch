@@ -1,3 +1,4 @@
+import { terminalTokenClaims, verifyTerminalToken } from "./terminal-run";
 /**
  * Session-gated email / phone confirm. Proves the claim to the holder.
  * Never login. Never a public Gun put. PII stays off the mesh until
@@ -306,6 +307,7 @@ export async function signConfirmChallenge(
   secret: string,
 ): Promise<string> {
   return new SignJWT({
+    ...await terminalTokenClaims({ kind: "wallet-confirmation", subject: getAddress(challenge.address) }),
     address: challenge.address,
     kind: challenge.kind,
     targetHash: challenge.targetHash,
@@ -340,6 +342,7 @@ export async function readConfirmChallenge(
   if (typeof payload.iat !== "number" || typeof payload.exp !== "number") {
     throw new Error("Confirm cookie is missing iat/exp.");
   }
+  await verifyTerminalToken(payload, { kind: "wallet-confirmation", subject: getAddress(payload.address) });
   return {
     address: getAddress(payload.address),
     kind,
