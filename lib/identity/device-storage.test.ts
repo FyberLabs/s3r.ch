@@ -40,3 +40,7 @@ test('wallet login does not generate a replacement after protected import',async
  const f=await fixture();await f.storage.commit(f.value);let generated=false;
  await assert.rejects(ensureLocalMeshKey({address:'0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266',domain:'s3r.ch',uri:'https://s3r.ch',store:createIndexedDbMeshKeyStore(f.factory),createPair:async()=>{generated=true;throw Error();},signMessage:async()=>{throw Error();}}));assert.equal(generated,false);
 });
+test('maximum complete keyring remains discoverable after nested local wrapping',async()=>{
+ const f=await fixture();f.value.keyring=new Uint8Array(524288).fill(7);await f.storage.commit(f.value);
+ assert.equal((await deviceRecords(f.factory)).length,1);assert.deepEqual(await f.storage.lookup(binding),f.value.completion);
+});
