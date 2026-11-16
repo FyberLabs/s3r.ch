@@ -34,6 +34,9 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 | `PANOPTICON_PAYMENTS_BASE` | no | unset | no | Payments origin, or that origin plus the `/api/v1` prefix the hop already joins. |
 | `PANOPTICON_TENANT_ID` | no | unset | no | Marketplace tenant UUID sent as `X-Tenant-ID`. An identifier. The process treats a missing value as unconfigured. |
 | `PANOPTICON_TURN_BASE` | no | unset | no | TURN allocate origin, or that origin plus the `/api/v1` prefix the hop already joins. |
+| `S3RCH_FORUM_STORAGE` | no | file | no | Set to blob only after the existing forum is migrated. Never falls back to file after a Blob error. |
+| `S3RCH_FORUM_BLOB_ACCOUNT` | for blob forum | unset | no | Existing Azure Storage account; managed identity only. |
+| `S3RCH_FORUM_BLOB_CONTAINER` | for blob forum | unset | no | Private container with migrated forum.json. No automatic empty document creation. |
 | `S3RCH_FORUM` | no | `data/forum.json` under the cwd (`/app/data/forum.json` in the image) | no | Forum ledger file. Same disk as the Gun directory. |
 | `S3RCH_IDENTITY_BLOB_ACCOUNT` | no for boot; required for production identity writes | unset | no | Azure Storage account name (3–24 lowercase letters and digits). |
 | `S3RCH_IDENTITY_BLOB_CONTAINER` | no for boot; required for production identity writes | unset | no | Private blob container that already exists. The blob name is `identity-links.json`. |

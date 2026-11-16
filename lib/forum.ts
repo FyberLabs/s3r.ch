@@ -16,6 +16,7 @@
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { BlobForumStore, configuredForumBlobClient } from "./forum-blob";
 import { getAddress } from "viem";
 import { isSeaPubkey } from "./identity/forum-check";
 import { CHAT_BODY_MAX } from "./chat";
@@ -154,7 +155,8 @@ export type StoreLoad =
 
 export type ForumStore = {
   load(): StoreLoad;
-  save(file: ForumFile): void;
+  save(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer }): void;
+  readSnapshot?(channel: string, handle: string): Buffer | null;
 };
 
 export type Denied = { denied: true; reason: string };
@@ -326,7 +328,11 @@ export class FileForumStore implements ForumStore {
 export function getForum(): Forum {
   const g = globalThis as GlobalForum;
   if (!g.__s3rchForum) {
-    g.__s3rchForum = openForum(new FileForumStore(forumFilePath()));
+    const mode = process.env.S3RCH_FORUM_STORAGE || "file";
+    if (mode !== "file" && mode !== "blob") throw new Error("Invalid forum storage mode");
+    g.__s3rchForum = openForum(mode === "blob"
+      ? forumBlobHealthStore()
+      : new FileForumStore(forumFilePath()));
   }
   return g.__s3rchForum;
 }
@@ -345,12 +351,12 @@ export function openForum(store: ForumStore): Forum {
     return { ok: true, file: loaded.file };
   }
 
-  function commit(file: ForumFile): Denied | null {
+  function commit(file: ForumFile, snapshot?: { channel: string; handle: string; bytes: Buffer }): Denied | null {
     try {
-      store.save(file);
+      store.save(file, snapshot);
       return null;
-    } catch {
-      return { denied: true, reason: "store-unreadable" };
+    } catch (error) {
+      return { denied: true, reason: (error as { code?: string }).code === "blob-conflict" ? "store-conflict" : "store-unreadable" };
     }
   }
 
@@ -567,7 +573,7 @@ export function openForum(store: ForumStore): Forum {
     };
     file.desktops = file.desktops.filter((row) => row.channel !== channel.id);
     file.desktops.push(desktop);
-    const saved = commit(file);
+    const saved = commit(file, png && input.snapshot ? { channel: channel.id, handle: input.snapshot.handle, bytes: png } : undefined);
     if (saved) return saved;
     for (const [key, held] of heldPng) {
       if (held.channel === channel.id) heldPng.delete(key);
@@ -592,6 +598,10 @@ export function openForum(store: ForumStore): Forum {
     if (!row?.snapshot) return null;
     const channel = file.channels.find((item) => item.id === row.channel);
     if (!channel || !canSee(file, owner, channel)) return null;
+    if (store.readSnapshot) {
+      const bytes = store.readSnapshot(row.channel, handle);
+      return bytes ? { mime: "image/png", bytes } : null;
+    }
     const held = heldPng.get(heldKey(row.channel, handle));
     if (!held || held.channel !== row.channel) return null;
     return { mime: "image/png", bytes: held.bytes };
@@ -1455,7 +1465,7 @@ function asSeconds(value: unknown): number | undefined {
 function mapResult(result: Denied | object): ForumHttpResult {
   if ("denied" in result && result.denied) {
     const reason = result.reason;
-    const status =
+    const status = reason === "store-conflict" ? 409 :
       reason === "store-unreadable" || reason === "unknown-version"
         ? 500
         : reason === "bad-owner" ||
@@ -1476,4 +1486,19 @@ function mapResult(result: Denied | object): ForumHttpResult {
 
 function readResult(result: ReadChatResult): ForumHttpResult {
   return mapResult(result);
+}
+
+/** Read-only readiness. Never creates or repairs a missing durable document. */
+export function forumHealth(): { status: string; storage: string; concurrency: string } {
+  const mode = process.env.S3RCH_FORUM_STORAGE || "file";
+  if (mode === "file") return { status: "ok", storage: "file", concurrency: "single-process" };
+  try {
+    if (mode !== "blob") throw new Error("Invalid forum storage mode");
+    const store = forumBlobHealthStore();
+    return { status: store.load().ok ? "ok" : "unavailable", storage: "blob", concurrency: "etag" };
+  } catch { return { status: "unavailable", storage: mode, concurrency: "unavailable" }; }
+}
+let healthBlobStore: BlobForumStore | undefined;
+function forumBlobHealthStore(): BlobForumStore {
+  return healthBlobStore ??= new BlobForumStore(configuredForumBlobClient());
 }
