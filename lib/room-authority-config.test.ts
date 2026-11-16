@@ -24,7 +24,10 @@ test("missing, redirected, invalid and aborted configuration never creates autho
 test("feed remains a static shell and public config stays behind the authenticated runtime route",()=>{
  const page=readFileSync(new URL("../app/feed/page.tsx",import.meta.url),"utf8");
  assert.doesNotMatch(page,/force-dynamic|process\.env|parseSquadPilotConfig/);
- assert.match(page,/<RoomAuthorityProvider><FeedStream/);
+ assert.match(page,/<FeedStream\s*\/>/);
+ assert.doesNotMatch(page,/RoomAuthorityProvider/);
+ const provider=readFileSync(new URL("../components/RoomAuthorityProvider.tsx",import.meta.url),"utf8");
+ assert.doesNotMatch(provider,/useIdentitySession(?:State)?\(/);
  const route=readFileSync(new URL("../app/api/squad/pilot/[...path]/route.ts",import.meta.url),"utf8");
  assert.match(route,/room-config[\s\S]*readSeaRequestSession\(request\)[\s\S]*publicSquadPilotConfig\(config\)/);
  assert.match(route,/"Cache-Control": "no-store"/);
