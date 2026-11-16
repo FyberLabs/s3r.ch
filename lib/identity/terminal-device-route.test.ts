@@ -58,3 +58,13 @@ test("scope and native service configuration cannot disagree", () => {
     assert.throws(() => createTerminalDeviceRoute({ serviceKey: key, scope: candidate, env }));
   assert.throws(() => createTerminalDeviceRoute({ serviceKey: "bad", scope, env }));
 });
+test("native config and logout complete while unauthorized relay retains pending work", async () => {
+  const config = fixture(); assert.equal((await config.route(request("config"))).status, 200); assert.ok(config.commands.includes("complete"));
+  for (const action of ["logout", "relay"]) {
+    const h = fixture(), req = new Request(origin + "/api/identity/device/" + action, { method: "POST",
+      headers: { origin, cookie: "__Host-nightly-run-grant=" + grant, "content-type": "application/json" }, body: "{}" });
+    const response = await h.route(req);
+    assert.equal(response.status, action === "logout" ? 200 : 401);
+    assert.equal(h.commands.includes("complete"), action === "logout");
+  }
+});
