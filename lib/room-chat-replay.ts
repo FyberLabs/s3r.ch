@@ -14,6 +14,8 @@ export function createRoomChatReplay(input: {
   admission: Pick<RoomChatAdmission, "receive" | "valid" | "canRead">;
   /** Must change on room/controller/identity replacement, even for the same SEA key. */
   binding: () => object | null;
+  /** Notify synchronously on every binding or read-authority change; return cleanup. */
+  watch: (changed: () => void) => () => void;
   receive: (row: SignedRoomChat) => void;
 }) {
   const binding = input.binding(), abort = new AbortController();
@@ -25,6 +27,10 @@ export function createRoomChatReplay(input: {
     return true;
   }
   async function replay(): Promise<"complete" | "cancelled"> {
+    const unwatch = input.watch(() => { current(); });
+    try { return await pages(); } finally { unwatch(); }
+  }
+  async function pages(): Promise<"complete" | "cancelled"> {
     let snapshot: string | null = null, offset = 0;
     while (current()) {
       const raw = await input.source(Object.freeze({room: input.room, snapshot, offset,

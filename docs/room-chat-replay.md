@@ -20,7 +20,9 @@ pages. It retains one page, not the accumulated history. Source errors and inval
 pages fail closed. A current authority failure or binding replacement cancels the
 run; create a new consumer to restart from a new snapshot. The binding must change
 on room, identity, or controller replacement, even when the public key is unchanged.
-Call `close` immediately during teardown; the source must settle cancelled reads.
+The required `watch` hook must notify synchronously on every binding or read-authority
+change, including changes while a source read is pending. Its cleanup runs when replay
+settles. Call `close` immediately during teardown; the source must settle cancelled reads.
 
 Every row passes existing signed-room admission, including room/transport ID,
 current key, parent permissions, and signature checks. Display receives only a

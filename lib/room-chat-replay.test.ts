@@ -24,7 +24,7 @@ test("substituted immutable pages recover real signed rows across more than 8192
   }
   const seen: string[] = [], binding = {};
   let active = 0, maximum = 0, pages = 0;
-  const replay = createRoomChatReplay({room:"room", binding:() => binding,
+  const replay = createRoomChatReplay({watch: () => () => {}, room:"room", binding:() => binding,
     admission:{...admission, receive: async (...args) => {
       maximum = Math.max(maximum, ++active);
       try { return await admission.receive(...args); } finally { active--; }
@@ -42,7 +42,7 @@ test("substituted immutable pages recover real signed rows across more than 8192
 test("replacement during pending admission suppresses display and aborts further reads", async () => {
   const {pair, admission} = await fixture(); const row = await admission.compose("room", "hello", () => pair);
   let binding = {}, reads = 0, seen = 0;
-  const replay = createRoomChatReplay({room:"room", binding:() => binding,
+  const replay = createRoomChatReplay({watch: () => () => {}, room:"room", binding:() => binding,
     admission:{...admission, receive:async (...args) => {const result = await admission.receive(...args); binding = {}; return result;}},
     receive:() => {seen++;}, source:async () => {reads++; return JSON.stringify({snapshot:"s", offset:0,
       rows:[{key:encodeKey(row!.id), value:row}], done:false});}});
@@ -52,12 +52,12 @@ test("bad offsets, snapshot replacement, empty nonfinal and oversized pages fail
   const {admission} = await fixture(); const binding = {};
   for (const bad of [JSON.stringify({snapshot:"s", offset:1, rows:[], done:true}),
     JSON.stringify({snapshot:"s", offset:0, rows:[], done:false}), "x".repeat(512 * 1024 + 1)]) {
-    const replay = createRoomChatReplay({room:"room", binding:() => binding, admission,
+    const replay = createRoomChatReplay({watch: () => () => {}, room:"room", binding:() => binding, admission,
       receive:() => assert.fail(), source:async () => bad});
     await assert.rejects(replay.start());
   }
   let reads = 0;
-  const replay = createRoomChatReplay({room:"room", binding:() => binding, admission, receive:() => assert.fail(),
+  const replay = createRoomChatReplay({watch: () => () => {}, room:"room", binding:() => binding, admission, receive:() => assert.fail(),
     source:async ({offset}) => JSON.stringify({snapshot:++reads === 1 ? "first" : "changed", offset,
       rows:[{key:"bad", value:null}], done:false})});
   await assert.rejects(replay.start(), /cursor/);
@@ -65,8 +65,24 @@ test("bad offsets, snapshot replacement, empty nonfinal and oversized pages fail
 test("close aborts a pending source and late pages cannot admit", async () => {
   const {admission} = await fixture(); const binding = {};
   let resolve!: (page:string) => void, signal:AbortSignal | undefined;
-  const replay = createRoomChatReplay({room:"room", binding:() => binding, admission, receive:() => assert.fail(),
+  const replay = createRoomChatReplay({watch: () => () => {}, room:"room", binding:() => binding, admission, receive:() => assert.fail(),
     source:request => {signal = request.signal; return new Promise(r => {resolve = r;});}});
   const result = replay.start(); replay.close(); assert.equal(signal?.aborted, true);
   resolve("malformed"); assert.equal(await result, "cancelled");
+});
+
+test("authority notifications abort a stalled read and release the watcher", async () => {
+  const {admission} = await fixture(); const binding = {};
+  let allowed = true, changed = () => {}, cleaned = false;
+  let signal: AbortSignal | undefined;
+  const replay = createRoomChatReplay({room:"room", binding:() => binding,
+    watch: listener => { changed = listener; return () => { cleaned = true; }; },
+    admission:{...admission, canRead:() => allowed}, receive:() => assert.fail(),
+    source: request => {
+      signal = request.signal;
+      return new Promise((_, reject) => request.signal.addEventListener("abort", () => reject(new Error("aborted")), {once:true}));
+    }});
+  const result = replay.start(); allowed = false; changed();
+  assert.equal(signal?.aborted, true);
+  assert.equal(await result, "cancelled"); assert.equal(cleaned, true);
 });
