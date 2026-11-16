@@ -60,16 +60,17 @@ export function createMeetingFrameSequence(input:MeetingLease,recipient:string,n
   const lease=parseMeetingLease(input,now);
   if(!lease.participants.some(p=>p.principal===recipient))return fail();
   let last=0,lastTime=now,lastFrame='',closed=false,description=false,ended=false;
+  const close=()=>{closed=true;lastFrame='';};
   return {accept(raw:unknown,time:number):MeetingFrame|null{
     if(closed)return fail();
-    if(time<lastTime){closed=true;return fail();}
-    if(time>=lease.expiresAt){closed=true;return fail();}
+    if(time<lastTime){close();return fail();}
+    if(time>=lease.expiresAt){close();return fail();}
     const frame=parseMeetingFrame(raw,lease,time);if(frame.to!==recipient)return fail();
     lastTime=time;const canonical=JSON.stringify(frame);
     if(frame.seq===last&&canonical===lastFrame)return null;
     if(frame.seq!==last+1)return fail();
     if(frame.kind==='offer'||frame.kind==='answer'){if(description)return fail();description=true;}
     else if(frame.kind==='candidate'||frame.kind==='end'){if(!description||ended)return fail();if(frame.kind==='end')ended=true;}
-    last=frame.seq;lastFrame=canonical;if(frame.kind==='leave')closed=true;return frame;
-  },close(){closed=true;lastFrame='';}};
+    last=frame.seq;lastFrame=canonical;if(frame.kind==='leave')close();return frame;
+  },close};
 }
