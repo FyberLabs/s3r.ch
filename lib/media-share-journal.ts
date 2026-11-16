@@ -12,9 +12,9 @@ export interface ShareJournal {
   remove(expected: ShareVersion, signal: AbortSignal): Promise<void>;
 }
 export const shareDigest = async (bytes: Uint8Array) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new Uint8Array(bytes))),b=>b.toString(16).padStart(2,"0")).join("");
-export type JournalPurpose="share"|"group-consent"|"group-command"|"group-key"|"group-item-grant"|"group-item-epoch"|"group-item-epoch-delivery";
+export type JournalPurpose="share"|"group-consent"|"group-command"|"group-key"|"group-item-grant"|"group-item-epoch"|"group-item-epoch-delivery"|"group-item-status";
 function domain(purpose:JournalPurpose) {
-  if(purpose!=="share"&&purpose!=="group-consent"&&purpose!=="group-command"&&purpose!=="group-key"&&purpose!=="group-item-grant"&&purpose!=="group-item-epoch"&&purpose!=="group-item-epoch-delivery")throw Error("Invalid recovery purpose");
+  if(purpose!=="share"&&purpose!=="group-consent"&&purpose!=="group-command"&&purpose!=="group-key"&&purpose!=="group-item-grant"&&purpose!=="group-item-epoch"&&purpose!=="group-item-epoch-delivery"&&purpose!=="group-item-status")throw Error("Invalid recovery purpose");
   return purpose;
 }
 async function context(tenant:string,object:string,purpose:JournalPurpose) {
