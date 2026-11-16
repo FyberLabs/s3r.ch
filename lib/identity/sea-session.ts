@@ -106,6 +106,8 @@ export function createIdentitySessions(input: {
     return token(type, record.principal, ttl, { agent: record.agent, delegationId: id, scopes }, record.expiresAt);
   }
   return Object.freeze({
+    /** Backend-only broker input: cryptographically verify the original challenge. */
+    linkedProofChallenge: linkedClaims,
     async linkedChallenge(value: unknown): Promise<string | null> {
       try {
         const credential = parseLinkedCredential(value);
