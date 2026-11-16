@@ -56,6 +56,19 @@ export function createGroupWrapClient(principal:string,fetcher:typeof fetch=fetc
     const result=parseGroupCommandResult(action,await readBoundedIdentityJson(response,groupResponseLimit(action),signal),parsed,clock(),principal);
     signal.throwIfAborted();return result;
   }
+  async function openCurrent(scope:MediaGroupScope,epriv:string,epub:string,signal?:AbortSignal){
+      scope=parseMediaGroupScope(scope);
+      const held=deadline(signal),value=await request('wrap-read',scope,held);
+      if(value.reader_epub!==epub)return fail();
+      const wrap=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(decode(value.payload as string)));
+      const opened=await openGroupKeyReaderWrap(wrap,epriv,epub,{group:scope.set,epoch:value.epoch,revisionId:value.revision_id});
+      if(!opened.ok)return fail();
+      try{
+        if(await shareDigest(opened.value)!==value.key_commitment||clock()>=(value.expires_at as number))return fail();
+        held.throwIfAborted();return {key:opened.value,epoch:value.epoch as number,revisionId:value.revision_id as string,
+          keyCommitment:value.key_commitment as string,expiresAt:value.expires_at as number};
+      }catch(error){opened.value.fill(0);throw error;}
+    }
   return Object.freeze({
     async prepare(scope:MediaGroupScope,key:Uint8Array,signal?:AbortSignal):Promise<GroupWrapBundle>{
       if(!(key instanceof Uint8Array)||key.length!==32)return fail();
@@ -91,17 +104,9 @@ export function createGroupWrapClient(principal:string,fetcher:typeof fetch=fetc
           manifest.aclSnapshot!==bundle.aclSnapshot||groupKeySnapshotId(snapshot)!==bundle.aclSnapshot||member?.encryptionPub!==entry.metadata.readerEpub)return fail();
       await request('wrap-publish',{...scope,at:view.at,fence:view.fence,...entry},held);
     },
+    openCurrent,
     async open(scope:MediaGroupScope,epriv:string,epub:string,signal?:AbortSignal){
-      scope=parseMediaGroupScope(scope);
-      const held=deadline(signal),value=await request('wrap-read',scope,held);
-      if(value.reader_epub!==epub)return fail();
-      const wrap=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(decode(value.payload as string)));
-      const opened=await openGroupKeyReaderWrap(wrap,epriv,epub,{group:scope.set,epoch:value.epoch,revisionId:value.revision_id});
-      if(!opened.ok)return fail();
-      try{
-        if(await shareDigest(opened.value)!==value.key_commitment||clock()>=(value.expires_at as number))return fail();
-        held.throwIfAborted();return opened.value;
-      }catch(error){opened.value.fill(0);throw error;}
+      return (await openCurrent(scope,epriv,epub,signal)).key;
     },
   });
 }

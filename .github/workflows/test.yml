@@ -38,7 +38,7 @@ jobs:
         run: node --check scripts/test-experiment-browser.mjs && node --test scripts/experiment-browser-fixture.test.mjs scripts/experiment-expiry-probes.test.mjs
 
       - name: Verify pairing owner artifacts
-        run: node scripts/check-pairing-packages.mjs && node --check scripts/test-device-transfer.mjs && node --check scripts/device-transfer-scenario.mjs
+        run: node scripts/check-pairing-packages.mjs && node --check scripts/test-device-transfer.mjs && node --check scripts/device-transfer-scenario.mjs && node --test scripts/device-transfer-scenario.test.mjs
 
       - name: Fetch public synthetic owner vectors for isolated contracts
         run: node scripts/fetch-pairing-vectors.mjs
@@ -218,6 +218,70 @@ jobs:
           --test-coverage-include=lib/media-group-item-grant-recovery.ts
           --test-coverage-lines=90 --test-coverage-branches=80
           lib/media-group-item-grant.test.ts lib/media-group-item-grant-client.test.ts
+      - name: Group item epoch signing and recovery coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-epoch.ts
+          --test-coverage-include=lib/media-group-item-epoch-signing.ts
+          --test-coverage-include=lib/media-group-item-epoch-command.ts
+          --test-coverage-include=lib/media-group-item-epoch-client.ts
+          --test-coverage-include=lib/media-group-item-epoch-recovery.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-epoch.test.ts lib/media-group-item-epoch-signing.test.ts
+          lib/media-group-item-epoch-command.test.ts lib/media-group-item-epoch-client.test.ts
+      - name: Group epoch replacement wrap recovery coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-epoch-delivery.ts
+          --test-coverage-include=lib/media-group-owner-wrap.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-epoch-delivery.test.ts lib/media-group-owner-wrap.test.ts
+      - name: Group item wrapped-key recovery coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-wrap-recovery.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-wrap-recovery.test.ts
+      - name: Group item wrapped-key publication coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-wrap-client.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-wrap-client.test.ts
+      - name: Group Granted catalog coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-catalog.ts
+          --test-coverage-include=lib/media-group-item-catalog-client.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-catalog.test.ts lib/media-group-item-catalog-client.test.ts
+      - name: Group file opening coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-file.ts
+          --test-coverage-include=lib/media-ciphertext-authorization.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-file.test.ts lib/allocated-media-service.test.ts
+      - name: Group item key opening coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-reader.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-reader.test.ts
+      - name: Group item wrap shape coverage
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-wrap.ts
+          --test-coverage-lines=95 --test-coverage-branches=90
+          lib/media-group-item-wrap.test.ts
+      - name: Group item status signing and recovery coverage (CI only)
+        run: >-
+          node --import tsx --test --test-isolation=none --experimental-test-coverage
+          --test-coverage-include=lib/media-group-item-status.ts
+          --test-coverage-include=lib/media-group-item-status-client.ts
+          --test-coverage-include=lib/media-group-item-status-recovery.ts
+          --test-coverage-lines=90 --test-coverage-branches=80
+          lib/media-group-item-status.test.ts lib/media-group-item-status-client.test.ts
       - name: Independent group command contracts and coverage (CI only)
         run: >-
           node --import tsx --test --test-isolation=none --experimental-test-coverage

@@ -7,7 +7,7 @@ import { PrivateMediaUpload } from "./PrivateMediaUpload";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
-  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,groups:null});
+  const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,groupGranted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,itemWrap:null,itemStatus:null,groups:null});
   const [abandon,setAbandon]=useState(false);
   useEffect(()=>{setAbandon(false);},[state.sharing?.token]);
   const [recipient,setRecipient]=useState("");
@@ -61,6 +61,20 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
           {state.granted.nextPage!==null && <button type="button" disabled={state.busy || !!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.loadGranted(state.granted!.nextPage!)}>Next granted page</button>}
         </>}
       </section>
+      <section aria-labelledby="media-group-granted-title" className="space-y-3 rounded border p-4">
+        <h2 id="media-group-granted-title" className="font-semibold">Granted through groups</h2>
+        <p>Refresh your media first. Group files appear only while membership, permission and owner-confirmed access are current.</p>
+        <button type="button" disabled={state.busy||!!state.deletion||!state.loaded} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadGroupGranted()}>Refresh group Granted</button>
+        {state.groupGranted&&<>
+          <p>Page {state.groupGranted.page+1} of 16.</p>
+          {!state.groupGranted.entries.length&&<p>No currently accessible group files on this page.</p>}
+          <ul>{state.groupGranted.entries.map((entry,index)=><li key={entry.object}>
+            <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.openGroup(entry,tenant)}>Open group file {state.groupGranted!.page*4+index+1}</button>
+          </li>)}</ul>
+          {state.groupGranted.page>0&&<button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadGroupGranted(state.groupGranted!.page-1)}>Previous group Granted page</button>}
+          {state.groupGranted.nextPage!==null&&<button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.loadGroupGranted(state.groupGranted!.nextPage!)}>Next group Granted page</button>}
+        </>}
+      </section>
       <section aria-labelledby="media-cleanup-title" className="space-y-3 rounded border p-4">
         <h2 id="media-cleanup-title" className="font-semibold">Pending storage cleanup</h2>
         <p>Deleted files stay inaccessible while storage cleanup finishes. Retry a previously accepted deletion here.</p>
@@ -99,7 +113,7 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
               <button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand||!groupRecipient} className="underline disabled:opacity-50" onClick={()=>void library.current?.inviteToGroup(tenant,entry.set,entry.predicate,groupRecipient,0)}>Withdraw invitation</button>
             </div>}
             {entry.invited&&!entry.active&&<button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand} className="underline disabled:opacity-50" onClick={()=>void library.current?.respondToGroup(tenant,entry.set,entry.predicate,1)}>Accept group invitation</button>}
-            {entry.owned&&entry.active&&<button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand||!!state.groupKey} className="mr-4 underline disabled:opacity-50" onClick={()=>void library.current?.startGroupKey(tenant,entry.set,entry.predicate)}>Prepare new group key</button>}
+            {entry.owned&&entry.active&&<button type="button" disabled={state.busy||!!state.deletion||!!state.itemWrap||!!state.groupCommand||!!state.groupKey} className="mr-4 underline disabled:opacity-50" onClick={()=>void library.current?.startGroupKey(tenant,entry.set,entry.predicate)}>Prepare new group key</button>}
             {entry.active&&<button type="button" disabled={state.busy||!!state.deletion||!!state.groupCommand} className="underline disabled:opacity-50" onClick={()=>void library.current?.respondToGroup(tenant,entry.set,entry.predicate,0)}>Leave group</button>}
           </li>)}</ul>
           {state.groups.page>0&&<button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadGroups(state.groups!.page-1)}>Previous group page</button>}
@@ -114,6 +128,34 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
           <p>Retry confirms the original request. Clearing its local copy does not undo accepted changes.</p>
           <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeItemGrant(tenant)}>Retry group permission</button>
           <button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.discardItemGrant(tenant)}>Clear reconciled group permission</button>
+        </>}
+      </section>
+      <section aria-label="Saved group access update" className="space-y-2 rounded border p-4">
+        <h2 className="font-semibold">Group access recovery</h2>
+        <button type="button" disabled={state.busy||!!state.deletion||!state.loaded} className="underline disabled:opacity-50" onClick={()=>void library.current?.inspectItemEpoch(tenant)}>Check saved group access update</button>
+        {state.itemEpoch&&<>
+          <p className="break-all">Saved access update for {state.itemEpoch.object} in {state.itemEpoch.set}.</p>
+          <p>Retry confirms the original request and restores direct access. Accepted updates keep their replacement keys until delivery completes.</p>
+          <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeItemEpoch(tenant)}>Retry group access update</button>
+          <button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.discardItemEpoch(tenant)}>Clear expired unapplied update</button>
+        </>}
+      </section>
+      <section aria-label="Saved group file key delivery" className="space-y-2 rounded border p-4">
+        <h2 className="font-semibold">Group file key delivery recovery</h2>
+        <button type="button" disabled={state.busy||!!state.deletion||!state.loaded} className="underline disabled:opacity-50" onClick={()=>void library.current?.inspectItemWrap(tenant)}>Check saved group file key delivery</button>
+        {state.itemWrap&&<>
+          <p className="break-all">Saved for {state.itemWrap.reader} in {state.itemWrap.set}.</p>
+          <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeItemWrap(tenant)}>Retry group file key delivery</button>
+          <p>Keep this saved delivery until it succeeds. Retrying preserves the original encrypted key.</p>
+        </>}
+      </section>
+      <section aria-label="Saved member file access" className="space-y-2 rounded border p-4">
+        <h2 className="font-semibold">Member file access recovery</h2>
+        <button type="button" disabled={state.busy||!!state.deletion||!state.loaded} className="underline disabled:opacity-50" onClick={()=>void library.current?.inspectItemStatus(tenant)}>Check saved member file access</button>
+        {state.itemStatus&&<>
+          <p className="break-all">Saved for {state.itemStatus.reader} in {state.itemStatus.set}.</p>
+          <button type="button" disabled={state.busy||!!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.resumeItemStatus(tenant)}>Retry member file access</button>
+          <button type="button" disabled={state.busy||!!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.discardItemStatus(tenant)}>Clear reconciled member access request</button>
         </>}
       </section>
       <section aria-label="Saved group key" className="space-y-2 rounded border p-4">
@@ -168,10 +210,15 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
         <details className="rounded border p-3">
           <summary>Group permission for this recipient</summary>
           <p>A group permission alone does not finish sharing. The file access update and key delivery must also complete. The recipient must be a current group member to receive permission.</p>
-          <label className="block">Group ID<input className="block w-full rounded border p-2" value={itemGroup} onChange={event=>setItemGroup(event.target.value)} disabled={state.busy||!!state.itemGrant} autoComplete="off" spellCheck={false}/></label>
-          <label className="block">Group type<select value={itemPredicate} onChange={event=>setItemPredicate(event.target.value as "same-group"|"named-circle")} disabled={state.busy||!!state.itemGrant} className="ml-2 rounded border p-2"><option value="same-group">Group</option><option value="named-circle">Named circle</option></select></label>
-          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!recipient.trim()||!itemGroup.trim()} className="underline disabled:opacity-50" onClick={()=>void library.current?.startItemGrant(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim(),false)}>Record group permission</button>
-          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!recipient.trim()||!itemGroup.trim()} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.startItemGrant(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim(),true)}>Withdraw group permission</button>
+          <label className="block">Group ID<input className="block w-full rounded border p-2" value={itemGroup} onChange={event=>setItemGroup(event.target.value)} disabled={state.busy||!!state.itemGrant||!!state.itemEpoch} autoComplete="off" spellCheck={false}/></label>
+          <label className="block">Group type<select value={itemPredicate} onChange={event=>setItemPredicate(event.target.value as "same-group"|"named-circle")} disabled={state.busy||!!state.itemGrant||!!state.itemEpoch} className="ml-2 rounded border p-2"><option value="same-group">Group</option><option value="named-circle">Named circle</option></select></label>
+          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!!state.itemEpoch||!!state.itemWrap||!recipient.trim()||!itemGroup.trim()} className="underline disabled:opacity-50" onClick={()=>void library.current?.startItemGrant(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim(),false)}>Record group permission</button>
+          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!!state.itemEpoch||!!state.itemWrap||!recipient.trim()||!itemGroup.trim()} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.startItemGrant(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim(),true)}>Withdraw group permission</button>
+          <p>After recording permissions, update the file's group access. Key delivery remains a separate step after its waiting period.</p>
+          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!!state.itemEpoch||!!state.itemWrap||!itemGroup.trim()} className="underline disabled:opacity-50" onClick={()=>void library.current?.startItemEpoch(tenant,state.audience!.object,itemPredicate,itemGroup.trim())}>Update file group access</button>
+          <p>After the waiting period and access recovery finish, deliver the file key, then refresh access for the member who will open it.</p>
+          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!!state.itemEpoch||!!state.itemWrap||!!state.itemWrap||!!state.itemStatus||!recipient.trim()||!itemGroup.trim()} className="underline disabled:opacity-50" onClick={()=>void library.current?.startItemWrap(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim())}>Deliver group file key</button>
+          <button type="button" disabled={state.busy||!!state.deletion||!!state.itemGrant||!!state.itemEpoch||!!state.itemWrap||!!state.itemWrap||!!state.itemStatus||!recipient.trim()||!itemGroup.trim()} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.startItemStatus(tenant,state.audience!.object,itemPredicate,itemGroup.trim(),recipient.trim())}>Refresh member file access</button>
         </details>
         {!state.audience.readers.length && <p>No recipient grants to cancel.</p>}
         <ul>{state.audience.readers.map(reader=><li key={reader} className="my-2 flex flex-wrap gap-3">
