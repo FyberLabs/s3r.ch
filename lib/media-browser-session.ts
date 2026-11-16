@@ -72,8 +72,18 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
   }
   async function locked<T>(work:()=>Promise<T>,name="s3rch-private-upload-v1") {
     if (typeof navigator === "undefined" || !navigator.locks) throw Error("This browser cannot safely resume uploads");
-    return navigator.locks.request(name, {mode:"exclusive",ifAvailable:true}, lock=>{
+    const take=()=>navigator.locks.request(name, {mode:"exclusive",ifAvailable:true}, lock=>{
       if(!lock)throw Error("An upload is active in another tab");return work();
+    });
+    const conflicts=["s3rch-private-share-v1","s3rch-private-group-key-v1","s3rch-private-group-item-grant-v1","s3rch-private-group-item-epoch-delivery-v1"];
+    if(!conflicts.includes(name))return take();
+    // Serialize the journal check with publication across tabs. UI state is only
+    // advisory: a lost reply or page reload must not hide an encrypted draft.
+    return navigator.locks.request("s3rch-private-group-item-wrap-v1",{mode:"exclusive",ifAvailable:true},async lock=>{
+      if(!lock)throw Error("A group file delivery is active in another tab");
+      if(await createShareJournal(undefined,"group-item-wrap").read(AbortSignal.timeout(4000)))
+        throw Error("A group file delivery requires recovery before changing access");
+      return take();
     });
   }
   async function epochWork(tenant:string,principal:string,change:{target?:{object:string;predicate:MediaGroupScope["predicate"];set:string};expected?:PendingItemEpoch},signal?:AbortSignal){
