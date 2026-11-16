@@ -1426,6 +1426,7 @@ function cleanLabel(value: string): string | null {
 }
 
 function cleanEntropy(value: string | undefined): string | null {
+  if (value !== undefined && value.length > 64) return null;
   const entropy = (value ?? shortEntropy()).trim().toLowerCase();
   if (!/^[a-z0-9]{1,64}$/.test(entropy)) return null;
   return entropy;

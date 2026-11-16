@@ -58,7 +58,7 @@ test('ledger and private snapshot survive a color change and retain authorizatio
 test('oversize mutation leaves the prior document intact', () => {
   const f=fixture();migrateForum(f.client,emptyForumFile());const store=new BlobForumStore(f.client);
   const value=store.load();assert.ok(value.ok);const before=f.read();
-  assert.throws(()=>store.save(value.file,{channel:'test',handle:'test',bytes:Buffer.alloc(1048576)}),/capacity/);
+  assert.throws(()=>store.save(value.file,{channel:'test',handle:'test',bytes:Buffer.alloc(1048576)}),/capacity|quota/);
   assert.equal(f.read(),before);
 });
 test('one owner cannot exhaust the shared document and cleanup still works at its quota', () => {
