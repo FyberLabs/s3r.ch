@@ -66,8 +66,7 @@ real production token code in PR CI only; they substitute the registry and SEA
 fixture identities. This is not PostgreSQL, provider, HTTP-adapter or hosted proof.
 
 Outstanding before installation: the Auth-owned PostgreSQL registry/client,
-controller authentication, configured fixture policy, route wrappers, complete
-OAuth/startup/nonce/confirmation alternative-path coverage, Auth relay propagation,
+controller authentication, configured fixture policy, route wrappers, Auth relay propagation,
 and experiment outbox commit composition. No capability can be advertised from
 these hooks alone. #552 remains open.
 
@@ -79,3 +78,11 @@ kinds. The adapter is TEST-only and uninstalled; it does not add a controller ro
 fixture configuration, schema, credentials or activation. HTTP/HMAC contracts run
 only in CI with named in-process transport substitution; the Auth owner supplies
 actual PostgreSQL and transaction-race evidence independently.
+
+The alternate-credential follow-on also binds startup PKCE/linked metadata,
+backup OAuth PKCE/age/session, wallet nonce and confirmation tokens. Verified
+provider tokens must carry the same original run before they can be wrapped into
+new local credentials. Startup broker subjects remain separate from SEA keys.
+Native fixture tests run in CI only. Unsupported wallet/backup credential kinds
+remain denied by the installed-adapter candidate; these hooks do not authorize
+an alternate fixture identity mapping or enable those paths.

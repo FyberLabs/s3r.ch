@@ -1,3 +1,4 @@
+import { terminalTokenClaims, verifyTerminalToken } from "./terminal-run";
 import { generateNonce } from "siwe";
 import { SignJWT, jwtVerify } from "jose";
 import { NONCE_TTL_SECONDS } from "./config";
@@ -18,7 +19,7 @@ export async function signNonceToken(
   secret: string,
   now = Date.now(),
 ): Promise<string> {
-  return new SignJWT({ nonce })
+  return new SignJWT({ nonce, ...await terminalTokenClaims({ kind: "wallet-nonce", subject: null }) })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuedAt(Math.floor(now / 1000))
     .setExpirationTime(Math.floor(now / 1000) + NONCE_TTL_SECONDS)
@@ -39,6 +40,7 @@ export async function readNonceToken(
   if (typeof payload.iat !== "number" || typeof payload.exp !== "number") {
     throw new Error("Nonce cookie is missing iat/exp.");
   }
+  await verifyTerminalToken(payload, { kind: "wallet-nonce", subject: null });
   return { nonce, iat: payload.iat, exp: payload.exp };
 }
 

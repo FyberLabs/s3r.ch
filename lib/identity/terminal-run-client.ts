@@ -99,8 +99,8 @@ export function createTerminalHttpAuthority(config: { serviceKey: string; scopes
       if (!scope) return false;
       if (/^s3rch-(identity|linked|agent)-(challenge|session)-v1(?::[a-f0-9]{64})?$/.test(token.kind))
         return token.subject !== null && scope.identities.sea.includes(token.subject);
-      if (["provider-id-token", "s3rch-device-person-v1"].includes(token.kind)) return token.subject === scope.subject;
-      if (["s3rch-device-pkce-v1", "s3rch-experiment-consent-v1", "s3rch-experiment-display-v1"].includes(token.kind)) return token.subject === null;
+      if (["provider-id-token", "s3rch-device-person-v1", "s3rch-startup-credential-v1"].includes(token.kind)) return token.subject === scope.subject;
+      if (["s3rch-device-pkce-v1", "s3rch-startup-pkce-v1", "s3rch-experiment-consent-v1", "s3rch-experiment-display-v1"].includes(token.kind)) return token.subject === null;
       // Wallet labels and unsupported alternate credentials cannot bypass SEA policy.
       return false;
     },

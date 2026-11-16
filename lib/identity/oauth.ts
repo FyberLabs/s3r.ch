@@ -1,3 +1,4 @@
+import { terminalTokenClaims, verifyTerminalToken } from "./terminal-run";
 import { readBoundedIdentityJson } from "./bounded-json";
 import { startupCookieNames } from "./startup-login-cookies";
 import { requestHost, requestIsSecure } from "../request-origin";
@@ -182,6 +183,7 @@ async function signPkce(pending: PkcePending, secret: string, now: number): Prom
   const iat = Math.floor(now / 1000);
   return new SignJWT({
     kind: "oauth-pkce",
+    ...await terminalTokenClaims({ kind: "oauth-pkce", subject: null }),
     state: pending.state,
     verifier: pending.verifier,
     redirectUri: pending.redirectUri,
@@ -208,6 +210,7 @@ async function readPkce(token: string, secret: string, now?: number): Promise<Pk
   if (!(OAUTH_REDIRECT_URIS as readonly string[]).includes(payload.redirectUri)) {
     throw new OAuthFlowError("PKCE cookie is invalid.");
   }
+  await verifyTerminalToken(payload, { kind: "oauth-pkce", subject: null });
   return {
     state: payload.state,
     verifier: payload.verifier,
@@ -227,6 +230,7 @@ export async function signBackupSession(
   const hypermeshWallet = input.hypermeshWallet ? getAddress(input.hypermeshWallet) : undefined;
   return new SignJWT({
     kind: "oauth-backup",
+    ...await terminalTokenClaims({ kind: "oauth-backup", subject: sub }),
     idp: input.idp ?? "",
     ...(hypermeshWallet ? { hypermeshWallet } : {}),
   })
@@ -247,6 +251,7 @@ async function signAgePending(
   const hypermeshWallet = input.hypermeshWallet ? getAddress(input.hypermeshWallet) : undefined;
   return new SignJWT({
     kind: "oauth-age",
+    ...await terminalTokenClaims({ kind: "oauth-age", subject: sub }),
     idp: input.idp ?? "",
     ...(hypermeshWallet ? { hypermeshWallet } : {}),
   })
@@ -267,6 +272,7 @@ async function readAgePending(token: string, secret: string, now?: number): Prom
     throw new OAuthFlowError("Age confirmation is invalid.");
   }
   const sub = typeof payload.sub === "string" ? payload.sub : "";
+  await verifyTerminalToken(payload, { kind: String(payload.kind), subject: assertSub(sub) });
   return {
     sub: assertSub(sub),
     idp: asIdp(payload.idp),
@@ -294,6 +300,7 @@ export async function readBackupSession(
     throw new OAuthFlowError("Backup session is invalid.");
   }
   const sub = typeof payload.sub === "string" ? payload.sub : "";
+  await verifyTerminalToken(payload, { kind: String(payload.kind), subject: assertSub(sub) });
   return {
     sub: assertSub(sub),
     idp: asIdp(payload.idp),
@@ -419,6 +426,7 @@ export async function verifyBackupIdToken(
     audience: input.clientId ?? OAUTH_CLIENT_ID,
     algorithms: ["RS256", "PS256", "ES256"],
   });
+  await verifyTerminalToken(payload, { kind: "provider-id-token", subject: rawProviderSub(payload.sub) });
   return {
     sub: rawProviderSub(payload.sub),
     idp: asIdp(payload.idp_provider),
