@@ -1,3 +1,7 @@
+import {signRecoveryCurrentPut} from 'sociacl-ids/recovery';
+import {saveRecoveryCopy,type RecoveryView} from './recovery-store-save';
+import {recoveryFileRow,recoveryRowEnvelope,recoveryRowFile} from './recovery-file';
+import {recoveryView} from './recovery-store-protocol';
 import {prepareEncryptedRecovery} from './prepare-encrypted-recovery';
 import {restoreEncryptedRecovery} from './restore-encrypted-recovery';
 import {restoreExistingKeyring} from './restore-keyring';
@@ -14,7 +18,7 @@ import {readSingleUnlockedIdentity,readUnlockedMeshRevision,rememberUnlockedMesh
 import {exportDeviceSource} from './device-source';
 import {createSeaSessionClient} from './sea-session-client';
 const fail=():never=>{throw Error('Device identity unavailable');};
-export type DeviceSession={linkedOidcEnabled?:boolean;scope:Scope;authorized:boolean;subject:string|null;context:string|null;expiresAt:number|null};
+export type DeviceSession={linkedOidcEnabled?:boolean;recoveryStoreEnabled?:boolean;scope:Scope;authorized:boolean;subject:string|null;context:string|null;expiresAt:number|null};
 export async function readDeviceSession(signal:AbortSignal=new AbortController().signal):Promise<DeviceSession>{
  const r=await fetch('/api/identity/device/config',{credentials:'same-origin',mode:'same-origin',cache:'no-store',redirect:'error',signal});
  if(!r.ok)return fail();return await readBoundedIdentityJson(r,8192,signal) as DeviceSession;
@@ -59,6 +63,33 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
   },
  };
  return {adapters,
+  async fetchEncryptedCopy(){
+   guard();if(!session.recoveryStoreEnabled)return fail();
+   const value=(await request('recovery-read',{slot:'current'})).body;
+   if(!recoveryView(value)||(value as RecoveryView).row===null)return fail();
+   guard();return recoveryRowFile((value as RecoveryView).row!);
+  },
+  async saveEncryptedCopy(file:Uint8Array){
+   guard();if(!session.recoveryStoreEnabled)return fail();
+   const row=recoveryFileRow(new Uint8Array(file));
+   let opened:Awaited<ReturnType<typeof adapters.unlock>>|undefined;
+   try{
+    opened=await adapters.unlock(abort.signal);guard();
+    const held=opened;
+    if(row.principal!==held.identity.principal||row.signingPub!==held.identity.pub||row.epub!==held.identity.epub||row.rotationSeq!==held.identity.rotationSeq)return fail();
+    async function withKeyring<T>(use:(handle:ReturnType<typeof importKeyring>,state:Awaited<ReturnType<typeof authority.keyringState>>)=>T){
+     const state=await authority.keyringState(held.identity);guard();
+     const handle=importKeyring(held.keyring,held.identity,()=>{guard();return state();});
+     try{return use(handle,()=>{guard();return state();});}finally{closeKeyring(handle);}
+    }
+    return await saveRecoveryCopy(row,{current,signal:abort.signal,
+     read:async()=>(await request('recovery-read',{slot:'current'})).body,
+     authorize:async()=>{await withKeyring(()=>undefined);},
+     sign:async view=>withKeyring((handle,state)=>signRecoveryCurrentPut(handle,recoveryRowEnvelope(row),
+      {generation:view.generation,head:view.head,row:view.row?recoveryRowEnvelope(view.row):null},state)),
+     write:async operation=>(await request('recovery-put',operation)).body});
+   }finally{opened?.keyring.fill(0);}
+  },
   async prepareEncryptedCopy(passphrase:Uint8Array,accountHandle:string){
    guard();const phrase=new Uint8Array(passphrase);
    let opened:Awaited<ReturnType<typeof adapters.unlock>>|undefined;
