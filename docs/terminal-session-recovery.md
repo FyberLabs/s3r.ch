@@ -140,3 +140,11 @@ optional run/generation hint shape in its signing intent; it does not treat that
 decoded hint as authenticated authority. Native CI exercises sign-in, old-run
 replay, seal and an accepted replay consume whose response is lost. An uncertain
 exchange retains pending admission. This factory remains uninstalled as well.
+
+`createTerminalExperimentRoute` composes the actual consent/display/outbox
+application with registry admission and explicit transport injection. Successful
+telemetry delivery waits through its outbox commit; ambiguous receipt and an
+unverified withdrawal retain pending admission. Completion failure withholds the
+response cookies. Native CI substitutes registry, storage and Azure transports
+while exercising real signing and application code. This factory is uninstalled;
+its close operation only closes its local provider and is not terminal evidence.
