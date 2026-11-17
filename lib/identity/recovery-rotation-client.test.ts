@@ -7,7 +7,7 @@ import {secp256k1} from '@noble/curves/secp256k1.js';
 import {createHash} from 'node:crypto';
 import {hashMessage,hexToBytes} from 'viem';
 const sha256=(value:Uint8Array)=>new Uint8Array(createHash('sha256').update(value).digest());
-import {historyState,lengthPrefixed} from 'sociacl-ids';
+import {historyState,lengthPrefixed,signingBytes,signWithKeyring,linkId} from 'sociacl-ids';
 import {admitKeyring,exportKeyring,importKeyring,closeKeyring} from 'sociacl-ids/keyring';
 import {openRecoveryKeyring,signRecoveryCommit} from 'sociacl-ids/recovery';
 import {commitRecoveryCopy} from './recovery-store-commit';
@@ -15,23 +15,38 @@ import {recoveryFileRow,recoveryRowEnvelope} from './recovery-file';
 import {prepareRecoveryRotation} from './recovery-rotation-client';
 const fixture=(name:string)=>JSON.parse(readFileSync(new URL('../.pairing-test-vectors/'+name+'.json',import.meta.url),'utf8'));
 const b64=(v:Uint8Array)=>Buffer.from(v).toString('base64url'),hex=(v:Uint8Array)=>Buffer.from(v).toString('hex');
-function setup(){
+function walletSignature(message:string){
+ const secret=new Uint8Array(32);secret[31]=4;const sig=secp256k1.sign(hexToBytes(hashMessage(message)),secret,{prehash:false,format:'recovered'});
+ return '0x'+hex(new Uint8Array([...sig.slice(1),sig[0]+27]));
+}
+function setup(legacy=false){
  const records=fixture('records'),fields=structuredClone(fixture('browser-keyring').accept[1].fields),scalar=new Uint8Array(32),encryption=new Uint8Array(32);scalar[31]=1;encryption[31]=9;
  Object.assign(fields,{pub:fields.principal,priv:b64(scalar),epub:fields.genesisEpub,epriv:b64(encryption),rotationSeq:0,contentEpoch:0,retired:[],priorLanes:[],priorContactSecrets:[]});
+ const account=fixture('account-keyring');if(legacy){const g=account.genesis;Object.assign(fields,{principal:g.principal,pub:g.signingPub,priv:g.signingPriv,genesisEpub:g.epub,epub:g.epub,epriv:g.epriv,laneId:g.laneId,contactLaneSecret:g.contactLaneSecret});}
  const key=new Uint8Array(32);key[31]=7;const point=p256.getPublicKey(key,false),jwks=structuredClone(records.context.jwks);
  jwks.keys.push({kty:'EC',crv:'P-256',kid:'rotation-fixture',x:b64(point.slice(1,33)),y:b64(point.slice(33)),alg:'ES256',use:'sig',key_ops:['verify'],notBefore:0,notAfter:records.context.now+10000});
  let rotation:any,pending:any=null,currentRow:any=null,storedBytes:Uint8Array|undefined,generation=0,active=true,stored=0,publicationWrites=0,backupWrites=0,revision=0;
  const identity={principal:fields.principal,pub:fields.pub,epub:fields.epub,rotationSeq:0},abort=new AbortController();
  const context:any={...records.context,jwks,links:new Map(records.context.links),pinnedIss:new Set(records.context.pinnedIss),revocations:[],
-  genesisEpubBindings:records.accept.find((r:any)=>r.name==='binding-valid-no-rotation').genesisEpubBindings,
+  genesisEpubBindings:legacy?[account.genesisBinding]:records.accept.find((r:any)=>r.name==='binding-valid-no-rotation').genesisEpubBindings,
   history:(p:any,at:number,until:number)=>({ok:true,value:historyState(p,rotation?[rotation]:[],at,until)})};
+ if(legacy){
+  const record:any={v:1,kind:'wallet',principal:fields.principal,address:account.wallet,issuedAt:context.now-30,nonce:'legacyRecovery123',keySig:'',siwe:{message:'',signature:''},attest:''};
+  const bytes=signingBytes(record);assert.ok(bytes.ok);const id=hex(sha256(bytes.value));
+  const signature=signWithKeyring(new Uint8Array(Buffer.from(account.genesis.signingScalarHex,'hex')),bytes.value,fields.principal);assert.ok(signature.ok);record.keySig=signature.value;
+  const message=`s3r.ch wants you to sign in with your Ethereum account:\n${account.wallet}\n\nSociACL link: ${id}\n\nURI: https://s3r.ch/identity/link\nVersion: 1\nChain ID: 1\nNonce: legacyRecovery123\nIssued At: ${new Date(record.issuedAt*1000).toISOString().replace('.000Z','Z')}`;
+  record.siwe={message,signature:walletSignature(message)};
+  const claims={typ:'sociacl-wallet-attest-v1',principal:fields.principal,linkId:id,iat:record.issuedAt,exp:record.issuedAt+600};
+  const token=b64(new TextEncoder().encode(JSON.stringify({alg:'ES256',kid:'rotation-fixture',typ:'JWT'})))+'.'+b64(new TextEncoder().encode(JSON.stringify(claims)));
+  record.attest=token+'.'+b64(p256.sign(sha256(new TextEncoder().encode(token)),key,{prehash:false,format:'compact'}));
+  const checked=linkId(record);assert.ok(checked.ok);assert.equal(checked.value,id);context.links=new Map([[id,record]]);
+ }
  const state=():any=>({rotations:rotation?[rotation]:[],context});
  const handle=admitKeyring(fields,identity,state),material=exportKeyring(handle,state);closeKeyring(handle);
  const head=()=>rotation?{sequence:rotation.seq,currentKey:rotation.nextKey,currentEpub:rotation.nextEpub}:{sequence:0,currentKey:identity.pub,currentEpub:identity.epub};
- const walletRecord=records.context.links.find(([,v]:any)=>v.kind==='wallet')[1];
+ const walletRecord=[...context.links.values()].find((v:any)=>v.kind==='wallet') as any;
  const wallet={current:()=>({address:walletRecord.address,chainId:'1',walletRevision:revision,sessionRevision:0}),signMessage:async(message:string)=>{
-  const secret=new Uint8Array(32);secret[31]=4;const sig=secp256k1.sign(hexToBytes(hashMessage(message)),secret,{prehash:false,format:'recovered'});
-  return '0x'+hex(new Uint8Array([...sig.slice(1),sig[0]+27]));
+  return walletSignature(message);
  }};
  const input={origin:'https://s3r.ch',current:()=>active,signal:abort.signal,keyringState:async()=>state,
   store:async(bytes:Uint8Array,id:any,current:()=>boolean)=>{assert.equal(current(),true);const opened=importKeyring(bytes,id,state);try{assert.equal(opened.rotationSeq,1);storedBytes=new Uint8Array(bytes);stored++;}finally{closeKeyring(opened);}},
@@ -88,13 +103,15 @@ test('weak passphrase and cancelled preparation return no pending controller',as
 });
 
 test('old weak-passphrase recovery rotates, protects and promotes the exact new-passphrase backup',async()=>{
- const f=setup(),legacy=fixture('recovery-legacy-strength'),oldEnvelope={principal:f.identity.principal,signingPub:f.identity.pub,epub:f.identity.epub,rotationSeq:0,bytes:new Uint8Array(Buffer.from(legacy.envelopeHex,'hex'))};
+ const f=setup(true),legacy=fixture('recovery-legacy-strength'),oldEnvelope={principal:f.identity.principal,signingPub:f.identity.pub,epub:f.identity.epub,rotationSeq:0,bytes:new Uint8Array(Buffer.from(legacy.envelopeHex,'hex'))};
  const old=await openRecoveryKeyring(new TextEncoder().encode(legacy.passphraseUtf8),oldEnvelope,f.identity,f.state);
  let material:Uint8Array|undefined,flow:Awaited<ReturnType<typeof prepareRecoveryRotation>>|undefined;
  try{
   material=exportKeyring(old,f.state);f.seedCurrent({principal:f.identity.principal,signingPub:f.identity.pub,epub:f.identity.epub,rotationSeq:0,bytesHex:hex(oldEnvelope.bytes)});
   flow=await prepareRecoveryRotation(material,f.identity,['lost'],'lost',f.pass(),'account',f.input);
   const row=recoveryFileRow(flow.file());await flow.save();await flow.authorize(f.wallet);await flow.publish();await flow.protect();
+  const reopened=await openRecoveryKeyring(f.pass(),recoveryRowEnvelope(row),flow.identity,f.state);
+  try{assert.deepEqual(exportKeyring(reopened,f.state),f.storedBytes);}finally{closeKeyring(reopened);}
   const active=importKeyring(f.storedBytes!,flow.identity,f.state);
   try{
    const result=await commitRecoveryCopy(row,{current:f.input.current,signal:f.abort.signal,read:slot=>f.input.request('recovery-read',{slot}),
