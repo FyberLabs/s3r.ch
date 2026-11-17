@@ -53,3 +53,30 @@ test("two pending cached reads bound work and malformed requests send no traffic
   await assert.rejects(client.get('bad',3));await assert.rejects(client.get(cid,0));assert.equal(calls,0);
   const a=client.get(cid,3),b=client.get(cid,3);await assert.rejects(client.get(cid,3));release(bytes);await Promise.all([a,b]);assert.equal(calls,2);
 });
+
+test("explicit cache-only reads refuse absent, evicted and expired data without provider traffic",async()=>{
+  const f=fixture(),cid=await rawMediaBlockCid(bytes);
+  const client=createCachedMediaBlocks({provider:f.provider,cache:f.cache,current:()=>true,signal:f.abort.signal,readPolicy:'cache-only'});
+  await assert.rejects(client.get(cid,3));assert.equal(f.gets(),0);
+  await f.cache.put(cid,bytes);assert.deepEqual(await client.get(cid,3),bytes);
+  await f.cache.evict([cid]);await assert.rejects(client.get(cid,3));
+  await f.cache.put(cid,bytes);f.time(2000);await assert.rejects(client.get(cid,3));
+  assert.equal(f.gets(),0);f.cache.close();
+});
+test("cache-only storage errors and corrupt or wrong-size entries never fall back",async()=>{
+  const f=fixture(),cid=await rawMediaBlockCid(bytes);
+  for(const get of [async()=>{throw Error('storage denied');},async()=>new Uint8Array([3,2,1]),async()=>new Uint8Array([1])]){
+    const client=createCachedMediaBlocks({provider:f.provider,cache:{...f.cache,get},current:()=>true,signal:f.abort.signal,readPolicy:'cache-only'});
+    await assert.rejects(client.get(cid,3));
+  }
+  const absent=createCachedMediaBlocks({provider:f.provider,current:()=>true,signal:f.abort.signal,readPolicy:'cache-only'});
+  await assert.rejects(absent.get(cid,3));assert.equal(f.gets(),0);f.cache.close();
+});
+test("read policy is validated and captured, while explicit uploads retain their own provider path",async()=>{
+  const f=fixture(),cid=await rawMediaBlockCid(bytes);
+  const options={provider:f.provider,cache:f.cache,current:()=>true,signal:f.abort.signal,readPolicy:'cache-only' as 'cache-only'|'provider-allowed'};
+  const client=createCachedMediaBlocks(options);options.readPolicy='provider-allowed';
+  await assert.rejects(client.get(cid,3));assert.equal(f.gets(),0);
+  assert.equal(await client.put(bytes),cid);
+  assert.throws(()=>createCachedMediaBlocks({...options,readPolicy:'invalid' as 'cache-only'}));f.cache.close();
+});
