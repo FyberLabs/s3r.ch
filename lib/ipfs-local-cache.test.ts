@@ -98,3 +98,21 @@ test("eviction shares the pending work bound with hashing",async(t)=>{
  const pending=Array.from({length:4},()=>cache.put(cid,block));await assert.rejects(cache.evict([cid]));
  releases.forEach(release=>release());await Promise.all(pending);await cache.evict([cid]);
 });
+
+
+test("noncanonical CID operations refuse before opening storage or hashing",async t=>{
+ const s=setup(),cid=await rawMediaBlockCid(block);let opens=0,hashes=0;
+ const open=s.factory.open.bind(s.factory),digest=crypto.subtle.digest.bind(crypto.subtle);
+ t.mock.method(s.factory,'open',(...args:Parameters<typeof open>)=>{opens++;return open(...args);});
+ t.mock.method(crypto.subtle,'digest',(...args:Parameters<typeof digest>)=>{hashes++;return digest(...args);});
+ const cache=createLocalCiphertextCache({scope,policy,...s});
+ try{
+  for(const invalid of [cid.slice(0,-1)+'b','bafkreiz'+cid.slice(7),cid.toUpperCase(),'b'+'a'.repeat(58)]){
+   await assert.rejects(cache.get(invalid));await assert.rejects(cache.put(invalid,block));await assert.rejects(cache.evict([cid,invalid]));
+  }
+  assert.equal(opens,0);assert.equal(hashes,0);
+  await cache.put(cid,block);assert.deepEqual(await cache.get(cid),block);
+  cache.close();await cache.evict([cid]);
+  assert.equal(await createLocalCiphertextCache({scope,policy,...s}).get(cid),null);
+ }finally{cache.close();}
+});

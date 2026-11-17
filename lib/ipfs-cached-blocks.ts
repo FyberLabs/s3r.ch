@@ -1,5 +1,5 @@
 /** Optional local ciphertext reuse; not a grant authority or availability guarantee. */
-import { IPFS_MEDIA_BLOCK_BYTES, rawMediaBlockCid } from "./ipfs-media-blocks";
+import { IPFS_MEDIA_BLOCK_BYTES, rawMediaBlockCid, isRawMediaBlockCid } from "./ipfs-media-blocks";
 import type { createKuboBlockClient } from "./ipfs-kubo-client";
 import type { createLocalCiphertextCache } from "./ipfs-local-cache";
 export function createCachedMediaBlocks(options: {
@@ -41,7 +41,7 @@ export function createCachedMediaBlocks(options: {
     },
     async get(cid: string, size: number): Promise<Uint8Array> {
       check();
-      if (typeof cid !== "string" || !/^bafkrei[a-z2-7]{52}$/.test(cid) || !Number.isSafeInteger(size) || size < 1 || size > IPFS_MEDIA_BLOCK_BYTES || active >= 2) throw unavailable();
+      if (!isRawMediaBlockCid(cid) || !Number.isSafeInteger(size) || size < 1 || size > IPFS_MEDIA_BLOCK_BYTES || active >= 2) throw unavailable();
       active++;
       try {
         if (cache) {

@@ -24,7 +24,8 @@ function cidFromDigest(hash: Uint8Array): string {
   bytes.set([1, 0x55, 0x12, 32]); bytes.set(hash, 4);
   return base32(bytes);
 }
-function canonicalCid(value: unknown): value is string {
+/** Canonical raw CIDv1/SHA-256 only, including header and zero base32 padding. */
+export function isRawMediaBlockCid(value: unknown): value is string {
   if (typeof value !== "string" || !/^b[a-z2-7]{58}$/.test(value)) return false;
   const bytes = new Uint8Array(36); let acc = 0, bits = 0, offset = 0;
   for (const character of value.slice(1)) {
@@ -50,7 +51,7 @@ export function parseMediaBlockManifest(json: string): MediaBlockManifest {
   if (!value || Array.isArray(value) || Object.keys(value).sort().join(",") !== "blocks,bytes,sha256,version" ||
       value.version !== 1 || !Number.isSafeInteger(value.bytes) || value.bytes < 33 || value.bytes > MEDIA_STORED_MAX ||
       typeof value.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.sha256) || !Array.isArray(value.blocks) ||
-      value.blocks.length !== Math.ceil(value.bytes / IPFS_MEDIA_BLOCK_BYTES) || !value.blocks.every(canonicalCid)) throw invalid();
+      value.blocks.length !== Math.ceil(value.bytes / IPFS_MEDIA_BLOCK_BYTES) || !value.blocks.every(isRawMediaBlockCid)) throw invalid();
   return Object.freeze({version: 1, bytes: value.bytes, sha256: value.sha256, blocks: Object.freeze([...value.blocks])});
 }
 function envelope(bytes: Uint8Array) {

@@ -1,5 +1,5 @@
 /** Unmounted browser transport. Caller owns provider selection and current grant/consent. */
-import { IPFS_MEDIA_BLOCK_BYTES, rawMediaBlockCid } from "./ipfs-media-blocks";
+import { IPFS_MEDIA_BLOCK_BYTES, rawMediaBlockCid, isRawMediaBlockCid } from "./ipfs-media-blocks";
 import type { TransferConcurrency } from "./ipfs-transfer-concurrency";
 const denied = () => new Error("IPFS transfer unavailable");
 export function createKuboBlockClient(options: {
@@ -90,8 +90,8 @@ export function createKuboBlockClient(options: {
       });
     },
     async get(cid: string, size: number): Promise<Uint8Array> {
-      // Only the restricted raw CID family; the digest check below also enforces canonical encoding.
-      if (typeof cid !== "string" || !/^bafkrei[a-z2-7]{52}$/.test(cid)) throw denied();
+      // Refuse malformed references before consuming admission or contacting the provider.
+      if (!isRawMediaBlockCid(cid)) throw denied();
       return run(size, async signal => {
         const bytes = await request("/api/v0/block/get?arg=" + cid, signal, size);
         if (bytes.length !== size || await rawMediaBlockCid(bytes) !== cid) throw denied();
