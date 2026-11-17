@@ -56,3 +56,29 @@ It covers a lost committed response, exact retry, successor publication, replaye
 old head refusal, revoked-session refusal and retained state after reopening.
 Storage and custody are explicit in-process doubles; this is not TEST deployment,
 real browser PRF, or real-storage nightly qualification.
+
+### Local private-head custody
+
+`createVaultHeadCustody` seals the signed head using the existing `jose` General
+JWE implementation: a fresh A256GCM content key, wrapped with A256KW, and an
+allowlisted protected header binding the opaque vault ID. Owner and history
+metadata remain inside the ciphertext. The envelope is bounded to 64 KiB and
+accepts exactly one recipient, no external AAD or unprotected headers, and no
+algorithm negotiation. The installed SociACL verifier authenticates the signed
+head and current identity history before seal and after open.
+
+The caller supplies a dedicated non-exportable AES-KW-256 key with wrap/unwrap
+usage. Login never provides this key. `createSealedVaultStorageClient` composes
+that custody with verified publication and readback. Call `sealHead` once and
+retain the returned bytes for ambiguous retries; calling it again creates a new
+ciphertext. `lock` drops the adapter's key reference, rejects in-flight plaintext
+return and causes publication guards to refuse. It cannot cancel a remote write
+already committed or revoke another holder's key reference. Mutable plaintext
+buffers are cleared; JavaScript strings and garbage collection offer no assured
+memory erasure.
+
+This is a private sync-head envelope, not the container-v2 file or keybag format.
+Slot enrollment, PRF/recovery derivation, durable key custody, cross-device unlock,
+item opening with Check/epoch verification and the vault UI remain open. The
+combined CI contract now uses this real encryption adapter with a CI-generated
+local key; storage remains an in-process fake and no real PRF is claimed.

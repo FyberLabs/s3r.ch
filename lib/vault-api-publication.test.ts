@@ -5,7 +5,7 @@ import { IDBFactory } from 'fake-indexeddb';
 import { parsePrincipalId, signWithKeyring, historyState, type ResolutionContext } from 'sociacl-ids';
 import { openVaultSyncHeadStore, vaultSyncHeadFloor, vaultSyncHeadSigningBytes, type VaultSyncHead } from 'sociacl-ids/vault-sync';
 import fixture from './identity/vectors/first-contact-client.json';
-import { createVaultStorageClient } from './vault-storage-client';
+import { createSealedVaultStorageClient } from './vault-head-custody';
 import { createVaultApiTransport } from './vault-api-client';
 import { createVaultApiService } from './vault-api-service';
 import { createVaultScopedStore } from './vault-scoped-store-server';
@@ -48,21 +48,23 @@ test('signed vault publication crosses authenticated API and scoped storage befo
   return response;
  }) as typeof fetch;
  const transport=createVaultApiTransport({origin,owner,vaultId,sign:async bytes=>sign(bytes),clock:()=>20,fetch:fetcher});
- // Custody double only: production head encryption remains a separate adapter.
- const client=createVaultStorageClient({owner,vaultId,floor,transport,current,openHead:async bytes=>JSON.parse(new TextDecoder().decode(bytes))});
+ const localKey=await crypto.subtle.generateKey({name:'AES-KW',length:256},false,['wrapKey','unwrapKey']);
+ const client=createSealedVaultStorageClient({owner,vaultId,floor,transport,current,key:localKey});
+ const rootBytes=await client.sealHead(root);
  try{
-  const first=await client.publish({encryptedHead:encode(root),keybag,index,previous:null,expectedStorageRevision:null});
+  const first=await client.publish({encryptedHead:rootBytes,keybag,index,previous:null,expectedStorageRevision:null});
   assert.equal(headWrites,1);
-  await client.publish({encryptedHead:encode(root),keybag,index,previous:null,expectedStorageRevision:null});assert.equal(headWrites,1);
+  await client.publish({encryptedHead:rootBytes,keybag,index,previous:null,expectedStorageRevision:null});assert.equal(headWrites,1);
   const path='/api/v1/storage/records/vault/'+vaultId,old=structuredClone(rows.get(path)!);
   const next=signed({revision:2,previousDigest:vaultSyncHeadFloor(root).digest,issuedAt:11});
-  await client.publish({encryptedHead:encode(next),keybag,index,previous:root,expectedStorageRevision:first.storageRevision});
+  const nextBytes=await client.sealHead(next);
+  await client.publish({encryptedHead:nextBytes,keybag,index,previous:root,expectedStorageRevision:first.storageRevision});
   assert.deepEqual(await floor.read(),vaultSyncHeadFloor(next));
   assert.deepEqual((await client.readCurrent()).head,next);
   rows.set(path,old);await assert.rejects(client.readCurrent());assert.deepEqual(await floor.read(),vaultSyncHeadFloor(next));
   authenticated=false;const before=writes;
-  await assert.rejects(client.publish({encryptedHead:encode(next),keybag,index,previous:root,expectedStorageRevision:first.storageRevision}));assert.equal(writes,before);
+  await assert.rejects(client.publish({encryptedHead:nextBytes,keybag,index,previous:root,expectedStorageRevision:first.storageRevision}));assert.equal(writes,before);
   floor.close();const reopened=await openVaultSyncHeadStore(options);
   assert.deepEqual(await reopened.read(),vaultSyncHeadFloor(next));reopened.close();
- }finally{floor.close();}
+ }finally{client.lock();floor.close();}
 });
