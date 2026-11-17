@@ -63,8 +63,8 @@ export async function prepareRecoveryRotation(material:Uint8Array,identity:Keyri
     const uri=origin.origin+'/identity/link',policy=snapshot.context.policy;
     if(!policy.allowedDomains.includes(origin.host)||!policy.allowedUris.includes(uri)||!policy.allowedChainIds.includes(selected.chainId))throw Error('Wallet policy unavailable');
     const {version:_,...draft}=pending!.draft;
-    const candidate={...draft,issuedAt:snapshot.context.now,retainedLinks:retained.value,authorizer:{kind:'wallet' as const,link,siwe:{message:'',signature:''}}};
-    const transcript=signingBytes(candidate as Parameters<typeof signingBytes>[0]);if(!transcript.ok)throw Error('Rotation transcript unavailable');
+    const candidate={...draft,principal:draft.principal as PrincipalId,prevKey:draft.prevKey as PrincipalId,nextKey:draft.nextKey as PrincipalId,nextEpub:draft.nextEpub as PrincipalId,issuedAt:snapshot.context.now,retainedLinks:retained.value,authorizer:{kind:'wallet' as const,link,siwe:{message:'',signature:''}}};
+    const transcript=signingBytes(candidate);if(!transcript.ok)throw Error('Rotation transcript unavailable');
     const digest=hex(new Uint8Array(await crypto.subtle.digest('SHA-256',new Uint8Array(transcript.value))));check();
     const nonce=hex(crypto.getRandomValues(new Uint8Array(16)));
     const message=`${origin.host} wants you to sign in with your Ethereum account:\n${selected.address}\n\nSociACL link: ${digest}\n\nURI: ${uri}\nVersion: 1\nChain ID: ${selected.chainId}\nNonce: ${nonce}\nIssued At: ${new Date(candidate.issuedAt*1000).toISOString().replace('.000Z','Z')}`;

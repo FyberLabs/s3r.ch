@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {p256} from '@noble/curves/nist.js';
 import {secp256k1} from '@noble/curves/secp256k1.js';
-import {sha256} from '@noble/hashes/sha2.js';
-import {keccak_256} from '@noble/hashes/sha3.js';
+import {createHash} from 'node:crypto';
+import {hashMessage,hexToBytes} from 'viem';
+const sha256=(value:Uint8Array)=>new Uint8Array(createHash('sha256').update(value).digest());
 import {historyState,lengthPrefixed} from 'sociacl-ids';
 import {admitKeyring,exportKeyring,importKeyring,closeKeyring} from 'sociacl-ids/keyring';
 import {prepareRecoveryRotation} from './recovery-rotation-client';
@@ -26,8 +27,7 @@ function setup(){
  const head=()=>rotation?{sequence:rotation.seq,currentKey:rotation.nextKey,currentEpub:rotation.nextEpub}:{sequence:0,currentKey:identity.pub,currentEpub:identity.epub};
  const walletRecord=records.context.links.find(([,v]:any)=>v.kind==='wallet')[1];
  const wallet={current:()=>({address:walletRecord.address,chainId:'1',walletRevision:revision,sessionRevision:0}),signMessage:async(message:string)=>{
-  const raw=new TextEncoder().encode(message),prefix=new TextEncoder().encode('\x19Ethereum Signed Message:\n'+raw.length),bytes=new Uint8Array([...prefix,...raw]);
-  const secret=new Uint8Array(32);secret[31]=4;const sig=secp256k1.sign(keccak_256(bytes),secret,{prehash:false,format:'recovered'});
+  const secret=new Uint8Array(32);secret[31]=4;const sig=secp256k1.sign(hexToBytes(hashMessage(message)),secret,{prehash:false,format:'recovered'});
   return '0x'+hex(new Uint8Array([...sig.slice(1),sig[0]+27]));
  }};
  const input={origin:'https://s3r.ch',current:()=>active,signal:abort.signal,keyringState:async()=>state,
