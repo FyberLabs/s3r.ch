@@ -94,6 +94,17 @@ function Session({session,onCancel}:{session:DeviceSession;onCancel:()=>void}){
      return outcome==='stored'?'Encrypted recovery copy restored with local passkey protection. Unlock it below to verify and sign in.':'A matching saved copy already exists. Unlock it below; no new passkey was created.';
     }finally{if(field)field.value='';passphrase?.fill(0);bytes?.fill(0);}
    })}>Open and protect recovery copy</button>
+   {session.recoveryStoreEnabled&&session.recoveryRotationEnabled&&<div>
+    <p>After restoring the confirmed new keys, select the pending file again to make it your current stored backup. This replaces the previous stored backup and clears the pending slot. Keep your downloaded copy.</p>
+    <button disabled={busy||!recoveryFile} onClick={()=>void work(async()=>{
+     const selected=recoveryFile;setRecoveryFile(null);let bytes:Uint8Array|undefined;
+     try{
+      if(!selected||selected.size>710000)throw Error();bytes=new Uint8Array(await selected.arrayBuffer());
+      const result=await client.commitEncryptedCopy(bytes);
+      return result==='committed'?'Pending recovery copy is now current and has been read back successfully.':'This exact recovery copy is already current; the pending slot is clear.';
+     }finally{bytes?.fill(0);}
+    })}>Make pending recovery copy current</button>
+   </div>}
   </section>}
   {client&&mode==='backup'&&<section><h2>Create an encrypted recovery copy</h2>
    <p>Unlock the complete identity saved on this device, or load its complete export under “Send from this device”. Choose a strong new passphrase and store it separately from the downloaded file. This creates a local copy; your keys and existing copies stay valid.</p>
