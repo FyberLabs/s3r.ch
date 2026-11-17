@@ -13,7 +13,7 @@ export function createVaultHeadCustody(input:{owner:PrincipalId;vaultId:string;k
    input.key.usages.length!==2||!input.key.usages.includes('wrapKey')||!input.key.usages.includes('unwrapKey'))throw Error('Invalid local vault key');
  let key:CryptoKey|null=input.key;
  const guard=()=>{if(!key)throw Error('Vault locked');return key;};
- function verify(value:unknown){guard();const state=current();return verifyVaultSyncHead(value,owner,vaultId,state.rotations,state.context);}
+ function verify(value:unknown){guard();const state=current();const head=verifyVaultSyncHead(value,owner,vaultId,state.rotations,state.context);guard();return head;}
  const protectedHeader={alg:'A256KW',enc:'A256GCM',typ:TYPE,kid:vaultId};
  return Object.freeze({
   lock(){key=null;},
@@ -52,6 +52,6 @@ export function createVaultHeadCustody(input:{owner:PrincipalId;vaultId:string;k
 export function createSealedVaultStorageClient(input:{owner:PrincipalId;vaultId:string;key:CryptoKey;current:VaultHeadIdentityState;
  transport:VaultHeadTransport;floor:Awaited<ReturnType<typeof openVaultSyncHeadStore>>}){
  const custody=createVaultHeadCustody(input);
- const storage=createVaultStorageClient({...input,current:()=>{custody.assertUnlocked();return input.current();},openHead:custody.open});
+ const storage=createVaultStorageClient({...input,current:()=>{custody.assertUnlocked();const state=input.current();custody.assertUnlocked();return state;},openHead:custody.open});
  return Object.freeze({...storage,sealHead:custody.seal,lock:custody.lock});
 }

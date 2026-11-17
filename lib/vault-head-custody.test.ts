@@ -32,3 +32,10 @@ test('locking prevents an in-flight decrypt from returning; exportable keys are 
  const exportable=await crypto.subtle.generateKey({name:'AES-KW',length:256},true,['wrapKey','unwrapKey']);
  assert.throws(()=>createVaultHeadCustody({owner,vaultId,key:exportable,current}));
 });
+
+test('identity refresh cannot return a head after locking custody',async()=>{
+ const key=await generate();let lockDuringRefresh=false;
+ const custody=createVaultHeadCustody({owner,vaultId,key,current:()=>{if(lockDuringRefresh)custody.lock();return current();}});
+ const bytes=await custody.seal(signed());lockDuringRefresh=true;
+ await assert.rejects(custody.open(bytes));
+});
