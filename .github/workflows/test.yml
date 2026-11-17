@@ -302,6 +302,12 @@ jobs:
           --test-coverage-include=lib/identity/recovery-file.ts
           --test-coverage-lines=95 --test-coverage-branches=75
           lib/identity/recovery-store-save.test.ts lib/identity/recovery-store-commit.test.ts lib/identity/recovery-file.test.ts lib/identity/recovery-rotation-publish.test.ts
+      - name: Recovery rotation orchestration coverage (CI only)
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/identity/recovery-rotation-client.ts
+          --test-coverage-lines=95 --test-coverage-branches=75
+          lib/identity/recovery-rotation-client.test.ts
       - name: Recovery rotation protocol coverage
         run: >-
           node --import tsx --test --experimental-test-coverage
