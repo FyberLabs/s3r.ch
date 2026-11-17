@@ -7,6 +7,9 @@ const {attest,...request}=signed;
 test('rotation transport admits only exact public wallet records',()=>{
  assert.ok(walletRotation(request));assert.ok(walletRotation(signed,true));
  for(const value of [null,{},signed,{...request,priv:'secret'},{...request,nextEpub:'invalid'},
+  {...request,authorizer:{...request.authorizer,siwe:{message:1,signature:'x'}}},
+  {...request,authorizer:{...request.authorizer,siwe:{message:'x'.repeat(8193),signature:'x'}}},
+  {...request,authorizer:{...request.authorizer,siwe:{message:'x',signature:'invalid'}}},
   {...request,nextSig:'invalid'},{...request,seq:-1},{...request,authorizer:{...request.authorizer,secret:'private'}},
   {...request,authorizer:{kind:'oidc-fresh-login',link:request.authorizer.link}},
   {...request,authorizer:{...request.authorizer,siwe:{message:'x',signature:'x',priv:'secret'}}}])assert.equal(walletRotation(value),false);

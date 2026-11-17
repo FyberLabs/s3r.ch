@@ -8,6 +8,8 @@ export function walletRotation(value:any,attested=false):boolean{
  try{
   if(!exact(value,'v kind principal seq prevKey nextKey nextEpub issuedAt retainedLinks authorizer nextSig'+(attested?' attest':''))||
    !exact(value.authorizer,'kind link siwe')||value.authorizer.kind!=='wallet'||!exact(value.authorizer.siwe,'message signature')||
+   typeof value.authorizer.siwe.message!=='string'||value.authorizer.siwe.message.length>8192||
+   typeof value.authorizer.siwe.signature!=='string'||!/^0x[0-9a-fA-F]{130}$/.test(value.authorizer.siwe.signature)||
    !point(value.nextEpub)||typeof value.nextSig!=='string'||!/^[A-Za-z0-9_-]{86}$/.test(value.nextSig))return false;
   if(attested&&!(typeof value.attest==='string'&&value.attest.length>0&&value.attest.length<=16384))return false;
   return signingBytes(value).ok;
