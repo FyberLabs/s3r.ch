@@ -291,6 +291,14 @@ jobs:
           node scripts/test-granted-media-browser.mjs
           S3RCH_GRANTED_FIXTURE=audio node scripts/test-granted-media-browser.mjs
           S3RCH_GRANTED_FIXTURE=video node scripts/test-granted-media-browser.mjs
+      - name: Explicit recovery rotation component contract (CI only)
+        run: node scripts/test-recovery-rotation-ui.mjs
+      - name: Recovery wallet selection coverage
+        run: >-
+          node --import tsx --test --experimental-test-coverage
+          --test-coverage-include=lib/identity/recovery-wallet.ts
+          --test-coverage-lines=95 --test-coverage-branches=75
+          lib/identity/recovery-wallet.test.ts
       - name: Existing keyring restore component contract (CI only)
         run: node scripts/test-keyring-restore-ui.mjs
       - name: Recovery save reconciliation coverage
