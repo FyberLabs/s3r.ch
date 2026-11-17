@@ -7,7 +7,7 @@ import {chromium} from 'playwright-core';
 if(process.env.GITHUB_ACTIONS!=='true')throw Error('CI only');
 const mocks={
  '@/lib/identity/device-client':`export async function readDeviceSession(){return {authorized:true,linkedOidcEnabled:true,recoveryStoreEnabled:true,recoveryRotationEnabled:window.fixture.rotationEnabled!==false,context:'ui-person-context',expiresAt:Date.now()+300000};}
- export function createDeviceClient(session,origin,refresh){let disposed=false;return {adapters:{},dispose(){disposed=true;window.fixture.disposals++;},async restoreCompleteSource(bytes){window.fixture.restores++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');window.fixture.rows=[{address:'restored',identity:{principal:'existing-principal'}}];refresh();return 'stored';},async restoreEncryptedSource(bytes,passphrase){window.fixture.recoveryBytes=passphrase;window.fixture.recoveries++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');return 'existing';},async prepareEncryptedCopy(passphrase,handle){window.fixture.preparedPass=passphrase;window.fixture.preparedHandle=handle;return new TextEncoder().encode('{"version":1,"ciphertext":"synthetic"}');},async fetchEncryptedCopy(slot='current'){window.fixture.loadedSlot=slot;return new TextEncoder().encode('{"version":1,"ciphertext":"stored"}');},async saveEncryptedCopy(bytes){window.fixture.savedBytes=bytes;window.fixture.saves=(window.fixture.saves??0)+1;return window.fixture.saves===1?'stored':'already-stored';},async commitEncryptedCopy(bytes){window.fixture.commitBytes=bytes;window.fixture.commits=(window.fixture.commits??0)+1;return 'committed';},async signInRestored(){window.fixture.signins++;return false;}};}`,
+ export function createDeviceClient(session,origin,refresh){let disposed=false;return {adapters:{},dispose(){disposed=true;window.fixture.disposals++;},async restoreCompleteSource(bytes){window.fixture.restores++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');window.fixture.rows=[{address:'restored',identity:{principal:'existing-principal'}}];refresh();return 'stored';},async restoreEncryptedSource(bytes,passphrase){window.fixture.recoveryBytes=passphrase;window.fixture.recoveries++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');return 'existing';},async prepareEncryptedCopy(passphrase,handle){window.fixture.preparedPass=passphrase;window.fixture.preparedHandle=handle;return new TextEncoder().encode('{"version":1,"ciphertext":"synthetic"}');},async fetchEncryptedCopy(slot='current'){window.fixture.loadedSlot=slot;return new TextEncoder().encode('{"version":1,"ciphertext":"stored"}');},async saveEncryptedCopy(bytes){window.fixture.savedBytes=bytes;window.fixture.saves=(window.fixture.saves??0)+1;return window.fixture.saves===1?'stored':'already-stored';},async replaceRotatedEncryptedSource(bytes,phrase,previous){window.fixture.replacePrevious=previous;window.fixture.replaceBytes=bytes;window.fixture.replacePhrase=phrase;window.fixture.replacements=(window.fixture.replacements??0)+1;return 'stored';},async commitEncryptedCopy(bytes){window.fixture.commitBytes=bytes;window.fixture.commits=(window.fixture.commits??0)+1;return 'committed';},async signInRestored(){window.fixture.signins++;return false;}};}`,
  '@/lib/identity/restored-keyring-storage':`export async function restoredKeyringRecords(){return window.fixture.rows;}`,
  '@/lib/identity/device-storage':`export async function deviceRecords(){return [];}`,
  '@/lib/identity/unlocked-mesh':`export function subscribeUnlockedMeshPair(){return ()=>{};}`,
@@ -53,6 +53,18 @@ try{
  assert.equal(await page.getByLabel('Recovery passphrase',{exact:true}).inputValue(),'');
  assert.equal(await page.evaluate(()=>window.fixture.recoveries),1);
  assert.equal(await page.evaluate(()=>window.fixture.recoveryBytes.every(b=>b===0)),true);
+ assert.equal(await page.evaluate(()=>window.fixture.replacements??0),0);
+ await page.getByLabel('Encrypted recovery file').setInputFiles({name:'rotated.json',mimeType:'application/json',buffer:Buffer.from('{"synthetic":"rotated encrypted boundary"}')});
+ await page.getByLabel('Recovery passphrase',{exact:true}).fill('rotated phrase');
+ await page.evaluate(()=>{window.fixture.rows[0].sealed='displayed-row';const original=File.prototype.arrayBuffer;
+  File.prototype.arrayBuffer=function(){if(this.name==='rotated.json')window.fixture.rows[0].sealed='concurrent-row';return original.call(this);};});
+ await page.getByRole('button',{name:'Replace restored keys with confirmed rotation',exact:true}).click();
+ await page.getByText('Confirmed rotated keys are protected on this device. Unlock them below to sign in.',{exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>window.fixture.replacements),1);
+ assert.equal(await page.evaluate(()=>window.fixture.replacePrevious.sealed),'displayed-row');
+ assert.equal(await page.evaluate(()=>window.fixture.rows[0].sealed),'concurrent-row');
+ assert.equal(await page.evaluate(()=>window.fixture.replaceBytes.every(b=>b===0)&&window.fixture.replacePhrase.every(b=>b===0)),true);
+ assert.equal(await page.getByLabel('Recovery passphrase',{exact:true}).inputValue(),'');
  await page.getByRole('button',{name:'Use stored recovery copy',exact:true}).click();
  await page.getByText('Stored encrypted copy loaded. Enter its passphrase to verify and restore it on this device.',{exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Open and protect recovery copy',exact:true}).isDisabled(),false);
@@ -100,5 +112,6 @@ try{
  await page.getByRole('button',{name:'Use stored recovery copy',exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Use pending rotation recovery copy',exact:true}).count(),0);
  assert.equal(await page.getByRole('button',{name:'Make pending recovery copy current',exact:true}).count(),0);
+ assert.equal(await page.getByRole('button',{name:'Replace restored keys with confirmed rotation',exact:true}).count(),0);
  assert.deepEqual(errors,[]);console.log('Restore UI: explicit import, independent failed sign-in, preserved copy and cancellation passed');
 }finally{await browser?.close();await new Promise(r=>server.close(r));}

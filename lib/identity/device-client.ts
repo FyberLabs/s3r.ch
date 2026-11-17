@@ -4,9 +4,9 @@ import {saveRecoveryCopy,type RecoveryView} from './recovery-store-save';
 import {recoveryFileRow,recoveryRowEnvelope,recoveryRowFile} from './recovery-file';
 import {recoveryView} from './recovery-store-protocol';
 import {prepareEncryptedRecovery} from './prepare-encrypted-recovery';
-import {restoreEncryptedRecovery} from './restore-encrypted-recovery';
+import {restoreEncryptedRecovery,replaceRotatedEncryptedRecovery} from './restore-encrypted-recovery';
 import {restoreExistingKeyring} from './restore-keyring';
-import {restoredKeyringRecords,openRestoredKeyring,type RestoredKeyringRecord} from './restored-keyring-storage';
+import {restoredKeyringRecords,openRestoredKeyring,isRestoredKeyringRecord,type RestoredKeyringRecord} from './restored-keyring-storage';
 import {activateDeviceKeyring} from './device-activation';
 import {createAuthority} from 'acl-sea-device-authority';
 import {createRelay} from 'auth-sea-relay';
@@ -132,6 +132,17 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
    guard();const result=await restoreEncryptedRecovery(bytes,passphrase,{scope:session.scope,current,signal:abort.signal,
     keyringState:identity=>authority.keyringState(identity),protect:()=>prepareDeviceProtection(new URL(origin).hostname)});
    guard();onStored();return result.outcome;
+  },
+  async replaceRotatedEncryptedSource(bytes:Uint8Array,passphrase:Uint8Array,previous:RestoredKeyringRecord){
+   guard();if(!session.recoveryRotationEnabled)return fail();
+   const expected=structuredClone(previous);
+   if(!isRestoredKeyringRecord(expected)||!same(expected.scope,session.scope))return fail();
+   const file=new Uint8Array(bytes),phrase=new Uint8Array(passphrase);
+   try{
+    const result=await replaceRotatedEncryptedRecovery(file,phrase,expected,{scope:session.scope,current,signal:abort.signal,
+     keyringState:identity=>authority.keyringState(identity),protect:()=>prepareDeviceProtection(new URL(origin).hostname)});
+    guard();onStored();return result.outcome;
+   }finally{file.fill(0);phrase.fill(0);}
   },
   async signInRestored(record:RestoredKeyringRecord){
    guard();if(!same(record.scope,session.scope))return fail();const bytes=await openRestoredKeyring(record);

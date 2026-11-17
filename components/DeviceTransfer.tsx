@@ -94,6 +94,19 @@ function Session({session,onCancel}:{session:DeviceSession;onCancel:()=>void}){
      return outcome==='stored'?'Encrypted recovery copy restored with local passkey protection. Unlock it below to verify and sign in.':'A matching saved copy already exists. Unlock it below; no new passkey was created.';
     }finally{if(field)field.value='';passphrase?.fill(0);bytes?.fill(0);}
    })}>Open and protect recovery copy</button>
+   {session.recoveryRotationEnabled&&restored.length===1&&<div>
+    <p>If this browser still holds your previous restored keys, explicitly replace them with the next confirmed rotation from your encrypted file. Your prior local copy is preserved if current history or storage has changed.</p>
+    <button disabled={busy||!recoveryFile} onClick={()=>void work(async()=>{
+     const selected=recoveryFile,previous=structuredClone(restored[0]);setRecoveryFile(null);const field=recoveryPassphrase.current;
+     let phrase:Uint8Array|undefined,bytes:Uint8Array|undefined;
+     try{
+      if(!field)throw Error();const value=field.value;field.value='';phrase=encodePassphrase(value);
+      if(!selected||selected.size>710000)throw Error();bytes=new Uint8Array(await selected.arrayBuffer());
+      const result=await client.replaceRotatedEncryptedSource(bytes,phrase,previous);
+      return result==='stored'?'Confirmed rotated keys are protected on this device. Unlock them below to sign in.':'These exact rotated keys are already protected on this device.';
+     }finally{if(field)field.value='';phrase?.fill(0);bytes?.fill(0);}
+    })}>Replace restored keys with confirmed rotation</button>
+   </div>}
    {session.recoveryStoreEnabled&&session.recoveryRotationEnabled&&<div>
     <p>After restoring the confirmed new keys, select the pending file again to make it your current stored backup. This replaces the previous stored backup and clears the pending slot. Keep your downloaded copy.</p>
     <button disabled={busy||!recoveryFile} onClick={()=>void work(async()=>{
