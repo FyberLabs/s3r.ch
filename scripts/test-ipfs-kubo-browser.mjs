@@ -90,11 +90,12 @@ try {
   try{return (await client.get(cid,size)).length===size;}catch{return false;}finally{sharedBudget.close();}
  };
  let slotAbort,slotPending,heldSlotAbort,heldSlotPending;
+ window.slotError=undefined;
  window.slotRead=async({endpoint,cid,size})=>{
   const current=()=>true,abort=new AbortController();slotAbort=abort;
   const sharedConcurrency=createSharedTransferConcurrency({current});
   const client=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,current,signal:abort.signal,sharedConcurrency},transport);
-  slotPending=client.get(cid,size).then(bytes=>bytes.length===size,()=>false);
+  slotPending=client.get(cid,size).then(bytes=>bytes.length===size,error=>{window.slotError=String(error);return false;});
   return slotPending;
  };
  window.beginSlot=args=>{void window.slotRead(args);heldSlotAbort=slotAbort;heldSlotPending=slotPending;};
@@ -212,7 +213,9 @@ try {
  // Closing a tab releases its browser-managed slot; no persisted lease/clock is involved.
  await other.close();
  await page.waitForFunction(async()=> (await navigator.locks.query()).held.filter(lock=>lock.name.startsWith('s3rch-ipfs-transfer-slot-v1-')).length===1);
- mode='normal';assert.equal(await page.evaluate(args=>window.slotRead(args),budgetArgs),true);
+ mode='normal';const afterClose=await page.evaluate(args=>window.slotRead(args),budgetArgs);
+ if(!afterClose)console.log('slot diagnostics',await page.evaluate(async()=>({error:window.slotError,locks:await navigator.locks.query()})),{requests:providerRequests.length-beforeSlots,errors});
+ assert.equal(afterClose,true);
  assert.equal(providerRequests.length,beforeSlots+3);
  assert.equal(await page.evaluate(()=>window.cancelSlot()),false);
  await page.waitForFunction(async()=> (await navigator.locks.query()).held.filter(lock=>lock.name.startsWith('s3rch-ipfs-transfer-slot-v1-')).length===0);
