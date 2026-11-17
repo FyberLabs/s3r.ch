@@ -20,10 +20,10 @@
     {
       "name": "sociacl-ids",
       "repository": "FyberLabs/SociACL",
-      "revision": "3c36a3db8fdfebbf494f24c6a8fef59c47b867f6",
+      "revision": "66f14b154f42cb43a51e7e478d9cc43881e36e41",
       "path": "typescript/ids",
       "file": "sociacl-ids-0.11.1.tgz",
-      "sha256": "f5c42e01dcdfd26f7105109546d068cca26c98453e8d49a2310208f3e548a0c6"
+      "sha256": "a68eaaa8e454b8e1ba3821c09077d2937f19a34a84a195b8db65cbc34a1d2971"
     },
     {
       "name": "acl-sea-device-authority",
