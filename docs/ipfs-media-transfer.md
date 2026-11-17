@@ -10,7 +10,7 @@ Use the same current callback and abort signal for composition and Kubo client. 
 
 Kubo lifetime and rolling-minute budgets still apply, including failed attempts. Configure adequate explicitly approved budgets for the transfer. If a recording exceeds the remaining rate allowance, it fails without a hidden queue or automatic retry, potentially after partial upload. Account-wide/cross-tab scheduling and persistent restart recovery remain open work. This API does not label data replicated merely because CIDs exist.
 
-Twenty-four focused unit cases use real encryption and cover multi-block round trip, partial provider failure, revocation, tampering/key/binding rejection, malformed grants, cancellation, snapshots and overlapping whole-file operations. PR CI extends the real Chromium distinct-origin Kubo fixture with a two-block composed encrypted upload and authenticated download. The provider remains a protocol substitute; this is not live Kubo/provider qualification, native UI integration or scheduled multi-client acceptance.
+Twenty-six focused unit cases use real encryption and cover multi-block round trip, partial provider failure, revocation, tampering/key/binding rejection, malformed grants, cancellation, snapshots and overlapping whole-file operations. PR CI extends the real Chromium distinct-origin Kubo fixture with a two-block composed encrypted upload and authenticated download. The provider remains a protocol substitute; this is not live Kubo/provider qualification, native UI integration or scheduled multi-client acceptance.
 
 
 ## Explicit prepared upload recovery
@@ -51,3 +51,10 @@ This validates shape, not permission or a key's authenticity. Current authentica
 Disposing or expiring a prepared transfer immediately clears its retained key and ciphertext, but its active `resume()` continues to occupy the composition until the pending provider and crypto work settles. Ordinary transfers and new preparations are refused during that interval. This preserves the one-operation bound even when a block adapter ignores cancellation or Web Crypto is still running. Late completion returns neither a grant nor plaintext; successful and failed settlement both free admission for a new explicit operation if authority remains current. A prepared handle that is idle still releases admission immediately on disposal.
 
 Unit regressions cover upload/download disposal and expiry during both successful and failed deferred provider requests, plus disposal during decryption and subsequent reuse of the composition. No reader registration, automatic retry, provider cancellation guarantee or native activation is added.
+
+
+## Explicit synchronous authority
+
+The composition and direct Kubo transport require `current()` to return the boolean `true`, matching cache and shared-budget/concurrency admission. False, missing values, strings, numbers, boxed booleans, objects and Promises never authorize work. Resolve asynchronous grant checks in the owning adapter and expose a synchronous current-state predicate; a Promise itself is not consent.
+
+The same rule applies before provider dispatch, after asynchronous work, and when accessing or resuming prepared handles. A prepared handle whose authority becomes nonboolean is disposed and cannot return a grant or plaintext. Invalid initial authority consumes no provider allowance, and a later explicit operation may proceed once authority is actually true. This does not supply grant authentication or activate a native reader.

@@ -21,7 +21,7 @@ export function createKuboBlockClient(options: {
   const origin = endpoint.origin, current = options.current, signal = options.signal, sharedBudget = options.sharedBudget, sharedConcurrency = options.sharedConcurrency;
   let remaining = options.maxBytes, active = 0, attempts = 0, lastTime = -Infinity;
   const admitted: {at: number; bytes: number}[] = [];
-  function check() { if (signal.aborted || !current()) throw denied(); }
+  function check() { if (signal.aborted || current() !== true) throw denied(); }
   async function run<T>(size: number, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
     check();
     if (!Number.isSafeInteger(size) || size < 1 || size > IPFS_MEDIA_BLOCK_BYTES || size > remaining || active >= 2 || attempts >= 128) throw denied();

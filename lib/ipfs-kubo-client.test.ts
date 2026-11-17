@@ -106,3 +106,18 @@ test("noncanonical CID requests consume neither provider traffic nor shared or l
   assert.deepEqual(await client.get(cid,3),bytes);
   assert.equal(calls,1);assert.equal(reservations,1);assert.equal(slots,1);
 });
+
+
+test("only literal true admits provider work and consumes budget",async()=>{
+  const cid=await rawMediaBlockCid(bytes);let authority:unknown=true,calls=0;
+  const client=createKuboBlockClient({...options(),maxBytes:3,current:()=>authority as boolean},async()=>{calls++;return new Response(bytes);});
+  for(const value of [false,undefined,null,1,'true',{},new Boolean(false),Promise.resolve(false)]){
+    authority=value;await assert.rejects(client.get(cid,3));await assert.rejects(client.put(bytes));
+  }
+  assert.equal(calls,0);authority=true;assert.deepEqual(await client.get(cid,3),bytes);assert.equal(calls,1);
+});
+test("a nonboolean authority result after provider response refuses returned bytes",async()=>{
+  const cid=await rawMediaBlockCid(bytes);let authority:unknown=true;
+  const client=createKuboBlockClient({...options(),current:()=>authority as boolean},async()=>{authority=Promise.resolve(false);return new Response(bytes);});
+  await assert.rejects(client.get(cid,3));
+});

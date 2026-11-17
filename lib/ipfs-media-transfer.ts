@@ -8,7 +8,7 @@ export function createIpfsMediaTransfer(options: {blocks: Blocks; current: () =>
   const {blocks, current, signal} = options;
   // One whole-media operation per instance bounds retained copies during Web Crypto work.
   let busy = false, prepared = false;
-  function check() { if (signal.aborted || !current()) throw unavailable(); }
+  function check() { if (signal.aborted || current() !== true) throw unavailable(); }
   async function run<T>(work: () => Promise<T>): Promise<T> {
     check(); if (busy || prepared) throw unavailable(); busy = true;
     try { return await work(); } finally { busy = false; }
@@ -58,7 +58,7 @@ export function createIpfsMediaTransfer(options: {blocks: Blocks; current: () =>
             if (!Number.isFinite(now) || now < lastTime || now - start >= 15 * 60_000) {release("expired");return false;}
             lastTime = now;
             let allowed = false;
-            try { allowed = !signal.aborted && current(); } catch { /* no authority */ }
+            try { allowed = !signal.aborted && current() === true; } catch { /* no authority */ }
             if (!allowed) {release("disposed");return false;}
             return true;
           }
@@ -118,7 +118,7 @@ export function createIpfsMediaTransfer(options: {blocks: Blocks; current: () =>
           if (!Number.isFinite(now) || now < lastTime || now - start >= 15 * 60_000) {release("expired");return false;}
           lastTime = now;
           let allowed = false;
-          try {allowed = !signal.aborted && current();} catch { /* no authority */ }
+          try {allowed = !signal.aborted && current() === true;} catch { /* no authority */ }
           if (!allowed) {release("disposed");return false;}
           return true;
         }
