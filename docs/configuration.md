@@ -362,6 +362,10 @@ session, registers readers or sends private key/passphrase material to a server.
 
 ### Vault ciphertext API
 
+| Setting | Required | Default | Secret | Purpose |
+| --- | --- | --- | --- | --- |
+| `S3RCH_VAULT_STORAGE` | for vault sync | unset | yes | Shared storage configuration and independently provisioned owner/vault bindings. |
+
 `S3RCH_VAULT_STORAGE` is optional server-only JSON with `origin`, `tenant`,
 `apiKey`, and `bindings` (up to 128 `{owner, vaultId}` entries). The origin is
 an HTTPS Spanopticon origin; vault IDs are 64 lowercase hexadecimal characters.
