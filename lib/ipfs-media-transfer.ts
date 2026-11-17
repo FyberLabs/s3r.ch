@@ -71,7 +71,8 @@ export function createIpfsMediaTransfer(options: {blocks: Blocks; current: () =>
             dispose() {release("disposed");},
             async resume(): Promise<{manifest: string; key: Uint8Array}> {
               if (!alive() || running) throw unavailable();
-              running = true; state = "uploading";
+              // Disposal frees retained data, but pending work still owns admission.
+              running = true; busy = true; state = "uploading";
               try {
                 while (cursor < manifest.blocks.length) {
                   if (!alive()) throw unavailable();
@@ -86,7 +87,7 @@ export function createIpfsMediaTransfer(options: {blocks: Blocks; current: () =>
               } catch {
                 if (alive()) state = "unavailable";
                 throw unavailable();
-              } finally {running = false;}
+              } finally {running = false; busy = false;}
             },
           });
         } catch (error) {sealed.bytes.fill(0);sealed.key.fill(0);throw error;}
@@ -130,7 +131,8 @@ export function createIpfsMediaTransfer(options: {blocks: Blocks; current: () =>
           dispose() {release("disposed");},
           async resume(): Promise<Uint8Array> {
             if (!alive() || running) throw unavailable();
-            running = true; state = "downloading";
+            // Keep admission until provider and crypto work have actually settled.
+            running = true; busy = true; state = "downloading";
             let finalizing = false, returned = false, stored: Uint8Array | undefined, plaintext: Uint8Array | undefined;
             try {
               while (verified < manifest.blocks.length) {
@@ -155,7 +157,7 @@ export function createIpfsMediaTransfer(options: {blocks: Blocks; current: () =>
               else if (alive()) state = "unavailable";
               throw unavailable();
             } finally {
-              stored?.fill(0); if (!returned) plaintext?.fill(0); running = false;
+              stored?.fill(0); if (!returned) plaintext?.fill(0); running = false; busy = false;
             }
           },
         });
