@@ -87,7 +87,9 @@ try{
  await page.evaluate(()=>window.dispatchEvent(new Event('s3rch-session-changed')));
  await page.waitForFunction(url=>window.fixture.revoked.includes(url),download);
  assert.equal(await page.evaluate(()=>window.fixture.savedBytes.every(b=>b===0)),true);
+ const beforeDisposal=await page.evaluate(()=>window.fixture.disposals);
  await page.evaluate(()=>{window.fixture.rotationEnabled=false;window.dispatchEvent(new Event('s3rch-session-changed'));});
+ await page.waitForFunction(before=>window.fixture.disposals>before,beforeDisposal);
  await page.getByRole('button',{name:'Open encrypted recovery copy',exact:true}).click();
  await page.getByRole('button',{name:'Use stored recovery copy',exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Use pending rotation recovery copy',exact:true}).count(),0);
