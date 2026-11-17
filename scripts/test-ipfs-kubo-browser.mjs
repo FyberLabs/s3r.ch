@@ -21,6 +21,7 @@ try {
  import {createCachedMediaBlocks} from './lib/ipfs-cached-blocks';
  import {createLocalCiphertextCache} from './lib/ipfs-local-cache';
  import {createSharedTransferBudget} from './lib/ipfs-transfer-budget';
+ import {createSharedTransferConcurrency} from './lib/ipfs-transfer-concurrency';
  let sample,controller,pending,calls=0,resumable,resumeMedia,resumeInput,resumeGrant,preparedDownload;
  const transport=(url,init)=>{calls++;return fetch(url,init);};
  window.fetchCalls=()=>calls;
@@ -88,6 +89,16 @@ try {
   const client=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,current,signal,sharedBudget},transport);
   try{return (await client.get(cid,size)).length===size;}catch{return false;}finally{sharedBudget.close();}
  };
+ let slotAbort,slotPending,heldSlotAbort,heldSlotPending;
+ window.slotRead=async({endpoint,cid,size})=>{
+  const current=()=>true,abort=new AbortController();slotAbort=abort;
+  const sharedConcurrency=createSharedTransferConcurrency({current});
+  const client=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,current,signal:abort.signal,sharedConcurrency},transport);
+  slotPending=client.get(cid,size).then(bytes=>bytes.length===size,()=>false);
+  return slotPending;
+ };
+ window.beginSlot=args=>{void window.slotRead(args);heldSlotAbort=slotAbort;heldSlotPending=slotPending;};
+ window.cancelSlot=async()=>{heldSlotAbort.abort();return heldSlotPending;};
  window.composed=async endpoint=>{
   const signal=new AbortController().signal,current=()=>true;
   const blocks=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,maxBytesPerMinute:8*1024*1024,current,signal},transport);
@@ -113,7 +124,7 @@ try {
    }
    if(mode==='unavailable'){res.writeHead(503);res.end();return;}
    if(mode==='drop-upload'){req.destroy();return;}
-   if(mode==='hold-upload'){
+   if(mode==='hold-upload'||mode==='hold-slot'){
     req.resume();res.once('close',()=>closed?.());noticed?.();return;
    }
    if(url.pathname==='/api/v0/block/put'){
@@ -190,7 +201,22 @@ try {
  assert.equal(await other.evaluate(args=>window.sharedRead(args),budgetArgs),false);assert.equal(providerRequests.length,beforeBudget+1);
  await other.evaluate(()=>window.budgetTime(61000));assert.equal(await other.evaluate(args=>window.sharedRead(args),budgetArgs),true);assert.equal(providerRequests.length,beforeBudget+2);
  assert.equal(await page.evaluate(args=>window.sharedRead(args),budgetArgs),false,'persisted watermark refuses older tab clock');assert.equal(providerRequests.length,beforeBudget+2);
+ // Two actual tabs hold two shared operation slots. Excess work does not reach the provider.
+ const beforeSlots=providerRequests.length;mode='hold-slot';
+ let slotSeen=new Promise(resolve=>{noticed=resolve;});
+ await page.evaluate(args=>window.beginSlot(args),budgetArgs);await bounded(slotSeen);
+ slotSeen=new Promise(resolve=>{noticed=resolve;});
+ await other.evaluate(args=>window.beginSlot(args),budgetArgs);await bounded(slotSeen);
+ assert.equal(await page.evaluate(args=>window.slotRead(args),budgetArgs),false);
+ assert.equal(providerRequests.length,beforeSlots+2);
+ // Closing a tab releases its browser-managed slot; no persisted lease/clock is involved.
  await other.close();
+ await page.waitForFunction(async()=> (await navigator.locks.query()).held.filter(lock=>lock.name.startsWith('s3rch-ipfs-transfer-slot-v1-')).length===1);
+ mode='normal';assert.equal(await page.evaluate(args=>window.slotRead(args),budgetArgs),true);
+ assert.equal(providerRequests.length,beforeSlots+3);
+ assert.equal(await page.evaluate(()=>window.cancelSlot()),false);
+ await page.waitForFunction(async()=> (await navigator.locks.query()).held.filter(lock=>lock.name.startsWith('s3rch-ipfs-transfer-slot-v1-')).length===0);
+
  // Server withholds the acknowledgement; abort and browser closure must end the connection.
  mode='hold-upload';let seen=new Promise(resolve=>{noticed=resolve;}),gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
@@ -198,6 +224,6 @@ try {
  seen=new Promise(resolve=>{noticed=resolve;});gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
  await browser.close();browser=undefined;await bounded(gone);
- assert.deepEqual(appRequests.sort(),['/','/','/','/app.js','/app.js','/app.js']);assert.equal(providerRequests.length,25+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+ assert.deepEqual(appRequests.sort(),['/','/','/','/app.js','/app.js','/app.js']);assert.equal(providerRequests.length,28+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
  console.log('Direct Kubo browser success, consent/rate refusal, provider faults and interrupted acknowledgements passed (protocol substitute).');
 }finally{await browser?.close();for(const server of [app,provider])if(server)await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true});}
