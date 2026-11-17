@@ -34,7 +34,7 @@
     "react-dom": "^19",
     "siwe": "^3.0.0",
     "sociacl-ids": "file:vendor/pairing/sociacl-ids-0.11.1.tgz",
-    "undici": "8.12.4",
+    "undici": "7.30.2",
     "viem": "^2.57.19",
     "wagmi": "^3.7.11",
     "sea-device-link": "file:vendor/pairing/sea-device-link-0.0.0.tgz",
