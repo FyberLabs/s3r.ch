@@ -39,7 +39,7 @@ export async function deviceServer(request:Request,action:string,env:Record<stri
     target=root+'operations';upstream=value;
    }
   }else if(rotation){
-   outgoing.Authorization='Bearer '+person.access;outgoing['X-Tenant-ID']=config.scope.tenant;limit=65536;
+   outgoing.Authorization='Bearer '+person.access;outgoing['X-Tenant-ID']=config.scope.tenant;limit=256*1024;
    if(action==='rotation-state'?!exact(value,'record')||!walletRotation(value.record,true):!walletRotation(value,action==='rotation-publish'))throw Error();
    const root=new URL('../rotation/wallet',config.acl).href;
    target=root+(action==='rotation-publish'?'/publish':action==='rotation-state'?'/state':'');upstream=value;

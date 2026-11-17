@@ -11,11 +11,11 @@ export function walletRotation(value:any,attested=false):boolean{
    typeof value.authorizer.siwe.message!=='string'||value.authorizer.siwe.message.length>8192||
    typeof value.authorizer.siwe.signature!=='string'||!/^0x[0-9a-fA-F]{130}$/.test(value.authorizer.siwe.signature)||
    !point(value.nextEpub)||typeof value.nextSig!=='string'||!/^[A-Za-z0-9_-]{86}$/.test(value.nextSig))return false;
-  if(attested&&!(typeof value.attest==='string'&&value.attest.length>0&&value.attest.length<=16384))return false;
+  if(attested&&!(typeof value.attest==='string'&&value.attest.length>0&&value.attest.length<=128*1024))return false;
   return signingBytes(value as Parameters<typeof signingBytes>[0]).ok;
  }catch{return false;}
 }
-export function rotationAttestation(value:any):boolean{return exact(value,'attest')&&typeof value.attest==='string'&&value.attest.length>0&&value.attest.length<=16384;}
+export function rotationAttestation(value:any):boolean{return exact(value,'attest')&&typeof value.attest==='string'&&value.attest.length>0&&value.attest.length<=128*1024;}
 export function rotationPublished(value:any):boolean{return exact(value,'recordHash')&&hash(value.recordHash);}
 export function rotationState(value:any):boolean{return exact(value,'recordHash present head')&&hash(value.recordHash)&&typeof value.present==='boolean'&&
  exact(value.head,'sequence currentKey currentEpub')&&integer(value.head.sequence)&&point(value.head.currentKey)&&point(value.head.currentEpub);}
