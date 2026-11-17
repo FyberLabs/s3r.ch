@@ -42,7 +42,7 @@ test("strict rotation shape rejects malformed and ambiguous fields", () => {
     { ...base, authorizer: { ...base.authorizer, siwe: { message: "x", signature: "0x" } } },
     { ...base, authorizer: { ...base.authorizer, siwe: { message: "x".repeat(8193), signature: "0x" + "00".repeat(65) } } },
     ...["", "x".repeat(129), " x", "x\u200b", "x\ud800", "get(x)"].map(nextSig => ({ ...base, nextSig })),
-    { ...base, attest: "x".repeat(16385) },
+    { ...base, attest: "x".repeat(128 * 1024 + 1) },
   ];
   for (const input of invalid) assert.equal(parseForumRotationRecord(input), null);
 });
@@ -88,7 +88,7 @@ test("parsing and next-key signature do not authenticate recovery evidence", () 
 test("transport bounds include empty and 1024 retained-link commitments", () => {
   for (const size of [0, 1024]) {
     const retainedLinks = Array.from({ length: size }, (_, i) => i.toString(16).padStart(64, "0"));
-    assert.ok(parseForumRotationRecord({ ...base, retainedLinks, issuedAt: 0, attest: "x".repeat(16384),
+    assert.ok(parseForumRotationRecord({ ...base, retainedLinks, issuedAt: 0, attest: "x".repeat(128 * 1024),
       authorizer: { ...base.authorizer, siwe: { message: "x".repeat(8192), signature: "0x" + "00".repeat(65) } },
     }));
   }

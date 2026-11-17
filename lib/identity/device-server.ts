@@ -1,3 +1,4 @@
+import {walletRotation,rotationAttestation,rotationPublished,rotationState,recoveryCommit} from './recovery-rotation-protocol';
 import {recoveryPut,recoveryView,recoveryGeneration,recoveryResponseLimit} from './recovery-store-protocol';
 import {terminalRelayHeaders,terminalAclHeaders} from "./terminal-run";
 import {exact,sameScope,publicIdentity,publicBinding,publicRelayPayload} from './device-public';
@@ -19,12 +20,14 @@ export async function deviceServer(request:Request,action:string,env:Record<stri
   if(request.method==='POST'&&request.headers.get('origin')!==origin)return reply(403,{error:'unavailable'});
   if(action==='logout'&&request.method==='POST'){const r=reply(200,{ok:true});for(const c of personClearCookies())r.headers.append('Set-Cookie',c);return r;}
   const person=await readDevicePerson(request,config,origin,env);
-  if(request.method==='GET'&&action==='config')return reply(200,{scope:config.scope,authorized:!!person,linkedOidcEnabled:!!env.S3RCH_LINKED_OIDC_CONFIG_FILE,recoveryStoreEnabled:env.S3RCH_RECOVERY_STORE_ENABLED==='true',subject:person?.subject??null,context:person?.context??null,expiresAt:person?.expiresAt??null});
-  if(request.method!=='POST'||!['relay','state','current','recovery-read','recovery-put'].includes(action))return reply(404,{error:'unavailable'});
+  if(request.method==='GET'&&action==='config')return reply(200,{scope:config.scope,authorized:!!person,linkedOidcEnabled:!!env.S3RCH_LINKED_OIDC_CONFIG_FILE,recoveryStoreEnabled:env.S3RCH_RECOVERY_STORE_ENABLED==='true',recoveryRotationEnabled:env.S3RCH_RECOVERY_ROTATION_ENABLED==='true',subject:person?.subject??null,context:person?.context??null,expiresAt:person?.expiresAt??null});
+  if(request.method!=='POST'||!['relay','state','current','recovery-read','recovery-put','recovery-commit','rotation-witness','rotation-publish','rotation-state'].includes(action))return reply(404,{error:'unavailable'});
   if(!person||!person.context||request.headers.get('x-device-context')!==person.context)return reply(401,{error:'authorization-required'});
-  const recovery=action==='recovery-read'||action==='recovery-put';
+  const recovery=['recovery-read','recovery-put','recovery-commit'].includes(action);
+  const rotation=['rotation-witness','rotation-publish','rotation-state'].includes(action);
+  if((rotation||action==='recovery-commit')&&env.S3RCH_RECOVERY_ROTATION_ENABLED!=='true')return reply(503,{error:'unavailable'});
   if(recovery&&env.S3RCH_RECOVERY_STORE_ENABLED!=='true')return reply(503,{error:'unavailable'});
-  const value:any=await body(request,action==='recovery-put'?recoveryResponseLimit:710000);let target:string,upstream:unknown,limit:number,method='POST';const outgoing:Record<string,string>={'Content-Type':'application/json',Accept:'application/json',Origin:origin};
+  const value:any=await body(request,action==='recovery-put'?recoveryResponseLimit:rotation?256*1024:710000);let target:string,upstream:unknown,limit:number,method='POST';const outgoing:Record<string,string>={'Content-Type':'application/json',Accept:'application/json',Origin:origin};
   if(recovery){
    outgoing.Authorization='Bearer '+person.access;outgoing['X-Tenant-ID']=config.scope.tenant;limit=recoveryResponseLimit;
    const root=new URL('../keyring/recovery/',config.acl).href;
@@ -32,9 +35,14 @@ export async function deviceServer(request:Request,action:string,env:Record<stri
     if(!exact(value,'slot')||!['current','pending'].includes(value.slot))throw Error();
     target=root+'rows/'+value.slot;upstream=undefined;method='GET';
    }else{
-    if(!recoveryPut(value))throw Error();
+    if(!(action==='recovery-commit'?recoveryCommit(value):recoveryPut(value)))throw Error();
     target=root+'operations';upstream=value;
    }
+  }else if(rotation){
+   outgoing.Authorization='Bearer '+person.access;outgoing['X-Tenant-ID']=config.scope.tenant;limit=256*1024;
+   if(action==='rotation-state'?!exact(value,'record')||!walletRotation(value.record,true):!walletRotation(value,action==='rotation-publish'))throw Error();
+   const root=new URL('../rotation/wallet',config.acl).href;
+   target=root+(action==='rotation-publish'?'/publish':action==='rotation-state'?'/state':'');upstream=value;
   }else if(action==='relay'){
    if(!exact(value,'session action scope payload headers')||!/^[A-Za-z0-9_-]{43}$/.test(value.session)||!['admit','create','join','offer','send','receive','complete','completed','cancel'].includes(value.action)||!sameScope(value.scope,config.scope)||!publicRelayPayload(value.action,value.payload,config.scope,value.session))throw Error();
    if(!value.headers||!['receiver','sender'].includes(value.headers['X-Pairing-Role'])||Object.keys(value.headers).some(k=>!['X-Pairing-Role','X-Pairing-Capability','X-Pairing-Join'].includes(k)))throw Error();
@@ -54,6 +62,7 @@ export async function deviceServer(request:Request,action:string,env:Record<stri
   if(response.redirected||response.headers.get('content-type')?.split(';')[0]!=='application/json'){await response.body?.cancel();throw Error();}
   if(!response.ok){await response.body?.cancel();return reply([400,401,403,404,409,410,413,429,503].includes(response.status)?response.status:503,{error:'unavailable'});}
   const result=await readBoundedIdentityJson(response,limit,signal);
+  if(rotation&&!(action==='rotation-witness'?rotationAttestation(result):action==='rotation-publish'?rotationPublished(result):rotationState(result)))throw Error();
   if(recovery&&!(action==='recovery-read'?recoveryView(result):recoveryGeneration(result)))throw Error();
   if(action==='recovery-read'){const view=result as {generation:number;head:{sequence:number;currentKey:string;currentEpub:string|null};row:unknown};return reply(200,{generation:view.generation,head:{sequence:view.head.sequence,currentKey:view.head.currentKey,currentEpub:view.head.currentEpub},row:view.row});}
   return reply(200,result);

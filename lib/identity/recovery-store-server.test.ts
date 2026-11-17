@@ -43,3 +43,62 @@ test('recovery never retries failed writes and refuses malformed owner replies',
  for(const result of [{generation:1,secret:'private'},{generation:-1},{}])assert.equal((await deviceServer(req(operation),'recovery-put',env,async()=>Response.json(result))).status,503);
  assert.equal((await deviceServer(req({slot:'current'}),'recovery-read',env,async()=>Response.json({generation:1,head:{sequence:0,currentKey:p,currentEpub:p},row:{...row,priv:'secret'}}))).status,503);
 });
+
+test('rotation witness, publication, exact state and recovery commit use fixed authenticated routes',async()=>{
+ const vectors=(await import('./vectors/forum-rotation-record.json')).default;
+ const record:any=vectors.accept.find((row:any)=>row.input.nextEpub&&row.input.authorizer.kind==='wallet')!.input;
+ const {attest,...request}=record;
+ const req=await fixture(),enabled={...env,S3RCH_RECOVERY_ROTATION_ENABLED:'true'};
+ const head={sequence:record.seq,currentKey:record.nextKey,currentEpub:record.nextEpub};
+ for(const [action,input,path,result] of [
+  ['rotation-witness',request,'rotation/wallet',{attest}],
+  ['rotation-publish',record,'rotation/wallet/publish',{recordHash:'ab'.repeat(32)}],
+  ['rotation-state',{record},'rotation/wallet/state',{recordHash:'ab'.repeat(32),present:true,head}],
+  ['recovery-commit',{action:'commit',signature:'00'.repeat(64)},'keyring/recovery/operations',{generation:2}],
+ ] as const){
+  const response=await deviceServer(req(input),action,enabled,async(url,init)=>{
+   assert.equal(String(url),'https://acl.example/api/v1/acl/sociacl/'+path);
+   assert.equal(new Headers(init?.headers).get('authorization'),'Bearer person-bearer');
+   assert.equal(new Headers(init?.headers).get('x-tenant-id'),scope.tenant);
+   assert.deepEqual(JSON.parse(String(init?.body)),input);return Response.json(result);
+  });assert.equal(response.status,200);assert.deepEqual(await response.json(),result);
+  let calls=0;const never=async()=>{calls++;throw Error();};
+  assert.equal((await deviceServer(req(input),action,env,never)).status,503);
+  assert.equal((await deviceServer(req({...input,priv:'secret'}),action,enabled,never)).status,503);
+  assert.equal((await deviceServer(req(input,{'x-device-context':'foreign'}),action,enabled,never)).status,401);
+  assert.equal(calls,0);
+  assert.equal((await deviceServer(req(input),action,enabled,async()=>Response.json({...result,priv:'private'}))).status,503);
+  const failed=await deviceServer(req(input),action,enabled,async()=>{calls++;return Response.json({private:'detail'},{status:409});});
+  assert.equal(failed.status,409);assert.equal(calls,1);assert.equal((await failed.text()).includes('detail'),false);
+ }
+});
+
+test('maximum retained rotations pass bounded transport and private proof objects never leave it',async()=>{
+ const vectors=(await import('./vectors/forum-rotation-record.json')).default;
+ const original:any=vectors.accept.find((row:any)=>row.input.nextEpub&&row.input.authorizer.kind==='wallet')!.input;
+ const retainedLinks=Array.from(new Set([original.authorizer.link,...Array.from({length:1024},(_,i)=>i.toString(16).padStart(64,'0'))])).slice(0,1024).sort();
+ const record={...original,retainedLinks,attest:'a'.repeat(128*1024)}, {attest,...request}=record;
+ const req=await fixture(),enabled={...env,S3RCH_RECOVERY_ROTATION_ENABLED:'true'};
+ const head={sequence:record.seq,currentKey:record.nextKey,currentEpub:record.nextEpub};
+ for(const [action,input,result] of [
+  ['rotation-witness',request,{attest}],
+  ['rotation-publish',record,{recordHash:'ab'.repeat(32)}],
+  ['rotation-state',{record},{recordHash:'ab'.repeat(32),present:true,head}],
+ ] as const){
+  assert.ok(Buffer.byteLength(JSON.stringify(input))>65536);
+  let calls=0;
+  const response=await deviceServer(req(input),action,enabled,async(_url,init)=>{
+   calls++;assert.deepEqual(JSON.parse(String(init?.body)),input);return Response.json(result);
+  });
+  assert.equal(response.status,200);assert.equal(calls,1);
+  calls=0;
+  assert.equal((await deviceServer(req({...input,extra:'x'.repeat(256*1024)}),action,enabled,async()=>{calls++;throw Error();})).status,503);
+  assert.equal(calls,0);
+ }
+ for(const field of ['message','signature']){
+  let calls=0;
+  const bad={...request,authorizer:{...request.authorizer,siwe:{...request.authorizer.siwe,[field]:{priv:'secret'}}}};
+  assert.equal((await deviceServer(req(bad),'rotation-witness',enabled,async()=>{calls++;throw Error();})).status,503);
+  assert.equal(calls,0);
+ }
+});
