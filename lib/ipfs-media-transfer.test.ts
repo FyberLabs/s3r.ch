@@ -147,3 +147,29 @@ test("prepared downloads expire or revoke without sending provider traffic", asy
     await assert.rejects(prepared.resume());assert.equal(prepared.status().state,reason==="expire"?"expired":"disposed");assert.equal(f.counts().gets,0);
   }
 });
+
+test("ordinary download stops at the first corrupt block and releases the operation for explicit retry",async()=>{
+  for(const brokenIndex of [0,1]){
+    const f=fixture(),input=new Uint8Array(2*IPFS_MEDIA_BLOCK_BYTES+7).fill(23);
+    const grant=await f.client.upload(input,binding),manifest=JSON.parse(grant.manifest),original=f.blocks.get;
+    const requests:string[]=[];let corrupt=true;
+    f.blocks.get=async cid=>{requests.push(cid);const value=await original(cid);if(corrupt&&cid===manifest.blocks[brokenIndex])value[20]^=1;return value;};
+    await assert.rejects(f.client.download(grant.manifest,grant.key,binding));
+    assert.deepEqual(requests,manifest.blocks.slice(0,brokenIndex+1));
+    corrupt=false;requests.length=0;
+    assert.deepEqual(await f.client.download(grant.manifest,grant.key,binding),input);
+    assert.deepEqual(requests,manifest.blocks);
+  }
+});
+test("valid block CIDs still require the full recording digest before plaintext",async()=>{
+  const f=fixture(),grant=await f.client.upload(new Uint8Array(IPFS_MEDIA_BLOCK_BYTES+7).fill(42),binding);
+  const manifest=JSON.parse(grant.manifest);manifest.sha256='0'.repeat(64);
+  await assert.rejects(f.client.download(JSON.stringify(manifest),grant.key,binding));
+  assert.equal(f.counts().gets,2);
+});
+test("authority withdrawal during block hashing prevents the next provider read",async t=>{
+  const f=fixture(),grant=await f.client.upload(new Uint8Array(IPFS_MEDIA_BLOCK_BYTES+7).fill(42),binding);
+  const digest=crypto.subtle.digest.bind(crypto.subtle);
+  t.mock.method(crypto.subtle,'digest',async(...args:Parameters<typeof digest>)=>{const hash=await digest(...args);f.revoke();return hash;});
+  await assert.rejects(f.client.download(grant.manifest,grant.key,binding));assert.equal(f.counts().gets,1);
+});

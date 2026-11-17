@@ -175,7 +175,12 @@ export function createIpfsMediaTransfer(options: {blocks: Blocks; current: () =>
             const size = Math.min(IPFS_MEDIA_BLOCK_BYTES, manifest.bytes - index * IPFS_MEDIA_BLOCK_BYTES);
             const bytes = await blocks.get(manifest.blocks[index], size); check();
             if (!(bytes instanceof Uint8Array) || bytes.length !== size) throw unavailable();
-            downloaded.push(new Uint8Array(bytes));
+            // Reject a bad block before spending bandwidth on any later blocks.
+            const copy = new Uint8Array(bytes); let retained = false;
+            try {
+              if (await rawMediaBlockCid(copy) !== manifest.blocks[index]) throw unavailable();
+              check(); downloaded.push(copy); retained = true;
+            } finally {if (!retained) copy.fill(0);}
           }
           check(); stored = await assembleMediaBlocks(manifestJson, downloaded); check();
           plaintext = await openMedia(stored, manifest.sha256, rawKey, bound); check();
