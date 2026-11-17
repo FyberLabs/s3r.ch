@@ -34,7 +34,7 @@ function setup(){
   return '0x'+hex(new Uint8Array([...sig.slice(1),sig[0]+27]));
  }};
  const input={origin:'https://s3r.ch',current:()=>active,signal:abort.signal,keyringState:async()=>state,
-  store:async(bytes:Uint8Array,id:any)=>{const opened=importKeyring(bytes,id,state);try{assert.equal(opened.rotationSeq,1);storedBytes=new Uint8Array(bytes);stored++;}finally{closeKeyring(opened);}},
+  store:async(bytes:Uint8Array,id:any,current:()=>boolean)=>{assert.equal(current(),true);const opened=importKeyring(bytes,id,state);try{assert.equal(opened.rotationSeq,1);storedBytes=new Uint8Array(bytes);stored++;}finally{closeKeyring(opened);}},
   request:async(action:string,value:any):Promise<unknown>=>{
    assert.equal(JSON.stringify(value).includes(fields.priv),false);
    if(action==='recovery-read')return {generation,head:head(),row:value.slot==='pending'?pending:currentRow};
@@ -104,4 +104,12 @@ test('old weak-passphrase recovery rotates, protects and promotes the exact new-
    assert.equal(result,'committed');assert.equal((await f.input.request('recovery-read',{slot:'pending'}) as any).row,null);
   }finally{closeKeyring(active);}
  }finally{material?.fill(0);f.storedBytes?.fill(0);flow?.close();closeKeyring(old);}
+});
+
+test('local protection receives the attempt guard so cancellation prevents a late commit',async()=>{
+ const f=setup(),flow=await prepare(f);try{
+  await flow.save();await flow.authorize(f.wallet);await flow.publish();
+  f.input.store=async(_bytes,_identity,current)=>{flow.close();assert.equal(current(),false);throw Error('cancelled');};
+  await assert.rejects(flow.protect());assert.equal(flow.phase,'closed');assert.equal(f.stored,0);
+ }finally{flow.close();}
 });
