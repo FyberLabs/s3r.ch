@@ -22,20 +22,28 @@ proof. Failed admission issues no session and never creates an identity.
 
 ## Owning prerequisites and limits
 
-Hosted routes return `503 linked-identity-unavailable` by default. No environment
-flag or request field enables trust. A deployment-code adapter must provide the
+Hosted routes return `503 linked-identity-unavailable` by default. No request field enables trust. The protected deployment adapter must provide the
 complete credential candidate index and all authenticated current histories and
 revocations through each requested instant. Its history callback must derive from
 successful owning resolution; clients cannot assert a `completeThrough` value.
 Up to 128 candidate rows and 1024 revocations are admitted; incomplete or larger
 sources deny instead of truncating. Requests time out after five seconds.
 
-No such hosted source is currently installed. The #440 read-only resolver and
-#464 local link export do not prove global completeness. OIDC additionally needs
-an owning fresh-login flow supplying the challenge nonce, configured client and
-exact tenant claim. Startup metadata cookies are not signed-link proofs. Browser
-provider/UI integration with real wallets/Keycloak, actual source deployment, and any lost-key
-recovery remain outstanding; #444 must stay open for them.
+The complete ACL credential source and protected HTTP adapter are implemented
+by ACL #189 and s3r.ch #587. Deployment uses the owner-only
+`S3RCH_LINKED_IDENTITY_CONFIG_FILE`; absence leaves admission unavailable.
+The #440 read-only resolver and #464 local link export still cannot substitute
+for complete credential authority. Auth #69 and s3r.ch #593/#594 implement the
+fresh OIDC proof and browser callback path described below. Startup metadata
+cookies remain insufficient.
+
+Lost-device recovery #583 is implemented through #618: explicit encrypted
+restoration, pending backup save/promotion, linked-wallet rotation authorization,
+exact publication confirmation and protected local replacement are separate
+actions. These source implementations do not stage credentials or establish
+hosted readiness. Infra #1712 owns runtime composition; Auth #75 owns explicit
+tenant transfer permission. #444 remains open for its remaining runtime and
+scheduled acceptance requirements. Readers remain unregistered.
 
 This is login to a resolved existing identity, not reconstruction of a private
 key. Lost-key recovery needs the shared recovery policy and authenticated rotation
@@ -70,8 +78,7 @@ startup linked-login scenario still covers the separate metadata/existing-key UI
 `createLinkedWalletClient` in `lib/identity/linked-wallet-client.ts` is a browser
 controller for the linked endpoints. It asks for a challenge before invoking the
 signer, so the current hosted `503` response produces no wallet prompt. It checks
-the exact challenge type, origin, lifetime, wallet credential, SEA subject and
-link identifier, then constructs SIWE over the challenge hash and nonce. Decoding
+the exact challenge type, origin, lifetime and wallet credential, then constructs SIWE over the challenge hash and nonce. Decoding
 checks signing intent only; it does not verify the issuer MAC or establish trust.
 
 Callers provide the selected checksummed wallet address, decimal chain ID, and
@@ -82,19 +89,18 @@ wallet signer. The controller checks selection around every await, refuses
 concurrent attempts, bounds response bodies to 8 KiB, and aborts after 30 seconds.
 Late signing results cannot start an exchange. Cancellation cannot undo an
 exchange the server already accepted or retract an in-flight Set-Cookie response;
-the owning session lifecycle must serialize logout/account switching with session
+the owning session controller must serialize logout/account switching with session
 refresh before publishing authority. After a true result, refresh the existing server session and publish identity only
 if the same revisions still apply. This controller does not call
 `identitySessionChanged` or provide that UI orchestration. A false result must never
 update UI identity.
 
-No UI button or capability flag is added: the production route still has no
-trusted source. OIDC flow, provider event wiring, session lifecycle integration,
-and lost-key recovery remain separate owning work. The existing nightly
-`wallet-linked-session` case now bundles this controller in Chromium, first
-exercises the actual unconfigured route with zero signing calls, then admits
-against the explicitly synthetic source and signer. It does not test a real wallet
-extension or make a deployed-readiness claim.
+The controller alone does not install a button or configure trust. OIDC browser
+wiring and encrypted recovery controls are separate consumers described below.
+The isolated `wallet-linked-session` case bundles the wallet controller in
+Chromium, first exercises an unconfigured route with zero signing calls, then
+admits against a synthetic source and signer. It does not test a real wallet
+extension or establish deployed readiness. Reader cases remain unregistered.
 
 The protected HTTP adapter additionally limits native verification to 32 rotations
 and revocations per account, 128 domain links and 4096 work units, with monotonic
@@ -120,7 +126,8 @@ Cancellation addresses the original attempt; it does not create another one.
 The default-off browser boundary below binds the callback state and original
 challenge to an encrypted HttpOnly attempt cookie and checks the current person
 context on completion. No live configuration or reader case is installed by
-source wiring. Encrypted lost-device recovery remains tracked by s3r.ch #583.
+source wiring. Encrypted lost-device recovery #583 is source-complete; its controls remain
+unavailable until their protected owner configuration is supplied.
 
 ## Browser-bound OIDC completion
 

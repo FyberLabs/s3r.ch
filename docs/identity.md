@@ -29,16 +29,19 @@ after atomic proof consumption through the existing identity replay store.
 Missing, stale, revoked, replayed or unavailable evidence produces no session.
 No new state store, enrollment or key factory is introduced.
 
-**Hosted signed-link admission is not configured.** The route returns unavailable
-until an owning adapter supplies real completeness provenance. #440's read-only
-resolver and a local link export do not establish it. The isolated unit/nightly
-fixture substitutes a synthetic single-account authority, provider and replay
-store; it proves the admission contract, not hosted availability. See
-[linked admission and nightly coverage](linked-session-admission.md).
+**Hosted signed-link admission is default-off.** The implemented protected
+adapter consumes complete ACL credential authority; missing owner configuration
+returns unavailable. #440's read-only resolver and a local link export do not
+establish completeness. Auth-owned fresh OIDC proof, browser completion and
+explicit encrypted recovery/rotation are implemented. Source CI does not establish
+hosted availability, grant a transfer permission or register reader cases. See
+[linked admission and remaining owner requirements](linked-session-admission.md).
 
 Login does not reconstruct private keys. Lost-key recovery must use the shared
-SociACL recovery policy and authenticated rotation/history contract; this change
-does not publish rotations, create identities or merge accounts. An issued session
+SociACL recovery policy and authenticated rotation/history contract; login itself
+does not publish rotations, create identities or merge accounts. Recovery uses
+separate explicit actions for new backup preparation, authorized rotation,
+confirmed publication and local protection. An issued session
 is short-lived authentication, not a new ACL grant; authorization remains checked
 by each consumer. Delegated agents keep their own scopes and never borrow human
 owner grants. TURN consumes the same SEA session through a verification-only
