@@ -65,3 +65,36 @@ test("hashing and cleanup share the per-instance outstanding-operation bound",as
  await assert.rejects(cache.put(cid,block));await assert.rejects(cache.clear());
  releases.forEach(release=>release());await Promise.all(pending);await cache.clear();
 });
+test("targeted eviction preserves unrelated blocks and foreign partitions and frees quota",async()=>{
+ const s=setup(),p={...policy,maxBytes:9,maxEntries:3};
+ const a=createLocalCiphertextCache({scope,policy:p,...s}),b=createLocalCiphertextCache({scope:other,policy:p,...s});
+ const cid=await rawMediaBlockCid(block),second=new Uint8Array([4,5,6]),secondCid=await rawMediaBlockCid(second);
+ await a.put(cid,block);await a.put(secondCid,second);await b.put(cid,block);
+ const third=new Uint8Array([7,8,9]),thirdCid=await rawMediaBlockCid(third);
+ await assert.rejects(a.put(thirdCid,third));await a.evict([cid,cid]);
+ assert.equal(await a.get(cid),null);assert.deepEqual(await a.get(secondCid),second);assert.deepEqual(await b.get(cid),block);
+ await a.put(thirdCid,third);assert.deepEqual(await a.get(thirdCid),third);
+});
+test("bounded eviction snapshots its selection and works after withdrawal, close and rollback",async()=>{
+ const s=setup(),cache=createLocalCiphertextCache({scope,policy,...s}),cid=await rawMediaBlockCid(block);
+ const second=new Uint8Array([4]),secondCid=await rawMediaBlockCid(second);
+ await cache.put(cid,block);await cache.put(secondCid,second);s.allow(false);s.time(0);cache.close();
+ const selection=[cid],pending=cache.evict(selection);selection[0]=secondCid;await pending;
+ s.allow(true);s.time(1000);const next=createLocalCiphertextCache({scope,policy,...s});
+ assert.equal(await next.get(cid),null);assert.deepEqual(await next.get(secondCid),second);
+ await createLocalCiphertextCache({scope,policy:{...policy,enabled:false},...s}).evict([secondCid]);
+ assert.equal(await next.get(secondCid),null);await next.evict([cid,secondCid]);
+});
+test("invalid or already cancelled eviction cannot partially delete",async()=>{
+ const s=setup(),cache=createLocalCiphertextCache({scope,policy,...s}),cid=await rawMediaBlockCid(block);await cache.put(cid,block);
+ for(const selected of [[],[cid,'bad'],Array(65).fill(cid)])await assert.rejects(cache.evict(selected));
+ const abort=new AbortController();abort.abort();await assert.rejects(cache.evict([cid],abort.signal));
+ assert.deepEqual(await cache.get(cid),block);
+});
+test("eviction shares the pending work bound with hashing",async(t)=>{
+ const s=setup(),cache=createLocalCiphertextCache({scope,policy,...s}),cid=await rawMediaBlockCid(block);
+ const digest=crypto.subtle.digest.bind(crypto.subtle),releases:Array<()=>void>=[];
+ t.mock.method(crypto.subtle,'digest',async(...args:Parameters<typeof digest>)=>{await new Promise<void>(resolve=>releases.push(resolve));return digest(...args);});
+ const pending=Array.from({length:4},()=>cache.put(cid,block));await assert.rejects(cache.evict([cid]));
+ releases.forEach(release=>release());await Promise.all(pending);await cache.evict([cid]);
+});
