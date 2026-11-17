@@ -15,6 +15,9 @@ export function createMediaAuthority(input: {
   const config = structuredClone(input.config), clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   return async (request: Request, object: string, action: "read" | "write" | "register", signal: AbortSignal, candidate?: UnverifiedObjectRecord): Promise<boolean> => {
     signal.throwIfAborted();
+    // This authority is browser-only. Bearer requests must use an explicitly
+    // scoped agent consumer, never fall back to an ambient owner cookie.
+    if (request.headers.has("authorization")) return false;
     const at = clock(), session = await input.authenticate(request);
     signal.throwIfAborted();
     if (clock() !== at || !session || isPublicSquadPrincipal(session.key)) return false;
