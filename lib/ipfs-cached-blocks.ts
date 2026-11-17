@@ -24,7 +24,20 @@ export function createCachedMediaBlocks(options: {
   }
   return Object.freeze({
     async put(bytes: Uint8Array): Promise<string> {
-      check();const cid = await provider.put(bytes);check();return cid;
+      check();
+      if (!(bytes instanceof Uint8Array) || bytes.length < 1 || bytes.length > IPFS_MEDIA_BLOCK_BYTES || active >= 2) throw unavailable();
+      active++;let copy: Uint8Array | undefined;
+      try {
+        copy = new Uint8Array(bytes);
+        const cid = await rawMediaBlockCid(copy);check();
+        // Keep the retained snapshot separate from an adapter's mutable input.
+        if (await provider.put(new Uint8Array(copy)) !== cid) throw unavailable();
+        check();
+        if (cache) {
+          try {await cache.put(cid, copy, signal);} catch { /* acknowledgement does not promise local retention */ }
+        }
+        check();return cid;
+      } finally {copy?.fill(0);active--;}
     },
     async get(cid: string, size: number): Promise<Uint8Array> {
       check();

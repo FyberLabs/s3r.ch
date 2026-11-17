@@ -100,6 +100,20 @@ try {
  };
  window.beginSlot=args=>{void window.slotRead(args);heldSlotAbort=slotAbort;heldSlotPending=slotPending;};
  window.cancelSlot=async()=>{heldSlotAbort.abort();return heldSlotPending;};
+ let producerCache,producerMedia,producerGrant,producerInput;
+ const producerBinding={tenant:'afee9b29-1706-5590-bbbf-e58df8945ac0',object:'claim_'+'9a'.repeat(32)};
+ window.uploadRetained=async endpoint=>{
+  const signal=new AbortController().signal,current=()=>true;
+  producerCache=createLocalCiphertextCache({scope:'d'.repeat(64),policy:{enabled:true,maxBytes:3*1024*1024,maxEntries:4,ttlMs:60000},current});
+  const provider=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,maxBytesPerMinute:8*1024*1024,current,signal},transport);
+  producerMedia=createIpfsMediaTransfer({blocks:createCachedMediaBlocks({provider,cache:producerCache,readPolicy:'cache-only',current,signal}),current,signal});
+  producerInput=new Uint8Array(1024*1024+7).fill(61);producerGrant=await producerMedia.upload(producerInput,producerBinding);
+ };
+ window.readRetained=async()=>{try{
+  const output=await producerMedia.download(producerGrant.manifest,producerGrant.key,producerBinding);
+  return output.length===producerInput.length&&output.every((value,index)=>value===producerInput[index]);
+ }catch{return false;}};
+ window.clearRetained=async()=>{producerCache.close();await producerCache.clear();};
  window.composed=async endpoint=>{
   const signal=new AbortController().signal,current=()=>true;
   const blocks=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,maxBytesPerMinute:8*1024*1024,current,signal},transport);
@@ -229,6 +243,11 @@ try {
  assert.equal(await page.evaluate(()=>window.cancelSlot()),false);
  await waitSlotCount(0);
 
+ // Producer retention permits immediate verified playback without downloading its own upload.
+ mode='normal';const beforeRetained=providerRequests.length;
+ await page.evaluate(endpoint=>window.uploadRetained(endpoint),providerOrigin);assert.equal(providerRequests.length,beforeRetained+2);
+ mode='unavailable';assert.equal(await page.evaluate(()=>window.readRetained()),true);assert.equal(providerRequests.length,beforeRetained+2);
+ await page.evaluate(()=>window.clearRetained());assert.equal(await page.evaluate(()=>window.readRetained()),false);assert.equal(providerRequests.length,beforeRetained+2);
  // Server withholds the acknowledgement; abort and browser closure must end the connection.
  mode='hold-upload';let seen=new Promise(resolve=>{noticed=resolve;}),gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
@@ -236,6 +255,6 @@ try {
  seen=new Promise(resolve=>{noticed=resolve;});gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
  await browser.close();browser=undefined;await bounded(gone);
- assert.deepEqual(appRequests.sort(),['/','/','/','/app.js','/app.js','/app.js']);assert.equal(providerRequests.length,28+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+ assert.deepEqual(appRequests.sort(),['/','/','/','/app.js','/app.js','/app.js']);assert.equal(providerRequests.length,30+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
  console.log('Direct Kubo browser success, consent/rate refusal, provider faults and interrupted acknowledgements passed (protocol substitute).');
 }finally{await browser?.close();for(const server of [app,provider])if(server)await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true});}
