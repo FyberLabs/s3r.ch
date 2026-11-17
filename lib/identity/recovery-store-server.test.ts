@@ -72,3 +72,33 @@ test('rotation witness, publication, exact state and recovery commit use fixed a
   assert.equal(failed.status,409);assert.equal(calls,1);assert.equal((await failed.text()).includes('detail'),false);
  }
 });
+
+test('maximum retained rotations pass bounded transport and private proof objects never leave it',async()=>{
+ const vectors=(await import('./vectors/forum-rotation-record.json')).default;
+ const original:any=vectors.accept.find((row:any)=>row.input.nextEpub&&row.input.authorizer.kind==='wallet')!.input;
+ const retainedLinks=Array.from(new Set([original.authorizer.link,...Array.from({length:1024},(_,i)=>i.toString(16).padStart(64,'0'))])).slice(0,1024).sort();
+ const record={...original,retainedLinks}, {attest,...request}=record;
+ const req=await fixture(),enabled={...env,S3RCH_RECOVERY_ROTATION_ENABLED:'true'};
+ const head={sequence:record.seq,currentKey:record.nextKey,currentEpub:record.nextEpub};
+ for(const [action,input,result] of [
+  ['rotation-witness',request,{attest}],
+  ['rotation-publish',record,{recordHash:'ab'.repeat(32)}],
+  ['rotation-state',{record},{recordHash:'ab'.repeat(32),present:true,head}],
+ ] as const){
+  assert.ok(Buffer.byteLength(JSON.stringify(input))>65536);
+  let calls=0;
+  const response=await deviceServer(req(input),action,enabled,async(_url,init)=>{
+   calls++;assert.deepEqual(JSON.parse(String(init?.body)),input);return Response.json(result);
+  });
+  assert.equal(response.status,200);assert.equal(calls,1);
+  calls=0;
+  assert.equal((await deviceServer(req({...input,extra:'x'.repeat(256*1024)}),action,enabled,async()=>{calls++;throw Error();})).status,503);
+  assert.equal(calls,0);
+ }
+ for(const field of ['message','signature']){
+  let calls=0;
+  const bad={...request,authorizer:{...request.authorizer,siwe:{...request.authorizer.siwe,[field]:{priv:'secret'}}}};
+  assert.equal((await deviceServer(req(bad),'rotation-witness',enabled,async()=>{calls++;throw Error();})).status,503);
+  assert.equal(calls,0);
+ }
+});

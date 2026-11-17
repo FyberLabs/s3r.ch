@@ -27,7 +27,7 @@ export async function deviceServer(request:Request,action:string,env:Record<stri
   const rotation=['rotation-witness','rotation-publish','rotation-state'].includes(action);
   if((rotation||action==='recovery-commit')&&env.S3RCH_RECOVERY_ROTATION_ENABLED!=='true')return reply(503,{error:'unavailable'});
   if(recovery&&env.S3RCH_RECOVERY_STORE_ENABLED!=='true')return reply(503,{error:'unavailable'});
-  const value:any=await body(request,action==='recovery-put'?recoveryResponseLimit:rotation?65536:710000);let target:string,upstream:unknown,limit:number,method='POST';const outgoing:Record<string,string>={'Content-Type':'application/json',Accept:'application/json',Origin:origin};
+  const value:any=await body(request,action==='recovery-put'?recoveryResponseLimit:rotation?256*1024:710000);let target:string,upstream:unknown,limit:number,method='POST';const outgoing:Record<string,string>={'Content-Type':'application/json',Accept:'application/json',Origin:origin};
   if(recovery){
    outgoing.Authorization='Bearer '+person.access;outgoing['X-Tenant-ID']=config.scope.tenant;limit=recoveryResponseLimit;
    const root=new URL('../keyring/recovery/',config.acl).href;
