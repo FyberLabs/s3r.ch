@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import rotations from './vectors/forum-rotation-record.json';
 import {saveRecoveryCopy,savePendingRecoveryCopy} from './recovery-store-save';
 const p='axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU';
 const row={principal:p,signingPub:p,epub:p,rotationSeq:0,bytesHex:'01'+'00'.repeat(60)},head={sequence:0,currentKey:p,currentEpub:p};
@@ -38,8 +39,9 @@ test('invalid read/signature, exhausted generation and owner refusal never write
  const f=fixture();await assert.rejects(saveRecoveryCopy({...row,principal:'bad'},f.input));assert.equal(f.writes,0);
 });
 
-const next='a'.repeat(43)+'.'+'b'.repeat(43);
-const pending={...row,rotationSeq:1,signingPub:next,epub:next};
+const next=rotations.accept.find((r:any)=>r.input.nextEpub)!.input.nextKey;
+const nextEpub=rotations.accept.find((r:any)=>r.input.nextEpub)!.input.nextEpub!;
+const pending={...row,rotationSeq:1,signingPub:next,epub:nextEpub};
 function pendingFixture(){
  const f=fixture(),write=f.input.write;
  f.input.sign=async()=>({action:'put',row:pending,signature:'00'.repeat(64)});
@@ -64,7 +66,7 @@ test('pending save requires a new pair at exactly the next sequence',async()=>{
 });
 test('pending publication during read-back refuses stale backup success',async()=>{
  const f=pendingFixture(),write=f.input.write;
- f.input.write=async()=>{const result=await write();f.input.read=async()=>({generation:1,head:{sequence:1,currentKey:next,currentEpub:next},row:pending});return result;};
+ f.input.write=async()=>{const result=await write();f.input.read=async()=>({generation:1,head:{sequence:1,currentKey:next,currentEpub:nextEpub},row:pending});return result;};
  await assert.rejects(savePendingRecoveryCopy(pending,head,f.input),/authority changed/);assert.equal(f.writes,1);
 });
 test('pending inputs are snapshotted before asynchronous authority callbacks',async()=>{
