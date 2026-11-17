@@ -15,7 +15,7 @@ try {
  const tls={key:await readFile(join(directory,'key')),cert:await readFile(join(directory,'cert'))};
  const bundle=await build({stdin:{contents:`
  import {createKuboBlockClient} from './lib/ipfs-kubo-client';
- import {rawMediaBlockCid} from './lib/ipfs-media-blocks';
+ import {rawMediaBlockCid,describeMediaBlocks} from './lib/ipfs-media-blocks';
  import {sealMedia} from './lib/media-crypto';
  import {createIpfsMediaTransfer} from './lib/ipfs-media-transfer';
  import {createCachedMediaBlocks} from './lib/ipfs-cached-blocks';
@@ -32,6 +32,37 @@ try {
   const cid=await client.put(sealed.bytes);sample={cid,bytes:sealed.bytes};const result=await client.get(cid,sealed.bytes.length);
   allowed=false;let refused=false;try{await client.get(cid,result.length);}catch{refused=true;}
   return {cid,expected:await rawMediaBlockCid(sealed.bytes),same:Array.from(result).join()===Array.from(sealed.bytes).join(),refused};
+ };
+ let admissionClient,admissionAuthority=true;
+ window.admissionRefusals=async endpoint=>{
+  const current=()=>admissionAuthority,signal=new AbortController().signal;
+  admissionClient=createKuboBlockClient({endpoint,maxBytes:sample.bytes.length,maxBytesPerMinute:sample.bytes.length,current,signal},transport);
+  const media=createIpfsMediaTransfer({blocks:admissionClient,current,signal});
+  const binding={tenant:'afee9b29-1706-5590-bbbf-e58df8945ac0',object:'claim_'+'34'.repeat(32)};
+  const sealed=await sealMedia(new Uint8Array([1,2,3]),binding),manifest=JSON.stringify(await describeMediaBlocks(sealed.bytes));
+  const refused=async work=>{try{const result=await work();result?.dispose?.();return false;}catch{return true;}};
+  const consent=[],bindings=[],cids=[];
+  try{
+   for(const value of [false,undefined,null,1,'true',{},new Boolean(false),Promise.resolve(false)]){
+    admissionAuthority=value;
+    consent.push(await refused(()=>admissionClient.get(sample.cid,sample.bytes.length)));
+    consent.push(await refused(()=>media.upload(new Uint8Array([1]),binding)));
+    consent.push(await refused(()=>media.prepareUpload(new Uint8Array([1]),binding)));
+    consent.push(await refused(()=>media.prepareDownload(manifest,sealed.key,binding)));
+   }
+   admissionAuthority=true;
+   for(const binding of [null,{}, {tenant:'bad',object:'claim_'+'34'.repeat(32)}]){
+    bindings.push(await refused(()=>media.download(manifest,sealed.key,binding)));
+    bindings.push(await refused(()=>media.prepareDownload(manifest,sealed.key,binding)));
+   }
+   for(const cid of [sample.cid.slice(0,-1)+'b','bafkreiz'+sample.cid.slice(7)])
+    cids.push(await refused(()=>admissionClient.get(cid,sample.bytes.length)));
+   return {consent,bindings,cids};
+  }finally{sealed.key.fill(0);sealed.bytes.fill(0);admissionAuthority=true;}
+ };
+ window.validAfterRefusals=async()=>{
+  const bytes=await admissionClient.get(sample.cid,sample.bytes.length);
+  return bytes.length===sample.bytes.length&&bytes.every((byte,index)=>byte===sample.bytes[index]);
  };
  window.failure=async(endpoint,upload=false,rate=1024)=>{
   const client=createKuboBlockClient({endpoint,maxBytes:1024,maxBytesPerMinute:rate,current:()=>true,signal:new AbortController().signal},transport);
@@ -248,6 +279,15 @@ try {
  await page.evaluate(endpoint=>window.uploadRetained(endpoint),providerOrigin);assert.equal(providerRequests.length,beforeRetained+2);
  mode='unavailable';assert.equal(await page.evaluate(()=>window.readRetained()),true);assert.equal(providerRequests.length,beforeRetained+2);
  await page.evaluate(()=>window.clearRetained());assert.equal(await page.evaluate(()=>window.readRetained()),false);assert.equal(providerRequests.length,beforeRetained+2);
+ // Actual Chromium admission failures must produce no application fetch or provider request.
+ mode='normal';const beforeAdmission=providerRequests.length,fetchBeforeAdmission=await page.evaluate(()=>window.fetchCalls());
+ const refusals=await page.evaluate(endpoint=>window.admissionRefusals(endpoint),providerOrigin);
+ assert.deepEqual(refusals,{consent:Array(32).fill(true),bindings:Array(6).fill(true),cids:Array(2).fill(true)});
+ assert.equal(await page.evaluate(()=>window.fetchCalls()),fetchBeforeAdmission);
+ assert.equal(providerRequests.length,beforeAdmission,'invalid admission cannot reach provider');
+ assert.equal(await page.evaluate(()=>window.validAfterRefusals()),true);
+ assert.equal(await page.evaluate(()=>window.fetchCalls()),fetchBeforeAdmission+1);
+ assert.equal(providerRequests.length,beforeAdmission+1,'valid request retains full allowance after refusals');
  // Server withholds the acknowledgement; abort and browser closure must end the connection.
  mode='hold-upload';let seen=new Promise(resolve=>{noticed=resolve;}),gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
@@ -255,6 +295,6 @@ try {
  seen=new Promise(resolve=>{noticed=resolve;});gone=new Promise(resolve=>{closed=resolve;});
  await page.evaluate(endpoint=>window.beginUpload(endpoint),providerOrigin);await bounded(seen);
  await browser.close();browser=undefined;await bounded(gone);
- assert.deepEqual(appRequests.sort(),['/','/','/','/app.js','/app.js','/app.js']);assert.equal(providerRequests.length,30+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+ assert.deepEqual(appRequests.sort(),['/','/','/','/app.js','/app.js','/app.js']);assert.equal(providerRequests.length,31+networkRetries);assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
  console.log('Direct Kubo browser success, consent/rate refusal, provider faults and interrupted acknowledgements passed (protocol substitute).');
 }finally{await browser?.close();for(const server of [app,provider])if(server)await new Promise(resolve=>server.close(resolve));await rm(directory,{recursive:true,force:true});}
