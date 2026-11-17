@@ -43,3 +43,9 @@ This does not supply custody keys, container-v2 encryption, end-user enrollment,
 or UI. Provisioning remains disabled unless the explicit server configuration is
 present. The service does not decrypt or verify private head contents; the client
 still verifies those against its independently retained floor.
+
+Authenticated object access uses create-only vault records addressed by a domain-separated
+hash of the vault ID and content digest. Another vault cannot retrieve ciphertext
+by presenting its digest. The trusted deployment binding chooses the vault; browser
+requests cannot select a tenant-wide object store. Existing direct transport adapters
+remain untrusted primitives and must not be exposed as authenticated public routes.

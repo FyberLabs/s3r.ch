@@ -6,7 +6,7 @@ import { VAULT_API_LIMIT, vaultOperationBytes, type VaultOperation } from './vau
 import type { VaultHeadTransport } from './vault-storage-client';
 const headers = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', Vary: 'Cookie, Origin' };
 export function createVaultApiService(input: { origin: string; bindings: readonly {owner:string;vaultId:string}[];
-  transport: VaultHeadTransport; resolve(request:Request,signal:AbortSignal):Promise<{owner:string;key:string}|null>; clock?:()=>number }) {
+  transport(vaultId:string): VaultHeadTransport; resolve(request:Request,signal:AbortSignal):Promise<{owner:string;key:string}|null>; clock?:()=>number }) {
   const origin = new URL(input.origin), clock = input.clock ?? (()=>Math.floor(Date.now()/1000));
   if (origin.origin !== input.origin || origin.protocol !== 'https:') throw Error('Invalid vault origin');
   const bindings = new Map<string,string>();
@@ -44,12 +44,13 @@ export function createVaultApiService(input: { origin: string; bindings: readonl
           bindings.get(op.vaultId)===fresh.owner&&op.issuedAt<=now&&now<op.expiresAt&&verifyForumKeySignature(fresh.key,sig,vaultOperationBytes(op));
       };
       if(!await authorize())return reply(403);
+      const transport=input.transport(op.vaultId);
       let result:unknown;
       switch(op.action){
-        case 'read': {const row=await input.transport.read(op.id,signal);result=row?{bytes:Buffer.from(row.bytes).toString('base64'),revision:row.revision}:null;break;}
-        case 'write': result={revision:await input.transport.write(op.id,bytes!,op.expected,signal)};break;
-        case 'getObject': {const b=await input.transport.getObject(op.id,signal);result=b?{bytes:Buffer.from(b).toString('base64')}:null;break;}
-        case 'putObject': await input.transport.putObject(op.id,bytes!,signal);result={ok:true};break;
+        case 'read': {const row=await transport.read(op.id,signal);result=row?{bytes:Buffer.from(row.bytes).toString('base64'),revision:row.revision}:null;break;}
+        case 'write': result={revision:await transport.write(op.id,bytes!,op.expected,signal)};break;
+        case 'getObject': {const b=await transport.getObject(op.id,signal);result=b?{bytes:Buffer.from(b).toString('base64')}:null;break;}
+        case 'putObject': await transport.putObject(op.id,bytes!,signal);result={ok:true};break;
       }
       if(!await authorize())return reply(403);
       return Response.json(result,{headers});
