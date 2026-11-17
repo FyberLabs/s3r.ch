@@ -239,3 +239,37 @@ test("disposal during prepared decryption holds admission until crypto settles",
   }finally{finish();await pending;prepared.dispose();}
   assert.deepEqual(await f.client.download(grant.manifest,grant.key,binding),new Uint8Array([7]));
 });
+
+
+test("ordinary and prepared transfer admission requires literal true",async()=>{
+  const f=fixture(),grant=await f.client.upload(new Uint8Array([7]),binding);let authority:unknown=true;
+  const client=createIpfsMediaTransfer({...f.options,current:()=>authority as boolean}),before=f.counts();
+  for(const value of [false,undefined,null,1,'true',{},new Boolean(false),Promise.resolve(false)]){
+    authority=value;
+    await assert.rejects(client.upload(new Uint8Array([1]),binding));
+    await assert.rejects(client.download(grant.manifest,grant.key,binding));
+    await assert.rejects(client.prepareUpload(new Uint8Array([1]),binding).then(handle=>handle.dispose()));
+    await assert.rejects(client.prepareDownload(grant.manifest,grant.key,binding).then(handle=>handle.dispose()));
+  }
+  assert.deepEqual(f.counts(),before);authority=true;
+  assert.deepEqual(await client.download(grant.manifest,grant.key,binding),new Uint8Array([7]));
+});
+test("prepared authority becoming nonboolean disposes before resume or after provider completion",async()=>{
+  for(const direction of ['upload','download'])for(const phase of ['before','after']){
+    const f=fixture(),grant=await f.client.upload(new Uint8Array([7]),binding);let authority:unknown=true;
+    const client=createIpfsMediaTransfer({...f.options,current:()=>authority as boolean});
+    const prepared=direction==='upload'?await client.prepareUpload(new Uint8Array([1]),binding):await client.prepareDownload(grant.manifest,grant.key,binding);
+    const before=f.counts(),put=f.blocks.put,get=f.blocks.get;
+    if(phase==='before')authority=Promise.resolve(false);
+    else {
+      f.blocks.put=async bytes=>{const cid=await put(bytes);authority={};return cid;};
+      f.blocks.get=async cid=>{const bytes=await get(cid);authority={};return bytes;};
+    }
+    try{
+      await assert.rejects(prepared.resume());assert.equal(prepared.status().state,'disposed');
+      if(phase==='before')assert.deepEqual(f.counts(),before);
+    }finally{prepared.dispose();}
+    authority=true;f.blocks.put=put;f.blocks.get=get;
+    assert.deepEqual(await client.download(grant.manifest,grant.key,binding),new Uint8Array([7]));
+  }
+});
