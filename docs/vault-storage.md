@@ -49,3 +49,10 @@ hash of the vault ID and content digest. Another vault cannot retrieve ciphertex
 by presenting its digest. The trusted deployment binding chooses the vault; browser
 requests cannot select a tenant-wide object store. Existing direct transport adapters
 remain untrusted primitives and must not be exposed as authenticated public routes.
+
+CI also composes the installed SociACL signed-head/floor store, browser API
+transport, authenticated service and vault-scoped storage adapter in one contract.
+It covers a lost committed response, exact retry, successor publication, replayed
+old head refusal, revoked-session refusal and retained state after reopening.
+Storage and custody are explicit in-process doubles; this is not TEST deployment,
+real browser PRF, or real-storage nightly qualification.
