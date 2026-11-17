@@ -359,3 +359,18 @@ It also permits signed recovery promotion when recovery storage is enabled.
 The ACL service separately requires its configured subject binding, rotation
 scope and publication flag. Neither setting creates identities, issues a browser
 session, registers readers or sends private key/passphrase material to a server.
+
+### Vault ciphertext API
+
+| Setting | Required | Default | Secret | Purpose |
+| --- | --- | --- | --- | --- |
+| `S3RCH_VAULT_STORAGE` | for vault sync | unset | yes | Shared storage configuration and independently provisioned owner/vault bindings. |
+
+`S3RCH_VAULT_STORAGE` is optional server-only JSON with `origin`, `tenant`,
+`apiKey`, and `bindings` (up to 128 `{owner, vaultId}` entries). The origin is
+an HTTPS Spanopticon origin; vault IDs are 64 lowercase hexadecimal characters.
+Use the same shared storage tenant in both products. The key needs vault read/write scopes. Immutable ciphertext uses vault-scoped
+create-only records, never tenant-wide object reads. Provision bindings independently; a caller
+cannot enroll a vault by supplying an owner field. Never expose this setting to
+browser bundles. Missing configuration leaves `/api/vault` unavailable. The
+existing configured identity and complete authority source are also required.

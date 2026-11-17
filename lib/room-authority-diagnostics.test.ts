@@ -165,3 +165,15 @@ test("retired room ownership cannot deny unrelated statement writes or pilot hea
  }
  assert.equal(appends,1);
 });
+
+test('vault session resolution accepts current rotated key beside retired ownership history',async()=>{
+ const {createVaultApiResolver}=await import('./vault-api-server');
+ let held=snapshot([old,fresh]),sessionKey=key(2);
+ const pilot={config:{authority:config},source:{read:async()=>held},services:{authenticate:async()=>({key:sessionKey})}};
+ const resolve=createVaultApiResolver(pilot,()=>time);
+ const request=new Request('https://vault.example/api/vault'),signal=new AbortController().signal;
+ assert.deepEqual(await resolve(request,signal),{owner,key:key(2)});
+ sessionKey=key(1);assert.equal(await resolve(request,signal),null);
+ sessionKey=key(2);held=snapshot([fresh,{...old,record:{...old.record as object,sig:'bad'}}]);
+ assert.equal(await resolve(request,signal),null);
+});
