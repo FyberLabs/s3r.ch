@@ -106,8 +106,11 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
     return await commitRecoveryCopy(row,{current,signal:abort.signal,
      read:async slot=>(await request('recovery-read',{slot})).body,
      authorize:async()=>{await withKeyring(()=>undefined);},
-     sign:async view=>withKeyring((handle,state)=>signRecoveryCommit(handle,{generation:view.generation,head:view.head,
-      current:view.current?recoveryRowEnvelope(view.current):null,pending:view.pending?recoveryRowEnvelope(view.pending):null},state)),
+     sign:async view=>{
+      if(!view.pending)return fail();const pending=recoveryRowEnvelope(view.pending);
+      return withKeyring((handle,state)=>signRecoveryCommit(handle,{generation:view.generation,head:view.head,
+       current:view.current?recoveryRowEnvelope(view.current):null,pending},state));
+     },
      write:async operation=>(await request('recovery-commit',operation)).body});
    }finally{opened?.keyring.fill(0);}
   },
