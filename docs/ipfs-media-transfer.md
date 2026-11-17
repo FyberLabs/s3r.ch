@@ -10,7 +10,7 @@ Use the same current callback and abort signal for composition and Kubo client. 
 
 Kubo lifetime and rolling-minute budgets still apply, including failed attempts. Configure adequate explicitly approved budgets for the transfer. If a recording exceeds the remaining rate allowance, it fails without a hidden queue or automatic retry, potentially after partial upload. Account-wide/cross-tab scheduling and persistent restart recovery remain open work. This API does not label data replicated merely because CIDs exist.
 
-Twenty focused unit cases use real encryption and cover multi-block round trip, partial provider failure, revocation, tampering/key/binding rejection, malformed grants, cancellation, snapshots and overlapping whole-file operations. PR CI extends the real Chromium distinct-origin Kubo fixture with a two-block composed encrypted upload and authenticated download. The provider remains a protocol substitute; this is not live Kubo/provider qualification, native UI integration or scheduled multi-client acceptance.
+Twenty-two focused unit cases use real encryption and cover multi-block round trip, partial provider failure, revocation, tampering/key/binding rejection, malformed grants, cancellation, snapshots and overlapping whole-file operations. PR CI extends the real Chromium distinct-origin Kubo fixture with a two-block composed encrypted upload and authenticated download. The provider remains a protocol substitute; this is not live Kubo/provider qualification, native UI integration or scheduled multi-client acceptance.
 
 
 ## Explicit prepared upload recovery
@@ -39,3 +39,9 @@ Unit coverage includes failed-block recovery, tamper rejection before retention,
 Ordinary `download()` verifies each owned block snapshot against its expected CID and rechecks current authority before requesting the next block. A bad first or middle block therefore stops later reads immediately, rather than consuming the remainder of a recording's transfer allowance. Failed unretained copies are overwritten, previously retained ciphertext and the working key are cleaned by the existing finalizer, and the operation slot is released for an explicit later attempt. No automatic retry or refund is added.
 
 Complete manifest digest, envelope and AES-GCM/binding checks still run before any plaintext is returned. This makes the composition independently enforce per-block integrity even with an alternate block adapter; the ordinary Kubo client already verifies its own responses. Unit regression covers first/middle corruption in three-block media, explicit recovery after repair, current-authority loss during hashing, and refusal of a bad whole-recording digest despite valid block CIDs. Existing Chromium composed-transfer contracts continue in PR CI.
+
+## Binding admission before downloads
+
+Ordinary and prepared downloads now capture and validate tenant/object binding fields before copying the key, reserving prepared state or fetching blocks. Missing, malformed, zero-tenant or non-string values fail without provider traffic. A failed preparation releases the composition so a valid operation can follow. The same shared snapshot validator is used by media encryption/decryption to ensure field validation and authenticated additional data use identical strings, including when a caller supplies accessors.
+
+This validates shape, not permission or a key's authenticity. Current authenticated grants remain the caller's responsibility; a well-formed but wrong binding still fails AES-GCM authentication before plaintext is returned. Existing formats and valid encrypted recordings remain compatible. No reader registration or native activation is added.
