@@ -21,6 +21,12 @@ catalog, owner, group, consent and mutation paths are refused; `media:read`
 does not authorize writes, sharing, granting or ACL changes. Those consumers
 require separate scoped contracts.
 
+The legacy browser-only object authority also refuses any Authorization header
+before consulting the cookie, authority history or registration store. This
+keeps upload, registration and deletion from becoming an alternate cookie
+fallback path. Browser-only requests without the header retain their existing
+signed ownership checks.
+
 This source change provisions no identity or credentials and enables no TEST
 fixture. Shared owner/reader scenarios remain unregistered until their genuine
 operator-owned identities and corresponding owner contracts exist. Unit tests
