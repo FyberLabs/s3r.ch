@@ -15,12 +15,12 @@ test('rotation transport admits only exact public wallet records',()=>{
   {...request,nextSig:'invalid'},{...request,seq:-1},{...request,authorizer:{...request.authorizer,secret:'private'}},
   {...request,authorizer:{kind:'oidc-fresh-login',link:request.authorizer.link}},
   {...request,authorizer:{...request.authorizer,siwe:{message:'x',signature:'x',priv:'secret'}}}])assert.equal(walletRotation(value),false);
- for(const value of [{...signed,attest:''},{...signed,attest:0},{...signed,attest:'x'.repeat(16385)}])assert.equal(walletRotation(value,true),false);
+ for(const value of [{...signed,attest:''},{...signed,attest:0},{...signed,attest:'x'.repeat(128*1024+1)}])assert.equal(walletRotation(value,true),false);
  assert.equal(walletRotation(new Proxy({}, {ownKeys(){throw Error();}})),false);
 });
 test('rotation replies and promotion signatures exclude private or ambiguous fields',()=>{
  assert.ok(rotationAttestation({attest}));assert.ok(rotationPublished({recordHash:'ab'.repeat(32)}));
- for(const value of [{attest:''},{attest,priv:'secret'},{attest:'x'.repeat(16385)}])assert.equal(rotationAttestation(value),false);
+ for(const value of [{attest:''},{attest,priv:'secret'},{attest:'x'.repeat(128*1024+1)}])assert.equal(rotationAttestation(value),false);
  assert.equal(rotationPublished({recordHash:'bad'}),false);
  const state={recordHash:'ab'.repeat(32),present:true,head:{sequence:1,currentKey:signed.nextKey,currentEpub:signed.nextEpub}};
  assert.ok(rotationState(state));

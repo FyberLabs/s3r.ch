@@ -77,7 +77,7 @@ test('maximum retained rotations pass bounded transport and private proof object
  const vectors=(await import('./vectors/forum-rotation-record.json')).default;
  const original:any=vectors.accept.find((row:any)=>row.input.nextEpub&&row.input.authorizer.kind==='wallet')!.input;
  const retainedLinks=Array.from(new Set([original.authorizer.link,...Array.from({length:1024},(_,i)=>i.toString(16).padStart(64,'0'))])).slice(0,1024).sort();
- const record={...original,retainedLinks}, {attest,...request}=record;
+ const record={...original,retainedLinks,attest:'a'.repeat(128*1024)}, {attest,...request}=record;
  const req=await fixture(),enabled={...env,S3RCH_RECOVERY_ROTATION_ENABLED:'true'};
  const head={sequence:record.seq,currentKey:record.nextKey,currentEpub:record.nextEpub};
  for(const [action,input,result] of [
