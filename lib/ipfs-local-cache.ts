@@ -29,8 +29,8 @@ export function createLocalCiphertextCache(input:{scope:string; policy:LocalCiph
  const running=new Set<AbortController>();
  const current=()=>{try{return !closed&&policy.enabled&&input.current()===true;}catch{return false;}};
  function guard(signal?:AbortSignal){if(!current()||signal?.aborted)throw unavailable();}
- async function transact(kind:"get"|"put"|"clear",cid:string,bytes?:Uint8Array,signal?:AbortSignal):Promise<CachedRead|null> {
-  if(kind!=="clear")guard(signal);
+ async function transact(kind:"get"|"put"|"clear"|"evict",cid:string,bytes?:Uint8Array,signal?:AbortSignal,cids:readonly string[]=[]):Promise<CachedRead|null> {
+  if(kind!=="clear"&&kind!=="evict")guard(signal);
   if(signal?.aborted||running.size>=4)throw unavailable();
   const controller=new AbortController();running.add(controller);
   const abort=()=>controller.abort();signal?.addEventListener("abort",abort,{once:true});
@@ -44,6 +44,8 @@ export function createLocalCiphertextCache(input:{scope:string; policy:LocalCiph
     controller.signal.addEventListener("abort",cancel,{once:true});const timer=setTimeout(cancel,2000);
     const finish=()=>{clearTimeout(timer);controller.signal.removeEventListener("abort",cancel);};
     tx.onabort=()=>{finish();reject(unavailable());};tx.oncomplete=()=>{finish();resolve(result);};
+    // Exact-key deletes are atomic and need neither a readable ledger nor current authority.
+    if(kind==="evict"){for(const selected of cids)store.delete(scope+":"+selected);return;}
     const readClock=clock.get("last");
     readClock.onsuccess=()=>{try {
      const at=now();
@@ -99,6 +101,14 @@ export function createLocalCiphertextCache(input:{scope:string; policy:LocalCiph
    const at=now();if(!Number.isSafeInteger(at)||at<result.checkedAt)throw unavailable();
    return at>=result.expires?null:result.bytes;
    }finally{pending--;}
+  },
+  /** Delete selected local copies atomically. No grant required; no remote erasure claim. */
+  async evict(cids:readonly string[],signal?:AbortSignal):Promise<void>{
+   if(!Array.isArray(cids)||cids.length<1||cids.length>MAX_ENTRIES||pending>=4)throw unavailable();
+   const selected=[...cids];
+   if(selected.some(cid=>typeof cid!=="string"||!/^bafkrei[a-z2-7]{52}$/.test(cid)))throw unavailable();
+   pending++;
+   try{await transact("evict","",undefined,signal,selected);}finally{pending--;}
   },
   // Erasure remains available after opt-out/close; never requires a grant.
   async clear():Promise<void>{

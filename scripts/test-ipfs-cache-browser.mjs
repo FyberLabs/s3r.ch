@@ -14,10 +14,11 @@ import {sealMedia} from './lib/media-crypto';
 let cache, current=true, at=1700000000000;
 window.fixture={
  async sample(){const sealed=await sealMedia(new Uint8Array([7,8,9]),{tenant:'afee9b29-1706-5590-bbbf-e58df8945ac0',object:'claim_'+'12'.repeat(32)});return {cid:await rawMediaBlockCid(sealed.bytes),bytes:Array.from(sealed.bytes)};},
- configure(scope,maxBytes,enabled=true){cache?.close();current=true;at=1700000000000;cache=createLocalCiphertextCache({scope:scope.repeat(64),policy:{enabled,maxBytes,maxEntries:1,ttlMs:1000},current:()=>current,now:()=>at});},
+ configure(scope,maxBytes,enabled=true,maxEntries=1){cache?.close();current=true;at=1700000000000;cache=createLocalCiphertextCache({scope:scope.repeat(64),policy:{enabled,maxBytes,maxEntries,ttlMs:1000},current:()=>current,now:()=>at});},
  async put(sample){try{await cache.put(sample.cid,new Uint8Array(sample.bytes));return true;}catch{return false;}},
  async get(cid){try{const value=await cache.get(cid);return value?Array.from(value):null;}catch{return 'unavailable';}},
  time(value){at=value;}, consent(value){current=value;},
+ async evict(cids){await cache.evict(cids);},
  async clear(){await cache.clear();}, close(){cache.close();},
  async databases(){return (await indexedDB.databases()).map(db=>db.name);}
 };`,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,platform:'browser',format:'iife'});
@@ -37,8 +38,8 @@ async function launch(){
  });
  context.on('page',page=>page.on('pageerror',error=>errors.push(error.message)));
 }
-async function page(scope,maxBytes=35,enabled=true){const p=await context.newPage();await p.goto(origin);await p.waitForFunction(()=>!!window.fixture);
- await p.evaluate(({scope,maxBytes,enabled})=>window.fixture.configure(scope,maxBytes,enabled),{scope,maxBytes,enabled});return p;}
+async function page(scope,maxBytes=35,enabled=true,maxEntries=1){const p=await context.newPage();await p.goto(origin);await p.waitForFunction(()=>!!window.fixture);
+ await p.evaluate(({scope,maxBytes,enabled,maxEntries})=>window.fixture.configure(scope,maxBytes,enabled,maxEntries),{scope,maxBytes,enabled,maxEntries});return p;}
 try {
  await launch();
  const disabled=await page('c',35,false);let sample=await disabled.evaluate(()=>window.fixture.sample());
@@ -75,8 +76,21 @@ try {
  assert.equal(await other.evaluate(sample=>window.fixture.put(sample),sample),true);
  await clean.evaluate(()=>window.fixture.clear());
  assert.deepEqual(await other.evaluate(cid=>window.fixture.get(cid),sample.cid),sample.bytes,'cleanup must preserve other partitions');
+ // Targeted cleanup frees one slot and preserves both unrelated local data and the same CID elsewhere.
+ await clean.evaluate(scope=>{window.fixture.configure(scope,105,true,3);window.fixture.time(1700000001000);},winner);
+ const unrelated=await clean.evaluate(()=>window.fixture.sample()),replacement=await clean.evaluate(()=>window.fixture.sample());
+ assert.equal(await clean.evaluate(sample=>window.fixture.put(sample),sample),true);
+ assert.equal(await clean.evaluate(sample=>window.fixture.put(sample),unrelated),true);
+ assert.equal(await clean.evaluate(sample=>window.fixture.put(sample),replacement),false,'aggregate cache is full');
+ await clean.evaluate(async cid=>{window.fixture.consent(false);window.fixture.close();window.fixture.time(0);await window.fixture.evict([cid]);},sample.cid);
+ await clean.reload();await clean.waitForFunction(()=>!!window.fixture);
+ await clean.evaluate(scope=>{window.fixture.configure(scope,105,true,3);window.fixture.time(1700000001000);},winner);
+ assert.equal(await clean.evaluate(cid=>window.fixture.get(cid),sample.cid),null,'eviction persists across reload');
+ assert.deepEqual(await clean.evaluate(cid=>window.fixture.get(cid),unrelated.cid),unrelated.bytes);
+ assert.deepEqual(await other.evaluate(cid=>window.fixture.get(cid),sample.cid),sample.bytes,'same CID in another partition is retained');
+ assert.equal(await clean.evaluate(sample=>window.fixture.put(sample),replacement),true,'eviction reclaims byte and entry quota');
  assert.deepEqual(unexpected,[],'cache must not contact providers or cloud endpoints');assert.deepEqual(errors,[]);
- console.log('PASS: real Chromium ciphertext cache opt-out, cross-tab quota, restart persistence, expiry and scoped cleanup; synthetic consent/clock, no provider traffic');
+ console.log('PASS: real Chromium ciphertext cache opt-out, cross-tab quota, restart persistence, expiry and scoped/targeted cleanup; synthetic consent/clock, no provider traffic');
 }finally{
  await context?.close();await new Promise(resolve=>server.close(resolve));await rm(profile,{recursive:true,force:true});
 }

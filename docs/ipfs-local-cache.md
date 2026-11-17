@@ -74,3 +74,13 @@ path; it does not establish a future direct IPFS transport's network behavior.
 The test is CI-only, not a scheduled reader registration or shared-host scenario.
 Physical disk limits, browser eviction, suspended-browser cleanup, provider loss
 and real multi-client replication remain separate acceptance work under #570.
+
+## Targeted local eviction
+
+`cache.evict(cids, signal?)` atomically deletes 1–64 selected raw block CIDs in this cache instance's partition. It snapshots and validates the entire selection before opening storage. Duplicate and missing CIDs are harmless. Unlike whole-partition `clear()`, unrelated CIDs and copies in other partitions remain intact. Committed deletions free the existing aggregate byte/entry quota for subsequent writes.
+
+Erasure works after consent withdrawal, opt-out or `close()`, and does not require a valid clock or current grant. It shares the four-outstanding-operation limit and two-second storage deadlines; an already aborted signal refuses the operation. A transaction abort rolls back the whole deletion. Deletion does not reset the clock watermark or any transfer budget.
+
+The caller must stop active transfers and close/replace stale cache users when withdrawing authority. Eviction is not a tombstone: it cannot recall bytes already returned to a reader, prevent an independently authorized writer from later caching the same CID, or erase provider/peer copies. Shared blocks may become cache misses for other items in the same partition. This optional API remains unmounted; native item/grant lifecycle wiring and live acceptance remain outstanding, and readers remain unregistered.
+
+Unit coverage verifies selected deletion, partition isolation, quota reuse, mutation snapshotting, idempotence, malformed/cancelled selection, and the shared pending-operation bound. Actual Chromium CI fills three entries across two partitions, evicts one after withdrawal/close/clock rollback, reloads, verifies retained data, and reuses freed quota with no provider traffic.
