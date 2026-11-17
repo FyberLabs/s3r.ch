@@ -90,12 +90,11 @@ try {
   try{return (await client.get(cid,size)).length===size;}catch{return false;}finally{sharedBudget.close();}
  };
  let slotAbort,slotPending,heldSlotAbort,heldSlotPending;
- window.slotError=undefined;
  window.slotRead=async({endpoint,cid,size})=>{
   const current=()=>true,abort=new AbortController();slotAbort=abort;
   const sharedConcurrency=createSharedTransferConcurrency({current});
   const client=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,current,signal:abort.signal,sharedConcurrency},transport);
-  slotPending=client.get(cid,size).then(bytes=>bytes.length===size,error=>{window.slotError=String(error);return false;});
+  slotPending=client.get(cid,size).then(bytes=>bytes.length===size,()=>false);
   return slotPending;
  };
  window.beginSlot=args=>{void window.slotRead(args);heldSlotAbort=slotAbort;heldSlotPending=slotPending;};
@@ -212,13 +211,21 @@ try {
  assert.equal(providerRequests.length,beforeSlots+2);
  // Closing a tab releases its browser-managed slot; no persisted lease/clock is involved.
  await other.close();
- await page.waitForFunction(async()=> (await navigator.locks.query()).held.filter(lock=>lock.name.startsWith('s3rch-ipfs-transfer-slot-v1-')).length===1);
- mode='normal';const afterClose=await page.evaluate(args=>window.slotRead(args),budgetArgs);
- if(!afterClose)console.log('slot diagnostics',await page.evaluate(async()=>({error:window.slotError,locks:await navigator.locks.query()})),{requests:providerRequests.length-beforeSlots,errors});
- assert.equal(afterClose,true);
+ async function waitSlotCount(expected) {
+  // Playwright's waitForFunction treats a Promise as truthy; await each query explicitly.
+  const deadline=Date.now()+5000;
+  while(Date.now()<deadline){
+   const count=await page.evaluate(async()=> (await navigator.locks.query()).held.filter(lock=>lock.name.startsWith('s3rch-ipfs-transfer-slot-v1-')).length);
+   if(count===expected)return;
+   await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  throw Error('shared slot release deadline');
+ }
+ await waitSlotCount(1);
+ mode='normal';assert.equal(await page.evaluate(args=>window.slotRead(args),budgetArgs),true);
  assert.equal(providerRequests.length,beforeSlots+3);
  assert.equal(await page.evaluate(()=>window.cancelSlot()),false);
- await page.waitForFunction(async()=> (await navigator.locks.query()).held.filter(lock=>lock.name.startsWith('s3rch-ipfs-transfer-slot-v1-')).length===0);
+ await waitSlotCount(0);
 
  // Server withholds the acknowledgement; abort and browser closure must end the connection.
  mode='hold-upload';let seen=new Promise(resolve=>{noticed=resolve;}),gone=new Promise(resolve=>{closed=resolve;});
