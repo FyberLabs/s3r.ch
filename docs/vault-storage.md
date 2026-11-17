@@ -13,12 +13,14 @@ It uses `/api/v1/storage/records/vault/{opaque-id}` and immutable object storage
 Core requires dedicated `storage:vault:read/write` scopes; object operations retain
 their own scopes. Vault deletion and direct-provider access are not exposed.
 
-A service credential must never enter browser code. The browser-facing authorized
-proxy, tenant provisioning, scope assignment and product UI remain separate work.
+A service credential must never enter browser code. The authenticated browser
+proxy is described below; tenant provisioning, scope assignment and product UI
+remain separate work.
 This transport is not an end-user grant. The client custody adapter authenticates
 and decrypts locally; keys and plaintext signed metadata must never reach storage.
-Unit tests use a custody double, not production encryption. The v2 container and
-legacy import remain SociACL work.
+Isolated transport tests retain a custody double; the combined API contract now
+uses real local head encryption. The v2 container and legacy import remain
+SociACL work.
 
 The 8 MiB transport bound is for encrypted head/index/keybag data; it does not
 change the 1 MiB item cap. Reads still require Check and fresh epoch status. The
@@ -54,8 +56,9 @@ CI also composes the installed SociACL signed-head/floor store, browser API
 transport, authenticated service and vault-scoped storage adapter in one contract.
 It covers a lost committed response, exact retry, successor publication, replayed
 old head refusal, revoked-session refusal and retained state after reopening.
-Storage and custody are explicit in-process doubles; this is not TEST deployment,
-real browser PRF, or real-storage nightly qualification.
+Storage is an explicit in-process double, while head custody uses the encryption
+adapter below. This is not TEST deployment, real browser PRF, or real-storage
+nightly qualification.
 
 ### Local private-head custody
 
