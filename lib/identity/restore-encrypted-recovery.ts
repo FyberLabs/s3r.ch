@@ -1,10 +1,18 @@
+import type {RestoredKeyringRecord} from './restored-keyring-storage';
 import {openRecoveryKeyring} from 'sociacl-ids/recovery';
 import {exportKeyring,closeKeyring} from 'sociacl-ids/keyring';
-import {restoreCanonicalKeyring,type RestoreKeyringInput} from './restore-keyring';
+import {restoreCanonicalKeyring,replaceRotatedKeyring,type RestoreKeyringInput} from './restore-keyring';
 import {base64UrlToBytes,bytesToBase64Url} from './wrap';
 /** Transport JSON wraps canonical owner ciphertext; it defines no crypto format.
  * Passphrase and decrypted keyring never enter an HTTP request or error message. */
 export async function restoreEncryptedRecovery(file:Uint8Array,passphrase:Uint8Array,input:RestoreKeyringInput){
+ return openAndStore(file,passphrase,input);
+}
+/** Explicit replacement keeps ordinary encrypted restore absence-only. */
+export async function replaceRotatedEncryptedRecovery(file:Uint8Array,passphrase:Uint8Array,previous:RestoredKeyringRecord,input:RestoreKeyringInput){
+ return openAndStore(file,passphrase,input,structuredClone(previous));
+}
+async function openAndStore(file:Uint8Array,passphrase:Uint8Array,input:RestoreKeyringInput,previous?:RestoredKeyringRecord){
  const guard=()=>{input.signal.throwIfAborted();if(!input.current())throw Error('Identity context changed');};guard();
  let secret:Uint8Array|undefined,canonical:Uint8Array|undefined,handle:Awaited<ReturnType<typeof openRecoveryKeyring>>|undefined;
  try{
@@ -19,7 +27,7 @@ export async function restoreEncryptedRecovery(file:Uint8Array,passphrase:Uint8A
   const state=await input.keyringState(identity);guard();
   handle=await openRecoveryKeyring(secret,{principal:identity.principal,signingPub:identity.pub,epub:identity.epub,rotationSeq:identity.rotationSeq,bytes},identity,()=>{guard();return state();},input.signal);guard();
   canonical=exportKeyring(handle,state);
-  return await restoreCanonicalKeyring(canonical,identity,input);
+  return previous?await replaceRotatedKeyring(canonical,identity,previous,input):await restoreCanonicalKeyring(canonical,identity,input);
  }catch{throw Error('Encrypted recovery unavailable');}
  finally{secret?.fill(0);canonical?.fill(0);if(handle)closeKeyring(handle);}
 }

@@ -1,10 +1,13 @@
+import {importKeyring,closeKeyring} from 'sociacl-ids/keyring';
+import {sealRecoveryKeyring} from 'sociacl-ids/recovery';
+import {openMeshDb,MESH_STORE_NAME} from './idb';
 // Native recovery, crypto and IndexedDB contracts run only in CI.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {IDBFactory} from 'fake-indexeddb';
 import {historyState} from 'sociacl-ids';
-import {restoreEncryptedRecovery} from './restore-encrypted-recovery';
+import {restoreEncryptedRecovery,replaceRotatedEncryptedRecovery} from './restore-encrypted-recovery';
 import {restoredKeyringRecords} from './restored-keyring-storage';
 const fixture=(name:string)=>JSON.parse(readFileSync(new URL('../.pairing-test-vectors/'+name+'.json',import.meta.url),'utf8'));
 async function setup(){
@@ -37,4 +40,25 @@ test('wrong passphrase, tamper, malformed, stale owner and account cancellation 
 test('cancellation during decrypted-history validation refuses delivery and leaves storage untouched',async()=>{
  const f=await setup(),input={...f.input,keyringState:async(id:any)=>{const state=await f.input.keyringState(id);return ()=>{f.abort.abort();return state();};}};
  await assert.rejects(restoreEncryptedRecovery(f.file(),f.pass(),input));assert.equal(f.protects(),0);assert.deepEqual(await restoredKeyringRecords(f.factory),[]);
+});
+
+test('encrypted replacement requires the confirmed next rotation and preserves prior storage on a wrong passphrase',async()=>{
+ const f=await setup(),vectors=fixture('browser-keyring'),records=fixture('records'),v=vectors.accept[1];
+ const identity={principal:v.fields.principal,pub:v.fields.pub,epub:v.fields.epub,rotationSeq:v.fields.rotationSeq};
+ const rotations=v.rotationNames.map((name:string)=>records.accept.find((r:any)=>r.name===name).input);
+ const state=():any=>({rotations,context:{...records.context,links:new Map(records.context.links),revocations:[],pinnedIss:new Set(records.context.pinnedIss),genesisEpubBindings:v.genesisBindings,history:(p:any,at:number,until:number)=>records.context.authenticatedAccounts.includes(p)?{ok:true,value:historyState(p,[],at,until)}:{ok:false,reason:'missing-history'}}});
+ const input={...f.input,keyringState:async()=>state},handle=importKeyring(new Uint8Array(Buffer.from(v.encodedHex,'hex')),identity,state);
+ const phrase=new TextEncoder().encode('Glacier!marigold-97-violet-Copper!648-orbit');
+ let file:Uint8Array;
+ try{const envelope=await sealRecoveryKeyring(handle,phrase,state);const {bytes,...meta}=envelope;
+  file=new TextEncoder().encode(JSON.stringify({version:1,...meta,ciphertext:Buffer.from(bytes).toString('base64url')}));
+ }finally{closeKeyring(handle);}
+ const result=await restoreEncryptedRecovery(file,phrase,input),rotation=rotations.at(-1);
+ const previous={...result.record,identity:{...identity,pub:rotation.prevKey,epub:identity.principal,rotationSeq:identity.rotationSeq-1},seaPub:rotation.prevKey};
+ const db=await openMeshDb(f.factory);await new Promise<void>((resolve,reject)=>{const tx=db.transaction(MESH_STORE_NAME,'readwrite');tx.objectStore(MESH_STORE_NAME).put(previous);tx.oncomplete=()=>resolve();tx.onabort=()=>reject(Error());});db.close();
+ await assert.rejects(replaceRotatedEncryptedRecovery(file,new TextEncoder().encode('wrong'),previous,input));
+ assert.deepEqual(await restoredKeyringRecords(f.factory),[previous]);
+ assert.equal((await replaceRotatedEncryptedRecovery(file,phrase,previous,input)).outcome,'stored');
+ assert.deepEqual((await restoredKeyringRecords(f.factory))[0].identity,identity);
+ phrase.fill(0);file.fill(0);
 });
