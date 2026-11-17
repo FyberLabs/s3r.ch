@@ -33,13 +33,14 @@ export function verifyForumWitness(
   token: unknown, trustedKeys: readonly ForumWitnessKey[], at: number, skew = 0,
 ): Readonly<Record<string, unknown>> | null {
   try {
-    if (typeof token !== "string" || token.length > 16384 || !integer(at) || !integer(skew) || skew > 300) return null;
+    if (typeof token !== "string" || token.length > 128 * 1024 || !integer(at) || !integer(skew) || skew > 300) return null;
     if (!Array.isArray(trustedKeys) || trustedKeys.length > 1024) return null;
     const parts = token.split(".");
     if (parts.length !== 3) return null;
     const header = decode(parts[0]), claims = decode(parts[1]);
     if (!object(header) || !object(claims) || header.alg !== "ES256" || typeof header.kid !== "string" || !header.kid ||
       Object.keys(header).some(k => !["alg", "kid", "typ"].includes(k)) || (header.typ !== undefined && header.typ !== "JWT")) return null;
+    if (token.length > 16384 && !["sociacl-rotate-attest-v1", "sociacl-rotate-attest-v2", "sociacl-rotate-attest-v3", "sociacl-rotate-attest-v4"].includes(String(claims.typ))) return null;
     const matches = trustedKeys.filter(k => k.kid === header.kid);
     if (matches.length !== 1) return null;
     const k = matches[0];

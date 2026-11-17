@@ -84,3 +84,14 @@ test("verifies copied upstream witness fixtures at their historical issuance tim
     assert.deepEqual(verifyForumWitness(vector.token, vectors.keys as ForumWitnessKey[], vector.claims.iat), vector.claims, vector.name);
   }
 });
+
+test("maximum retained-link rotation witness verifies with the real signature", () => {
+  const claims = {typ: "sociacl-rotate-attest-v4", iat: 150, exp: 250,
+    retainedLinks: Array.from({length: 1024}, (_, i) => i.toString(16).padStart(64, "0"))};
+  const token = sign(JSON.stringify(claims));
+  assert.ok(token.length > 16384 && token.length < 128 * 1024);
+  assert.deepEqual(verifyForumWitness(token, [key], 150), claims);
+  assert.equal(verifyForumWitness(sign(JSON.stringify({...claims, typ: "sociacl-wallet-attest-v1"})), [key], 150), null);
+  assert.equal(verifyForumWitness(sign(JSON.stringify({...claims, padding: "a".repeat(128 * 1024)})), [key], 150), null);
+  assert.equal(verifyForumWitness(token.slice(0, -5) + "AAAAA", [key], 150), null);
+});

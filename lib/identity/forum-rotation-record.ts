@@ -71,7 +71,7 @@ export function parseForumRotationRecord(input: unknown): Readonly<{
   if (!key(r.principal) || !key(r.prevKey) || !key(r.nextKey) || !integer(r.issuedAt) || !integer(r.seq) || r.seq === 0) return null;
   const hasEpub = Object.hasOwn(r, "nextEpub");
   if (hasEpub && !key(r.nextEpub)) return null;
-  if (!text(r.nextSig, 128) || !text(r.attest, 16384)) return null;
+  if (!text(r.nextSig, 128) || !text(r.attest, 128 * 1024)) return null;
   const retainedLinks = retained(r.retainedLinks);
   const a = data(r.authorizer);
   if (!retainedLinks || !a || !link(a.link)) return null;
