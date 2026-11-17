@@ -9,6 +9,9 @@ import {hashMessage,hexToBytes} from 'viem';
 const sha256=(value:Uint8Array)=>new Uint8Array(createHash('sha256').update(value).digest());
 import {historyState,lengthPrefixed} from 'sociacl-ids';
 import {admitKeyring,exportKeyring,importKeyring,closeKeyring} from 'sociacl-ids/keyring';
+import {openRecoveryKeyring,signRecoveryCommit} from 'sociacl-ids/recovery';
+import {commitRecoveryCopy} from './recovery-store-commit';
+import {recoveryFileRow,recoveryRowEnvelope} from './recovery-file';
 import {prepareRecoveryRotation} from './recovery-rotation-client';
 const fixture=(name:string)=>JSON.parse(readFileSync(new URL('../.pairing-test-vectors/'+name+'.json',import.meta.url),'utf8'));
 const b64=(v:Uint8Array)=>Buffer.from(v).toString('base64url'),hex=(v:Uint8Array)=>Buffer.from(v).toString('hex');
@@ -17,7 +20,7 @@ function setup(){
  Object.assign(fields,{pub:fields.principal,priv:b64(scalar),epub:fields.genesisEpub,epriv:b64(encryption),rotationSeq:0,contentEpoch:0,retired:[],priorLanes:[],priorContactSecrets:[]});
  const key=new Uint8Array(32);key[31]=7;const point=p256.getPublicKey(key,false),jwks=structuredClone(records.context.jwks);
  jwks.keys.push({kty:'EC',crv:'P-256',kid:'rotation-fixture',x:b64(point.slice(1,33)),y:b64(point.slice(33)),alg:'ES256',use:'sig',key_ops:['verify'],notBefore:0,notAfter:records.context.now+10000});
- let rotation:any,pending:any=null,generation=0,active=true,stored=0,publicationWrites=0,backupWrites=0,revision=0;
+ let rotation:any,pending:any=null,currentRow:any=null,storedBytes:Uint8Array|undefined,generation=0,active=true,stored=0,publicationWrites=0,backupWrites=0,revision=0;
  const identity={principal:fields.principal,pub:fields.pub,epub:fields.epub,rotationSeq:0},abort=new AbortController();
  const context:any={...records.context,jwks,links:new Map(records.context.links),pinnedIss:new Set(records.context.pinnedIss),revocations:[],
   genesisEpubBindings:records.accept.find((r:any)=>r.name==='binding-valid-no-rotation').genesisEpubBindings,
@@ -31,14 +34,16 @@ function setup(){
   return '0x'+hex(new Uint8Array([...sig.slice(1),sig[0]+27]));
  }};
  const input={origin:'https://s3r.ch',current:()=>active,signal:abort.signal,keyringState:async()=>state,
-  store:async(bytes:Uint8Array,id:any)=>{const opened=importKeyring(bytes,id,state);try{assert.equal(opened.rotationSeq,1);stored++;}finally{closeKeyring(opened);}},
+  store:async(bytes:Uint8Array,id:any)=>{const opened=importKeyring(bytes,id,state);try{assert.equal(opened.rotationSeq,1);storedBytes=new Uint8Array(bytes);stored++;}finally{closeKeyring(opened);}},
   request:async(action:string,value:any):Promise<unknown>=>{
    assert.equal(JSON.stringify(value).includes(fields.priv),false);
-   if(action==='recovery-read')return {generation,head:head(),row:pending};
+   if(action==='recovery-read')return {generation,head:head(),row:value.slot==='pending'?pending:currentRow};
    if(action==='recovery-put'){assert.match(value.signature,/^[a-f0-9]{128}$/);pending=structuredClone(value.row);backupWrites++;return {generation:++generation};}
+   if(action==='recovery-commit'){assert.match(value.signature,/^[a-f0-9]{128}$/);currentRow=pending;pending=null;return {generation:++generation};}
    if(action==='rotation-witness'){
+    const proof=lengthPrefixed(['sociacl-siwe-proof-v1',value.authorizer.siwe.message,value.authorizer.siwe.signature]);assert.ok(proof.ok);
     const claims={typ:'sociacl-rotate-attest-v4',principal:value.principal,nextKey:value.nextKey,nextEpub:value.nextEpub,seq:value.seq,iat:value.issuedAt,exp:value.issuedAt+600,auth:'wallet',linkId:value.authorizer.link,retainedLinks:value.retainedLinks,
-     siweHash:hex(sha256(lengthPrefixed(['sociacl-siwe-proof-v1',value.authorizer.siwe.message,value.authorizer.siwe.signature])))};
+     siweHash:hex(sha256(proof.value))};
     const token=b64(new TextEncoder().encode(JSON.stringify({alg:'ES256',kid:'rotation-fixture',typ:'JWT'})))+'.'+b64(new TextEncoder().encode(JSON.stringify(claims)));
     return {attest:token+'.'+b64(p256.sign(sha256(new TextEncoder().encode(token)),key,{prehash:false,format:'compact'}))};
    }
@@ -46,7 +51,7 @@ function setup(){
    if(action==='rotation-publish'){rotation=structuredClone(value);publicationWrites++;return {recordHash:'ab'.repeat(32)};}
    throw Error('unexpected action');
   }};
- return {input,wallet,material,identity,context,abort,pass:()=>new TextEncoder().encode(fixture('recovery-copy').passphraseUtf8),get stored(){return stored;},get publicationWrites(){return publicationWrites;},get backupWrites(){return backupWrites;},changeWallet(){revision++;},stop(){active=false;},changeBackup(){pending=null;}};
+ return {input,wallet,material,identity,context,abort,state,get storedBytes(){return storedBytes;},seedCurrent(row:any){currentRow=row;},pass:()=>new TextEncoder().encode(fixture('recovery-copy').passphraseUtf8),get stored(){return stored;},get publicationWrites(){return publicationWrites;},get backupWrites(){return backupWrites;},changeWallet(){revision++;},stop(){active=false;},changeBackup(){pending=null;}};
 }
 async function prepare(f:ReturnType<typeof setup>){return prepareRecoveryRotation(f.material,f.identity,['lost-device','kept-device'],'lost-device',f.pass(),'account',f.input);}
 test('explicit rotation preserves separate backup, wallet, publication and protection outcomes',async()=>{
@@ -80,4 +85,23 @@ test('wallet changes, conflicting backup, stale authority and cancellation never
 test('weak passphrase and cancelled preparation return no pending controller',async()=>{
  const f=setup();await assert.rejects(prepareRecoveryRotation(f.material,f.identity,['lost'],'lost',new TextEncoder().encode('password'),'account',f.input));
  f.abort.abort();await assert.rejects(prepare(f));
+});
+
+test('old weak-passphrase recovery rotates, protects and promotes the exact new-passphrase backup',async()=>{
+ const f=setup(),legacy=fixture('recovery-legacy-strength'),oldEnvelope={principal:f.identity.principal,signingPub:f.identity.pub,epub:f.identity.epub,rotationSeq:0,bytes:new Uint8Array(Buffer.from(legacy.envelopeHex,'hex'))};
+ const old=await openRecoveryKeyring(new TextEncoder().encode(legacy.passphraseUtf8),oldEnvelope,f.identity,f.state);
+ let material:Uint8Array|undefined,flow:Awaited<ReturnType<typeof prepareRecoveryRotation>>|undefined;
+ try{
+  material=exportKeyring(old,f.state);f.seedCurrent({principal:f.identity.principal,signingPub:f.identity.pub,epub:f.identity.epub,rotationSeq:0,bytesHex:hex(oldEnvelope.bytes)});
+  flow=await prepareRecoveryRotation(material,f.identity,['lost'],'lost',f.pass(),'account',f.input);
+  const row=recoveryFileRow(flow.file());await flow.save();await flow.authorize(f.wallet);await flow.publish();await flow.protect();
+  const active=importKeyring(f.storedBytes!,flow.identity,f.state);
+  try{
+   const result=await commitRecoveryCopy(row,{current:f.input.current,signal:f.abort.signal,read:slot=>f.input.request('recovery-read',{slot}),
+    authorize:async()=>{const bytes=exportKeyring(active,f.state);bytes.fill(0);},
+    sign:async view=>{assert.ok(view.pending);return signRecoveryCommit(active,{...view,current:view.current?recoveryRowEnvelope(view.current):null,pending:recoveryRowEnvelope(view.pending)},f.state);},
+    write:operation=>f.input.request('recovery-commit',operation)});
+   assert.equal(result,'committed');assert.equal((await f.input.request('recovery-read',{slot:'pending'}) as any).row,null);
+  }finally{closeKeyring(active);}
+ }finally{material?.fill(0);f.storedBytes?.fill(0);flow?.close();closeKeyring(old);}
 });
