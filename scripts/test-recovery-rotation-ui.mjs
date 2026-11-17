@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {build} from 'esbuild';
-import {chromium} from 'playwright';
+import {chromium} from 'playwright-core';
+if(process.env.GITHUB_ACTIONS!=='true')throw Error('CI only');
 const mocks={
  'sociacl-ids/recovery':`export class RecoveryWeakPassphraseError extends Error{};export const encodePassphrase=v=>new TextEncoder().encode(v);`,
  '@/lib/identity/recovery-wallet':`export async function connectRecoveryWallet(provider,signal,onChange){window.fixture.changeWallet=onChange;return {current:()=>({address:'linked-wallet'}),close(){},signMessage:async()=>''};}`,
