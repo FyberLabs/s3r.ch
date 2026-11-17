@@ -80,3 +80,38 @@ test("read policy is validated and captured, while explicit uploads retain their
   assert.equal(await client.put(bytes),cid);
   assert.throws(()=>createCachedMediaBlocks({...options,readPolicy:'invalid' as 'cache-only'}));f.cache.close();
 });
+
+test("acknowledged uploads populate optional cache without a provider download",async()=>{
+  const f=fixture(),cid=await rawMediaBlockCid(bytes);assert.equal(await f.client.put(bytes),cid);f.offline();
+  assert.deepEqual(await f.client.get(cid,3),bytes);assert.equal(f.gets(),0);f.cache.close();
+});
+test("failed or false upload acknowledgements do not populate cache",async()=>{
+  for(const fail of [true,false]){
+    const f=fixture(),cid=await rawMediaBlockCid(bytes);
+    f.provider.put=async()=>{if(fail)throw Error('offline');return 'bad';};
+    await assert.rejects(f.client.put(bytes));assert.equal(await f.cache.get(cid),null);f.cache.close();
+  }
+});
+test("upload snapshot resists caller and provider mutation and cache failure preserves acknowledgement",async()=>{
+  const f=fixture(),input=bytes.slice(),cid=await rawMediaBlockCid(bytes);
+  f.provider.put=async block=>{assert.deepEqual(block,bytes);block.fill(9);return cid;};
+  const pending=f.client.put(input);input.fill(8);assert.equal(await pending,cid);
+  assert.deepEqual(await f.cache.get(cid),bytes);f.cache.close();assert.equal(await f.client.put(bytes),cid);
+});
+test("withdrawal or abort at upload acknowledgement refuses retention",async()=>{
+  for(const reason of ['revoke','abort']){
+    const f=fixture(),cid=await rawMediaBlockCid(bytes);
+    f.provider.put=async()=>{if(reason==='revoke')f.revoke();else f.abort.abort();return cid;};
+    await assert.rejects(f.client.put(bytes));
+    const observer=createLocalCiphertextCache({scope:'a'.repeat(64),policy:{enabled:true,maxBytes:3,maxEntries:1,ttlMs:1000},factory:f.factory,current:()=>true,now:()=>1000});
+    assert.equal(await observer.get(cid),null);observer.close();f.cache.close();
+  }
+});
+test("upload and download share two adapter operation slots and reject oversized input",async()=>{
+  const f=fixture(),cid=await rawMediaBlockCid(bytes);let release!:()=>void;
+  const gate=new Promise<void>(resolve=>{release=resolve;});f.provider.put=async()=>{await gate;return cid;};
+  await assert.rejects(f.client.put(new Uint8Array(1024*1024+1)));
+  const a=f.client.put(bytes),b=f.client.put(bytes);
+  await assert.rejects(f.client.put(bytes));await assert.rejects(f.client.get(cid,3));
+  release();await Promise.all([a,b]);assert.deepEqual(await f.client.get(cid,3),bytes);f.cache.close();
+});
