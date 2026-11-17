@@ -1,4 +1,5 @@
-import {signRecoveryCurrentPut} from 'sociacl-ids/recovery';
+import {commitRecoveryCopy} from './recovery-store-commit';
+import {signRecoveryCurrentPut,signRecoveryCommit} from 'sociacl-ids/recovery';
 import {saveRecoveryCopy,type RecoveryView} from './recovery-store-save';
 import {recoveryFileRow,recoveryRowEnvelope,recoveryRowFile} from './recovery-file';
 import {recoveryView} from './recovery-store-protocol';
@@ -88,6 +89,29 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
      sign:async view=>withKeyring((handle,state)=>signRecoveryCurrentPut(handle,recoveryRowEnvelope(row),
       {generation:view.generation,head:view.head,row:view.row?recoveryRowEnvelope(view.row):null},state)),
      write:async operation=>(await request('recovery-put',operation)).body});
+   }finally{opened?.keyring.fill(0);}
+  },
+  async commitEncryptedCopy(file:Uint8Array){
+   guard();if(!session.recoveryStoreEnabled||!session.recoveryRotationEnabled)return fail();
+   const row=recoveryFileRow(new Uint8Array(file));
+   let opened:Awaited<ReturnType<typeof adapters.unlock>>|undefined;
+   try{
+    opened=await adapters.unlock(abort.signal);guard();const held=opened;
+    if(row.principal!==held.identity.principal||row.signingPub!==held.identity.pub||row.epub!==held.identity.epub||row.rotationSeq!==held.identity.rotationSeq)return fail();
+    async function withKeyring<T>(use:(handle:ReturnType<typeof importKeyring>,state:Awaited<ReturnType<typeof authority.keyringState>>)=>T){
+     const state=await authority.keyringState(held.identity);guard();
+     const currentState=()=>{guard();return state();},handle=importKeyring(held.keyring,held.identity,currentState);
+     try{return use(handle,currentState);}finally{closeKeyring(handle);}
+    }
+    return await commitRecoveryCopy(row,{current,signal:abort.signal,
+     read:async slot=>(await request('recovery-read',{slot})).body,
+     authorize:async()=>{await withKeyring(()=>undefined);},
+     sign:async view=>{
+      if(!view.pending)return fail();const pending=recoveryRowEnvelope(view.pending);
+      return withKeyring((handle,state)=>signRecoveryCommit(handle,{generation:view.generation,head:view.head,
+       current:view.current?recoveryRowEnvelope(view.current):null,pending},state));
+     },
+     write:async operation=>(await request('recovery-commit',operation)).body});
    }finally{opened?.keyring.fill(0);}
   },
   async prepareEncryptedCopy(passphrase:Uint8Array,accountHandle:string){
