@@ -1,3 +1,4 @@
+import {prepareRecoveryRotation} from './recovery-rotation-client';
 import {commitRecoveryCopy} from './recovery-store-commit';
 import {signRecoveryCurrentPut,signRecoveryCommit} from 'sociacl-ids/recovery';
 import {saveRecoveryCopy,type RecoveryView} from './recovery-store-save';
@@ -5,7 +6,7 @@ import {recoveryFileRow,recoveryRowEnvelope,recoveryRowFile} from './recovery-fi
 import {recoveryView} from './recovery-store-protocol';
 import {prepareEncryptedRecovery} from './prepare-encrypted-recovery';
 import {restoreEncryptedRecovery,replaceRotatedEncryptedRecovery} from './restore-encrypted-recovery';
-import {restoreExistingKeyring} from './restore-keyring';
+import {restoreExistingKeyring,replaceRotatedKeyring} from './restore-keyring';
 import {restoredKeyringRecords,openRestoredKeyring,isRestoredKeyringRecord,type RestoredKeyringRecord} from './restored-keyring-storage';
 import {activateDeviceKeyring} from './device-activation';
 import {createAuthority} from 'acl-sea-device-authority';
@@ -32,6 +33,7 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
  const guard=()=>{if(!current())return fail();};
  let protection:Awaited<ReturnType<typeof prepareDeviceProtection>>|undefined,receiverCapability:string|undefined;
  let source:Uint8Array|undefined,sourceIdentity:Identity|undefined;
+ let rotation:Awaited<ReturnType<typeof prepareRecoveryRotation>>|undefined,rotationRevision=0;
  async function request(action:string,value:unknown){
   guard();const r=await fetch('/api/identity/device/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-Device-Context':session.context??''},body:JSON.stringify(value),credentials:'same-origin',mode:'same-origin',redirect:'error',cache:'no-store',signal:abort.signal});guard();
   if(!r.ok||r.redirected)return fail();const body=await readBoundedIdentityJson(r,action==='relay'?710000:4*1024*1024,abort.signal);guard();return {status:r.status,body};
@@ -64,6 +66,21 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
   },
  };
  return {adapters,
+  cancelRotation(){rotationRevision++;rotation?.close();rotation=undefined;},
+  async prepareRotation(previous:RestoredKeyringRecord,trusted:readonly string[],lost:string,passphrase:Uint8Array,accountHandle:string){
+   guard();if(!session.recoveryStoreEnabled||!session.recoveryRotationEnabled)return fail();
+   const expected=structuredClone(previous),devices=[...trusted],phrase=new Uint8Array(passphrase);
+   if(!isRestoredKeyringRecord(expected)||!same(expected.scope,session.scope)){phrase.fill(0);return fail();}
+   const attempt=++rotationRevision;rotation?.close();rotation=undefined;let bytes:Uint8Array|undefined;
+   try{
+    bytes=await openRestoredKeyring(expected);guard();
+    const value=await prepareRecoveryRotation(bytes,expected.identity,devices,lost,phrase,accountHandle,{origin,current:()=>current()&&attempt===rotationRevision,signal:abort.signal,
+     keyringState:identity=>authority.keyringState(identity),request:async(action,value)=>(await request(action,value)).body,
+     store:async(material,identity)=>{await replaceRotatedKeyring(material,identity,expected,{scope:session.scope,current,signal:abort.signal,
+      keyringState:id=>authority.keyringState(id),protect:()=>prepareDeviceProtection(new URL(origin).hostname)});guard();onStored();}});
+    if(!current()||attempt!==rotationRevision){value.close();return fail();}rotation=value;return value;
+   }finally{bytes?.fill(0);phrase.fill(0);}
+  },
   async fetchEncryptedCopy(slot:'current'|'pending'='current'){
    guard();if(!session.recoveryStoreEnabled||!['current','pending'].includes(slot)||(slot==='pending'&&!session.recoveryRotationEnabled))return fail();
    const value=(await request('recovery-read',{slot})).body;
@@ -176,6 +193,6 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
      remember:pair=>rememberUnlockedMeshPair(record.address,pair)});
    }finally{opened.keyring.fill(0);}
   },
-  dispose(){disposed=true;abort.abort();authority.close();for(const r of relays)r.close();relays.clear();protection=undefined;receiverCapability=undefined;source?.fill(0);source=undefined;sourceIdentity=undefined;},
+  dispose(){disposed=true;rotationRevision++;rotation?.close();rotation=undefined;abort.abort();authority.close();for(const r of relays)r.close();relays.clear();protection=undefined;receiverCapability=undefined;source?.fill(0);source=undefined;sourceIdentity=undefined;},
  };
 }

@@ -1,4 +1,5 @@
 'use client';
+import {RecoveryRotation} from './RecoveryRotation';
 import {encodePassphrase,RecoveryWeakPassphraseError} from 'sociacl-ids/recovery';
 import {readBoundedIdentityJson} from '@/lib/identity/bounded-json';
 import {useEffect,useState,useRef} from 'react';
@@ -153,6 +154,7 @@ function Session({session,onCancel}:{session:DeviceSession;onCancel:()=>void}){
    <button disabled={busy||!client} onClick={()=>void work(async()=>{await client!.resume(record);return 'Saved completion acknowledged. No identity was imported again.';})}>Retry saved acknowledgement</button>{' '}
    <button disabled={busy||!client} onClick={()=>void work(async()=>{const ok=await client!.signIn(record);if(ok){identitySessionChanged();return 'Signed in with the saved identity.';}return 'Identity saved; sign-in failed. Retry sign-in without importing again.';})}>Unlock saved identity and sign in</button>
   </section>)}
+  {client&&session.recoveryRotationEnabled&&session.recoveryStoreEnabled&&restored.length===1&&<RecoveryRotation client={client} previous={restored[0]} onBusy={setBusy}/>}
   {busy&&<button onClick={()=>{client?.dispose();recoveryCopy.current?.fill(0);recoveryCopy.current=undefined;setDownload(undefined);if(newPassphrase.current)newPassphrase.current.value='';if(confirmPassphrase.current)confirmPassphrase.current.value='';setRestoreFile(null);setRecoveryFile(null);if(recoveryPassphrase.current)recoveryPassphrase.current.value='';onCancel();}}>Cancel current identity operation</button>}
   {status&&<p role="status">{status}</p>}
  </div>;
