@@ -14,6 +14,7 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 | --- | --- | --- | --- | --- |
 | `S3RCH_NIGHTLY_RUN_CONFIG` | no | unset | yes | Private TEST owner JSON with separate controller/owner keys and both declared suite scopes. Enables guarded Next entry routing when explicitly configured; absent preserves native handlers, malformed or changed configuration refuses. No credentials or reader cases are installed by source wiring. |
 | `S3RCH_DEVICE_TRANSFER_CONFIG` | for device transfer | unset | no | Exact scope, Auth/ACL routes and existing OIDC provider; see below. |
+| `S3RCH_RECOVERY_ROTATION_ENABLED` | no | unset | no | Enable person-authenticated wallet rotation signing/publication/readback and signed recovery promotion. ACL publication must also be configured. |
 | `S3RCH_RECOVERY_STORE_ENABLED` | no | unset | no | Explicitly enable person-authenticated recovery ciphertext reads and signed puts. |
 | `S3RCH_EXPERIMENTS_ENABLED` | no | unset | no | Set to 1 to enable the optional landing experiment. Withdrawal remains available after disabling. |
 | `S3RCH_LINKED_OIDC_CONFIG_FILE` | for linked OIDC proof | unset | yes | Absolute owner-only Auth broker configuration; requires matching existing-person provider and complete linked identity source. |
@@ -350,3 +351,11 @@ consumers. This setting alone does not activate them, provision credentials, or
 register reader cases. No private file is included in the image or this repository.
 
 Setting `S3RCH_RECOVERY_STORE_ENABLED` to `true` explicitly enables authenticated recovery current/pending reads and signed current-copy puts through the device-person session. It defaults off and requires the existing device-transfer configuration plus ACL signed-store subject bindings. Only ciphertext and public CAS metadata cross this boundary; the browser keeps passphrases and key material. This setting does not provision storage, enroll identities, enable rotation or register readers.
+
+
+`S3RCH_RECOVERY_ROTATION_ENABLED=true` separately permits public signed wallet
+rotation requests and exact readback through the existing device-person session.
+It also permits signed recovery promotion when recovery storage is enabled.
+The ACL service separately requires its configured subject binding, rotation
+scope and publication flag. Neither setting creates identities, issues a browser
+session, registers readers or sends private key/passphrase material to a server.
