@@ -6,7 +6,7 @@ import {recoveryView} from './recovery-store-protocol';
 import {prepareEncryptedRecovery} from './prepare-encrypted-recovery';
 import {restoreEncryptedRecovery,replaceRotatedEncryptedRecovery} from './restore-encrypted-recovery';
 import {restoreExistingKeyring} from './restore-keyring';
-import {restoredKeyringRecords,openRestoredKeyring,type RestoredKeyringRecord} from './restored-keyring-storage';
+import {restoredKeyringRecords,openRestoredKeyring,isRestoredKeyringRecord,type RestoredKeyringRecord} from './restored-keyring-storage';
 import {activateDeviceKeyring} from './device-activation';
 import {createAuthority} from 'acl-sea-device-authority';
 import {createRelay} from 'auth-sea-relay';
@@ -133,13 +133,13 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
     keyringState:identity=>authority.keyringState(identity),protect:()=>prepareDeviceProtection(new URL(origin).hostname)});
    guard();onStored();return result.outcome;
   },
-  async replaceRotatedEncryptedSource(bytes:Uint8Array,passphrase:Uint8Array){
+  async replaceRotatedEncryptedSource(bytes:Uint8Array,passphrase:Uint8Array,previous:RestoredKeyringRecord){
    guard();if(!session.recoveryRotationEnabled)return fail();
+   const expected=structuredClone(previous);
+   if(!isRestoredKeyringRecord(expected)||!same(expected.scope,session.scope))return fail();
    const file=new Uint8Array(bytes),phrase=new Uint8Array(passphrase);
    try{
-    const rows=await restoredKeyringRecords();guard();
-    if(rows.length!==1||!same(rows[0].scope,session.scope))return fail();
-    const result=await replaceRotatedEncryptedRecovery(file,phrase,rows[0],{scope:session.scope,current,signal:abort.signal,
+    const result=await replaceRotatedEncryptedRecovery(file,phrase,expected,{scope:session.scope,current,signal:abort.signal,
      keyringState:identity=>authority.keyringState(identity),protect:()=>prepareDeviceProtection(new URL(origin).hostname)});
     guard();onStored();return result.outcome;
    }finally{file.fill(0);phrase.fill(0);}
