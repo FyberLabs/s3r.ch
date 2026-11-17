@@ -67,15 +67,16 @@ try {
  window.resumeDownload=async()=>{
   try{const output=await preparedDownload.resume();return output.length===resumeInput.length&&output.every((byte,index)=>byte===resumeInput[index]);}catch{return false;}
  };
- let localCache,cachedMedia,cacheAllowed=true,cacheNow=1000;
+ let localCache,cachedMedia,offlineMedia,cacheAllowed=true,cacheNow=1000;
  window.configureCache=endpoint=>{
   const signal=new AbortController().signal,current=()=>cacheAllowed;
   localCache=createLocalCiphertextCache({scope:'c'.repeat(64),policy:{enabled:true,maxBytes:3*1024*1024,maxEntries:4,ttlMs:1000},current,now:()=>cacheNow});
   const provider=createKuboBlockClient({endpoint,maxBytes:8*1024*1024,maxBytesPerMinute:8*1024*1024,current,signal},transport);
   cachedMedia=createIpfsMediaTransfer({blocks:createCachedMediaBlocks({provider,cache:localCache,current,signal}),current,signal});
+  offlineMedia=createIpfsMediaTransfer({blocks:createCachedMediaBlocks({provider,cache:localCache,current,signal,readPolicy:"cache-only"}),current,signal});
  };
- window.cachedRead=async()=>{try{
-  const output=await cachedMedia.download(resumeGrant.manifest,resumeGrant.key,{tenant:'afee9b29-1706-5590-bbbf-e58df8945ac0',object:'claim_'+'78'.repeat(32)});
+ window.cachedRead=async(cacheOnly=false)=>{try{
+  const output=await (cacheOnly?offlineMedia:cachedMedia).download(resumeGrant.manifest,resumeGrant.key,{tenant:'afee9b29-1706-5590-bbbf-e58df8945ac0',object:'claim_'+'78'.repeat(32)});
   return output.length===resumeInput.length&&output.every((byte,index)=>byte===resumeInput[index]);
  }catch{return false;}};
  window.cacheConsent=value=>{cacheAllowed=value;};window.cacheTime=value=>{cacheNow=value;};
@@ -186,9 +187,10 @@ try {
  mode='normal';const beforeCache=providerRequests.length;
  await page.evaluate(endpoint=>window.configureCache(endpoint),providerOrigin);
  assert.equal(await page.evaluate(()=>window.cachedRead()),true);assert.equal(providerRequests.length,beforeCache+2);
- mode='unavailable';assert.equal(await page.evaluate(()=>window.cachedRead()),true);assert.equal(providerRequests.length,beforeCache+2);
+ mode='unavailable';assert.equal(await page.evaluate(()=>window.cachedRead(true)),true);assert.equal(await page.evaluate(()=>window.cachedRead()),true);assert.equal(providerRequests.length,beforeCache+2);
  await page.evaluate(()=>window.cacheConsent(false));assert.equal(await page.evaluate(()=>window.cachedRead()),false);assert.equal(providerRequests.length,beforeCache+2);
  await page.evaluate(()=>{window.cacheConsent(true);window.cacheTime(2000);});
+ assert.equal(await page.evaluate(()=>window.cachedRead(true)),false);assert.equal(providerRequests.length,beforeCache+2,'cache-only expiry must not contact provider');
  assert.equal(await page.evaluate(()=>window.cachedRead()),false);assert.equal(providerRequests.length,beforeCache+3);
  await page.evaluate(()=>window.clearCache());
  // Actual separate tabs race one persistent payload allowance before dispatch.

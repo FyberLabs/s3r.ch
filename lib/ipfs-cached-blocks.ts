@@ -5,10 +5,14 @@ import type { createLocalCiphertextCache } from "./ipfs-local-cache";
 export function createCachedMediaBlocks(options: {
   provider: ReturnType<typeof createKuboBlockClient>;
   cache?: ReturnType<typeof createLocalCiphertextCache>;
+  /** Cache-only reads never dispatch to the provider, including on storage failure. */
+  readPolicy?: "provider-allowed" | "cache-only";
   current: () => boolean;
   signal: AbortSignal;
 }) {
   const {provider, cache, current, signal} = options;
+  const readPolicy = options.readPolicy ?? "provider-allowed";
+  if (readPolicy !== "provider-allowed" && readPolicy !== "cache-only") throw new Error("Invalid IPFS read policy");
   let active = 0;
   const unavailable = () => new Error("IPFS media unavailable");
   function check() {if (signal.aborted || current() !== true) throw unavailable();}
@@ -32,6 +36,7 @@ export function createCachedMediaBlocks(options: {
           catch { /* Corrupt, expired or unavailable cache is a miss, not authority. */ }
         }
         check();
+        if (readPolicy === "cache-only") throw unavailable();
         const bytes = await verified(await provider.get(cid, size), cid, size);
         if (cache) {
           // Retention is best-effort; local quota must not invalidate verified provider bytes.
