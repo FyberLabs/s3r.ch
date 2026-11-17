@@ -28,6 +28,6 @@ try{
  await button('Cancel rotation attempt').click();assert.equal(await button('Publish and confirm rotation').isDisabled(),true);assert.ok(await page.evaluate(()=>window.fixture.closed)>0);
  await page.getByLabel('New rotation recovery passphrase',{exact:true}).fill('next phrase');await page.getByLabel('Confirm rotation recovery passphrase',{exact:true}).fill('next phrase');
  await button('Prepare recovery rotation').click();await button('Save pending rotation backup').click();await button('Authorize rotation with linked wallet').click();
- await page.evaluate(()=>window.fixture.changeWallet());assert.equal(await button('Publish and confirm rotation').isDisabled(),true);
+ await page.evaluate(()=>window.fixture.changeWallet());await page.waitForFunction(()=>Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='Publish and confirm rotation')?.disabled===true);assert.equal(await button('Publish and confirm rotation').isDisabled(),true);
  assert.equal(await page.evaluate(()=>window.fixture.calls.filter(v=>v==='publish').length),1);assert.deepEqual(errors,[]);
 }finally{await browser?.close();await new Promise(r=>server.close(r));}
