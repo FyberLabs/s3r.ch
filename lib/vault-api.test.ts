@@ -14,11 +14,11 @@ function setup(){
   let session:{owner:string;key:string}|null={owner,key:owner},calls=0,now=20,after=()=>{};
   let head:{bytes:Uint8Array;revision:string}|null=null;
   const objects=new Map<string,Uint8Array>();
-  const service=createVaultApiService({origin,bindings:[{owner,vaultId}],clock:()=>now,resolve:async()=>session,transport:{
+  const service=createVaultApiService({origin,bindings:[{owner,vaultId}],clock:()=>now,resolve:async()=>session,transport:()=>({
     read:async()=>{calls++;after();return head;},
     write:async(_id,bytes,expected)=>{calls++;if((head?.revision??null)!==expected)throw Error('Conflict');head={bytes,revision:hash(bytes)};after();return head.revision;},
     putObject:async(id,bytes)=>{calls++;objects.set(id,bytes);after();},getObject:async id=>{calls++;after();return objects.get(id)??null;}
-  }});
+  })});
   const fetcher=(async(url,init)=>{assert.equal(init?.credentials,'same-origin');assert.equal(init?.redirect,'error');
     const headers=new Headers(init?.headers);headers.set('Origin',origin);return service(new Request(url,{...init,headers}));}) as typeof fetch;
   const client=createVaultApiTransport({origin,owner,vaultId,sign,fetch:fetcher,clock:()=>now});
