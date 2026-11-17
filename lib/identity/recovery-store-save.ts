@@ -3,18 +3,29 @@ export type RecoveryRow={principal:string;rotationSeq:number;signingPub:string;e
 export type RecoveryView={generation:number;head:{sequence:number;currentKey:string;currentEpub:string|null};row:RecoveryRow|null};
 const same=(a:RecoveryRow|null,b:RecoveryRow)=>!!a&&['principal','rotationSeq','signingPub','epub','bytesHex'].every(k=>a[k as keyof RecoveryRow]===b[k as keyof RecoveryRow]);
 /** One explicit save. A lost response permits read-back, never a repeated write. */
-export async function saveRecoveryCopy(row:RecoveryRow,input:{
+export type RecoverySaveInput={
  current:()=>boolean;signal:AbortSignal;read:()=>Promise<unknown>;
  authorize:(view:RecoveryView)=>Promise<void>;
  sign:(view:RecoveryView)=>Promise<unknown>;write:(operation:unknown)=>Promise<unknown>;
-}):Promise<'stored'|'already-stored'>{
+};
+export async function saveRecoveryCopy(row:RecoveryRow,input:RecoverySaveInput){
+ return saveCopy(row,input,{sequence:row.rotationSeq,currentKey:row.signingPub,currentEpub:row.epub});
+}
+/** Persist the future encrypted copy while the old head still authorizes its CAS. */
+export async function savePendingRecoveryCopy(row:RecoveryRow,head:RecoveryView['head'],input:RecoverySaveInput){
+ const expected={...row},authority={...head};
+ if(!recoveryView({generation:0,head:authority,row:null})||!Number.isSafeInteger(authority.sequence+1)||
+  expected.rotationSeq!==authority.sequence+1||expected.signingPub===authority.currentKey||expected.epub===authority.currentEpub)throw Error('Pending recovery authority changed');
+ return saveCopy(expected,input,authority);
+}
+async function saveCopy(row:RecoveryRow,input:RecoverySaveInput,authority:RecoveryView['head']):Promise<'stored'|'already-stored'>{
  const guard=()=>{input.signal.throwIfAborted();if(!input.current())throw Error('Recovery context changed');};
  const expected={...row};
  const view=async()=>{guard();const value=await input.read();guard();if(!recoveryView(value))throw Error('Recovery read unavailable');
   const raw=value as RecoveryView;
   const parsed=Object.freeze({...raw,head:Object.freeze({...raw.head}),row:raw.row?Object.freeze({...raw.row}):null});
   if(parsed.row&&parsed.row.principal!==expected.principal)throw Error('Recovery owner changed');
-  if(parsed.head.sequence!==expected.rotationSeq||parsed.head.currentKey!==expected.signingPub||parsed.head.currentEpub!==expected.epub)throw Error('Recovery authority changed');
+  if(parsed.head.sequence!==authority.sequence||parsed.head.currentKey!==authority.currentKey||parsed.head.currentEpub!==authority.currentEpub)throw Error('Recovery authority changed');
   await input.authorize(parsed);guard();return parsed;
  };
  guard();if(!recoveryRow(expected))throw Error('Recovery copy unavailable');
