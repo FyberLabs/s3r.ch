@@ -12,7 +12,7 @@ export function walletRotation(value:any,attested=false):boolean{
    typeof value.authorizer.siwe.signature!=='string'||!/^0x[0-9a-fA-F]{130}$/.test(value.authorizer.siwe.signature)||
    !point(value.nextEpub)||typeof value.nextSig!=='string'||!/^[A-Za-z0-9_-]{86}$/.test(value.nextSig))return false;
   if(attested&&!(typeof value.attest==='string'&&value.attest.length>0&&value.attest.length<=16384))return false;
-  return signingBytes(value).ok;
+  return signingBytes(value as Parameters<typeof signingBytes>[0]).ok;
  }catch{return false;}
 }
 export function rotationAttestation(value:any):boolean{return exact(value,'attest')&&typeof value.attest==='string'&&value.attest.length>0&&value.attest.length<=16384;}
