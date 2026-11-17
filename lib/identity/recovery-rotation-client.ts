@@ -13,13 +13,13 @@ export type RotationWallet={current:()=>LinkedWalletSelection|null;signMessage:(
 export async function prepareRecoveryRotation(material:Uint8Array,identity:KeyringIdentity,trusted:readonly string[],lost:string,
  passphrase:Uint8Array,accountHandle:string,input:{origin:string;current:()=>boolean;signal:AbortSignal;
  keyringState:(identity:KeyringIdentity)=>Promise<KeyringState>;request:(action:string,value:unknown)=>Promise<unknown>;
- store:(bytes:Uint8Array,identity:KeyringIdentity)=>Promise<unknown>;
+ store:(bytes:Uint8Array,identity:KeyringIdentity,current:()=>boolean)=>Promise<unknown>;
 }){
  const owner={...identity},devices=[...trusted],plain=new Uint8Array(material),phrase=new Uint8Array(passphrase);
- let closed=false,busy=false,phase:'prepared'|'saved'|'authorized'|'published'|'stored'='prepared';
+ let closed=false,busy=false,phase:'prepared'|'saved'|'authorized'|'published'|'stored'|'closed'='prepared';
  let handle:ReturnType<typeof importKeyring>|undefined,pending:ReturnType<typeof prepareKeyringRotation>|undefined;
  let signed:Readonly<Record<string,unknown>>|undefined,walletGuard:(()=>void)|undefined;
- const close=()=>{closed=true;if(pending)closePendingKeyring(pending);if(handle)closeKeyring(handle);input.signal.removeEventListener('abort',close);};
+ const close=()=>{closed=true;if(phase!=='stored')phase='closed';if(pending)closePendingKeyring(pending);if(handle)closeKeyring(handle);input.signal.removeEventListener('abort',close);};
  const guard=()=>{input.signal.throwIfAborted();if(closed||!input.current())throw Error('Rotation context changed');};
  const state=async(id:KeyringIdentity)=>{guard();const current=await input.keyringState(id);guard();return ()=>{guard();return current();};};
  const run=async<T>(operation:()=>Promise<T>)=>{guard();if(busy)throw Error('Rotation operation already running');busy=true;try{return await operation();}finally{busy=false;}};
@@ -90,7 +90,7 @@ export async function prepareRecoveryRotation(material:Uint8Array,identity:Keyri
     if(phase!=='published')throw Error('Confirm publication first');
     const next={principal:pending!.principal,pub:pending!.pub,epub:pending!.epub,rotationSeq:pending!.rotationSeq};
     const current=await state(next),active=activatePendingKeyring(pending!,current);let bytes:Uint8Array|undefined;
-    try{bytes=exportKeyring(active,current);guard();await input.store(bytes,next);guard();phase='stored';}
+    try{bytes=exportKeyring(active,current);guard();await input.store(bytes,next,()=>!closed&&input.current());guard();phase='stored';}
     finally{bytes?.fill(0);closeKeyring(active);close();}
    }),
   } satisfies {readonly phase:string;readonly identity:KeyringIdentity;file:()=>Uint8Array;close:()=>void;save:()=>Promise<string>;authorize:(wallet:RotationWallet)=>Promise<void>;publish:()=>Promise<string>;protect:()=>Promise<void>});
