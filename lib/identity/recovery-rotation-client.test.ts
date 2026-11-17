@@ -85,13 +85,19 @@ test('lost responses reconcile without resending writes',async()=>{
  const flow=await prepare(f);try{await flow.save();await flow.authorize(f.wallet);await flow.publish();await flow.publish();assert.equal(f.backupWrites,1);assert.equal(f.publicationWrites,1);}finally{flow.close();}
 });
 test('wallet changes, conflicting backup, stale authority and cancellation never publish',async()=>{
- for(const mode of ['wallet','backup','owner','cancel','wrong-wallet','bad-proof','witness']){
+ for(const mode of ['wallet','backup','owner','cancel','wrong-wallet','bad-proof','witness','history','revoked','ambiguous','during-sign']){
   const f=setup(),flow=await prepare(f);try{
    await flow.save();
    if(mode==='wrong-wallet')f.wallet.current=()=>({address:'0x0000000000000000000000000000000000000001',chainId:'1',walletRevision:0,sessionRevision:0});
    if(mode==='bad-proof')f.wallet.signMessage=async()=> '0x'+'00'.repeat(65);
+   if(mode==='history')f.context.history=()=>({ok:false,reason:'missing-history'});
+   if(mode==='revoked'||mode==='ambiguous'){
+    const row=fixture('records').reject.find((r:any)=>r.name===(mode==='revoked'?'newest-wallet-revoked':'duplicate-wallet-tie'));
+    for(const value of row.input){const id=linkId(value);assert.ok(id.ok);f.context.links.set(id.value,value);}f.context.revocations=row.revocations??[];
+   }
+   if(mode==='during-sign'){const sign=f.wallet.signMessage;f.wallet.signMessage=async message=>{const value=await sign(message);f.changeWallet();return value;};}
    if(mode==='witness'){const request=f.input.request;f.input.request=async(a,v)=>a==='rotation-witness'?{attest:'invalid'}:request(a,v);}
-   if(['wrong-wallet','bad-proof','witness'].includes(mode)){await assert.rejects(flow.authorize(f.wallet));}
+   if(['wrong-wallet','bad-proof','witness','history','revoked','ambiguous','during-sign'].includes(mode)){await assert.rejects(flow.authorize(f.wallet));}
    else{await flow.authorize(f.wallet);if(mode==='wallet')f.changeWallet();if(mode==='backup')f.changeBackup();if(mode==='owner')f.stop();if(mode==='cancel')f.abort.abort();await assert.rejects(flow.publish());}
    assert.equal(f.publicationWrites,0);assert.equal(f.stored,0);
   }finally{flow.close();}
@@ -129,4 +135,10 @@ test('local protection receives the attempt guard so cancellation prevents a lat
   f.input.store=async(_bytes,_identity,current)=>{flow.close();assert.equal(current(),false);throw Error('cancelled');};
   await assert.rejects(flow.protect());assert.equal(flow.phase,'closed');assert.equal(f.stored,0);
  }finally{flow.close();}
+});
+
+test('concurrent steps are refused while the first backup read is pending',async()=>{
+ const f=setup(),flow=await prepare(f),request=f.input.request;let release:()=>void=()=>{};
+ f.input.request=async(action,value)=>{if(action==='recovery-read')await new Promise<void>(resolve=>{release=resolve;});return request(action,value);};
+ try{const first=flow.save();await assert.rejects(flow.save(),/already running/);f.input.request=request;release();await first;assert.equal(f.backupWrites,1);}finally{flow.close();}
 });
