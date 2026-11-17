@@ -26,3 +26,20 @@ retained floor detects observed rollback, not proof of latest remote state.
 
 All checks run in CI. Shared TEST storage and real browsers stay in the natural
 nightly batch. This change does not activate a vault or dispatch that batch.
+
+The authenticated `/api/vault` POST adapter accepts bounded ciphertext operations
+only for deployment-bound owner/vault pairs. It re-resolves the current session
+principal and verifies a separate owner-key signature over the operation domain,
+origin, vault, action, object address, ciphertext digest, expected revision and a
+maximum 60-second validity window before storage access and before responding.
+An identical signed write may retry within that window; the underlying CAS or
+immutable object operation bounds replay. A stolen session alone cannot write.
+A mutation whose response is denied or lost remains ambiguous: clients must use
+the existing exact-head readback reconciliation before advancing their floor.
+
+`createVaultApiTransport` supplies the authenticated browser transport to
+`createVaultStorageClient`, with a local signing callback and same-origin cookies.
+This does not supply custody keys, container-v2 encryption, end-user enrollment,
+or UI. Provisioning remains disabled unless the explicit server configuration is
+present. The service does not decrypt or verify private head contents; the client
+still verifies those against its independently retained floor.
