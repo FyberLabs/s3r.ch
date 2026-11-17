@@ -1,5 +1,5 @@
 import { getSquadPilotServer } from './squad-pilot-server';
-import { createForumAuthority } from './identity/forum-authority';
+import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from './identity/forum-authority';
 import { createVaultScopedStore } from './vault-scoped-store-server';
 import { roomAuthorityReadDiagnosticsBlock } from './room-authority-diagnostics';
 import { createVaultApiService } from './vault-api-service';
@@ -21,7 +21,7 @@ export function getVaultApiService(){
   cached={raw,pilot,service};return service;
 }
 
-export function createVaultApiResolver(pilot: Pick<NonNullable<ReturnType<typeof getSquadPilotServer>>, "config" | "source" | "services">, clock=()=>Math.floor(Date.now()/1000)){
+export function createVaultApiResolver(pilot: {config:{authority:ForumAuthorityConfig};source:{read(at:number,signal:AbortSignal):Promise<ForumAuthoritySnapshot>};services:{authenticate(request:Request):Promise<{key:string}|null>}}, clock=()=>Math.floor(Date.now()/1000)){
   return async(request:Request,signal:AbortSignal)=>{
     const at=clock(),session=await pilot.services.authenticate(request);if(!session)return null;
     const snapshot=await pilot.source.read(at,signal),authority=createForumAuthority(pilot.config.authority,clock);

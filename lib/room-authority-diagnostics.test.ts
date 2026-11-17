@@ -170,7 +170,7 @@ test('vault session resolution accepts current rotated key beside retired owners
  const {createVaultApiResolver}=await import('./vault-api-server');
  let held=snapshot([old,fresh]),sessionKey=key(2);
  const pilot={config:{authority:config},source:{read:async()=>held},services:{authenticate:async()=>({key:sessionKey})}};
- const resolve=createVaultApiResolver(pilot as Parameters<typeof createVaultApiResolver>[0],()=>time);
+ const resolve=createVaultApiResolver(pilot,()=>time);
  const request=new Request('https://vault.example/api/vault'),signal=new AbortController().signal;
  assert.deepEqual(await resolve(request,signal),{owner,key:key(2)});
  sessionKey=key(1);assert.equal(await resolve(request,signal),null);
