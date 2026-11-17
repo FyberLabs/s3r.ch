@@ -76,7 +76,7 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
     bytes=await openRestoredKeyring(expected);guard();
     const value=await prepareRecoveryRotation(bytes,expected.identity,devices,lost,phrase,accountHandle,{origin,current:()=>current()&&attempt===rotationRevision,signal:abort.signal,
      keyringState:identity=>authority.keyringState(identity),request:async(action,value)=>(await request(action,value)).body,
-     store:async(material,identity)=>{await replaceRotatedKeyring(material,identity,expected,{scope:session.scope,current,signal:abort.signal,
+     store:async(material,identity,rotationCurrent)=>{await replaceRotatedKeyring(material,identity,expected,{scope:session.scope,current:()=>current()&&attempt===rotationRevision&&rotationCurrent(),signal:abort.signal,
       keyringState:id=>authority.keyringState(id),protect:()=>prepareDeviceProtection(new URL(origin).hostname)});guard();onStored();}});
     if(!current()||attempt!==rotationRevision){value.close();return fail();}rotation=value;return value;
    }finally{bytes?.fill(0);phrase.fill(0);}

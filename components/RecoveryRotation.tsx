@@ -18,7 +18,7 @@ export function RecoveryRotation({client,previous,onBusy}:{client:Client;previou
  async function work(operation:(check:()=>void)=>Promise<string>){
   if(busy)return;const generation=revision.current;const check=()=>{if(!active.current||generation!==revision.current)throw Error('Rotation changed');};
   setBusy(true);onBusy?.(true);setStatus('');try{const result=await operation(check);check();setPhase(flow.current?.phase??'empty');setStatus(result);}
-  catch(error){if(active.current&&generation===revision.current)setStatus(error instanceof RecoveryWeakPassphraseError?'Choose a stronger new recovery passphrase. '+error.warning:'Rotation step could not be confirmed. Keep your downloaded backup. Retry only after checking current state; no write is automatically repeated.');}
+  catch(error){if(active.current&&generation===revision.current){setPhase(flow.current?.phase??'empty');setStatus(error instanceof RecoveryWeakPassphraseError?'Choose a stronger new recovery passphrase. '+error.warning:'Rotation step could not be confirmed. Keep your downloaded backup. Retry only after checking current state; no write is automatically repeated.');}}
   finally{if(active.current&&generation===revision.current){setBusy(false);onBusy?.(false);}}
  }
  return <section className="space-y-3"><h2>Recover after losing a device</h2>
