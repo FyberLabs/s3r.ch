@@ -25,5 +25,9 @@ try{
  await button('Save pending rotation backup').click();await button('Authorize rotation with linked wallet').click();await button('Publish and confirm rotation').click();await button('Protect confirmed rotated keys').click();
  await page.getByText('Confirmed new keys are protected locally.',{exact:false}).waitFor();
  assert.deepEqual(await page.evaluate(()=>window.fixture.calls),['prepare','save','authorize','publish','protect']);
- await button('Cancel rotation attempt').click();assert.equal(await button('Publish and confirm rotation').isDisabled(),true);assert.ok(await page.evaluate(()=>window.fixture.closed)>0);assert.deepEqual(errors,[]);
+ await button('Cancel rotation attempt').click();assert.equal(await button('Publish and confirm rotation').isDisabled(),true);assert.ok(await page.evaluate(()=>window.fixture.closed)>0);
+ await page.getByLabel('New rotation recovery passphrase',{exact:true}).fill('next phrase');await page.getByLabel('Confirm rotation recovery passphrase',{exact:true}).fill('next phrase');
+ await button('Prepare recovery rotation').click();await button('Save pending rotation backup').click();await button('Authorize rotation with linked wallet').click();
+ await page.evaluate(()=>window.fixture.changeWallet());assert.equal(await button('Publish and confirm rotation').isDisabled(),true);
+ assert.equal(await page.evaluate(()=>window.fixture.calls.filter(v=>v==='publish').length),1);assert.deepEqual(errors,[]);
 }finally{await browser?.close();await new Promise(r=>server.close(r));}
