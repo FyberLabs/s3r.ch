@@ -1,6 +1,6 @@
 import {admitKeyring,exportKeyring,importKeyring,closeKeyring,type KeyringMaterial,type KeyringState} from 'sociacl-ids/keyring';
 import type {Identity,Scope} from 'sea-device-link';
-import {saveRestoredKeyring,preflightRestoredKeyring} from './restored-keyring-storage';
+import {saveRestoredKeyring,preflightRestoredKeyring,type RestoredKeyringRecord} from './restored-keyring-storage';
 import type {DeviceProtection} from './device-storage';
 /** Restore only complete existing material; no key generation or rotation. */
 export type RestoreKeyringInput={scope:Scope;current:()=>boolean;signal:AbortSignal;
@@ -22,11 +22,27 @@ export async function restoreExistingKeyring(bytes:Uint8Array,input:RestoreKeyri
 /** Canonical import boundary shared by complete exports and decrypted recovery.
  * Every path validates current owner history before asking for a passkey. */
 export async function restoreCanonicalKeyring(bytes:Uint8Array,identity:Identity,input:RestoreKeyringInput){
+ return storeCanonicalKeyring(bytes,identity,input);
+}
+/** Explicit rotation only: current verified history must connect the prior local key. */
+export async function replaceRotatedKeyring(bytes:Uint8Array,identity:Identity,previous:RestoredKeyringRecord,input:RestoreKeyringInput){
+ const expected=structuredClone(previous),next={...identity};
+ const keyringState:RestoreKeyringInput['keyringState']=async id=>{
+  const state=await input.keyringState(id);
+  return ()=>{const value=state();
+   const rotation=value.rotations.find(r=>!!r&&typeof r==='object'&&(r as Record<string,unknown>).seq===next.rotationSeq) as Record<string,unknown>|undefined;
+   if(!rotation||rotation.prevKey!==expected.identity.pub||rotation.nextKey!==next.pub||rotation.nextEpub!==next.epub)throw Error('Rotation history changed');
+   return value;
+  };
+ };
+ return storeCanonicalKeyring(bytes,next,{...input,keyringState},expected);
+}
+async function storeCanonicalKeyring(bytes:Uint8Array,identity:Identity,input:RestoreKeyringInput,replace?:RestoredKeyringRecord){
  const guard=()=>{input.signal.throwIfAborted();if(!input.current())throw Error('Identity context changed');};guard();
  const canonical=new Uint8Array(bytes);let handle:ReturnType<typeof importKeyring>|undefined;
  try{
   const state=await input.keyringState(identity);guard();handle=importKeyring(canonical,identity,state);
-  const existing=await preflightRestoredKeyring({identity,scope:input.scope,keyring:canonical,factory:input.factory});guard();
+  const existing=await preflightRestoredKeyring({identity,scope:input.scope,keyring:canonical,factory:input.factory,replace});guard();
   if(existing){
    const fresh=await input.keyringState(identity);guard();const checked=importKeyring(canonical,identity,fresh);
    try{if(existing.historyAt>fresh().context.now)throw Error('Restored history changed');return {record:existing,outcome:'existing' as const};}finally{closeKeyring(checked);}
@@ -34,7 +50,7 @@ export async function restoreCanonicalKeyring(bytes:Uint8Array,identity:Identity
   // Known invalid, conflicting and exact-retry cases never create a credential.
   const held=await input.protect();guard();
 
-  return await saveRestoredKeyring({...input,...held,identity,keyring:canonical,beforeCommit:async()=>{
+  return await saveRestoredKeyring({...input,...held,replace,identity,keyring:canonical,beforeCommit:async()=>{
    guard();const fresh=await input.keyringState(identity);guard();const checked=importKeyring(canonical!,identity,fresh);
    try{return {historyAt:fresh().context.now,check:()=>{guard();fresh();}};}finally{closeKeyring(checked);}
   }});

@@ -12,6 +12,11 @@ export function isRestoredKeyringRecord(value:unknown):value is RestoredKeyringR
   Number.isSafeInteger(r.historyAt)&&r.historyAt>=0&&Number.isSafeInteger(r.identity?.rotationSeq)&&r.identity.rotationSeq>=0&&
   typeof r.sealed==='string'&&r.sealed.length<=800000&&/^[a-f0-9]{64}$/.test(r.payloadHash)&&r.protection?.version===1&&!!r.scope;
 }
+function replacementMatches(previous:RestoredKeyringRecord,identity:Identity,scope:Scope){
+ return isRestoredKeyringRecord(previous)&&same(previous.scope,scope)&&previous.identity.principal===identity.principal&&
+  Number.isSafeInteger(identity.rotationSeq)&&identity.rotationSeq===previous.identity.rotationSeq+1&&
+  identity.pub!==previous.identity.pub&&identity.epub!==previous.identity.epub;
+}
 const aad=(r:Pick<RestoredKeyringRecord,'identity'|'scope'|'generation'|'historyAt'|'payloadHash'>)=>new TextEncoder().encode(canonical({
  kind:'sea-restored-keyring-v1',identity:r.identity,scope:r.scope,generation:r.generation,historyAt:r.historyAt,payloadHash:r.payloadHash}));
 export async function restoredKeyringRecords(factory=globalThis.indexedDB):Promise<RestoredKeyringRecord[]>{
@@ -21,14 +26,17 @@ export async function restoredKeyringRecords(factory=globalThis.indexedDB):Promi
   tx.onabort=()=>{db.close();reject(Error('Identity storage unavailable'));};});
 }
 /** Read-only eligibility before creating a passkey. The final write still owns
- * the transactional conflict check; this preflight never authorizes overwrite. */
-export async function preflightRestoredKeyring(input:{identity:Identity;scope:Scope;keyring:Uint8Array;factory?:IDBFactory}){
+ * the transactional conflict check, including explicit prior-row comparison. */
+export async function preflightRestoredKeyring(input:{identity:Identity;scope:Scope;keyring:Uint8Array;factory?:IDBFactory;replace?:RestoredKeyringRecord}){
+ const previous=input.replace?structuredClone(input.replace):undefined;
+ if(previous&&!replacementMatches(previous,input.identity,input.scope))return fail();
  const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',new Uint8Array(input.keyring)));
  const payloadHash=Array.from(hash,b=>b.toString(16).padStart(2,'0')).join('');
  const db=await openMeshDb(input.factory??globalThis.indexedDB);
  return await new Promise<RestoredKeyringRecord|null>((resolve,reject)=>{
   const tx=db.transaction(MESH_STORE_NAME,'readonly'),get=tx.objectStore(MESH_STORE_NAME).getAll(null,2);
-  tx.oncomplete=()=>{db.close();const rows=get.result;if(!rows.length){resolve(null);return;}
+  tx.oncomplete=()=>{db.close();const rows=get.result;if(!rows.length){if(previous){reject(Error('Existing identity restore conflict'));return;}resolve(null);return;}
+   if(previous&&rows.length===1&&same(rows[0],previous)){resolve(null);return;}
    const prior=rows[0];if(rows.length!==1||!isRestoredKeyringRecord(prior)||!same(prior.identity,input.identity)||!same(prior.scope,input.scope)||prior.payloadHash!==payloadHash){reject(Error('Existing identity restore conflict'));return;}
    resolve(prior);
   };
@@ -41,13 +49,15 @@ export async function openRestoredKeyring(record:RestoredKeyringRecord){
  const key=await deviceProtectionKey(raw),sealed=base64UrlToBytes(record.sealed);
  return new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(sealed.slice(0,12)),additionalData:aad(record)},key,new Uint8Array(sealed.slice(12))));
 }
-/** Absence-only import, or exact readback after an unknown write outcome. No
- * overwrites, identity replacement, synthetic transfer binding or acknowledgement. */
+/** Absence-only by default. Explicit rotation replacement compares the entire
+ * prior row atomically; exact new-row readback handles an unknown write outcome. */
 export async function saveRestoredKeyring(input:{identity:Identity;scope:Scope;keyring:Uint8Array;key:CryptoKey;protection:DeviceProtection;
- current:()=>boolean;beforeCommit:()=>Promise<{historyAt:number;check:()=>void}>;signal:AbortSignal;factory?:IDBFactory}){
+ current:()=>boolean;beforeCommit:()=>Promise<{historyAt:number;check:()=>void}>;signal:AbortSignal;factory?:IDBFactory;replace?:RestoredKeyringRecord}){
  const guard=()=>{input.signal.throwIfAborted();if(!input.current())return fail();};guard();
  const identity=structuredClone(input.identity),scope=structuredClone(input.scope),protection=structuredClone(input.protection),bytes=new Uint8Array(input.keyring);
+ const previous=input.replace?structuredClone(input.replace):undefined;
  try{
+  if(previous&&!replacementMatches(previous,identity,scope))return fail();
   if(!bytes.length||bytes.length>524288)return fail();
   const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));guard();
   const payloadHash=Array.from(hash,b=>b.toString(16).padStart(2,'0')).join('');
@@ -70,9 +80,13 @@ export async function saveRestoredKeyring(input:{identity:Identity;scope:Scope;k
     if(rows.length){
      if(rows.length!==1||!isRestoredKeyringRecord(rows[0]))return cancel();
      const prior=rows[0];
-     if(!same(prior.identity,identity)||!same(prior.scope,scope)||prior.payloadHash!==payloadHash||prior.historyAt>final.historyAt)return cancel();
-     accepted=prior;outcome='existing';return;
+     if(previous&&same(prior,previous)&&previous.historyAt<=before.historyAt){store.delete(previous.address);}
+     else{
+      if(!same(prior.identity,identity)||!same(prior.scope,scope)||prior.payloadHash!==payloadHash||prior.historyAt>final.historyAt)return cancel();
+      accepted=prior;outcome='existing';return;
+     }
     }
+    else if(previous)return cancel();
     const add=store.add(record);add.onsuccess=()=>{try{guard();final.check();}catch{cancel();}};
    }catch{cancel();}};
    tx.oncomplete=()=>{input.signal.removeEventListener('abort',cancel);db.close();resolve({record:accepted,outcome});};

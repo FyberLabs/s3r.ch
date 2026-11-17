@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 import {IDBFactory,IDBObjectStore} from 'fake-indexeddb';
 import {historyState} from 'sociacl-ids';
 import {importKeyring,exportKeyring,closeKeyring} from 'sociacl-ids/keyring';
-import {restoreExistingKeyring} from './restore-keyring';
+import {restoreExistingKeyring,replaceRotatedKeyring} from './restore-keyring';
 import {restoredKeyringRecords,openRestoredKeyring} from './restored-keyring-storage';
 import {canonical,deviceProtectionKey} from './device-storage';
 import {base64UrlToBytes} from './wrap';
@@ -72,4 +72,51 @@ test('saved copy unlock uses PRF and rejects changed authenticated metadata or w
   raw.fill(20);await assert.rejects(openRestoredKeyring(record));
   await assert.rejects(openRestoredKeyring({...record,generation:1} as any));
  }finally{if(prior)Object.defineProperty(globalThis,'navigator',prior);else Reflect.deleteProperty(globalThis,'navigator');raw.fill(0);}
+});
+
+async function priorRotationRow(f:Awaited<ReturnType<typeof setup>>){
+ const {record}=await restoreExistingKeyring(f.bytes(),f.input),rotation=f.state().rotations.at(-1);
+ const prior={...record,identity:{...record.identity,pub:rotation.prevKey,epub:record.identity.principal,rotationSeq:record.identity.rotationSeq-1},seaPub:rotation.prevKey};
+ const db=await openMeshDb(f.factory);
+ await new Promise<void>((resolve,reject)=>{const tx=db.transaction(MESH_STORE_NAME,'readwrite');tx.objectStore(MESH_STORE_NAME).put(prior);tx.oncomplete=()=>resolve();tx.onabort=()=>reject(Error());});db.close();
+ return prior;
+}
+test('explicit published rotation replaces the exact prior restored row and supports exact readback',async()=>{
+ const f=await setup(),previous=await priorRotationRow(f),canonical=new Uint8Array(Buffer.from(f.v.encodedHex,'hex'));
+ await assert.rejects(restoreExistingKeyring(f.bytes(),f.input));
+ const result=await replaceRotatedKeyring(canonical,f.identity,previous,f.input);
+ assert.equal(result.outcome,'stored');assert.deepEqual(result.record.identity,f.identity);
+ const protections=f.protections();
+ assert.equal((await replaceRotatedKeyring(canonical,f.identity,previous,f.input)).outcome,'existing');
+ assert.equal(f.protections(),protections);assert.equal((await restoredKeyringRecords(f.factory)).length,1);
+});
+test('replacement refuses foreign, skipped and changed prior identities before protection',async()=>{
+ for(const mode of ['principal','sequence','key','scope','snapshot']){
+  const f=await setup(),previous=await priorRotationRow(f),protections=f.protections(),changed=structuredClone(previous);
+  if(mode==='principal')changed.identity.principal='foreign';
+  if(mode==='sequence')changed.identity.rotationSeq+=2;
+  if(mode==='key')changed.identity.pub=f.identity.pub;
+  if(mode==='scope')changed.scope.tenant='foreign';
+  if(mode==='snapshot')changed.sealed+='x';
+  await assert.rejects(replaceRotatedKeyring(new Uint8Array(Buffer.from(f.v.encodedHex,'hex')),f.identity,changed,f.input));
+  assert.equal(f.protections(),protections);assert.deepEqual(await restoredKeyringRecords(f.factory),[previous]);
+ }
+});
+test('replacement preserves prior row on concurrent storage changes and cancellation',async()=>{
+ for(const mode of ['changed','missing','cancel','authority']){
+  const f=await setup(),previous=await priorRotationRow(f);
+  const input={...f.input,protect:async()=>{
+   const held=await f.input.protect();
+   if(mode==='cancel')f.abort.abort();
+   else if(mode==='authority')f.refuse();
+   else{const db=await openMeshDb(f.factory);await new Promise<void>((resolve,reject)=>{
+    const tx=db.transaction(MESH_STORE_NAME,'readwrite'),store=tx.objectStore(MESH_STORE_NAME);
+    if(mode==='missing')store.delete(previous.address);else store.put({...previous,sealed:previous.sealed+'x'});
+    tx.oncomplete=()=>resolve();tx.onabort=()=>reject(Error());});db.close();}
+   return held;
+  }};
+  await assert.rejects(replaceRotatedKeyring(new Uint8Array(Buffer.from(f.v.encodedHex,'hex')),f.identity,previous,input));
+  const rows=await restoredKeyringRecords(f.factory);
+  assert.deepEqual(rows,mode==='missing'?[]:[mode==='changed'?{...previous,sealed:previous.sealed+'x'}:previous]);
+ }
 });
