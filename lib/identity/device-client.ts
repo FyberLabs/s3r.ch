@@ -18,7 +18,7 @@ import {readSingleUnlockedIdentity,readUnlockedMeshRevision,rememberUnlockedMesh
 import {exportDeviceSource} from './device-source';
 import {createSeaSessionClient} from './sea-session-client';
 const fail=():never=>{throw Error('Device identity unavailable');};
-export type DeviceSession={linkedOidcEnabled?:boolean;recoveryStoreEnabled?:boolean;scope:Scope;authorized:boolean;subject:string|null;context:string|null;expiresAt:number|null};
+export type DeviceSession={linkedOidcEnabled?:boolean;recoveryStoreEnabled?:boolean;recoveryRotationEnabled?:boolean;scope:Scope;authorized:boolean;subject:string|null;context:string|null;expiresAt:number|null};
 export async function readDeviceSession(signal:AbortSignal=new AbortController().signal):Promise<DeviceSession>{
  const r=await fetch('/api/identity/device/config',{credentials:'same-origin',mode:'same-origin',cache:'no-store',redirect:'error',signal});
  if(!r.ok)return fail();return await readBoundedIdentityJson(r,8192,signal) as DeviceSession;
@@ -63,9 +63,9 @@ export function createDeviceClient(session:DeviceSession,origin:string,onStored:
   },
  };
  return {adapters,
-  async fetchEncryptedCopy(){
-   guard();if(!session.recoveryStoreEnabled)return fail();
-   const value=(await request('recovery-read',{slot:'current'})).body;
+  async fetchEncryptedCopy(slot:'current'|'pending'='current'){
+   guard();if(!session.recoveryStoreEnabled||!['current','pending'].includes(slot)||(slot==='pending'&&!session.recoveryRotationEnabled))return fail();
+   const value=(await request('recovery-read',{slot})).body;
    if(!recoveryView(value)||(value as RecoveryView).row===null)return fail();
    guard();return recoveryRowFile((value as RecoveryView).row!);
   },

@@ -75,6 +75,13 @@ function Session({session,onCancel}:{session:DeviceSession;onCancel:()=>void}){
     const bytes=await client.fetchEncryptedCopy();
     try{setRecoveryFile(new File([new Uint8Array(bytes)],'stored-recovery.json',{type:'application/json'}));return 'Stored encrypted copy loaded. Enter its passphrase to verify and restore it on this device.';}finally{bytes.fill(0);}
    })}>Use stored recovery copy</button>}
+   {session.recoveryStoreEnabled&&session.recoveryRotationEnabled&&<div>
+    <p>If rotation was interrupted after publishing new keys, load its pending encrypted copy. It can be restored only when authenticated history confirms those keys are current. Loading does not publish a rotation or replace a backup.</p>
+    <button disabled={busy} onClick={()=>void work(async()=>{
+     const bytes=await client.fetchEncryptedCopy('pending');
+     try{setRecoveryFile(new File([new Uint8Array(bytes)],'pending-recovery.json',{type:'application/json'}));return 'Pending encrypted copy loaded. Enter its passphrase; restoration still requires confirmed current keys.';}finally{bytes.fill(0);}
+    })}>Use pending rotation recovery copy</button>
+   </div>}
    <label>Encrypted recovery file <input type="file" disabled={busy} onChange={e=>{setRecoveryFile(e.target.files?.[0]??null);e.target.value='';}}/></label>
    <label>Recovery passphrase <input ref={recoveryPassphrase} type="password" autoComplete="off" disabled={busy}/></label>
    <button disabled={busy||!recoveryFile} onClick={()=>void work(async()=>{

@@ -6,8 +6,8 @@ import {build} from 'esbuild';
 import {chromium} from 'playwright-core';
 if(process.env.GITHUB_ACTIONS!=='true')throw Error('CI only');
 const mocks={
- '@/lib/identity/device-client':`export async function readDeviceSession(){return {authorized:true,linkedOidcEnabled:true,recoveryStoreEnabled:true,context:'ui-person-context',expiresAt:Date.now()+300000};}
- export function createDeviceClient(session,origin,refresh){let disposed=false;return {adapters:{},dispose(){disposed=true;window.fixture.disposals++;},async restoreCompleteSource(bytes){window.fixture.restores++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');window.fixture.rows=[{address:'restored',identity:{principal:'existing-principal'}}];refresh();return 'stored';},async restoreEncryptedSource(bytes,passphrase){window.fixture.recoveryBytes=passphrase;window.fixture.recoveries++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');return 'existing';},async prepareEncryptedCopy(passphrase,handle){window.fixture.preparedPass=passphrase;window.fixture.preparedHandle=handle;return new TextEncoder().encode('{"version":1,"ciphertext":"synthetic"}');},async fetchEncryptedCopy(){return new TextEncoder().encode('{"version":1,"ciphertext":"stored"}');},async saveEncryptedCopy(bytes){window.fixture.savedBytes=bytes;window.fixture.saves=(window.fixture.saves??0)+1;return window.fixture.saves===1?'stored':'already-stored';},async signInRestored(){window.fixture.signins++;return false;}};}`,
+ '@/lib/identity/device-client':`export async function readDeviceSession(){return {authorized:true,linkedOidcEnabled:true,recoveryStoreEnabled:true,recoveryRotationEnabled:window.fixture.rotationEnabled!==false,context:'ui-person-context',expiresAt:Date.now()+300000};}
+ export function createDeviceClient(session,origin,refresh){let disposed=false;return {adapters:{},dispose(){disposed=true;window.fixture.disposals++;},async restoreCompleteSource(bytes){window.fixture.restores++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');window.fixture.rows=[{address:'restored',identity:{principal:'existing-principal'}}];refresh();return 'stored';},async restoreEncryptedSource(bytes,passphrase){window.fixture.recoveryBytes=passphrase;window.fixture.recoveries++;if(window.fixture.pending)await new Promise(resolve=>window.fixture.release=resolve);if(disposed)throw Error('cancelled');return 'existing';},async prepareEncryptedCopy(passphrase,handle){window.fixture.preparedPass=passphrase;window.fixture.preparedHandle=handle;return new TextEncoder().encode('{"version":1,"ciphertext":"synthetic"}');},async fetchEncryptedCopy(slot='current'){window.fixture.loadedSlot=slot;return new TextEncoder().encode('{"version":1,"ciphertext":"stored"}');},async saveEncryptedCopy(bytes){window.fixture.savedBytes=bytes;window.fixture.saves=(window.fixture.saves??0)+1;return window.fixture.saves===1?'stored':'already-stored';},async signInRestored(){window.fixture.signins++;return false;}};}`,
  '@/lib/identity/restored-keyring-storage':`export async function restoredKeyringRecords(){return window.fixture.rows;}`,
  '@/lib/identity/device-storage':`export async function deviceRecords(){return [];}`,
  '@/lib/identity/unlocked-mesh':`export function subscribeUnlockedMeshPair(){return ()=>{};}`,
@@ -56,6 +56,12 @@ try{
  await page.getByRole('button',{name:'Use stored recovery copy',exact:true}).click();
  await page.getByText('Stored encrypted copy loaded. Enter its passphrase to verify and restore it on this device.',{exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Open and protect recovery copy',exact:true}).isDisabled(),false);
+ assert.equal(await page.evaluate(()=>window.fixture.loadedSlot),'current');
+ await page.getByRole('button',{name:'Use pending rotation recovery copy',exact:true}).click();
+ await page.getByText('Pending encrypted copy loaded. Enter its passphrase; restoration still requires confirmed current keys.',{exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>window.fixture.loadedSlot),'pending');
+ assert.equal(await page.evaluate(()=>window.fixture.recoveries),1);
+
  assert.equal(await page.evaluate(()=>window.fixture.linked.some(v=>JSON.stringify(v).includes('password'))),false);
  await page.evaluate(()=>{window.fixture.revoked=[];const original=URL.revokeObjectURL;URL.revokeObjectURL=url=>{window.fixture.revoked.push(url);original.call(URL,url);};});
  await page.getByRole('button',{name:'Create encrypted recovery copy',exact:true}).click();
@@ -81,5 +87,11 @@ try{
  await page.evaluate(()=>window.dispatchEvent(new Event('s3rch-session-changed')));
  await page.waitForFunction(url=>window.fixture.revoked.includes(url),download);
  assert.equal(await page.evaluate(()=>window.fixture.savedBytes.every(b=>b===0)),true);
+ const beforeDisposal=await page.evaluate(()=>window.fixture.disposals);
+ await page.evaluate(()=>{window.fixture.rotationEnabled=false;window.dispatchEvent(new Event('s3rch-session-changed'));});
+ await page.waitForFunction(before=>window.fixture.disposals>before,beforeDisposal);
+ await page.getByRole('button',{name:'Open encrypted recovery copy',exact:true}).click();
+ await page.getByRole('button',{name:'Use stored recovery copy',exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'Use pending rotation recovery copy',exact:true}).count(),0);
  assert.deepEqual(errors,[]);console.log('Restore UI: explicit import, independent failed sign-in, preserved copy and cancellation passed');
 }finally{await browser?.close();await new Promise(r=>server.close(r));}
