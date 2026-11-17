@@ -93,3 +93,16 @@ test("deadline rejects an abort-ignoring provider and keeps its occupied slots",
   t.mock.timers.tick(10_000); await Promise.all([first, second]);
   await assert.rejects(client.get(cid, 3)); assert.equal(calls, 2);
 });
+
+
+test("noncanonical CID requests consume neither provider traffic nor shared or local budget",async()=>{
+  const cid=await rawMediaBlockCid(bytes);let calls=0,reservations=0,slots=0;
+  const client=createKuboBlockClient({...options(),maxBytes:3,maxBytesPerMinute:3,
+    sharedBudget:{async reserve(){reservations++;}},
+    sharedConcurrency:{async run(_signal,work){slots++;return work();}}},async()=>{calls++;return new Response(bytes);});
+  for(const invalid of [cid.slice(0,-1)+'b','bafkreiz'+cid.slice(7),cid.toUpperCase(),'b'+'a'.repeat(58)])
+    await assert.rejects(client.get(invalid,3));
+  assert.equal(calls,0);assert.equal(reservations,0);assert.equal(slots,0);
+  assert.deepEqual(await client.get(cid,3),bytes);
+  assert.equal(calls,1);assert.equal(reservations,1);assert.equal(slots,1);
+});

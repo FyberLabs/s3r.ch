@@ -1,5 +1,5 @@
 /** Opt-in local ciphertext retention only. Never pins, fetches or reprovides. */
-import { IPFS_MEDIA_BLOCK_BYTES, rawMediaBlockCid } from "./ipfs-media-blocks";
+import { IPFS_MEDIA_BLOCK_BYTES, rawMediaBlockCid, isRawMediaBlockCid } from "./ipfs-media-blocks";
 const DB = "s3rch-ipfs-ciphertext-v1", STORE = "blocks", CLOCK = "clock";
 const MAX_BYTES = 64 * IPFS_MEDIA_BLOCK_BYTES, MAX_ENTRIES = 64, MAX_TTL = 86400000;
 type CachedRead = {bytes:Uint8Array; expires:number; checkedAt:number};
@@ -86,7 +86,7 @@ export function createLocalCiphertextCache(input:{scope:string; policy:LocalCiph
   async put(cid:string,block:Uint8Array,signal?:AbortSignal):Promise<void>{
    guard(signal);if(pending>=4)throw unavailable();pending++;
    try {
-   if(!(block instanceof Uint8Array)||block.length<1||block.length>IPFS_MEDIA_BLOCK_BYTES||block.length>policy.maxBytes)throw unavailable();
+   if(!isRawMediaBlockCid(cid)||!(block instanceof Uint8Array)||block.length<1||block.length>IPFS_MEDIA_BLOCK_BYTES||block.length>policy.maxBytes)throw unavailable();
    const bytes=new Uint8Array(block);if(await rawMediaBlockCid(bytes)!==cid)throw unavailable();guard(signal);
    await transact("put",cid,bytes,signal);guard(signal);
    }finally{pending--;}
@@ -94,7 +94,7 @@ export function createLocalCiphertextCache(input:{scope:string; policy:LocalCiph
   async get(cid:string,signal?:AbortSignal):Promise<Uint8Array|null>{
    guard(signal);if(pending>=4)throw unavailable();pending++;
    try {
-   if(typeof cid!=="string"||!/^b[a-z2-7]{58}$/.test(cid))throw unavailable();
+   if(!isRawMediaBlockCid(cid))throw unavailable();
    const result=await transact("get",cid,undefined,signal);
    if(result&&await rawMediaBlockCid(result.bytes)!==cid)throw unavailable();guard(signal);
    if(!result)return null;
@@ -106,7 +106,7 @@ export function createLocalCiphertextCache(input:{scope:string; policy:LocalCiph
   async evict(cids:readonly string[],signal?:AbortSignal):Promise<void>{
    if(!Array.isArray(cids)||cids.length<1||cids.length>MAX_ENTRIES||pending>=4)throw unavailable();
    const selected=[...cids];
-   if(selected.some(cid=>typeof cid!=="string"||!/^bafkrei[a-z2-7]{52}$/.test(cid)))throw unavailable();
+   if(!selected.every(isRawMediaBlockCid))throw unavailable();
    pending++;
    try{await transact("evict","",undefined,signal,selected);}finally{pending--;}
   },

@@ -115,3 +115,15 @@ test("upload and download share two adapter operation slots and reject oversized
   await assert.rejects(f.client.put(bytes));await assert.rejects(f.client.get(cid,3));
   release();await Promise.all([a,b]);assert.deepEqual(await f.client.get(cid,3),bytes);f.cache.close();
 });
+
+
+test("noncanonical CID reads refuse cache lookup and provider fallback",async()=>{
+  const f=fixture(),cid=await rawMediaBlockCid(bytes);let reads=0;
+  const cache={...f.cache,async get(){reads++;return null;}};
+  const client=createCachedMediaBlocks({provider:f.provider,cache,current:()=>true,signal:f.abort.signal});
+  try{
+    for(const invalid of [cid.slice(0,-1)+'b','bafkreiz'+cid.slice(7)])await assert.rejects(client.get(invalid,3));
+    assert.equal(reads,0);assert.equal(f.gets(),0);
+    assert.deepEqual(await client.get(cid,3),bytes);assert.equal(reads,1);assert.equal(f.gets(),1);
+  }finally{f.cache.close();}
+});
