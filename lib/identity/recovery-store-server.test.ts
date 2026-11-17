@@ -102,3 +102,14 @@ test('maximum retained rotations pass bounded transport and private proof object
   assert.equal(calls,0);
  }
 });
+
+test('pending recovery read uses the authenticated fixed slot and performs no promotion',async()=>{
+ const req=await fixture();let calls=0;
+ const response=await deviceServer(req({slot:'pending'}),'recovery-read',env,async(url,init)=>{
+  calls++;assert.equal(String(url),'https://acl.example/api/v1/acl/sociacl/keyring/recovery/rows/pending');
+  assert.equal(init?.method,'GET');assert.equal(init?.body,undefined);
+  assert.equal(new Headers(init?.headers).get('authorization'),'Bearer person-bearer');
+  return Response.json({generation:1,head:{sequence:0,currentKey:p,currentEpub:p},row:{...row,rotationSeq:1}});
+ });
+ assert.equal(response.status,200);assert.equal(calls,1);assert.equal((await response.json()).row.rotationSeq,1);
+});
