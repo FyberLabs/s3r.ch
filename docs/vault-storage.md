@@ -13,12 +13,14 @@ It uses `/api/v1/storage/records/vault/{opaque-id}` and immutable object storage
 Core requires dedicated `storage:vault:read/write` scopes; object operations retain
 their own scopes. Vault deletion and direct-provider access are not exposed.
 
-A service credential must never enter browser code. The browser-facing authorized
-proxy, tenant provisioning, scope assignment and product UI remain separate work.
+A service credential must never enter browser code. The authenticated browser
+proxy is described below; tenant provisioning, scope assignment and product UI
+remain separate work.
 This transport is not an end-user grant. The client custody adapter authenticates
 and decrypts locally; keys and plaintext signed metadata must never reach storage.
-Unit tests use a custody double, not production encryption. The v2 container and
-legacy import remain SociACL work.
+Isolated transport tests retain a custody double; the combined API contract now
+uses real local head encryption. The v2 container and legacy import remain
+SociACL work.
 
 The 8 MiB transport bound is for encrypted head/index/keybag data; it does not
 change the 1 MiB item cap. Reads still require Check and fresh epoch status. The
@@ -54,5 +56,32 @@ CI also composes the installed SociACL signed-head/floor store, browser API
 transport, authenticated service and vault-scoped storage adapter in one contract.
 It covers a lost committed response, exact retry, successor publication, replayed
 old head refusal, revoked-session refusal and retained state after reopening.
-Storage and custody are explicit in-process doubles; this is not TEST deployment,
-real browser PRF, or real-storage nightly qualification.
+Storage is an explicit in-process double, while head custody uses the encryption
+adapter below. This is not TEST deployment, real browser PRF, or real-storage
+nightly qualification.
+
+### Local private-head custody
+
+`createVaultHeadCustody` seals the signed head using the existing `jose` General
+JWE implementation: a fresh A256GCM content key, wrapped with A256KW, and an
+allowlisted protected header binding the opaque vault ID. Owner and history
+metadata remain inside the ciphertext. The envelope is bounded to 64 KiB and
+accepts exactly one recipient, no external AAD or unprotected headers, and no
+algorithm negotiation. The installed SociACL verifier authenticates the signed
+head and current identity history before seal and after open.
+
+The caller supplies a dedicated non-exportable AES-KW-256 key with wrap/unwrap
+usage. Login never provides this key. `createSealedVaultStorageClient` composes
+that custody with verified publication and readback. Call `sealHead` once and
+retain the returned bytes for ambiguous retries; calling it again creates a new
+ciphertext. `lock` drops the adapter's key reference, rejects in-flight plaintext
+return and causes publication guards to refuse. It cannot cancel a remote write
+already committed or revoke another holder's key reference. Mutable plaintext
+buffers are cleared; JavaScript strings and garbage collection offer no assured
+memory erasure.
+
+This is a private sync-head envelope, not the container-v2 file or keybag format.
+Slot enrollment, PRF/recovery derivation, durable key custody, cross-device unlock,
+item opening with Check/epoch verification and the vault UI remain open. The
+combined CI contract now uses this real encryption adapter with a CI-generated
+local key; storage remains an in-process fake and no real PRF is claimed.
