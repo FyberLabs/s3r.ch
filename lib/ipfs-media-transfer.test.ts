@@ -173,3 +173,24 @@ test("authority withdrawal during block hashing prevents the next provider read"
   t.mock.method(crypto.subtle,'digest',async(...args:Parameters<typeof digest>)=>{const hash=await digest(...args);f.revoke();return hash;});
   await assert.rejects(f.client.download(grant.manifest,grant.key,binding));assert.equal(f.counts().gets,1);
 });
+
+test("invalid download bindings refuse both ordinary and prepared reads before provider work",async()=>{
+  const f=fixture(),grant=await f.client.upload(new Uint8Array([1,2,3]),binding);
+  const invalid=[null,undefined,{}, {...binding,tenant:'bad'}, {...binding,tenant:binding.tenant.toUpperCase()},
+    {...binding,tenant:'00000000-0000-0000-0000-000000000000'}, {...binding,tenant:new String(binding.tenant)},
+    {...binding,object:'unscoped'}, {...binding,object:new String(binding.object)}];
+  for(const value of invalid){
+    const bad=value as unknown as typeof binding;
+    await assert.rejects(f.client.download(grant.manifest,grant.key,bad));
+    await assert.rejects(f.client.prepareDownload(grant.manifest,grant.key,bad));
+  }
+  assert.equal(f.counts().gets,0);
+  assert.deepEqual(await f.client.download(grant.manifest,grant.key,binding),new Uint8Array([1,2,3]));
+});
+test("prepared binding fields are captured once before admission and remain independent of caller mutation",async()=>{
+  const f=fixture(),grant=await f.client.upload(new Uint8Array([7]),binding);let tenants=0,objects=0;
+  const source={get tenant(){tenants++;return tenants===1?binding.tenant:'bad';},get object(){objects++;return objects===1?binding.object:'bad';}};
+  const prepared=await f.client.prepareDownload(grant.manifest,grant.key,source);
+  try {assert.equal(tenants,1);assert.equal(objects,1);assert.deepEqual(await prepared.resume(),new Uint8Array([7]));}
+  finally{prepared.dispose();}
+});

@@ -37,8 +37,11 @@ test("media refuses malformed envelopes, addresses, bindings and oversized paylo
     await assert.rejects(openMedia(a.bytes, address, a.key, binding));
   for (const key of [new Uint8Array(31), new Uint8Array(33)])
     await assert.rejects(openMedia(a.bytes, a.sha256, key, binding));
-  for (const bad of [{ ...binding, tenant: "bad" }, { ...binding, tenant: "00000000-0000-0000-0000-000000000000" }, { ...binding, object: "unscoped" }])
-    await assert.rejects(sealMedia(input, bad));
+  for (const bad of [null, undefined, {}, { ...binding, tenant: "bad" },
+    { ...binding, tenant: binding.tenant.toUpperCase() },
+    { ...binding, tenant: "00000000-0000-0000-0000-000000000000" },
+    { ...binding, object: "unscoped" }, { ...binding, object: new String(binding.object) }])
+    await assert.rejects(sealMedia(input, bad as unknown as typeof binding));
   await assert.rejects(sealMedia(new Uint8Array(), binding));
   await assert.rejects(sealMedia(new Uint8Array(MEDIA_PLAIN_MAX+1), binding));
   assert.equal(MEDIA_PLAIN_MAX+32, MEDIA_STORED_MAX);
@@ -106,4 +109,13 @@ test("failed authentication clears the decrypt key copy but preserves the caller
   await assert.rejects(openMedia(sealed.bytes, sealed.sha256, wrongKey, binding));
   assert.ok(heldKey && heldKey.every(byte => byte === 0));
   assert.deepEqual(wrongKey, saved);
+});
+
+test("binding validation and AAD use the same captured string fields",async()=>{
+  let tenants=0,objects=0;
+  const source={get tenant(){tenants++;return tenants===1?binding.tenant:'bad';},get object(){objects++;return objects===1?binding.object:'bad';}};
+  const sealed=await sealMedia(input,source);
+  assert.equal(tenants,1);assert.equal(objects,1);
+  assert.deepEqual(await openMedia(sealed.bytes,sealed.sha256,sealed.key,binding),input);
+  await assert.rejects(sealMedia(input,{...binding,tenant:new String(binding.tenant)} as unknown as typeof binding));
 });

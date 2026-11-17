@@ -1,5 +1,5 @@
 /** Unmounted browser composition; callers authenticate grants and own provider/consent policy. */
-import { sealMedia, openMedia, type MediaBinding } from "./media-crypto";
+import { sealMedia, openMedia, snapshotMediaBinding, type MediaBinding } from "./media-crypto";
 import { assembleMediaBlocks, describeMediaBlocks, parseMediaBlockManifest, rawMediaBlockCid, IPFS_MEDIA_BLOCK_BYTES } from "./ipfs-media-blocks";
 import type { createKuboBlockClient } from "./ipfs-kubo-client";
 type Blocks = ReturnType<typeof createKuboBlockClient>;
@@ -97,7 +97,7 @@ export function createIpfsMediaTransfer(options: {blocks: Blocks; current: () =>
       return run(async () => {
         const manifest = parseMediaBlockManifest(manifestJson);
         if (!(key instanceof Uint8Array) || key.length !== 32) throw unavailable();
-        const bound = {tenant: binding?.tenant, object: binding?.object};
+        const bound = snapshotMediaBinding(binding);
         const start = performance.now();
         if (!Number.isFinite(start)) throw unavailable();
         const rawKey = new Uint8Array(key), downloaded: Uint8Array[] = [];
@@ -166,7 +166,7 @@ export function createIpfsMediaTransfer(options: {blocks: Blocks; current: () =>
       return run(async () => {
         const manifest = parseMediaBlockManifest(manifestJson);
         if (!(key instanceof Uint8Array) || key.length !== 32) throw unavailable();
-        const rawKey = new Uint8Array(key), bound = {tenant: binding?.tenant, object: binding?.object};
+        const bound = snapshotMediaBinding(binding), rawKey = new Uint8Array(key);
         const downloaded: Uint8Array[] = []; let stored: Uint8Array | undefined, plaintext: Uint8Array | undefined;
         let returned = false;
         try {

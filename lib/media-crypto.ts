@@ -11,11 +11,18 @@ export type MediaBinding = Readonly<{ tenant: string; object: string }>;
 export type SealedMedia = { bytes: Uint8Array; sha256: string; key: Uint8Array };
 const encoder = new TextEncoder();
 
-function aad(binding: MediaBinding): Uint8Array<ArrayBuffer> {
-  if (!binding || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(binding.tenant) ||
-      binding.tenant === "00000000-0000-0000-0000-000000000000" || !isCanonicalObjectId(binding.object))
+/** Capture and validate public binding fields before any asynchronous work. Not authorization. */
+export function snapshotMediaBinding(binding: MediaBinding): MediaBinding {
+  const tenant = binding?.tenant, object = binding?.object;
+  if (typeof tenant !== "string" || tenant.length !== 36 ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(tenant) ||
+      tenant === "00000000-0000-0000-0000-000000000000" || typeof object !== "string" || !isCanonicalObjectId(object))
     throw new Error("Invalid media binding");
-  return encoder.encode(JSON.stringify(["s3rch-media-v1", binding.tenant, binding.object]));
+  return Object.freeze({tenant, object});
+}
+function aad(binding: MediaBinding): Uint8Array<ArrayBuffer> {
+  const {tenant, object} = snapshotMediaBinding(binding);
+  return encoder.encode(JSON.stringify(["s3rch-media-v1", tenant, object]));
 }
 function copy(bytes: Uint8Array, min: number, max: number): Uint8Array<ArrayBuffer> {
   if (!(bytes instanceof Uint8Array) || bytes.byteLength < min || bytes.byteLength > max)
