@@ -21,6 +21,25 @@ const snapshot = (): ForumAuthoritySnapshot => ({ completeThrough: at, history: 
   rows: [sign("object", { object: squad.forumId, owner }), sign("see", { object: squad.forumId, owner, accessor: member, from: 0, until: at + 100, stated: 1, hamState: 1 })] });
 
 const request = new Request("https://s3r.ch/api/media/object"), signal = new AbortController().signal;
+test("bearer media requests cannot borrow an ambient owner cookie", async () => {
+  let authentications = 0, reads = 0, registrations = 0;
+  const authorize = createMediaAuthority({ config, clock: () => at,
+    authenticate: async () => { authentications++; return { key: owner }; },
+    read: async () => { reads++; return snapshot(); },
+    registration: async () => { registrations++; return null; } });
+  for (const authorization of ["Bearer invalid", "Bearer scoped-read-only", "", "Basic invalid"]) {
+    const mixed = new Request(request.url, { headers: { authorization, cookie: "owner-session=present" } });
+    for (const action of ["read", "write", "register"] as const)
+      assert.equal(await authorize(mixed, squad.forumId, action, signal), false);
+  }
+  assert.equal(authentications, 0);
+  assert.equal(reads, 0);
+  assert.equal(registrations, 0);
+  // The existing signed browser-owner path remains usable without bearer input.
+  assert.equal(await authorize(request, squad.forumId, "write", signal), true);
+  assert.equal(authentications, 1);
+  assert.equal(reads, 1);
+});
 function setup(key: string | null = owner, data = snapshot(), read = async () => data, clock = () => at) {
   return createMediaAuthority({ config, clock, authenticate: async () => key ? { key } : null, read });
 }
