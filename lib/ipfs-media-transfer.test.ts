@@ -194,3 +194,48 @@ test("prepared binding fields are captured once before admission and remain inde
   try {assert.equal(tenants,1);assert.equal(objects,1);assert.deepEqual(await prepared.resume(),new Uint8Array([7]));}
   finally{prepared.dispose();}
 });
+
+test("disposed or expired transfers keep admission occupied until a pending provider settles",async t=>{
+  t.mock.timers.enable({apis:["setTimeout"]});
+  for(const direction of ["upload","download"]){
+    for(const reason of ["dispose","expire"]){
+      for(const outcome of ["resolve","reject"]){
+        const f=fixture(),grant=await f.client.upload(new Uint8Array([7]),binding);
+        const put=f.blocks.put,get=f.blocks.get;
+        let finish!:()=>void;
+        const gate=new Promise<void>((resolve,reject)=>{finish=()=>outcome==="resolve"?resolve():reject(Error("provider failure"));});
+        if(direction==="upload")f.blocks.put=async bytes=>{await gate;return put(bytes);};
+        else f.blocks.get=async cid=>{await gate;return get(cid);};
+        const prepared=direction==="upload"?await f.client.prepareUpload(new Uint8Array([1]),binding):await f.client.prepareDownload(grant.manifest,grant.key,binding);
+        const pending=assert.rejects(prepared.resume());
+        try{
+          if(reason==="dispose")prepared.dispose();else t.mock.timers.tick(15*60_000);
+          assert.equal(prepared.status().state,reason==="dispose"?"disposed":"expired");
+          await assert.rejects(f.client.prepareDownload(grant.manifest,grant.key,binding).then(handle=>handle.dispose()));
+          await assert.rejects(f.client.prepareUpload(new Uint8Array([2]),binding).then(handle=>handle.dispose()));
+          await assert.rejects(f.client.upload(new Uint8Array([2]),binding));
+          await assert.rejects(f.client.download(grant.manifest,grant.key,binding));
+        }finally{finish();await pending;prepared.dispose();}
+        f.blocks.put=put;f.blocks.get=get;
+        assert.deepEqual(await f.client.download(grant.manifest,grant.key,binding),new Uint8Array([7]));
+        const next=await f.client.prepareUpload(new Uint8Array([2]),binding);next.dispose();
+      }
+    }
+  }
+});
+
+test("disposal during prepared decryption holds admission until crypto settles",async t=>{
+  const f=fixture(),grant=await f.client.upload(new Uint8Array([7]),binding);
+  const decrypt=crypto.subtle.decrypt.bind(crypto.subtle);
+  let finish!:()=>void,entered!:()=>void;
+  const gate=new Promise<void>(resolve=>{finish=resolve;}),started=new Promise<void>(resolve=>{entered=resolve;});
+  t.mock.method(crypto.subtle,"decrypt",async(...args:Parameters<typeof decrypt>)=>{entered();await gate;return decrypt(...args);});
+  const prepared=await f.client.prepareDownload(grant.manifest,grant.key,binding),pending=assert.rejects(prepared.resume());
+  await started;
+  try{
+    prepared.dispose();
+    await assert.rejects(f.client.prepareUpload(new Uint8Array([2]),binding).then(handle=>handle.dispose()));
+    await assert.rejects(f.client.download(grant.manifest,grant.key,binding));
+  }finally{finish();await pending;prepared.dispose();}
+  assert.deepEqual(await f.client.download(grant.manifest,grant.key,binding),new Uint8Array([7]));
+});
