@@ -38,3 +38,14 @@ baseline after the candidate writes. Existing clients must reconnect and fresh
 clients must read the last value. The isolated rehearsal uses the peer's origin
 routes. The production adapter attributes the peer through `/_peer/api/version`
 and `/_peer/api/health` at public ingress without performing writes there.
+
+### Web and public Worker canary rehearsal
+
+The browser probe verifies the Worker revision on the public document and on
+origin fallthrough. It checks the public asset bytes and the origin's own build
+revision in one browser context. The scheduled rehearsal also uses the owner
+linked-session browser contract and opens the same disposable forum document
+with distinct baseline and candidate source. The forum check runs both real
+serializers and writers against an in-process conditional Blob substitute. It
+checks a prior write on the candidate and a candidate write after restoring
+the prior reader. It does not create a session, record or Blob in production.
