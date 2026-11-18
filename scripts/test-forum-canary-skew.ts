@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { join } from "node:path";
 import { blobConflict, type IdentityBlobClient } from "../identity-blob.cjs";
 import { BlobForumStore, FORUM_BLOB, migrateForum } from "../lib/forum-blob";
+import { writeNightlyCaseResults } from "./nightly-case-results.mjs";
 import { emptyForumFile, openForum } from "../lib/forum";
 
 if (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_EVENT_NAME !== "schedule" ||
@@ -42,10 +43,14 @@ async function main() {
   const restored = new oldStore.BlobForumStore(blob).load();
   assert.ok(restored.ok);
   assert.deepEqual(restored.file.bots.map(bot => bot.id).sort(), [initial.bot.id, updated.bot.id].sort());
-  console.log(JSON.stringify({ name: "forum-round-trip", status: "passed" }));
 }
 
-void main().catch(() => {
+const report = (status: "passed" | "failed") => writeNightlyCaseResults({
+  suite: "s3rch-forum-canary", expectedCases: ["forum-round-trip"],
+  cases: [{ name: "forum-round-trip", status }],
+});
+void main().then(() => report("passed"), () => {
+  report("failed");
   console.error("Forum canary compatibility failed");
   process.exitCode = 1;
 });

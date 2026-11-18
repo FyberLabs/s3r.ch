@@ -22,12 +22,12 @@ test("browser attributes the document and origin using one context", async () =>
       paths.push(url);
       return { status: () => 200, url: () => url, headers: () => ({ "x-s3rch-worker-version": worker }), body: async () => bytes };
     },
-    request: { get: async (url, options) => {
-      paths.push(url);
-      assert.equal(options.maxRedirects, 0);
-      return { status: () => 200, headers: () => ({ "x-s3rch-worker-version": worker }), json: async () => ({ revision }) };
-    } },
+    evaluate: async run => {
+      assert.match(String(run), /fetch\("\/api\/version"/);
+      paths.push("/api/version");
+      return { worker, revision };
+    },
   };
   assert.equal((await browserWebCanary(page, "https://fixture.test", expected)).revision, revision);
-  assert.deepEqual(paths, ["https://fixture.test/feed", "https://fixture.test/api/version"]);
+  assert.deepEqual(paths, ["https://fixture.test/feed", "/api/version"]);
 });

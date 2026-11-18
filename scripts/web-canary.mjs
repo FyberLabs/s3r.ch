@@ -20,11 +20,17 @@ export function verifyWebCanary({ expected, asset, origin }) {
 export async function browserWebCanary(page, origin, expected) {
   const asset = await page.goto(new URL("/feed", origin).href, { waitUntil: "domcontentloaded", timeout: 15000 });
   if (asset?.status() !== 200 || new URL(asset.url()).origin !== origin) throw Error("document-unavailable");
-  const response = await page.request.get(new URL("/api/version", origin).href, { maxRedirects: 0, timeout: 5000 });
-  if (response.status() !== 200) throw Error("origin-version-unavailable");
+  // An in-page request shares the browser context's routing and cookies.
+  const observed = await page.evaluate(async () => {
+    const response = await fetch("/api/version", {
+      redirect: "error", cache: "no-store", signal: AbortSignal.timeout(5000),
+    });
+    if (response.status !== 200) throw Error("origin-version-unavailable");
+    return { worker: response.headers.get("x-s3rch-worker-version"), revision: (await response.json()).revision };
+  });
   return verifyWebCanary({
     expected,
     asset: { worker: asset.headers()["x-s3rch-worker-version"], bytes: await asset.body() },
-    origin: { worker: response.headers()["x-s3rch-worker-version"], revision: (await response.json()).revision },
+    origin: observed,
   });
 }
