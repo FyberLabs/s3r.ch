@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { peerCanaryFixture, peerCases, probePeer } from "./peer-canary.mjs";
+import { packagedPeerRevision, peerCanaryFixture, peerCases, probePeer } from "./peer-canary.mjs";
 import { writeNightlyCaseResults } from "./nightly-case-results.mjs";
 import { chromium } from "playwright-core";
 
@@ -44,7 +44,8 @@ let log;
 async function useBuild(directory, desiredRevision) {
   assert.equal(child, undefined, "the previous volume owner must exit first");
   // Keep the fixture volume, while exchanging only packaged runtime files.
-  for (const name of new Set([...await readdir(build), ...await readdir(directory)])) {
+  const artifactRevision = canary ? await packagedPeerRevision(directory, desiredRevision) : desiredRevision;
+  for (const name of await readdir(root)) {
     if (["data", "radata", "snapshot.json"].includes(name)) continue;
     await rm(path.join(root, name), { recursive: true, force: true });
   }
@@ -54,7 +55,7 @@ async function useBuild(directory, desiredRevision) {
     if (name === "server.js" || name === "public") await cp(source, dest, { recursive: true });
     else await symlink(source, dest);
   }
-  revision = desiredRevision;
+  revision = artifactRevision;
 }
 
 async function start(storage = "") {
@@ -150,20 +151,29 @@ try {
   if (canary) await useBuild(build, canary.candidate_revision);
   await start();
   results.set("peer-health", "passed");
-  const writer = await client(), reader = await client();
+  let writer = await client(), reader = await client();
   await read(reader, "initial"); // Only the volume survived the handoff.
   await write(writer, "standalone");
   await read(reader, "standalone");
   results.set("peer-round-trip", "passed");
+  if (canary) {
+    // Neither candidate client can repopulate the baseline from its cache.
+    await writer.close();
+    await reader.close();
+    await stop();
+    await useBuild(canary.baseline_build, canary.baseline_revision);
+    await start();
+    reader = await client();
+    await read(reader, "standalone");
+    writer = await client();
+  }
   const clients = [reader, writer];
   const before = await Promise.all(clients.map(peer => peer.evaluate(() => window.connections)));
   await stop();
-  if (canary) await useBuild(canary.baseline_build, canary.baseline_revision);
   await start();
   // Both live clients must reconnect. A new value proves fresh remote delivery.
   await Promise.all(clients.map((peer, i) =>
     peer.waitForFunction(previous => window.connections > previous, before[i])));
-  if (canary) await Promise.all(clients.map(peer => read(peer, "standalone")));
   results.set("peer-reconnect", "passed");
   await write(reader, "reconnected");
   await read(writer, "reconnected");

@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 const REVISION = /^[0-9a-f]{40}$/;
 
 export const peerCases = [
@@ -24,4 +28,17 @@ export function peerCanaryFixture(value) {
       ![value.baseline_revision, value.candidate_revision].every(rev => typeof rev === "string" && REVISION.test(rev)) ||
       value.baseline_revision === value.candidate_revision) throw Error("peer-canary-fixture-unavailable");
   return value;
+}
+
+// Infra records source identity and hashes immediately after each scheduled build.
+export async function packagedPeerRevision(directory, expected) {
+  const receipt = JSON.parse(await readFile(join(directory, "canary-artifact.json"), "utf8"));
+  if (receipt.schema !== 1 || receipt.revision !== expected || !REVISION.test(receipt.revision)) {
+    throw Error("peer-artifact-revision-mismatch");
+  }
+  const bytes = await readFile(join(directory, "seed-peer.cjs"));
+  if (createHash("sha256").update(bytes).digest("hex") !== receipt.seed_sha256) {
+    throw Error("peer-artifact-digest-mismatch");
+  }
+  return receipt.revision;
 }
