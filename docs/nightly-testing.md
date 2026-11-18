@@ -27,3 +27,14 @@ These isolated suites use synthetic identities and disposable local resources.
 They do not establish shared TEST or production acceptance, or cover the planned
 meeting and media products. Shared TEST suites require infra-owned fixtures and
 readiness verification before registration.
+
+### Peer canary rehearsal
+
+The Infra-owned canary fixture supplies distinct baseline and candidate builds.
+The scheduled peer canary checks the exact served revision, then exercises the
+packaged Gun process with separate Chromium contexts. It starts the baseline,
+stops it before the candidate takes the disposable volume, and restores the
+baseline after the candidate writes. Existing clients must reconnect and fresh
+clients must read the last value. The isolated rehearsal uses the peer's origin
+routes. The production adapter attributes the peer through `/_peer/api/version`
+and `/_peer/api/health` at public ingress without performing writes there.
