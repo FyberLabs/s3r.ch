@@ -9,9 +9,16 @@ import { tmpdir } from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { peerCanaryFixture, peerCases, probePeer } from "./peer-canary.mjs";
+import { writeNightlyCaseResults } from "./nightly-case-results.mjs";
 import { chromium } from "playwright-core";
 
 if (!process.argv[2]) throw Error("Infra-owned record fixture path required; run through the central nightly suite");
+const canary = process.argv[3] ? peerCanaryFixture(JSON.parse(await readFile(process.argv[3], "utf8"))) : null;
+const results = new Map(peerCases.map(name => [name, "blocked"]));
+if (canary && (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_EVENT_NAME !== "schedule" ||
+    process.env.GITHUB_WORKFLOW_REF !== "FyberLabs/infra/.github/workflows/nightly-integration.yml@refs/heads/main" ||
+    process.env.NIGHTLY_SUITE !== "s3rch-peer-canary")) throw Error("Scheduled peer canary required");
 const build = path.resolve(".next/standalone");
 const root = await mkdtemp(path.join(tmpdir(), "s3rch-seed-handoff-"));
 // Select a free loopback port and reuse it across peer restarts.
@@ -22,7 +29,8 @@ const origin = "http://127.0.0.1:" + probe.address().port;
 await new Promise((resolve, reject) => probe.close(error => error ? reject(error) : resolve()));
 const clientScript = createRequire(import.meta.url).resolve("gun/gun.js");
 const soul = "handoff-" + randomUUID();
-const revision = "a".repeat(40);
+let revision = canary?.candidate_revision ?? "a".repeat(40);
+const observedRevisions = new Set();
 const snapshot = {
   items: [{ id: soul, source: "rss", kind: "post", author: "Reader", body: "Handoff fixture",
     ts: 1, tags: [], provenance: "RSS", permalink: "https://example.org/post" }],
@@ -32,6 +40,22 @@ let browser;
 let child;
 let exit;
 let log;
+
+async function useBuild(directory, desiredRevision) {
+  assert.equal(child, undefined, "the previous volume owner must exit first");
+  // Keep the fixture volume, while exchanging only packaged runtime files.
+  for (const name of new Set([...await readdir(build), ...await readdir(directory)])) {
+    if (["data", "radata", "snapshot.json"].includes(name)) continue;
+    await rm(path.join(root, name), { recursive: true, force: true });
+  }
+  for (const name of await readdir(directory)) {
+    if (["data", "radata", "snapshot.json"].includes(name)) continue;
+    const source = path.join(directory, name), dest = path.join(root, name);
+    if (name === "server.js" || name === "public") await cp(source, dest, { recursive: true });
+    else await symlink(source, dest);
+  }
+  revision = desiredRevision;
+}
 
 async function start(storage = "") {
   assert.equal(child, undefined, "the previous volume owner must exit first");
@@ -55,10 +79,8 @@ async function start(storage = "") {
     if (child.exitCode !== null || child.signalCode !== null) throw Error(log);
     const res = await fetch(origin + "/api/health", { signal: AbortSignal.timeout(1000) }).catch(() => null);
     if (res?.ok) {
-      const identity = await fetch(origin + "/api/version");
-      assert.equal(identity.status, 200);
-      assert.match(identity.headers.get("cache-control") ?? "", /no-store/);
-      assert.deepEqual(await identity.json(), { revision });
+      const identity = await probePeer(origin, revision, { prefix: "" });
+      observedRevisions.add(identity.revision);
       const published = await fetch(origin + "/feed-cache/snapshot.json");
       assert.equal(published.status, 200);
       const observed = await published.json();
@@ -116,12 +138,7 @@ async function write(page, phase) {
 const read = (page, phase) => page.waitForFunction(value => window.observed === value, phase);
 
 try {
-  for (const name of await readdir(build)) {
-    if (name === "data") continue;
-    const source = path.join(build, name), dest = path.join(root, name);
-    if (name === "server.js" || name === "public") await cp(source, dest, { recursive: true });
-    else await symlink(source, dest);
-  }
+  await useBuild(canary?.baseline_build ?? build, canary?.baseline_revision ?? revision);
   await writeFile(path.join(root, "snapshot.json"), JSON.stringify(snapshot));
   browser = await chromium.launch();
   await start();
@@ -130,18 +147,24 @@ try {
   await original.close();
   await stop();
 
+  if (canary) await useBuild(build, canary.candidate_revision);
   await start();
+  results.set("peer-health", "passed");
   const writer = await client(), reader = await client();
   await read(reader, "initial"); // Only the volume survived the handoff.
   await write(writer, "standalone");
   await read(reader, "standalone");
+  results.set("peer-round-trip", "passed");
   const clients = [reader, writer];
   const before = await Promise.all(clients.map(peer => peer.evaluate(() => window.connections)));
   await stop();
+  if (canary) await useBuild(canary.baseline_build, canary.baseline_revision);
   await start();
   // Both live clients must reconnect. A new value proves fresh remote delivery.
   await Promise.all(clients.map((peer, i) =>
     peer.waitForFunction(previous => window.connections > previous, before[i])));
+  if (canary) await Promise.all(clients.map(peer => read(peer, "standalone")));
+  results.set("peer-reconnect", "passed");
   await write(reader, "reconnected");
   await read(writer, "reconnected");
   await writer.close();
@@ -151,100 +174,115 @@ try {
   await start();
   const restored = await client();
   await read(restored, "reconnected");
-  // Persist a source row in Gun, then model its successful-window retirement in
-  // the durable snapshot while the peer is stopped. Restart must replay removal.
-  await restored.evaluate(() => new Promise((resolve, reject) => {
-    window.seedGun.get("s3rch").get("items").get("retired-source-post").put({
-      id: "retired-source-post", source: "rss", body: "Retired source content", v: 1,
-    }, ack => ack.err ? reject(Error(ack.err)) : resolve());
-  }));
-  await restored.close();
-  await stop();
-  snapshot.items = [];
-  await writeFile(path.join(root, "snapshot.json"), JSON.stringify({
-    ...snapshot, sourceWindows: [["retired-source", []]], retiredIds: ["retired-source-post"],
-  }));
-  await start();
-  const afterRetirement = await client();
-  await afterRetirement.evaluate(() => {
-    window.seedGun.get("s3rch").get("items").get("retired-source-post").on(value => {
-      window.retiredSource = value;
-    });
-  });
-  await afterRetirement.waitForFunction(() => window.retiredSource?.unshared === 1 && window.retiredSource?.body === null);
-  await afterRetirement.close();
-  await stop();
-  // A stalled storage provider must not delay health, public cache or Gun access.
-  // This child-only mock makes no provider call; the nightly batch runs the case.
-  await writeFile(path.join(root, "stalled-storage.cjs"), "globalThis.fetch = () => new Promise(() => {});\n");
-  await start("stalled");
-  const fallback = await client();
-  await fallback.close();
-  await stop();
-
-  // This fixture replaces only outbound record HTTP in the child. The packaged
-  // peer, record client, cache codec, disk publication and Gun are real.
-  await cp(path.resolve(process.argv[2]), path.join(root, "record-storage.cjs"));
-  await start("record");
-  for (let i = 0; i < 100; i++) {
-    const imported = await readFile(path.join(root, "tenant-record.json"), "utf8").catch(() => null);
-    if (imported) { assert.equal(JSON.parse(imported).version, 1); break; }
-    if (i === 99) throw Error("Legacy cache import did not complete");
-    await delay(100);
-  }
-  await stop();
-  const adopted = JSON.parse(await readFile(path.join(root, "snapshot.json"), "utf8"));
-  assert.equal(adopted.tenantRecordInitialized, true);
-
-  // A new remote window wins over the persisted empty local cache after restart.
-  snapshot.items = [{ id: "tenant-post", source: "rss", kind: "post", author: "Reader",
-    body: "Tenant cache fixture", v: 1, ts: 2, tags: [], provenance: "RSS", permalink: "https://example.org/tenant-post" }];
-  await writeFile(path.join(root, "tenant-record.json"), JSON.stringify({
-    ...snapshot, version: 1, sourceWindows: [["tenant-source", snapshot.items]], retiredIds: [],
-  }));
-  await start("record");
-  const remoteReader = await client();
-  await remoteReader.evaluate(() => {
-    window.seedGun.get("s3rch").get("items").get("tenant-post").on(value => { window.tenantPost = value; });
-  });
-  await remoteReader.waitForFunction(() => window.tenantPost?.body === "Tenant cache fixture");
-  await remoteReader.close();
-  await stop();
-
-  // Successful-empty remote windows remove the previous public row and replay
-  // its tombstone into the same surviving Gun volume.
-  snapshot.items = [];
-  await writeFile(path.join(root, "tenant-record.json"), JSON.stringify({
-    ...snapshot, version: 1, sourceWindows: [["tenant-source", []]], retiredIds: [],
-  }));
-  await start("record");
-  const removedReader = await client();
-  await removedReader.evaluate(() => {
-    window.seedGun.get("s3rch").get("items").get("tenant-post").on(value => { window.tenantPost = value; });
-  });
-  await removedReader.waitForFunction(() => window.tenantPost?.unshared === 1 && window.tenantPost?.body === null);
-  await removedReader.close();
-  await stop();
-
-  // Once adopted, missing or malformed remote data keeps the local fallback
-  // available and must never create a replacement from stale disk content.
-  for (const corrupt of [false, true]) {
-    if (corrupt) await writeFile(path.join(root, "tenant-record.json"), '{"version":999}');
-    else await rm(path.join(root, "tenant-record.json"));
-    await start("record");
-    for (let i = 0; i < 100 && !log.includes("Tenant feed cache unavailable"); i++) await delay(100);
-    assert.match(log, /Tenant feed cache unavailable/);
-    const record = await readFile(path.join(root, "tenant-record.json"), "utf8").catch(() => null);
-    assert.equal(record, corrupt ? '{"version":999}' : null);
+  results.set("peer-convergence", "passed");
+  if (canary) {
+    assert.equal(observedRevisions.size, 2);
+    console.log(JSON.stringify({ suite: "s3rch-peer-canary", observed_revisions: [...observedRevisions], reconnect_clients: clients.length }));
+  } else {
+    // Persist a source row in Gun, then model its successful-window retirement in
+    // the durable snapshot while the peer is stopped. Restart must replay removal.
+    await restored.evaluate(() => new Promise((resolve, reject) => {
+      window.seedGun.get("s3rch").get("items").get("retired-source-post").put({
+        id: "retired-source-post", source: "rss", body: "Retired source content", v: 1,
+      }, ack => ack.err ? reject(Error(ack.err)) : resolve());
+    }));
+    await restored.close();
     await stop();
+    snapshot.items = [];
+    await writeFile(path.join(root, "snapshot.json"), JSON.stringify({
+      ...snapshot, sourceWindows: [["retired-source", []]], retiredIds: ["retired-source-post"],
+    }));
+    await start();
+    const afterRetirement = await client();
+    await afterRetirement.evaluate(() => {
+      window.seedGun.get("s3rch").get("items").get("retired-source-post").on(value => {
+        window.retiredSource = value;
+      });
+    });
+    await afterRetirement.waitForFunction(() => window.retiredSource?.unshared === 1 && window.retiredSource?.body === null);
+    await afterRetirement.close();
+    await stop();
+    // A stalled storage provider must not delay health, public cache or Gun access.
+    // This child-only mock makes no provider call; the nightly batch runs the case.
+    await writeFile(path.join(root, "stalled-storage.cjs"), "globalThis.fetch = () => new Promise(() => {});\n");
+    await start("stalled");
+    const fallback = await client();
+    await fallback.close();
+    await stop();
+
+    // This fixture replaces only outbound record HTTP in the child. The packaged
+    // peer, record client, cache codec, disk publication and Gun are real.
+    await cp(path.resolve(process.argv[2]), path.join(root, "record-storage.cjs"));
+    await start("record");
+    for (let i = 0; i < 100; i++) {
+      const imported = await readFile(path.join(root, "tenant-record.json"), "utf8").catch(() => null);
+      if (imported) { assert.equal(JSON.parse(imported).version, 1); break; }
+      if (i === 99) throw Error("Legacy cache import did not complete");
+      await delay(100);
+    }
+    await stop();
+    const adopted = JSON.parse(await readFile(path.join(root, "snapshot.json"), "utf8"));
+    assert.equal(adopted.tenantRecordInitialized, true);
+
+    // A new remote window wins over the persisted empty local cache after restart.
+    snapshot.items = [{ id: "tenant-post", source: "rss", kind: "post", author: "Reader",
+      body: "Tenant cache fixture", v: 1, ts: 2, tags: [], provenance: "RSS", permalink: "https://example.org/tenant-post" }];
+    await writeFile(path.join(root, "tenant-record.json"), JSON.stringify({
+      ...snapshot, version: 1, sourceWindows: [["tenant-source", snapshot.items]], retiredIds: [],
+    }));
+    await start("record");
+    const remoteReader = await client();
+    await remoteReader.evaluate(() => {
+      window.seedGun.get("s3rch").get("items").get("tenant-post").on(value => { window.tenantPost = value; });
+    });
+    await remoteReader.waitForFunction(() => window.tenantPost?.body === "Tenant cache fixture");
+    await remoteReader.close();
+    await stop();
+
+    // Successful-empty remote windows remove the previous public row and replay
+    // its tombstone into the same surviving Gun volume.
+    snapshot.items = [];
+    await writeFile(path.join(root, "tenant-record.json"), JSON.stringify({
+      ...snapshot, version: 1, sourceWindows: [["tenant-source", []]], retiredIds: [],
+    }));
+    await start("record");
+    const removedReader = await client();
+    await removedReader.evaluate(() => {
+      window.seedGun.get("s3rch").get("items").get("tenant-post").on(value => { window.tenantPost = value; });
+    });
+    await removedReader.waitForFunction(() => window.tenantPost?.unshared === 1 && window.tenantPost?.body === null);
+    await removedReader.close();
+    await stop();
+
+    // Once adopted, missing or malformed remote data keeps the local fallback
+    // available and must never create a replacement from stale disk content.
+    for (const corrupt of [false, true]) {
+      if (corrupt) await writeFile(path.join(root, "tenant-record.json"), '{"version":999}');
+      else await rm(path.join(root, "tenant-record.json"));
+      await start("record");
+      for (let i = 0; i < 100 && !log.includes("Tenant feed cache unavailable"); i++) await delay(100);
+      assert.match(log, /Tenant feed cache unavailable/);
+      const record = await readFile(path.join(root, "tenant-record.json"), "utf8").catch(() => null);
+      assert.equal(record, corrupt ? '{"version":999}' : null);
+      await stop();
+    }
+    console.log("Gun handoff, tenant cache restoration, retirement and failure preservation passed.");
   }
-  console.log("Gun handoff, tenant cache restoration, retirement and failure preservation passed.");
 } catch (error) {
+  if (canary) {
+    const pending = peerCases.find(name => results.get(name) === "blocked");
+    if (pending) results.set(pending, "failed");
+    throw Error("Scheduled peer canary failed");
+  }
   console.error(log);
   throw error;
 } finally {
   try { await browser?.close(); } finally {
     await stop();
     await rm(root, { recursive: true, force: true });
+    if (canary) writeNightlyCaseResults({
+      suite: "s3rch-peer-canary", expectedCases: peerCases,
+      cases: [...results].map(([name, status]) => ({ name, status })),
+    });
   }
 }
