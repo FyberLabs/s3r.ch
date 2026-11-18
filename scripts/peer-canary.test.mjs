@@ -30,3 +30,25 @@ test("candidate and baseline fixture revisions must differ", () => {
   assert.equal(peerCanaryFixture(input), input);
   assert.throws(() => peerCanaryFixture({ ...input, candidate_revision: baseline }), /fixture-unavailable/);
 });
+
+test("artifact attribution rejects a swapped label and altered package bytes", async () => {
+  const { createHash } = await import("node:crypto");
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { packagedPeerRevision } = await import("./peer-canary.mjs");
+  const directory = await mkdtemp(join(tmpdir(), "peer-artifact-contract-"));
+  try {
+    const bytes = "packaged-peer";
+    await writeFile(join(directory, "seed-peer.cjs"), bytes);
+    await writeFile(join(directory, "canary-artifact.json"), JSON.stringify({
+      schema: 1, revision: baseline, seed_sha256: createHash("sha256").update(bytes).digest("hex"),
+    }));
+    assert.equal(await packagedPeerRevision(directory, baseline), baseline);
+    await assert.rejects(packagedPeerRevision(directory, candidate), /revision-mismatch/);
+    await writeFile(join(directory, "seed-peer.cjs"), "different");
+    await assert.rejects(packagedPeerRevision(directory, baseline), /digest-mismatch/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
