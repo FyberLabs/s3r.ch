@@ -61,7 +61,8 @@ export async function beginStartupOAuth(request: Request, env: Env = process.env
     if (!config) return redirect("/feed?startup=unavailable", [...clearPending(), ...clearCredential()]);
     const secret = getIdentitySecret(env), now = Math.floor((deps.clock?.() ?? deps.now ?? Date.now()) / 1000);
     const { verifier, challenge } = createPkcePair(), state = randomBytes(32).toString("base64url"), nonce = randomBytes(32).toString("base64url");
-    const { callback } = origin(request);
+    const { callback, origin: site } = origin(request);
+    if (config.binding.github && site !== "https://test.s3r.ch") throw Error("Unavailable callback");
     const token = await sign(pendingKind, { state, nonce, verifier, callback, mapping: config.binding.mapping_sha256 }, request, secret, now);
     const url = new URL(config.provider.authorizationEndpoint);
     for (const [name, value] of Object.entries({ client_id: config.provider.clientId, redirect_uri: callback,
@@ -77,7 +78,7 @@ export async function finishStartupOAuth(request: Request, env: Env = process.en
   const denied = () => redirect("/feed?startup=denied", [...clearPending(), ...clearCredential()]);
   try {
     const config = await (deps.config?.() ?? readStartupLoginConfig(env));
-    if (!config) return denied();
+    if (!config || (config.binding.github && origin(request).origin !== "https://test.s3r.ch")) return denied();
     const secret = getIdentitySecret(env), now = Math.floor((deps.clock?.() ?? deps.now ?? Date.now()) / 1000);
     const cookie = readCookie(request.headers.get("cookie"), [startupPendingName(true), startupPendingName(false)]);
     if (!cookie) return denied();
@@ -120,7 +121,7 @@ export async function finishStartupOAuth(request: Request, env: Env = process.en
 export async function readStartupCredential(request: Request, env: Env = process.env, deps: Dependencies = {}) {
   try {
     const config = await (deps.config?.() ?? readStartupLoginConfig(env));
-    if (!config) return null;
+    if (!config || (config.binding.github && origin(request).origin !== "https://test.s3r.ch")) return null;
     const cookie = readCookie(request.headers.get("cookie"), [startupCredentialName(true), startupCredentialName(false)]);
     if (!cookie) return null;
     const payload = await verify(cookie, credentialKind, request, getIdentitySecret(env), Math.floor((deps.clock?.() ?? deps.now ?? Date.now()) / 1000));

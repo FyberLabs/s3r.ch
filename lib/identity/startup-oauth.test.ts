@@ -85,7 +85,7 @@ test("wrong nonce, wrong authenticated account, oversized token reply and expire
       now: mode === "expired" ? now + 300000 : now, key: h.keys.publicKey,
       fetch: async url => String(url) === h.config.provider.tokenEndpoint ?
         mode === "oversized" ? new Response("x".repeat(65537)) : Response.json({ id_token: idToken, access_token: "access" }) :
-        Response.json(mode === "account" ? { ...h.identity, entra: { ...h.identity.entra, object_id: h.identity.entra.tenant_id } } : h.identity) });
+        Response.json(mode === "account" ? { ...h.identity, entra: { ...h.identity.entra, object_id: h.identity.entra?.tenant_id } } : h.identity) });
     assert.equal(result.headers.get("location"), "/feed?startup=denied", mode);
   }
 });
