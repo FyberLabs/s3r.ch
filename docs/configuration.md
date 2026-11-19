@@ -170,6 +170,7 @@ compact separators, ASCII escapes and trailing newline), produced by the shared
 | Setting | Meaning |
 | --- | --- |
 | `S3RCH_STARTUP_LOGIN_ENABLED` | Set to `1` only after the owner startup services are configured. |
+| `S3RCH_STARTUP_GITHUB_MEMBER_CONFIG` | Private Infra mapping for the TEST GitHub member. Use the dedicated TEST Auth endpoint and leave the operator configuration file unset. |
 | `S3RCH_STARTUP_LOGIN_PROVIDER` | Existing configured OIDC provider ID; issuer and client ID must match the private owner broker settings. |
 | `S3RCH_STARTUP_AUTH_URL` | Explicit HTTPS Auth endpoint ending in `/auth/startup/identity`; redirects are refused. |
 
