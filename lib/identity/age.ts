@@ -45,7 +45,7 @@ export async function completeWalletSignIn(input: {
 /** Recognize the separately declared synthetic wallet after normal SIWE verification. */
 export function isSyntheticMediaWallet(
   input: { address: string; chainId: number; host: string; secure: boolean },
-  env = process.env,
+  env: NodeJS.Dict<string> = process.env,
 ): boolean {
   const wallet = env.S3RCH_TEST_MEDIA_OWNER_WALLET;
   return env.WEBSITE_SITE_NAME === "s3rch-fyberlabs-test" &&
