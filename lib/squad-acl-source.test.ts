@@ -1,3 +1,4 @@
+import { dedicatedTestVaultAuthority } from "./vault-api-server";
 import { StatementSourceConflict } from "./acl-statement-source-server";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -82,4 +83,15 @@ test("readiness only retries a source conflict after the evaluation second chang
   source.read=async()=>{reads++;if(reads===2){at++;throw new StatementSourceConflict();}throw Error("fresh source still unavailable");};
   await assert.rejects(squadPilotReady({config,source},new AbortController().signal,()=>at),/fresh source still unavailable/);
   assert.equal(reads,3);
+});
+
+test("vault authority is restricted to its TEST tenant and dedicated scope", () => {
+  const tenant = "01234567-89ab-cdef-0123-456789abcdef";
+  const source = { origin: "https://api.test.hyperme.sh", tenant, scope: "s3rch-native-vault",
+    apiKey: "fixture", authority: config.authority };
+  const pilot = { ...config, origin: "https://test.s3r.ch" };
+  assert.equal(dedicatedTestVaultAuthority(source, tenant, pilot).config.origin, pilot.origin);
+  assert.throws(() => dedicatedTestVaultAuthority(source, tenant, config), /dedicated vault authority/);
+  assert.throws(() => dedicatedTestVaultAuthority({ ...source, scope: "forum" }, tenant, pilot), /authority binding/);
+  assert.throws(() => dedicatedTestVaultAuthority({ ...source, tenant: "other" }, tenant, pilot), /authority binding/);
 });
