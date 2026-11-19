@@ -377,3 +377,9 @@ create-only records, never tenant-wide object reads. Provision bindings independ
 cannot enroll a vault by supplying an owner field. Never expose this setting to
 browser bundles. Missing configuration leaves `/api/vault` unavailable. The
 existing configured identity and complete authority source are also required.
+
+On TEST only, the app binding can also include `authoritySource` with
+`origin`, `tenant`, `scope`, `apiKey`, and `authority`. Use the same tenant,
+the `s3rch-native-vault` ACL snapshot scope, a dedicated read credential, and
+the witness policy for that source. The dedicated source is used for vault
+identity resolution. Squad and media retain their own source.
