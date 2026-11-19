@@ -1,3 +1,5 @@
+import { createAclStatementSource, type AclStatementConfig } from './acl-statement-source-server';
+import { parseSquadPilotConfig, type SquadPilotConfig } from './squad-pilot-config';
 import { getSquadPilotServer } from './squad-pilot-server';
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from './identity/forum-authority';
 import { createVaultScopedStore } from './vault-scoped-store-server';
@@ -12,13 +14,46 @@ export function getVaultApiService(){
   cached=undefined;
   if(raw.length>65536)throw Error('Invalid vault configuration');
   const config=JSON.parse(raw);
-  if(!config||Object.keys(config).sort().join()!=='apiKey,bindings,origin,tenant'||!Array.isArray(config.bindings)||config.bindings.length>128)
+  if(!config||!['apiKey,bindings,origin,tenant','apiKey,authoritySource,bindings,origin,tenant'].includes(Object.keys(config).sort().join())||!Array.isArray(config.bindings)||config.bindings.length>128)
     throw Error('Invalid vault configuration');
   const stores=new Map<string,ReturnType<typeof createVaultScopedStore>>(config.bindings.map((b:{vaultId:string})=>[b.vaultId,createVaultScopedStore(config,b.vaultId)]));
   const transport=(vaultId:string)=>{const store=stores.get(vaultId);if(!store)throw Error('Unknown vault');return store as ReturnType<typeof createVaultScopedStore>;};
-  const resolve=createVaultApiResolver(pilot);
+  const dedicated = 'authoritySource' in config
+    ? dedicatedTestVaultAuthority(config.authoritySource, config.tenant, pilot.config)
+    : null;
+  const resolve = createVaultApiResolver(dedicated
+    ? { ...dedicated, services: pilot.services }
+    : pilot);
   const service=createVaultApiService({origin:pilot.config.origin,bindings:config.bindings,transport,resolve});
   cached={raw,pilot,service};return service;
+}
+
+/** A dedicated TEST source does not change Squad's statement source. */
+export function dedicatedTestVaultAuthority(input: unknown, tenant: string, pilot: SquadPilotConfig) {
+  if (pilot.origin !== 'https://test.s3r.ch' || !input || typeof input !== 'object' ||
+      Array.isArray(input) || Object.keys(input).sort().join() !== 'apiKey,authority,origin,scope,tenant') {
+    throw Error('Invalid dedicated vault authority source');
+  }
+  const settings = input as AclStatementConfig & { authority: unknown };
+  if (settings.tenant !== tenant || settings.scope !== 's3rch-native-vault') {
+    throw Error('Invalid dedicated vault authority binding');
+  }
+  const config = parseSquadPilotConfig(JSON.stringify({ ...pilot, authority: settings.authority }));
+  if (!config) throw Error('Vault authority trust is unavailable');
+  const source = createAclStatementSource({
+    origin: settings.origin,
+    tenant: settings.tenant,
+    scope: settings.scope,
+    apiKey: settings.apiKey,
+  });
+  return {
+    config,
+    source: {
+      async read(at: number, signal: AbortSignal) {
+        return (await source.read(at, signal)).snapshot;
+      },
+    },
+  };
 }
 
 export function createVaultApiResolver(pilot: {config:{authority:ForumAuthorityConfig};source:{read(at:number,signal:AbortSignal):Promise<ForumAuthoritySnapshot>};services:{authenticate(request:Request):Promise<{key:string}|null>}}, clock=()=>Math.floor(Date.now()/1000)){
