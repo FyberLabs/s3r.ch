@@ -23,6 +23,7 @@ async function gunReady(status) {
 const windowMs = 5 * 60 * 1000;
 let deadline = Date.now() + windowMs;
 let sawTarget = false;
+let staleServing = false;
 let observation = 'No successful version and health responses';
 let ready = false;
 while (Date.now() < deadline) {
@@ -36,12 +37,24 @@ while (Date.now() < deadline) {
       // Allow TEST dependencies to initialize after Azure switches to the new container.
       if (origin === 'https://test.s3r.ch') deadline = Date.now() + windowMs;
     }
+    const durableReady = peer || (health.dependencies?.identity?.writable === true && health.dependencies?.identity?.status === 'ok');
+    const gun = health.dependencies?.gun?.status;
+    const configuredGun = gun === 'ok' || (origin === 'https://test.s3r.ch' && gun === 'external');
+    staleServing = !sawTarget && /^[0-9a-f]{40}$/.test(version.revision ?? '') &&
+      health.status === 'ok' && durableReady && configuredGun;
     observation = JSON.stringify({ revision: version.revision, health: health.status,
       identity: health.dependencies?.identity?.status, writable: health.dependencies?.identity?.writable,
-      gun: health.dependencies?.gun?.status });
-    if (version.revision === sha && health.status === 'ok' && (peer || (health.dependencies?.identity?.writable === true && health.dependencies?.identity?.status === 'ok')) && await gunReady(health.dependencies?.gun?.status)) { ready = true; break; }
-  } catch { /* Deployment or dependency startup is not ready yet. */ }
+      gun });
+    if (version.revision === sha && health.status === 'ok' && durableReady && await gunReady(gun)) { ready = true; break; }
+  } catch { staleServing = false; }
   await delay(3000);
 }
-if (!ready) throw Error('Deployment revision or durable dependency checks did not pass: ' + observation);
-console.log(`Verified ${origin} at ${sha}`);
+if (ready) {
+  console.log(`Verified ${origin} at ${sha}`);
+} else {
+  const message = 'Deployment revision or durable dependency checks did not pass: ' + observation;
+  if (origin === 'https://s3r.ch' || !staleServing) throw Error(message);
+  // TEST deployment can refresh once when a healthy previous revision is still serving.
+  console.error(message);
+  process.exitCode = 3;
+}
