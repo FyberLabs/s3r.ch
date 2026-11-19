@@ -100,7 +100,7 @@ test("TEST waits for storage after the target revision appears, within a fixed d
     syncBuiltinESMExports();
     globalThis.fetch = async (url) => {
       if (now > 600000) throw Error("unbounded verification");
-      const revision = now >= 240000 ? "${sha}" : "b".repeat(40);
+      const revision = now >= Number(process.env.TARGET_AT) ? "${sha}" : "b".repeat(40);
       const writable = now >= Number(process.env.READY_AT);
       const body = url.endsWith("/api/version") ? { revision } : {
         status: "ok", dependencies: { identity: { status: writable ? "ok" : "checking", writable }, gun: { status: "ok" } }
@@ -109,11 +109,11 @@ test("TEST waits for storage after the target revision appears, within a fixed d
     };
     process.on("exit", () => console.log("elapsed", now));
   `;
-  function verify(origin, readyAt) {
+  function verify(origin, readyAt, targetAt = 240000) {
     return spawnSync(process.execPath, [
       "--import", "data:text/javascript," + encodeURIComponent(fixture),
       "scripts/verify-deployed-release.mjs", origin, sha,
-    ], { encoding: "utf8", timeout: 5000, env: { ...process.env, READY_AT: String(readyAt) } });
+    ], { encoding: "utf8", timeout: 5000, env: { ...process.env, READY_AT: String(readyAt), TARGET_AT: String(targetAt) } });
   }
   const cold = verify("https://test.s3r.ch", 360000);
   assert.equal(cold.status, 0, cold.stderr);
@@ -124,4 +124,12 @@ test("TEST waits for storage after the target revision appears, within a fixed d
   const prod = verify("https://s3r.ch", 360000);
   assert.equal(prod.status, 1, prod.stderr);
   assert.match(prod.stdout, /elapsed 300000/);
+
+  const staleTest = verify("https://test.s3r.ch", 0, Infinity);
+  assert.equal(staleTest.status, 3, staleTest.stderr);
+  assert.match(staleTest.stderr, /"writable":true/);
+  const unreadyTest = verify("https://test.s3r.ch", Infinity, Infinity);
+  assert.equal(unreadyTest.status, 1, unreadyTest.stderr);
+  const staleProd = verify("https://s3r.ch", 0, Infinity);
+  assert.equal(staleProd.status, 1, staleProd.stderr);
 });
