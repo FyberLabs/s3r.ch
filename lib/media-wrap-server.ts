@@ -3,49 +3,70 @@ import { createForumAuthority } from "./identity/forum-authority";
 import { createMediaWrapService, parseMediaReaderConfig } from "./media-wrap-service";
 import { createMediaAgentRead } from "./media-agent-read";
 import { authenticateAgentRequest } from "./identity/site-agent-session-server";
+import { readSeaSessionCookie } from "./identity/sea-session-http";
+import { createIdentityTokenVerifier } from "./identity/sea-session-verifier";
+import { getIdentitySecret } from "./identity/secret";
+import { matchesRequestOrigin } from "./request-origin";
 
 import { createMediaGroupService } from "./media-group-service";
 
 import { createMediaOwnerService } from "./media-owner-service";
 
-let cached: { raw: string; pilot: unknown; service: ReturnType<typeof createMediaWrapService>; owner: ReturnType<typeof createMediaOwnerService>; group: ReturnType<typeof createMediaGroupService> } | undefined;
+let cached: { raw: string; identity: unknown; service: ReturnType<typeof createMediaWrapService>; owner: ReturnType<typeof createMediaOwnerService>; group: ReturnType<typeof createMediaGroupService> } | undefined;
 
 const testMediaTenant = "afee9b29-1706-5590-bbbf-e58df8945ac0";
 const testMediaGateway = "https://api.test.hyperme.sh";
+const testMediaSite = new URL("https://test.s3r.ch");
 
-export function configuredMediaReaderBindings(env: Record<string, string | undefined>, siteOrigin?: string) {
-  const existing = env.S3RCH_MEDIA_READER_BINDINGS;
+export function configuredTestMediaBinding(env: Record<string, string | undefined>) {
   const principal = env.S3RCH_TEST_MEDIA_OWNER_PRINCIPAL;
   const apiKey = env.S3RCH_TEST_MEDIA_ACL_API_KEY;
-  if (principal === undefined && apiKey === undefined) return existing;
-  if (existing !== undefined || env.WEBSITE_SITE_NAME !== "s3rch-fyberlabs-test" ||
-      siteOrigin !== "https://test.s3r.ch" || env.S3RCH_MEDIA_STORAGE_MODE !== "allocated-v1" ||
-      env.S3RCH_MEDIA_STORAGE_ORIGIN !== testMediaGateway ||
-      env.S3RCH_STATEMENT_SOURCE_TENANT_ID !== testMediaTenant || env.S3RCH_MEDIA_STORAGE_TENANT_ID !== testMediaTenant ||
+  if (principal === undefined && apiKey === undefined) return undefined;
+  if (env.S3RCH_MEDIA_READER_BINDINGS !== undefined || env.WEBSITE_SITE_NAME !== "s3rch-fyberlabs-test" ||
+      env.S3RCH_MEDIA_STORAGE_MODE !== "allocated-v1" || env.S3RCH_MEDIA_STORAGE_ORIGIN !== testMediaGateway ||
+      env.S3RCH_IDENTITY_REPLAY_BACKEND !== "spanopticon" || env.S3RCH_IDENTITY_REPLAY_TENANT_ID !== testMediaTenant ||
+      env.S3RCH_MEDIA_STORAGE_TENANT_ID !== testMediaTenant ||
       !principal || !apiKey || apiKey.startsWith("@Microsoft.KeyVault(")) {
     throw Error("Synthetic TEST media binding unavailable");
   }
   const raw = JSON.stringify({ origin: testMediaGateway, tenant: testMediaTenant, readers: [{ principal, apiKey }] });
   parseMediaReaderConfig(raw);
-  return raw;
+  return { raw, principal, siteOrigin: testMediaSite.origin };
+}
+
+export function createTestMediaReader(principal: string, secret: string, clock?: () => number) {
+  if (secret.startsWith("@Microsoft.KeyVault(")) throw Error("TEST identity session secret unavailable");
+  const verifier = createIdentityTokenVerifier({ origin: testMediaSite.origin, secret, clock });
+  return async (request: Request, signal: AbortSignal) => {
+    if (request.headers.has("authorization") || !matchesRequestOrigin(request, testMediaSite)) return null;
+    const token = readSeaSessionCookie(request);
+    if (!token) return null;
+    const session = await verifier.authenticate(token);
+    signal.throwIfAborted();
+    return session?.key === principal ? principal : null;
+  };
 }
 
 function getMediaServices() {
-  const hasBinding = process.env.S3RCH_MEDIA_READER_BINDINGS !== undefined ||
-    process.env.S3RCH_TEST_MEDIA_OWNER_PRINCIPAL !== undefined || process.env.S3RCH_TEST_MEDIA_ACL_API_KEY !== undefined;
-  if (!hasBinding) { cached = undefined; return null; }
-  const pilot = getSquadPilotServer();
-  if (!pilot) throw Error("Private media identity unavailable");
-  const raw = configuredMediaReaderBindings(process.env, pilot.config.origin);
+  const testBinding = configuredTestMediaBinding(process.env);
+  const raw = testBinding?.raw ?? process.env.S3RCH_MEDIA_READER_BINDINGS;
   if (raw === undefined) { cached = undefined; return null; }
-  if (cached?.raw === raw && cached.pilot === pilot) return cached;
+  const pilot = testBinding ? undefined : getSquadPilotServer();
+  const siteOrigin = testBinding?.siteOrigin ?? pilot?.config.origin;
+  if (!siteOrigin) throw Error("Private media identity unavailable");
+  const secret = testBinding ? getIdentitySecret({
+    IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production",
+  }) : undefined;
+  const identity = secret ?? pilot;
+  if (cached?.raw === raw && cached.identity === identity) return cached;
   cached = undefined;
   const config = parseMediaReaderConfig(raw);
-  if (config.tenant !== process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID || config.tenant !== process.env.S3RCH_MEDIA_STORAGE_TENANT_ID)
+  if ((!testBinding && config.tenant !== process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID) ||
+      config.tenant !== process.env.S3RCH_MEDIA_STORAGE_TENANT_ID)
     throw Error("Private media tenant mismatch");
-  const resolveReader = async (request: Request, signal: AbortSignal) => {
+  const resolveReader = testBinding && secret ? createTestMediaReader(testBinding.principal, secret) : async (request: Request, signal: AbortSignal) => {
     // A rejected bearer must never fall back to an ambient browser owner cookie.
-    if (request.headers.has("authorization")) return null;
+    if (request.headers.has("authorization") || !pilot) return null;
     const at = Math.floor(Date.now() / 1000), session = await pilot.services.authenticate(request);
     if (!session) return null;
     const snapshot = await pilot.source.read(at, signal);
@@ -55,19 +76,19 @@ function getMediaServices() {
     if (!result.ok || result.diagnostics.length || Math.floor(Date.now() / 1000) !== at) return null;
     return authority.graph.principalForKey(session.key, at);
   };
-  const browser = createMediaWrapService(config, pilot.config.origin, resolveReader);
-  const agent = createMediaAgentRead(config, pilot.config.origin,
+  const browser = createMediaWrapService(config, siteOrigin, resolveReader);
+  const agent = createMediaAgentRead(config, siteOrigin,
     request => authenticateAgentRequest(request, ["media:read"]));
   const service: ReturnType<typeof createMediaWrapService> = (request, action = "read-wrap") => {
     if (!request.headers.has("authorization")) return browser(request, action);
-    if (action === "read-wrap") return agent(request);
+    if (action === "read-wrap" && !testBinding) return agent(request);
     return Promise.resolve(new Response(null, { status: 403, headers: {
       "Cache-Control": "private, no-store", Vary: "Authorization, Cookie, Origin",
     } }));
   };
-  const owner = createMediaOwnerService(config, pilot.config.origin, resolveReader);
-  const group = createMediaGroupService(config, pilot.config.origin, resolveReader);
-  cached = { raw, pilot, service, owner, group }; return cached;
+  const owner = createMediaOwnerService(config, siteOrigin, resolveReader);
+  const group = createMediaGroupService(config, siteOrigin, resolveReader);
+  cached = { raw, identity, service, owner, group }; return cached;
 }
 
 export function getMediaWrapService() { return getMediaServices()?.service ?? null; }
