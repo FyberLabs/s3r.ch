@@ -12,7 +12,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { AgeConfirmation, AGE_CONFIRMATION_LABEL } from "../../components/AgeConfirmation";
 import { SignInOptions } from "../../components/SignInOptions";
 import { POST as verifySignIn } from "../../app/api/identity/verify/route";
-import { completeWalletSignIn, AGE_CONFIRMATION_REQUIRED } from "./age";
+import { completeWalletSignIn, isSyntheticMediaWallet, AGE_CONFIRMATION_REQUIRED } from "./age";
 import { LOCAL_SESSION_SECRET, OAUTH_CLIENT_ID } from "./config";
 import { nonceCookieName, oauthAgeCookieName, oauthPkceCookieName, oauthSessionCookieName } from "./cookies";
 import { FileLinkStore, openLinks, parseLinkFile } from "./link";
@@ -321,4 +321,17 @@ describe("age confirmation in blob storage", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+it("recognizes only the declared synthetic wallet on the canonical HTTPS TEST site", () => {
+  const address = "0x" + "ab".repeat(20);
+  const env = { WEBSITE_SITE_NAME: "s3rch-fyberlabs-test", S3RCH_TEST_MEDIA_OWNER_WALLET: address };
+  const request = { address, chainId: 1, host: "test.s3r.ch", secure: true };
+  assert.equal(isSyntheticMediaWallet(request, env), true);
+  assert.equal(isSyntheticMediaWallet(request, { ...env, WEBSITE_SITE_NAME: "s3rch-fyberlabs-prod" }), false);
+  assert.equal(isSyntheticMediaWallet(request, { ...env, S3RCH_TEST_MEDIA_OWNER_WALLET: undefined }), false);
+  assert.equal(isSyntheticMediaWallet({ ...request, host: "s3r.ch" }, env), false);
+  assert.equal(isSyntheticMediaWallet({ ...request, secure: false }, env), false);
+  assert.equal(isSyntheticMediaWallet({ ...request, chainId: 10 }, env), false);
+  assert.equal(isSyntheticMediaWallet({ ...request, address: "0x" + "cd".repeat(20) }, env), false);
 });

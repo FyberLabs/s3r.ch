@@ -1,5 +1,5 @@
 import { requestHost, requestIsSecure } from "@/lib/request-origin";
-import { completeWalletSignIn } from "@/lib/identity/age";
+import { completeWalletSignIn, isSyntheticMediaWallet } from "@/lib/identity/age";
 import { SESSION_TTL_SECONDS } from "@/lib/identity/config";
 import {
   nonceCookieName,
@@ -12,7 +12,8 @@ import {
   setIdentityCookie,
 } from "@/lib/identity/http";
 import { readNonceToken } from "@/lib/identity/nonce";
-import { linkLoginPaths } from "@/lib/identity/link";
+import { linkLoginPaths, ownerForWallet } from "@/lib/identity/link";
+import { signSessionToken } from "@/lib/identity/session";
 import { readBackupFromRequest } from "@/lib/identity/oauth";
 import { verifySiweLogin } from "@/lib/identity/siwe";
 
@@ -61,11 +62,13 @@ export async function POST(request: Request) {
     return Response.json({ error: "Nonce cookie is invalid or expired." }, { status: 400 });
   }
 
+  const host = requestHost(request);
+  const secure = requestIsSecure(request);
   const result = await verifySiweLogin({
     message,
     signature,
     expectedNonce,
-    requestHost: requestHost(request),
+    requestHost: host,
   });
 
   if (!result.ok) {
@@ -80,13 +83,19 @@ export async function POST(request: Request) {
     backup = null;
   }
 
-  const prepared = await completeWalletSignIn({
-    address: result.address,
-    chainId: result.chainId,
-    ageConfirmed: body.ageConfirmed === true,
-    secret,
-    oauthSub: backup?.sub ?? null,
-  });
+  const synthetic = isSyntheticMediaWallet({ address: result.address, chainId: result.chainId, host, secure });
+  if (synthetic && (backup || ownerForWallet(result.address) !== result.address)) {
+    return Response.json({ error: "Synthetic fixture identity unavailable." }, { status: 403 });
+  }
+  const prepared = synthetic
+    ? { ok: true as const, owner: result.address, token: await signSessionToken(result, secret) }
+    : await completeWalletSignIn({
+        address: result.address,
+        chainId: result.chainId,
+        ageConfirmed: body.ageConfirmed === true,
+        secret,
+        oauthSub: backup?.sub ?? null,
+      });
   if (!prepared.ok) {
     return Response.json({ error: prepared.error }, { status: prepared.status });
   }
@@ -105,7 +114,6 @@ export async function POST(request: Request) {
     linked = false;
   }
 
-  const secure = requestIsSecure(request);
   await setIdentityCookie(
     sessionCookieName(secure),
     prepared.token,

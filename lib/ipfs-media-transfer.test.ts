@@ -17,7 +17,7 @@ test("multi-block encryption/upload/retrieval returns only authenticated plainte
   const f=fixture(), input=new Uint8Array(IPFS_MEDIA_BLOCK_BYTES+7).fill(42);
   const grant=await f.client.upload(input,binding), manifest=JSON.parse(grant.manifest);
   assert.equal(manifest.blocks.length,2);assert.equal(grant.key.length,32);
-  assert.equal(grant.manifest.includes('key'),false);
+  assert.deepEqual(Object.keys(manifest).sort(), ["blocks", "bytes", "sha256", "version"]);
   assert.deepEqual(await f.client.download(grant.manifest,grant.key,binding),input);
   assert.deepEqual(f.counts(),{puts:2,gets:2});assert.ok(grant.key.some(byte=>byte!==0));
   assert.ok([...f.store.values()].some(bytes=>bytes.some(byte=>byte!==42)));

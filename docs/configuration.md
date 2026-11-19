@@ -56,6 +56,7 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 | `S3RCH_FORUM` | no | `data/forum.json` under the cwd (`/app/data/forum.json` in the image) | no | Forum ledger file. Same disk as the Gun directory. |
 | `S3RCH_IDENTITY_BLOB_ACCOUNT` | no for boot; required for production identity writes | unset | no | Azure Storage account name (3–24 lowercase letters and digits). |
 | `S3RCH_IDENTITY_BLOB_CONTAINER` | no for boot; required for production identity writes | unset | no | Private blob container that already exists. The blob name is `identity-links.json`. |
+| `S3RCH_TEST_MEDIA_OWNER_WALLET` | no | blank | no | Synthetic media fixture wallet on the canonical TEST App Service. Requires normal wallet sign-in from `https://test.s3r.ch` and uses no human age confirmation. |
 | `S3RCH_IDENTITY_LINKS` | no | `data/identity-links.json` when `NODE_ENV` is not production | no | Development identity file. Production does not read this path. |
 | `S3RCH_IDENTITY_WORKER_START_TIMEOUT_MS` | no | `60000` | no | How long the blob worker may take to start. An integer from 1000 through 120000 is used; anything else stays 60000. The background probe allows up to 200000 for that start, then adds 90 seconds for the blob call. |
 | `S3RCH_LOGIN_PROVIDERS` | no | SIWE, plus one provider id `panopticon` built from `S3RCH_OAUTH_*` when the issuer is set | no | JSON array that replaces the default provider list. Include the SIWE entry. |
