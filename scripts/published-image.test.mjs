@@ -100,7 +100,9 @@ test("TEST waits for storage after the target revision appears, within a fixed d
     syncBuiltinESMExports();
     globalThis.fetch = async (url) => {
       if (now > 600000) throw Error("unbounded verification");
-      const revision = now >= Number(process.env.TARGET_AT) ? "${sha}" : "b".repeat(40);
+      if (now >= Number(process.env.UNAVAILABLE_AT)) return new Response(null, { status: 503 });
+      const visible = now >= Number(process.env.TARGET_AT) && now < Number(process.env.TARGET_UNTIL);
+      const revision = visible ? "${sha}" : "b".repeat(40);
       const writable = now >= Number(process.env.READY_AT);
       const body = url.endsWith("/api/version") ? { revision } : {
         status: "ok", dependencies: { identity: { status: writable ? "ok" : "checking", writable }, gun: { status: "ok" } }
@@ -109,11 +111,12 @@ test("TEST waits for storage after the target revision appears, within a fixed d
     };
     process.on("exit", () => console.log("elapsed", now));
   `;
-  function verify(origin, readyAt, targetAt = 240000) {
+  function verify(origin, readyAt, { targetAt = 240000, targetUntil = Infinity, unavailableAt = Infinity } = {}) {
     return spawnSync(process.execPath, [
       "--import", "data:text/javascript," + encodeURIComponent(fixture),
       "scripts/verify-deployed-release.mjs", origin, sha,
-    ], { encoding: "utf8", timeout: 5000, env: { ...process.env, READY_AT: String(readyAt), TARGET_AT: String(targetAt) } });
+    ], { encoding: "utf8", timeout: 5000, env: { ...process.env, READY_AT: String(readyAt), TARGET_AT: String(targetAt),
+      TARGET_UNTIL: String(targetUntil), UNAVAILABLE_AT: String(unavailableAt) } });
   }
   const cold = verify("https://test.s3r.ch", 360000);
   assert.equal(cold.status, 0, cold.stderr);
@@ -125,11 +128,18 @@ test("TEST waits for storage after the target revision appears, within a fixed d
   assert.equal(prod.status, 1, prod.stderr);
   assert.match(prod.stdout, /elapsed 300000/);
 
-  const staleTest = verify("https://test.s3r.ch", 0, Infinity);
+  const staleTest = verify("https://test.s3r.ch", 0, { targetAt: Infinity });
   assert.equal(staleTest.status, 3, staleTest.stderr);
   assert.match(staleTest.stderr, /"writable":true/);
-  const unreadyTest = verify("https://test.s3r.ch", Infinity, Infinity);
+  const unreadyTest = verify("https://test.s3r.ch", Infinity, { targetAt: Infinity });
   assert.equal(unreadyTest.status, 1, unreadyTest.stderr);
-  const staleProd = verify("https://s3r.ch", 0, Infinity);
+  const staleProd = verify("https://s3r.ch", 0, { targetAt: Infinity });
   assert.equal(staleProd.status, 1, staleProd.stderr);
+
+  const interrupted = verify("https://test.s3r.ch", 0, { targetAt: Infinity, unavailableAt: 297000 });
+  assert.equal(interrupted.status, 3, interrupted.stderr);
+  assert.match(interrupted.stderr, /candidateObserved=false/);
+  const disappeared = verify("https://test.s3r.ch", 360000, { targetUntil: 270000 });
+  assert.equal(disappeared.status, 1, disappeared.stderr);
+  assert.match(disappeared.stderr, /candidateObserved=true/);
 });
