@@ -9,11 +9,35 @@ import { createMediaGroupService } from "./media-group-service";
 import { createMediaOwnerService } from "./media-owner-service";
 
 let cached: { raw: string; pilot: unknown; service: ReturnType<typeof createMediaWrapService>; owner: ReturnType<typeof createMediaOwnerService>; group: ReturnType<typeof createMediaGroupService> } | undefined;
+
+const testMediaTenant = "afee9b29-1706-5590-bbbf-e58df8945ac0";
+const testMediaGateway = "https://api.test.hyperme.sh";
+
+export function configuredMediaReaderBindings(env: Record<string, string | undefined>, siteOrigin?: string) {
+  const existing = env.S3RCH_MEDIA_READER_BINDINGS;
+  const principal = env.S3RCH_TEST_MEDIA_OWNER_PRINCIPAL;
+  const apiKey = env.S3RCH_TEST_MEDIA_ACL_API_KEY;
+  if (principal === undefined && apiKey === undefined) return existing;
+  if (existing !== undefined || env.WEBSITE_SITE_NAME !== "s3rch-fyberlabs-test" ||
+      siteOrigin !== "https://test.s3r.ch" || env.S3RCH_MEDIA_STORAGE_MODE !== "allocated-v1" ||
+      env.S3RCH_MEDIA_STORAGE_ORIGIN !== testMediaGateway ||
+      env.S3RCH_STATEMENT_SOURCE_TENANT_ID !== testMediaTenant || env.S3RCH_MEDIA_STORAGE_TENANT_ID !== testMediaTenant ||
+      !principal || !apiKey || apiKey.startsWith("@Microsoft.KeyVault(")) {
+    throw Error("Synthetic TEST media binding unavailable");
+  }
+  const raw = JSON.stringify({ origin: testMediaGateway, tenant: testMediaTenant, readers: [{ principal, apiKey }] });
+  parseMediaReaderConfig(raw);
+  return raw;
+}
+
 function getMediaServices() {
-  const raw = process.env.S3RCH_MEDIA_READER_BINDINGS;
-  if (raw === undefined) { cached = undefined; return null; }
+  const hasBinding = process.env.S3RCH_MEDIA_READER_BINDINGS !== undefined ||
+    process.env.S3RCH_TEST_MEDIA_OWNER_PRINCIPAL !== undefined || process.env.S3RCH_TEST_MEDIA_ACL_API_KEY !== undefined;
+  if (!hasBinding) { cached = undefined; return null; }
   const pilot = getSquadPilotServer();
   if (!pilot) throw Error("Private media identity unavailable");
+  const raw = configuredMediaReaderBindings(process.env, pilot.config.origin);
+  if (raw === undefined) { cached = undefined; return null; }
   if (cached?.raw === raw && cached.pilot === pilot) return cached;
   cached = undefined;
   const config = parseMediaReaderConfig(raw);
