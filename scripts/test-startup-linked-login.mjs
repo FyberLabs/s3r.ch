@@ -68,13 +68,17 @@ if (!scheduledStartupBrowser(process.env)) {
       }
       await login(); cases.push({ name: "linked-login-preserves-existing-sea", status: "passed" });
       const select = panel.getByRole("combobox", { name: "Organization" });
-      await select.selectOption(fixture.expected.organization_ids[0]);
-      assert.equal(await select.inputValue(), fixture.expected.organization_ids[0]);
-      await select.evaluate((element, id) => {
-        const option = document.createElement("option"); option.value = id; option.textContent = "foreign";
-        element.append(option); element.value = id; element.dispatchEvent(new Event("change", { bubbles: true }));
-      }, fixture.negative_organization_id);
-      assert.notEqual(await select.inputValue(), fixture.negative_organization_id);
+      if (fixture.expected.organization_ids.length === 0) {
+        assert.equal(await select.count(), 0);
+      } else {
+        await select.selectOption(fixture.expected.organization_ids[0]);
+        assert.equal(await select.inputValue(), fixture.expected.organization_ids[0]);
+        await select.evaluate((element, id) => {
+          const option = document.createElement("option"); option.value = id; option.textContent = "foreign";
+          element.append(option); element.value = id; element.dispatchEvent(new Event("change", { bubbles: true }));
+        }, fixture.negative_organization_id);
+        assert.notEqual(await select.inputValue(), fixture.negative_organization_id);
+      }
       cases.push({ name: "foreign-organization-selection-refused", status: "passed" });
       await panel.getByRole("button", { name: "Sign out linked account" }).click();
       await panel.getByRole("link", { name: "Sign in with your linked organization account" }).waitFor();

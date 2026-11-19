@@ -29,8 +29,8 @@ export function validateStartupBrowserFixture(value) {
         !fields(value.expected, ["sea_public_key", "person_id", "tenant_id", "organization_ids", "binding_sha256", "mapping_sha256"]) ||
         value.expected.sea_public_key !== value.sea_record.seaPub || !uuid(value.expected.person_id) || !uuid(value.expected.tenant_id) ||
         !hash(value.expected.binding_sha256) || !hash(value.expected.mapping_sha256) ||
-        !Array.isArray(value.expected.organization_ids) || value.expected.organization_ids.length !== 3 ||
-        !value.expected.organization_ids.every(uuid) || new Set(value.expected.organization_ids).size !== 3 ||
+        !Array.isArray(value.expected.organization_ids) || ![0, 3].includes(value.expected.organization_ids.length) ||
+        !value.expected.organization_ids.every(uuid) || new Set(value.expected.organization_ids).size !== value.expected.organization_ids.length ||
         value.expected.organization_ids.includes(value.negative_organization_id) ||
         !fields(value.login, ["driver", "origins", "credentials", "steps"]) || value.login.driver !== "form-v1" ||
         !Array.isArray(value.login.origins) || value.login.origins.length < 1 || value.login.origins.length > 4 ||

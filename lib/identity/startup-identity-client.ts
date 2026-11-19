@@ -1,3 +1,4 @@
+import { TEST_GITHUB_MEMBER_ENDPOINT } from "./startup-login-config";
 import { terminalStartupHeaders } from "./terminal-run";
 import { readBoundedIdentityJson } from "./bounded-json";
 import { resolveStartupLinkedIdentity, snapshotStartupLoginBinding,
@@ -11,7 +12,7 @@ export function createStartupIdentityClient(input: {
 }) {
   const endpoint = new URL(input.endpoint), expected = snapshotStartupLoginBinding(input.expected);
   if (!expected || endpoint.protocol !== "https:" || endpoint.username || endpoint.password ||
-      endpoint.search || endpoint.hash || !endpoint.pathname.endsWith("/auth/startup/identity")) {
+      endpoint.search || endpoint.hash || (expected.github ? endpoint.href !== TEST_GITHUB_MEMBER_ENDPOINT : !endpoint.pathname.endsWith("/auth/startup/identity"))) {
     throw Error("Explicit startup identity configuration required");
   }
   const target = endpoint.href, fetcher = input.fetch ?? fetch;

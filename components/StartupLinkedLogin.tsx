@@ -85,13 +85,13 @@ export function StartupLinkedLogin({ address }: { address: string | null | undef
   return <div className="mt-3 space-y-2 text-sm" data-testid="startup-linked-login">
     {identity ? <>
       <p>Connected existing identity <span className="font-mono">{identity.sea_public_key.slice(0, 12)}…</span></p>
-      <label className="flex items-center gap-2">Organization
+      {identity.organizations.length > 0 && <label className="flex items-center gap-2">Organization
         <select value={selected?.id ?? ""} onChange={event => {
           if (identity.organizations.some(row => row.id === event.target.value)) setOrganization(event.target.value);
         }} className="rounded border px-2 py-1">
           {identity.organizations.map(row => <option key={row.id} value={row.id}>{row.slug}</option>)}
         </select>
-      </label>
+      </label>}
       {selected && <p className="text-xs text-ink-muted">{selected.roles.join(", ")}</p>}
       <button type="button" onClick={() => void logout()} className="underline">Sign out linked account</button>
     </> : <a href="/api/identity/startup/start" className="underline">Sign in with your linked organization account</a>}

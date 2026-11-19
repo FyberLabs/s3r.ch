@@ -7,7 +7,9 @@ export type StartupOrganization = Readonly<{
 /** Server-authenticated configuration, never values supplied by the login response. */
 export type StartupLoginBinding = Readonly<{
   binding_sha256: string; mapping_sha256: string; sea_public_key: string;
-  tenant_id: string; network_id: string; entra: Readonly<{ tenant_id: string; object_id: string }>;
+  tenant_id: string; network_id: string;
+  entra?: Readonly<{ tenant_id: string; object_id: string }>;
+  github?: Readonly<{ subject: string }>;
   organizations: readonly StartupOrganization[];
 }>;
 export type StartupLinkedIdentity = StartupLoginBinding & Readonly<{
@@ -26,8 +28,17 @@ export function snapshotStartupLoginBinding(value: unknown): StartupLoginBinding
   if (!object(value) || !hash(value.binding_sha256) || !hash(value.mapping_sha256) ||
       typeof value.sea_public_key !== "string" || !isSeaPubkey(value.sea_public_key) || !uuid(value.tenant_id) ||
       typeof value.network_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}$/.test(value.network_id) ||
-      !object(value.entra) || !uuid(value.entra.tenant_id) || !uuid(value.entra.object_id) ||
-      !Array.isArray(value.organizations) || value.organizations.length !== 3) return null;
+      !Array.isArray(value.organizations)) return null;
+  const common = { binding_sha256: value.binding_sha256, mapping_sha256: value.mapping_sha256,
+    sea_public_key: value.sea_public_key, tenant_id: value.tenant_id, network_id: value.network_id };
+  if ("github" in value) {
+    if ("entra" in value || !object(value.github) || Object.keys(value.github).length !== 1 ||
+        !uuid(value.github.subject) || value.organizations.length !== 0 || value.network_id !== "hyperme.sh") return null;
+    return Object.freeze({ ...common, github: Object.freeze({ subject: value.github.subject }),
+      organizations: Object.freeze([]) });
+  }
+  if (!object(value.entra) || !uuid(value.entra.tenant_id) || !uuid(value.entra.object_id) ||
+      value.organizations.length !== 3) return null;
   const organizations: StartupOrganization[] = [];
   for (let index = 0; index < slugs.length; index++) {
     const row = value.organizations[index];
@@ -38,8 +49,7 @@ export function snapshotStartupLoginBinding(value: unknown): StartupLoginBinding
     organizations.push(Object.freeze({ slug: row.slug, id: row.id, tenant_id: row.tenant_id,
       roles: Object.freeze([...row.roles]) }));
   }
-  return Object.freeze({ binding_sha256: value.binding_sha256, mapping_sha256: value.mapping_sha256,
-    sea_public_key: value.sea_public_key, tenant_id: value.tenant_id, network_id: value.network_id,
+  return Object.freeze({ ...common,
     entra: Object.freeze({ tenant_id: value.entra.tenant_id, object_id: value.entra.object_id }),
     organizations: Object.freeze(organizations) });
 }
@@ -54,6 +64,7 @@ export function resolveStartupLinkedIdentity(value: unknown, expected: StartupLo
   if (!desired || !actual || !object(value) || value.schema_version !== 1 || value.status !== "resolved" ||
       !Array.isArray(value.permissions) || value.permissions.length !== 0 || !uuid(value.person_id) ||
       !subject(verifiedSubject) || value.broker_subject !== verifiedSubject ||
+      (desired.github !== undefined && verifiedSubject !== desired.github.subject) ||
       existing.sea_public_key !== desired.sea_public_key ||
       (existing.person_id !== undefined && existing.person_id !== value.person_id) ||
       JSON.stringify(desired) !== JSON.stringify(actual)) return null;
