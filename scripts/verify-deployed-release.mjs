@@ -1,7 +1,11 @@
 import { setTimeout as delay } from 'node:timers/promises';
-const [origin, sha] = process.argv.slice(2);
+const [origin, sha, priorRevision] = process.argv.slice(2);
+const revisionPattern = /^[0-9a-f]{40}$/;
 const peer = origin === 'https://test.s3r.ch/_peer';
-if (!(peer || ['https://test.s3r.ch', 'https://s3r.ch'].includes(origin)) || !/^[0-9a-f]{40}$/.test(sha ?? '')) throw Error('Fixed deployment origin and revision required');
+if (!(peer || ['https://test.s3r.ch', 'https://s3r.ch'].includes(origin)) || !revisionPattern.test(sha ?? '') ||
+    (priorRevision !== undefined && (origin === 'https://s3r.ch' || priorRevision === sha || !revisionPattern.test(priorRevision)))) {
+  throw Error('Fixed deployment origin and revision required');
+}
 async function gunReady(status) {
   if (status === 'ok') return true;
   if (origin !== 'https://test.s3r.ch' || status !== 'external') return false;
@@ -23,7 +27,7 @@ async function gunReady(status) {
 const windowMs = 5 * 60 * 1000;
 let deadline = Date.now() + windowMs;
 let sawTarget = false;
-let lastProbeSawHealthyPrior = false;
+let lastProbeSawPrior = false;
 let observation = 'No successful version and health responses';
 let ready = false;
 while (Date.now() < deadline) {
@@ -40,8 +44,10 @@ while (Date.now() < deadline) {
     const durableReady = peer || (health.dependencies?.identity?.writable === true && health.dependencies?.identity?.status === 'ok');
     const gun = health.dependencies?.gun?.status;
     const configuredGun = gun === 'ok' || (origin === 'https://test.s3r.ch' && gun === 'external');
-    lastProbeSawHealthyPrior = version.revision !== sha && /^[0-9a-f]{40}$/.test(version.revision ?? '') &&
-      health.status === 'ok' && durableReady && configuredGun;
+    // A prior revision identified by the rollout can still be restarting its dependencies.
+    lastProbeSawPrior = health.status === 'ok' && (priorRevision !== undefined
+      ? version.revision === priorRevision
+      : version.revision !== sha && revisionPattern.test(version.revision ?? '') && durableReady && configuredGun);
     observation = JSON.stringify({ revision: version.revision, health: health.status,
       identity: health.dependencies?.identity?.status, writable: health.dependencies?.identity?.writable,
       gun });
@@ -53,8 +59,8 @@ if (ready) {
   console.log(`Verified ${origin} at ${sha}`);
 } else {
   const message = `Deployment revision or durable dependency checks did not pass: ${observation} (candidateObserved=${sawTarget})`;
-  if (origin === 'https://s3r.ch' || sawTarget || !lastProbeSawHealthyPrior) throw Error(message);
-  // TEST deployment can refresh once when a healthy previous revision is still serving.
+  if (origin === 'https://s3r.ch' || sawTarget || !lastProbeSawPrior) throw Error(message);
+  // TEST deployment can refresh once when App Service is still serving the previous revision.
   console.error(message);
   process.exitCode = 3;
 }
