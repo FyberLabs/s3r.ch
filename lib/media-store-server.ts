@@ -8,7 +8,7 @@ import { createSpanopticonObjectStore } from "./spanopticon-object-store-server"
 import { createSpanopticonRecordStore } from "./spanopticon-record-store-server";
 import { createMediaObjectService } from "./media-object-service";
 import { createMediaAuthority } from "./media-authority-server";
-import { getMediaWrapService, getMediaOwnerService, getMediaGroupService } from "./media-wrap-server";
+import { configuredTestMediaBinding, getMediaWrapService, getMediaOwnerService, getMediaGroupService } from "./media-wrap-server";
 
 let cached: { identity: string; pilot: unknown; service: ReturnType<typeof createMediaObjectService> } | undefined;
 /** Disabled until deployment stages a dedicated media credential. Never reuse
@@ -20,17 +20,20 @@ export function getMediaObjectService() {
     apiKey = process.env.S3RCH_MEDIA_STORAGE_API_KEY;
   if ([origin, tenant, apiKey, mode].every(value => value === undefined)) { cached = undefined; return null; }
   if (!origin || !tenant || !apiKey) throw Error("Media storage unavailable");
-  const pilot = getSquadPilotServer();
-  if (!pilot) throw Error("Media authority unavailable");
+  const testBinding = configuredTestMediaBinding(process.env);
+  const pilot = testBinding ? undefined : getSquadPilotServer();
+  const siteOrigin = testBinding?.siteOrigin ?? pilot?.config.origin;
+  if (!siteOrigin) throw Error("Media authority unavailable");
   const identity = JSON.stringify([origin, tenant, apiKey, mode]);
   if (cached?.identity === identity && cached.pilot === pilot) return cached.service;
   cached = undefined;
   const config = { origin, tenant, apiKey };
   if(mode==="allocated-v1") {
-    const service=createAllocatedMediaService({origin:pilot.config.origin,allocated:createAllocatedMediaStore(config),
+    const service=createAllocatedMediaService({origin:siteOrigin,allocated:createAllocatedMediaStore(config),
       owner:getMediaOwnerService,wrap:getMediaWrapService,group:getMediaGroupService});
     cached={identity,pilot,service};return service;
   }
+  if (!pilot) throw Error("Media authority unavailable");
   const records = createSpanopticonRecordStore(config), registrations = createMediaRegistrationStore(records);
   const ownerAuthority = createMediaAuthority({ config: pilot.config.authority, authenticate: pilot.services.authenticate,
     read: pilot.source.read, registration: registrations.get });
