@@ -25,6 +25,9 @@ case "$(basename "$0"):$*" in
       echo "$GITHUB_SHA"
     fi ;;
   node:*) echo "verify $2 $3" >> "$TRACE"; if [[ "$3" == "$GITHUB_SHA" ]]; then
+      if [[ "$CASE" == repeat ]]; then [[ -z "${4:-}" ]] || exit 2
+      else [[ "${4:-}" == "$PRIOR" ]] || exit 2
+      fi
       if [[ "$2" == https://test.s3r.ch ]]; then
         case "$CASE" in
           stale-once|superseded)
@@ -34,7 +37,7 @@ case "$(basename "$0"):$*" in
         esac
       fi
       [[ "$(cat "$STATE")" == "$IMAGE_DIGEST" && "$CASE:$2" != "unhealthy:https://test.s3r.ch/_peer" ]]
-    else [[ "$3" == "$PRIOR" && "$(cat "$STATE")" == "$OLD" ]]; fi ;;
+    else [[ "$3" == "$PRIOR" && -z "${4:-}" && "$(cat "$STATE")" == "$OLD" ]]; fi ;;
   *) exit 2 ;;
 esac
 MOCK

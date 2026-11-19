@@ -111,10 +111,10 @@ test("TEST waits for storage after the target revision appears, within a fixed d
     };
     process.on("exit", () => console.log("elapsed", now));
   `;
-  function verify(origin, readyAt, { targetAt = 240000, targetUntil = Infinity, unavailableAt = Infinity } = {}) {
+  function verify(origin, readyAt, { targetAt = 240000, targetUntil = Infinity, unavailableAt = Infinity, priorRevision } = {}) {
     return spawnSync(process.execPath, [
       "--import", "data:text/javascript," + encodeURIComponent(fixture),
-      "scripts/verify-deployed-release.mjs", origin, sha,
+      "scripts/verify-deployed-release.mjs", origin, sha, ...(priorRevision ? [priorRevision] : []),
     ], { encoding: "utf8", timeout: 5000, env: { ...process.env, READY_AT: String(readyAt), TARGET_AT: String(targetAt),
       TARGET_UNTIL: String(targetUntil), UNAVAILABLE_AT: String(unavailableAt) } });
   }
@@ -142,4 +142,11 @@ test("TEST waits for storage after the target revision appears, within a fixed d
   const disappeared = verify("https://test.s3r.ch", 360000, { targetUntil: 270000 });
   assert.equal(disappeared.status, 1, disappeared.stderr);
   assert.match(disappeared.stderr, /candidateObserved=true/);
+
+  const knownPrior = verify("https://test.s3r.ch", Infinity, { targetAt: Infinity, priorRevision: "b".repeat(40) });
+  assert.equal(knownPrior.status, 3, knownPrior.stderr);
+  const differentPrior = verify("https://test.s3r.ch", 0, { targetAt: Infinity, priorRevision: "c".repeat(40) });
+  assert.equal(differentPrior.status, 1, differentPrior.stderr);
+  const targetUnready = verify("https://test.s3r.ch", Infinity, { priorRevision: "b".repeat(40) });
+  assert.equal(targetUnready.status, 1, targetUnready.stderr);
 });

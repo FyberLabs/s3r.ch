@@ -24,13 +24,13 @@ set_channel() {
 refresh() {
   az webapp restart -g "$group" -n "$web" || return 1
   az webapp restart -g "$group" -n "$peer" || return 1
-  node scripts/verify-deployed-release.mjs https://test.s3r.ch "$1" &&
-    node scripts/verify-deployed-release.mjs https://test.s3r.ch/_peer "$1"
+  node scripts/verify-deployed-release.mjs https://test.s3r.ch "$@" &&
+    node scripts/verify-deployed-release.mjs https://test.s3r.ch/_peer "$@"
 }
 refresh_candidate() {
   local status=0 head digest
-  refresh "$GITHUB_SHA" || status=$?
-  # The verifier reserves exit 3 for a healthy previous TEST revision that is still serving.
+  refresh "$GITHUB_SHA" "$@" || status=$?
+  # The verifier reserves exit 3 for a previous TEST revision that is still serving.
   if [[ "$status" != 3 ]]; then return "$status"; fi
   head=$(gh api repos/FyberLabs/s3r.ch/branches/master --jq .commit.sha) || return 1
   digest=$(channel_digest) || return 1
@@ -39,7 +39,7 @@ refresh_candidate() {
     return 1
   fi
   echo 'Previous TEST revision is still serving. Refreshing the moving TEST channel once.'
-  refresh "$GITHUB_SHA"
+  refresh "$GITHUB_SHA" "$@"
 }
 for app in "$web" "$peer"; do
   configured=$(az webapp config show -g "$group" -n "$app" --query linuxFxVersion -o tsv)
@@ -56,7 +56,7 @@ fi
 prior_revision=$(docker buildx imagetools inspect "$IMAGE@$previous" --format '{{json .Image}}' |
   python3 -c 'import json,sys; doc=json.load(sys.stdin); cfg=doc.get("linux/amd64",doc); print(cfg["config"]["Labels"]["org.opencontainers.image.revision"])')
 [[ "$prior_revision" =~ ^[0-9a-f]{40}$ ]]
-if set_channel "$IMAGE_DIGEST" && [[ "$(channel_digest)" == "$IMAGE_DIGEST" ]] && refresh_candidate; then
+if set_channel "$IMAGE_DIGEST" && [[ "$(channel_digest)" == "$IMAGE_DIGEST" ]] && refresh_candidate "$prior_revision"; then
   exit 0
 fi
 current=$(channel_digest)
