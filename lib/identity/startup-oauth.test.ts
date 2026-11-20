@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { generateKeyPair, SignJWT } from "jose";
 import { beginStartupOAuth, finishStartupOAuth, readStartupCredential, hasStartupPending } from "./startup-oauth";
 import { createStartupLinkedLogin } from "./startup-linked-login";
-import { parseStartupLoginConfig } from "./startup-login-config";
+import { parseStartupLoginConfig, TEST_GITHUB_MEMBER_ENDPOINT } from "./startup-login-config";
 import { startupPendingName, startupCredentialName } from "./startup-login-cookies";
 const env = { NODE_ENV: "test", S3RCH_STARTUP_LOGIN_PROVIDER: "panopticon",
   S3RCH_STARTUP_AUTH_URL: "https://auth.example.invalid/auth/startup/identity",
@@ -33,6 +33,7 @@ async function setup() {
 test("startup PKCE/nonce exchange returns only a bounded linked-credential cookie", async () => {
   const h = await setup(); let calls = 0;
   assert.equal(h.authorize.searchParams.get("kc_idp_hint"), "startup-entra");
+  assert.equal(h.authorize.searchParams.has("prompt"), false);
   assert.equal(h.authorize.searchParams.get("code_challenge_method"), "S256");
   assert.ok(h.authorize.searchParams.get("nonce")); assert.ok(hasStartupPending(h.request()));
   const idToken = await h.token();
@@ -65,6 +66,23 @@ test("startup PKCE/nonce exchange returns only a bounded linked-credential cooki
 
   assert.equal(await readStartupCredential(new Request(base + "/api/identity/startup/session", { headers: { cookie: credential } }), env,
     { config: async () => h.config, now: now + 300000 }), null);
+});
+
+test("the TEST GitHub linked sign-in requests a fresh broker challenge", async () => {
+  const issuer = "https://auth.test.hyperme.sh/realms/controlplane";
+  const subject = "00000000-0000-4000-8000-000000000121";
+  const tenant_id = "00000000-0000-4000-8000-000000000123";
+  const vector = JSON.parse(await readFile(new URL("./vectors/startup-deployment.json", import.meta.url), "utf8"));
+  const mapping = { broker: { audience: "s3rch-web", issuer, provider: "github", subject },
+    environment: "test", network_id: "hyperme.sh", sea_public_key: vector.binding.sea_public_key, tenant_id, version: 1 };
+  const config = parseStartupLoginConfig(new TextEncoder().encode(JSON.stringify(mapping) + "\n"),
+    { ...env, S3RCH_OAUTH_ISSUER: issuer, S3RCH_STARTUP_AUTH_URL: TEST_GITHUB_MEMBER_ENDPOINT });
+  const start = await beginStartupOAuth(new Request("https://test.s3r.ch/api/identity/startup/start"), env,
+    { config: async () => config, now });
+  const authorize = new URL(start.headers.get("location")!);
+  assert.equal(authorize.searchParams.get("kc_idp_hint"), "github");
+  assert.equal(authorize.searchParams.get("prompt"), "login");
+  assert.equal(authorize.searchParams.get("code_challenge_method"), "S256");
 });
 
 test("state mismatch or changed configuration refuses before token exchange", async () => {

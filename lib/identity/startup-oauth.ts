@@ -68,6 +68,8 @@ export async function beginStartupOAuth(request: Request, env: Env = process.env
     for (const [name, value] of Object.entries({ client_id: config.provider.clientId, redirect_uri: callback,
       response_type: "code", scope: "openid", state, nonce, code_challenge: challenge,
       code_challenge_method: "S256", kc_idp_hint: config.alias })) url.searchParams.set(name, value);
+    // A session created during OTP enrollment lacks the post-broker OTP challenge.
+    if (config.binding.github) url.searchParams.set("prompt", "login");
     const secure = requestIsSecure(request);
     return redirect(url.href, [...clearPending(), ...clearCredential(), clear(oauthPkceCookieName(true)), clear(oauthPkceCookieName(false)),
       serializeCookie(startupPendingName(secure), token, cookieOptions(secure, ttl))]);
