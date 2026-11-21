@@ -27,6 +27,8 @@ test("retired assignment actions cannot select a server executor", async () => {
         {params:Promise.resolve({path:["assignment",action]})});
       assert.equal(response.status,503);
     }
+    assert.equal((await POST(new Request("https://s3r.ch/api/squad/pilot/visor-companion", { method: "POST" }),
+      { params: Promise.resolve({ path: ["visor-companion"] }) })).status, 503);
   } finally { if(saved===undefined) delete process.env.S3RCH_SQUAD_PILOT; else process.env.S3RCH_SQUAD_PILOT=saved; }
 });
 

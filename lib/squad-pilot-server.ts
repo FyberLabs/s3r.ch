@@ -10,12 +10,15 @@ import { createForumAuthorityService } from "./forum-authority-service";
 import { createIdentityTokenVerifier } from "./identity/sea-session-verifier";
 import { readSeaSessionCookie } from "./identity/sea-session-http";
 import { identitySessionNamespace } from "./identity/replay-namespace";
+import { createMemoryVisorCompanionSetStore } from "./visor-companion-squad";
+import { createVisorCompanionSquadService } from "./visor-companion-squad-service";
 export { identitySessionNamespace } from "./identity/replay-namespace";
 
 /** Production uses only an explicitly provisioned owner source and replay store. */
 export function createSquadPilotServer(c: SquadPilotConfig, statements: BotStatementSource | undefined, replay: IdentityReplay | undefined,
   clock = () => Math.floor(Date.now() / 1000),
-  identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" })) {
+  identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" }),
+  tenant = process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID) {
   if (!statements) throw Error("ACL statement source is required");
   if (!replay) throw Error("ACL authority requires configured identity replay");
   const config = structuredClone(c);
@@ -25,12 +28,17 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
     const token = readSeaSessionCookie(request);
     return token ? verifier.authenticate(token) : null;
   };
+  const visorStore = createMemoryVisorCompanionSetStore();
   const common = { squad: config.squad, origin: config.origin, config: config.authority, clock, authenticate };
+  const visorCompanion = tenant && typeof tenant === "string"
+    ? createVisorCompanionSquadService({ ...common, tenant, store: visorStore, read: source.read })
+    : undefined;
   const services = Object.freeze({ authenticate,
     authority: createForumAuthorityService({ ...common, read: source.read }),
     statements: createBotStatementAdmission({ ...common, source: statements }),
-    rooms: createBotStatementAdmission({ ...common, source: statements, objectKind: "room" }) });
-  return { backend: "acl" as const, config, source, services };
+    rooms: createBotStatementAdmission({ ...common, source: statements, objectKind: "room" }),
+    ...(visorCompanion ? { visorCompanion } : {}) });
+  return { backend: "acl" as const, config, source, services, ...(visorCompanion ? { visorCompanionStore: visorStore } : {}) };
 }
 // No build-time or import-time secret/storage reads. Key Vault references are
 // resolved by App Service. Invalid/missing material never initializes state.
@@ -46,7 +54,9 @@ export function getSquadPilotServer() {
   if (!statements) throw Error("ACL statement source is required");
   if (process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID !== process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID)
     throw Error("Statement source and replay must use the same tenant");
-  const server = createSquadPilotServer(config, statements, replay);
+  const tenant = process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID;
+  if (!tenant) throw Error("Squad pilot tenant binding required");
+  const server = createSquadPilotServer(config, statements, replay, undefined, undefined, tenant);
   cached = { identity, server }; return server;
 }
 
