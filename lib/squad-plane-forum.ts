@@ -12,10 +12,13 @@ const uuid = (value: unknown): value is string => typeof value === "string" &&
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
-export type SquadPlaneConfig = Readonly<{ origin: string; tenant: string; roster: Readonly<Record<string, string>> }>;
+export type SquadPlaneConfig = Readonly<{ origin: string; tenant: string; roster: Readonly<Record<string, string>>; controlCredential?: string }>;
 
 export function parseSquadPlaneConfig(value: unknown): SquadPlaneConfig {
-  if (!record(value) || Object.keys(value).sort((left, right) => left.localeCompare(right, "en")).join() !== "origin,roster,tenant" ||
+  if (!record(value) || !["origin,roster,tenant", "controlCredential,origin,roster,tenant"].includes(
+      Object.keys(value).sort((left, right) => left.localeCompare(right, "en")).join()) ||
+      ("controlCredential" in value && (typeof value.controlCredential !== "string" ||
+        !/^hm_fop_[a-f0-9]{64}$/.test(value.controlCredential))) ||
       typeof value.origin !== "string" || !value.origin.startsWith("https://") ||
       new URL(value.origin).origin !== value.origin || !uuid(value.tenant) || !record(value.roster)) {
     throw Error("Invalid squad Plane configuration");
@@ -26,7 +29,8 @@ export function parseSquadPlaneConfig(value: unknown): SquadPlaneConfig {
       !entries.every(([bot, principal]) => uuid(bot) && typeof principal === "string" && isSeaPubkey(principal))) {
     throw Error("Invalid squad Plane roster");
   }
-  return { origin: value.origin, tenant: value.tenant, roster: value.roster as Record<string, string> };
+  return { origin: value.origin, tenant: value.tenant, roster: value.roster as Record<string, string>,
+    ...(typeof value.controlCredential === "string" ? { controlCredential: value.controlCredential } : {}) };
 }
 
 export function squadPlaneTaskId(tenant: string, forum: string, sourceTask: string): string {
@@ -40,6 +44,7 @@ export function squadPlaneTaskId(tenant: string, forum: string, sourceTask: stri
 }
 
 type Action = "tasks" | "control";
+type PlaneRequest = Action | "bot-controls";
 
 function command(action: Action, json: unknown) {
   if (!record(json) || json.version !== 1 || !uuid(json.bot_id) || !uuid(json.source_task_id) ||
@@ -86,40 +91,83 @@ export function createSquadPlaneForum(input: {
   const reply = (status: number, body?: object) =>
     Response.json(body ?? { error: "forum-agent-request-refused" }, { status, headers: { "Cache-Control": "no-store" } });
 
-  return async (request: Request, action: Action) => {
+  async function ownerGraph(key: string, signal: AbortSignal) {
+    const at = clock();
+    const snapshot = await input.read(at, signal);
+    if (!Array.isArray(snapshot.rows) || snapshot.rows.length > 1024) throw Error("Forum authority unavailable");
+    const authority = createForumAuthority(config, clock);
+    const verified = await authority.refresh(snapshot, at);
+    if (!verified.ok || clock() !== at || roomAuthorityReadDiagnosticsBlock(verified.diagnostics, snapshot) ||
+        authority.graph.ownerOf(squad.forumId) !== squad.owner) throw Error("Forum authority unavailable");
+    return authority.graph.principalForKey(key, at) === squad.owner ? { graph: authority.graph, at } : null;
+  }
+
+  function post(botId: string, path: string, credential: string, body: object, signal: AbortSignal) {
+    return send(new URL(`/api/v1/hypermesh/bots/${botId}/forum/${path}`, plane.origin), {
+      method: "POST", redirect: "error", cache: "no-store", signal,
+      headers: { Authorization: credential, "Content-Type": "application/json", "X-Tenant-ID": plane.tenant },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function browserControl(body: unknown, key: string, signal: AbortSignal) {
+    if (!plane.controlCredential) return reply(404);
+    if (!record(body) || body.version !== 1 ||
+        Object.keys(body).some(field => !["version", "bot_id", "action"].includes(field)) ||
+        (body.action !== undefined && body.action !== "pause" && body.action !== "resume")) return reply(400);
+    const current = await ownerGraph(key, signal);
+    if (!current) return reply(403);
+    const eligible = Object.entries(plane.roster).filter(([, principal]) =>
+      current.graph.checkForumSee(squad.forumId, principal, current.at).allowed &&
+      current.graph.checkPost(squad.forumId, principal, current.at).allowed);
+    if (body.bot_id === undefined) {
+      return body.action === undefined ? reply(200, { bots: eligible.map(([id, principal]) => ({ id, principal })) }) : reply(400);
+    }
+    const match = eligible.find(([id]) => id === body.bot_id);
+    if (!match) return reply(403);
+    const [id, principal] = match;
+    const response = await post(id, "control-current", "Bearer " + plane.controlCredential,
+      { version: 1, forum_id: squad.forumId, principal, action: body.action }, signal);
+    if (!response.ok) {
+      await response.body?.cancel();
+      return reply(response.status === 409 ? 409 : 503);
+    }
+    const fact = await readBoundedIdentityJson(response, 4096, signal);
+    if (!record(fact) || fact.version !== 1 || fact.tenant_id !== plane.tenant ||
+        fact.bot_id !== id || !record(fact.forum) || fact.forum.id !== squad.forumId ||
+        fact.forum.principal !== principal ||
+        (fact.desired !== "running" && fact.desired !== "paused" && fact.desired !== "stopped") ||
+        (body.action === "pause" && fact.desired !== "paused") ||
+        (body.action === "resume" && fact.desired !== "running")) return reply(503);
+    return reply(200, { desired: fact.desired });
+  }
+
+  return async (request: Request, action: PlaneRequest) => {
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(5000)]);
     const credential = request.headers.get("Authorization");
     if (request.method !== "POST" || !matchesBrowserOrigin(request, site) ||
-        request.headers.get("Content-Type")?.split(";")[0].trim() !== "application/json" ||
-        !credential || credential.length > 8192 || !/^Bearer [A-Za-z0-9._~-]+$/.test(credential)) return reply(403);
+        request.headers.get("Content-Type")?.split(";")[0].trim() !== "application/json") return reply(403);
 
     try {
       const session = await input.authenticate(request);
       if (!session) return reply(403);
       let body;
-      try { body = await readBoundedIdentityJson(new Response(request.body), 90000, signal); }
+      try { body = await readBoundedIdentityJson(new Response(request.body), action === "bot-controls" ? 1024 : 90000, signal); }
       catch { return reply(400); }
+      if (action === "bot-controls") return await browserControl(body, session.key, signal);
+      if (!credential || credential.length > 8192 || !/^Bearer [A-Za-z0-9._~-]+$/.test(credential)) return reply(403);
       const parsed = command(action, body);
       if (!parsed) return reply(400);
       const principal = plane.roster[parsed.bot_id];
       if (!principal) return reply(403);
 
-      const at = clock();
-      const snapshot = await input.read(at, signal);
-      if (!Array.isArray(snapshot.rows) || snapshot.rows.length > 1024) return reply(503);
-      const authority = createForumAuthority(config, clock);
-      const verified = await authority.refresh(snapshot, at);
-      if (!verified.ok || clock() !== at || roomAuthorityReadDiagnosticsBlock(verified.diagnostics, snapshot) ||
-          authority.graph.ownerOf(squad.forumId) !== squad.owner) return reply(503);
-      if (authority.graph.principalForKey(session.key, at) !== squad.owner ||
-          !authority.graph.checkForumSee(squad.forumId, principal, at).allowed ||
-          !authority.graph.checkPost(squad.forumId, principal, at).allowed) return reply(403);
+      const current = await ownerGraph(session.key, signal);
+      if (!current ||
+          !current.graph.checkForumSee(squad.forumId, principal, current.at).allowed ||
+          !current.graph.checkPost(squad.forumId, principal, current.at).allowed) return reply(403);
 
-      const response = await send(new URL(`/api/v1/hypermesh/bots/${parsed.bot_id}/forum/${action}`, plane.origin), {
-        method: "POST", redirect: "error", cache: "no-store", signal,
-        headers: { Authorization: credential, "Content-Type": "application/json", "X-Tenant-ID": plane.tenant },
-        body: JSON.stringify({ ...parsed.scope, forum_id: squad.forumId, ...(action === "tasks" ? { principal } : {}) }),
-      });
+      const response = await post(parsed.bot_id, action, credential,
+        { ...parsed.scope, forum_id: squad.forumId, ...(action === "tasks" ? { principal } : {}) }, signal);
       if (!response.ok) {
         await response.body?.cancel();
         return reply([401, 403, 404, 409, 422].includes(response.status) ? response.status : 503);

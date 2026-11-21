@@ -8,7 +8,8 @@ import vectors from "./identity/vectors/forum-authority.json";
 test("forum intake and control require current owner and roster access and return bound Plane status", async t => {
   const f = await forumBotFixture(t);
   const site = "https://forum.example.test";
-  const plane = { origin: "https://plane.example.test", tenant: f.tenant, roster: { [f.botA]: f.a.pub } };
+  const plane = { origin: "https://plane.example.test", tenant: f.tenant,
+    roster: { [f.botA]: f.a.pub }, controlCredential: "hm_fop_" + "a".repeat(64) };
   const base = { version: 1, bot_id: f.botA, source_task_id: randomUUID(),
     assignment_id: randomUUID(), session_id: randomUUID() };
   const task = { ...base, kind: "remote-agent", request_sha256: "a".repeat(64) };
@@ -26,7 +27,8 @@ test("forum intake and control require current owner and roster access and retur
       assert.equal(new URL(String(url)).origin, plane.origin);
       assert.equal(init?.redirect, "error");
       const headers = new Headers(init?.headers);
-      assert.equal(headers.get("Authorization"), "Bearer owner-plane-fixture");
+      const browserControl = new URL(String(url)).pathname.endsWith("/control-current");
+      assert.equal(headers.get("Authorization"), "Bearer " + (browserControl ? plane.controlCredential : "owner-plane-fixture"));
       assert.equal(headers.get("Cookie"), null);
       assert.equal(headers.get("X-Tenant-ID"), f.tenant);
       const body = JSON.parse(String(init?.body));
@@ -57,4 +59,11 @@ test("forum intake and control require current owner and roster access and retur
   remove = true;
   assert.equal((await service(request(task), "tasks")).status, 403);
   assert.equal(calls, 3);
+  remove = false; mismatch = false;
+  const list = await service(request({ version: 1 }), "bot-controls");
+  assert.deepEqual(await list.json(), { bots: [{ id: f.botA, principal: f.a.pub }] });
+  assert.equal((await service(request({ version: 1, bot_id: f.botA, action: "pause" }, f.a.pub), "bot-controls")).status, 403);
+  const browserPaused = await service(request({ version: 1, bot_id: f.botA, action: "pause" }), "bot-controls");
+  assert.deepEqual(await browserPaused.json(), { desired: "paused" });
+  assert.equal(calls, 4);
 });
