@@ -55,7 +55,7 @@ if (!scheduledStartupBrowser(process.env)) {
         await page.locator("input#username").fill(fixture.login.credentials.username);
         await password.fill(fixture.login.credentials.password);
         await page.locator("#kc-login").click();
-        const otpForm = downstream + "/login-actions/authenticate";
+        const otpForm = downstream + "/login-actions/post-broker-login";
         const otp = page.locator("input#otp");
         await page.waitForURL(url => url.origin === nightlyLoginOrigin &&
           [downstream + "/broker/startup-nightly/endpoint", otpForm].includes(url.pathname));
