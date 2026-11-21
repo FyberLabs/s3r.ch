@@ -28,8 +28,8 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
   };
   const common = { squad: config.squad, origin: config.origin, config: config.authority, clock, authenticate };
   const services = Object.freeze({ authenticate,
-    planeForum: config.plane ? createSquadPlaneForum({ siteOrigin: config.origin, squad: config.squad,
-      plane: config.plane, config: config.authority, authenticate, read: source.read, clock }) : undefined,
+    ...(config.plane ? { planeForum: createSquadPlaneForum({ siteOrigin: config.origin, squad: config.squad,
+      plane: config.plane, config: config.authority, authenticate, read: source.read, clock }) } : {}),
     authority: createForumAuthorityService({ ...common, read: source.read }),
     statements: createBotStatementAdmission({ ...common, source: statements }),
     rooms: createBotStatementAdmission({ ...common, source: statements, objectKind: "room" }) });
