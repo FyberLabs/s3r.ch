@@ -4,6 +4,7 @@ import { parseForumAuthority, type ParsedAuthority } from "./identity/forum-auth
 import { isForumObjectId, sameEmbeddedPrincipal } from "./identity/forum-check";
 import { verifyForumKeySignature } from "./identity/forum-key-signature";
 import { matchesBrowserOrigin } from "./request-origin";
+import { parseForumUpdateProof, verifyForumUpdate, type VerifiedForumUpdate } from "./forum-plane-update";
 import type { LiveSquadSpec } from "./squad-view";
 export type BotStatementSource = Readonly<{
   /** A provisioned primary snapshot and its opaque concurrency fence. Never Gun. */
@@ -12,18 +13,38 @@ export type BotStatementSource = Readonly<{
    * Must not mint enrollment, discard history, or restamp imported completeness. */
   append(fence: string, rows: ForumAuthoritySnapshot["rows"], guard: () => void, signal: AbortSignal): Promise<boolean>;
 }>;
+export type PlaneForumUpdateAuthority = Readonly<{
+  tenant: string;
+  roster: Readonly<Record<string, string>>;
+  /** Retain the signed update and its ACL rows under both authorities' commit
+   * fences. A fresh Plane read followed by a generic append cannot implement
+   * this contract. Recheck current delivery, session, principal and pause
+   * before committing. Deduplicate by delivery and sequence; reject conflicts. */
+  commit(input: {
+    aclFence: string; update: VerifiedForumUpdate; rows: ForumAuthoritySnapshot["rows"];
+    guard: () => void; signal: AbortSignal;
+  }): Promise<"committed" | "refused" | "conflict">;
+}>;
+
 /** Additive provider interface. Deployment must explicitly supply its atomic
  * source; no missing provider falls back to the legacy assignment journal.
  */
 export function createBotStatementAdmission(input: { origin: string; squad: LiveSquadSpec; config: ForumAuthorityConfig;
-  authenticate(request: Request): Promise<{ key: string } | null>; source: BotStatementSource; clock?: () => number; objectKind?: "stmt" | "room" }) {
+  authenticate(request: Request): Promise<{ key: string } | null>; source: BotStatementSource; clock?: () => number; objectKind?: "stmt" | "room";
+  planeUpdates?: PlaneForumUpdateAuthority;
+}) {
   const objectKind = input.objectKind ?? "stmt";
   const origin = new URL(input.origin), spec = Object.freeze({ ...input.squad }), config = structuredClone(input.config);
   if (origin.origin !== input.origin || origin.protocol !== "https:") throw Error("HTTPS statement origin required");
-  const { authenticate, source } = input, clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
+  const { authenticate, source, planeUpdates } = input;
+  const roster = planeUpdates ? { ...planeUpdates.roster } : {};
+  const planePrincipals = new Set(Object.values(roster));
+  const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   const reply = (status: number) => Response.json({ ok: status === 200 }, { status, headers: { "Cache-Control": "no-store" } });
   const readers = new Map<string, number>(); let active = 0;
-  return async (request: Request) => {
+  return async (request: Request, path: "statements" | "plane-update" = "statements") => {
+    const isUpdate = path === "plane-update";
+    if (isUpdate && (!planeUpdates || objectKind !== "stmt")) return reply(503);
     let reserved: string | null = null;
     const deadline = new AbortController();
     const timer = setTimeout(() => deadline.abort(), 1500);
@@ -47,9 +68,12 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       } finally { clearTimeout(timer); reader.releaseLock(); }
       if (timedOut || clock() !== at) return reply(409);
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-      if (!body || Object.keys(body).sort().join() !== "evaluatedAt,forumId,owner,rows,version" || body.version !== 1 ||
+      const keys = isUpdate ? "evaluatedAt,forumId,owner,rows,update,version" : "evaluatedAt,forumId,owner,rows,version";
+      if (!body || Object.keys(body).sort().join() !== keys || body.version !== 1 ||
           body.forumId !== spec.forumId || body.owner !== spec.owner || body.evaluatedAt !== at ||
           !Array.isArray(body.rows) || body.rows.length > 65) return reply(400);
+      const proof = isUpdate ? parseForumUpdateProof(body.update) : null;
+      if (isUpdate && (!proof || body.rows.length === 0)) return reply(400);
       const held = await bounded(source.read(at, signal));
       if (typeof held.fence !== "string" || !held.fence || held.fence.length > 4096) return reply(503);
       const snapshot = structuredClone(held.snapshot);
@@ -62,6 +86,8 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
           !authority.graph.checkForumSee(spec.forumId, principal, at).allowed || !authority.graph.checkPost(spec.forumId, principal, at).allowed)
         return reply(403);
       if (body.rows.length === 0) return reply(roomAuthorityReadDiagnosticsBlock(verified.diagnostics, snapshot) ? 403 : 200); // Authenticated provider readiness; no mutation.
+      if (!isUpdate && objectKind === "stmt" && planePrincipals.has(principal)) return reply(403);
+      if (proof && roster[proof.botId] !== principal) return reply(403);
       const parsed = body.rows.map((row: any) => {
         if (!row || Object.keys(row).sort().join() !== "kind,record,soul") throw Error("Invalid authority envelope");
         const value = parseForumAuthority(row.kind, row.record);
@@ -82,6 +108,17 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
         if ((p.kind === "see" || p.kind === "post") && (p.row.until > at + 3600 || (p.row.stated === 1 &&
             (!authority.graph.checkForumSee(spec.forumId, p.row.accessor, at).allowed ||
              (p.kind === "post" && !authority.graph.checkPost(spec.forumId, p.row.accessor, at).allowed))))) return reply(403);
+      }
+      let verifiedUpdate: VerifiedForumUpdate | null = null;
+      if (proof && planeUpdates) {
+        const objectRow = parsed.find((value: ParsedAuthority) => value.kind === "object");
+        if (!objectRow || parsed.filter((value: ParsedAuthority) => value.kind === "object").length !== 1) return reply(400);
+        const issuedAt = objectRow.row.issuedAt, writerKey = authority.graph.writerKey(principal, issuedAt, at);
+        if (!writerKey) return reply(403);
+        verifiedUpdate = await bounded(verifyForumUpdate(proof, {
+          tenant: planeUpdates.tenant, forumId: spec.forumId, principal, object, issuedAt, writerKey,
+        }));
+        if (!verifiedUpdate) return reply(403);
       }
       // Canonical signed meaning, not object key order or signature encoding,
       // identifies a retained row. Verify supplied signatures even on retries.
@@ -115,6 +152,12 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       if (!result.ok || roomAuthorityDiagnosticsBlock(result.diagnostics, nextSnapshot, candidate.graph, object) || candidate.graph.ownerOf(object) !== principal) return reply(403);
       const guard = () => { signal.throwIfAborted(); if (clock() !== at) throw Error("Statement authority expired"); };
       guard();
+      if (verifiedUpdate && planeUpdates) {
+        const result = await bounded(planeUpdates.commit({
+          aclFence: held.fence, update: verifiedUpdate, rows: structuredClone(additions), guard, signal,
+        }));
+        return reply(result === "committed" ? 200 : result === "conflict" ? 409 : 403);
+      }
       if (additions.length === 0) return reply(200);
       return reply(await bounded(source.append(held.fence, structuredClone(additions), guard, signal)) ? 200 : 409);
     } catch { return reply(503); } finally {

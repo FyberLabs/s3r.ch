@@ -1,6 +1,6 @@
 import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { configuredAclStatementSource, StatementSourceConflict } from "./acl-statement-source-server";
-import type { BotStatementSource } from "./forum-bot-statement-admission";
+import type { BotStatementSource, PlaneForumUpdateAuthority } from "./forum-bot-statement-admission";
 import { configuredIdentityReplay, type IdentityReplay } from "./identity/spanopticon-replay-server";
 import { getIdentitySecret } from "./identity/secret";
 import { parseSquadPilotConfig, type SquadPilotConfig } from "./squad-pilot-config";
@@ -15,7 +15,8 @@ export { identitySessionNamespace } from "./identity/replay-namespace";
 /** Production uses only an explicitly provisioned owner source and replay store. */
 export function createSquadPilotServer(c: SquadPilotConfig, statements: BotStatementSource | undefined, replay: IdentityReplay | undefined,
   clock = () => Math.floor(Date.now() / 1000),
-  identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" })) {
+  identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" }),
+  planeUpdates?: PlaneForumUpdateAuthority) {
   if (!statements) throw Error("ACL statement source is required");
   if (!replay) throw Error("ACL authority requires configured identity replay");
   const config = structuredClone(c);
@@ -28,7 +29,7 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
   const common = { squad: config.squad, origin: config.origin, config: config.authority, clock, authenticate };
   const services = Object.freeze({ authenticate,
     authority: createForumAuthorityService({ ...common, read: source.read }),
-    statements: createBotStatementAdmission({ ...common, source: statements }),
+    statements: createBotStatementAdmission({ ...common, source: statements, planeUpdates }),
     rooms: createBotStatementAdmission({ ...common, source: statements, objectKind: "room" }) });
   return { backend: "acl" as const, config, source, services };
 }

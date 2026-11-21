@@ -107,3 +107,53 @@ test("a writer exhausting its retained allocation cannot consume another bot's c
   assert.equal((await s.service(s.request({ rows: [s.nextObject(s.f.a)] }, s.f.a.pub))).status, 200);
   assert.equal(s.writes(), 2);
 });
+
+test("Plane update admission verifies the bot and signed body and uses only the two-authority commit", async t => {
+  const f = await forumBotFixture(t), origin = "https://forum.example.test";
+  const taskId = randomUUID();
+  const prior = f.rows.length;
+  const signed = await f.signed(["update", f.tenant, taskId, "Reviewed response received."], f.b);
+  const rows = f.rows.slice(0, prior), additions = f.rows.slice(prior);
+  const snapshot = () => ({ completeThrough: f.now(), rows,
+    history: { completeThrough: f.now(), links: [], accounts: [f.owner, f.a, f.b].map(pair =>
+      ({ principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) } });
+  let commits = 0, generic = 0, paused = true;
+  const service = createBotStatementAdmission({
+    origin, squad: { owner: f.owner.pub, forumId: f.forum, label: "Bot admission" },
+    config: { keys: [], pinnedIssuers: [], policy: vectors.context.policy }, clock: f.now,
+    authenticate: async () => ({ key: f.b.pub }),
+    source: { read: async () => ({ snapshot: snapshot(), fence: String(rows.length) }),
+      append: async () => { generic++; return true; } },
+    planeUpdates: { tenant: f.tenant, roster: { [f.botB]: f.b.pub },
+      async commit({ aclFence, update, rows: admitted, guard }) {
+        commits++;
+        assert.equal(update.principal, f.b.pub);
+        assert.equal(update.statementId, signed.id);
+        assert.equal(update.taskId, taskId);
+        guard();
+        if (paused) return "refused";
+        if (aclFence !== String(rows.length)) return "conflict";
+        rows.push(...admitted);
+        return "committed";
+      } },
+  });
+  const proof = { botId: f.botB, assignmentId: randomUUID(), sessionId: randomUUID(), taskId,
+    deliveryId: randomUUID(), sequence: 1, signature: signed.signature };
+  const request = (update?: object) => new Request(origin + "/api/squad/pilot", { method: "POST",
+    headers: { Origin: origin, "Content-Type": "application/json" },
+    body: JSON.stringify({ version: 1, forumId: f.forum, owner: f.owner.pub,
+      evaluatedAt: f.now(), rows: additions, ...(update ? { update } : {}) }) });
+
+  assert.equal((await service(request())).status, 403);
+  assert.equal((await service(request({ ...proof, botId: f.botA }), "plane-update")).status, 403);
+  assert.equal((await service(request({ ...proof, taskId: randomUUID() }), "plane-update")).status, 403);
+  assert.equal(commits, 0);
+  assert.equal((await service(request(proof), "plane-update")).status, 403);
+  paused = false;
+  assert.equal((await service(request(proof), "plane-update")).status, 200);
+  assert.equal((await service(request(proof), "plane-update")).status, 200);
+  paused = true;
+  assert.equal((await service(request(proof), "plane-update")).status, 403);
+  assert.equal(commits, 4);
+  assert.equal(generic, 0);
+});
