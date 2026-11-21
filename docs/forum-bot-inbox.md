@@ -71,6 +71,9 @@ array, bounded by the forum's 280-character body limit:
 - `approval`: tenant UUID, task UUID, approval time
   and deadline in Unix seconds. This additive report is ignored by older clients.
 - `progress`: tenant UUID, task UUID and integer percent from 0 to 100.
+- `update`: tenant UUID, task UUID and report text of at most 180 characters.
+  The Task-update card is informational. Plane delivery and current forum authority
+  are required for the Visor posting adapter tracked in #664.
 - `result`: tenant UUID, task UUID, terminal state and artifact UUID or null.
 
 Statement IDs bind the signing principal and provide message identity; task IDs
