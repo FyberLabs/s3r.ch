@@ -93,7 +93,9 @@ export function createRecordVisorCompanionSetStore(records: RecordStore, forumId
 export function configuredVisorCompanionSetStore(env: Readonly<Record<string, string | undefined>>,
   forumId: string, fetcher: typeof fetch = fetch): VisorCompanionSetStore | undefined {
   if (env.S3RCH_AUTHORITY_BACKEND !== "acl") return undefined;
-  const origin = env.S3RCH_STATEMENT_SOURCE_ORIGIN, tenant = env.S3RCH_STATEMENT_SOURCE_TENANT_ID, apiKey = env.S3RCH_STATEMENT_SOURCE_API_KEY;
+  const origin = env.S3RCH_VISOR_COMPANION_RECORD_ORIGIN;
+  const tenant = env.S3RCH_VISOR_COMPANION_RECORD_TENANT_ID;
+  const apiKey = env.S3RCH_VISOR_COMPANION_RECORD_API_KEY;
   if (!origin || !tenant || !apiKey) return undefined;
   return createRecordVisorCompanionSetStore(createSpanopticonRecordStore({ origin, tenant, apiKey }, fetcher), forumId);
 }

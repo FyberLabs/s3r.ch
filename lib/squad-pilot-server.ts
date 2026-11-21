@@ -48,7 +48,7 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
 // resolved by App Service. Invalid/missing material never initializes state.
 let cached: { identity: string; server: ReturnType<typeof createSquadPilotServer> } | undefined;
 export function getSquadPilotServer() {
-  const identity = JSON.stringify([process.env.IDENTITY_SESSION_SECRET, process.env.S3RCH_SQUAD_PILOT, process.env.S3RCH_IDENTITY_REPLAY_BACKEND, process.env.S3RCH_IDENTITY_REPLAY_ORIGIN, process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID, process.env.S3RCH_IDENTITY_REPLAY_API_KEY, process.env.S3RCH_AUTHORITY_BACKEND, process.env.S3RCH_STATEMENT_SOURCE_ORIGIN, process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID, process.env.S3RCH_STATEMENT_SOURCE_SCOPE, process.env.S3RCH_STATEMENT_SOURCE_API_KEY]);
+  const identity = JSON.stringify([process.env.IDENTITY_SESSION_SECRET, process.env.S3RCH_SQUAD_PILOT, process.env.S3RCH_IDENTITY_REPLAY_BACKEND, process.env.S3RCH_IDENTITY_REPLAY_ORIGIN, process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID, process.env.S3RCH_IDENTITY_REPLAY_API_KEY, process.env.S3RCH_AUTHORITY_BACKEND, process.env.S3RCH_STATEMENT_SOURCE_ORIGIN, process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID, process.env.S3RCH_STATEMENT_SOURCE_SCOPE, process.env.S3RCH_STATEMENT_SOURCE_API_KEY, process.env.S3RCH_VISOR_COMPANION_RECORD_ORIGIN, process.env.S3RCH_VISOR_COMPANION_RECORD_TENANT_ID, process.env.S3RCH_VISOR_COMPANION_RECORD_API_KEY]);
   if (cached?.identity === identity) return cached.server;
   cached = undefined;
   const config = parseSquadPilotConfig(process.env.S3RCH_SQUAD_PILOT);

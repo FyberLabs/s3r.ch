@@ -74,6 +74,9 @@ export function createVisorCompanionSquadService(input: {
       }
       const ownerPrincipal = agent ? ownerKey : authority.graph.principalForKey(ownerKey, evaluatedAt);
       if (!ownerPrincipal) return reply(403, { error: "authentication" });
+      if (agent && !authority.graph.checkForumSee(spec.forumId, agent.agent, evaluatedAt).allowed) {
+        return reply(403, { error: "authentication" });
+      }
       const result = await resolveVisorCompanionSquad({
         squad: spec, origin: origin.origin, authority: config, tenant, ownerPrincipal, evaluatedAt,
         request: parsed, snapshot, store, clock,

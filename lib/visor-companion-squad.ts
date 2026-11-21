@@ -124,12 +124,8 @@ function companionSnapshot(request: VisorCompanionResolveRequest, stored: VisorC
     if (stored.setGeneration === request.setGeneration) {
       for (const [id, row] of stored.companions) if (!companions.has(id)) retired.set(id, row);
     } else for (const [id, row] of stored.companions) retired.set(id, row);
-    while (retired.size > MAX_RETIRED_COMPANIONS) {
-      const drop = retired.keys().next().value;
-      if (drop === undefined) break;
-      retired.delete(drop);
-    }
   }
+  if (retired.size > MAX_RETIRED_COMPANIONS) throw new Error("Visor companion set capacity");
   return Object.freeze({ setId: request.setId, setGeneration: request.setGeneration, companions, retired });
 }
 
@@ -198,6 +194,9 @@ export async function resolveVisorCompanionSquad(input: VisorCompanionResolveInp
       companionSnapshot(input.request, stored), held.revision);
   } catch (error) {
     if (error instanceof RecordConflict) return { ok: false, reason: "stale-generation" };
+    if (error instanceof Error && error.message === "Visor companion set capacity") {
+      return { ok: false, reason: "stale-generation" };
+    }
     throw error;
   }
   return {
