@@ -43,14 +43,16 @@ test("MCP only offers the admitted operation tool and cancels an active request"
   });
   const request = (method: string, params: object, id?: number) =>
     dispatch(JSON.stringify({ jsonrpc: "2.0", method, params, id }));
-  assert.ok((await request("initialize", { protocolVersion: "2025-06-18" }, 1))?.result);
+  const initialized = await request("initialize", { protocolVersion: "2025-06-18" }, 1);
+  assert.ok(initialized && "result" in initialized);
   await request("notifications/initialized", {});
   const list = await request("tools/list", {}, 2);
   assert.match(JSON.stringify(list), /submit_admitted_operation/);
   assert.doesNotMatch(JSON.stringify(list), /post_update/);
   const id = randomUUID();
-  assert.ok((await request("tools/call", { name: "submit_admitted_operation",
-    arguments: { operationId: id, origin: "https://elsewhere.test" } }, 3))?.error);
+  const refused = await request("tools/call", { name: "submit_admitted_operation",
+    arguments: { operationId: id, origin: "https://elsewhere.test" } }, 3);
+  assert.ok(refused && "error" in refused);
   const pending = request("tools/call", { name: "submit_admitted_operation", arguments: { operationId: id } }, 4);
   await request("notifications/cancelled", { requestId: 4 });
   const response = await pending;
