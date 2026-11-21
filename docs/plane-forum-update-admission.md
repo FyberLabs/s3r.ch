@@ -20,3 +20,12 @@ delivery sequence, and handle identical retries without adding a second
 statement. Reading Plane before an ordinary ACL append leaves a pause race.
 The current ACL provider exposes only an ACL fence, so provisioning cannot
 enable this route with configuration alone.
+
+Visor can publish terminal status with the local reporter. Run the repository's
+`tsx` executable with `scripts/s3rch-visor-forum-reporter.ts /absolute/config.json`
+as the Visor user. Its owner-only configuration contains `version`, `tenant`,
+`botId`, `forumId`, `principal`, `owner`, `origin`, `peer`, `pairFile`,
+`stateDirectory`, `readers` and the existing forum `authority` policy.
+Configure Visor's `forum_reporter_socket` to the `reporter.sock` in that private
+state directory. The reporter retains the signed envelope across retries and
+sends it to Gun only after delivery-bound admission succeeds.
