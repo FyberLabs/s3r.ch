@@ -29,8 +29,11 @@ async function nativePOST(request: Request, context: { params: Promise<{ path: s
     if (path[0] === "assignment") return reply(503);
     const pilot = getSquadPilotServer();
     if (!pilot) return reply(404);
-    if (path.length === 2 && path[0] === "plane" && path[1] === "update") {
-      return pilot.services.statements(request, "plane-update");
+    if (path.length === 2 && path[0] === "plane") {
+      if (path[1] === "update") return pilot.services.statements(request, "plane-update");
+      if (path[1] === "tasks" || path[1] === "control") {
+        return pilot.services.planeForum ? pilot.services.planeForum(request, path[1]) : reply(404);
+      }
     }
     if (path.length === 1 && path[0] === "statement") return pilot.services.statements ? pilot.services.statements(request) : reply(503);
     if (path.length === 1 && path[0] === "room") return pilot.services.rooms(request);

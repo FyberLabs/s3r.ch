@@ -6,6 +6,7 @@ import { getIdentitySecret } from "./identity/secret";
 import { parseSquadPilotConfig, type SquadPilotConfig } from "./squad-pilot-config";
 import { createForumAuthority, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { createBotStatementAdmission } from "./forum-bot-statement-admission";
+import { createSquadPlaneForum } from "./squad-plane-forum";
 import { createForumAuthorityService } from "./forum-authority-service";
 import { createIdentityTokenVerifier } from "./identity/sea-session-verifier";
 import { readSeaSessionCookie } from "./identity/sea-session-http";
@@ -28,6 +29,8 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
   };
   const common = { squad: config.squad, origin: config.origin, config: config.authority, clock, authenticate };
   const services = Object.freeze({ authenticate,
+    ...(config.plane ? { planeForum: createSquadPlaneForum({ siteOrigin: config.origin, squad: config.squad,
+      plane: config.plane, config: config.authority, authenticate, read: source.read, clock }) } : {}),
     authority: createForumAuthorityService({ ...common, read: source.read }),
     statements: createBotStatementAdmission({ ...common, source: statements, planeUpdates }),
     rooms: createBotStatementAdmission({ ...common, source: statements, objectKind: "room" }) });
@@ -47,7 +50,13 @@ export function getSquadPilotServer() {
   if (!statements) throw Error("ACL statement source is required");
   if (process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID !== process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID)
     throw Error("Statement source and replay must use the same tenant");
-  const server = createSquadPilotServer(config, statements, replay);
+  if (config.plane && config.plane.tenant !== process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID) {
+    throw Error("Plane and statement source must use the same tenant");
+  }
+  const updates = config.plane ? {
+    tenant: config.plane.tenant, roster: config.plane.roster, commit: statements.commitForumUpdate,
+  } : undefined;
+  const server = createSquadPilotServer(config, statements, replay, undefined, undefined, updates);
   cached = { identity, server }; return server;
 }
 
