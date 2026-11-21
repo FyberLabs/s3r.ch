@@ -1,7 +1,8 @@
 import { createServer } from "node:net";
+import { listenForumReporter } from "../lib/forum-reporter-socket";
 import { openVisorForumReporter } from "../lib/forum-visor-reporter";
 
-function main() {
+async function main() {
   const [config, ...extra] = process.argv.slice(2);
   if (!config || extra.length) throw Error("Visor reporter configuration required");
   const reporter = openVisorForumReporter(config);
@@ -36,11 +37,10 @@ function main() {
     process.stderr.write("Visor forum reporter socket unavailable.\n");
     process.exitCode = 1;
   });
-  server.listen(reporter.socket);
+  await listenForumReporter(server, reporter.socket);
 }
 
-try { main(); }
-catch {
+void main().catch(() => {
   process.stderr.write("Visor forum reporter configuration unavailable.\n");
   process.exitCode = 1;
-}
+});

@@ -101,7 +101,7 @@ test("forum updates use the scoped commit operation without retry or generic app
   const tenant = "01234567-89ab-cdef-0123-456789abcdef";
   const id = "01234567-89ab-cdef-0123-456789abcdea";
   const update = { tenant, botId: id, assignmentId: id, sessionId: id, deliveryId: id, taskId: id,
-    sequence: 1, signature: "SEA-fixture", forumId: config.squad.forumId, principal: owner,
+    sequence: 1, signature: "SEA-fixture", attestation: "a".repeat(86), forumId: config.squad.forumId, principal: owner,
     statementId: "stmt-fixture", status: "completed" as const };
   const fence = "a".repeat(64);
   let code = 403, calls = 0, guards = 0;

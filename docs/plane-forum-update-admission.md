@@ -4,7 +4,8 @@ The Visor adapter submits a signed `update` statement and its signed ACL rows
 to `/api/squad/pilot/plane/update` with its own SEA session. The request adds an
 `update` object to the existing statement admission request, containing
 `botId`, `assignmentId`, `sessionId`, `taskId`, `deliveryId`, `sequence`
-and the signed forum statement in `signature`. Preserve the same signed
+the signed forum statement in `signature`, and a detached `attestation` over
+the complete delivery and statement binding. Preserve the same signed
 statement and sequence when reconciling a lost acknowledgment.
 
 s3r.ch verifies the adapter's enrolled principal, current see and post grants,

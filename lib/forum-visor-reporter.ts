@@ -14,7 +14,7 @@ import { createBotSession } from "./forum-bot-session";
 import { buildForumStatement } from "./forum-squad";
 import { signForumRecord } from "./forum-sign";
 import { toGunNode } from "./feed-types";
-import { VISOR_FORUM_STATUS_TEXT } from "./forum-plane-update";
+import { forumUpdateTranscript, VISOR_FORUM_STATUS_TEXT } from "./forum-plane-update";
 import { encodeBotMessage } from "./forum-bot-protocol";
 import { readBoundedIdentityJson } from "./identity/bounded-json";
 
@@ -52,7 +52,7 @@ export function openVisorForumReporter(configFile: string) {
   }
   privateBotDirectory(c.stateDirectory);
   const pair = JSON.parse(readPrivateBotFile(c.pairFile, 8192).toString("utf8")) as SeaPair;
-  if (pair.pub !== c.principal || typeof pair.priv !== "string") throw Error("Forum signer binding differs");
+  if (!pair || !isSeaPubkey(pair.pub) || typeof pair.priv !== "string") throw Error("Forum signer binding differs");
   const peer = new URL(c.peer);
   if (peer.protocol !== "https:" || peer.username || peer.password || peer.search || peer.hash) {
     throw Error("An explicit HTTPS Gun peer is required");
@@ -64,7 +64,7 @@ export function openVisorForumReporter(configFile: string) {
   const refresh = createBotAuthorityRefresh({ authority, reader, signIn: session.signIn,
     forum: c.forumId, owner: c.owner, principal: c.principal, key: pair.pub });
   const Gun = createRequire(import.meta.url)("gun");
-  const gun = Gun({ peers: [peer.href], radisk: false, localStorage: false, axe: false });
+  let gun: ReturnType<typeof Gun>;
 
   const db = new DatabaseSync(join(c.stateDirectory, "visor-reports.sqlite"), { timeout: 1000 });
   db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS reports (delivery TEXT PRIMARY KEY, binding TEXT NOT NULL, envelope TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0)");
@@ -107,8 +107,13 @@ export function openVisorForumReporter(configFile: string) {
             ...currentBotReportReaders(authority.graph, c.forumId, c.principal, [...new Set(c.readers)], at)
               .map(accessor => signRow("see", { object: item.id, owner: c.principal, accessor, from: at,
                 until: at + 3600, stated: 1, hamState: at, issuedAt: at }))];
-          envelope = { node: { ...data, sig }, rows, update: { botId: r.botId, assignmentId: r.assignmentId,
-            sessionId: r.sessionId, taskId: r.taskId, deliveryId: r.deliveryId, sequence: 1, signature: sig } };
+          const proof = { botId: r.botId, assignmentId: r.assignmentId, sessionId: r.sessionId,
+            taskId: r.taskId, deliveryId: r.deliveryId, sequence: 1, signature: sig };
+          const attested = forumUpdateTranscript({ ...proof, tenant: c.tenant, forumId: c.forumId,
+            statementId: item.id, principal: c.principal, status: r.status });
+          const attestation = Buffer.from(p256.sign(attested, Buffer.from(pair.priv, "base64url"),
+            { prehash: true, format: "compact" })).toString("base64url");
+          envelope = { node: { ...data, sig }, rows, update: { ...proof, attestation } };
           db.prepare("INSERT INTO reports(delivery,binding,envelope) VALUES(?,?,?)")
             .run(r.deliveryId, binding, JSON.stringify(envelope));
         }
@@ -125,6 +130,7 @@ export function openVisorForumReporter(configFile: string) {
         }
         const outcome = await readBoundedIdentityJson(response, 1024, signal) as { ok?: unknown } | null;
         if (outcome?.ok !== true) throw Error("Forum report admission refused");
+        gun ??= Gun({ peers: [peer.href], radisk: false, localStorage: false, axe: false });
         await new Promise<void>((resolve, reject) => {
           const timer = setTimeout(() => reject(Error("Forum report acknowledgment unavailable")), 1000);
           gun.get("s3rch").get("items").get(envelope.node.id).put(envelope.node, (ack: { err?: unknown }) => {

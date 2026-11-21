@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { p256 } from "@noble/curves/nist.js";
+import { forumUpdateTranscript } from "./forum-plane-update";
 import { forumBotFixture } from "./forum-bot-test-fixture";
 import { createBotStatementAdmission } from "./forum-bot-statement-admission";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
@@ -144,8 +145,12 @@ test("Plane update admission verifies the bot and signed body and uses only the 
         return "committed";
       } },
   });
-  const proof = { botId: f.botB, assignmentId: randomUUID(), sessionId: randomUUID(), taskId,
+  const fields = { botId: f.botB, assignmentId: randomUUID(), sessionId: randomUUID(), taskId,
     deliveryId: randomUUID(), sequence: 1, signature: signed.signature };
+  const transcript = forumUpdateTranscript({ ...fields, tenant: f.tenant, forumId: f.forum,
+    principal: f.b.pub, statementId: signed.id, status: "completed" });
+  const proof = { ...fields, attestation: Buffer.from(p256.sign(transcript,
+    Buffer.from(f.b.priv, "base64url"), { prehash: true, format: "compact" })).toString("base64url") };
   const request = (update?: object) => new Request(origin + "/api/squad/pilot", { method: "POST",
     headers: { Origin: origin, "Content-Type": "application/json" },
     body: JSON.stringify({ version: 1, forumId: f.forum, owner: f.owner.pub,
@@ -154,6 +159,7 @@ test("Plane update admission verifies the bot and signed body and uses only the 
   assert.equal((await service(request())).status, 403);
   assert.equal((await service(request({ ...proof, botId: f.botA }), "plane-update")).status, 403);
   assert.equal((await service(request({ ...proof, taskId: randomUUID() }), "plane-update")).status, 403);
+  assert.equal((await service(request({ ...proof, deliveryId: randomUUID() }), "plane-update")).status, 403);
   assert.equal(commits, 0);
   assert.equal((await service(request(proof), "plane-update")).status, 403);
   paused = false;
