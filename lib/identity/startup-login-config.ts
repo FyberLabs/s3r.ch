@@ -119,7 +119,8 @@ export async function readStartupLoginConfig(env: Record<string, string | undefi
   if (nightly) {
     const input = env.S3RCH_STARTUP_NIGHTLY_MEMBER_CONFIG;
     if (!input || input.length > 16384) return null;
-    return parseStartupLoginConfig(new TextEncoder().encode(input), env, true);
+    const setting = input.endsWith("\n") ? input : input + "\n";
+    return parseStartupLoginConfig(new TextEncoder().encode(setting), env, true);
   }
   const githubMember = env.S3RCH_STARTUP_GITHUB_MEMBER_CONFIG;
   if (githubMember !== undefined) {
