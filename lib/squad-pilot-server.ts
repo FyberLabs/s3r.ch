@@ -1,6 +1,6 @@
 import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { configuredAclStatementSource, StatementSourceConflict } from "./acl-statement-source-server";
-import type { BotStatementSource } from "./forum-bot-statement-admission";
+import type { BotStatementSource, PlaneForumUpdateAuthority } from "./forum-bot-statement-admission";
 import { configuredIdentityReplay, type IdentityReplay } from "./identity/spanopticon-replay-server";
 import { getIdentitySecret } from "./identity/secret";
 import { parseSquadPilotConfig, type SquadPilotConfig } from "./squad-pilot-config";
@@ -16,7 +16,8 @@ export { identitySessionNamespace } from "./identity/replay-namespace";
 /** Production uses only an explicitly provisioned owner source and replay store. */
 export function createSquadPilotServer(c: SquadPilotConfig, statements: BotStatementSource | undefined, replay: IdentityReplay | undefined,
   clock = () => Math.floor(Date.now() / 1000),
-  identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" })) {
+  identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" }),
+  planeUpdates?: PlaneForumUpdateAuthority) {
   if (!statements) throw Error("ACL statement source is required");
   if (!replay) throw Error("ACL authority requires configured identity replay");
   const config = structuredClone(c);
@@ -31,7 +32,7 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
     ...(config.plane ? { planeForum: createSquadPlaneForum({ siteOrigin: config.origin, squad: config.squad,
       plane: config.plane, config: config.authority, authenticate, read: source.read, clock }) } : {}),
     authority: createForumAuthorityService({ ...common, read: source.read }),
-    statements: createBotStatementAdmission({ ...common, source: statements }),
+    statements: createBotStatementAdmission({ ...common, source: statements, planeUpdates }),
     rooms: createBotStatementAdmission({ ...common, source: statements, objectKind: "room" }) });
   return { backend: "acl" as const, config, source, services };
 }
@@ -49,7 +50,13 @@ export function getSquadPilotServer() {
   if (!statements) throw Error("ACL statement source is required");
   if (process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID !== process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID)
     throw Error("Statement source and replay must use the same tenant");
-  const server = createSquadPilotServer(config, statements, replay);
+  if (config.plane && config.plane.tenant !== process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID) {
+    throw Error("Plane and statement source must use the same tenant");
+  }
+  const updates = config.plane ? {
+    tenant: config.plane.tenant, roster: config.plane.roster, commit: statements.commitForumUpdate,
+  } : undefined;
+  const server = createSquadPilotServer(config, statements, replay, undefined, undefined, updates);
   cached = { identity, server }; return server;
 }
 

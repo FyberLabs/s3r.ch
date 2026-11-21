@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { p256 } from "@noble/curves/nist.js";
+import { forumUpdateTranscript } from "./forum-plane-update";
 import { forumBotFixture } from "./forum-bot-test-fixture";
 import { createBotStatementAdmission } from "./forum-bot-statement-admission";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
@@ -106,4 +107,66 @@ test("a writer exhausting its retained allocation cannot consume another bot's c
   assert.equal((await s.service(s.request({ rows: [last] }))).status, 200);
   assert.equal((await s.service(s.request({ rows: [s.nextObject(s.f.a)] }, s.f.a.pub))).status, 200);
   assert.equal(s.writes(), 2);
+});
+
+test("Plane update admission verifies the bot and signed body and uses only the two-authority commit", async t => {
+  const f = await forumBotFixture(t), origin = "https://forum.example.test";
+  const taskId = randomUUID();
+  const prior = f.rows.length;
+  const signed = await f.signed(["update", f.tenant, taskId, "Conductor completed the task."], f.b);
+  const rows = f.rows.slice(0, prior), additions = f.rows.slice(prior);
+  const object = { ...(additions[0].record as object), issuedAt: signed.issuedAt, sig: "pending" };
+  const parsed = parseForumAuthority("object", object);
+  assert.ok(parsed);
+  object.sig = Buffer.from(p256.sign(parsed.bytes, Buffer.from(f.b.priv, "base64url"),
+    { prehash: true, format: "compact" })).toString("base64url");
+  additions[0] = { kind: "object", soul: parsed.soul, record: object };
+  const snapshot = () => ({ completeThrough: f.now(), rows,
+    history: { completeThrough: f.now(), links: [], accounts: [f.owner, f.a, f.b].map(pair =>
+      ({ principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) } });
+  let commits = 0, generic = 0, paused = true;
+  const service = createBotStatementAdmission({
+    origin, squad: { owner: f.owner.pub, forumId: f.forum, label: "Bot admission" },
+    config: { keys: [], pinnedIssuers: [], policy: vectors.context.policy }, clock: f.now,
+    authenticate: async () => ({ key: f.b.pub }),
+    source: { read: async () => ({ snapshot: snapshot(), fence: String(rows.length) }),
+      append: async () => { generic++; return true; } },
+    planeUpdates: { tenant: f.tenant, roster: { [f.botB]: f.b.pub },
+      async commit({ aclFence, update, rows: admitted, guard }) {
+        commits++;
+        assert.equal(update.principal, f.b.pub);
+        assert.equal(update.statementId, signed.id);
+        assert.equal(update.taskId, taskId);
+        assert.equal(update.status, "completed");
+        guard();
+        if (paused) return "refused";
+        if (aclFence !== String(rows.length)) return "conflict";
+        rows.push(...admitted);
+        return "committed";
+      } },
+  });
+  const fields = { botId: f.botB, assignmentId: randomUUID(), sessionId: randomUUID(), taskId,
+    deliveryId: randomUUID(), sequence: 1, signature: signed.signature };
+  const transcript = forumUpdateTranscript({ ...fields, tenant: f.tenant, forumId: f.forum,
+    principal: f.b.pub, statementId: signed.id, status: "completed" });
+  const proof = { ...fields, attestation: Buffer.from(p256.sign(transcript,
+    Buffer.from(f.b.priv, "base64url"), { prehash: true, format: "compact" })).toString("base64url") };
+  const request = (update?: object) => new Request(origin + "/api/squad/pilot", { method: "POST",
+    headers: { Origin: origin, "Content-Type": "application/json" },
+    body: JSON.stringify({ version: 1, forumId: f.forum, owner: f.owner.pub,
+      evaluatedAt: f.now(), rows: additions, ...(update ? { update } : {}) }) });
+
+  assert.equal((await service(request())).status, 403);
+  assert.equal((await service(request({ ...proof, botId: f.botA }), "plane-update")).status, 403);
+  assert.equal((await service(request({ ...proof, taskId: randomUUID() }), "plane-update")).status, 403);
+  assert.equal((await service(request({ ...proof, deliveryId: randomUUID() }), "plane-update")).status, 403);
+  assert.equal(commits, 0);
+  assert.equal((await service(request(proof), "plane-update")).status, 403);
+  paused = false;
+  assert.equal((await service(request(proof), "plane-update")).status, 200);
+  assert.equal((await service(request(proof), "plane-update")).status, 200);
+  paused = true;
+  assert.equal((await service(request(proof), "plane-update")).status, 403);
+  assert.equal(commits, 4);
+  assert.equal(generic, 0);
 });
