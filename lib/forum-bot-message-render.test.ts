@@ -29,6 +29,13 @@ test("untrusted out-of-range deadlines do not crash task rendering", () => {
   assert.match(render(["task", id, id, id, id, 1700000000, null, 0]), /2023-11-14 22:13:20 UTC/);
 });
 
+test("task updates render bot notes without execution affordances", () => {
+  const html = render(["update", id, id, "Contract tests green in CI."]);
+  assert.match(html, /Task update/);
+  assert.match(html, /does not approve tools/);
+  assert.doesNotMatch(html, /<button|href=|src=/);
+});
+
 test("approval reports display timing without creating permission controls", () => {
   const html = render(["approval", id, id, 1699999999, 1700000000]);
   assert.match(html, /Local approval reported/);

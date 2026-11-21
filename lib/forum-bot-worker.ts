@@ -2,6 +2,7 @@ import type { openForumBotChannel, SignedBotStatement } from "./forum-bot-channe
 import type { openLocalBotApprovals, LocalBotApproval } from "./forum-bot-local-access";
 import type { openForumBotArtifacts } from "./forum-bot-artifacts";
 import type { BotMessage } from "./forum-bot-protocol";
+import { validateBotUpdateText } from "./forum-bot-update-text";
 
 export type BotExecutionStatus = Readonly<{ id: string; session: string; status: "queued" | "running" | "completed" | "failed" | "cancelled";
   completed_steps: number; total_steps: number; results: readonly unknown[] }>;
@@ -20,6 +21,7 @@ export function createForumBotWorker(input: {
   refresh(): Promise<boolean>;
   /** Must durably enqueue and deduplicate by message contents before returning. */
   publish(message: BotMessage): Promise<void>;
+  postingPaused?: () => boolean;
   clock?: () => number;
 }) {
   const { channel, approvals, artifacts, executor, refresh, publish } = input, clock = input.clock ?? Date.now;
@@ -44,6 +46,19 @@ export function createForumBotWorker(input: {
       const result = await channel.event(statement);
       if (result.message[0] === "cancel" && active && result.affected.includes(active.task)) await cancel();
       return result;
+    }); },
+    track(chain: readonly SignedBotStatement[]) { return run(async () => {
+      if (stopped || !await refresh()) throw Error("Forum authority unavailable");
+      return channel.track(chain);
+    }); },
+    postUpdate(task: string, text: string) { return run(async () => {
+      if (stopped || input.postingPaused?.()) throw Error("Forum bot posting unavailable");
+      if (!await refresh() || !channel.canPost()) throw Error("Forum bot posting unavailable");
+      const reference = channel.reference(task);
+      if (!channel.assigned(task) || !reference) throw Error("Forum bot task assignment unavailable");
+      const body = validateBotUpdateText(text, { tenant: input.tenant, task, handles: [reference.handle] });
+      if (channel.status(task) === "cancelled") throw Error("Forum bot task assignment unavailable");
+      await publish(["update", input.tenant, task, body]);
     }); },
     tick() { return run(async () => {
       if (stopped) return;

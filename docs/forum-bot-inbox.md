@@ -71,7 +71,13 @@ array, bounded by the forum's 280-character body limit:
 - `approval`: tenant UUID, task UUID, approval time
   and deadline in Unix seconds. This additive report is ignored by older clients.
 - `progress`: tenant UUID, task UUID and integer percent from 0 to 100.
+- `update`: tenant UUID, task UUID and bounded free-text report for the assigned bot.
 - `result`: tenant UUID, task UUID, terminal state and artifact UUID or null.
+
+`update` statements are report-only. The worker refuses nested `visor:v1:` payloads,
+approval-file material, private handles and key material in the body. They do not
+require a local Visor approval file; only a remembered task assignment chain and
+current forum post access.
 
 Statement IDs bind the signing principal and provide message identity; task IDs
 correlate replies. These records carry no executable instructions or private file
