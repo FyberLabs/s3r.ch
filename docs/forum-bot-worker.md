@@ -91,7 +91,9 @@ statement objects are subscribed to; there is no global feed scan. Gun replay
 restores chains while the durable inbox deduplicates execution. Its checkpoint
 is an opaque last accepted statement ID, not an ordered Gun offset.
 
-Local approval reports, acknowledgments, progress and results first enter the private durable outbox.
+Local approval reports, acknowledgments, progress, results and free-text task
+updates first enter the private durable outbox. Task updates bind to a verified
+assignment and do not use an owner approval file.
 After a successful submission, the bot reports the task ID, approval time,
 and deadline. It never republishes the private approval handle, approved tool
 arguments, or reader list to report readers.

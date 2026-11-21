@@ -102,11 +102,33 @@ export function openForumBotChannel(input: {
       receiving = true;
       try { await verifyChain(chainInput); } finally { receiving = false; }
     },
+    /** Remember a verified assignment chain for reporting without inbox admission. */
+    async track(chainInput: readonly SignedBotStatement[]) {
+      if (stopped || receiving) throw Error("Invalid or busy forum bot delivery");
+      receiving = true;
+      try {
+        const chain = await verifyChain(chainInput), last = chain.at(-1)!;
+        if (last.task[3] !== scope.bot) throw Error("Forum bot task authority unavailable");
+        const previous = proofs.get(last.task[2]);
+        if (!previous && proofs.size >= 4096) throw Error("Forum bot proof capacity reached");
+        proofs.set(last.task[2], Object.freeze(chain));
+        return Object.freeze({ task: last.task[2], handle: last.task[4], expires: last.task[5] });
+      } finally { receiving = false; }
+    },
     close() { stopped = true; proofs.clear(); inbox.close(); },
     cursor: inbox.cursor,
     status: inbox.status,
     reference(id: string) { const chain = proofs.get(id), last = chain?.at(-1);
       return chain && last && valid(chain) ? Object.freeze({ handle: last.task[4], expires: last.task[5] }) : null; },
+    assigned(id: string) {
+      const chain = proofs.get(id), last = chain?.at(-1);
+      return !!chain && !!last && valid(chain) && last.task[3] === scope.bot;
+    },
+    canPost(at = clock()) {
+      return authority.checkForumSee(scope.forum, scope.principal, at).allowed === true &&
+        authority.checkPost(scope.forum, scope.principal, at).allowed === true &&
+        !!authority.writerKey(scope.principal, at, at);
+    },
     pending: () => [...proofs.keys()].filter(id => inbox.status(id) === "pending"),
     authorized(id: string) {
       const chain = proofs.get(id), last = chain?.at(-1);

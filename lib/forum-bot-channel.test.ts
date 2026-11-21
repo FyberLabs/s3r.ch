@@ -55,7 +55,8 @@ test("the durable task context refuses a rewritten ancestor after restart", asyn
 test("bot protocol carries bounded handles and explicit status correlation", () => {
   const tenant = randomUUID(), task = randomUUID();
   for (const message of [["ack", tenant, task], ["cancel", tenant, task], ["progress", tenant, task, 0],
-    ["result", tenant, task, "completed", null], ["approval", tenant, task, 10, 20]] as BotMessage[]) assert.deepEqual(parseBotMessage(encodeBotMessage(message)), message);
+    ["result", tenant, task, "completed", null], ["approval", tenant, task, 10, 20],
+    ["update", tenant, task, "Ready for review"]] as BotMessage[]) assert.deepEqual(parseBotMessage(encodeBotMessage(message)), message);
   for (const body of ['visor:v2:[]', 'visor:v1:[]', 'visor:v1:' + JSON.stringify(["result", tenant, task, "completed", "https://private/file"]),
     'visor:v1:' + JSON.stringify(["approval", tenant, task, 20, 20]),
     'visor:v1:' + JSON.stringify(["progress", tenant, task, 101])]) assert.equal(parseBotMessage(body), null);

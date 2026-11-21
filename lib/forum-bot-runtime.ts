@@ -66,7 +66,7 @@ async function responseOK(response: Response) {
  * The statement endpoint must implement createBotStatementAdmission with a
  * genuine atomic source. The legacy Squad journal is not silently substituted.
  */
-export async function openForumBotRuntime(configPath: string, artifactOnly = false) {
+export async function openForumBotRuntime(configPath: string, mode: "worker" | "artifact" = "worker") {
   const c = JSON.parse(readPrivateBotFile(configPath).toString("utf8")) as Config;
   if (!c || Object.keys(c).sort().join() !== "approvalsDirectory,authority,authorityEndpoint,bots,maxDelegationDepth,origin,owner,pairFile,peer,rootSenders,scope,stateDirectory,statementEndpoint,version,visorOrigin,visorTokenFile" || c.version !== 1)
     throw Error("Invalid forum worker configuration");
@@ -87,7 +87,7 @@ export async function openForumBotRuntime(configPath: string, artifactOnly = fal
   const approvals = openLocalBotApprovals(c.approvalsDirectory, c.scope), directory = join(c.stateDirectory, "artifacts");
   try { mkdirSync(directory, { mode: 0o700 }); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
   const artifacts = openForumBotArtifacts({ directory, scope: c.scope, authority: authority.graph, approval: approvals.read });
-  if (artifactOnly) return Object.freeze({
+  if (mode === "artifact") return Object.freeze({
     async readArtifact(request: Parameters<typeof artifacts.read>[0]) { if (!await refresh(true)) throw Error("Artifact authority unavailable"); return artifacts.read(request); },
     close: () => session.close(),
   });
@@ -109,8 +109,9 @@ export async function openForumBotRuntime(configPath: string, artifactOnly = fal
     localConsent: (_scope, handle) => localConsent.running && Date.now() - localConsent.at <= 1000 &&
       approvals.read(handle)?.session === localConsent.session });
   const outbox = openForumBotOutbox(join(c.stateDirectory, "outbox.sqlite"), c.scope);
+  const posting = { paused: false };
   const worker = createForumBotWorker({ tenant: c.scope.tenant, channel, approvals, artifacts, executor,
-    refresh, publish: async message => outbox.enqueue(message) });
+    refresh, publish: async message => outbox.enqueue(message), postingPaused: () => posting.paused });
   const Gun = createRequire(import.meta.url)("gun");
   const gun = Gun({ peers: [c.peer], radisk: false, localStorage: false, axe: false });
   const transport = createForumBotGunTransport({ gun, tenant: c.scope.tenant, forum: c.scope.forum, principal: c.scope.principal,
@@ -148,6 +149,11 @@ export async function openForumBotRuntime(configPath: string, artifactOnly = fal
   }
   let busy = false, closed = false, idle: Promise<void> = Promise.resolve();
   return Object.freeze({
+    setPostingPaused(paused: boolean) { posting.paused = paused; },
+    async postTaskUpdate(task: string, text: string) {
+      await worker.postUpdate(task, text);
+      if (!closed) await flush();
+    },
     async tick() {
       if (busy || closed) return; busy = true;
       let release!: () => void; idle = new Promise<void>(resolve => { release = resolve; });
