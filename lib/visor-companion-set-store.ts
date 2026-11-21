@@ -2,10 +2,13 @@ import { createHash } from "node:crypto";
 import { createSpanopticonRecordStore } from "./spanopticon-record-store-server";
 import { RecordConflict, type RecordStore } from "./record-store";
 
+type VisorCompanionBinding = Readonly<{ session: string; generation: string; principal: string }>;
+
 export type VisorCompanionSetSnapshot = Readonly<{
   setId: string;
   setGeneration: string;
-  companions: ReadonlyMap<string, Readonly<{ session: string; generation: string; principal: string }>>;
+  companions: ReadonlyMap<string, VisorCompanionBinding>;
+  retired: ReadonlyMap<string, VisorCompanionBinding>;
 }>;
 
 export type VisorCompanionSetStore = Readonly<{
@@ -16,27 +19,39 @@ export type VisorCompanionSetStore = Readonly<{
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 function encode(snapshot: VisorCompanionSetSnapshot): Uint8Array {
-  const companions = [...snapshot.companions.entries()].map(([companion, row]) =>
-    Object.freeze({ companion, session: row.session, generation: row.generation, principal: row.principal }));
-  companions.sort((a, b) => a.companion.localeCompare(b.companion));
-  const text = JSON.stringify({ version: 1, setId: snapshot.setId, setGeneration: snapshot.setGeneration, companions });
+  const rowList = (map: ReadonlyMap<string, VisorCompanionBinding>) =>
+    [...map.entries()].map(([companion, row]) =>
+      Object.freeze({ companion, session: row.session, generation: row.generation, principal: row.principal }))
+      .sort((a, b) => a.companion.localeCompare(b.companion));
+  const text = JSON.stringify({
+    version: 2, setId: snapshot.setId, setGeneration: snapshot.setGeneration,
+    companions: rowList(snapshot.companions), retired: rowList(snapshot.retired),
+  });
   if (new TextEncoder().encode(text).byteLength > 16384) throw new Error("Visor companion set capacity");
   return new TextEncoder().encode(text);
+}
+
+function decodeBindings(rows: unknown, out: Map<string, VisorCompanionBinding>) {
+  if (!Array.isArray(rows) || rows.length > 16) throw new Error("Invalid visor companion set");
+  for (const row of rows) {
+    if (!row || Object.keys(row).sort().join() !== "companion,generation,principal,session" ||
+        !uuid.test(row.companion) || !uuid.test(row.session) || !uuid.test(row.generation) ||
+        typeof row.principal !== "string" || out.has(row.companion)) throw new Error("Invalid visor companion set");
+    out.set(row.companion, Object.freeze({ session: row.session, generation: row.generation, principal: row.principal }));
+  }
 }
 
 function decode(bytes: Uint8Array): VisorCompanionSetSnapshot {
   if (bytes.byteLength > 16384) throw new Error("Invalid visor companion set");
   const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-  if (!value || value.version !== 1 || !uuid.test(value.setId) || !uuid.test(value.setGeneration) ||
-      !Array.isArray(value.companions) || value.companions.length > 8) throw new Error("Invalid visor companion set");
-  const companions = new Map<string, Readonly<{ session: string; generation: string; principal: string }>>();
-  for (const row of value.companions) {
-    if (!row || Object.keys(row).sort().join() !== "companion,generation,principal,session" ||
-        !uuid.test(row.companion) || !uuid.test(row.session) || !uuid.test(row.generation) ||
-        typeof row.principal !== "string" || companions.has(row.companion)) throw new Error("Invalid visor companion set");
-    companions.set(row.companion, Object.freeze({ session: row.session, generation: row.generation, principal: row.principal }));
+  if (!value || (value.version !== 1 && value.version !== 2) || !uuid.test(value.setId) || !uuid.test(value.setGeneration)) {
+    throw new Error("Invalid visor companion set");
   }
-  return Object.freeze({ setId: value.setId, setGeneration: value.setGeneration, companions });
+  const companions = new Map<string, VisorCompanionBinding>();
+  decodeBindings(value.companions, companions);
+  const retired = new Map<string, VisorCompanionBinding>();
+  if (value.version === 2) decodeBindings(value.retired ?? [], retired);
+  return Object.freeze({ setId: value.setId, setGeneration: value.setGeneration, companions, retired });
 }
 
 function recordName(forumId: string, tenant: string, owner: string, machineId: string) {
@@ -87,10 +102,12 @@ export function createMemoryVisorCompanionSetStore(): VisorCompanionSetStore & {
   return {
     async read(tenant, owner, machineId) {
       const hit = rows.get(key(tenant, owner, machineId));
-      return hit ? structuredClone({ ...hit, companions: new Map(hit.companions) }) : null;
+      return hit ? structuredClone({ ...hit, companions: new Map(hit.companions), retired: new Map(hit.retired) }) : null;
     },
     async write(tenant, owner, machineId, snapshot) {
-      rows.set(key(tenant, owner, machineId), structuredClone({ ...snapshot, companions: new Map(snapshot.companions) }));
+      rows.set(key(tenant, owner, machineId), structuredClone({
+        ...snapshot, companions: new Map(snapshot.companions), retired: new Map(snapshot.retired),
+      }));
     },
     clear() { rows.clear(); },
   };

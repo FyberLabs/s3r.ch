@@ -1,5 +1,6 @@
 import { matchesBrowserOrigin } from "./request-origin";
-import type { ForumAuthorityConfig, ForumAuthoritySnapshot } from "./identity/forum-authority";
+import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
+import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { authenticateAgentRequest } from "./identity/site-agent-session-server";
 import { isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
 import {
@@ -66,8 +67,15 @@ export function createVisorCompanionSquadService(input: {
       const snapshot = structuredClone(await read(evaluatedAt, request.signal));
       if (!snapshot || !Array.isArray(snapshot.rows) || snapshot.rows.length > 1024 ||
           !snapshot.history || !Number.isSafeInteger(snapshot.completeThrough)) return reply(503, { error: "authority-unavailable" });
+      const authority = createForumAuthority(config, clock);
+      const verified = await authority.refresh(snapshot, evaluatedAt);
+      if (!verified.ok || roomAuthorityReadDiagnosticsBlock(verified.diagnostics, snapshot)) {
+        return reply(503, { error: "authority-unavailable" });
+      }
+      const ownerPrincipal = agent ? ownerKey : authority.graph.principalForKey(ownerKey, evaluatedAt);
+      if (!ownerPrincipal) return reply(403, { error: "authentication" });
       const result = await resolveVisorCompanionSquad({
-        squad: spec, origin: origin.origin, authority: config, tenant, ownerKey, evaluatedAt,
+        squad: spec, origin: origin.origin, authority: config, tenant, ownerPrincipal, evaluatedAt,
         request: parsed, snapshot, store, clock,
       });
       if (!result.ok) {

@@ -42,7 +42,7 @@ test("slice done check: Visor companion binding contract (#551)", async t => {
   const session = randomUUID();
   const generation = gen(1);
   const common = { squad: { forumId: f.forum, owner: f.owner.pub, label: "Pilot" }, origin, authority: { keys: [], pinnedIssuers: [], policy: vectors.context.policy },
-    tenant: f.tenant, ownerKey: f.owner.pub, store, clock: f.now, evaluatedAt: f.now(), snapshot: snapshot() };
+    tenant: f.tenant, ownerPrincipal: f.owner.pub, store, clock: f.now, evaluatedAt: f.now(), snapshot: snapshot() };
   const first = await resolveVisorCompanionSquad({ ...common,
     request: parseVisorCompanionResolveRequest(body(f, [
       { role: "companion", principal: f.b.pub, companion, session, generation },
@@ -64,7 +64,13 @@ test("slice done check: Visor companion binding contract (#551)", async t => {
   assert.equal(removed.ok, true);
   if (!removed.ok) return;
   assert.deepEqual(removed.body.roster.map(row => row.principal), [f.a.pub]);
-  const revoked = await resolveVisorCompanionSquad({ ...common, ownerKey: f.b.pub, snapshot: snapshot(),
+  const resurrected = await resolveVisorCompanionSquad({ ...common,
+    request: parseVisorCompanionResolveRequest(body(f, [
+      { role: "companion", principal: f.b.pub, companion, session, generation },
+    ], gen(1)))! });
+  assert.equal(resurrected.ok, false);
+  if (!resurrected.ok) assert.equal(resurrected.reason, "stale-generation");
+  const revoked = await resolveVisorCompanionSquad({ ...common, ownerPrincipal: f.b.pub, snapshot: snapshot(),
     request: parseVisorCompanionResolveRequest(body(f, [{ role: "external", principal: f.a.pub }], gen(3)))! });
   assert.equal(revoked.ok, false);
   assert.equal(revoked.reason, "owner");

@@ -1,4 +1,5 @@
 import { shortSea } from "./forum-squad";
+import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { isSeaPubkey } from "./identity/forum-check";
 import type { LiveSquadSpec } from "./squad-view";
@@ -108,13 +109,20 @@ export function visorCompanionEvaluatedAtWithinSkew(clientAt: number, serverAt: 
   return Math.abs(clientAt - serverAt) <= VISOR_COMPANION_EVALUATED_AT_SKEW_SECONDS;
 }
 
-function companionSnapshot(request: VisorCompanionResolveRequest): VisorCompanionSetSnapshot {
+function companionSnapshot(request: VisorCompanionResolveRequest, stored: VisorCompanionSetSnapshot | null): VisorCompanionSetSnapshot {
   const companions = new Map<string, Readonly<{ session: string; generation: string; principal: string }>>();
   for (const member of request.members) {
     if (member.role !== "companion") continue;
     companions.set(member.companion!, Object.freeze({ session: member.session!, generation: member.generation!, principal: member.principal }));
   }
-  return Object.freeze({ setId: request.setId, setGeneration: request.setGeneration, companions });
+  const retired = new Map<string, Readonly<{ session: string; generation: string; principal: string }>>();
+  if (stored && stored.setId === request.setId) {
+    for (const [id, row] of stored.retired) retired.set(id, row);
+    if (stored.setGeneration === request.setGeneration) {
+      for (const [id, row] of stored.companions) if (!companions.has(id)) retired.set(id, row);
+    } else for (const [id, row] of stored.companions) retired.set(id, row);
+  }
+  return Object.freeze({ setId: request.setId, setGeneration: request.setGeneration, companions, retired });
 }
 
 function staleCompanion(
@@ -127,6 +135,8 @@ function staleCompanion(
     if (member.role !== "companion") continue;
     const prev = stored.companions.get(member.companion!);
     if (prev && prev.generation === member.generation) return true;
+    const retired = stored.retired.get(member.companion!);
+    if (retired && retired.generation === member.generation) return true;
   }
   return false;
 }
@@ -136,7 +146,7 @@ export type VisorCompanionResolveInput = Readonly<{
   origin: string;
   authority: ForumAuthorityConfig;
   tenant: string;
-  ownerKey: string;
+  ownerPrincipal: string;
   evaluatedAt: number;
   request: VisorCompanionResolveRequest;
   snapshot: ForumAuthoritySnapshot;
@@ -154,12 +164,13 @@ export async function resolveVisorCompanionSquad(input: VisorCompanionResolveInp
   const at = input.evaluatedAt;
   if (!visorCompanionEvaluatedAtWithinSkew(input.request.evaluatedAt, at)) return { ok: false, reason: "scope-or-time" };
   if (input.request.tenant !== input.tenant) return { ok: false, reason: "tenant" };
-  if (input.ownerKey !== input.squad.owner) return { ok: false, reason: "owner" };
+  if (input.ownerPrincipal !== input.squad.owner) return { ok: false, reason: "owner" };
   const stored = await input.store.read(input.request.tenant, input.squad.owner, input.request.machineId);
   if (staleCompanion(stored, input.request)) return { ok: false, reason: "stale-generation" };
   const authority = createForumAuthority(input.authority, clock);
   const verified = await authority.refresh(structuredClone(input.snapshot), at);
-  if (!verified.ok || authority.graph.ownerOf(input.squad.forumId) !== input.squad.owner) return { ok: false, reason: "authority" };
+  if (!verified.ok || roomAuthorityReadDiagnosticsBlock(verified.diagnostics, input.snapshot) ||
+      authority.graph.ownerOf(input.squad.forumId) !== input.squad.owner) return { ok: false, reason: "authority" };
   const roster: VisorCompanionRosterRow[] = [];
   for (const member of input.request.members) {
     if (!authority.graph.checkForumSee(input.squad.forumId, member.principal, at).allowed) continue;
@@ -173,7 +184,7 @@ export async function resolveVisorCompanionSquad(input: VisorCompanionResolveInp
       if (prev && prev.generation !== member.generation) return { ok: false, reason: "stale-generation" };
     }
   }
-  await input.store.write(input.request.tenant, input.squad.owner, input.request.machineId, companionSnapshot(input.request));
+  await input.store.write(input.request.tenant, input.squad.owner, input.request.machineId, companionSnapshot(input.request, stored));
   return {
     ok: true,
     body: Object.freeze({
