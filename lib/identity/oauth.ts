@@ -144,7 +144,12 @@ export function buildAuthorizeUrl(input: {
   url.searchParams.set("state", input.state);
   url.searchParams.set("code_challenge", input.challenge);
   url.searchParams.set("code_challenge_method", "S256");
-  if (input.idp) url.searchParams.set("kc_idp_hint", input.idp);
+  if (input.idp) {
+    url.searchParams.set("kc_idp_hint", input.idp);
+    // An explicit account choice must reach the selected broker even when
+    // Keycloak already has a realm session.
+    url.searchParams.set("prompt", "login");
+  }
   return url.toString();
 }
 

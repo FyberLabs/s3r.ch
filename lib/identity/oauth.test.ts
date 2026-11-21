@@ -98,23 +98,33 @@ describe("OAuth start", () => {
     assert.equal(response.headers.getSetCookie().length, 0);
   });
 
-  it("sends PKCE and the broker hint, and does not use the SIWE cookie", async () => {
-    const response = await beginOAuth(
-      startRequest("http://localhost:3000/api/identity/oauth/start?idp=microsoft"),
-      ENV,
-    );
-    assert.equal(response.status, 302);
-    const location = response.headers.get("location") ?? "";
-    const url = new URL(location);
-    assert.equal(url.origin + url.pathname, `${ISSUER}/protocol/openid-connect/auth`);
-    assert.equal(url.searchParams.get("client_id"), OAUTH_CLIENT_ID);
-    assert.equal(url.searchParams.get("code_challenge_method"), "S256");
-    assert.equal(url.searchParams.get("kc_idp_hint"), "microsoft");
-    assert.equal(url.searchParams.get("scope"), "openid");
-    assert.equal(location.includes("client_secret"), false);
-    const pair = cookiePair(response, oauthPkceCookieName(false));
-    assert.equal(pair.startsWith(`${sessionCookieName(false)}=`), false);
-    assert.match(response.headers.getSetCookie()[0] ?? "", /HttpOnly/);
+  for (const idp of ["microsoft", "github", "google"]) {
+    it(`starts a fresh ${idp} sign-in with PKCE and a broker hint`, async () => {
+      const response = await beginOAuth(
+        startRequest(`http://localhost:3000/api/identity/oauth/start?idp=${idp}`),
+        ENV,
+      );
+      assert.equal(response.status, 302);
+      const location = response.headers.get("location") ?? "";
+      const url = new URL(location);
+      assert.equal(url.origin + url.pathname, `${ISSUER}/protocol/openid-connect/auth`);
+      assert.equal(url.searchParams.get("client_id"), OAUTH_CLIENT_ID);
+      assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+      assert.equal(url.searchParams.get("kc_idp_hint"), idp);
+      assert.equal(url.searchParams.get("prompt"), "login");
+      assert.equal(url.searchParams.get("scope"), "openid");
+      assert.equal(location.includes("client_secret"), false);
+      const pair = cookiePair(response, oauthPkceCookieName(false));
+      assert.equal(pair.startsWith(`${sessionCookieName(false)}=`), false);
+      assert.match(response.headers.getSetCookie()[0] ?? "", /HttpOnly/);
+    });
+  }
+
+  it("allows an existing realm session for sign-in without an explicit broker", async () => {
+    const response = await beginOAuth(startRequest("http://localhost:3000/api/identity/oauth/start"), ENV);
+    const url = new URL(response.headers.get("location") ?? "");
+    assert.equal(url.searchParams.has("kc_idp_hint"), false);
+    assert.equal(url.searchParams.has("prompt"), false);
   });
 
   it("refuses a host that is not a registered redirect", async () => {
