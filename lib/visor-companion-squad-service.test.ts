@@ -91,10 +91,18 @@ test("HTTP contract: agent and browser resolve current set without URL credentia
   assert.equal(native.status, 200);
   const foreign = await service(new Request(origin + "/api/squad/pilot/visor-companion", {
     method: "POST",
-    headers: { Origin: origin, "Content-Type": "application/json", Authorization: "Bearer forged" },
+    headers: { Origin: origin, "Content-Type": "application/json", Authorization: "Bearer forged",
+      Cookie: `${seaSessionCookieNames()[0]}=${cookie}` },
     body: JSON.stringify(payload),
   }));
   assert.equal(foreign.status, 403);
+  const nativeNoOrigin = await service(new Request(origin + "/api/squad/pilot/visor-companion", {
+    method: "POST",
+    headers: { Host: new URL(origin).host, "Content-Type": "application/json", Authorization: `Bearer ${token}`,
+      "x-forwarded-proto": "https" },
+    body: JSON.stringify(payload),
+  }));
+  assert.equal(nativeNoOrigin.status, 200);
   const skewed = await service(new Request(origin + "/api/squad/pilot/visor-companion", {
     method: "POST",
     headers: { Origin: origin, "Content-Type": "application/json", Cookie: `${seaSessionCookieNames()[0]}=${cookie}` },

@@ -134,13 +134,14 @@ function staleCompanion(
   request: VisorCompanionResolveRequest,
 ): boolean {
   if (!stored || stored.setId !== request.setId) return false;
-  if (stored.setGeneration === request.setGeneration) return false;
   for (const member of request.members) {
     if (member.role !== "companion") continue;
-    const prev = stored.companions.get(member.companion!);
-    if (prev && prev.generation === member.generation) return true;
     const retired = stored.retired.get(member.companion!);
     if (retired && retired.generation === member.generation) return true;
+    if (stored.setGeneration !== request.setGeneration) {
+      const prev = stored.companions.get(member.companion!);
+      if (prev && prev.generation === member.generation) return true;
+    }
   }
   return false;
 }
@@ -187,6 +188,8 @@ export async function resolveVisorCompanionSquad(input: VisorCompanionResolveInp
       if (member.role !== "companion") continue;
       const prev = stored.companions.get(member.companion!);
       if (prev && prev.generation !== member.generation) return { ok: false, reason: "stale-generation" };
+      const retired = stored.retired.get(member.companion!);
+      if (retired && retired.generation === member.generation) return { ok: false, reason: "stale-generation" };
     }
   }
   try {

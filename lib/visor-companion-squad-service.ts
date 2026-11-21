@@ -1,4 +1,4 @@
-import { matchesBrowserOrigin } from "./request-origin";
+import { matchesBrowserOrigin, matchesRequestOrigin } from "./request-origin";
 import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { authenticateAgentRequest } from "./identity/site-agent-session-server";
@@ -33,9 +33,14 @@ export function createVisorCompanionSquadService(input: {
     "Cache-Control": "no-store", Vary: "Cookie, Authorization, Origin", "X-Content-Type-Options": "nosniff" } });
   return async (request: Request): Promise<Response> => {
     try {
-      if (request.method !== "POST" || !matchesBrowserOrigin(request, origin) ||
-          request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") return reply(403, { error: "origin-or-type" });
-      const agent = request.headers.has("authorization") ? await authenticateAgent(request) : null;
+      const agentRequest = request.headers.has("authorization");
+      const contentType = request.headers.get("content-type")?.split(";")[0].trim().toLowerCase();
+      if (request.method !== "POST" || contentType !== "application/json") return reply(403, { error: "origin-or-type" });
+      if (agentRequest ? !matchesRequestOrigin(request, origin) : !matchesBrowserOrigin(request, origin)) {
+        return reply(403, { error: "origin-or-type" });
+      }
+      const agent = agentRequest ? await authenticateAgent(request) : null;
+      if (agentRequest && !agent) return reply(403, { error: "authentication" });
       const browser = agent ? null : await authenticate(request);
       const ownerKey = agent?.principal ?? browser?.key;
       if (!ownerKey || isPublicSquadPrincipal(ownerKey)) return reply(403, { error: "authentication" });

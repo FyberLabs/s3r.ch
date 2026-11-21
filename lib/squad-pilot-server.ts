@@ -31,11 +31,8 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
     return token ? verifier.authenticate(token) : null;
   };
   const common = { squad: config.squad, origin: config.origin, config: config.authority, clock, authenticate };
-  const visorCompanion = tenant && typeof tenant === "string"
-    ? (() => {
-      if (!visorStore) throw new Error("Visor companion durable store required");
-      return createVisorCompanionSquadService({ ...common, tenant, store: visorStore, read: source.read });
-    })()
+  const visorCompanion = tenant && typeof tenant === "string" && visorStore
+    ? createVisorCompanionSquadService({ ...common, tenant, store: visorStore, read: source.read })
     : undefined;
   const services = Object.freeze({ authenticate,
     authority: createForumAuthorityService({ ...common, read: source.read }),
@@ -61,7 +58,6 @@ export function getSquadPilotServer() {
   const tenant = process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID;
   if (!tenant) throw Error("Squad pilot tenant binding required");
   const visorStore = configuredVisorCompanionSetStore(process.env, config.squad.forumId);
-  if (!visorStore) throw new Error("Visor companion durable store not configured");
   const server = createSquadPilotServer(config, statements, replay, undefined, undefined, tenant, visorStore);
   cached = { identity, server }; return server;
 }

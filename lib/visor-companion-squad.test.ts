@@ -70,6 +70,13 @@ test("slice done check: Visor companion binding contract (#551)", async t => {
     ], gen(1)))! });
   assert.equal(resurrected.ok, false);
   if (!resurrected.ok) assert.equal(resurrected.reason, "stale-generation");
+  const sameGenRevive = await resolveVisorCompanionSquad({ ...common,
+    request: parseVisorCompanionResolveRequest(body(f, [
+      { role: "companion", principal: f.b.pub, companion, session, generation },
+      { role: "external", principal: f.a.pub },
+    ], gen(2)))! });
+  assert.equal(sameGenRevive.ok, false);
+  if (!sameGenRevive.ok) assert.equal(sameGenRevive.reason, "stale-generation");
   const revoked = await resolveVisorCompanionSquad({ ...common, ownerPrincipal: f.b.pub, snapshot: snapshot(),
     request: parseVisorCompanionResolveRequest(body(f, [{ role: "external", principal: f.a.pub }], gen(3)))! });
   assert.equal(revoked.ok, false);
