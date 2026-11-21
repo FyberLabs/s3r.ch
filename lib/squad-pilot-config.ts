@@ -2,11 +2,13 @@ import { p256 } from "@noble/curves/nist.js";
 import { squadView, type LiveSquadSpec } from "./squad-view";
 import type { ForumAuthorityConfig } from "./identity/forum-authority";
 
+import { parseSquadPlaneConfig, type SquadPlaneConfig } from "./squad-plane-forum";
 import type { ReportParents } from "./forum-report-forward";
 
 export type SquadPilotConfig = Readonly<{
   version: 1; origin: string; squad: LiveSquadSpec; authority: ForumAuthorityConfig;
   reportParents?: ReportParents;
+  plane?: SquadPlaneConfig;
 }>;
 const exact = (x: unknown, keys: string): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).sort().join() === keys;
 const strings = (x: unknown): x is string[] => Array.isArray(x) && x.length <= 32 && x.every(s => typeof s === "string" && s.length > 0 && s.length <= 2048) && new Set(x).size === x.length;
@@ -32,7 +34,9 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
     delete (c as { ownerSigningKey?: unknown }).ownerSigningKey;
   }
   if ((!exact(c, "authority,origin,squad,version") &&
-      !exact(c, "authority,origin,reportParents,squad,version")) || c.version !== 1 ||
+      !exact(c, "authority,origin,reportParents,squad,version") &&
+      !exact(c, "authority,origin,plane,squad,version") &&
+      !exact(c, "authority,origin,plane,reportParents,squad,version")) || c.version !== 1 ||
       typeof c.origin !== "string" || new URL(c.origin).origin !== c.origin || !c.origin.startsWith("https://") ||
       !exact(c.squad, "forumId,label,owner") || !exact(c.authority, "keys,pinnedIssuers,policy") ||
       !exact(c.authority.policy, "allowedChainIds,allowedDomains,allowedUris") ||
@@ -51,6 +55,7 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
   }
   const typed = c as unknown as SquadPilotConfig;
   squadView(typed.squad);
+  if ("plane" in typed) parseSquadPlaneConfig(typed.plane);
   if ("reportParents" in typed) {
     const parents = typed.reportParents;
     if (!exact(parents, "command,fleet")) throw Error("invalid report destinations");
@@ -64,6 +69,6 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
   return structuredClone(typed);
 }
 export function publicSquadPilotConfig(c: SquadPilotConfig) {
-  return structuredClone({ ...(c.reportParents ? { reportParents: c.reportParents } : {}), origin: c.origin, squad: c.squad, config: c.authority,
+  return structuredClone({ ...(c.plane?.controlCredential ? { planeBotControls: true } : {}), ...(c.reportParents ? { reportParents: c.reportParents } : {}), origin: c.origin, squad: c.squad, config: c.authority,
     sessionBase: "/api/identity/sea", authorityEndpoint: "/api/squad/pilot/authority", statementEndpoint: "/api/squad/pilot/statement" });
 }
