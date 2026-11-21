@@ -1,6 +1,8 @@
 // Scheduled owner browser matrix only. Never preload authenticated storageState or bearer tokens.
 import assert from "node:assert/strict";
-import { loadStartupBrowserFixture, scheduledStartupBrowser } from "./startup-browser-fixture.mjs";
+import { setTimeout as delay } from "node:timers/promises";
+import { loadStartupBrowserFixture, scheduledStartupBrowser, nightlyLoginDriver,
+  nightlyLoginOrigin, testMemberOtp } from "./startup-browser-fixture.mjs";
 const cases = [];
 function report(status, reason) { console.log(JSON.stringify({ schema_version: 1, status, ...(reason ? { reason } : {}), cases })); }
 if (!scheduledStartupBrowser(process.env)) {
@@ -33,10 +35,44 @@ if (!scheduledStartupBrowser(process.env)) {
         });
       }, fixture.sea_record);
       const panel = page.getByTestId("startup-linked-login");
+      const linkedAccount = panel.getByRole("link", { name: "Sign in with your linked organization account" });
+      const hasFormAction = async (input, path) => input.evaluate((element, target) =>
+        element.form?.method === "post" && element.form?.action && new URL(element.form.action).origin === target.origin &&
+        new URL(element.form.action).pathname === target.path, { origin: nightlyLoginOrigin, path });
+      let lastOtpWindow = -1;
+      async function loginWithNightlyBroker() {
+        const link = new URL(await linkedAccount.getAttribute("href"), fixture.site_origin);
+        assert.equal(link.href, fixture.site_origin + "/api/identity/startup/start");
+        link.searchParams.set("provider", "startup-nightly");
+        await page.goto(link.href);
+        const upstream = "/realms/startup-nightly", downstream = "/realms/controlplane";
+        const passwordForm = upstream + "/login-actions/authenticate";
+        const password = page.locator("input#password");
+        await page.waitForURL(url => url.origin === nightlyLoginOrigin &&
+          [upstream + "/protocol/openid-connect/auth", passwordForm].includes(url.pathname));
+        await password.waitFor();
+        assert.ok(await hasFormAction(password, passwordForm));
+        await page.locator("input#username").fill(fixture.login.credentials.username);
+        await password.fill(fixture.login.credentials.password);
+        await page.locator("#kc-login").click();
+        const otpForm = downstream + "/login-actions/authenticate";
+        const otp = page.locator("input#otp");
+        await page.waitForURL(url => url.origin === nightlyLoginOrigin &&
+          [downstream + "/broker/startup-nightly/endpoint", otpForm].includes(url.pathname));
+        await otp.waitFor();
+        assert.ok(await hasFormAction(otp, otpForm));
+        const now = Date.now(), window = Math.floor(now / 30000), next = (window + 1) * 30000;
+        if (window === lastOtpWindow || next - now < 2000) await delay(next - now + 250);
+        const verificationTime = Date.now();
+        lastOtpWindow = Math.floor(verificationTime / 30000);
+        await otp.fill(testMemberOtp(fixture.login.credentials.otp_seed, verificationTime));
+        await page.locator("#kc-login").click();
+      }
       async function login() {
         await page.goto(fixture.site_origin + "/feed");
-        await panel.getByRole("link", { name: "Sign in with your linked organization account" }).click();
-        for (const step of fixture.login.steps) {
+        if (fixture.login.driver === nightlyLoginDriver) await loginWithNightlyBroker();
+        else await linkedAccount.click();
+        for (const step of fixture.login.steps ?? []) {
           await page.waitForURL(url => url.origin === step.origin ||
             (url.origin === fixture.site_origin && url.searchParams.get("startup") === "linked"));
           if (new URL(page.url()).origin === fixture.site_origin) break;
@@ -81,7 +117,7 @@ if (!scheduledStartupBrowser(process.env)) {
       }
       cases.push({ name: "foreign-organization-selection-refused", status: "passed" });
       await panel.getByRole("button", { name: "Sign out linked account" }).click();
-      await panel.getByRole("link", { name: "Sign in with your linked organization account" }).waitFor();
+      await linkedAccount.waitFor();
       await login(); cases.push({ name: "logout-relogin-preserves-existing-sea", status: "passed" });
       const seaSession = page.getByTestId("sea-identity-session");
       await seaSession.getByRole("button", { name: "Use saved identity", exact: true }).click();
