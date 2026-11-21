@@ -112,20 +112,29 @@ export function visorCompanionEvaluatedAtWithinSkew(clientAt: number, serverAt: 
   return Math.abs(clientAt - serverAt) <= VISOR_COMPANION_EVALUATED_AT_SKEW_SECONDS;
 }
 
+function retireBinding(retired: Map<string, Readonly<{ session: string; generation: string; principal: string }>[]>,
+  id: string, row: Readonly<{ session: string; generation: string; principal: string }>) {
+  const list = retired.get(id) ?? [];
+  if (list.some(entry => entry.generation === row.generation && entry.session === row.session)) return;
+  retired.set(id, [...list, row]);
+}
+
 function companionSnapshot(request: VisorCompanionResolveRequest, stored: VisorCompanionSetSnapshot | null): VisorCompanionSetSnapshot {
   const companions = new Map<string, Readonly<{ session: string; generation: string; principal: string }>>();
   for (const member of request.members) {
     if (member.role !== "companion") continue;
     companions.set(member.companion!, Object.freeze({ session: member.session!, generation: member.generation!, principal: member.principal }));
   }
-  const retired = new Map<string, Readonly<{ session: string; generation: string; principal: string }>>();
+  const retired = new Map<string, Readonly<{ session: string; generation: string; principal: string }>[]>();
   if (stored && stored.setId === request.setId) {
-    for (const [id, row] of stored.retired) retired.set(id, row);
+    for (const [id, rows] of stored.retired) retired.set(id, [...rows]);
     if (stored.setGeneration === request.setGeneration) {
-      for (const [id, row] of stored.companions) if (!companions.has(id)) retired.set(id, row);
-    } else for (const [id, row] of stored.companions) retired.set(id, row);
+      for (const [id, row] of stored.companions) if (!companions.has(id)) retireBinding(retired, id, row);
+    } else for (const [id, row] of stored.companions) retireBinding(retired, id, row);
   }
-  if (retired.size > MAX_RETIRED_COMPANIONS) throw new Error("Visor companion set capacity");
+  let retiredCount = 0;
+  for (const rows of retired.values()) retiredCount += rows.length;
+  if (retiredCount > MAX_RETIRED_COMPANIONS) throw new Error("Visor companion set capacity");
   return Object.freeze({ setId: request.setId, setGeneration: request.setGeneration, companions, retired });
 }
 
@@ -136,8 +145,8 @@ function staleCompanion(
   if (!stored || stored.setId !== request.setId) return false;
   for (const member of request.members) {
     if (member.role !== "companion") continue;
-    const retired = stored.retired.get(member.companion!);
-    if (retired && retired.generation === member.generation) return true;
+    const retired = stored.retired.get(member.companion!) ?? [];
+    if (retired.some(row => row.generation === member.generation)) return true;
     if (stored.setGeneration !== request.setGeneration) {
       const prev = stored.companions.get(member.companion!);
       if (prev && prev.generation === member.generation) return true;
@@ -188,8 +197,8 @@ export async function resolveVisorCompanionSquad(input: VisorCompanionResolveInp
       if (member.role !== "companion") continue;
       const prev = stored.companions.get(member.companion!);
       if (prev && prev.generation !== member.generation) return { ok: false, reason: "stale-generation" };
-      const retired = stored.retired.get(member.companion!);
-      if (retired && retired.generation === member.generation) return { ok: false, reason: "stale-generation" };
+      const retired = stored.retired.get(member.companion!) ?? [];
+      if (retired.some(row => row.generation === member.generation)) return { ok: false, reason: "stale-generation" };
     }
   }
   try {
