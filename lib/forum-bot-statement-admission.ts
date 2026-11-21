@@ -69,7 +69,7 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       if (timedOut || clock() !== at) return reply(409);
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       const keys = isUpdate ? "evaluatedAt,forumId,owner,rows,update,version" : "evaluatedAt,forumId,owner,rows,version";
-      if (!body || Object.keys(body).sort().join() !== keys || body.version !== 1 ||
+      if (!body || Object.keys(body).sort((left, right) => left.localeCompare(right, "en")).join() !== keys || body.version !== 1 ||
           body.forumId !== spec.forumId || body.owner !== spec.owner || body.evaluatedAt !== at ||
           !Array.isArray(body.rows) || body.rows.length > 65) return reply(400);
       const proof = isUpdate ? parseForumUpdateProof(body.update) : null;

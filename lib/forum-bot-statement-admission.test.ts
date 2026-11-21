@@ -114,6 +114,12 @@ test("Plane update admission verifies the bot and signed body and uses only the 
   const prior = f.rows.length;
   const signed = await f.signed(["update", f.tenant, taskId, "Reviewed response received."], f.b);
   const rows = f.rows.slice(0, prior), additions = f.rows.slice(prior);
+  const object = { ...(additions[0].record as object), issuedAt: signed.issuedAt, sig: "pending" };
+  const parsed = parseForumAuthority("object", object);
+  assert.ok(parsed);
+  object.sig = Buffer.from(p256.sign(parsed.bytes, Buffer.from(f.b.priv, "base64url"),
+    { prehash: true, format: "compact" })).toString("base64url");
+  additions[0] = { kind: "object", soul: parsed.soul, record: object };
   const snapshot = () => ({ completeThrough: f.now(), rows,
     history: { completeThrough: f.now(), links: [], accounts: [f.owner, f.a, f.b].map(pair =>
       ({ principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) } });

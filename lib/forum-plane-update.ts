@@ -25,7 +25,7 @@ const uuid = (value: unknown): value is string => typeof value === "string" &&
 
 export function parseForumUpdateProof(value: unknown): ForumUpdateProof | null {
   if (!value || typeof value !== "object" || Array.isArray(value) ||
-      Object.keys(value).sort().join() !== "assignmentId,botId,deliveryId,sequence,sessionId,signature,taskId") return null;
+      Object.keys(value).sort((left, right) => left.localeCompare(right, "en")).join() !== "assignmentId,botId,deliveryId,sequence,sessionId,signature,taskId") return null;
   const proof = value as Record<string, unknown>;
   if (!uuid(proof.botId) || !uuid(proof.assignmentId) || !uuid(proof.sessionId) ||
       !uuid(proof.taskId) || !uuid(proof.deliveryId) || typeof proof.sequence !== "number" ||
