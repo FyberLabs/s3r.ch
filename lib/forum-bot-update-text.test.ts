@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { p256 } from "@noble/curves/nist.js";
 import { encodeBotMessage, parseBotMessage, type BotUpdateMessage } from "./forum-bot-protocol";
 import { validateBotUpdateText } from "./forum-bot-update-text";
 
@@ -18,6 +19,9 @@ test("bounded task update round trips without execution fields", () => {
 });
 
 test("task update validation refuses private handles, keys and nested commands", () => {
+  const pub = p256.getPublicKey(Buffer.alloc(32, 17), false);
+  const principal = Buffer.from(pub.slice(1, 33)).toString("base64url") + "." +
+    Buffer.from(pub.slice(33)).toString("base64url");
   for (const text of [
     " Pending",
     `private handle: ${handle}`,
@@ -26,7 +30,7 @@ test("task update validation refuses private handles, keys and nested commands",
     '["result", "completed"]',
     '{"epriv":"test"}',
     "https://user:password@example.invalid",
-    `Author: ${"a".repeat(43)}.${"b".repeat(43)}`,
+    `Author: ${principal}`,
   ]) {
     assert.throws(() => validateBotUpdateText(text, binding), text);
   }
