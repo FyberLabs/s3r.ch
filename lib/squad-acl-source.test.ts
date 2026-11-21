@@ -95,3 +95,32 @@ test("vault authority is restricted to its TEST tenant and dedicated scope", () 
   assert.throws(() => dedicatedTestVaultAuthority({ ...source, scope: "forum" }, tenant, pilot), /authority binding/);
   assert.throws(() => dedicatedTestVaultAuthority({ ...source, tenant: "other" }, tenant, pilot), /authority binding/);
 });
+
+test("forum updates use the scoped commit operation without retry or generic append", async () => {
+  const { createAclStatementSource } = await import("./acl-statement-source-server");
+  const tenant = "01234567-89ab-cdef-0123-456789abcdef";
+  const id = "01234567-89ab-cdef-0123-456789abcdea";
+  const update = { tenant, botId: id, assignmentId: id, sessionId: id, deliveryId: id, taskId: id,
+    sequence: 1, signature: "SEA-fixture", forumId: config.squad.forumId, principal: owner,
+    statementId: "stmt-fixture", status: "completed" as const };
+  const fence = "a".repeat(64);
+  let code = 403, calls = 0, guards = 0;
+  const source = createAclStatementSource({ tenant, origin: "https://acl.example.test", scope: "forum",
+    apiKey: "private-fixture" }, async (url, init) => {
+    calls++;
+    assert.equal(String(url), "https://acl.example.test/api/v1/acl/sociacl/statements/forum/forum-update");
+    assert.equal(init?.redirect, "error");
+    assert.equal(new Headers(init?.headers).get("X-Api-Key"), "private-fixture");
+    assert.deepEqual(JSON.parse(String(init?.body)), { evaluatedAt: 100, fence, rows: [], update });
+    return Response.json({ ok: code === 200 }, { status: code });
+  }, () => 100);
+  const request = { aclFence: "100." + fence, rows: [], update, signal: new AbortController().signal,
+    guard: () => { guards++; } };
+  assert.equal(await source.commitForumUpdate(request), "refused");
+  code = 409;
+  assert.equal(await source.commitForumUpdate(request), "conflict");
+  code = 200;
+  assert.equal(await source.commitForumUpdate(request), "committed");
+  assert.equal(calls, 3);
+  assert.equal(guards, 3);
+});
