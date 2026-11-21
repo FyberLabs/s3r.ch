@@ -13,7 +13,7 @@ credential goes only to the configured origin. Both requests require version
 
 - `/api/squad/pilot/plane/tasks` also takes either `kind: "local"`,
   `workspace` and `submission_base64`, or `kind: "remote-agent"` and
-  `request_sha256`. Plane defines the UUIDv5 task identity for the exact
+  `request_sha256`. Plane defines the UUIDv8 task identity for the exact
   Conductor request.
 - `/api/squad/pilot/plane/control` takes `action: "pause"` or `"resume"` for
   the current assignment. Omit action to read confirmed run control. A resume

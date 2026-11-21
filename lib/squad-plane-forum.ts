@@ -15,7 +15,7 @@ const record = (value: unknown): value is Record<string, unknown> =>
 export type SquadPlaneConfig = Readonly<{ origin: string; tenant: string; roster: Readonly<Record<string, string>> }>;
 
 export function parseSquadPlaneConfig(value: unknown): SquadPlaneConfig {
-  if (!record(value) || Object.keys(value).sort().join() !== "origin,roster,tenant" ||
+  if (!record(value) || Object.keys(value).sort((left, right) => left.localeCompare(right, "en")).join() !== "origin,roster,tenant" ||
       typeof value.origin !== "string" || !value.origin.startsWith("https://") ||
       new URL(value.origin).origin !== value.origin || !uuid(value.tenant) || !record(value.roster)) {
     throw Error("Invalid squad Plane configuration");
@@ -30,11 +30,10 @@ export function parseSquadPlaneConfig(value: unknown): SquadPlaneConfig {
 }
 
 export function squadPlaneTaskId(tenant: string, forum: string, sourceTask: string): string {
-  const bytes = createHash("sha1")
-    .update(Buffer.from("6ba7b8119dad11d180b400c04fd430c8", "hex"))
+  const bytes = createHash("sha256")
     .update(JSON.stringify(["s3rch-forum-intent-v1", tenant, forum, sourceTask]))
     .digest().subarray(0, 16);
-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[6] = (bytes[6] & 0x0f) | 0x80;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = bytes.toString("hex");
   return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
@@ -46,7 +45,7 @@ function command(action: Action, json: unknown) {
   if (!record(json) || json.version !== 1 || !uuid(json.bot_id) || !uuid(json.source_task_id) ||
       !uuid(json.assignment_id) || !uuid(json.session_id)) return null;
   const { bot_id, source_task_id, assignment_id, session_id } = json;
-  const keys = Object.keys(json).sort().join();
+  const keys = Object.keys(json).sort((left, right) => left.localeCompare(right, "en")).join();
   const scope = { version: 1, source_task_id, assignment_id, session_id };
   if (action === "control") {
     if (keys === "assignment_id,bot_id,session_id,source_task_id,version") return { bot_id, scope };
@@ -84,8 +83,8 @@ export function createSquadPlaneForum(input: {
   const config = structuredClone(input.config);
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   const send = input.fetch ?? fetch;
-  const reply = (status: number, body: object = { error: "forum-agent-request-refused" }) =>
-    Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
+  const reply = (status: number, body?: object) =>
+    Response.json(body ?? { error: "forum-agent-request-refused" }, { status, headers: { "Cache-Control": "no-store" } });
 
   return async (request: Request, action: Action) => {
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(5000)]);
