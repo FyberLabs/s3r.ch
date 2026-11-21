@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { generateKeyPair, SignJWT } from "jose";
 import { beginStartupOAuth, finishStartupOAuth, readStartupCredential, hasStartupPending } from "./startup-oauth";
 import { createStartupLinkedLogin } from "./startup-linked-login";
-import { parseStartupLoginConfig, TEST_GITHUB_MEMBER_ENDPOINT } from "./startup-login-config";
+import { parseStartupLoginConfig, TEST_GITHUB_MEMBER_ENDPOINT, TEST_NIGHTLY_MEMBER_ENDPOINT } from "./startup-login-config";
 import { startupPendingName, startupCredentialName } from "./startup-login-cookies";
 const env = { NODE_ENV: "test", S3RCH_STARTUP_LOGIN_PROVIDER: "panopticon",
   S3RCH_STARTUP_AUTH_URL: "https://auth.example.invalid/auth/startup/identity",
@@ -83,6 +83,45 @@ test("the TEST GitHub linked sign-in requests a fresh broker challenge", async (
   assert.equal(authorize.searchParams.get("kc_idp_hint"), "github");
   assert.equal(authorize.searchParams.get("prompt"), "login");
   assert.equal(authorize.searchParams.get("code_challenge_method"), "S256");
+});
+
+test("the dedicated TEST client carries its verified broker selection through callback and session", async () => {
+  const issuer = "https://auth.test.hyperme.sh/realms/controlplane", audience = "s3rch-startup-nightly";
+  const subject = "00000000-0000-4000-8000-000000000121";
+  const tenant_id = "00000000-0000-4000-8000-000000000123";
+  const vector = JSON.parse(await readFile(new URL("./vectors/startup-deployment.json", import.meta.url), "utf8"));
+  const mapping = { broker: { audience, issuer, provider: "startup-nightly", subject },
+    environment: "test", network_id: "hyperme.sh", sea_public_key: vector.binding.sea_public_key, tenant_id, version: 1 };
+  const serialized = JSON.stringify(mapping) + "\n";
+  const configuration = { ...env, S3RCH_STARTUP_LOGIN_ENABLED: "1", S3RCH_STARTUP_NIGHTLY_MEMBER_CONFIG: serialized };
+  const site = "https://test.s3r.ch", startPath = "/api/identity/startup/start?provider=startup-nightly";
+  const foreign = await beginStartupOAuth(new Request("https://s3r.ch" + startPath), configuration, { now });
+  assert.equal(foreign.headers.get("location"), "/feed?startup=unavailable");
+  const start = await beginStartupOAuth(new Request(site + startPath), configuration, { now });
+  const authorize = new URL(start.headers.get("location")!);
+  assert.equal(authorize.searchParams.get("kc_idp_hint"), "startup-nightly");
+  assert.equal(authorize.searchParams.get("client_id"), audience);
+  assert.equal(authorize.searchParams.get("prompt"), "login");
+  const keys = await generateKeyPair("ES256");
+  const config = parseStartupLoginConfig(new TextEncoder().encode(serialized), configuration, true);
+  const idToken = await new SignJWT({ nonce: authorize.searchParams.get("nonce") })
+    .setProtectedHeader({ alg: "ES256" }).setIssuer(issuer).setAudience(audience)
+    .setSubject(subject).setIssuedAt(now / 1000).setExpirationTime(now / 1000 + 60).sign(keys.privateKey);
+  const identity = { ...config.binding, schema_version: 1, status: "resolved", permissions: [],
+    person_id: "00000000-0000-4000-8000-000000000999", broker_subject: subject };
+  const callback = new Request(site + "/api/identity/oauth/callback?code=one-time&state=" + authorize.searchParams.get("state"),
+    { headers: { cookie: cookie(start, startupPendingName(true)) } });
+  const result = await finishStartupOAuth(callback, configuration, { now, key: keys.publicKey, fetch: async url => {
+    if (String(url) === config.provider.tokenEndpoint) return Response.json({ id_token: idToken, access_token: "synthetic-access" });
+    assert.equal(String(url), TEST_NIGHTLY_MEMBER_ENDPOINT);
+    return Response.json(identity);
+  } });
+  assert.equal(result.headers.get("location"), "/feed?startup=linked");
+  const session = new Request(site + "/api/identity/startup/session", {
+    headers: { cookie: cookie(result, startupCredentialName(true)) },
+  });
+  assert.deepEqual((await readStartupCredential(session, configuration, { now }))?.identity.oidc,
+    { provider: "startup-nightly", subject });
 });
 
 test("state mismatch or changed configuration refuses before token exchange", async () => {

@@ -10,6 +10,7 @@ export type StartupLoginBinding = Readonly<{
   tenant_id: string; network_id: string;
   entra?: Readonly<{ tenant_id: string; object_id: string }>;
   github?: Readonly<{ subject: string }>;
+  oidc?: Readonly<{ provider: "startup-nightly"; subject: string }>;
   organizations: readonly StartupOrganization[];
 }>;
 export type StartupLinkedIdentity = StartupLoginBinding & Readonly<{
@@ -32,9 +33,16 @@ export function snapshotStartupLoginBinding(value: unknown): StartupLoginBinding
   const common = { binding_sha256: value.binding_sha256, mapping_sha256: value.mapping_sha256,
     sea_public_key: value.sea_public_key, tenant_id: value.tenant_id, network_id: value.network_id };
   if ("github" in value) {
-    if ("entra" in value || !object(value.github) || Object.keys(value.github).length !== 1 ||
+    if ("entra" in value || "oidc" in value || !object(value.github) || Object.keys(value.github).length !== 1 ||
         !uuid(value.github.subject) || value.organizations.length !== 0 || value.network_id !== "hyperme.sh") return null;
     return Object.freeze({ ...common, github: Object.freeze({ subject: value.github.subject }),
+      organizations: Object.freeze([]) });
+  }
+  if ("oidc" in value) {
+    if ("entra" in value || !object(value.oidc) || Object.keys(value.oidc).length !== 2 ||
+        value.oidc.provider !== "startup-nightly" || !uuid(value.oidc.subject) ||
+        value.organizations.length !== 0 || value.network_id !== "hyperme.sh") return null;
+    return Object.freeze({ ...common, oidc: Object.freeze({ provider: "startup-nightly" as const, subject: value.oidc.subject }),
       organizations: Object.freeze([]) });
   }
   if (!object(value.entra) || !uuid(value.entra.tenant_id) || !uuid(value.entra.object_id) ||
@@ -65,6 +73,7 @@ export function resolveStartupLinkedIdentity(value: unknown, expected: StartupLo
       !Array.isArray(value.permissions) || value.permissions.length !== 0 || !uuid(value.person_id) ||
       !subject(verifiedSubject) || value.broker_subject !== verifiedSubject ||
       (desired.github !== undefined && verifiedSubject !== desired.github.subject) ||
+      (desired.oidc !== undefined && verifiedSubject !== desired.oidc.subject) ||
       existing.sea_public_key !== desired.sea_public_key ||
       (existing.person_id !== undefined && existing.person_id !== value.person_id) ||
       JSON.stringify(desired) !== JSON.stringify(actual)) return null;
