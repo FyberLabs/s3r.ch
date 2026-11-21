@@ -15,6 +15,7 @@ function main() {
     active = true;
     const cancelled = new AbortController();
     socket.once("close", () => cancelled.abort());
+    socket.once("end", () => cancelled.abort());
     socket.setTimeout(10000, () => socket.destroy());
     let text = "", dispatched = false;
     socket.setEncoding("utf8").on("data", (chunk: string) => {
@@ -25,7 +26,6 @@ function main() {
       }
       if (!text.endsWith("\n")) return;
       dispatched = true;
-      socket.pause();
       void Promise.resolve().then(() => reporter.report(JSON.parse(text), cancelled.signal))
         .then(() => socket.end("ok\n"), () => socket.end("refused\n"))
         .finally(() => { active = false; });

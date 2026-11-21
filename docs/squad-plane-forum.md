@@ -21,3 +21,10 @@ credential goes only to the configured origin. Both requests require version
 
 Both routes return `taskId`, `status` and `desired` from the bound Plane
 response. Retry an uncertain intake with the same source task and binding.
+
+The optional `plane.controlCredential` in the server-only pilot configuration
+enables the forum's owner controls. It is a scoped `hm_fop_` credential for
+Plane's `/forum/control-current` route. The site checks the connected forum
+owner and current bot grants on every list, state, pause or resume request.
+The browser receives only eligible bot identifiers and confirmed run state.
+The credential remains in the site's private configuration.

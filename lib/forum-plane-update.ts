@@ -12,11 +12,17 @@ export type ForumUpdateProof = Readonly<{
   sequence: number;
   signature: string;
 }>;
+export const VISOR_FORUM_STATUS_TEXT = {
+  completed: "Conductor completed the task.",
+  failed: "Conductor reported that the task failed.",
+} as const;
+
 export type VerifiedForumUpdate = ForumUpdateProof & Readonly<{
   forumId: string;
   statementId: string;
   tenant: string;
   principal: string;
+  status: keyof typeof VISOR_FORUM_STATUS_TEXT;
 }>;
 
 const uuid = (value: unknown): value is string => typeof value === "string" &&
@@ -46,5 +52,9 @@ export async function verifyForumUpdate(proof: ForumUpdateProof, scope: {
   if (!message || message[0] !== "update" || message[1] !== scope.tenant || message[2] !== proof.taskId) return null;
   try { validateBotUpdateText(message[3], { tenant: scope.tenant, task: proof.taskId }); }
   catch { return null; }
-  return { ...proof, tenant: scope.tenant, forumId: scope.forumId, statementId: scope.object, principal: scope.principal };
+  const status = message[3] === VISOR_FORUM_STATUS_TEXT.completed ? "completed"
+    : message[3] === VISOR_FORUM_STATUS_TEXT.failed ? "failed" : null;
+  if (!status) return null;
+  return { ...proof, tenant: scope.tenant, forumId: scope.forumId, statementId: scope.object,
+    principal: scope.principal, status };
 }

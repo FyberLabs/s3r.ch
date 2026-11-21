@@ -14,6 +14,7 @@ import { createBotSession } from "./forum-bot-session";
 import { buildForumStatement } from "./forum-squad";
 import { signForumRecord } from "./forum-sign";
 import { toGunNode } from "./feed-types";
+import { VISOR_FORUM_STATUS_TEXT } from "./forum-plane-update";
 import { encodeBotMessage } from "./forum-bot-protocol";
 import { readBoundedIdentityJson } from "./identity/bounded-json";
 
@@ -21,14 +22,9 @@ const validId = (value: unknown): value is string => typeof value === "string" &
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value) &&
   value !== "00000000-0000-0000-0000-000000000000";
 
-const notes = {
-  completed: "Conductor completed the task.",
-  failed: "Conductor reported that the task failed.",
-} as const;
-
 type Report = {
   tenant: string; botId: string; assignmentId: string; sessionId: string; taskId: string;
-  deliveryId: string; forumId: string; principal: string; status: keyof typeof notes;
+  deliveryId: string; forumId: string; principal: string; status: keyof typeof VISOR_FORUM_STATUS_TEXT;
 };
 type Config = {
   version: 1; tenant: string; botId: string; forumId: string; principal: string; owner: string;
@@ -103,7 +99,7 @@ export function openVisorForumReporter(configFile: string) {
           if (Number(count?.total) >= 4096) throw Error("Forum report capacity reached");
           const item = buildForumStatement({ forumId: c.forumId, author: c.principal, now: at,
             entropy: createHash("sha256").update(JSON.stringify([binding, r.deliveryId])).digest("hex").slice(0, 32),
-            body: encodeBotMessage(["update", c.tenant, r.taskId, notes[r.status]]) });
+            body: encodeBotMessage(["update", c.tenant, r.taskId, VISOR_FORUM_STATUS_TEXT[r.status]]) });
           if (!item) throw Error("Invalid outgoing forum report");
           const data = toGunNode(item), sig = await signForumRecord(data, pair);
           if (!sig) throw Error("Forum report signing failed");

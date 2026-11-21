@@ -112,7 +112,7 @@ test("Plane update admission verifies the bot and signed body and uses only the 
   const f = await forumBotFixture(t), origin = "https://forum.example.test";
   const taskId = randomUUID();
   const prior = f.rows.length;
-  const signed = await f.signed(["update", f.tenant, taskId, "Reviewed response received."], f.b);
+  const signed = await f.signed(["update", f.tenant, taskId, "Conductor completed the task."], f.b);
   const rows = f.rows.slice(0, prior), additions = f.rows.slice(prior);
   const object = { ...(additions[0].record as object), issuedAt: signed.issuedAt, sig: "pending" };
   const parsed = parseForumAuthority("object", object);
@@ -136,6 +136,7 @@ test("Plane update admission verifies the bot and signed body and uses only the 
         assert.equal(update.principal, f.b.pub);
         assert.equal(update.statementId, signed.id);
         assert.equal(update.taskId, taskId);
+        assert.equal(update.status, "completed");
         guard();
         if (paused) return "refused";
         if (aclFence !== String(rows.length)) return "conflict";

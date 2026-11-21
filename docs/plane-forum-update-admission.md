@@ -12,14 +12,13 @@ the signed message's tenant, task and statement ID, and the ACL rows for that
 same statement. Plane-roster signers use this admission path for forum
 statements. The room path has its own authority.
 
-The route returns unavailable until a provider implementing
-`PlaneForumUpdateAuthority` is supplied. The provider must commit the signed
-statement and its ACL rows while the ACL fence and current Plane delivery
-binding both hold. It must refuse pause, revocation and conflicting reuse of a
-delivery sequence, and handle identical retries without adding a second
-statement. Reading Plane before an ordinary ACL append leaves a pause race.
-The current ACL provider exposes only an ACL fence, so provisioning cannot
-enable this route with configuration alone.
+The site uses the ACL source's `forum-update` operation when the pilot has a
+configured Plane roster. The ACL service rechecks its fence and obtains a
+durable Plane decision for the signed terminal status inside the write
+transaction. Plane orders that decision against changes to the live bot
+assignment and pause state. The route returns unavailable until the matching
+ACL and Plane service bindings are installed.
+
 
 Visor can publish terminal status with the local reporter. Run the repository's
 `tsx` executable with `scripts/s3rch-visor-forum-reporter.ts /absolute/config.json`

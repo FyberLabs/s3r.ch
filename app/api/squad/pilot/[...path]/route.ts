@@ -31,7 +31,7 @@ async function nativePOST(request: Request, context: { params: Promise<{ path: s
     if (!pilot) return reply(404);
     if (path.length === 2 && path[0] === "plane") {
       if (path[1] === "update") return pilot.services.statements(request, "plane-update");
-      if (path[1] === "tasks" || path[1] === "control") {
+      if (path[1] === "tasks" || path[1] === "control" || path[1] === "bot-controls") {
         return pilot.services.planeForum ? pilot.services.planeForum(request, path[1]) : reply(404);
       }
     }
