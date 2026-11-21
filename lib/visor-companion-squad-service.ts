@@ -6,6 +6,7 @@ import {
   parseVisorCompanionResolveRequest,
   resolveVisorCompanionSquad,
   VISOR_COMPANION_AGENT_SCOPE,
+  visorCompanionEvaluatedAtWithinSkew,
   type VisorCompanionSetStore,
 } from "./visor-companion-squad";
 
@@ -33,7 +34,6 @@ export function createVisorCompanionSquadService(input: {
     try {
       if (request.method !== "POST" || !matchesBrowserOrigin(request, origin) ||
           request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") return reply(403, { error: "origin-or-type" });
-      const at = clock();
       const agent = request.headers.has("authorization") ? await authenticateAgent(request) : null;
       const browser = agent ? null : await authenticate(request);
       const ownerKey = agent?.principal ?? browser?.key;
@@ -60,13 +60,14 @@ export function createVisorCompanionSquadService(input: {
       catch { return reply(400, { error: "request" }); }
       const parsed = parseVisorCompanionResolveRequest(body);
       if (!parsed) return reply(400, { error: "request" });
-      if (clock() !== at || parsed.evaluatedAt !== at) return reply(409, { error: "scope-or-time" });
+      const evaluatedAt = clock();
+      if (!visorCompanionEvaluatedAtWithinSkew(parsed.evaluatedAt, evaluatedAt)) return reply(409, { error: "scope-or-time" });
       request.signal.throwIfAborted();
-      const snapshot = structuredClone(await read(at, request.signal));
+      const snapshot = structuredClone(await read(evaluatedAt, request.signal));
       if (!snapshot || !Array.isArray(snapshot.rows) || snapshot.rows.length > 1024 ||
           !snapshot.history || !Number.isSafeInteger(snapshot.completeThrough)) return reply(503, { error: "authority-unavailable" });
       const result = await resolveVisorCompanionSquad({
-        squad: spec, origin: origin.origin, authority: config, tenant, ownerKey,
+        squad: spec, origin: origin.origin, authority: config, tenant, ownerKey, evaluatedAt,
         request: parsed, snapshot, store, clock,
       });
       if (!result.ok) {

@@ -10,7 +10,8 @@ import { createForumAuthorityService } from "./forum-authority-service";
 import { createIdentityTokenVerifier } from "./identity/sea-session-verifier";
 import { readSeaSessionCookie } from "./identity/sea-session-http";
 import { identitySessionNamespace } from "./identity/replay-namespace";
-import { createMemoryVisorCompanionSetStore } from "./visor-companion-squad";
+import type { VisorCompanionSetStore } from "./visor-companion-set-store";
+import { configuredVisorCompanionSetStore } from "./visor-companion-set-store";
 import { createVisorCompanionSquadService } from "./visor-companion-squad-service";
 export { identitySessionNamespace } from "./identity/replay-namespace";
 
@@ -18,7 +19,8 @@ export { identitySessionNamespace } from "./identity/replay-namespace";
 export function createSquadPilotServer(c: SquadPilotConfig, statements: BotStatementSource | undefined, replay: IdentityReplay | undefined,
   clock = () => Math.floor(Date.now() / 1000),
   identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" }),
-  tenant = process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID) {
+  tenant = process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID,
+  visorStore?: VisorCompanionSetStore) {
   if (!statements) throw Error("ACL statement source is required");
   if (!replay) throw Error("ACL authority requires configured identity replay");
   const config = structuredClone(c);
@@ -28,10 +30,12 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
     const token = readSeaSessionCookie(request);
     return token ? verifier.authenticate(token) : null;
   };
-  const visorStore = createMemoryVisorCompanionSetStore();
   const common = { squad: config.squad, origin: config.origin, config: config.authority, clock, authenticate };
   const visorCompanion = tenant && typeof tenant === "string"
-    ? createVisorCompanionSquadService({ ...common, tenant, store: visorStore, read: source.read })
+    ? (() => {
+      if (!visorStore) throw new Error("Visor companion durable store required");
+      return createVisorCompanionSquadService({ ...common, tenant, store: visorStore, read: source.read });
+    })()
     : undefined;
   const services = Object.freeze({ authenticate,
     authority: createForumAuthorityService({ ...common, read: source.read }),
@@ -56,7 +60,9 @@ export function getSquadPilotServer() {
     throw Error("Statement source and replay must use the same tenant");
   const tenant = process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID;
   if (!tenant) throw Error("Squad pilot tenant binding required");
-  const server = createSquadPilotServer(config, statements, replay, undefined, undefined, tenant);
+  const visorStore = configuredVisorCompanionSetStore(process.env, config.squad.forumId);
+  if (!visorStore) throw new Error("Visor companion durable store not configured");
+  const server = createSquadPilotServer(config, statements, replay, undefined, undefined, tenant, visorStore);
   cached = { identity, server }; return server;
 }
 

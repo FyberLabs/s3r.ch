@@ -2,8 +2,11 @@ import { shortSea } from "./forum-squad";
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { isSeaPubkey } from "./identity/forum-check";
 import type { LiveSquadSpec } from "./squad-view";
+import type { VisorCompanionSetSnapshot, VisorCompanionSetStore } from "./visor-companion-set-store";
 
+export type { VisorCompanionSetSnapshot, VisorCompanionSetStore } from "./visor-companion-set-store";
 export const VISOR_COMPANION_AGENT_SCOPE = "squad:visor-companion:resolve";
+export const VISOR_COMPANION_EVALUATED_AT_SKEW_SECONDS = 60;
 
 export type VisorCompanionMemberRole = "companion" | "external";
 
@@ -100,30 +103,9 @@ export function squadForumDestination(origin: string): string {
   return url.href;
 }
 
-export type VisorCompanionSetSnapshot = Readonly<{
-  setId: string;
-  setGeneration: string;
-  companions: ReadonlyMap<string, Readonly<{ session: string; generation: string; principal: string }>>;
-}>;
-
-export type VisorCompanionSetStore = Readonly<{
-  read(tenant: string, owner: string, machineId: string): Promise<VisorCompanionSetSnapshot | null>;
-  write(tenant: string, owner: string, machineId: string, snapshot: VisorCompanionSetSnapshot): Promise<void>;
-}>;
-
-export function createMemoryVisorCompanionSetStore(): VisorCompanionSetStore & { clear(): void } {
-  const rows = new Map<string, VisorCompanionSetSnapshot>();
-  const key = (tenant: string, owner: string, machineId: string) => JSON.stringify([tenant, owner, machineId]);
-  return {
-    async read(tenant, owner, machineId) {
-      const hit = rows.get(key(tenant, owner, machineId));
-      return hit ? structuredClone({ ...hit, companions: new Map(hit.companions) }) : null;
-    },
-    async write(tenant, owner, machineId, snapshot) {
-      rows.set(key(tenant, owner, machineId), structuredClone({ ...snapshot, companions: new Map(snapshot.companions) }));
-    },
-    clear() { rows.clear(); },
-  };
+export function visorCompanionEvaluatedAtWithinSkew(clientAt: number, serverAt: number): boolean {
+  if (!Number.isSafeInteger(clientAt) || !Number.isSafeInteger(serverAt) || clientAt < 0 || serverAt < 0) return false;
+  return Math.abs(clientAt - serverAt) <= VISOR_COMPANION_EVALUATED_AT_SKEW_SECONDS;
 }
 
 function companionSnapshot(request: VisorCompanionResolveRequest): VisorCompanionSetSnapshot {
@@ -155,6 +137,7 @@ export type VisorCompanionResolveInput = Readonly<{
   authority: ForumAuthorityConfig;
   tenant: string;
   ownerKey: string;
+  evaluatedAt: number;
   request: VisorCompanionResolveRequest;
   snapshot: ForumAuthoritySnapshot;
   store: VisorCompanionSetStore;
@@ -168,8 +151,8 @@ export type VisorCompanionResolveResult =
 /** Map the current companion set to an authority-checked roster and browser destination. */
 export async function resolveVisorCompanionSquad(input: VisorCompanionResolveInput): Promise<VisorCompanionResolveResult> {
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
-  const at = clock();
-  if (input.request.evaluatedAt !== at) return { ok: false, reason: "scope-or-time" };
+  const at = input.evaluatedAt;
+  if (!visorCompanionEvaluatedAtWithinSkew(input.request.evaluatedAt, at)) return { ok: false, reason: "scope-or-time" };
   if (input.request.tenant !== input.tenant) return { ok: false, reason: "tenant" };
   if (input.ownerKey !== input.squad.owner) return { ok: false, reason: "owner" };
   const stored = await input.store.read(input.request.tenant, input.squad.owner, input.request.machineId);

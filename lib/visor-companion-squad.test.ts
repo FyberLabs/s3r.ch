@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { forumBotFixture } from "./forum-bot-test-fixture";
 import vectors from "./identity/vectors/forum-authority.json";
+import { createMemoryVisorCompanionSetStore } from "./visor-companion-set-store";
 import {
-  createMemoryVisorCompanionSetStore,
   parseVisorCompanionResolveRequest,
   resolveVisorCompanionSquad,
   squadForumDestination,
@@ -15,10 +15,10 @@ const machineId = "11111111-1111-4111-8111-111111111111";
 const setId = "22222222-2222-4222-8222-222222222222";
 const gen = (n: number) => `${n.toString(16).padStart(8, "0")}-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
 
-function body(f: Awaited<ReturnType<typeof forumBotFixture>>, members: unknown[], generation = gen(1)) {
+function body(f: Awaited<ReturnType<typeof forumBotFixture>>, members: unknown[], generation = gen(1), evaluatedAt = f.now()) {
   return {
     version: 1,
-    evaluatedAt: f.now(),
+    evaluatedAt,
     tenant: f.tenant,
     machineId,
     setId,
@@ -42,7 +42,7 @@ test("slice done check: Visor companion binding contract (#551)", async t => {
   const session = randomUUID();
   const generation = gen(1);
   const common = { squad: { forumId: f.forum, owner: f.owner.pub, label: "Pilot" }, origin, authority: { keys: [], pinnedIssuers: [], policy: vectors.context.policy },
-    tenant: f.tenant, ownerKey: f.owner.pub, store, clock: f.now, snapshot: snapshot() };
+    tenant: f.tenant, ownerKey: f.owner.pub, store, clock: f.now, evaluatedAt: f.now(), snapshot: snapshot() };
   const first = await resolveVisorCompanionSquad({ ...common,
     request: parseVisorCompanionResolveRequest(body(f, [
       { role: "companion", principal: f.b.pub, companion, session, generation },
@@ -73,6 +73,10 @@ test("slice done check: Visor companion binding contract (#551)", async t => {
   assert.equal(wrongTenant.ok, false);
   assert.equal(wrongTenant.reason, "tenant");
   assert.equal(VISOR_COMPANION_AGENT_SCOPE, "squad:visor-companion:resolve");
+  const skewed = await resolveVisorCompanionSquad({ ...common, evaluatedAt: f.now(),
+    request: parseVisorCompanionResolveRequest(body(f, [{ role: "external", principal: f.a.pub }], gen(5), f.now() - 120))! });
+  assert.equal(skewed.ok, false);
+  if (!skewed.ok) assert.equal(skewed.reason, "scope-or-time");
 });
 
 test("parser rejects client roster forgery fields and tokenized destinations", () => {

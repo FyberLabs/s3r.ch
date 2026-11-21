@@ -12,8 +12,10 @@ Native machines authenticate with agent bearer scope
 session as the live pilot page. Client-supplied rosters never grant access.
 
 Set generation changes retire prior companion session bindings. Presenting an
-older generation after removal is refused. Companion store state is held in the
-pilot process until durable operator storage is provisioned for TEST.
+older generation after removal is refused. Companion fencing is durable through
+the squad pilot tenant record store (statement-source credentials, Postgres in
+production). The service evaluates authority at server time; client `evaluatedAt`
+may differ by up to 60 seconds and the response carries the server timestamp.
 
 Consumer: hyperme-sh/visor#223 should call this endpoint for the minimized nest
 icon instead of trusting per-session `companion.toml` forum URLs.

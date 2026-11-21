@@ -5,7 +5,8 @@ import { p256 } from "@noble/curves/nist.js";
 import { agentDelegationBytes, parseAgentDelegation, parsePrincipalId } from "sociacl-ids";
 import { forumBotFixture } from "./forum-bot-test-fixture";
 import { createVisorCompanionSquadService } from "./visor-companion-squad-service";
-import { createMemoryVisorCompanionSetStore, VISOR_COMPANION_AGENT_SCOPE } from "./visor-companion-squad";
+import { createMemoryVisorCompanionSetStore } from "./visor-companion-set-store";
+import { VISOR_COMPANION_AGENT_SCOPE } from "./visor-companion-squad";
 import { createIdentitySessions } from "./identity/sea-session";
 import { seaSessionCookieNames } from "./identity/sea-session-http";
 import { signForumRecord } from "./forum-sign";
@@ -94,4 +95,11 @@ test("HTTP contract: agent and browser resolve current set without URL credentia
     body: JSON.stringify(payload),
   }));
   assert.equal(foreign.status, 403);
+  const skewed = await service(new Request(origin + "/api/squad/pilot/visor-companion", {
+    method: "POST",
+    headers: { Origin: origin, "Content-Type": "application/json", Cookie: `${seaSessionCookieNames()[0]}=${cookie}` },
+    body: JSON.stringify({ ...payload, evaluatedAt: f.now() - 120 }),
+  }));
+  assert.equal(skewed.status, 409);
+  assert.deepEqual(await skewed.json(), { error: "scope-or-time" });
 });
