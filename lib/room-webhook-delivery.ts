@@ -10,7 +10,8 @@ const record = "room-webhook-delivery-v1";
 const retries = [10, 60];
 const attemptSeconds = 8;
 const maxSubscriptions = 128;
-const maxDeliveries = 512;
+const maxPending = 512;
+const maxReceipts = 4096;
 const retainedSeconds = 86_400;
 const encode = new TextEncoder();
 
@@ -47,6 +48,48 @@ export function createRoomWebhookDelivery(input: {
 
   const sign = (id: string, body: string) =>
     "sha256=" + createHmac("sha256", Buffer.from(key(id), "hex")).update(body).digest("hex");
+
+  async function enqueueRoom(room: string, events: readonly RoomWebhookEvent[], signal: AbortSignal) {
+    if (!events.length) return;
+    const eventTime = (event: RoomWebhookEvent) =>
+      event.type === "room.message.created" ? event.message.createdAt : event.object.changedAt;
+    const matches = (event: RoomWebhookEvent, sub: RoomWebhookSubscription) =>
+      event.room === room && sub.room === room && sub.createdAt <= eventTime(event);
+    const queued = (rows: Delivery[], room: string) => new Set(rows.filter(row => row.event.room === room)
+      .map(row => row.subscription + ":" + row.event.id));
+    const candidates = await change(signal, state => {
+      const existing = queued(state.deliveries, room);
+      return { changed: false, value: state.subscriptions.filter(sub =>
+        events.some(event => matches(event, sub) && !existing.has(sub.id + ":" + event.id))) };
+    });
+    const allowed = new Set<string>();
+    for (const subscription of candidates) {
+      if (await input.canDeliver(subscription, signal)) allowed.add(subscription.id);
+    }
+    if (!allowed.size) return;
+    await change(signal, state => {
+      const at = clock();
+      const pending = state.deliveries.filter(row => !row.done);
+      const receipts = state.deliveries.filter(row => row.done && row.due + retainedSeconds > at).slice(-maxReceipts);
+      state.deliveries = [...pending, ...receipts];
+      const existing = queued(state.deliveries, room);
+      let remaining = maxPending - pending.length;
+      let changed = false;
+      for (const sub of state.subscriptions) {
+        if (!allowed.has(sub.id)) continue;
+        for (const event of events) {
+          if (remaining <= 0) return { changed, value: undefined };
+          const id = sub.id + ":" + event.id;
+          if (!matches(event, sub) || existing.has(id)) continue;
+          state.deliveries.push({ subscription: sub.id, event, attempts: 0, due: at, done: false });
+          existing.add(id);
+          remaining--;
+          changed = true;
+        }
+      }
+      return { changed, value: undefined };
+    });
+  }
 
   return {
     receive(id: string, body: string, signature: string, signal: AbortSignal) {
@@ -96,25 +139,7 @@ export function createRoomWebhookDelivery(input: {
         changed: false, value: [...new Map(state.subscriptions.map(row => [row.room, row.owner]))],
       }));
     },
-    async enqueue(event: RoomWebhookEvent, signal: AbortSignal) {
-      const publishedAt = event.type === "room.message.created" ? event.message.createdAt : event.object.changedAt;
-      const subscriptions = await change(signal, state => ({
-        value: state.subscriptions.filter(row => row.room === event.room && row.createdAt <= publishedAt), changed: false,
-      }));
-      const allowed = new Set<string>();
-      for (const subscription of subscriptions) {
-        if (await input.canDeliver(subscription, signal)) allowed.add(subscription.id);
-      }
-      await change(signal, state => {
-        const at = clock();
-        state.deliveries = state.deliveries.filter(row => !row.done || row.due + retainedSeconds > at);
-        const queued = new Set(state.deliveries.filter(row => row.event.id === event.id && row.event.room === event.room).map(row => row.subscription));
-        const rows = state.subscriptions.filter(row => allowed.has(row.id) && !queued.has(row.id));
-        if (state.deliveries.length + rows.length > maxDeliveries) throw Error("Room webhook delivery queue full");
-        for (const row of rows) state.deliveries.push({ subscription: row.id, event, attempts: 0, due: at, done: false });
-        return { value: undefined, changed: rows.length > 0 };
-      });
-    },
+    enqueueRoom,
     async deliverNext(signal: AbortSignal) {
       const attemptSignal = AbortSignal.any([signal, AbortSignal.timeout(attemptSeconds * 1000)]);
       const claimed = await change(attemptSignal, state => {

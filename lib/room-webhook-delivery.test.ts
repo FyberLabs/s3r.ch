@@ -40,8 +40,8 @@ test("room webhook delivery checks access, signs each event, and bounds retries"
     id: "fixture-message", room, author: "fixture-agent", body: "fixture message",
     ts: at,
   };
-  await queue.enqueue(roomMessageWebhookEvent(message), signal);
-  await queue.enqueue(roomMessageWebhookEvent(message), signal);
+  await queue.enqueueRoom(room, [roomMessageWebhookEvent(message)], signal);
+  await queue.enqueueRoom(room, [roomMessageWebhookEvent(message)], signal);
   assert.equal(await worker.deliverNext(signal), true);
   assert.equal(await worker.deliverNext(signal), false);
   const signed = messages[0];
@@ -63,7 +63,7 @@ test("room webhook delivery checks access, signs each event, and bounds retries"
   assert.equal(await worker.deliverNext(signal), false);
   assert.equal(messages.length, 3);
 
-  await queue.enqueue(roomMessageWebhookEvent({ ...message, id: "another" }), signal);
+  await queue.enqueueRoom(room, [roomMessageWebhookEvent({ ...message, id: "another" })], signal);
   visible.clear();
   assert.equal(await worker.deliverNext(signal), true);
   assert.equal(messages.length, 3);

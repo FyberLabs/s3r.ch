@@ -9,7 +9,7 @@ import { authenticateAgentRequest } from "./identity/site-agent-session-server";
 import { matchesBrowserOrigin, matchesRequestOrigin } from "./request-origin";
 import { readBoundedIdentityJson, readBoundedIdentityText } from "./identity/bounded-json";
 import { isForumObjectId, isSeaPubkey } from "./identity/forum-check";
-import { projectSharedRoomWebhookEvents, type RoomWebhookEvent } from "./room-webhook-events";
+import { projectSharedRoomWebhookEvents } from "./room-webhook-events";
 import { createRoomChatAdmission, snapshotRoomChatEnvelope, type SignedRoomChat } from "./room-chat-admission";
 import { nativeRoomBotGun } from "./native-room-bot-gun";
 import { encodeKey } from "./identity/check";
@@ -66,10 +66,6 @@ function runtime() {
     },
   });
   return { pilot, delivery, callback };
-}
-
-export async function enqueueRoomWebhook(event: RoomWebhookEvent, signal: AbortSignal) {
-  await runtime()?.delivery.enqueue(event, signal);
 }
 
 export async function roomWebhookRequest(request: Request, action: "manage" | "receive" | "inbox") {
@@ -167,10 +163,11 @@ async function collectRoomEvents(enabled: NonNullable<ReturnType<typeof runtime>
     const verified = await admission.receive(row, room, key);
     if (verified) admitted.push(verified);
   }
-  for (const event of projectSharedRoomWebhookEvents(room, admitted, admission)) {
+  const events = projectSharedRoomWebhookEvents(room, admitted, admission).filter(event => {
     const publishedAt = event.type === "room.message.created" ? event.message.createdAt : event.object.changedAt;
-    if (publishedAt >= at - 600) await delivery.enqueue(event, signal);
-  }
+    return publishedAt >= at - 600;
+  });
+  await delivery.enqueueRoom(room, events, signal);
 }
 
 let worker: ReturnType<typeof setInterval> | undefined;
