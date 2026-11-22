@@ -8,6 +8,7 @@ type State = { version: 1; subscriptions: RoomWebhookSubscription[]; deliveries:
 
 const record = "room-webhook-delivery-v1";
 const retries = [10, 60];
+const attemptSeconds = 8;
 const maxSubscriptions = 128;
 const maxDeliveries = 512;
 const retainedSeconds = 86_400;
@@ -86,7 +87,8 @@ export function createRoomWebhookDelivery(input: {
       });
     },
     async deliverNext(signal: AbortSignal) {
-      const claimed = await change(signal, state => {
+      const attemptSignal = AbortSignal.any([signal, AbortSignal.timeout(attemptSeconds * 1000)]);
+      const claimed = await change(attemptSignal, state => {
         const at = clock();
         const row = state.deliveries.find(delivery => !delivery.done && delivery.due <= at);
         const subscription = row && state.subscriptions.find(sub => sub.id === row.subscription);
@@ -97,7 +99,7 @@ export function createRoomWebhookDelivery(input: {
           return { value: null, changed: true };
         }
         // Advance the attempt before I/O so multiple workers cannot claim it.
-        row.due = at + (retries[row.attempts] ?? 60);
+        row.due = at + attemptSeconds + 1;
         row.attempts += 1;
         return { value: { ...row, subscription }, changed: true };
       });
@@ -105,13 +107,19 @@ export function createRoomWebhookDelivery(input: {
       const { subscription, event, attempts } = claimed;
       const body = JSON.stringify(event);
       const signature = "sha256=" + createHmac("sha256", Buffer.from(key(subscription.id), "hex")).update(body).digest("hex");
-      const authorized = await input.canDeliver(subscription, signal);
-      const done = !authorized || await input.send(subscription.url, body, signature, signal) || attempts > retries.length;
-      if (done) await change(signal, state => {
+      let done = false;
+      try {
+        const authorized = await input.canDeliver(subscription, attemptSignal);
+        attemptSignal.throwIfAborted();
+        done = !authorized || await input.send(subscription.url, body, signature, attemptSignal);
+      } catch {
+        // Worker interruption and transient authority failures consume this attempt.
+      }
+      await change(signal, state => {
         const row = state.deliveries.find(item => item.event.id === event.id && item.event.room === event.room && item.subscription === subscription.id);
         if (!row || row.attempts !== attempts) return { value: undefined, changed: false };
-        row.done = true;
-        row.due = clock();
+        row.done = done || attempts > retries.length;
+        row.due = clock() + (row.done ? 0 : retries[attempts - 1]);
         return { value: undefined, changed: true };
       });
       return true;
