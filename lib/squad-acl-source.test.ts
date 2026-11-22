@@ -41,9 +41,13 @@ test("deployment selection needs no Blob settings and rotates cached source conf
   const values:Record<string,string|undefined> = {
     IDENTITY_SESSION_SECRET:"s".repeat(32),S3RCH_SQUAD_PILOT:JSON.stringify(config),
     S3RCH_SQUAD_BLOB_ACCOUNT:undefined,S3RCH_SQUAD_BLOB_CONTAINER:undefined,
-    S3RCH_AUTHORITY_BACKEND:"acl",S3RCH_STATEMENT_SOURCE_ORIGIN:"https://acl.example.test",
+    S3RCH_AUTHORITY_BACKEND:"acl",    S3RCH_STATEMENT_SOURCE_ORIGIN:"https://acl.example.test",
     S3RCH_STATEMENT_SOURCE_TENANT_ID:"01234567-89ab-cdef-0123-456789abcdef",S3RCH_STATEMENT_SOURCE_SCOPE:"forum",
-    S3RCH_STATEMENT_SOURCE_API_KEY:"statement-only",S3RCH_IDENTITY_REPLAY_BACKEND:"spanopticon",
+    S3RCH_STATEMENT_SOURCE_API_KEY:"statement-only",
+    S3RCH_VISOR_COMPANION_RECORD_ORIGIN:"https://storage.example.test",
+    S3RCH_VISOR_COMPANION_RECORD_TENANT_ID:"01234567-89ab-cdef-0123-456789abcdef",
+    S3RCH_VISOR_COMPANION_RECORD_API_KEY:"record-only",
+    S3RCH_IDENTITY_REPLAY_BACKEND:"spanopticon",
     S3RCH_IDENTITY_REPLAY_ORIGIN:"https://storage.example.test",S3RCH_IDENTITY_REPLAY_TENANT_ID:"01234567-89ab-cdef-0123-456789abcdef",
     S3RCH_IDENTITY_REPLAY_API_KEY:"replay-only"};
   const saved = Object.fromEntries(Object.keys(values).map(key=>[key,process.env[key]]));
