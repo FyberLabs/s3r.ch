@@ -1,6 +1,6 @@
 "use client";
 
-import { exportOperatorBinding } from "@/lib/identity/operator-binding-export";
+import { exportOperatorBinding, operatorBindingDomain } from "@/lib/identity/operator-binding-export";
 import { readUnlockedMeshPair, readUnlockedMeshRevision } from "@/lib/identity/unlocked-mesh";
 import { exportOwnerLinkEvidence } from "@/lib/identity/owner-link-evidence";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -719,7 +719,9 @@ function IdentityBarInner() {
       setMessage("Connect the declared wallet and unlock your existing SEA identity first.");
       return;
     }
-    if (!window.confirm("Sign a public TEST account binding with your connected wallet and unlocked SEA identity? Only public keys and signatures will be downloaded. Nothing is installed or activated.")) return;
+    const domain = operatorBindingDomain(window.location.origin);
+    if (!domain) return;
+    if (!window.confirm(`Sign a public account binding for ${domain} with your connected wallet and unlocked SEA identity? The download contains public keys and signatures.`)) return;
     const revision = readUnlockedMeshRevision();
     const selectedSession = session;
     const current = () => bindingContext.current.session === selectedSession &&
@@ -732,7 +734,7 @@ function IdentityBarInner() {
       const url = URL.createObjectURL(new Blob([result], {type:"application/json"}));
       try {
         const link = document.createElement("a"); link.href=url;
-        link.download="s3rch-operator-binding.json"; link.click();
+        link.download=domain === "s3r.ch" ? "s3r.ch-operator-binding.json" : "s3rch-operator-binding.json"; link.click();
       } finally { setTimeout(() => URL.revokeObjectURL(url),1000); }
       setMessage("Public operator binding downloaded. Installation and activation remain off.");
     } catch {
@@ -924,7 +926,7 @@ function IdentityBarInner() {
             </button>
             {session.address === "0x4C8d36f87287e75D3D84F1aeD72655ecCbC7A1A7" && (
               <button type="button" disabled={busy} onClick={() => void onExportOperatorBinding()} className={btnSecondary}>
-                Sign and export TEST operator binding
+                Sign and export operator binding
               </button>
             )}
             <button type="button" disabled={busy} onClick={() => void onExportOwnerEvidence()} className={btnSecondary}>

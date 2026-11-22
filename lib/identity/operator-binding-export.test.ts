@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {generateKeyPairSync} from 'node:crypto';
 import {test} from 'node:test';
-import {exportOperatorBinding, signOperatorSeaStatement} from './operator-binding-export';
+import {exportOperatorBinding, operatorBindingDomain, signOperatorSeaStatement} from './operator-binding-export';
 import {operatorBindingStatement} from './operator-binding';
 import {verifyForumKeySignature} from './forum-key-signature';
 const generated=generateKeyPairSync('ec',{namedCurve:'prime256v1'}).privateKey.export({format:'jwk'});
@@ -16,7 +16,7 @@ test('browser WebCrypto signs the native verifier bytes with the existing SEA ke
 test('locked, changed, foreign-origin or foreign-wallet contexts refuse',async()=>{
   await assert.rejects(signOperatorSeaStatement(pair,row,()=>false));
   await assert.rejects(signOperatorSeaStatement(pair,{...row,sea_public_key:'other'},()=>true));
-  for(const change of [{current:()=>false},{origin:'https://s3r.ch'},{address:'foreign'}]) {
+  for(const change of [{current:()=>false},{origin:'https://s3r.ch.example'},{address:'foreign'}]) {
     await assert.rejects(exportOperatorBinding({address,origin:'https://test.s3r.ch',pair,current:()=>true,
       timestamp:1,signWallet:async()=>{assert.fail('must not ask wallet');},...change}),/not exported/);
   }
@@ -27,4 +27,11 @@ test('wallet rejection and context changes return no declaration',async()=>{
   let live=true;
   await assert.rejects(exportOperatorBinding({address,origin:'https://test.s3r.ch',pair,current:()=>live,timestamp:1,
     signWallet:async()=>{live=false;return 'invalid';}}),/not exported/);
+});
+
+test('operator proof uses the actual approved site boundary', () => {
+  assert.equal(operatorBindingDomain('https://s3r.ch'), 's3r.ch');
+  assert.equal(operatorBindingDomain('https://test.s3r.ch'), 'test.s3r.ch');
+  assert.equal(operatorBindingDomain('https://s3r.ch.example'), null);
+  assert.equal(operatorBindingDomain('http://s3r.ch'), null);
 });
