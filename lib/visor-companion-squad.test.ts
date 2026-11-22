@@ -52,6 +52,13 @@ test("slice done check: Visor companion binding contract (#551)", async t => {
   if (!first.ok) return;
   assert.equal(first.body.destination, squadForumDestination(origin));
   assert.deepEqual(first.body.roster.map(row => row.principal).sort(), [f.a.pub, f.b.pub].sort());
+  for (const replaced of [{ session: randomUUID(), principal: f.b.pub }, { session, principal: f.a.pub }]) {
+    const result = await resolveVisorCompanionSquad({ ...common,
+      request: parseVisorCompanionResolveRequest(body(f, [
+        { role: "companion", ...replaced, companion, generation },
+      ]))! });
+    assert.deepEqual(result, { ok: false, reason: "stale-generation" });
+  }
   const stale = await resolveVisorCompanionSquad({ ...common,
     request: parseVisorCompanionResolveRequest(body(f, [
       { role: "companion", principal: f.b.pub, companion, session, generation },
@@ -90,6 +97,13 @@ test("slice done check: Visor companion binding contract (#551)", async t => {
     request: parseVisorCompanionResolveRequest(body(f, [{ role: "external", principal: f.a.pub }], gen(5), f.now() - 120))! });
   assert.equal(skewed.ok, false);
   if (!skewed.ok) assert.equal(skewed.reason, "scope-or-time");
+  const before = await store.read(f.tenant, f.owner.pub, machineId);
+  const expired = await resolveVisorCompanionSquad({ ...common,
+    request: parseVisorCompanionResolveRequest(body(f, [], gen(6)))!,
+    authorizeWrite: async () => { f.tick(); return true; },
+  });
+  assert.deepEqual(expired, { ok: false, reason: "scope-or-time" });
+  assert.deepEqual(await store.read(f.tenant, f.owner.pub, machineId), before);
 });
 
 test("parser rejects client roster forgery fields and tokenized destinations", () => {

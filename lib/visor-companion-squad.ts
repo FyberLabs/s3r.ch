@@ -197,12 +197,14 @@ export async function resolveVisorCompanionSquad(input: VisorCompanionResolveInp
     for (const member of input.request.members) {
       if (member.role !== "companion") continue;
       const prev = stored.companions.get(member.companion!);
-      if (prev && prev.generation !== member.generation) return { ok: false, reason: "stale-generation" };
+      if (prev && (prev.generation !== member.generation || prev.session !== member.session ||
+        prev.principal !== member.principal)) return { ok: false, reason: "stale-generation" };
       const retired = stored.retired.get(member.companion!) ?? [];
       if (retired.some(row => row.generation === member.generation)) return { ok: false, reason: "stale-generation" };
     }
   }
   if (input.authorizeWrite && !await input.authorizeWrite()) return { ok: false, reason: "owner" };
+  if (clock() !== at) return { ok: false, reason: "scope-or-time" };
   try {
     await input.store.write(input.request.tenant, input.squad.owner, input.request.machineId,
       companionSnapshot(input.request, stored), held.revision);
