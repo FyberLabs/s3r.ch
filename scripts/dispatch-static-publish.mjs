@@ -102,8 +102,8 @@ export async function dispatchAndWatch(kind, env, fetchImpl = globalThis.fetch, 
   const watchStarted = now();
   let current = found;
   while (current.status !== 'completed') {
-    if (now() - watchStarted > WATCH_LIMIT_MS) {
-      throw Error(`Infra static publish was still ${current.status} within ${WATCH_LIMIT_MS / 1000}s`);
+    if (now() - watchStarted > watchLimit) {
+      throw Error(`Infra static publish was still ${current.status} within ${watchLimit / 1000}s`);
     }
     await sleep(INTERVAL_MS);
     current = await call(`/repos/${INFRA_REPOSITORY}/actions/runs/${current.id}`);

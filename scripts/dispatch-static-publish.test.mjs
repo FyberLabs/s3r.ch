@@ -96,6 +96,15 @@ test('an unfinished infra run fails at the watch bound', async () => {
     dispatchAndWatch('reconcile', env, fetchImpl, async () => { now = WATCH_LIMIT_MS + INTERVAL_MS; }, () => now),
     new RegExp(`still in_progress within ${WATCH_LIMIT_MS / 1000}s`),
   );
+
+  now = 0;
+  const refresh = {
+    ...env, DISPATCH_RUN_ATTEMPT: '1', DISPATCH_CHANNEL_DIGEST: 'sha256:' + 'b'.repeat(64),
+  };
+  await assert.rejects(
+    dispatchAndWatch('refresh', refresh, fetchImpl, async () => { now = 12 * 60 * 1000 + INTERVAL_MS; }, () => now),
+    /still in_progress within 720s/,
+  );
 });
 
 test('success waits until the infra run completes', async () => {
