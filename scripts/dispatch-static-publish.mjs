@@ -12,6 +12,7 @@ const TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const NONCE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const WORKFLOWS = {
   test: 's3rch-test-static.yml',
+  refresh: 's3rch-test-refresh.yml',
   release: 's3rch-prod-static.yml',
 };
 
@@ -24,6 +25,23 @@ export function requestFor(kind, env, nonce = randomUUID()) {
     if (!SHA.test(revision)) throw Error('Deployed revision is required');
     const title = `static-test-${runId}-${nonce}`;
     return { workflow: WORKFLOWS.test, title, inputs: { revision, source_run_id: runId, dispatch_title: title } };
+  }
+  if (kind === 'refresh') {
+    const revision = env.DISPATCH_REVISION ?? '';
+    const attempt = env.DISPATCH_RUN_ATTEMPT ?? '';
+    const digest = env.DISPATCH_CHANNEL_DIGEST ?? '';
+    if (!SHA.test(revision) || !RUN.test(attempt) || !/^sha256:[0-9a-f]{64}$/.test(digest)) {
+      throw Error('TEST refresh requires an exact attempt, revision and channel digest');
+    }
+    const title = `test-refresh-${runId}-${nonce}`;
+    return {
+      workflow: WORKFLOWS.refresh,
+      title,
+      inputs: {
+        source_run_id: runId, source_run_attempt: attempt, source_revision: revision,
+        channel_digest: digest, dispatch_title: title,
+      },
+    };
   }
   if (kind === 'release') {
     const tag = env.DISPATCH_TAG ?? '';
@@ -80,11 +98,12 @@ export async function dispatchAndWatch(kind, env, fetchImpl = globalThis.fetch, 
     });
     if (!found) await sleep(INTERVAL_MS);
   }
+  const watchLimit = kind === 'refresh' ? 12 * 60 * 1000 : WATCH_LIMIT_MS;
   const watchStarted = now();
   let current = found;
   while (current.status !== 'completed') {
-    if (now() - watchStarted > WATCH_LIMIT_MS) {
-      throw Error(`Infra static publish was still ${current.status} within ${WATCH_LIMIT_MS / 1000}s`);
+    if (now() - watchStarted > watchLimit) {
+      throw Error(`Infra static publish was still ${current.status} within ${watchLimit / 1000}s`);
     }
     await sleep(INTERVAL_MS);
     current = await call(`/repos/${INFRA_REPOSITORY}/actions/runs/${current.id}`);

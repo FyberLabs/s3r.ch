@@ -96,6 +96,15 @@ test('an unfinished infra run fails at the watch bound', async () => {
     dispatchAndWatch('reconcile', env, fetchImpl, async () => { now = WATCH_LIMIT_MS + INTERVAL_MS; }, () => now),
     new RegExp(`still in_progress within ${WATCH_LIMIT_MS / 1000}s`),
   );
+
+  now = 0;
+  const refresh = {
+    ...env, DISPATCH_RUN_ATTEMPT: '1', DISPATCH_CHANNEL_DIGEST: 'sha256:' + 'b'.repeat(64),
+  };
+  await assert.rejects(
+    dispatchAndWatch('refresh', refresh, fetchImpl, async () => { now = 12 * 60 * 1000 + INTERVAL_MS; }, () => now),
+    /still in_progress within 720s/,
+  );
 });
 
 test('success waits until the infra run completes', async () => {
@@ -167,4 +176,20 @@ test('TEST release credentials are repository scoped and isolated from deploymen
   assert.equal(outside.includes('test-publication.outputs.token'), false);
   assert.equal(outside.includes('TEST_PUBLICATION_APP_PRIVATE_KEY'), false);
   assert.equal(deploy.slice(0, deploy.indexOf('\n  publish:')).includes('TEST_PUBLICATION_APP'), false);
+});
+
+test('TEST refresh dispatch binds the exact attempt and current channel digest', () => {
+  const revision = 'a'.repeat(40);
+  const digest = 'sha256:' + 'b'.repeat(64);
+  const env = {
+    DISPATCH_RUN_ID: '123', DISPATCH_RUN_ATTEMPT: '2',
+    DISPATCH_REVISION: revision, DISPATCH_CHANNEL_DIGEST: digest,
+  };
+  const request = requestFor('refresh', env);
+  assert.equal(request.workflow, 's3rch-test-refresh.yml');
+  assert.deepEqual(request.inputs, {
+    source_run_id: '123', source_run_attempt: '2', source_revision: revision,
+    channel_digest: digest, dispatch_title: request.title,
+  });
+  assert.throws(() => requestFor('refresh', {...env, DISPATCH_CHANNEL_DIGEST: 'test'}));
 });
