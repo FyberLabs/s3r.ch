@@ -57,19 +57,21 @@ export function hasStartupPending(request: Request) {
 
 export async function beginStartupOAuth(request: Request, env: Env = process.env, deps: Dependencies = {}) {
   try {
-    const config = await (deps.config?.() ?? readStartupLoginConfig(env));
-    if (!config) return redirect("/feed?startup=unavailable", [...clearPending(), ...clearCredential()]);
+    const nightly = new URL(request.url).searchParams.get("provider") === "startup-nightly";
+    const config = await (deps.config?.() ?? readStartupLoginConfig(env, nightly));
+    if (!config || nightly !== Boolean(config.binding.oidc)) return redirect("/feed?startup=unavailable", [...clearPending(), ...clearCredential()]);
     const secret = getIdentitySecret(env), now = Math.floor((deps.clock?.() ?? deps.now ?? Date.now()) / 1000);
     const { verifier, challenge } = createPkcePair(), state = randomBytes(32).toString("base64url"), nonce = randomBytes(32).toString("base64url");
     const { callback, origin: site } = origin(request);
-    if (config.binding.github && site !== "https://test.s3r.ch") throw Error("Unavailable callback");
-    const token = await sign(pendingKind, { state, nonce, verifier, callback, mapping: config.binding.mapping_sha256 }, request, secret, now);
+    if ((config.binding.github || config.binding.oidc) && site !== "https://test.s3r.ch") throw Error("Unavailable callback");
+    const token = await sign(pendingKind, { state, nonce, verifier, callback,
+      mapping: config.binding.mapping_sha256, ...(nightly ? { nightly: true } : {}) }, request, secret, now);
     const url = new URL(config.provider.authorizationEndpoint);
     for (const [name, value] of Object.entries({ client_id: config.provider.clientId, redirect_uri: callback,
       response_type: "code", scope: "openid", state, nonce, code_challenge: challenge,
       code_challenge_method: "S256", kc_idp_hint: config.alias })) url.searchParams.set(name, value);
     // A session created during OTP enrollment lacks the post-broker OTP challenge.
-    if (config.binding.github) url.searchParams.set("prompt", "login");
+    if (config.binding.github || config.binding.oidc) url.searchParams.set("prompt", "login");
     const secure = requestIsSecure(request);
     return redirect(url.href, [...clearPending(), ...clearCredential(), clear(oauthPkceCookieName(true)), clear(oauthPkceCookieName(false)),
       serializeCookie(startupPendingName(secure), token, cookieOptions(secure, ttl))]);
@@ -79,12 +81,14 @@ export async function beginStartupOAuth(request: Request, env: Env = process.env
 export async function finishStartupOAuth(request: Request, env: Env = process.env, deps: Dependencies = {}) {
   const denied = () => redirect("/feed?startup=denied", [...clearPending(), ...clearCredential()]);
   try {
-    const config = await (deps.config?.() ?? readStartupLoginConfig(env));
-    if (!config || (config.binding.github && origin(request).origin !== "https://test.s3r.ch")) return denied();
     const secret = getIdentitySecret(env), now = Math.floor((deps.clock?.() ?? deps.now ?? Date.now()) / 1000);
     const cookie = readCookie(request.headers.get("cookie"), [startupPendingName(true), startupPendingName(false)]);
     if (!cookie) return denied();
     const pending = await verify(cookie, pendingKind, request, secret, now), params = new URL(request.url).searchParams;
+    const nightly = pending.nightly === true;
+    const config = await (deps.config?.() ?? readStartupLoginConfig(env, nightly));
+    if (!config || nightly !== Boolean(config.binding.oidc) ||
+        ((config.binding.github || config.binding.oidc) && origin(request).origin !== "https://test.s3r.ch")) return denied();
     const code = params.get("code");
     if (params.has("error") || !code || code.length > 2048 || !same(params.get("state"), pending.state) ||
         pending.mapping !== config.binding.mapping_sha256 || pending.callback !== origin(request).callback ||
@@ -105,7 +109,7 @@ export async function finishStartupOAuth(request: Request, env: Env = process.en
     const identity = await createStartupIdentityClient({ endpoint: config.endpoint, expected: config.binding, fetch: deps.fetch })
       .resolve(exchanged.accessToken, payload.sub, { sea_public_key: config.binding.sea_public_key });
     if (!identity) return denied();
-    const latest = await (deps.config?.() ?? readStartupLoginConfig(env));
+    const latest = await (deps.config?.() ?? readStartupLoginConfig(env, nightly));
     if (!latest || latest.binding.mapping_sha256 !== config.binding.mapping_sha256 ||
         latest.provider.id !== config.provider.id || latest.endpoint !== config.endpoint) return denied();
     const finishedAt = Math.floor((deps.clock?.() ?? deps.now ?? Date.now()) / 1000);
@@ -122,14 +126,16 @@ export async function finishStartupOAuth(request: Request, env: Env = process.en
 
 export async function readStartupCredential(request: Request, env: Env = process.env, deps: Dependencies = {}) {
   try {
-    const config = await (deps.config?.() ?? readStartupLoginConfig(env));
-    if (!config || (config.binding.github && origin(request).origin !== "https://test.s3r.ch")) return null;
     const cookie = readCookie(request.headers.get("cookie"), [startupCredentialName(true), startupCredentialName(false)]);
     if (!cookie) return null;
     const payload = await verify(cookie, credentialKind, request, getIdentitySecret(env), Math.floor((deps.clock?.() ?? deps.now ?? Date.now()) / 1000));
     const saved = payload.identity;
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) return null;
     const row = saved as Record<string, unknown>;
+    const nightly = Object.hasOwn(row, "oidc");
+    const config = await (deps.config?.() ?? readStartupLoginConfig(env, nightly));
+    if (!config || nightly !== Boolean(config.binding.oidc) ||
+        ((config.binding.github || config.binding.oidc) && origin(request).origin !== "https://test.s3r.ch")) return null;
     const identity = resolveStartupLinkedIdentity({ ...row, schema_version: 1, status: "resolved", permissions: [] }, config.binding,
       typeof row.broker_subject === "string" ? row.broker_subject : "", { sea_public_key: config.binding.sea_public_key });
     return identity ? { binding: config.binding, identity: { ...identity, schema_version: 1, status: "resolved", permissions: [] }, verifiedSubject: identity.broker_subject, expiresAt: payload.exp! * 1000 } : null;

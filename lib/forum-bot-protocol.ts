@@ -4,11 +4,13 @@
 export const BOT_MESSAGE_PREFIX = "visor:v1:";
 const uuid = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value);
 export type BotTaskMessage = readonly ["task", tenant: string, task: string, recipient: string, handle: string, expires: number, parent: string | null, depth: number];
+export type BotUpdateMessage = readonly ["update", tenant: string, task: string, text: string];
 export type BotMessage = BotTaskMessage |
   readonly ["approval", tenant: string, task: string, approvedAt: number, expires: number] |
   readonly ["ack" | "cancel", tenant: string, task: string] |
   readonly ["progress", tenant: string, task: string, percent: number] |
-  readonly ["result", tenant: string, task: string, state: "completed" | "failed" | "cancelled", artifact: string | null];
+  readonly ["result", tenant: string, task: string, state: "completed" | "failed" | "cancelled", artifact: string | null] |
+  BotUpdateMessage;
 export function parseBotMessage(body: unknown): BotMessage | null {
   if (typeof body !== "string" || body.length > 280 || !body.startsWith(BOT_MESSAGE_PREFIX)) return null;
   try {
@@ -25,6 +27,8 @@ export function parseBotMessage(body: unknown): BotMessage | null {
       return Object.freeze(row) as BotMessage;
     if (row.length === 5 && row[0] === "result" && ["completed", "failed", "cancelled"].includes(row[3]) &&
         (row[4] === null || uuid(row[4]))) return Object.freeze(row) as BotMessage;
+    if (row.length === 4 && row[0] === "update" && typeof row[3] === "string" && row[3].length > 0 &&
+        row[3] === row[3].trim() && row[3].length <= 180) return Object.freeze(row) as BotUpdateMessage;
   } catch { /* Malformed or future formats carry no bot command. */ }
   return null;
 }

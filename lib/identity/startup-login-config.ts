@@ -18,6 +18,9 @@ function canonical(value: unknown): string {
   return quote(value);
 }
 export const TEST_GITHUB_MEMBER_ENDPOINT = "https://api.test.hyperme.sh/auth/startup/identity/github-member";
+export const TEST_NIGHTLY_MEMBER_ENDPOINT = "https://api.test.hyperme.sh/auth/startup/identity/nightly-member";
+const NIGHTLY_AUDIENCE = "s3rch-startup-nightly";
+const NIGHTLY_BROKER = "startup-nightly";
 const TEST_ISSUER = "https://auth.test.hyperme.sh/realms/controlplane";
 const digest = (value: unknown) => createHash("sha256").update(canonical(value) + "\n").digest("hex");
 const uuid = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value) && value !== "00000000-0000-0000-0000-000000000000";
@@ -25,7 +28,8 @@ const uuid = (value: unknown): value is string => typeof value === "string" && /
 /** Consume canonical bytes produced by the shared Python validator. Requiring
  * exact canonical JSON also rejects duplicate keys and ambiguous encodings.
  */
-export function parseStartupLoginConfig(raw: Uint8Array, env: Record<string, string | undefined>): StartupLoginConfig {
+export function parseStartupLoginConfig(raw: Uint8Array, env: Record<string, string | undefined>,
+  nightly = false): StartupLoginConfig {
   const refuse = () => { throw Error("Startup identity configuration unavailable"); };
   if (raw.byteLength < 1 || raw.byteLength > 16384) return refuse();
   let value: unknown;
@@ -34,7 +38,8 @@ export function parseStartupLoginConfig(raw: Uint8Array, env: Record<string, str
     value = JSON.parse(text);
     if (canonical(value) + "\n" !== text) return refuse();
   } catch { return refuse(); }
-  if (object(value) && "broker" in value) return parseGithubMember(value, raw, env);
+  if (object(value) && "broker" in value) return parseTestMember(value, raw, env, nightly);
+  if (nightly) return refuse();
   if (!fields(value, ["schema_version", "binding", "binding_sha256", "owner"]) || value.schema_version !== 1 ||
       !fields(value.binding, ["version", "entra", "sea_public_key", "organizations", "platform_admin", "keycloak_admin"]) || value.binding.version !== 1 ||
       !fields(value.owner, ["tenant_id", "network_id", "profile", "broker"]) ||
@@ -79,27 +84,44 @@ function validSeaPoint(seaPublicKey: string): boolean {
   } catch { return false; }
 }
 
-function parseGithubMember(value: Record<string, unknown>, raw: Uint8Array,
-  env: Record<string, string | undefined>): StartupLoginConfig {
+function parseTestMember(value: Record<string, unknown>, raw: Uint8Array,
+  env: Record<string, string | undefined>, nightly: boolean): StartupLoginConfig {
   const refuse = () => { throw Error("Startup identity configuration unavailable"); };
+  const alias = nightly ? NIGHTLY_BROKER : "github";
+  const endpoint = nightly ? TEST_NIGHTLY_MEMBER_ENDPOINT : TEST_GITHUB_MEMBER_ENDPOINT;
+  const audience = nightly ? NIGHTLY_AUDIENCE : "s3rch-web";
   if (!fields(value, ["version", "environment", "tenant_id", "network_id", "broker", "sea_public_key"]) ||
       value.version !== 1 || value.environment !== "test" || value.network_id !== "hyperme.sh" ||
       !fields(value.broker, ["issuer", "audience", "subject", "provider"]) ||
-      value.broker.provider !== "github" || value.broker.issuer !== TEST_ISSUER || value.broker.audience !== "s3rch-web" ||
-      env.S3RCH_STARTUP_AUTH_URL !== TEST_GITHUB_MEMBER_ENDPOINT) return refuse();
+      value.broker.provider !== alias || value.broker.issuer !== TEST_ISSUER || value.broker.audience !== audience ||
+      (!nightly && env.S3RCH_STARTUP_AUTH_URL !== endpoint)) return refuse();
   const fingerprint = createHash("sha256").update(raw).digest("hex");
   const binding = snapshotStartupLoginBinding({ binding_sha256: fingerprint, mapping_sha256: fingerprint,
     sea_public_key: value.sea_public_key, tenant_id: value.tenant_id, network_id: value.network_id,
-    github: { subject: value.broker.subject }, organizations: [] });
-  const provider = findOidcProvider(env, env.S3RCH_STARTUP_LOGIN_PROVIDER);
+    ...(nightly ? { oidc: { provider: NIGHTLY_BROKER, subject: value.broker.subject } }
+      : { github: { subject: value.broker.subject } }), organizations: [] });
+  const provider = nightly ? {
+    kind: "oidc" as const, id: NIGHTLY_BROKER, label: "TEST startup identity",
+    issuer: TEST_ISSUER, clientId: audience, walletLookupUrl: null,
+    authorizationEndpoint: TEST_ISSUER + "/protocol/openid-connect/auth",
+    tokenEndpoint: TEST_ISSUER + "/protocol/openid-connect/token",
+    jwksUri: TEST_ISSUER + "/protocol/openid-connect/certs",
+  } : findOidcProvider(env, env.S3RCH_STARTUP_LOGIN_PROVIDER);
   if (!binding || !validSeaPoint(binding.sea_public_key) || !provider ||
       provider.issuer !== TEST_ISSUER || provider.clientId !== value.broker.audience) return refuse();
-  return Object.freeze({ binding, provider, alias: "github", endpoint: TEST_GITHUB_MEMBER_ENDPOINT });
+  return Object.freeze({ binding, provider, alias, endpoint });
 }
 
 /** Default off. No file read or network call occurs until explicitly enabled. */
-export async function readStartupLoginConfig(env: Record<string, string | undefined> = process.env): Promise<StartupLoginConfig | null> {
+export async function readStartupLoginConfig(env: Record<string, string | undefined> = process.env,
+  nightly = false): Promise<StartupLoginConfig | null> {
   if (env.S3RCH_STARTUP_LOGIN_ENABLED !== "1") return null;
+  if (nightly) {
+    const input = env.S3RCH_STARTUP_NIGHTLY_MEMBER_CONFIG;
+    if (!input || input.length > 16384) return null;
+    const setting = input.endsWith("\n") ? input : input + "\n";
+    return parseStartupLoginConfig(new TextEncoder().encode(setting), env, true);
+  }
   const githubMember = env.S3RCH_STARTUP_GITHUB_MEMBER_CONFIG;
   if (githubMember !== undefined) {
     if (env.STARTUP_IDENTITY_CONFIG_FILE || githubMember.length > 16384 ||

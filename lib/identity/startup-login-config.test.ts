@@ -78,3 +78,22 @@ test("a TEST GitHub member resolves the existing key without organization or pla
   await assert.rejects(readStartupLoginConfig({ ...memberEnv, S3RCH_STARTUP_AUTH_URL: env.S3RCH_STARTUP_AUTH_URL }));
   await assert.rejects(readStartupLoginConfig({ ...memberEnv, STARTUP_IDENTITY_CONFIG_FILE: "/operator.json" }));
 });
+
+test("TEST App Service can remove the nightly mapping's final newline", async () => {
+  const subject = "00000000-0000-4000-8000-000000000121";
+  const issuer = "https://auth.test.hyperme.sh/realms/controlplane";
+  const sea_public_key = JSON.parse((await fixture()).toString()).binding.sea_public_key;
+  const mapping = JSON.stringify({
+    broker: { audience: "s3rch-startup-nightly", issuer, provider: "startup-nightly", subject },
+    environment: "test", network_id: "hyperme.sh", sea_public_key,
+    tenant_id: "00000000-0000-4000-8000-000000000123", version: 1,
+  });
+  const configured = (input: string) => readStartupLoginConfig({
+    ...env, S3RCH_STARTUP_NIGHTLY_MEMBER_CONFIG: input,
+  }, true);
+  const canonical = await configured(mapping + "\n");
+  assert.ok(canonical);
+  assert.deepEqual(await configured(mapping), canonical);
+  await assert.rejects(configured(mapping + "\n\n"), /configuration unavailable/);
+  await assert.rejects(configured(" " + mapping), /configuration unavailable/);
+});

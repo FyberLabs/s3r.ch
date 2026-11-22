@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 
@@ -12,6 +13,21 @@ export function scheduledStartupBrowser(env) {
     env.GITHUB_WORKFLOW_REF === "FyberLabs/infra/.github/workflows/nightly-integration.yml@refs/heads/main" &&
     env.NIGHTLY_SUITE === "startup-linked-browser" &&
     env.GITHUB_REPOSITORY === "FyberLabs/s3r.ch" && env.GITHUB_REF === "refs/heads/master";
+}
+
+export const nightlyLoginDriver = "startup-nightly-oidc-v1";
+export const nightlyLoginOrigin = "https://auth.test.hyperme.sh";
+const nightlySite = "https://test.s3r.ch";
+const nightlyUser = "startup-nightly-linked-member";
+const otpSeed = value => typeof value === "string" && /^[0-9a-f]{40}$/.test(value);
+
+export function testMemberOtp(seed, millis) {
+  if (!otpSeed(seed) || !Number.isSafeInteger(millis) || millis < 0) throw Error("TEST authenticator unavailable");
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(millis / 30000)));
+  const mac = createHmac("sha1", Buffer.from(seed, "hex")).update(counter).digest();
+  const binary = mac.readUInt32BE(mac[mac.length - 1] & 15) & 0x7fffffff;
+  return String(binary % 1000000).padStart(6, "0");
 }
 
 /** Browser-only secret projection. Never accepts the owner orchestration bundle. */
@@ -31,8 +47,16 @@ export function validateStartupBrowserFixture(value) {
         !hash(value.expected.binding_sha256) || !hash(value.expected.mapping_sha256) ||
         !Array.isArray(value.expected.organization_ids) || ![0, 3].includes(value.expected.organization_ids.length) ||
         !value.expected.organization_ids.every(uuid) || new Set(value.expected.organization_ids).size !== value.expected.organization_ids.length ||
-        value.expected.organization_ids.includes(value.negative_organization_id) ||
-        !fields(value.login, ["driver", "origins", "credentials", "steps"]) || value.login.driver !== "form-v1" ||
+        value.expected.organization_ids.includes(value.negative_organization_id)) return refuse();
+    if (value.login?.driver === nightlyLoginDriver) {
+      if (value.site_origin !== nightlySite || value.expected.organization_ids.length !== 0 ||
+          !fields(value.login, ["driver", "credentials"]) ||
+          !fields(value.login.credentials, ["username", "password", "otp_seed"]) ||
+          value.login.credentials.username !== nightlyUser ||
+          !text(value.login.credentials.password) || !otpSeed(value.login.credentials.otp_seed)) return refuse();
+      return structuredClone(value);
+    }
+    if (!fields(value.login, ["driver", "origins", "credentials", "steps"]) || value.login.driver !== "form-v1" ||
         !Array.isArray(value.login.origins) || value.login.origins.length < 1 || value.login.origins.length > 4 ||
         !value.login.origins.every(entry => origin(entry) && entry !== value.site_origin) ||
         !object(value.login.credentials) || !Object.keys(value.login.credentials).length ||

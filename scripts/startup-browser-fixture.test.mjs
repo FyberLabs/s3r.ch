@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtemp, writeFile, chmod, symlink, link, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { validateStartupBrowserFixture, loadStartupBrowserFixture, scheduledStartupBrowser } from "./startup-browser-fixture.mjs";
+import { validateStartupBrowserFixture, loadStartupBrowserFixture, scheduledStartupBrowser, testMemberOtp } from "./startup-browser-fixture.mjs";
 const id = n => `11111111-1111-4111-8111-${String(n).padStart(12, "0")}`;
 function fixture() {
   const pub = "A".repeat(43) + "." + "B".repeat(43);
@@ -45,4 +45,27 @@ test("browser secret requires a bounded private regular unlinked file", async ()
     await writeFile(path, "x".repeat(65537)); await assert.rejects(loadStartupBrowserFixture(path));
     await assert.rejects(loadStartupBrowserFixture("relative.json"));
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("the synthetic browser accepts only the declared TEST account and fixture authenticator", () => {
+  const value = fixture();
+  value.site_origin = "https://test.s3r.ch";
+  value.expected.organization_ids = [];
+  value.login = { driver: "startup-nightly-oidc-v1",
+    credentials: { username: "startup-nightly-linked-member", password: "synthetic-test-password",
+      otp_seed: Buffer.from("12345678901234567890").toString("hex") } };
+  assert.deepEqual(validateStartupBrowserFixture(value), value);
+  assert.equal(testMemberOtp(value.login.credentials.otp_seed, 59000), "287082");
+  assert.equal(testMemberOtp(value.login.credentials.otp_seed, 1111111109000), "081804");
+  for (const mutate of [
+    input => input.site_origin = "https://s3r.ch",
+    input => input.login.credentials.username = "another-account",
+    input => input.login.credentials.otp_seed = "287082",
+    input => input.login.origins = ["https://test.s3r.ch"],
+    input => input.expected.organization_ids = [id(3), id(4), id(5)],
+  ]) {
+    const changed = structuredClone(value);
+    mutate(changed);
+    assert.throws(() => validateStartupBrowserFixture(changed), /fixture unavailable/);
+  }
 });

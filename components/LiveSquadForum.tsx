@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useState } from "react";
+import { SquadBotControls } from "./SquadBotControls";
 import { SquadForum } from "./SquadForum";
 import { ForumAuthorityProvider } from "./ForumAuthorityProvider";
 import { createSquadConnection, type SquadConnectionState } from "@/lib/squad-connection";
@@ -9,14 +10,14 @@ import type { SeaPair } from "@/lib/identity/sea";
 
 import type { ReportParents } from "@/lib/forum-report-forward";
 
-type Props = Omit<Parameters<typeof createSquadConnection>[0], "fetch" | "onState" | "approveAssignment"> & { pair: SeaPair | null; reportParents?: ReportParents };
+type Props = Omit<Parameters<typeof createSquadConnection>[0], "fetch" | "onState" | "approveAssignment"> & { pair: SeaPair | null; reportParents?: ReportParents; planeBotControls?: boolean };
 /** Client-only provisioned wrapper. The pair must come from the existing local
  * unlock flow, never serialized as a server prop or embedded in deployment config. */
 export function LiveSquadForum(props: Props) {
   const view = squadView(props.squad);
   if (!view.live) throw Error("Live Squad required");
   const identity = JSON.stringify([view.key, props.origin, props.sessionBase,
-    props.authorityEndpoint, props.statementEndpoint, props.assignmentBase, props.config, props.reportParents]);
+    props.authorityEndpoint, props.statementEndpoint, props.assignmentBase, props.config, props.reportParents, props.planeBotControls]);
   return <ConnectedSquad key={identity} {...props} />;
 }
 function ConnectedSquad(props: Props) {
@@ -45,6 +46,7 @@ function ConnectedSquad(props: Props) {
       <button type="button" disabled={!connection}
         onClick={() => { void connection?.selectKey(null); }}>Disconnect</button>
     </div>
+    {state === "connected" && props.planeBotControls && <SquadBotControls key={props.pair?.pub} />}
     <SquadForum reportParents={props.reportParents} sessionKey={props.pair && connection?.sessionKey() === props.pair.pub ? props.pair.pub : null} key={props.pair?.pub ?? "locked"} live={props.squad} />
   </ForumAuthorityProvider>;
 }

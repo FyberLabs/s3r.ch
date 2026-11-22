@@ -1,7 +1,9 @@
+import type { PlaneForumUpdateAuthority } from "./forum-bot-statement-admission";
 import type { ForumRecoverySnapshot } from "./identity/forum-recovery-history";
 export type ProtectedGraphSnapshot = Readonly<{ completeThrough: number; history: ForumRecoverySnapshot; rows: readonly unknown[]; audience?: string }>;
 
 export class StatementSourceConflict extends Error {}
+class StatementSourceRefused extends Error {}
 export type AclStatementConfig = Readonly<{ origin: string; tenant: string; apiKey: string; scope: string }>;
 /** The API supplies a complete, protected owner snapshot. This adapter neither
  * manufactures completeness nor retries appends over a changed source. */
@@ -19,7 +21,7 @@ export function createAclGraphSource(input: AclStatementConfig, collection: "sta
       !/^[\x21-\x7e]{1,4096}$/.test(config.apiKey)) throw Error("Invalid statement source configuration");
   const base = origin.origin + "/api/v1/acl/sociacl/" + collection + "/" + config.scope + "/";
   const atNow = (at: number) => { if (!Number.isSafeInteger(at) || at < 0 || clock() !== at) throw new StatementSourceConflict(); };
-  async function call(operation: "snapshot" | "append", body: unknown, parent: AbortSignal) {
+  async function call(operation: "snapshot" | "append" | "forum-update", body: unknown, parent: AbortSignal) {
     const signal = AbortSignal.any([parent, AbortSignal.timeout(1500)]);
     const bounded = <T>(work: Promise<T>) => new Promise<T>((resolve, reject) => {
       const abort = () => reject(Error("Statement source cancelled"));
@@ -38,6 +40,7 @@ export function createAclGraphSource(input: AclStatementConfig, collection: "sta
         }));
       signal.throwIfAborted();
       if (!response) throw Error("Missing statement source response");
+      if (operation === "forum-update" && response.status === 403) throw new StatementSourceRefused();
       if (response.status === 409) throw new StatementSourceConflict();
       if (response.status !== 200 || response.headers.get("content-type")?.split(";")[0] !== "application/json" ||
           ![null, "identity"].includes(response.headers.get("content-encoding")) || !response.body) throw Error();
@@ -56,7 +59,7 @@ export function createAclGraphSource(input: AclStatementConfig, collection: "sta
       signal.throwIfAborted();
       return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)));
     } catch (error) {
-      if (error instanceof StatementSourceConflict) throw error;
+      if (error instanceof StatementSourceConflict || error instanceof StatementSourceRefused) throw error;
       throw Error("Trusted statement source unavailable");
     } finally { if (response?.body && !response.body.locked) void response.body.cancel().catch(() => {}); }
   }
@@ -72,6 +75,23 @@ export function createAclGraphSource(input: AclStatementConfig, collection: "sta
           !Array.isArray(result.snapshot.history.accounts) || result.snapshot.history.accounts.length > 64 ||
           !Array.isArray(result.snapshot.history.links)) throw Error("Invalid statement snapshot");
       return { snapshot: structuredClone(result.snapshot) as ProtectedGraphSnapshot, fence: `${at}.${result.fence}` };
+    },
+    async commitForumUpdate({ aclFence, update, rows, guard, signal }: Parameters<PlaneForumUpdateAuthority["commit"]>[0]) {
+      if (collection !== "statements" || update.tenant !== config.tenant) return "refused" as const;
+      const match = /^(0|[1-9][0-9]{0,15})\.([a-f0-9]{64})$/.exec(aclFence);
+      if (!match || rows.length > 65 || Buffer.byteLength(JSON.stringify(rows)) > 65536) return "conflict" as const;
+      const evaluatedAt = Number(match[1]);
+      atNow(evaluatedAt);
+      guard();
+      try {
+        const result = await call("forum-update", { evaluatedAt, fence: match[2], rows, update }, signal);
+        if (!result || Object.keys(result).join() !== "ok" || result.ok !== true) throw Error("Invalid forum update response");
+        return "committed" as const;
+      } catch (error) {
+        if (error instanceof StatementSourceConflict) return "conflict" as const;
+        if (error instanceof StatementSourceRefused) return "refused" as const;
+        throw error;
+      }
     },
     async append(fence: string, rows: readonly unknown[], guard: () => void, signal: AbortSignal) {
       if (typeof fence !== "string") throw Error("Invalid statement fence");

@@ -1,11 +1,12 @@
 import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { configuredAclStatementSource, StatementSourceConflict } from "./acl-statement-source-server";
-import type { BotStatementSource } from "./forum-bot-statement-admission";
+import type { BotStatementSource, PlaneForumUpdateAuthority } from "./forum-bot-statement-admission";
 import { configuredIdentityReplay, type IdentityReplay } from "./identity/spanopticon-replay-server";
 import { getIdentitySecret } from "./identity/secret";
 import { parseSquadPilotConfig, type SquadPilotConfig } from "./squad-pilot-config";
 import { createForumAuthority, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { createBotStatementAdmission } from "./forum-bot-statement-admission";
+import { createSquadPlaneForum } from "./squad-plane-forum";
 import { createForumAuthorityService } from "./forum-authority-service";
 import { createIdentityTokenVerifier } from "./identity/sea-session-verifier";
 import { readSeaSessionCookie } from "./identity/sea-session-http";
@@ -19,6 +20,7 @@ export { identitySessionNamespace } from "./identity/replay-namespace";
 export function createSquadPilotServer(c: SquadPilotConfig, statements: BotStatementSource | undefined, replay: IdentityReplay | undefined,
   clock = () => Math.floor(Date.now() / 1000),
   identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" }),
+  planeUpdates?: PlaneForumUpdateAuthority,
   tenant = process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID,
   visorStore?: VisorCompanionSetStore) {
   if (!statements) throw Error("ACL statement source is required");
@@ -35,8 +37,10 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
     ? createVisorCompanionSquadService({ ...common, tenant, store: visorStore, read: source.read })
     : undefined;
   const services = Object.freeze({ authenticate,
+    ...(config.plane ? { planeForum: createSquadPlaneForum({ siteOrigin: config.origin, squad: config.squad,
+      plane: config.plane, config: config.authority, authenticate, read: source.read, clock }) } : {}),
     authority: createForumAuthorityService({ ...common, read: source.read }),
-    statements: createBotStatementAdmission({ ...common, source: statements }),
+    statements: createBotStatementAdmission({ ...common, source: statements, planeUpdates }),
     rooms: createBotStatementAdmission({ ...common, source: statements, objectKind: "room" }),
     ...(visorCompanion ? { visorCompanion } : {}) });
   return { backend: "acl" as const, config, source, services, ...(visorCompanion ? { visorCompanionStore: visorStore } : {}) };
@@ -55,10 +59,16 @@ export function getSquadPilotServer() {
   if (!statements) throw Error("ACL statement source is required");
   if (process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID !== process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID)
     throw Error("Statement source and replay must use the same tenant");
+  if (config.plane && config.plane.tenant !== process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID) {
+    throw Error("Plane and statement source must use the same tenant");
+  }
+  const updates = config.plane ? {
+    tenant: config.plane.tenant, roster: config.plane.roster, commit: statements.commitForumUpdate,
+  } : undefined;
   const tenant = process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID;
   if (!tenant) throw Error("Squad pilot tenant binding required");
   const visorStore = configuredVisorCompanionSetStore(process.env, config.squad.forumId);
-  const server = createSquadPilotServer(config, statements, replay, undefined, undefined, tenant, visorStore);
+  const server = createSquadPilotServer(config, statements, replay, undefined, undefined, updates, tenant, visorStore);
   cached = { identity, server }; return server;
 }
 

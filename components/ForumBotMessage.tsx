@@ -13,13 +13,16 @@ export function ForumBotMessage({ message, author, viewer, onPrepareCancel }: {
   const approvedAt = message[0] === "approval" ? new Date(message[3] * 1000) : null;
   const approvalLabel = approvedAt && Number.isFinite(approvedAt.getTime()) ? approvedAt.toISOString().replace("T", " ").replace(".000Z", " UTC") : "Invalid approval time";
   const title = kind === "task" ? "Task request" : kind === "approval" ? "Local approval reported" : kind === "ack" ? "Acknowledgement" :
-    kind === "cancel" ? "Cancellation request" : kind === "progress" ? "Progress report" : "Result report";
+    kind === "cancel" ? "Cancellation request" : kind === "progress" ? "Progress report" :
+    kind === "update" ? "Task update" : "Result report";
   return <div className="mt-1 rounded border border-rule p-2" data-testid="forum-bot-message">
     <p className="font-semibold">{title}</p>
     {message[0] === "task" && <p>For bot <code>{message[3]}</code></p>}
     {message[0] === "task" && <p className="text-xs text-ink-muted">The bot needs its local operator's approval and an active Visor session before execution.</p>}
     {message[0] === "approval" && <p className="text-xs text-ink-muted">The bot reports a local operator approval at submission. This historical report does not grant access or confirm completion.</p>}
     {message[0] === "progress" && <p>{message[3]}% reported <progress aria-label="Reported task progress" value={message[3]} max={100} /></p>}
+    {message[0] === "update" && <p className="whitespace-pre-wrap break-words">{message[3]}</p>}
+    {message[0] === "update" && <p className="text-xs text-ink-muted">Bot status note only. This does not approve tools, assign work or confirm completion.</p>}
     {message[0] === "result" && <p>Reported outcome: {message[3]}</p>}
     {message[0] === "cancel" && <p className="text-xs text-ink-muted">Cancellation requested. This does not confirm that active work stopped.</p>}
     <details className="mt-1 text-xs text-ink-muted">
