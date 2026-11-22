@@ -1,12 +1,8 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { RecordConflict, type RecordStore } from "./record-store";
-import type { SignedRoomChat } from "./room-chat-admission";
+import type { RoomWebhookEvent } from "./room-webhook-events";
 
 export type RoomWebhookSubscription = Readonly<{ id: string; room: string; owner: string; bot: string; url: string }>;
-export type RoomWebhookEvent = Readonly<{
-  version: 1; type: "room.message.created"; id: string; room: string;
-  message: { id: string; author: string; text: string; createdAt: number };
-}>;
 type Delivery = { subscription: string; event: RoomWebhookEvent; attempts: number; due: number; done: boolean };
 type State = { version: 1; subscriptions: RoomWebhookSubscription[]; deliveries: Delivery[] };
 
@@ -71,13 +67,9 @@ export function createRoomWebhookDelivery(input: {
         value: state.subscriptions.filter(row => row.room === room && row.owner === owner), changed: false,
       }));
     },
-    async enqueue(message: SignedRoomChat, signal: AbortSignal) {
-      const event: RoomWebhookEvent = {
-        version: 1, type: "room.message.created", id: message.id, room: message.room,
-        message: { id: message.id, author: message.author, text: message.body, createdAt: message.ts },
-      };
+    async enqueue(event: RoomWebhookEvent, signal: AbortSignal) {
       const subscriptions = await change(signal, state => ({
-        value: state.subscriptions.filter(row => row.room === message.room), changed: false,
+        value: state.subscriptions.filter(row => row.room === event.room), changed: false,
       }));
       const allowed = new Set<string>();
       for (const subscription of subscriptions) {
@@ -86,7 +78,7 @@ export function createRoomWebhookDelivery(input: {
       await change(signal, state => {
         const at = clock();
         state.deliveries = state.deliveries.filter(row => !row.done || row.due + retainedSeconds > at);
-        const queued = new Set(state.deliveries.filter(row => row.event.id === event.id).map(row => row.subscription));
+        const queued = new Set(state.deliveries.filter(row => row.event.id === event.id && row.event.room === event.room).map(row => row.subscription));
         const rows = state.subscriptions.filter(row => allowed.has(row.id) && !queued.has(row.id));
         if (state.deliveries.length + rows.length > maxDeliveries) throw Error("Room webhook delivery queue full");
         for (const row of rows) state.deliveries.push({ subscription: row.id, event, attempts: 0, due: at, done: false });
@@ -116,7 +108,7 @@ export function createRoomWebhookDelivery(input: {
       const authorized = await input.canDeliver(subscription, signal);
       const done = !authorized || await input.send(subscription.url, body, signature, signal) || attempts > retries.length;
       if (done) await change(signal, state => {
-        const row = state.deliveries.find(item => item.event.id === event.id && item.subscription === subscription.id);
+        const row = state.deliveries.find(item => item.event.id === event.id && item.event.room === event.room && item.subscription === subscription.id);
         if (!row || row.attempts !== attempts) return { value: undefined, changed: false };
         row.done = true;
         row.due = clock();

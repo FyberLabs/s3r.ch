@@ -385,3 +385,24 @@ test("unrelated admitted room histories cannot suppress shared task publication"
   publicRoom:()=>true,admission:f.admission,publish:row=>sent.push(row.id)});
  assert.deepEqual(sent,[task.id]);
 });
+
+test("webhook projection includes only signed shared chat and committed room task events", async () => {
+ const f = await fixture();
+ const send = (body: string) => f.admission.compose("room", body, () => f.alice);
+ const [chat, task, mine] = await Promise.all([
+  send("A room reply"),
+  send(TASK_PREFIX + JSON.stringify(["create", "task", "Shared", "room", "open", null])),
+  send(TASK_PREFIX + JSON.stringify(["create", "issue", "Private", "mine", "open", null])),
+ ]);
+ assert.ok(chat && task && mine);
+ const changed = await send(TASK_PREFIX + JSON.stringify(["status", task.id, task.id, "doing"]));
+ assert.ok(changed);
+ const { projectSharedRoomWebhookEvents } = await import("./room-webhook-events");
+ const rows = [chat, task, mine, changed, { ...chat, body: "Unverified" }];
+ const events = projectSharedRoomWebhookEvents("room", rows, f.admission);
+ assert.deepEqual(events.map(event => [event.type, event.id]), [
+  ["room.message.created", chat.id], ["room.object.created", task.id], ["room.object.updated", changed.id],
+ ]);
+ f.revoke();
+ assert.deepEqual(projectSharedRoomWebhookEvents("room", rows, f.admission), []);
+});

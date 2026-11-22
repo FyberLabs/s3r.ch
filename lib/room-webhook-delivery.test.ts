@@ -3,7 +3,7 @@ import { createHmac } from "node:crypto";
 import test from "node:test";
 import { RecordConflict, type RecordStore, type StoredRecord } from "./record-store";
 import { createRoomWebhookDelivery } from "./room-webhook-delivery";
-import type { SignedRoomChat } from "./room-chat-admission";
+import { roomMessageWebhookEvent } from "./room-webhook-events";
 
 test("room webhook delivery checks access, signs each event, and bounds retries", async () => {
   const signal = new AbortController().signal;
@@ -36,12 +36,12 @@ test("room webhook delivery checks access, signs each event, and bounds retries"
   const { signingKey } = await queue.subscribe({ room, owner, bot: "allowed", url: callback }, signal);
   await queue.subscribe({ room, owner, bot: "denied", url: callback }, signal);
   assert.equal((await queue.list(room, "different-owner", signal)).length, 0);
-  const message: SignedRoomChat = {
+  const message = {
     id: "fixture-message", room, author: "fixture-agent", body: "fixture message",
-    ts: at, v: 1, actor: "bot", sig: "fixture",
+    ts: at,
   };
-  await queue.enqueue(message, signal);
-  await queue.enqueue(message, signal);
+  await queue.enqueue(roomMessageWebhookEvent(message), signal);
+  await queue.enqueue(roomMessageWebhookEvent(message), signal);
   assert.equal(await worker.deliverNext(signal), true);
   assert.equal(await worker.deliverNext(signal), false);
   const signed = messages[0];
@@ -58,7 +58,7 @@ test("room webhook delivery checks access, signs each event, and bounds retries"
   assert.equal(await worker.deliverNext(signal), false);
   assert.equal(messages.length, 3);
 
-  await queue.enqueue({ ...message, id: "another" }, signal);
+  await queue.enqueue(roomMessageWebhookEvent({ ...message, id: "another" }), signal);
   visible.clear();
   assert.equal(await worker.deliverNext(signal), true);
   assert.equal(messages.length, 3);
