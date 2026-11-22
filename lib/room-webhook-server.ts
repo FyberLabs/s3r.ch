@@ -10,9 +10,10 @@ import { matchesBrowserOrigin, matchesRequestOrigin } from "./request-origin";
 import { readBoundedIdentityJson, readBoundedIdentityText } from "./identity/bounded-json";
 import { isForumObjectId, isSeaPubkey } from "./identity/forum-check";
 import { projectSharedRoomWebhookEvents } from "./room-webhook-events";
-import { createRoomChatAdmission, snapshotRoomChatEnvelope, type SignedRoomChat } from "./room-chat-admission";
+import { createRoomChatAdmission, type SignedRoomChat } from "./room-chat-admission";
 import { nativeRoomBotGun } from "./native-room-bot-gun";
 import { isRoomTaskBody } from "./room-tasks";
+import { createRoomChatReceiveQueue } from "./room-chat-receive-queue";
 import { encodeKey } from "./identity/check";
 
 const clock = () => Math.floor(Date.now() / 1000);
@@ -128,6 +129,7 @@ export async function roomWebhookRequest(request: Request, action: "manage" | "r
 
 type ObservedRoom = {
   rows: Map<string, SignedRoomChat>;
+  refresh(next: Awaited<ReturnType<typeof authorityFor>>): void;
   stop(): void;
 };
 const observed = new Map<string, ObservedRoom>();
@@ -145,22 +147,38 @@ async function collectRoomEvents(enabled: NonNullable<ReturnType<typeof runtime>
   if (!rooms.length) return;
   const mesh = nativeRoomBotGun(pilot.config.origin);
   const [room, owner] = rooms[cursor++ % rooms.length];
+  if (!await mesh.isShared(room, owner, signal)) return;
+  const snapshot = await authorityFor(pilot, room, signal, true);
+  const { at, graph } = snapshot;
+  if (graph.ownerOf(room) !== owner) return;
   let watcher = observed.get(room);
   if (!watcher) {
     const rows = new Map<string, SignedRoomChat>();
-    const stop = mesh.observe(room, (value, key) => {
-      const row = snapshotRoomChatEnvelope(value);
-      if (!row || row.room !== room || encodeKey(row.id) !== key) { rows.delete(key); return; }
-      rows.set(key, row);
+    let current = snapshot;
+    const admission = createRoomChatAdmission({
+      graph: {
+        writerKey: (...args) => current.graph.writerKey(...args),
+        principalForKey: (...args) => current.graph.principalForKey(...args),
+        checkForumSee: (...args) => current.graph.checkForumSee(...args),
+        checkPost: (...args) => current.graph.checkPost(...args),
+      },
+      readerKey: () => current.graph.writerKey(owner, current.at, current.at),
+      parent: pilot.config.squad.forumId, clock: () => current.at,
+    });
+    const queue = createRoomChatReceiveQueue(admission, room, row => {
+      rows.set(encodeKey(row.id), row);
       if (rows.size > 8192) rows.delete(rows.keys().next().value!);
     });
-    watcher = { rows, stop };
+    const stop = mesh.observe(room, (value, key) => { void queue.enqueue(value, key); });
+    watcher = {
+      rows,
+      refresh(next) { current = next; void queue.resume(); },
+      stop() { queue.close(); stop(); },
+    };
     observed.set(room, watcher);
     return;
   }
-  if (!watcher.rows.size || !await mesh.isShared(room, owner, signal)) return;
-  const { at, graph } = await authorityFor(pilot, room, signal, true);
-  if (graph.ownerOf(room) !== owner) return;
+  watcher.refresh(snapshot);
   const admission = createRoomChatAdmission({
     graph, readerKey: () => graph.writerKey(owner, at, at), parent: pilot.config.squad.forumId, clock: () => at,
   });

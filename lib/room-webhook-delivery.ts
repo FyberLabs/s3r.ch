@@ -10,6 +10,7 @@ const record = "room-webhook-delivery-v1";
 const retries = [10, 60];
 const attemptSeconds = 8;
 const maxSubscriptions = 128;
+const maxOwnerSubscriptions = 8;
 const maxPending = 512;
 const maxReceipts = 4096;
 const retainedSeconds = 86_400;
@@ -115,7 +116,12 @@ export function createRoomWebhookDelivery(input: {
     subscribe(data: Omit<RoomWebhookSubscription, "id" | "createdAt">, signal: AbortSignal) {
       const subscription = { ...data, id: randomUUID(), createdAt: clock() };
       return change(signal, state => {
-        if (state.subscriptions.length >= maxSubscriptions) throw Error("Room webhook subscriptions full");
+        const owned = state.subscriptions.filter(row => row.owner === data.owner);
+        const existing = owned.find(row => row.room === data.room && row.bot === data.bot);
+        if (existing) return { changed: false, value: { subscription: existing, signingKey: key(existing.id) } };
+        if (owned.length >= maxOwnerSubscriptions || state.subscriptions.length >= maxSubscriptions) {
+          throw Error("Room webhook subscriptions full");
+        }
         state.subscriptions.push(subscription);
         return { changed: true, value: { subscription, signingKey: key(subscription.id) } };
       });

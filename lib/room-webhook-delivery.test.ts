@@ -34,7 +34,13 @@ test("room webhook delivery checks access, signs each event, and bounds retries"
   const room = "fixture-room", owner = "fixture-owner";
   const callback = "https://callback.example.test/room";
   const { signingKey, subscription } = await queue.subscribe({ room, owner, bot: "allowed", url: callback }, signal);
+  assert.equal((await queue.subscribe({ room, owner, bot: "allowed", url: callback }, signal)).subscription.id, subscription.id);
   await queue.subscribe({ room, owner, bot: "denied", url: callback }, signal);
+  for (let index = 0; index < 6; index++) {
+    await queue.subscribe({ room, owner, bot: `other-${index}`, url: callback }, signal);
+  }
+  await assert.rejects(queue.subscribe({ room, owner, bot: "excess", url: callback }, signal), /subscriptions full/);
+  await queue.subscribe({ room: "another-room", owner: "another-owner", bot: "allowed", url: callback }, signal);
   assert.equal((await queue.list(room, "different-owner", signal)).length, 0);
   const message = {
     id: "fixture-message", room, author: "fixture-agent", body: "fixture message",
