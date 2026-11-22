@@ -12,6 +12,7 @@ const attemptSeconds = 8;
 const maxSubscriptions = 128;
 const maxOwnerSubscriptions = 8;
 const maxPending = 512;
+const maxOwnerPending = 32;
 const maxReceipts = 4096;
 const retainedSeconds = 86_400;
 const encode = new TextEncoder();
@@ -89,19 +90,29 @@ export function createRoomWebhookDelivery(input: {
         .sort((a, b) => a.due - b.due).slice(-maxReceipts);
       state.deliveries = [...pending, ...receipts];
       const existing = queued(state.deliveries, room);
+      const owners = new Map(state.subscriptions.map(sub => [sub.id, sub.owner]));
+      const pendingByOwner = new Map<string, number>();
+      for (const row of pending) {
+        const owner = owners.get(row.subscription);
+        if (owner) pendingByOwner.set(owner, (pendingByOwner.get(owner) ?? 0) + 1);
+      }
       let remaining = maxPending - pending.length;
       let changed = false;
       for (const sub of state.subscriptions) {
         if (!allowed.has(sub.id)) continue;
+        let owned = pendingByOwner.get(sub.owner) ?? 0;
         for (const event of events) {
           if (remaining <= 0) return { changed, value: undefined };
+          if (owned >= maxOwnerPending) break;
           const id = sub.id + ":" + event.id;
           if (!matches(event, sub) || existing.has(id)) continue;
           state.deliveries.push({ subscription: sub.id, event, attempts: 0, due: at, done: false });
           existing.add(id);
           remaining--;
+          owned++;
           changed = true;
         }
+        pendingByOwner.set(sub.owner, owned);
       }
       return { changed, value: undefined };
     });

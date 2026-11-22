@@ -73,4 +73,16 @@ test("room webhook delivery checks access, signs each event, and bounds retries"
   visible.clear();
   assert.equal(await worker.deliverNext(signal), true);
   assert.equal(messages.length, 3);
+  visible.add("allowed");
+  await queue.enqueueRoom(room, Array.from({ length: 40 }, (_, index) =>
+    roomMessageWebhookEvent({ ...message, id: `burst-${index}`, ts: at })), signal);
+  await queue.enqueueRoom("another-room", [roomMessageWebhookEvent({
+    ...message, room: "another-room", id: "other-owner-event", ts: at,
+  })], signal);
+  const held = await records.get("recovery", "room-webhook-delivery-v1");
+  assert.ok(held);
+  const pending = JSON.parse(new TextDecoder().decode(held.bytes)).deliveries
+    .filter((row: { done: boolean }) => !row.done);
+  assert.equal(pending.length, 33);
+  assert.equal(pending.at(-1).event.id, "other-owner-event");
 });
