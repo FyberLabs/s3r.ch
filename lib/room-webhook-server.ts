@@ -1,6 +1,7 @@
 import { createRoomWebhookDelivery, type RoomWebhookSubscription } from "./room-webhook-delivery";
 import { roomWebhookCallback } from "./room-webhook-callback";
 import { createSpanopticonRecordStore } from "./spanopticon-record-store-server";
+import { StatementSourceConflict } from "./acl-statement-source-server";
 import { getSquadPilotServer } from "./squad-pilot-server";
 import { createForumAuthority } from "./identity/forum-authority";
 import { roomAuthorityDiagnosticsBlock } from "./room-authority-diagnostics";
@@ -23,7 +24,14 @@ const reply = (status: number, body: unknown) => Response.json(body, { status, h
 async function authorityFor(pilot: Pilot, room: string, signal: AbortSignal, freezeSnapshot = false) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const at = clock();
-    const snapshot = await pilot.source.read(at, signal);
+    signal.throwIfAborted();
+    let snapshot;
+    try {
+      snapshot = await pilot.source.read(at, signal);
+    } catch (error) {
+      if (error instanceof StatementSourceConflict) continue;
+      throw error;
+    }
     const authority = createForumAuthority(pilot.config.authority, freezeSnapshot ? () => at : clock);
     const verified = await authority.refresh(snapshot, at);
     if (clock() !== at) continue;
