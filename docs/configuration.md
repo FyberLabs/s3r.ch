@@ -212,6 +212,10 @@ a separate migration. Runtime activation waits for its dedicated credential.
 | `S3RCH_VISOR_COMPANION_RECORD_ORIGIN` | Unset | Fixed HTTPS Spanopticon gateway origin for durable Visor companion-set fencing. Required with the companion record tenant and API key when the Squad pilot exposes `visor-companion`. |
 | `S3RCH_VISOR_COMPANION_RECORD_TENANT_ID` | Unset | Storage tenant UUID for companion-set records; must match the ACL statement-source tenant. |
 | `S3RCH_VISOR_COMPANION_RECORD_API_KEY` | Unset | Dedicated server-only key with `storage:records:read` and `storage:records:write`. Never reuse the statement-source graph key. |
+| `S3RCH_ROOM_WEBHOOK_SIGNING_KEY` | Unset | Server-only HMAC key material for room callbacks. Leave unset to disable the webhook worker. |
+| `S3RCH_ROOM_WEBHOOK_RECORD_ORIGIN` | Unset | HTTPS Spanopticon record service for room webhook state. |
+| `S3RCH_ROOM_WEBHOOK_RECORD_TENANT_ID` | Unset | Room webhook storage tenant. Must match the ACL statement-source tenant. |
+| `S3RCH_ROOM_WEBHOOK_RECORD_API_KEY` | Unset | Dedicated server-only credential for room webhook record reads and writes. |
 
 All four source settings are required when the ACL backend is selected. Source
 errors never cause an append retry or a fallback to the legacy journal. A changed

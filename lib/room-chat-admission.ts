@@ -41,7 +41,7 @@ export function snapshotRoomChatEnvelope(input: unknown): SignedRoomChat | null 
 }
 
 export function createRoomChatAdmission(input: {
-  graph: ForumAuthorityGraph;
+  graph: Pick<ForumAuthorityGraph, "writerKey" | "principalForKey" | "checkForumSee" | "checkPost">;
   /** Current session signing key, not a wallet address or a caller-supplied principal. */
   readerKey(): string | null;
   /** Protected namespace parent; its revocation always dominates room grants. */
