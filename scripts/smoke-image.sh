@@ -46,14 +46,28 @@ for pkg in "${packages[@]}"; do
 done
 
 # Exercise the verifier in the final image, using a disposable identity.
-docker run --rm --network none --entrypoint node "$image" -e '
+docker run --rm --network none --entrypoint node "$image" --input-type=module -e '
+  import sea from "gun/sea.js";
   (async () => {
-    const sea = require("gun/sea");
     const pair = await sea.pair();
     if (!pair) throw Error("SEA runtime cannot generate a key");
     const proof = await sea.sign("image-smoke", pair);
     if (!proof || await sea.verify(proof, pair.pub) !== "image-smoke") throw Error("SEA signature round trip failed");
   })().catch(error => { console.error(error); process.exitCode = 1; });'
+
+docker run --rm --network none --entrypoint node "$image" --input-type=module -e '
+  import assert from "node:assert/strict";
+  import { spawnSync } from "node:child_process";
+  for (const [entry, refusal] of [
+    ["s3rch-visor-forum-reporter", "Visor forum reporter configuration unavailable."],
+    ["s3rch-squad-agent", "Squad agent request unavailable. Check configuration and Plane task status."],
+  ]) {
+    const run = spawnSync(process.execPath, ["/app/forum-agent/" + entry + ".mjs"], { encoding: "utf8", timeout: 5000 });
+    assert.ifError(run.error);
+    assert.equal(run.status, 1, run.stderr);
+    assert.equal(run.stdout, "");
+    assert.ok(run.stderr.split("\n").includes(refusal), run.stderr);
+  }'
 
 docker run -d --name "$name" -p "127.0.0.1:${port}:8080" \
   -e "IDENTITY_SESSION_SECRET=${secret}" \

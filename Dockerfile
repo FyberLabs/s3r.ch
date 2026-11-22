@@ -20,6 +20,9 @@ ARG NEXT_PUBLIC_WC_PROJECT_ID
 ENV NEXT_PUBLIC_WC_PROJECT_ID=$NEXT_PUBLIC_WC_PROJECT_ID
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build && node scripts/export-public-pages.mjs
+RUN ./node_modules/.bin/esbuild scripts/s3rch-visor-forum-reporter.ts scripts/s3rch-squad-agent.ts \
+    --bundle --platform=node --target=node24 --format=esm --external:gun \
+    --outdir=forum-agent --out-extension:.js=.mjs
 
 FROM base AS runner
 ARG VERSION=dev
@@ -43,6 +46,7 @@ COPY --from=builder /app/.next/public-pages /app/edge-assets
 COPY --from=builder /app/edge/public-pages.mjs /app/edge-entry.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder /app/forum-agent ./forum-agent
 COPY --from=builder --chown=nextjs:nodejs /app/identity-storage.cjs ./identity-storage.cjs
 COPY --from=builder --chown=nextjs:nodejs /app/identity-link-schema.cjs ./identity-link-schema.cjs
 COPY --from=builder --chown=nextjs:nodejs /app/identity-blob.cjs ./identity-blob.cjs
