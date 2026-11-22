@@ -5,6 +5,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 export PATH="$tmp:$PATH" STATE="$tmp/channel" TRACE="$tmp/trace"
 export GITHUB_REF=refs/heads/master GITHUB_SHA=$(printf 'a%.0s' {1..40})
+export GITHUB_RUN_ID=123 GITHUB_RUN_ATTEMPT=1 REFRESH_TOKEN=mock-refresh-token
 export IMAGE=ghcr.io/fyberlabs/s3r.ch IMAGE_DIGEST=sha256:$(printf 'a%.0s' {1..64})
 export OTHER=sha256:$(printf 'c%.0s' {1..64})
 export OLD=sha256:$(printf 'b%.0s' {1..64}) PRIOR=$(printf 'b%.0s' {1..40})
@@ -12,9 +13,10 @@ cat > "$tmp/mock" <<'MOCK'
 #!/usr/bin/env bash
 set -eu
 case "$(basename "$0"):$*" in
-  'az:webapp config appsettings list '*) echo '[{"name":"S3RCH_IDENTITY_BLOB_ACCOUNT","value":"account"},{"name":"S3RCH_IDENTITY_BLOB_CONTAINER","value":"container"}]' ;;
-  'az:webapp config show '*) echo "DOCKER|$IMAGE:test" ;;
-  'az:webapp restart '*) echo "restart ${!#}" >> "$TRACE"; [[ "$CASE:$(cat "$STATE"):${!#}" != "restart:$IMAGE_DIGEST:s3rch-fyberlabs-peer-test" ]] ;;
+  'node:scripts/dispatch-static-publish.mjs refresh')
+    [[ "$GH_TOKEN" == "$REFRESH_TOKEN" && "$DISPATCH_CHANNEL_DIGEST" == "$(cat "$STATE")" ]] || exit 2
+    echo "refresh $DISPATCH_CHANNEL_DIGEST" >> "$TRACE"
+    [[ "$CASE:$DISPATCH_CHANNEL_DIGEST" != "restart:$IMAGE_DIGEST" ]] ;;
   'docker:buildx imagetools inspect '*'.Manifest.Digest}}') cat "$STATE" ;;
   'docker:buildx imagetools inspect '*'.Image}}') printf '{"config":{"Labels":{"org.opencontainers.image.revision":"%s"}}}' "$PRIOR" ;;
   'docker:buildx imagetools create '*) value=${!#}; echo "${value##*@}" > "$STATE"; echo "set ${value##*@}" >> "$TRACE"; [[ "$CASE:${value##*@}" != "lost-response:$IMAGE_DIGEST" ]] ;;
@@ -42,7 +44,7 @@ case "$(basename "$0"):$*" in
 esac
 MOCK
 chmod +x "$tmp/mock"
-for cmd in az docker gh node; do ln -s mock "$tmp/$cmd"; done
+for cmd in docker gh node; do ln -s mock "$tmp/$cmd"; done
 for CASE in healthy unhealthy restart lost-response stale repeat stale-once stale-twice superseded channel-moved; do
   export CASE
   echo "$OLD" > "$STATE"

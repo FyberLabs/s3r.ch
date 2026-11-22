@@ -7,13 +7,6 @@ set -euo pipefail
 [[ "${IMAGE_DIGEST:-}" =~ ^sha256:[0-9a-f]{64}$ ]]
 [[ "${IMAGE:-}" == ghcr.io/fyberlabs/s3r.ch ]]
 channel="$IMAGE:test"
-group=rg-s3rch-fyberlabs-prod
-web=s3rch-fyberlabs-test
-peer=s3rch-fyberlabs-peer-test
-settings=$(mktemp)
-trap 'rm -f "$settings"' EXIT
-az webapp config appsettings list --name "$web" --resource-group "$group" --query "[?name=='S3RCH_IDENTITY_BLOB_ACCOUNT' || name=='S3RCH_IDENTITY_BLOB_CONTAINER']" -o json > "$settings"
-python3 scripts/require-identity-blob-settings.py "$settings"
 
 channel_digest() {
   docker buildx imagetools inspect "$channel" --format '{{.Manifest.Digest}}'
@@ -22,14 +15,17 @@ set_channel() {
   docker buildx imagetools create --prefer-index=false --tag "$channel" "$IMAGE@$1"
 }
 refresh() {
-  az webapp restart -g "$group" -n "$web" || return 1
-  az webapp restart -g "$group" -n "$peer" || return 1
+  local digest=$1
+  shift
+  GH_TOKEN="${REFRESH_TOKEN:?}" DISPATCH_REVISION="$GITHUB_SHA" DISPATCH_RUN_ID="$GITHUB_RUN_ID" \
+    DISPATCH_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT" DISPATCH_CHANNEL_DIGEST="$digest" \
+    node scripts/dispatch-static-publish.mjs refresh || return 1
   node scripts/verify-deployed-release.mjs https://test.s3r.ch "$@" &&
     node scripts/verify-deployed-release.mjs https://test.s3r.ch/_peer "$@"
 }
 refresh_candidate() {
   local status=0 head digest
-  refresh "$GITHUB_SHA" "$@" || status=$?
+  refresh "$IMAGE_DIGEST" "$GITHUB_SHA" "$@" || status=$?
   # The verifier reserves exit 3 for a previous TEST revision that is still serving.
   if [[ "$status" != 3 ]]; then return "$status"; fi
   head=$(gh api repos/FyberLabs/s3r.ch/branches/master --jq .commit.sha) || return 1
@@ -39,12 +35,8 @@ refresh_candidate() {
     return 1
   fi
   echo 'Previous TEST revision is still serving. Refreshing the moving TEST channel once.'
-  refresh "$GITHUB_SHA" "$@"
+  refresh "$IMAGE_DIGEST" "$GITHUB_SHA" "$@"
 }
-for app in "$web" "$peer"; do
-  configured=$(az webapp config show -g "$group" -n "$app" --query linuxFxVersion -o tsv)
-  [[ "$configured" == "DOCKER|$channel" ]] || { echo "$app must follow $channel" >&2; exit 1; }
-done
 previous=$(channel_digest)
 [[ "$previous" =~ ^sha256:[0-9a-f]{64}$ ]]
 head=$(gh api repos/FyberLabs/s3r.ch/branches/master --jq .commit.sha)
@@ -67,6 +59,6 @@ elif [[ "$current" != "$previous" ]]; then
   exit 1
 fi
 [[ "$(channel_digest)" == "$previous" ]]
-refresh "$prior_revision"
+refresh "$previous" "$prior_revision"
 echo 'Restored previous TEST channel after deployment failure.' >&2
 exit 1
