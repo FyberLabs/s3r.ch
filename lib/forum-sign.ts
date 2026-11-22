@@ -23,7 +23,7 @@ async function seaApi(): Promise<SeaApi> {
   // SEA's browser bundle expects the Gun constructor to exist, but importing
   // it does not create a peer or connect to the mesh.
   if (typeof window !== "undefined") await import("gun/browser");
-  const mod = (await import("gun/sea")) as SeaApi & { default?: SeaApi };
+  const mod = (await import("gun/sea.js")) as SeaApi & { default?: SeaApi };
   const imported = apiOf(mod);
   if (imported) return imported;
   // Turbopack may expose an empty CommonJS namespace while the browser
