@@ -18,7 +18,7 @@ const encode = new TextEncoder();
 
 function encodeState(state: State): Uint8Array {
   const pending = state.deliveries.filter(row => !row.done);
-  const receipts = state.deliveries.filter(row => row.done).sort((a, b) => b.due - a.due);
+  const receipts = state.deliveries.filter(row => row.done).sort((a, b) => a.due - b.due).reverse();
   let bytes = Buffer.byteLength(JSON.stringify({ ...state, deliveries: pending })) + 1;
   const retained: Delivery[] = [];
   for (const row of receipts) {
