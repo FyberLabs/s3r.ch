@@ -10,7 +10,7 @@ import { matchesBrowserOrigin, matchesRequestOrigin } from "./request-origin";
 import { readBoundedIdentityJson, readBoundedIdentityText } from "./identity/bounded-json";
 import { isForumObjectId, isSeaPubkey } from "./identity/forum-check";
 import { projectSharedRoomWebhookEvents } from "./room-webhook-events";
-import { createRoomChatAdmission, type SignedRoomChat } from "./room-chat-admission";
+import { createRoomChatAdmission, snapshotRoomChatEnvelope, type SignedRoomChat } from "./room-chat-admission";
 import { nativeRoomBotGun } from "./native-room-bot-gun";
 import { isRoomTaskBody } from "./room-tasks";
 import { createRoomChatReceiveQueue } from "./room-chat-receive-queue";
@@ -169,11 +169,31 @@ async function collectRoomEvents(enabled: NonNullable<ReturnType<typeof runtime>
       rows.set(encodeKey(row.id), row);
       if (rows.size > 8192) rows.delete(rows.keys().next().value!);
     });
-    const stop = mesh.observe(room, (value, key) => { void queue.enqueue(value, key); });
+    // Newer candidates wait outside the admitted history until the next
+    // authority snapshot covers their timestamps.
+    const waiting = new Map<string, SignedRoomChat>();
+    const stop = mesh.observe(room, (value, key) => {
+      const row = snapshotRoomChatEnvelope(value);
+      if (!row || row.room !== room || encodeKey(row.id) !== key || row.ts > clock()) return;
+      if (row.ts <= current.at) {
+        void queue.enqueue(row, key);
+        return;
+      }
+      if (!waiting.has(key) && waiting.size >= 8192) waiting.delete(waiting.keys().next().value!);
+      waiting.set(key, row);
+    });
     watcher = {
       rows,
-      refresh(next) { current = next; void queue.resume(); },
-      stop() { queue.close(); stop(); },
+      refresh(next) {
+        current = next;
+        void queue.resume();
+        for (const [key, row] of waiting) {
+          if (row.ts > next.at) continue;
+          waiting.delete(key);
+          void queue.enqueue(row, key);
+        }
+      },
+      stop() { waiting.clear(); queue.close(); stop(); },
     };
     observed.set(room, watcher);
     return;

@@ -71,7 +71,8 @@ export function createRoomWebhookDelivery(input: {
     await change(signal, state => {
       const at = clock();
       const pending = state.deliveries.filter(row => !row.done);
-      const receipts = state.deliveries.filter(row => row.done && row.due + retainedSeconds > at).slice(-maxReceipts);
+      const receipts = state.deliveries.filter(row => row.done && row.due + retainedSeconds > at)
+        .sort((a, b) => a.due - b.due).slice(-maxReceipts);
       state.deliveries = [...pending, ...receipts];
       const existing = queued(state.deliveries, room);
       let remaining = maxPending - pending.length;
@@ -180,6 +181,10 @@ export function createRoomWebhookDelivery(input: {
         if (!row || row.attempts !== attempts) return { value: undefined, changed: false };
         row.done = done || attempts > retries.length;
         row.due = clock() + (row.done ? 0 : retries[attempts - 1]);
+        if (row.done) {
+          state.deliveries.splice(state.deliveries.indexOf(row), 1);
+          state.deliveries.push(row);
+        }
         return { value: undefined, changed: true };
       });
       return true;
