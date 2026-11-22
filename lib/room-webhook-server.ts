@@ -12,17 +12,18 @@ import { isForumObjectId, isSeaPubkey } from "./identity/forum-check";
 import { projectSharedRoomWebhookEvents } from "./room-webhook-events";
 import { createRoomChatAdmission, snapshotRoomChatEnvelope, type SignedRoomChat } from "./room-chat-admission";
 import { nativeRoomBotGun } from "./native-room-bot-gun";
+import { isRoomTaskBody } from "./room-tasks";
 import { encodeKey } from "./identity/check";
 
 const clock = () => Math.floor(Date.now() / 1000);
 type Pilot = NonNullable<ReturnType<typeof getSquadPilotServer>>;
 const reply = (status: number, body: unknown) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
-async function authorityFor(pilot: Pilot, room: string, signal: AbortSignal) {
+async function authorityFor(pilot: Pilot, room: string, signal: AbortSignal, freezeSnapshot = false) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const at = clock();
     const snapshot = await pilot.source.read(at, signal);
-    const authority = createForumAuthority(pilot.config.authority, clock);
+    const authority = createForumAuthority(pilot.config.authority, freezeSnapshot ? () => at : clock);
     const verified = await authority.refresh(snapshot, at);
     if (clock() !== at) continue;
     if (verified.ok && authority.graph.ownerOf(pilot.config.squad.forumId) === pilot.config.squad.owner &&
@@ -47,10 +48,17 @@ function runtime() {
   if (!callback) return;
   const delivery = createRoomWebhookDelivery({
     records: createSpanopticonRecordStore({ origin, tenant, apiKey }), secret,
-    async canDeliver(subscription, signal) {
+    async canDeliver(subscription, signal, event) {
       if (!await nativeRoomBotGun(pilot.config.origin).isShared(subscription.room, subscription.owner, signal)) return false;
       const { at, graph } = await authorityFor(pilot, subscription.room, signal);
-      return graph.ownerOf(subscription.room) === subscription.owner &&
+      const author = event?.type === "room.message.created" ? event.message.author : event?.object.author;
+      const authoredAt = event?.type === "room.message.created" ? event.message.createdAt : event?.object.changedAt;
+      return (!author || (authoredAt !== undefined && !!graph.writerKey(author, authoredAt, at) &&
+        graph.checkForumSee(pilot.config.squad.forumId, author, at).allowed &&
+        graph.checkPost(pilot.config.squad.forumId, author, at).allowed &&
+        graph.checkForumSee(subscription.room, author, at).allowed &&
+        graph.checkPost(subscription.room, author, at).allowed)) &&
+        graph.ownerOf(subscription.room) === subscription.owner &&
         graph.checkForumSee(pilot.config.squad.forumId, subscription.bot, at).allowed &&
         graph.checkForumSee(subscription.room, subscription.bot, at).allowed;
     },
@@ -151,17 +159,18 @@ async function collectRoomEvents(enabled: NonNullable<ReturnType<typeof runtime>
     return;
   }
   if (!watcher.rows.size || !await mesh.isShared(room, owner, signal)) return;
-  const { at, graph } = await authorityFor(pilot, room, signal);
+  const { at, graph } = await authorityFor(pilot, room, signal, true);
   if (graph.ownerOf(room) !== owner) return;
   const admission = createRoomChatAdmission({
-    graph, readerKey: () => graph.writerKey(owner, at, at), parent: pilot.config.squad.forumId, clock,
+    graph, readerKey: () => graph.writerKey(owner, at, at), parent: pilot.config.squad.forumId, clock: () => at,
   });
+  const candidates = [...watcher.rows].filter(([, row]) => row.ts >= at - 600 || isRoomTaskBody(row.body));
   const admitted: SignedRoomChat[] = [];
-  for (const [key, row] of watcher.rows) {
+  for (let index = 0; index < candidates.length; index += 16) {
     signal.throwIfAborted();
-    if (clock() !== at) return;
-    const verified = await admission.receive(row, room, key);
-    if (verified) admitted.push(verified);
+    const batch = await Promise.all(candidates.slice(index, index + 16)
+      .map(([key, row]) => admission.receive(row, room, key)));
+    for (const verified of batch) if (verified) admitted.push(verified);
   }
   const events = projectSharedRoomWebhookEvents(room, admitted, admission).filter(event => {
     const publishedAt = event.type === "room.message.created" ? event.message.createdAt : event.object.changedAt;
@@ -181,7 +190,7 @@ export function startRoomWebhookWorker() {
       const enabled = runtime();
       if (!enabled) return;
       await enabled.delivery.deliverNext(AbortSignal.timeout(9_000)).catch(() => {});
-      await collectRoomEvents(enabled, AbortSignal.timeout(4_000));
+      await collectRoomEvents(enabled, AbortSignal.timeout(15_000));
     }).catch(() => {}).finally(() => { active = false; });
   }, 2_000);
   worker.unref();

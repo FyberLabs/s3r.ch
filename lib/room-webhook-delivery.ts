@@ -19,7 +19,7 @@ export function createRoomWebhookDelivery(input: {
   records: RecordStore;
   secret: string;
   clock?: () => number;
-  canDeliver(subscription: RoomWebhookSubscription, signal: AbortSignal): Promise<boolean>;
+  canDeliver(subscription: RoomWebhookSubscription, signal: AbortSignal, event?: RoomWebhookEvent): Promise<boolean>;
   send(subscription: RoomWebhookSubscription, body: string, signature: string, signal: AbortSignal): Promise<boolean>;
 }) {
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
@@ -163,7 +163,7 @@ export function createRoomWebhookDelivery(input: {
       const signature = sign(subscription.id, body);
       let done = false;
       try {
-        const authorized = await input.canDeliver(subscription, attemptSignal);
+        const authorized = await input.canDeliver(subscription, attemptSignal, event);
         attemptSignal.throwIfAborted();
         done = !authorized || await input.send(subscription, body, signature, attemptSignal);
       } catch {
