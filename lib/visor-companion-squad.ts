@@ -4,7 +4,7 @@ import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySna
 import { isSeaPubkey } from "./identity/forum-check";
 import type { LiveSquadSpec } from "./squad-view";
 import { RecordConflict } from "./record-store";
-import type { VisorCompanionSetSnapshot, VisorCompanionSetStore } from "./visor-companion-set-store";
+import { MAX_RETIRED_SET_COORDINATES, type VisorCompanionSetSnapshot, type VisorCompanionSetStore } from "./visor-companion-set-store";
 
 export type { VisorCompanionSetSnapshot, VisorCompanionSetStore } from "./visor-companion-set-store";
 export const VISOR_COMPANION_AGENT_SCOPE = "squad:visor-companion:resolve";
@@ -126,28 +126,38 @@ function companionSnapshot(request: VisorCompanionResolveRequest, stored: VisorC
     companions.set(member.companion!, Object.freeze({ session: member.session!, generation: member.generation!, principal: member.principal }));
   }
   const retired = new Map<string, Readonly<{ session: string; generation: string; principal: string }>[]>();
-  if (stored && stored.setId === request.setId) {
+  const retiredSetIds = [...(stored?.retiredSetIds ?? [])];
+  const retiredSetGenerations = stored?.setId === request.setId ? [...stored.retiredSetGenerations] : [];
+  if (stored) {
+    const sameSet = stored.setId === request.setId;
+    if (!sameSet) retiredSetIds.push(stored.setId);
+    else if (stored.setGeneration !== request.setGeneration) retiredSetGenerations.push(stored.setGeneration);
     for (const [id, rows] of stored.retired) retired.set(id, [...rows]);
-    if (stored.setGeneration === request.setGeneration) {
+    if (sameSet && stored.setGeneration === request.setGeneration) {
       for (const [id, row] of stored.companions) if (!companions.has(id)) retireBinding(retired, id, row);
     } else for (const [id, row] of stored.companions) retireBinding(retired, id, row);
   }
   let retiredCount = 0;
   for (const rows of retired.values()) retiredCount += rows.length;
-  if (retiredCount > MAX_RETIRED_COMPANIONS) throw new Error("Visor companion set capacity");
-  return Object.freeze({ setId: request.setId, setGeneration: request.setGeneration, companions, retired });
+  if (retiredCount > MAX_RETIRED_COMPANIONS || retiredSetIds.length > MAX_RETIRED_SET_COORDINATES ||
+    retiredSetGenerations.length > MAX_RETIRED_SET_COORDINATES) throw new Error("Visor companion set capacity");
+  return Object.freeze({ setId: request.setId, setGeneration: request.setGeneration, companions, retired,
+    retiredSetIds: Object.freeze(retiredSetIds), retiredSetGenerations: Object.freeze(retiredSetGenerations) });
 }
 
 function staleCompanion(
   stored: VisorCompanionSetSnapshot | null,
   request: VisorCompanionResolveRequest,
 ): boolean {
-  if (!stored || stored.setId !== request.setId) return false;
+  if (!stored) return false;
+  const sameSet = stored.setId === request.setId;
+  if (stored.retiredSetIds.includes(request.setId) ||
+    (sameSet && stored.retiredSetGenerations.includes(request.setGeneration))) return true;
   for (const member of request.members) {
     if (member.role !== "companion") continue;
     const retired = stored.retired.get(member.companion!) ?? [];
     if (retired.some(row => row.generation === member.generation)) return true;
-    if (stored.setGeneration !== request.setGeneration) {
+    if (!sameSet || stored.setGeneration !== request.setGeneration) {
       const prev = stored.companions.get(member.companion!);
       if (prev && prev.generation === member.generation) return true;
     }

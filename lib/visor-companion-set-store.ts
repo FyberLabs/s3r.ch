@@ -9,6 +9,8 @@ export type VisorCompanionSetSnapshot = Readonly<{
   setGeneration: string;
   companions: ReadonlyMap<string, VisorCompanionBinding>;
   retired: ReadonlyMap<string, readonly VisorCompanionBinding[]>;
+  retiredSetIds: readonly string[];
+  retiredSetGenerations: readonly string[];
 }>;
 
 export type VisorCompanionSetEntry = Readonly<{
@@ -24,6 +26,7 @@ export type VisorCompanionSetStore = Readonly<{
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MAX_ACTIVE_COMPANIONS = 8;
 const MAX_RETIRED_COMPANIONS = 8;
+export const MAX_RETIRED_SET_COORDINATES = 64;
 const sortedFieldNames = (row: Record<string, unknown>) => Object.keys(row).sort((a, b) => a.localeCompare(b));
 
 function retiredBindingCount(retired: ReadonlyMap<string, readonly VisorCompanionBinding[]>) {
@@ -44,8 +47,10 @@ function encode(snapshot: VisorCompanionSetSnapshot): Uint8Array {
     throw new Error("Visor companion set capacity");
   }
   const text = JSON.stringify({
-    version: 2, setId: snapshot.setId, setGeneration: snapshot.setGeneration,
+    version: 3, setId: snapshot.setId, setGeneration: snapshot.setGeneration,
     companions: rowList(snapshot.companions), retired,
+    retiredSetIds: decodeCoordinates(snapshot.retiredSetIds, snapshot.setId),
+    retiredSetGenerations: decodeCoordinates(snapshot.retiredSetGenerations, snapshot.setGeneration),
   });
   if (new TextEncoder().encode(text).byteLength > 16384) throw new Error("Visor companion set capacity");
   return new TextEncoder().encode(text);
@@ -78,17 +83,26 @@ function decodeRetired(rows: unknown, out: Map<string, VisorCompanionBinding[]>,
   }
 }
 
+function decodeCoordinates(value: unknown, active: string): readonly string[] {
+  if (!Array.isArray(value) || value.length > MAX_RETIRED_SET_COORDINATES ||
+    value.some(id => typeof id !== "string" || !uuid.test(id) || id === active) ||
+    new Set(value).size !== value.length) throw new Error("Invalid retired visor companion coordinates");
+  return Object.freeze([...value]);
+}
+
 function decode(bytes: Uint8Array): VisorCompanionSetSnapshot {
   if (bytes.byteLength > 16384) throw new Error("Invalid visor companion set");
   const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-  if (!value || (value.version !== 1 && value.version !== 2) || !uuid.test(value.setId) || !uuid.test(value.setGeneration)) {
+  if (!value || ![1, 2, 3].includes(value.version) || !uuid.test(value.setId) || !uuid.test(value.setGeneration)) {
     throw new Error("Invalid visor companion set");
   }
   const companions = new Map<string, VisorCompanionBinding>();
   decodeBindings(value.companions, companions, MAX_ACTIVE_COMPANIONS);
   const retired = new Map<string, VisorCompanionBinding[]>();
-  if (value.version === 2) decodeRetired(value.retired ?? [], retired, MAX_RETIRED_COMPANIONS);
-  return Object.freeze({ setId: value.setId, setGeneration: value.setGeneration, companions, retired });
+  if (value.version >= 2) decodeRetired(value.retired ?? [], retired, MAX_RETIRED_COMPANIONS);
+  const retiredSetIds = value.version === 3 ? decodeCoordinates(value.retiredSetIds, value.setId) : [];
+  const retiredSetGenerations = value.version === 3 ? decodeCoordinates(value.retiredSetGenerations, value.setGeneration) : [];
+  return Object.freeze({ setId: value.setId, setGeneration: value.setGeneration, companions, retired, retiredSetIds, retiredSetGenerations });
 }
 
 function recordName(forumId: string, tenant: string, owner: string, machineId: string) {

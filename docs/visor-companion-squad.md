@@ -12,8 +12,9 @@ Native machines authenticate with agent bearer scope
 session as the live pilot page. Client-supplied rosters never grant access.
 
 Set generation changes retire prior companion session bindings. Presenting an
-older generation after removal is refused. Companion fencing is durable through
-the squad pilot tenant record store (statement-source credentials, Postgres in
+older generation or a retired set ID is refused, including an empty snapshot.
+Companion fencing is durable through the squad pilot tenant record store
+(dedicated companion-record credentials, Postgres in
 production). The service evaluates authority at server time; client `evaluatedAt`
 may differ by up to 60 seconds and the response carries the server timestamp.
 

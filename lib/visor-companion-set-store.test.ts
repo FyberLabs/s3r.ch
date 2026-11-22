@@ -49,6 +49,17 @@ test("durable store keeps generation fencing across separate instances", async t
   });
   assert.equal(stale.ok, false);
   if (!stale.ok) assert.equal(stale.reason, "stale-generation");
+  const replacement = { ...body(gen(2)), setId: randomUUID(), members: [] };
+  const switched = await resolveVisorCompanionSquad({ ...common, store: storeB, request: replacement });
+  assert.equal(switched.ok, true);
+  const replayed = await resolveVisorCompanionSquad({ ...common, store: storeA, request: body(gen(1)) });
+  assert.deepEqual(replayed, { ok: false, reason: "stale-generation" });
+  const newer = await resolveVisorCompanionSquad({
+    ...common, store: storeA, request: { ...replacement, setGeneration: gen(3) },
+  });
+  assert.equal(newer.ok, true);
+  const emptyReplay = await resolveVisorCompanionSquad({ ...common, store: storeB, request: replacement });
+  assert.deepEqual(emptyReplay, { ok: false, reason: "stale-generation" });
 });
 
 test("evaluation skew accepts in-window client timestamps and rejects outliers", () => {
