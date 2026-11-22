@@ -2,13 +2,18 @@ import type { SeaPair } from './sea';
 import { operatorBindingStatement, verifyOperatorBinding } from './operator-binding';
 
 const wallet = '0x4C8d36f87287e75D3D84F1aeD72655ecCbC7A1A7';
-const domain = 'test.s3r.ch';
+export function operatorBindingDomain(origin: string): string | null {
+  if (origin === 'https://test.s3r.ch') return 'test.s3r.ch';
+  if (origin === 'https://s3r.ch') return 's3r.ch';
+  return null;
+}
 export async function exportOperatorBinding(input: {
   address: string; origin: string; pair: SeaPair; current: () => boolean;
   signWallet: (message: string) => Promise<string>; timestamp: number;
 }): Promise<string> {
   try {
-    if (input.address !== wallet || input.origin !== `https://${domain}` || !input.current()) throw Error();
+    const domain = operatorBindingDomain(input.origin);
+    if (input.address !== wallet || !domain || !input.current()) throw Error();
     const pair = input.pair;
     const row = {version: 1 as const, purpose: 's3rch-operator-binding/v1' as const,
       domain, wallet, sea_public_key: pair.pub, timestamp: input.timestamp};
