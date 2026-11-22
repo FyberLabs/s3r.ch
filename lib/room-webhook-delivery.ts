@@ -1,5 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { RecordConflict, type RecordStore } from "./record-store";
+import { RECORD_BYTES_MAX, RecordConflict, type RecordStore } from "./record-store";
 import type { RoomWebhookEvent } from "./room-webhook-events";
 
 export type RoomWebhookSubscription = Readonly<{ id: string; room: string; owner: string; bot: string; url: string; createdAt: number }>;
@@ -15,6 +15,20 @@ const maxPending = 512;
 const maxReceipts = 4096;
 const retainedSeconds = 86_400;
 const encode = new TextEncoder();
+
+function encodeState(state: State): Uint8Array {
+  const pending = state.deliveries.filter(row => !row.done);
+  const receipts = state.deliveries.filter(row => row.done).sort((a, b) => b.due - a.due);
+  let bytes = Buffer.byteLength(JSON.stringify({ ...state, deliveries: pending })) + 1;
+  const retained: Delivery[] = [];
+  for (const row of receipts) {
+    const size = Buffer.byteLength(JSON.stringify(row)) + 1;
+    if (bytes + size > RECORD_BYTES_MAX) break;
+    bytes += size;
+    retained.push(row);
+  }
+  return encode.encode(JSON.stringify({ ...state, deliveries: [...pending, ...retained.reverse()] }));
+}
 
 export function createRoomWebhookDelivery(input: {
   records: RecordStore;
@@ -37,7 +51,7 @@ export function createRoomWebhookDelivery(input: {
       const result = edit(state);
       if (!result.changed) return result.value;
       try {
-        await input.records.put("recovery", record, encode.encode(JSON.stringify(state)), saved?.revision ?? null, signal);
+        await input.records.put("recovery", record, encodeState(state), saved?.revision ?? null, signal);
         return result.value;
       } catch (error) {
         if (!(error instanceof RecordConflict)) throw error;

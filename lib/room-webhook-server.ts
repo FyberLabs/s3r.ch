@@ -17,6 +17,7 @@ import { isRoomTaskBody } from "./room-tasks";
 import { createRoomChatReceiveQueue } from "./room-chat-receive-queue";
 import { encodeKey } from "./identity/check";
 
+const collectionHistorySeconds = 3_600;
 const clock = () => Math.floor(Date.now() / 1000);
 type Pilot = NonNullable<ReturnType<typeof getSquadPilotServer>>;
 const reply = (status: number, body: unknown) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -210,7 +211,7 @@ async function collectRoomEvents(enabled: NonNullable<ReturnType<typeof runtime>
   const admission = createRoomChatAdmission({
     graph, readerKey: () => graph.writerKey(owner, at, at), parent: pilot.config.squad.forumId, clock: () => at,
   });
-  const candidates = [...watcher.rows].filter(([, row]) => row.ts >= at - 600 || isRoomTaskBody(row.body));
+  const candidates = [...watcher.rows].filter(([, row]) => row.ts >= at - collectionHistorySeconds || isRoomTaskBody(row.body));
   const admitted: SignedRoomChat[] = [];
   for (let index = 0; index < candidates.length; index += 16) {
     signal.throwIfAborted();
@@ -220,24 +221,27 @@ async function collectRoomEvents(enabled: NonNullable<ReturnType<typeof runtime>
   }
   const events = projectSharedRoomWebhookEvents(room, admitted, admission).filter(event => {
     const publishedAt = event.type === "room.message.created" ? event.message.createdAt : event.object.changedAt;
-    return publishedAt >= at - 600;
+    return publishedAt >= at - collectionHistorySeconds;
   });
   await delivery.enqueueRoom(room, events, signal);
 }
 
-let worker: ReturnType<typeof setInterval> | undefined;
+let running = false;
 export function startRoomWebhookWorker() {
-  if (worker || !process.env.S3RCH_ROOM_WEBHOOK_SIGNING_KEY) return;
-  let active = false;
-  worker = setInterval(() => {
-    if (active) return;
-    active = true;
-    void Promise.resolve().then(async () => {
-      const enabled = runtime();
-      if (!enabled) return;
-      await enabled.delivery.deliverNext(AbortSignal.timeout(9_000)).catch(() => {});
-      await collectRoomEvents(enabled, AbortSignal.timeout(15_000));
-    }).catch(() => {}).finally(() => { active = false; });
-  }, 2_000);
-  worker.unref();
+  if (running || !process.env.S3RCH_ROOM_WEBHOOK_SIGNING_KEY) return;
+  running = true;
+  function schedule(operation: (enabled: NonNullable<ReturnType<typeof runtime>>) => Promise<unknown>) {
+    let active = false;
+    const timer = setInterval(() => {
+      if (active) return;
+      active = true;
+      void Promise.resolve().then(async () => {
+        const enabled = runtime();
+        if (enabled) await operation(enabled);
+      }).catch(() => {}).finally(() => { active = false; });
+    }, 2_000);
+    timer.unref();
+  }
+  schedule(enabled => enabled.delivery.deliverNext(AbortSignal.timeout(9_000)));
+  schedule(enabled => collectRoomEvents(enabled, AbortSignal.timeout(15_000)));
 }
