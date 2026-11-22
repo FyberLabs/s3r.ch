@@ -25,8 +25,9 @@ function payload(input: unknown): ChatMessage | null {
     const v = Object.fromEntries(Object.entries(row).map(([k, p]) => [k, p.value]));
     if (!signedRoomMessageId(v.id) || typeof v.room !== "string" || !v.room || v.room.length > 512 || v.room.trim() !== v.room ||
         !isSeaPubkey(v.author) || typeof v.body !== "string" || !v.body || v.body.trim() !== v.body || v.body.length > (v.body.startsWith("s3rch-work:v1:") ? 512 : CHAT_BODY_MAX) ||
-        !integer(v.ts) || v.v !== 1) return null;
-    return Object.freeze({ id: v.id, room: v.room, author: v.author, body: v.body, ts: v.ts, v: 1 });
+        !integer(v.ts) || v.v !== 1 || (v.actor !== undefined && v.actor !== "bot")) return null;
+    return Object.freeze({ id: v.id, room: v.room, author: v.author, body: v.body, ts: v.ts, v: 1,
+      ...(v.actor === "bot" ? { actor: "bot" } : {}) });
   } catch { return null; }
 }
 
