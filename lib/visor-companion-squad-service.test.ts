@@ -88,10 +88,11 @@ test("HTTP contract: agent and browser resolve current set without URL credentia
   assert.ok(agentProof);
   const token = await agentSessions.exchangeAgent(agentChallenge, agentProof);
   assert.ok(token);
+  const currentPayload = { ...payload, setGeneration: randomUUID() };
   const native = await service(new Request(origin + "/api/squad/pilot/visor-companion", {
     method: "POST",
     headers: { Origin: origin, "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ ...payload, setGeneration: randomUUID() }),
+    body: JSON.stringify(currentPayload),
   }));
   assert.equal(native.status, 200);
   const foreign = await service(new Request(origin + "/api/squad/pilot/visor-companion", {
@@ -105,7 +106,7 @@ test("HTTP contract: agent and browser resolve current set without URL credentia
     method: "POST",
     headers: { Host: new URL(origin).host, "Content-Type": "application/json", Authorization: `Bearer ${token}`,
       "x-forwarded-proto": "https" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(currentPayload),
   }));
   assert.equal(nativeNoOrigin.status, 200);
   const skewed = await service(new Request(origin + "/api/squad/pilot/visor-companion", {
