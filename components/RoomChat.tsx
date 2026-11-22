@@ -70,7 +70,7 @@ export function RoomChat({
               <tbody>
                 {listed.map((row) => (
                   <tr key={row.id}>
-                    <td className="font-data">{shortAuthor(row.author)} {contactHref(row.author)&&<Link className="underline" href={contactHref(row.author)!}>Message privately</Link>}</td>
+                    <td className="font-data">{shortAuthor(row.author)}{row.actor === "bot" && <span className="ml-2 text-ink-muted">Bot</span>} {contactHref(row.author)&&<Link className="underline" href={contactHref(row.author)!}>Message privately</Link>}</td>
                     <td className="whitespace-normal">{roomMediaText(roomGameChatText(row.body))}</td>
                     <td className="font-data">
                       {row.ts
@@ -88,7 +88,7 @@ export function RoomChat({
               <li key={row.id} className="border border-rule bg-ground px-3 py-2">
                 <p className="text-sm text-ink">{roomMediaText(roomGameChatText(row.body))}</p>
                 <p className="mt-1 text-xs text-ink-muted">
-                  {shortAuthor(row.author)}
+                  {shortAuthor(row.author)}{row.actor === "bot" && <span className="ml-2 text-ink-muted">Bot</span>}
                   {contactHref(row.author)&&<Link className="ml-2 underline" href={contactHref(row.author)!}>Message privately</Link>}
                   {row.ts
                     ? ` · ${new Date(row.ts * 1000).toISOString().replace(".000Z", "Z")}`

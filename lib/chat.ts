@@ -27,6 +27,7 @@ export type ChatMessage = {
   body: string;
   ts: number;
   v?: number;
+  actor?: "bot";
 };
 
 export type ComposeChatInput = {
