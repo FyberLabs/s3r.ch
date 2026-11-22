@@ -84,12 +84,12 @@ describe("identity blob configuration", () => {
     assert.equal(JSON.stringify(config).includes("/home"), false);
   });
 
-  it("the deploy pre-check requires the blob settings and not a home mount", () => {
+  it("the owner deploy delegates storage preflight and uses no home mount", () => {
     const workflow = readFileSync(new URL("../../scripts/deploy-test.sh", import.meta.url), "utf8");
     assert.equal(workflow.includes("WEBSITES_ENABLE_APP_SERVICE_STORAGE"), false);
     assert.equal(workflow.includes("S3RCH_IDENTITY_STORAGE_ROOT"), false);
-    assert.match(workflow, /S3RCH_IDENTITY_BLOB_ACCOUNT/);
-    assert.match(workflow, /S3RCH_IDENTITY_BLOB_CONTAINER/);
+    assert.match(workflow, /dispatch-static-publish\.mjs refresh/);
+    assert.doesNotMatch(workflow, /az webapp/);
     const script = new URL("../../scripts/require-identity-blob-settings.py", import.meta.url);
     const dir = mkdtempSync(join(tmpdir(), "s3rch-blob-settings-"));
     const file = join(dir, "settings.json");
