@@ -29,6 +29,7 @@ test("native bot replies require delegation and room post rights and reach signe
   const writer = authorityRow("post", grant);
   const published: SignedRoomChat[] = [];
   let shared = true;
+  let advanceDuringLookup = false;
   const reply = createNativeRoomBotReply({
     authenticate: async request => request.headers.get("authorization") === "Bearer room-scope"
       ? { agent: f.a.pub, principal: f.owner.pub, delegationId: "fixture" } : null,
@@ -42,7 +43,10 @@ test("native bot replies require delegation and room post rights and reach signe
       })) },
     }),
     transport: {
-      isShared: async (id, owner) => shared && id === room && owner === f.owner.pub,
+      isShared: async (id, owner) => {
+        if (advanceDuringLookup) f.tick();
+        return shared && id === room && owner === f.owner.pub;
+      },
       publish: async message => { published.push(message); },
     },
   });
@@ -64,6 +68,7 @@ test("native bot replies require delegation and room post rights and reach signe
   assert.equal((await post("room-scope")).status, 404);
   assert.equal(published.length, 0);
   shared = true;
+  advanceDuringLookup = true;
   assert.equal((await post("room-scope")).status, 200);
   assert.equal(published.length, 1);
 
