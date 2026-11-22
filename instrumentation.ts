@@ -3,6 +3,8 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { startIdentityMonitor } = await import("./identity-monitor.cjs");
     startIdentityMonitor();
+    const { startRoomWebhookWorker } = await import("./lib/room-webhook-server");
+    startRoomWebhookWorker();
   }
 }
 

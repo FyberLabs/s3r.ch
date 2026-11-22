@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
 import { RecordConflict, type RecordStore, type StoredRecord } from "./record-store";
-import { createRoomWebhookDelivery } from "./room-webhook-delivery";
+import { createRoomWebhookDelivery, type RoomWebhookSubscription } from "./room-webhook-delivery";
 import { roomMessageWebhookEvent } from "./room-webhook-events";
 
 test("room webhook delivery checks access, signs each event, and bounds retries", async () => {
@@ -24,7 +24,7 @@ test("room webhook delivery checks access, signs each event, and bounds retries"
   const adapters = {
     records, secret: "synthetic-room-webhook-fixture".repeat(2), clock: () => at,
     canDeliver: async ({ bot }: { bot: string }) => visible.has(bot),
-    send: async (_url: string, payload: string, signature: string) => {
+    send: async (_subscription: RoomWebhookSubscription, payload: string, signature: string) => {
       messages.push({ payload, signature });
       return false;
     },
@@ -33,7 +33,7 @@ test("room webhook delivery checks access, signs each event, and bounds retries"
   const worker = createRoomWebhookDelivery(adapters);
   const room = "fixture-room", owner = "fixture-owner";
   const callback = "https://callback.example.test/room";
-  const { signingKey } = await queue.subscribe({ room, owner, bot: "allowed", url: callback }, signal);
+  const { signingKey, subscription } = await queue.subscribe({ room, owner, bot: "allowed", url: callback }, signal);
   await queue.subscribe({ room, owner, bot: "denied", url: callback }, signal);
   assert.equal((await queue.list(room, "different-owner", signal)).length, 0);
   const message = {
@@ -50,6 +50,11 @@ test("room webhook delivery checks access, signs each event, and bounds retries"
   assert.equal(signed.signature, verify(signed.payload));
   assert.notEqual(signed.signature, verify(signed.payload + " "));
   assert.equal(JSON.parse(signed.payload).type, "room.message.created");
+  assert.equal(await queue.receive(subscription.id, signed.payload + " ", signed.signature, signal), false);
+  assert.equal(await queue.receive(subscription.id, signed.payload, signed.signature, signal), true);
+  assert.equal(await queue.receive(subscription.id, signed.payload, signed.signature, signal), true);
+  assert.equal((await queue.inbox(subscription.id, "allowed", signal))?.length, 1);
+  assert.equal(await queue.inbox(subscription.id, "denied", signal), null);
   at += 10;
   assert.equal(await worker.deliverNext(signal), true);
   at += 60;

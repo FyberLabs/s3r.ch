@@ -1,9 +1,9 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { RecordConflict, type RecordStore } from "./record-store";
 import type { RoomWebhookEvent } from "./room-webhook-events";
 
-export type RoomWebhookSubscription = Readonly<{ id: string; room: string; owner: string; bot: string; url: string }>;
-type Delivery = { subscription: string; event: RoomWebhookEvent; attempts: number; due: number; done: boolean };
+export type RoomWebhookSubscription = Readonly<{ id: string; room: string; owner: string; bot: string; url: string; createdAt: number }>;
+type Delivery = { subscription: string; event: RoomWebhookEvent; attempts: number; due: number; done: boolean; received?: boolean };
 type State = { version: 1; subscriptions: RoomWebhookSubscription[]; deliveries: Delivery[] };
 
 const record = "room-webhook-delivery-v1";
@@ -19,7 +19,7 @@ export function createRoomWebhookDelivery(input: {
   secret: string;
   clock?: () => number;
   canDeliver(subscription: RoomWebhookSubscription, signal: AbortSignal): Promise<boolean>;
-  send(url: string, body: string, signature: string, signal: AbortSignal): Promise<boolean>;
+  send(subscription: RoomWebhookSubscription, body: string, signature: string, signal: AbortSignal): Promise<boolean>;
 }) {
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   async function change<T>(signal: AbortSignal, edit: (state: State) => { value: T; changed: boolean }): Promise<T> {
@@ -45,9 +45,32 @@ export function createRoomWebhookDelivery(input: {
   }
   const key = (id: string) => createHmac("sha256", input.secret).update("s3rch-room-webhook/v1\n" + id).digest("hex");
 
+  const sign = (id: string, body: string) =>
+    "sha256=" + createHmac("sha256", Buffer.from(key(id), "hex")).update(body).digest("hex");
+
   return {
-    subscribe(data: Omit<RoomWebhookSubscription, "id">, signal: AbortSignal) {
-      const subscription = { ...data, id: randomUUID() };
+    receive(id: string, body: string, signature: string, signal: AbortSignal) {
+      if (!/^sha256=[0-9a-f]{64}$/.test(signature) ||
+        !timingSafeEqual(Buffer.from(signature), Buffer.from(sign(id, body)))) return Promise.resolve(false);
+      return change(signal, state => {
+        const row = state.deliveries.find(item => item.subscription === id && JSON.stringify(item.event) === body);
+        if (!row) return { changed: false, value: false };
+        if (row.received) return { changed: false, value: true };
+        row.received = true;
+        return { changed: true, value: true };
+      });
+    },
+    async inbox(id: string, bot: string, signal: AbortSignal) {
+      const subscription = await change(signal, state => ({
+        changed: false, value: state.subscriptions.find(row => row.id === id && row.bot === bot),
+      }));
+      if (!subscription || !await input.canDeliver(subscription, signal)) return null;
+      return change(signal, state => ({
+        changed: false, value: state.deliveries.filter(row => row.subscription === id && row.received).map(row => row.event),
+      }));
+    },
+    subscribe(data: Omit<RoomWebhookSubscription, "id" | "createdAt">, signal: AbortSignal) {
+      const subscription = { ...data, id: randomUUID(), createdAt: clock() };
       return change(signal, state => {
         if (state.subscriptions.length >= maxSubscriptions) throw Error("Room webhook subscriptions full");
         state.subscriptions.push(subscription);
@@ -68,9 +91,15 @@ export function createRoomWebhookDelivery(input: {
         value: state.subscriptions.filter(row => row.room === room && row.owner === owner), changed: false,
       }));
     },
+    rooms(signal: AbortSignal) {
+      return change(signal, state => ({
+        changed: false, value: [...new Map(state.subscriptions.map(row => [row.room, row.owner]))],
+      }));
+    },
     async enqueue(event: RoomWebhookEvent, signal: AbortSignal) {
+      const publishedAt = event.type === "room.message.created" ? event.message.createdAt : event.object.changedAt;
       const subscriptions = await change(signal, state => ({
-        value: state.subscriptions.filter(row => row.room === event.room), changed: false,
+        value: state.subscriptions.filter(row => row.room === event.room && row.createdAt <= publishedAt), changed: false,
       }));
       const allowed = new Set<string>();
       for (const subscription of subscriptions) {
@@ -106,12 +135,12 @@ export function createRoomWebhookDelivery(input: {
       if (!claimed) return false;
       const { subscription, event, attempts } = claimed;
       const body = JSON.stringify(event);
-      const signature = "sha256=" + createHmac("sha256", Buffer.from(key(subscription.id), "hex")).update(body).digest("hex");
+      const signature = sign(subscription.id, body);
       let done = false;
       try {
         const authorized = await input.canDeliver(subscription, attemptSignal);
         attemptSignal.throwIfAborted();
-        done = !authorized || await input.send(subscription.url, body, signature, attemptSignal);
+        done = !authorized || await input.send(subscription, body, signature, attemptSignal);
       } catch {
         // Worker interruption and transient authority failures consume this attempt.
       }

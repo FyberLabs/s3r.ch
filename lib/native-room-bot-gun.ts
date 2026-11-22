@@ -5,6 +5,7 @@ import type { SignedRoomChat } from "./room-chat-admission";
 
 type GunRef = {
   get(key: string): GunRef;
+  map(): { on(callback: (value: unknown, key: string, at: unknown, event: { off(): void }) => void): void };
   once(callback: (value: Record<string, unknown> | undefined) => void): void;
   put(value: SignedRoomChat, callback: (ack: { err?: unknown }) => void): void;
 };
@@ -38,6 +39,16 @@ export function nativeRoomBotGun(origin: string) {
       const row = await withGunAck<Record<string, unknown> | undefined>(signal, resolve => roomRef(origin, room).once(resolve));
       const shared = fromGunRoomNode(row);
       return shared?.id === room && shared.owner === owner;
+    },
+    observe(room: string, receive: (value: unknown, key: string) => void) {
+      let active = true;
+      let listener: { off(): void } | undefined;
+      roomRef(origin, room).get("chat").map().on((value, key, _at, event) => {
+        if (!active) { event.off(); return; }
+        listener = event;
+        receive(value, key);
+      });
+      return () => { active = false; listener?.off(); };
     },
     publish(message: SignedRoomChat, signal: AbortSignal) {
       return withGunAck<void>(signal, (resolve, reject) => {
