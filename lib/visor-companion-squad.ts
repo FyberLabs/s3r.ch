@@ -166,6 +166,7 @@ export type VisorCompanionResolveInput = Readonly<{
   snapshot: ForumAuthoritySnapshot;
   store: VisorCompanionSetStore;
   clock?: () => number;
+  authorizeWrite?: () => Promise<boolean>;
 }>;
 
 export type VisorCompanionResolveResult =
@@ -201,6 +202,7 @@ export async function resolveVisorCompanionSquad(input: VisorCompanionResolveInp
       if (retired.some(row => row.generation === member.generation)) return { ok: false, reason: "stale-generation" };
     }
   }
+  if (input.authorizeWrite && !await input.authorizeWrite()) return { ok: false, reason: "owner" };
   try {
     await input.store.write(input.request.tenant, input.squad.owner, input.request.machineId,
       companionSnapshot(input.request, stored), held.revision);

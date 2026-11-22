@@ -41,6 +41,8 @@ test("HTTP contract: agent and browser resolve current set without URL credentia
   assert.ok(proof);
   const cookie = await issuer.exchange(challenge, proof);
   assert.ok(cookie);
+  let revokeOnAuthorityRead = false;
+  let agentAuthorized = true;
   const service = createVisorCompanionSquadService({
     squad: { forumId: f.forum, owner: f.owner.pub, label: "Pilot" },
     origin, config: { keys: [], pinnedIssuers: [], policy: vectors.context.policy },
@@ -51,16 +53,19 @@ test("HTTP contract: agent and browser resolve current set without URL credentia
     },
     authenticateAgent: async request => {
       const header = request.headers.get("authorization");
-      if (!header?.startsWith("Bearer ")) return null;
+      if (!agentAuthorized || !header?.startsWith("Bearer ")) return null;
       return agentSessions.authenticateAgent(header.slice(7), [VISOR_COMPANION_AGENT_SCOPE]);
     },
-    read: async at => ({
-      completeThrough: at,
-      rows: f.rows,
-      history: { completeThrough: at, links: [], accounts: [f.owner, f.a, f.b].map(pair => ({
-        principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [],
-      })) },
-    }),
+    read: async at => {
+      if (revokeOnAuthorityRead) agentAuthorized = false;
+      return {
+        completeThrough: at,
+        rows: f.rows,
+        history: { completeThrough: at, links: [], accounts: [f.owner, f.a, f.b].map(pair => ({
+          principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [],
+        })) },
+      };
+    },
   });
   const machineId = randomUUID();
   const payload = {
@@ -110,4 +115,13 @@ test("HTTP contract: agent and browser resolve current set without URL credentia
   }));
   assert.equal(skewed.status, 409);
   assert.deepEqual(await skewed.json(), { error: "scope-or-time" });
+  revokeOnAuthorityRead = true;
+  const unregisteredMachine = randomUUID();
+  const denied = await service(new Request(origin + "/api/squad/pilot/visor-companion", {
+    method: "POST",
+    headers: { Origin: origin, "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ ...payload, machineId: unregisteredMachine }),
+  }));
+  assert.equal(denied.status, 403);
+  assert.equal((await store.read(f.tenant, f.owner.pub, unregisteredMachine)).snapshot, null);
 });

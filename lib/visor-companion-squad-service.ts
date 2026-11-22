@@ -39,33 +39,37 @@ export function createVisorCompanionSquadService(input: {
       if (agentRequest ? !matchesRequestOrigin(request, origin) : !matchesBrowserOrigin(request, origin)) {
         return reply(403, { error: "origin-or-type" });
       }
-      const agent = agentRequest ? await authenticateAgent(request) : null;
-      if (agentRequest && !agent) return reply(403, { error: "authentication" });
-      const browser = agent ? null : await authenticate(request);
-      const ownerKey = agent?.principal ?? browser?.key;
-      if (!ownerKey || isPublicSquadPrincipal(ownerKey)) return reply(403, { error: "authentication" });
       if (!request.body) return reply(400, { error: "request" });
       const reader = request.body.getReader();
       const chunks: Uint8Array[] = [];
       let size = 0;
       const abort = () => { void reader.cancel().catch(() => {}); };
-      request.signal.addEventListener("abort", abort, { once: true });
+      const bodySignal = AbortSignal.any([request.signal, AbortSignal.timeout(5_000)]);
+      bodySignal.addEventListener("abort", abort, { once: true });
       try {
         while (true) {
-          request.signal.throwIfAborted();
+          bodySignal.throwIfAborted();
           const part = await reader.read();
-          request.signal.throwIfAborted();
+          bodySignal.throwIfAborted();
           if (part.done) break;
           size += part.value.byteLength;
-          if (size > 8192) { await reader.cancel(); return reply(413, { error: "request-size" }); }
+          if (size > 8192) { abort(); return reply(413, { error: "request-size" }); }
           chunks.push(part.value);
         }
-      } finally { request.signal.removeEventListener("abort", abort); reader.releaseLock(); }
+      } catch (error) {
+        if (bodySignal.reason?.name === "TimeoutError") return reply(408, { error: "request-timeout" });
+        throw error;
+      } finally { bodySignal.removeEventListener("abort", abort); reader.releaseLock(); }
       let body: unknown;
       try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))); }
       catch { return reply(400, { error: "request" }); }
       const parsed = parseVisorCompanionResolveRequest(body);
       if (!parsed) return reply(400, { error: "request" });
+      const agent = agentRequest ? await authenticateAgent(request) : null;
+      if (agentRequest && !agent) return reply(403, { error: "authentication" });
+      const browser = agentRequest ? null : await authenticate(request);
+      const ownerKey = agent?.principal ?? browser?.key;
+      if (!ownerKey || isPublicSquadPrincipal(ownerKey)) return reply(403, { error: "authentication" });
       const evaluatedAt = clock();
       if (!visorCompanionEvaluatedAtWithinSkew(parsed.evaluatedAt, evaluatedAt)) return reply(409, { error: "scope-or-time" });
       request.signal.throwIfAborted();
@@ -85,6 +89,13 @@ export function createVisorCompanionSquadService(input: {
       const result = await resolveVisorCompanionSquad({
         squad: spec, origin: origin.origin, authority: config, tenant, ownerPrincipal, evaluatedAt,
         request: parsed, snapshot, store, clock,
+        authorizeWrite: async () => {
+          request.signal.throwIfAborted();
+          if (!agent) return true;
+          const current = await authenticateAgent(request);
+          return current?.principal === agent.principal && current.agent === agent.agent &&
+            current.delegationId === agent.delegationId;
+        },
       });
       if (!result.ok) {
         const status = result.reason === "scope-or-time" ? 409
