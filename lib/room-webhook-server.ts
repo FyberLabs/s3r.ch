@@ -60,17 +60,21 @@ function runtime() {
     records: createSpanopticonRecordStore({ origin, tenant, apiKey }), secret,
     async canDeliver(subscription, signal, event) {
       if (!await nativeRoomBotGun(pilot.config.origin).isShared(subscription.room, subscription.owner, signal)) return false;
-      const { at, graph } = await authorityFor(pilot, subscription.room, signal);
-      const author = event?.type === "room.message.created" ? event.message.author : event?.object.author;
-      const authoredAt = event?.type === "room.message.created" ? event.message.createdAt : event?.object.changedAt;
-      return (!author || (authoredAt !== undefined && !!graph.writerKey(author, authoredAt, at) &&
-        graph.checkForumSee(pilot.config.squad.forumId, author, at).allowed &&
-        graph.checkPost(pilot.config.squad.forumId, author, at).allowed &&
-        graph.checkForumSee(subscription.room, author, at).allowed &&
-        graph.checkPost(subscription.room, author, at).allowed)) &&
-        graph.ownerOf(subscription.room) === subscription.owner &&
-        graph.checkForumSee(pilot.config.squad.forumId, subscription.bot, at).allowed &&
-        graph.checkForumSee(subscription.room, subscription.bot, at).allowed;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const { at, graph } = await authorityFor(pilot, subscription.room, signal);
+        const author = event?.type === "room.message.created" ? event.message.author : event?.object.author;
+        const authoredAt = event?.type === "room.message.created" ? event.message.createdAt : event?.object.changedAt;
+        const allowed = (!author || (authoredAt !== undefined && !!graph.writerKey(author, authoredAt, at) &&
+          graph.checkForumSee(pilot.config.squad.forumId, author, at).allowed &&
+          graph.checkPost(pilot.config.squad.forumId, author, at).allowed &&
+          graph.checkForumSee(subscription.room, author, at).allowed &&
+          graph.checkPost(subscription.room, author, at).allowed)) &&
+          graph.ownerOf(subscription.room) === subscription.owner &&
+          graph.checkForumSee(pilot.config.squad.forumId, subscription.bot, at).allowed &&
+          graph.checkForumSee(subscription.room, subscription.bot, at).allowed;
+        if (clock() === at) return allowed;
+      }
+      throw new StatementSourceConflict();
     },
     async send(subscription: RoomWebhookSubscription, body, signature, signal) {
       if (subscription.url !== callback) return false;
