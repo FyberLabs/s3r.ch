@@ -45,6 +45,30 @@ provisioning in Infra, and keep component-owned fixtures with their owner.
 Use the canonical secret store for credential values. Ask the owner only
 for the exact external action or authority you lack.
 
+## Production implementation and release readiness
+
+When the owner requests production work, complete the production code,
+configuration, deployment wiring, and CI coverage in scope. Follow shared
+configuration into Infra and component changes into the owning repository
+when the request includes those repositories. Keep working through independent
+items if one dependency is blocked. A green TEST run does not complete
+production deliverables.
+
+Before requesting release approval, prepare the PRs and candidate artifacts,
+run the applicable authorized CI, fix failures in scope, and verify the
+results. Run PR checks and release qualification in their designated CI
+workflows. Use existing controlled fixtures and automated checks. Put checks
+that require a live rollout in the authorized deployment workflow.
+
+Bring the owner the exact candidate version and source revision, the CI
+results, and the specific action and target that need authorization. Identify
+any concrete blocker and complete the remaining authorized preparation.
+Explicit approval for the specific version and action is required before an
+actual manual tag, release, or production promotion, including a merge or
+workflow dispatch that performs the gated action. Existing automatic TEST
+publication retains its standing authorization. Follow existing authority for
+live production applies and provider actions.
+
 ## Service deployments and binary provenance
 
 Running services follow a version tag and pick up patches on that line. They are patch-compatible within a minor version. Deploy the minor line, for example `ghcr.io/fyberlabs/s3r.ch:1.4`, or a moving channel tag such as `ghcr.io/fyberlabs/s3r.ch:test` for TEST. Do not deploy a running service by image digest, commit SHA, or a frozen patch tag. Do not require a peer service to run one identical build. A running service may report its revision for diagnostics.
