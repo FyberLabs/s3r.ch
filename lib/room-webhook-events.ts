@@ -28,7 +28,7 @@ export function projectSharedRoomWebhookEvents(
   const admitted = admission.readable(rows, room);
   const byId = new Map(admitted.map(row => [row.id, row]));
   const messages = [...byId.values()].filter(row => !isRoomTaskBody(row.body)).map(roomMessageWebhookEvent);
-  const objects = admittedRoomTasks(admitted, room, admission).flatMap(task => {
+  const objects = admittedRoomTasks(admitted, room, admission, admitted.length).flatMap(task => {
     if (task.visibility !== "room") return [];
     return task.events.flatMap(event => {
       const row = byId.get(event.messageId);

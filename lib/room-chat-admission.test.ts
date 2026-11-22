@@ -406,3 +406,17 @@ test("webhook projection includes only signed shared chat and committed room tas
  f.revoke();
  assert.deepEqual(projectSharedRoomWebhookEvents("room", rows, f.admission), []);
 });
+
+test("webhook work events are independent of the task panel display limit", async () => {
+ const f = await fixture();
+ const rows: SignedRoomChat[] = [];
+ for (let index = 0; index < 65; index++) {
+  const row = await f.admission.compose("room",
+   TASK_PREFIX + JSON.stringify(["create", "issue", `Issue ${index}`, "room", "open", null]), () => f.alice);
+  assert.ok(row);
+  rows.push(row);
+ }
+ const { projectSharedRoomWebhookEvents } = await import("./room-webhook-events");
+ assert.equal(admittedRoomTasks(rows, "room", f.admission).length, 64);
+ assert.equal(projectSharedRoomWebhookEvents("room", rows, f.admission).length, 65);
+});

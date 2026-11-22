@@ -64,11 +64,11 @@ export function roomTasks(messages: readonly ChatMessage[], room: string): RoomT
 
 /** Production projection: only live signature receipts can supply a creator.
  * Serialization, copying, revocation or identity changes invalidate admission. */
-export function admittedRoomTasks(messages: readonly ChatMessage[], room: string, admission: RoomChatAdmission): RoomTask[] {
-  return projectRoomTasks(admission.readable(messages, room), room, true);
+export function admittedRoomTasks(messages: readonly ChatMessage[], room: string, admission: RoomChatAdmission, limit = 64): RoomTask[] {
+  return projectRoomTasks(admission.readable(messages, room), room, true, limit);
 }
 
-function projectRoomTasks(messages: readonly ChatMessage[], room: string, signed: boolean): RoomTask[] {
+function projectRoomTasks(messages: readonly ChatMessage[], room: string, signed: boolean, limit = 64): RoomTask[] {
   if (messages.length > 8192) return [];
   const rows = new Map<string, { message: ChatMessage; action: TaskAction }>();
   const conflicts = new Set<string>();
@@ -92,7 +92,7 @@ function projectRoomTasks(messages: readonly ChatMessage[], room: string, signed
   }
   for (const held of children.values()) held.sort((a, b) => order(a.message.id, b.message.id));
   return [...rows.values()].filter(row => row.action[0] === "create")
-    .sort((a, b) => b.message.ts - a.message.ts || order(a.message.id, b.message.id)).slice(0, 64).map(row => {
+    .sort((a, b) => b.message.ts - a.message.ts || order(a.message.id, b.message.id)).slice(0, limit).map(row => {
       const action = row.action as Extract<TaskAction, readonly ["create", "task" | "issue", string, "mine" | "room", TaskStatus, string | null]>;
       const task = { id: row.message.id, room, owner: row.message.author, kind: action[1], title: action[2], visibility: action[3],
         status: action[4] as TaskStatus, assignee: action[5] as string | null, head: row.message.id, created: row.message.ts,
