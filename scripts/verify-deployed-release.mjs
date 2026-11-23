@@ -30,7 +30,8 @@ async function connectGun() {
 async function gunReady(status) {
   if (origin !== 'https://test.s3r.ch') return status === 'ok';
   if (status !== 'ok' && status !== 'external') return false;
-  return await connectGun() && await connectGun();
+  if (!await connectGun()) return false;
+  return connectGun();
 }
 const windowMs = 5 * 60 * 1000;
 let deadline = Date.now() + windowMs;
