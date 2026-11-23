@@ -139,6 +139,7 @@ closed. Fyber's hosted tenant continues to use the `spanopticon` backend.
 | Setting | Purpose |
 | --- | --- |
 | `S3RCH_RELEASE_COLOR` | Optional `blue`, `green`, `test`, or `production` label for error records. |
+| `S3RCH_TEST_ORIGIN_ID` | TEST Container Apps only. The existing per-origin Key Vault reference used to authenticate the Cloudflare ingress header for web HTTP and Gun WebSocket traffic. |
 | `S3RCH_UPSTREAM_VERSION` | Optional semantic version of the configured canary plane, for browser crash attribution. |
 | `S3RCH_UPSTREAM_COLOR` | Optional upstream `blue`, `green`, `test`, or `production` label. |
 
