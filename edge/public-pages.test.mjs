@@ -40,3 +40,30 @@ test("origin receives the original method, credentials, query and router headers
     assert.equal(await worker.fetch(request, env), result);
   }
 });
+
+test("the TEST service binding receives dynamic and missing-asset requests with original credentials", async () => {
+  globalThis.fetch = () => assert.fail("unexpected direct origin request");
+  for (const request of [
+    new Request("https://test.s3r.ch/api/identity/session", { headers: { Cookie: "session=test" } }),
+    new Request("https://test.s3r.ch/submit", { method: "POST", body: "record" }),
+    new Request("https://test.s3r.ch/uncached"),
+  ]) {
+    const origin = new Response("bound origin");
+    const env = {
+      ASSETS: { fetch: () => new Response(null, { status: 404 }) },
+      WEB_ORIGIN: { fetch(received) { assert.equal(received, request); return origin; } },
+    };
+    assert.equal(await worker.fetch(request, env), origin);
+  }
+});
+
+test("production fallback stays on its existing public origin", async () => {
+  const request = new Request("https://s3r.ch/api/version");
+  const origin = new Response("production");
+  globalThis.fetch = received => {
+    assert.equal(received, request);
+    return origin;
+  };
+  const env = { WEB_ORIGIN: { fetch() { assert.fail("TEST binding used from production"); } } };
+  assert.equal(await worker.fetch(request, env), origin);
+});
