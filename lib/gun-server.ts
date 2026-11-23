@@ -1,7 +1,8 @@
 import { mkdirSync, renameSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { publishPublicFeed } from "../public-feed-cache.cjs";
 import { dirname } from "node:path";
-import type { Server } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
+import { testOriginAllowed } from "./test-origin-guard";
 import type { FeedItem, FeedSnapshot, GunFeedNode, SourcePull } from "./feed-types";
 import { fromGunNode, toGunNode } from "./feed-types";
 import { canonicalKey } from "./merge";
@@ -75,6 +76,12 @@ export function getServerGun(server?: Server): GunRoot {
     const Gun = loadGun();
     g.__s3rchGun = Gun({
       web: server,
+      ...(server && process.env.S3RCH_TEST_ORIGIN_ID !== undefined ? {
+        ws: {
+          verifyClient: ({ req }: { req: IncomingMessage }) =>
+            testOriginAllowed(process.env.S3RCH_TEST_ORIGIN_ID, req.headers["x-azure-fdid"]),
+        },
+      } : {}),
       file: gunFilePath(),
       multicast: false,
       axe: false,

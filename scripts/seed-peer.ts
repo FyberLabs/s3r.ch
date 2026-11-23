@@ -7,12 +7,19 @@ import { handleSeed as seed } from "../lib/seed-request";
 import { attachGunWeb, snapshotPath } from "../lib/gun-server";
 import { restoreTenantFeedCache } from "../lib/tenant-feed-cache-server";
 import { restorePublicFeed } from "../public-feed-cache.cjs";
+import { testOriginAllowed } from "../lib/test-origin-guard";
 
 const snapshot = "public/feed-cache/snapshot.json";
 restorePublicFeed(process.cwd(), snapshotPath());
 
 async function serve(request: IncomingMessage, response: ServerResponse) {
   const url = new URL(request.url ?? "/", "http://localhost");
+  if (!testOriginAllowed(process.env.S3RCH_TEST_ORIGIN_ID, request.headers["x-azure-fdid"], {
+    method: request.method, pathname: url.pathname,
+  })) {
+    response.writeHead(403, { "Cache-Control": "no-store" }).end();
+    return;
+  }
   if (url.pathname === "/api/seed" && request.method === "POST") {
     if (!process.env.SEED_SECRET) {
       response.writeHead(503).end();
