@@ -33,6 +33,17 @@ async function gunReady(status) {
   if (!await connectGun()) return false;
   return connectGun();
 }
+// Report known categories without copying arbitrary provider messages into CI.
+function identityFailure(reason) {
+  if (typeof reason !== 'string') return undefined;
+  if (reason.includes('worker did not start within')) return 'worker-start-timeout';
+  if (reason.includes('storage did not answer within')) return 'storage-response-timeout';
+  if (reason.includes('refused access')) return 'storage-access-refused';
+  if (reason.includes('store is invalid')) return 'invalid-document';
+  if (reason.includes('identity blob is missing')) return 'missing-document';
+  return 'other';
+}
+
 const windowMs = 5 * 60 * 1000;
 let deadline = Date.now() + windowMs;
 let sawTarget = false;
@@ -59,6 +70,7 @@ while (Date.now() < deadline) {
       : version.revision !== sha && revisionPattern.test(version.revision ?? '') && durableReady && configuredGun);
     observation = JSON.stringify({ revision: version.revision, health: health.status,
       identity: health.dependencies?.identity?.status, writable: health.dependencies?.identity?.writable,
+      identityFailure: identityFailure(health.dependencies?.identity?.reason),
       gun });
     if (version.revision === sha && health.status === 'ok' && durableReady && await gunReady(gun)) { ready = true; break; }
   } catch { /* Keep the last completed probe when either request fails. */ }
