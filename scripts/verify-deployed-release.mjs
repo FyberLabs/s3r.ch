@@ -6,23 +6,31 @@ if (!(peer || ['https://test.s3r.ch', 'https://s3r.ch'].includes(origin)) || !re
     (priorRevision !== undefined && (origin === 'https://s3r.ch' || priorRevision === sha || !revisionPattern.test(priorRevision)))) {
   throw Error('Fixed deployment origin and revision required');
 }
-async function gunReady(status) {
-  if (status === 'ok') return true;
-  if (origin !== 'https://test.s3r.ch' || status !== 'external') return false;
+async function connectGun() {
   const socket = new WebSocket('wss://test.s3r.ch/gun');
   try {
     return await new Promise(resolve => {
-      const timeout = setTimeout(() => resolve(false), 5000);
+      let opened = false;
+      const timeout = setTimeout(() => finish(false), 5000);
       function finish(connected) {
         clearTimeout(timeout);
         resolve(connected);
       }
-      socket.addEventListener('open', () => finish(true), { once: true });
+      socket.addEventListener('open', () => {
+        opened = true;
+        socket.close(1000);
+      }, { once: true });
+      socket.addEventListener('close', event => finish(opened && event.wasClean), { once: true });
       socket.addEventListener('error', () => finish(false), { once: true });
     });
   } finally {
-    socket.close();
+    if (socket.readyState !== WebSocket.CLOSED) socket.close();
   }
+}
+async function gunReady(status) {
+  if (origin !== 'https://test.s3r.ch') return status === 'ok';
+  if (status !== 'ok' && status !== 'external') return false;
+  return await connectGun() && await connectGun();
 }
 const windowMs = 5 * 60 * 1000;
 let deadline = Date.now() + windowMs;
