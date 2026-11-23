@@ -118,7 +118,7 @@ test("TEST waits for storage after the target revision appears, within a fixed d
         if (url !== "wss://test.s3r.ch/gun") throw Error("unexpected Gun route");
         gunConnections++;
         queueMicrotask(() => {
-          if (gunConnections > Number(process.env.GUN_CONNECTION_LIMIT)) {
+          if (gunConnections > fixtureGunConnectionLimit) {
             this.dispatchEvent(new Event("error"));
             return;
           }
@@ -135,11 +135,10 @@ test("TEST waits for storage after the target revision appears, within a fixed d
   `;
   function verify(origin, readyAt, { targetAt = 240000, targetUntil = Infinity, unavailableAt = Infinity, gunConnectionLimit = Infinity, priorRevision } = {}) {
     return spawnSync(process.execPath, [
-      "--import", "data:text/javascript," + encodeURIComponent(fixture),
+      "--import", "data:text/javascript," + encodeURIComponent(`const fixtureGunConnectionLimit = ${gunConnectionLimit};` + fixture),
       "scripts/verify-deployed-release.mjs", origin, sha, ...(priorRevision ? [priorRevision] : []),
     ], { encoding: "utf8", timeout: 5000, env: { ...process.env, READY_AT: String(readyAt), TARGET_AT: String(targetAt),
-      TARGET_UNTIL: String(targetUntil), UNAVAILABLE_AT: String(unavailableAt),
-      GUN_CONNECTION_LIMIT: String(gunConnectionLimit) } });
+      TARGET_UNTIL: String(targetUntil), UNAVAILABLE_AT: String(unavailableAt) } });
   }
   const cold = verify("https://test.s3r.ch", 360000);
   assert.equal(cold.status, 0, cold.stderr);
