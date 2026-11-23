@@ -109,17 +109,42 @@ test("TEST waits for storage after the target revision appears, within a fixed d
       };
       return Response.json(body);
     };
-    process.on("exit", () => console.log("elapsed", now));
+    let gunConnections = 0;
+    globalThis.WebSocket = class extends EventTarget {
+      static CLOSED = 3;
+      readyState = 0;
+      constructor(url) {
+        super();
+        if (url !== "wss://test.s3r.ch/gun") throw Error("unexpected Gun route");
+        gunConnections++;
+        queueMicrotask(() => {
+          if (gunConnections > fixtureGunConnectionLimit) {
+            this.dispatchEvent(new Event("error"));
+            return;
+          }
+          this.readyState = 1;
+          this.dispatchEvent(new Event("open"));
+        });
+      }
+      close() {
+        this.readyState = 3;
+        this.dispatchEvent(Object.assign(new Event("close"), { wasClean: true }));
+      }
+    };
+    process.on("exit", () => console.log("elapsed", now, "gun connections", gunConnections));
   `;
-  function verify(origin, readyAt, { targetAt = 240000, targetUntil = Infinity, unavailableAt = Infinity, priorRevision } = {}) {
+  function verify(origin, readyAt, { targetAt = 240000, targetUntil = Infinity, unavailableAt = Infinity, gunConnectionLimit = Infinity, priorRevision } = {}) {
     return spawnSync(process.execPath, [
-      "--import", "data:text/javascript," + encodeURIComponent(fixture),
+      "--import", "data:text/javascript," + encodeURIComponent(`const fixtureGunConnectionLimit = ${gunConnectionLimit};` + fixture),
       "scripts/verify-deployed-release.mjs", origin, sha, ...(priorRevision ? [priorRevision] : []),
     ], { encoding: "utf8", timeout: 5000, env: { ...process.env, READY_AT: String(readyAt), TARGET_AT: String(targetAt),
       TARGET_UNTIL: String(targetUntil), UNAVAILABLE_AT: String(unavailableAt) } });
   }
   const cold = verify("https://test.s3r.ch", 360000);
   assert.equal(cold.status, 0, cold.stderr);
+  assert.match(cold.stdout, /gun connections 2/);
+  const noReconnect = verify("https://test.s3r.ch", 0, { targetAt: 0, gunConnectionLimit: 1 });
+  assert.equal(noReconnect.status, 1, noReconnect.stderr);
   const unavailable = verify("https://test.s3r.ch", Infinity);
   assert.equal(unavailable.status, 1, unavailable.stderr);
   assert.match(unavailable.stderr, /"writable":false/);
