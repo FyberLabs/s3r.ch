@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
@@ -97,6 +98,9 @@ export async function dispatchAndWatch(kind, env, fetchImpl = globalThis.fetch, 
       return !run.created_at || Date.parse(run.created_at) >= started - 15_000;
     });
     if (!found) await sleep(INTERVAL_MS);
+  }
+  if ((kind === 'refresh' || kind === 'release') && env.DEPLOY_INFRA_RUN_FILE && RUN.test(String(found.id))) {
+    writeFileSync(env.DEPLOY_INFRA_RUN_FILE, String(found.id), { mode: 0o600 });
   }
   const watchLimit = kind === 'refresh' ? 12 * 60 * 1000 : WATCH_LIMIT_MS;
   const watchStarted = now();

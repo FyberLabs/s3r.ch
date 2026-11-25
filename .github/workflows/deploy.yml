@@ -97,6 +97,8 @@ jobs:
       packages: write
     outputs:
       image_digest: ${{ needs.qualify-test-candidate.outputs.image_digest }}
+      rollback_revision: ${{ steps.rollout.outputs.rollback_revision }}
+      startup_diagnostics: ${{ steps.rollout.outputs.startup_diagnostics }}
     env:
       GH_TOKEN: ${{ github.token }}
       IMAGE: ghcr.io/fyberlabs/s3r.ch
@@ -124,9 +126,28 @@ jobs:
           repositories: infra
           permission-actions: write
       - name: Deploy and verify test.s3r.ch
+        id: rollout
         env:
           REFRESH_TOKEN: ${{ steps.refresh-dispatch.outputs.token }}
         run: bash scripts/deploy-test.sh
+
+  report-rollback:
+    needs: deploy
+    if: always() && needs.deploy.outputs.rollback_revision != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Open one TEST rollout issue in s3r.ch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESTORED_REVISION: ${{ needs.deploy.outputs.rollback_revision }}
+          STARTUP_DIAGNOSTICS: ${{ needs.deploy.outputs.startup_diagnostics }}
+        run: node scripts/report-rollout.mjs
 
   publish:
     needs: deploy
