@@ -4,24 +4,29 @@ export type ProtectedGraphSnapshot = Readonly<{ completeThrough: number; history
 
 export class StatementSourceConflict extends Error {}
 class StatementSourceRefused extends Error {}
-export type AclStatementConfig = Readonly<{ origin: string; tenant: string; apiKey: string; scope: string }>;
+export type StatementKeyReader = (signal: AbortSignal) => Promise<string>;
+export type AclStatementConfig = Readonly<{ origin: string; tenant: string; apiKey: string | StatementKeyReader; scope: string }>;
+function validKey(value: unknown): value is string {
+  return typeof value === "string" && /^[\x21-\x7e]{1,4096}$/.test(value);
+}
 /** The API supplies a complete, protected owner snapshot. This adapter neither
  * manufactures completeness nor retries appends over a changed source. */
 export function createAclGraphSource(input: AclStatementConfig, collection: "statements" | "delegations", fetcher: typeof fetch = fetch,
   clock = () => Math.floor(Date.now() / 1000)) {
   if (!["statements", "delegations"].includes(collection)) throw Error("Invalid graph collection");
   const config = Object.freeze({ ...input });
-  if (Object.values(config).length !== 4 || [config.origin, config.tenant, config.scope, config.apiKey].some(value => typeof value !== "string"))
+  if (Object.values(config).length !== 4 || [config.origin, config.tenant, config.scope].some(value => typeof value !== "string"))
     throw Error("Invalid statement source configuration");
   const origin = new URL(config.origin);
   if (origin.protocol !== "https:" || origin.username || origin.password || origin.pathname !== "/" ||
       origin.port || origin.search || origin.hash || origin.origin !== config.origin ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(config.tenant) ||
       config.tenant === "00000000-0000-0000-0000-000000000000" || !/^[A-Za-z0-9_-]{1,128}$/.test(config.scope) ||
-      !/^[\x21-\x7e]{1,4096}$/.test(config.apiKey)) throw Error("Invalid statement source configuration");
+      (typeof config.apiKey !== "function" && !validKey(config.apiKey))) throw Error("Invalid statement source configuration");
   const base = origin.origin + "/api/v1/acl/sociacl/" + collection + "/" + config.scope + "/";
   const atNow = (at: number) => { if (!Number.isSafeInteger(at) || at < 0 || clock() !== at) throw new StatementSourceConflict(); };
-  async function call(operation: "snapshot" | "append" | "forum-update", body: unknown, parent: AbortSignal) {
+  async function call(operation: "snapshot" | "append" | "forum-update", body: unknown, parent: AbortSignal,
+    beforeSend: () => void) {
     const signal = AbortSignal.any([parent, AbortSignal.timeout(1500)]);
     const bounded = <T>(work: Promise<T>) => new Promise<T>((resolve, reject) => {
       const abort = () => reject(Error("Statement source cancelled"));
@@ -32,8 +37,15 @@ export function createAclGraphSource(input: AclStatementConfig, collection: "sta
     let response: Response | undefined;
     try {
       signal.throwIfAborted();
+      let apiKey = config.apiKey;
+      if (typeof apiKey === "function") {
+        apiKey = await bounded(apiKey(signal));
+        signal.throwIfAborted();
+        if (!validKey(apiKey)) throw Error("Invalid statement source key");
+        beforeSend();
+      }
       response = await bounded(fetcher(base + operation, { method: "POST", redirect: "error", cache: "no-store",
-        credentials: "omit", signal, headers: { "X-Api-Key": config.apiKey, "X-Tenant-ID": config.tenant,
+        credentials: "omit", signal, headers: { "X-Api-Key": apiKey, "X-Tenant-ID": config.tenant,
           "Content-Type": "application/json", "Accept-Encoding": "identity" }, body: JSON.stringify(body) }).then(value => {
           if (signal.aborted) { void value.body?.cancel().catch(() => {}); signal.throwIfAborted(); }
           return value;
@@ -66,7 +78,7 @@ export function createAclGraphSource(input: AclStatementConfig, collection: "sta
   return Object.freeze({
     async read(at: number, signal: AbortSignal) {
       atNow(at);
-      const result = await call("snapshot", { evaluatedAt: at }, signal);
+      const result = await call("snapshot", { evaluatedAt: at }, signal, () => atNow(at));
       atNow(at); signal.throwIfAborted();
       if (!result || Object.keys(result).sort().join() !== "fence,snapshot" || typeof result.fence !== "string" || !/^[a-f0-9]{64}$/.test(result.fence) ||
           !result.snapshot || Object.keys(result.snapshot).sort().join() !== (collection === "statements" ? "completeThrough,history,rows" : "audience,completeThrough,history,rows") ||
@@ -84,7 +96,8 @@ export function createAclGraphSource(input: AclStatementConfig, collection: "sta
       atNow(evaluatedAt);
       guard();
       try {
-        const result = await call("forum-update", { evaluatedAt, fence: match[2], rows, update }, signal);
+        const result = await call("forum-update", { evaluatedAt, fence: match[2], rows, update }, signal,
+          () => { atNow(evaluatedAt); guard(); });
         if (!result || Object.keys(result).join() !== "ok" || result.ok !== true) throw Error("Invalid forum update response");
         return "committed" as const;
       } catch (error) {
@@ -102,7 +115,8 @@ export function createAclGraphSource(input: AclStatementConfig, collection: "sta
       if (!Array.isArray(saved) || saved.length < 1 || saved.length > 65 || Buffer.byteLength(JSON.stringify(saved)) > 65536)
         throw Error("Invalid statement append");
       try {
-        const response = await call("append", { evaluatedAt: at, fence: match[2], rows: saved }, signal);
+        const response = await call("append", { evaluatedAt: at, fence: match[2], rows: saved }, signal,
+          () => { atNow(at); guard(); });
         atNow(at); signal.throwIfAborted(); guard();
         if (!response || Object.keys(response).join() !== "ok" || response.ok !== true) throw Error("Invalid statement append response");
         return true;

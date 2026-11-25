@@ -209,6 +209,7 @@ a separate migration. Runtime activation waits for its dedicated credential.
 | `S3RCH_STATEMENT_SOURCE_TENANT_ID` | Unset | The s3r.ch tenant UUID bound by the ACL owner. |
 | `S3RCH_STATEMENT_SOURCE_SCOPE` | Unset | Explicit operator-provisioned graph scope; never selected by a browser. |
 | `S3RCH_STATEMENT_SOURCE_API_KEY` | Unset | Dedicated private service key with `acl:statements:read` and `acl:statements:write`, bound to that graph's service subject. |
+| `S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI` | Unset | Optional versionless Azure Key Vault secret URI for the Squad statement key. Requires the configured `AZURE_CLIENT_ID` managed identity. Use in place of `S3RCH_STATEMENT_SOURCE_API_KEY`. An unavailable key disables Squad statement operations while the web service continues to serve. |
 | `S3RCH_VISOR_COMPANION_RECORD_ORIGIN` | Unset | Fixed HTTPS Spanopticon gateway origin for durable Visor companion-set fencing. Required with the companion record tenant and API key when the Squad pilot exposes `visor-companion`. |
 | `S3RCH_VISOR_COMPANION_RECORD_TENANT_ID` | Unset | Storage tenant UUID for companion-set records; must match the ACL statement-source tenant. |
 | `S3RCH_VISOR_COMPANION_RECORD_API_KEY` | Unset | Dedicated server-only key with `storage:records:read` and `storage:records:write`. Never reuse the statement-source graph key. |

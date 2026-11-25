@@ -1,3 +1,4 @@
+import { ManagedIdentityCredential } from "@azure/identity";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createAclStatementSource, configuredAclStatementSource, StatementSourceConflict } from "./acl-statement-source-server";
@@ -96,4 +97,69 @@ test("abort releases a response returned late by a fetch implementation", async 
   deliver(new Response(new ReadableStream({ cancel() { cancelled++; } }), { headers: { "Content-Type": "application/json" } }));
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(cancelled, 1);
+});
+
+test("an unavailable optional key prevents only statement operations and recovers on the next call", async () => {
+  let fetches = 0;
+  let key: string | undefined;
+  const source = createAclStatementSource({ ...config, apiKey: async () => {
+    if (!key) throw Error("private provider detail");
+    return key;
+  } }, async (_, request) => {
+    fetches++;
+    assert.equal(new Headers(request?.headers).get("x-api-key"), config.apiKey);
+    return answer();
+  }, () => 100);
+
+  assert.equal(fetches, 0);
+  await assert.rejects(source.read(100, signal()), { message: "Trusted statement source unavailable" });
+  assert.equal(fetches, 0);
+  key = config.apiKey;
+  assert.deepEqual((await source.read(100, signal())).snapshot, snapshot);
+  assert.equal(fetches, 1);
+});
+
+test("a late key cannot authorize a write against an expired statement fence", async () => {
+  let now = 100;
+  const source = createAclStatementSource({ ...config, apiKey: async () => {
+    now++;
+    return config.apiKey;
+  } }, async () => assert.fail("expired write sent to ACL"), () => now);
+  assert.equal(await source.append("100." + "a".repeat(64), [{}], () => {}, signal()), false);
+});
+
+test("Vault-backed configuration reads its one key lazily and keeps credentials on their own origins", async (t) => {
+  t.mock.method(Date, "now", () => 100_000);
+  const token = t.mock.method(ManagedIdentityCredential.prototype, "getToken", async (scope: string | string[]) => {
+    assert.equal(scope, "https://vault.azure.net/.default");
+    return { token: "vault-token", expiresOnTimestamp: 200_000 };
+  });
+  const secretUri = "https://squad-test.vault.azure.net/secrets/forum-key";
+  let published = false;
+  const fetcher = t.mock.fn<typeof fetch>(async (url, init) => {
+    const headers = new Headers(init?.headers);
+    if (String(url) === secretUri + "?api-version=7.4") {
+      assert.equal(headers.get("authorization"), "Bearer vault-token");
+      assert.equal(headers.get("x-api-key"), null);
+      return published ? Response.json({ value: config.apiKey }) : new Response(null, { status: 404 });
+    }
+    assert.equal(String(url), config.origin + "/api/v1/acl/sociacl/statements/forum/snapshot");
+    assert.equal(headers.get("authorization"), null);
+    assert.equal(headers.get("x-api-key"), config.apiKey);
+    return answer();
+  });
+  const env = {
+    S3RCH_AUTHORITY_BACKEND: "acl", S3RCH_STATEMENT_SOURCE_ORIGIN: config.origin,
+    S3RCH_STATEMENT_SOURCE_TENANT_ID: config.tenant, S3RCH_STATEMENT_SOURCE_SCOPE: config.scope,
+    S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI: secretUri, AZURE_CLIENT_ID: "managed-client",
+  };
+  const source = configuredAclStatementSource(env, fetcher)!;
+  assert.equal(fetcher.mock.callCount(), 0);
+  await assert.rejects(source.read(100, signal()), /source unavailable/);
+  assert.equal(fetcher.mock.callCount(), 1);
+  published = true;
+  assert.deepEqual((await source.read(100, signal())).snapshot, snapshot);
+  assert.deepEqual((await source.read(100, signal())).snapshot, snapshot);
+  assert.equal(token.mock.callCount(), 2);
+  assert.throws(() => configuredAclStatementSource({ ...env, S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI: "https://example.test/secrets/forum-key" }), /Key Vault configuration/);
 });
