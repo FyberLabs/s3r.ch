@@ -9,6 +9,7 @@ import { createBotStatementAdmission } from "./forum-bot-statement-admission";
 import { createSquadPlaneForum } from "./squad-plane-forum";
 import { createSquadProjectStore } from "./squad-project";
 import { createSquadBriefPublisher } from "./squad-brief";
+import { createSquadWorkbookPublisher } from "./squad-workbook";
 import { createSquadProjectService } from "./squad-project-service";
 import { createSpanopticonRecordStore } from "./spanopticon-record-store-server";
 import { createForumAuthorityService } from "./forum-authority-service";
@@ -55,7 +56,8 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
     ...(project ? { project } : {}),
     authority: createForumAuthorityService({ ...common, read: source.read }),
     statements: createBotStatementAdmission({ ...common, source: statements, planeUpdates,
-      ...(projectStore ? { saveBrief: createSquadBriefPublisher(projectStore, clock) } : {}),
+      ...(projectStore ? { saveBrief: createSquadBriefPublisher(projectStore, clock),
+        saveWorkbook: createSquadWorkbookPublisher(projectStore, clock) } : {}),
     }),
     rooms: createBotStatementAdmission({ ...common, source: statements, objectKind: "room" }),
     ...(visorCompanion ? { visorCompanion } : {}) });

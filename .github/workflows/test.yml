@@ -136,7 +136,7 @@ jobs:
         id: squad-snapshot
         timeout-minutes: 2
         run: |
-          if git diff --quiet HEAD^ HEAD -- components/SquadBriefPanel.tsx components/SquadProjectPanel.tsx scripts/snapshot-squad-project.mjs; then
+          if git diff --quiet HEAD^ HEAD -- components/SquadBriefPanel.tsx components/SquadProjectPanel.tsx components/SquadWorkbookPanel.tsx scripts/snapshot-squad-project.mjs; then
             exit 0
           fi
           node scripts/snapshot-squad-project.mjs

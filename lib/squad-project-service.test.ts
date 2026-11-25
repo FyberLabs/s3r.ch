@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { createSquadWorkbookPublisher, workbookDraftTranscript } from "./squad-workbook";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
@@ -209,7 +211,7 @@ test("refresh after a stale cursor rebuilds the request when no reservation exis
   assert.equal(h.deliveryCount(), 1);
 });
 
-test("a delivered agent brief stays editable and reviewable by exact revision", async t => {
+test("delivered agent artifacts stay editable and reviewable by exact revision", async t => {
   const h = await fixture(t);
   const { taskId, cursor } = await h.project();
   const intent = h.intent(h.f.botA);
@@ -252,12 +254,14 @@ test("a delivered agent brief stays editable and reviewable by exact revision", 
         return "committed";
       } },
     saveBrief: createSquadBriefPublisher(h.store, f.now),
+    saveWorkbook: createSquadWorkbookPublisher(h.store, f.now),
   });
-  const publish = (brief: object) => admission(new Request(h.origin + "/api/squad/pilot/plane/brief", {
+  const publishArtifact = (kind: "brief" | "workbook", value: object) => admission(new Request(h.origin + "/api/squad/pilot/plane/" + kind, {
     method: "POST", headers: { Origin: h.origin, "Content-Type": "application/json", Cookie: reporterCookie },
     body: JSON.stringify({ version: 1, forumId: f.forum, owner: f.owner.pub, evaluatedAt: f.now(),
-      rows: f.rows.slice(offset), update: proof, brief }),
-  }), "plane-brief");
+      rows: f.rows.slice(offset), update: proof, [kind]: value }),
+  }), kind === "brief" ? "plane-brief" : "plane-workbook");
+  const publish = (brief: object) => publishArtifact("brief", brief);
   const read = { action: "brief-read", taskId, revisionId: null };
   assert.equal((await publish({ ...signedDraft, markdown: "Modified without a signature" })).status, 403);
   assert.equal(checked, 0);
@@ -315,6 +319,84 @@ test("a delivered agent brief stays editable and reviewable by exact revision", 
   assert.equal((await h.call({ ...read, forum: "wrong-project" })).status, 404);
   assert.equal((await h.call(read, "fixture-agent-a", false)).status, 200);
   assert.equal((await h.call(read, "fixture-agent-b", false)).status, 404);
+  const pricing = { quantity: 10, unitPriceCents: 12_000, discountBps: 0 };
+  const workbook = { artifactId: randomUUID(), revisionId: randomUUID(), taskId, inputs: pricing };
+  const signedWorkbook = { ...workbook, signature: sign(workbookDraftTranscript(verified, workbook)) };
+  const readWorkbook = { action: "workbook-read", taskId, revisionId: null };
+  assert.equal((await publishArtifact("workbook", { ...signedWorkbook, inputs: { ...pricing, discountBps: 1 } })).status, 403);
+  revokeBeforeSave = true;
+  assert.equal((await publishArtifact("workbook", signedWorkbook)).status, 403);
+  assert.equal((await h.ok(readWorkbook)).workbook, null);
+  aclRevoked = false;
+  revokeBeforeSave = false;
+  assert.equal((await publishArtifact("workbook", signedWorkbook)).status, 200);
+  const initialWorkbook = (await h.ok(readWorkbook)).workbook;
+  assert.equal(initialWorkbook.id, workbook.artifactId);
+  assert.equal(initialWorkbook.totalCents, 120_000);
+  assert.equal(initialWorkbook.selected.author, f.a.pub);
+  assert.deepEqual(initialWorkbook.selected.inputs, pricing);
+  assert.deepEqual(initialWorkbook.selected.sources, ["https://sources.example.test/notes"]);
+  assert.equal(initialWorkbook.selected.run.deliveryId, proof.deliveryId);
+  const comment = { action: "workbook-comment", taskId, revisionId: workbook.revisionId, id: randomUUID(),
+    sheet: "Pricing", range: "B4:B5", text: "Confirm pricing assumptions." };
+  assert.equal((await h.call({ ...comment, range: "B6" })).status, 400);
+  assert.equal((await h.ok(comment)).workbook.comments.length, 1);
+  assert.equal((await h.ok(comment)).workbook.comments.length, 1);
+
+  const priceEdit = { action: "workbook-revise", taskId, revisionId: randomUUID(), base: workbook.revisionId,
+    inputs: { ...pricing, discountBps: 1000 } };
+  for (const inputs of [{ ...pricing, quantity: 0 }, { ...pricing, unitPriceCents: 1.5 },
+    { ...pricing, discountBps: 10_001 }, { ...pricing, formula: "extra" }]) {
+    assert.equal((await h.call({ ...priceEdit, inputs })).status, 400);
+  }
+  const staleEdit = { ...priceEdit, revisionId: randomUUID() };
+  const priceResults = await Promise.all([h.call(priceEdit), h.call(staleEdit)]);
+  assert.deepEqual(priceResults.map(response => response.status).sort(), [200, 409]);
+  const savedPrice = priceResults[0].ok ? priceEdit : staleEdit;
+  const editedWorkbook = (await h.ok(savedPrice)).workbook;
+  assert.equal(editedWorkbook.id, workbook.artifactId);
+  assert.equal(editedWorkbook.history.length, 2);
+  assert.equal(editedWorkbook.selected.author, f.owner.pub);
+  assert.equal(editedWorkbook.selected.parent, workbook.revisionId);
+  assert.deepEqual(editedWorkbook.selected.inputs, savedPrice.inputs);
+  assert.deepEqual(editedWorkbook.comments, []);
+  assert.equal(editedWorkbook.totalCents, 108_000);
+  assert.equal((await publishArtifact("workbook", signedWorkbook)).status, 200);
+  assert.equal((await h.ok(readWorkbook)).workbook.current, savedPrice.revisionId);
+  const historical = (await h.ok({ ...readWorkbook, revisionId: workbook.revisionId })).workbook;
+  assert.equal(historical.comments[0].range, "B4:B5");
+  assert.equal(historical.totalCents, 120_000);
+  assert.equal((await h.call(readWorkbook, "fixture-agent-a", false)).status, 200);
+  assert.equal((await h.call(readWorkbook, "fixture-agent-b", false)).status, 404);
+  assert.equal((await h.call({ ...readWorkbook, forum: "wrong-project" })).status, 404);
+  for (const [version, discount, total] of [[workbook, "0.0000", "1200.00"], [savedPrice, "0.1000", "1080.00"]] as const) {
+    const response = await h.call({ ...readWorkbook, action: "workbook-export", revisionId: version.revisionId });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    assert.match(response.headers.get("content-disposition") ?? "", new RegExp(version.revisionId + "\\.xlsx"));
+    const xlsx = Buffer.from(await response.arrayBuffer());
+    const reopened = JSON.parse(execFileSync("python3", ["-c", inspectWorkbook], { input: xlsx, encoding: "utf8" }));
+    assert.deepEqual(reopened, { B2: ["10", null], B3: ["120.00", null], B4: [discount, null],
+      B5: [total, "ROUND(B2*B3*(1-B4),2)"] });
+  }
   h.removeAgentAccess();
   assert.equal((await h.call(read, "fixture-agent-a", false)).status, 403);
+  assert.equal((await h.call(readWorkbook, "fixture-agent-a", false)).status, 403);
 });
+
+const inspectWorkbook = `
+import io, json, sys, xml.etree.ElementTree as ET, zipfile
+ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as archive:
+    assert archive.testzip() is None
+    contents = ET.fromstring(archive.read("[Content_Types].xml"))
+    assert any(part.get("PartName") == "/xl/worksheets/sheet1.xml" for part in contents)
+    workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+    assert workbook.find(".//" + ns + "sheet").get("name") == "Pricing"
+    sheet = ET.fromstring(archive.read("xl/worksheets/sheet1.xml"))
+    assert sheet.find(ns + "sheetProtection") is None
+    styles = ET.fromstring(archive.read("xl/styles.xml"))
+    assert styles.find(ns + "cellXfs").get("count") == "3"
+    print(json.dumps({cell.get("r"): [cell.findtext(ns + "v"), cell.findtext(ns + "f")]
+                      for cell in sheet.iter(ns + "c") if cell.get("r").startswith("B")}))
+`;

@@ -32,6 +32,12 @@ const briefResponse = { canRevise: true, canReview: true, brief: {
   id: ids.brief, taskId: ids.task, format: "markdown", current: ids.edit, history: [draft, edit], annotations: [],
   selected: { ...edit, markdown: "# Partner pilot\n\nWe’ll start with 10 seats for 30 days.\n\n## Next step\nConfirm the proposed scope with the partner." },
 } };
+const pricing = { quantity: 10, unitPriceCents: 12_000, discountBps: 1000 };
+const pricingRevision = { ...edit, inputs: pricing, formula: "ROUND(B2*B3*(1-B4),2)" };
+const workbookResponse = { canRevise: true, canReview: true, workbook: {
+  id: ids.task, taskId: ids.task, sheet: "Pricing", totalCell: "B5", current: ids.edit, history: [draft, edit],
+  selected: pricingRevision, totalCents: 108_000, comments: [],
+} };
 const bundle = await build({
   stdin: { resolveDir: process.cwd(), loader: "tsx", contents: `
     import { createRoot } from "react-dom/client";
@@ -73,10 +79,15 @@ try {
     if (url.origin !== origin) return route.abort();
     if (url.pathname !== "/api/squad/pilot/project") return route.continue();
     const action = route.request().postDataJSON().action;
-    return route.fulfill({ json: action === "board" ? board : briefResponse });
+    return route.fulfill({ json: action === "board" ? board : action === "workbook-read" ? workbookResponse : briefResponse });
   });
   await page.goto(`${origin}/?task=${ids.task}`);
   await page.getByRole("button", { name: "Download Markdown" }).waitFor();
+  const discount = page.getByLabel("B4 · Discount (%)");
+  await discount.fill("20");
+  await page.getByText("$960.00", { exact: true }).waitFor();
+  await discount.fill("10");
+  await page.getByText("$1,080.00", { exact: true }).waitFor();
   await page.screenshot({ path: path.join(process.env.RUNNER_TEMP, "squad-partner-brief.png"), fullPage: true });
 } finally {
   await browser?.close();

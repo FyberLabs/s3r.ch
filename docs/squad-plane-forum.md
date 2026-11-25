@@ -71,3 +71,19 @@ From the Squad task, open the brief, select a revision, edit the current
 revision, or export the selected Markdown. Comments and review decisions
 are tied to one revision and can point to an inclusive range of lines.
 The task's source references remain linked on its draft and revisions.
+
+## Partner pricing workbook
+
+A successful delivered run can supply an initial pricing workbook at
+`/api/squad/pilot/plane/workbook`. Attach `workbook` with `taskId`,
+`artifactId`, `revisionId`, `inputs`, and `signature` to the existing
+signed terminal update. The inputs are `quantity`, `unitPriceCents`,
+and `discountBps`. Sign `workbookDraftTranscript` with the current
+reporter key. Exact retries preserve later owner revisions.
+
+The Pricing sheet contains quantity in B2, USD unit price in B3, the
+discount in B4, and a formula-driven quote total in B5. From the Squad
+task, edit the current assumptions, open a specific revision, attach
+a comment to a cell or range, or download XLSX for the selected revision.
+The download keeps numeric inputs and the quote formula editable in a
+spreadsheet application.

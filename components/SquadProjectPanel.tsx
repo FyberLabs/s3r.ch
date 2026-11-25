@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { btnSecondary, field } from "@/lib/brand-ui";
 import { shortSea } from "@/lib/forum-squad";
 import { SquadBriefPanel } from "./SquadBriefPanel";
+import { SquadWorkbookPanel } from "./SquadWorkbookPanel";
 import { squadProjectDelegationRequest } from "@/lib/squad-project-client";
 import type { ProjectBoard, ProjectLabel, ProjectNode } from "@/lib/squad-project";
 
@@ -191,6 +192,7 @@ export function SquadProjectPanel({ forum }: { forum: string }) {
           {task.issue && <a href={task.issue} rel="noreferrer" className="underline">GitHub issue</a>}
           {task.sources.map(url => <p key={url}><a href={url} rel="noreferrer" className="break-all underline">{url}</a></p>)}
           <ul>{history.map(run => <li key={run.cursor}>{shortSea(run.requestedBy)} → {shortSea(run.delegate)} · {run.status} · Revision {run.taskRevision}</li>)}</ul>
+          <SquadWorkbookPanel key={"pricing-" + task.id} forum={forum} taskId={task.id} />
           <SquadBriefPanel key={task.id} forum={forum} taskId={task.id} />
           {board.canDelegate && board.bots.length > 0 && <form className="grid gap-2" onSubmit={assign}>
             <h3 className="font-semibold">Delegate task</h3>
