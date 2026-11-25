@@ -87,3 +87,21 @@ task, edit the current assumptions, open a specific revision, attach
 a comment to a cell or range, or download XLSX for the selected revision.
 The download keeps numeric inputs and the quote formula editable in a
 spreadsheet application.
+
+## Private partner preview
+
+Send a successful signed terminal update to
+`/api/squad/pilot/plane/preview` with a `preview` object. It includes the
+`taskId`, `artifactId`, `revisionId`, `base`, `briefRevisionId`,
+`workbookRevisionId`, `copy`, and `signature`. Set the first base to null.
+For a later preview, use its current revision as the base and a new
+delivered partner task run. The copy contains a title, summary, up to four
+highlights, and a next step. Sign `previewDraftTranscript` with the
+current reporter key.
+
+The site renders the copy as text in a fixed HTML document and computes its
+quote from Pricing B5 in the selected workbook revision. The task shows
+the source revisions, pricing inputs, authors, and whether a newer input
+is available. Open or download a specific preview revision under the
+current Squad grants. The embedded preview runs in a sandbox with scripts,
+network requests, and form submission disabled.

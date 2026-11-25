@@ -29,7 +29,8 @@ export function SquadBriefPanel({ forum, taskId }: { forum: string; taskId: stri
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
-    void post(forum, taskId, { action: "brief-read", revisionId: null }, controller.signal)
+    const revisionId = new URLSearchParams(window.location.search).get("briefRevision");
+    void post(forum, taskId, { action: "brief-read", revisionId }, controller.signal)
       .then(response => response.json() as Promise<BriefResponse>)
       .then(value => { if (!controller.signal.aborted) apply(value); }, () => {
         if (!controller.signal.aborted) setMessage("The brief could not be loaded.");

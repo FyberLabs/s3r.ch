@@ -5,6 +5,7 @@ import { btnSecondary, field } from "@/lib/brand-ui";
 import { shortSea } from "@/lib/forum-squad";
 import { SquadBriefPanel } from "./SquadBriefPanel";
 import { SquadWorkbookPanel } from "./SquadWorkbookPanel";
+import { SquadPreviewPanel } from "./SquadPreviewPanel";
 import { squadProjectDelegationRequest } from "@/lib/squad-project-client";
 import type { ProjectBoard, ProjectLabel, ProjectNode } from "@/lib/squad-project";
 
@@ -103,6 +104,9 @@ export function SquadProjectPanel({ forum }: { forum: string }) {
   function openTask(id: string) {
     setTaskId(id);
     const url = new URL(window.location.href);
+    if (url.searchParams.get("task") !== id) {
+      for (const key of ["previewRevision", "briefRevision", "workbookRevision"]) url.searchParams.delete(key);
+    }
     url.searchParams.set("task", id);
     window.history.replaceState(window.history.state, "", url);
   }
@@ -194,6 +198,7 @@ export function SquadProjectPanel({ forum }: { forum: string }) {
           <ul>{history.map(run => <li key={run.cursor}>{shortSea(run.requestedBy)} → {shortSea(run.delegate)} · {run.status} · Revision {run.taskRevision}</li>)}</ul>
           <SquadWorkbookPanel key={"pricing-" + task.id} forum={forum} taskId={task.id} />
           <SquadBriefPanel key={task.id} forum={forum} taskId={task.id} />
+          <SquadPreviewPanel key={"preview-" + task.id} forum={forum} taskId={task.id} />
           {board.canDelegate && board.bots.length > 0 && <form className="grid gap-2" onSubmit={assign}>
             <h3 className="font-semibold">Delegate task</h3>
             <p className="text-sm">Use a staged Plane intent for a current bot assignment.</p>

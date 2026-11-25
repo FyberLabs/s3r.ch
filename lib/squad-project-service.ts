@@ -5,6 +5,7 @@ import { matchesBrowserOrigin, matchesRequestOrigin } from "./request-origin";
 import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { RecordConflict } from "./record-store";
 import { ArtifactRefusal } from "./squad-artifact";
+import { handlePreviewAction, previewReadAction } from "./squad-preview";
 import { handleWorkbookAction, isWorkbookAction, workbookReadAction } from "./squad-workbook";
 import { briefReadAction, handleBriefAction, isBriefAction } from "./squad-brief-editor";
 import { isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
@@ -16,7 +17,7 @@ import {
 
 type Agent = { agent: string; principal: string; delegationId: string };
 type Actor = { principal: string; graph: ForumAuthorityGraph; at: number; agent: boolean };
-const artifactReadAction = (action: unknown) => briefReadAction(action) || workbookReadAction(action);
+const artifactReadAction = (action: unknown) => briefReadAction(action) || workbookReadAction(action) || previewReadAction(action);
 const nativeRead = (request: Request, action: string) =>
   action === "resume" || (artifactReadAction(action) && request.headers.has("authorization"));
 class ProjectRefusal extends Error {
@@ -226,10 +227,10 @@ export function createSquadProjectService(input: {
         if (refreshed.principal !== actor.principal) return refuse(403, "access");
         return resume(body, project, refreshed);
       }
-      if (isBriefAction(action) || isWorkbookAction(action)) {
+      if (isBriefAction(action) || isWorkbookAction(action) || previewReadAction(action)) {
         const checked = await authorize(request, signal, action);
         if (checked.principal !== actor.principal) return refuse(403, "access");
-        const handle = isBriefAction(action) ? handleBriefAction : handleWorkbookAction;
+        const handle = isBriefAction(action) ? handleBriefAction : isWorkbookAction(action) ? handleWorkbookAction : handlePreviewAction;
         const result = handle(body, project, checked, owner);
         if (result.changed) {
           // Recheck after preparing the change and before the fenced write.
@@ -240,6 +241,7 @@ export function createSquadProjectService(input: {
         }
         if (result.download) return new Response(result.download.bytes, { headers: {
           "Content-Type": result.download.contentType, "Cache-Control": "private, no-store",
+          ...("headers" in result.download ? result.download.headers : {}),
           "Content-Disposition": `attachment; filename="${result.download.name}"`,
           "X-Content-Type-Options": "nosniff",
         } });

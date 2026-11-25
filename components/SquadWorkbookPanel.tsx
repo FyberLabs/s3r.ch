@@ -36,7 +36,8 @@ export function SquadWorkbookPanel({ forum, taskId }: { forum: string; taskId: s
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
-    void post(forum, taskId, { action: "workbook-read", revisionId: null }, controller.signal)
+    const revisionId = new URLSearchParams(window.location.search).get("workbookRevision");
+    void post(forum, taskId, { action: "workbook-read", revisionId }, controller.signal)
       .then(response => response.json() as Promise<WorkbookResponse>)
       .then(result => { if (!controller.signal.aborted) apply(result); }, () => {
         if (!controller.signal.aborted) setMessage("The workbook could not be loaded.");
