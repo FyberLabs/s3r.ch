@@ -7,6 +7,10 @@ set -euo pipefail
 [[ "${IMAGE_DIGEST:-}" =~ ^sha256:[0-9a-f]{64}$ ]]
 [[ "${IMAGE:-}" == ghcr.io/fyberlabs/s3r.ch ]]
 channel="$IMAGE:test"
+rollout_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/s3rch-rollout.XXXXXXXX")
+trap 'rm -rf -- "$rollout_dir"' EXIT
+export S3RCH_REFRESH_RUN_FILE="$rollout_dir/refresh-run"
+
 
 channel_digest() {
   docker buildx imagetools inspect "$channel" --format '{{.Manifest.Digest}}'
@@ -62,6 +66,7 @@ prior_revision=$(docker buildx imagetools inspect "$IMAGE@$previous" --format '{
 if set_channel "$IMAGE_DIGEST" && [[ "$(channel_digest)" == "$IMAGE_DIGEST" ]] && refresh_candidate "$prior_revision"; then
   exit 0
 fi
+candidate_refresh=$(cat "$S3RCH_REFRESH_RUN_FILE" 2>/dev/null || true)
 current=$(channel_digest)
 if [[ "$current" == "$IMAGE_DIGEST" ]]; then
   set_channel "$previous"
@@ -71,5 +76,16 @@ elif [[ "$current" != "$previous" ]]; then
 fi
 [[ "$(channel_digest)" == "$previous" ]]
 refresh "$previous" "$prior_revision"
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  startup='{}'
+  if [[ "$candidate_refresh" =~ ^[1-9][0-9]{0,18}$ ]] &&
+    GH_TOKEN="$REFRESH_TOKEN" gh run download "$candidate_refresh" -R FyberLabs/infra \
+      -n s3rch-startup-config -D "$rollout_dir/startup" >/dev/null 2>&1; then
+    startup=$(jq -c --arg revision "$GITHUB_SHA" 'select(.revision == $revision) |
+      {revision, observed, missing, squad_key}' "$rollout_dir"/startup/*.json 2>/dev/null || echo '{}')
+  fi
+  if [[ -z "$startup" ]]; then startup='{}'; fi
+  printf 'rollback_revision=%s\nstartup_diagnostics=%s\n' "$prior_revision" "$startup" >> "$GITHUB_OUTPUT"
+fi
 echo 'Restored previous TEST channel after deployment failure.' >&2
 exit 1
