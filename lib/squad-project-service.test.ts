@@ -8,6 +8,7 @@ import { readSeaSessionCookie, seaSessionCookieNames } from "./identity/sea-sess
 import vectors from "./identity/vectors/forum-authority.json";
 import { createSquadPlaneForum, squadPlaneTaskId } from "./squad-plane-forum";
 import { createSquadProjectService } from "./squad-project-service";
+import { squadProjectDelegationRequest } from "./squad-project-client";
 import { createSquadProjectStore } from "./squad-project";
 import { createSimulatedRecordStore } from "./visor-companion-set-store";
 
@@ -172,7 +173,28 @@ test("unknown delivery retries the same Plane intent and a refused intent releas
   assert.equal((await h.call(retry)).status, 409);
   for (let ticks = 0; ticks < 21; ticks++) h.f.tick();
   h.dropReply(false);
-  const confirmed = await h.ok(retry);
+  const reloaded = await h.ok({ action: "board" });
+  const rebuilt = squadProjectDelegationRequest(reloaded, reloaded.tasks[0], retry.intent);
+  assert.equal(rebuilt.taskRevision, retry.taskRevision);
+  assert.notEqual(reloaded.tasks[0].revision, rebuilt.taskRevision);
+  const confirmed = await h.ok(rebuilt);
   assert.equal(h.submitted.size, 1);
   assert.equal(confirmed.ledger.at(-1).status, "accepted");
+});
+
+test("refresh after a stale cursor rebuilds the request when no reservation exists", async t => {
+  const h = await fixture(t);
+  const { taskId, child } = await h.project();
+  const original = await h.ok({ action: "board" });
+  const intent = h.intent(h.f.botA);
+  const stale = squadProjectDelegationRequest(original, original.tasks[0], intent);
+  await h.ok({ action: "node", id: child, title: "Updated", parentId: null, cursor: original.cursor });
+  assert.equal((await h.call(stale)).status, 409);
+  assert.equal(h.deliveryCount(), 0);
+  const current = await h.ok({ action: "board" });
+  assert.equal(current.ledger.length, 0);
+  const refreshed = squadProjectDelegationRequest(current, current.tasks[0], intent);
+  assert.equal(refreshed.cursor, current.cursor);
+  assert.equal((await h.ok(refreshed)).ledger[0].taskId, taskId);
+  assert.equal(h.deliveryCount(), 1);
 });

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { btnSecondary, field } from "@/lib/brand-ui";
 import { shortSea } from "@/lib/forum-squad";
+import { squadProjectDelegationRequest } from "@/lib/squad-project-client";
 import type { ProjectBoard, ProjectLabel, ProjectNode } from "@/lib/squad-project";
 
 type Board = ProjectBoard & { canEdit: boolean; canDelegate: boolean; bots: { id: string; principal: string }[] };
@@ -44,7 +45,6 @@ export function SquadProjectPanel({ forum }: { forum: string }) {
   const active = useRef<AbortController | null>(null);
   const createNodeId = useRef("");
   const createTask = useRef<{ key: string; id: string } | null>(null);
-  const delegation = useRef<{ key: string; body: object } | null>(null);
   const draftNode = board?.nodes.find(node => node.id === nodeId);
   const task = board?.tasks.find(candidate => candidate.id === taskId);
   const history = board?.ledger.filter(run => run.taskId === taskId) ?? [];
@@ -61,7 +61,7 @@ export function SquadProjectPanel({ forum }: { forum: string }) {
     return () => { controller.abort(); active.current?.abort(); };
   }, [forum]);
 
-  async function send(body: object, options?: { token?: string; success?: () => void; failure?: (error: unknown) => void }) {
+  async function send(body: object, options?: { token?: string; success?: () => void; refreshOnError?: boolean }) {
     active.current?.abort();
     const controller = new AbortController();
     active.current = controller;
@@ -75,8 +75,15 @@ export function SquadProjectPanel({ forum }: { forum: string }) {
     } catch (error) {
       if (controller.signal.aborted) return;
       setMessage(error instanceof Error ? error.message : "Unable to update project.");
-      options?.failure?.(error);
       if (error instanceof ProjectRequestError && (error.status === 401 || error.status === 403)) setBoard(null);
+      else if (options?.refreshOnError) {
+        try {
+          const current = await request(forum, { action: "board" }, controller.signal);
+          if (!controller.signal.aborted) setBoard(current);
+        } catch {
+          // Keep the original delegation error visible and allow a manual refresh.
+        }
+      }
     } finally {
       if (!controller.signal.aborted) {
         setBusy(false);
@@ -127,17 +134,8 @@ export function SquadProjectPanel({ forum }: { forum: string }) {
     let parsed: unknown;
     try { parsed = JSON.parse(intent); }
     catch { setMessage("Enter the staged Plane intent as JSON."); return; }
-    const key = JSON.stringify([task.id, parsed]);
-    if (delegation.current?.key !== key) {
-      delegation.current = { key, body: { action: "delegate", taskId: task.id, taskRevision: task.revision,
-        cursor: board.cursor, intent: parsed } };
-    }
-    void send(delegation.current.body, { token: credential.trim(), success: () => {
-      delegation.current = null;
-      setIntent("");
-    }, failure: error => {
-      if (error instanceof ProjectRequestError && error.status < 500 && error.status !== 409) delegation.current = null;
-    } });
+    const body = squadProjectDelegationRequest(board, task, parsed);
+    void send(body, { token: credential.trim(), refreshOnError: true, success: () => setIntent("") });
   }
   function branches(parent: string | null): React.ReactNode {
     const nodes = board?.nodes.filter(node => node.parentId === parent) ?? [];
@@ -196,7 +194,7 @@ export function SquadProjectPanel({ forum }: { forum: string }) {
             <h3 className="font-semibold">Delegate task</h3>
             <p className="text-sm">Use a staged Plane intent for a current bot assignment.</p>
             <ul className="text-xs">{board.bots.map(bot => <li key={bot.id}><code>{bot.id}</code> · {shortSea(bot.principal)}</li>)}</ul>
-            <label>Plane intent <textarea required className={field} value={intent} onChange={e => { setIntent(e.currentTarget.value); delegation.current = null; }} /></label>
+            <label>Plane intent <textarea required className={field} value={intent} onChange={e => setIntent(e.currentTarget.value)} /></label>
             <label>Plane owner bearer <input required type="password" autoComplete="off" className={field} value={credential}
               onChange={e => setCredential(e.currentTarget.value)} /></label>
             <button className={btnSecondary} disabled={busy}>Delegate to agent</button>
