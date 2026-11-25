@@ -16,7 +16,8 @@ case "$(basename "$0"):$*" in
   'node:scripts/dispatch-static-publish.mjs refresh')
     [[ "$GH_TOKEN" == "$REFRESH_TOKEN" && "$DISPATCH_CHANNEL_DIGEST" == "$(cat "$STATE")" ]] || exit 2
     echo "refresh $DISPATCH_CHANNEL_DIGEST" >> "$TRACE"
-    [[ "$CASE:$DISPATCH_CHANNEL_DIGEST" != "restart:$IMAGE_DIGEST" ]] ;;
+    [[ "$CASE:$DISPATCH_CHANNEL_DIGEST" != "restart:$IMAGE_DIGEST" ]] || exit 1
+    if [[ "$CASE" == web-only ]]; then echo web-only; else echo web-and-peer; fi ;;
   'docker:buildx imagetools inspect '*'.Manifest.Digest}}') cat "$STATE" ;;
   'docker:buildx imagetools inspect '*'.Image}}') printf '{"config":{"Labels":{"org.opencontainers.image.revision":"%s"}}}' "$PRIOR" ;;
   'docker:buildx imagetools create '*) value=${!#}; echo "${value##*@}" > "$STATE"; echo "set ${value##*@}" >> "$TRACE"; [[ "$CASE:${value##*@}" != "lost-response:$IMAGE_DIGEST" ]] ;;
@@ -38,14 +39,15 @@ case "$(basename "$0"):$*" in
           channel-moved) echo "$OTHER" > "$STATE"; exit 3 ;;
         esac
       fi
-      [[ "$(cat "$STATE")" == "$IMAGE_DIGEST" && "$CASE:$2" != "unhealthy:https://test.s3r.ch/_peer" ]]
+      [[ "$(cat "$STATE")" == "$IMAGE_DIGEST" && "$CASE:$2" != "unhealthy:https://test.s3r.ch/_peer" ]] || exit 1
+      if [[ "$CASE" == web-only ]]; then [[ "$2" == https://test.s3r.ch && "${5:-}" == --web-only ]]; fi
     else [[ "$3" == "$PRIOR" && -z "${4:-}" && "$(cat "$STATE")" == "$OLD" ]]; fi ;;
   *) exit 2 ;;
 esac
 MOCK
 chmod +x "$tmp/mock"
 for cmd in docker gh node; do ln -s mock "$tmp/$cmd"; done
-for CASE in healthy unhealthy restart lost-response stale repeat stale-once stale-twice superseded channel-moved; do
+for CASE in healthy web-only unhealthy restart lost-response stale repeat stale-once stale-twice superseded channel-moved; do
   export CASE
   echo "$OLD" > "$STATE"
   if [[ "$CASE" == repeat ]]; then echo "$IMAGE_DIGEST" > "$STATE"; fi
@@ -56,6 +58,9 @@ for CASE in healthy unhealthy restart lost-response stale repeat stale-once stal
     healthy|repeat|stale-once) [[ "$rc" == 0 && "$(cat "$STATE")" == "$IMAGE_DIGEST" ]]
       grep -Fxq "verify https://test.s3r.ch $GITHUB_SHA" "$TRACE"
       grep -Fxq "verify https://test.s3r.ch/_peer $GITHUB_SHA" "$TRACE" ;;
+    web-only) [[ "$rc" == 0 && "$(cat "$STATE")" == "$IMAGE_DIGEST" ]]
+      grep -Fxq "verify https://test.s3r.ch $GITHUB_SHA" "$TRACE"
+      ! grep -q '/_peer' "$TRACE" ;;
     stale) [[ "$rc" != 0 && ! -s "$TRACE" && "$(cat "$STATE")" == "$OLD" ]] ;;
     channel-moved) [[ "$rc" != 0 && "$(cat "$STATE")" == "$OTHER" ]]
       ! grep -Fxq "set $OLD" "$TRACE" ;;

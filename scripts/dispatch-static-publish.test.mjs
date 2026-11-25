@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   FIND_LIMIT_MS, INTERVAL_MS, INFRA_REPOSITORY, WATCH_LIMIT_MS,
-  dispatchAndWatch, requestFor,
+  dispatchAndWatch, refreshScope, requestFor,
 } from './dispatch-static-publish.mjs';
 
 const revision = 'a'.repeat(40);
@@ -192,4 +192,16 @@ test('TEST refresh dispatch binds the exact attempt and current channel digest',
     channel_digest: digest, dispatch_title: request.title,
   });
   assert.throws(() => requestFor('refresh', {...env, DISPATCH_CHANNEL_DIGEST: 'test'}));
+});
+
+test('web-only verification needs a completed marker from the successful Infra refresh job', async () => {
+  const marker = { name: 'Confirm declared web-only TEST routing', status: 'completed', conclusion: 'success' };
+  const jobs = (steps, conclusion = 'success') => async (url) => {
+    assert.equal(url, 'https://api.github.com/repos/FyberLabs/infra/actions/runs/4242/jobs?filter=latest&per_page=100');
+    return Response.json({ jobs: [{ name: 'refresh', conclusion, steps }] });
+  };
+  assert.equal(await refreshScope(4242, token, jobs([marker])), 'web-only');
+  assert.equal(await refreshScope(4242, token, jobs([])), 'web-and-peer');
+  assert.equal(await refreshScope(4242, token, jobs([{ ...marker, conclusion: 'skipped' }])), 'web-and-peer');
+  await assert.rejects(refreshScope(4242, token, jobs([marker], 'failure')), /did not report success/);
 });

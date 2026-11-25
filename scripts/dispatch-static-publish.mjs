@@ -114,8 +114,20 @@ export async function dispatchAndWatch(kind, env, fetchImpl = globalThis.fetch, 
   return current.id;
 }
 
+export async function refreshScope(runId, token, fetchImpl = globalThis.fetch) {
+  const call = github(token, fetchImpl);
+  const result = await call('/repos/' + INFRA_REPOSITORY + '/actions/runs/' + runId + '/jobs?filter=latest&per_page=100');
+  const jobs = (result.jobs ?? []).filter(job => job.name === 'refresh' && job.conclusion === 'success');
+  if (jobs.length !== 1) throw Error('The Infra refresh job did not report success');
+  return (jobs[0].steps ?? []).some(step => step.name === 'Confirm declared web-only TEST routing' &&
+    step.status === 'completed' && step.conclusion === 'success') ? 'web-only' : 'web-and-peer';
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  dispatchAndWatch(process.argv[2], process.env).catch((error) => {
+  const kind = process.argv[2];
+  dispatchAndWatch(kind, process.env).then(async (id) => {
+    if (kind === 'refresh') console.log(await refreshScope(id, process.env.GH_TOKEN));
+  }).catch((error) => {
     console.error(error.message);
     process.exitCode = 1;
   });
