@@ -1,6 +1,7 @@
+import { releaseColor } from "./crash-report";
+
 type Environment = Record<string, string | undefined>;
 
-const releaseColors = new Set(["test", "staging", "production"]);
 const required = [
   "IDENTITY_SESSION_SECRET", "S3RCH_IDENTITY_BLOB_ACCOUNT", "S3RCH_IDENTITY_BLOB_CONTAINER",
 ];
@@ -16,8 +17,8 @@ function present(value: string | undefined) {
 
 /** Return only setting names from this application-owned list. */
 export function startupConfiguration(env: Environment) {
-  const color = env.S3RCH_RELEASE_COLOR ?? "";
-  if (!releaseColors.has(color)) return;
+  const color = env.S3RCH_RELEASE_COLOR === "staging" ? "staging" : releaseColor(env.S3RCH_RELEASE_COLOR);
+  if (!color) return;
   const revision = env.APP_BUILD_REVISION ?? "";
   const missing = required.filter(name => !present(env[name]));
   if (!/^[a-f0-9]{40}$/.test(revision)) missing.push("APP_BUILD_REVISION");
@@ -46,4 +47,5 @@ export function startupConfiguration(env: Environment) {
 export function reportStartupConfiguration(env = process.env) {
   const report = startupConfiguration(env);
   if (report) console.info(JSON.stringify(report));
+  return Boolean(report);
 }

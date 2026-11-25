@@ -2,9 +2,7 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { reportStartupConfiguration } = await import("./lib/startup-configuration");
-    reportStartupConfiguration();
-    if (process.env.S3RCH_RELEASE_COLOR === "test" || process.env.S3RCH_RELEASE_COLOR === "staging" ||
-        process.env.S3RCH_RELEASE_COLOR === "production") {
+    if (reportStartupConfiguration()) {
       void import("./lib/acl-statement-source-server")
         .then(({ observeStartupStatementKey }) => observeStartupStatementKey())
         .catch(() => {});

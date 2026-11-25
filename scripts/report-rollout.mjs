@@ -71,5 +71,6 @@ export async function rolloutIssue(env, api = github) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  console.log(await rolloutIssue(process.env));
+  await rolloutIssue(process.env);
+  console.info("s3r.ch rollout issue reconciled.");
 }

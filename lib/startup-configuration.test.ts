@@ -29,3 +29,9 @@ test("inactive features and local startup do not emit feature requirements", () 
   });
   assert.deepEqual(report?.missing, []);
 });
+
+test("startup diagnostics cover both production aliases and staging", () => {
+  for (const color of ["blue", "green", "staging"]) {
+    assert.equal(startupConfiguration({ S3RCH_RELEASE_COLOR: color })?.release, color);
+  }
+});
