@@ -18,17 +18,23 @@ async function main() {
     socket.once("close", () => cancelled.abort());
     socket.once("end", () => cancelled.abort());
     socket.setTimeout(10000, () => socket.destroy());
-    let text = "", dispatched = false;
-    socket.setEncoding("utf8").on("data", (chunk: string) => {
-      text += chunk;
-      if (text.length > 4096 || dispatched) {
+    const chunks: Buffer[] = [];
+    let bytes = 0, dispatched = false;
+    socket.on("data", (chunk: Buffer) => {
+      bytes += chunk.length;
+      const boundary = chunk.indexOf(10);
+      if (bytes > 65_536 || dispatched || (boundary !== -1 && boundary !== chunk.length - 1)) {
         socket.destroy();
         return;
       }
-      if (!text.endsWith("\n")) return;
+      chunks.push(chunk);
+      if (boundary === -1) return;
       dispatched = true;
-      void Promise.resolve().then(() => reporter.report(JSON.parse(text), cancelled.signal))
-        .then(() => socket.end("ok\n"), () => socket.end("refused\n"))
+      void Promise.resolve().then(() => {
+        const text = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks, bytes));
+        return reporter.report(JSON.parse(text), cancelled.signal);
+      })
+        .then(result => socket.end(result ? JSON.stringify(result) + "\n" : "ok\n"), () => socket.end("refused\n"))
         .finally(() => { active = false; });
     });
     socket.once("close", () => { if (!dispatched) active = false; });
