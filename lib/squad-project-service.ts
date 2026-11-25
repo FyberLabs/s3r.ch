@@ -239,10 +239,11 @@ export function createSquadProjectService(input: {
           project.cursor++;
           await input.store.save(project, current.etag, signal);
         }
-        if (result.download) return new Response(result.download.bytes, { headers: {
-          "Content-Type": result.download.contentType, "Cache-Control": "private, no-store",
-          ...("headers" in result.download ? result.download.headers : {}),
-          "Content-Disposition": `attachment; filename="${result.download.name}"`,
+        const download: { name: string; bytes: BodyInit; contentType: string; headers?: Record<string, string> } | undefined = result.download;
+        if (download) return new Response(download.bytes, { headers: {
+          "Content-Type": download.contentType, "Cache-Control": "private, no-store",
+          ...download.headers,
+          "Content-Disposition": `attachment; filename="${download.name}"`,
           "X-Content-Type-Options": "nosniff",
         } });
         const task = project.tasks.find(row => row.id === body.taskId);

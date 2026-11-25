@@ -238,7 +238,7 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
   }
   const first = await deliveryFor(intent, planeTaskId);
   const { proof, verified } = first;
-  const deliveries = new Set([proof.deliveryId]);
+  const deliveries = new Set<string>([proof.deliveryId]);
   const draft = { artifactId: randomUUID(), revisionId: randomUUID(), taskId, base: null,
     markdown: "# Partner brief\n10 seats for a 30-day pilot.\n" };
   const signedDraft = { ...draft, signature: sign(briefDraftTranscript(verified, draft)) };
