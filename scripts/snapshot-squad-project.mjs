@@ -114,8 +114,10 @@ try {
   const previewFrame = page.locator('iframe[title="Private partner one-pager"]');
   await previewFrame.waitFor();
   assert.equal(await previewFrame.getAttribute("sandbox"), "");
-  const quote = page.frameLocator('iframe[title="Private partner one-pager"]').locator("#quote");
+  const previewDocument = page.frameLocator('iframe[title="Private partner one-pager"]');
+  const quote = previewDocument.locator("#quote");
   await quote.filter({ hasText: "$1,080.00" }).waitFor();
+  assert.equal(await previewDocument.locator("script, form, iframe, a, img, link").count(), 0);
   await page.getByLabel("Preview revision").selectOption(ids.firstPreview);
   await quote.filter({ hasText: "$1,200.00" }).waitFor();
   await page.getByText("A newer pricing revision is available.", { exact: true }).waitFor();

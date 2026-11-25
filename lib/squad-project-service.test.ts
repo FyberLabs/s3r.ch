@@ -375,7 +375,7 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
   assert.equal(originalPreview.selected.inputs.brief.revisionId, winner.revisionId);
   assert.match(originalPreview.selected.html, /id="quote">\$1,200\.00/);
   assert.match(originalPreview.selected.html, /Treat &lt;em&gt; as text/);
-  assert.doesNotMatch(originalPreview.selected.html, /<(form|script|iframe|a|img)[ >]/i);
+  assert.match(originalPreview.selected.html, /content="default-src 'none';.*form-action 'none'/);
 
   const priceEdit = { action: "workbook-revise", taskId, revisionId: randomUUID(), base: workbook.revisionId,
     inputs: { ...pricing, discountBps: 1000 } };
