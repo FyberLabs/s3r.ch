@@ -105,3 +105,20 @@ the source revisions, pricing inputs, authors, and whether a newer input
 is available. Open or download a specific preview revision under the
 current Squad grants. The embedded preview runs in a sandbox with scripts,
 network requests, and form submission disabled.
+
+## Publish through the local Visor reporter
+
+Send one newline-terminated JSON request to the existing private reporter
+socket. Keep the connection open for the response. For an artifact, send
+`{"version":1,"report":{...},"artifact":{"kind":"brief","draft":{...}}}`.
+The `report` is the existing terminal status object, with the Plane task and
+delivery IDs and status `completed`. Set `kind` to `brief`, `workbook`, or
+`preview`. Pass the corresponding draft above without its signature. The
+draft's task ID is the canonical Squad project task ID.
+
+On success the reporter returns one JSON line containing `version`, `taskId`,
+`artifactId`, and `revisionId`. A status-only request still receives `ok`.
+The reporter keeps the signing key private and reuses its terminal proof
+across artifact requests for the same delivery. On an interrupted reply, send
+the same draft for that delivery and kind. The reporter reuses the saved
+signature and Squad checks current authority before acknowledging the revision.

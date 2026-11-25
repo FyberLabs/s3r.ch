@@ -14,9 +14,12 @@ import { createBotSession } from "./forum-bot-session";
 import { buildForumStatement } from "./forum-squad";
 import { signForumRecord } from "./forum-sign";
 import { toGunNode } from "./feed-types";
-import { forumUpdateTranscript, VISOR_FORUM_STATUS_TEXT } from "./forum-plane-update";
+import { forumUpdateTranscript, VISOR_FORUM_STATUS_TEXT, type VerifiedForumUpdate } from "./forum-plane-update";
 import { encodeBotMessage } from "./forum-bot-protocol";
 import { readBoundedIdentityJson } from "./identity/bounded-json";
+import { briefDraftTranscript, parseBriefDraft, type SignedBriefDraft } from "./squad-brief";
+import { parseWorkbookDraft, workbookDraftTranscript, type SignedWorkbook } from "./squad-workbook";
+import { parsePreviewDraft, previewDraftTranscript, type SignedPreview } from "./squad-preview";
 
 const validId = (value: unknown): value is string => typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value) &&
@@ -26,6 +29,12 @@ type Report = {
   tenant: string; botId: string; assignmentId: string; sessionId: string; taskId: string;
   deliveryId: string; forumId: string; principal: string; status: keyof typeof VISOR_FORUM_STATUS_TEXT;
 };
+type Artifact =
+  | { kind: "brief"; draft: Omit<SignedBriefDraft, "signature"> }
+  | { kind: "workbook"; draft: Omit<SignedWorkbook, "signature"> }
+  | { kind: "preview"; draft: Omit<SignedPreview, "signature"> };
+type ReportRequest = { report: Report; artifact: Artifact | null };
+type ArtifactResult = { version: 1; taskId: string; artifactId: string; revisionId: string };
 type Config = {
   version: 1; tenant: string; botId: string; forumId: string; principal: string; owner: string;
   origin: string; peer: string; pairFile: string; stateDirectory: string; readers: string[];
@@ -43,6 +52,62 @@ export function parseVisorForumReport(value: unknown): Report | null {
   return r as Report;
 }
 
+function parseArtifact(value: unknown): Artifact | null {
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+      !("kind" in value) || !("draft" in value) || Object.keys(value).length !== 2) return null;
+  if (value.kind === "brief") {
+    const draft = parseBriefDraft(value.draft);
+    return draft?.base === null ? { kind: "brief", draft } : null;
+  }
+  if (value.kind === "workbook") {
+    const draft = parseWorkbookDraft(value.draft);
+    return draft ? { kind: "workbook", draft } : null;
+  }
+  if (value.kind === "preview") {
+    const draft = parsePreviewDraft(value.draft);
+    return draft ? { kind: "preview", draft } : null;
+  }
+  return null;
+}
+
+export function parseVisorReporterRequest(value: unknown): ReportRequest | null {
+  const legacy = parseVisorForumReport(value);
+  if (legacy) return { report: legacy, artifact: null };
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+      !("version" in value) || value.version !== 1 || !("report" in value) || !("artifact" in value) ||
+      Object.keys(value).length !== 3) return null;
+  const report = parseVisorForumReport(value.report);
+  const artifact = parseArtifact(value.artifact);
+  return report?.status === "completed" && artifact ? { report, artifact } : null;
+}
+
+function artifactTranscript(artifact: Artifact, update: VerifiedForumUpdate) {
+  switch (artifact.kind) {
+    case "brief": return briefDraftTranscript(update, artifact.draft);
+    case "workbook": return workbookDraftTranscript(update, artifact.draft);
+    case "preview": return previewDraftTranscript(update, artifact.draft);
+  }
+}
+
+export function openArtifactSignatures(db: DatabaseSync, sign: (bytes: Uint8Array) => string) {
+  db.exec(`CREATE TABLE IF NOT EXISTS artifact_reports (
+    delivery TEXT NOT NULL, kind TEXT NOT NULL, digest TEXT NOT NULL, signature TEXT NOT NULL,
+    PRIMARY KEY(delivery, kind)
+  )`);
+  const read = db.prepare("SELECT digest,signature FROM artifact_reports WHERE delivery=? AND kind=?");
+  const insert = db.prepare("INSERT INTO artifact_reports(delivery,kind,digest,signature) VALUES(?,?,?,?)");
+  return (artifact: Artifact, update: VerifiedForumUpdate) => {
+    if (update.status !== "completed") throw Error("Artifact delivery did not complete");
+    const bytes = artifactTranscript(artifact, update);
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const prior = read.get(update.deliveryId, artifact.kind);
+    if (prior && prior.digest !== digest) throw Error("Forum artifact delivery changed");
+    const signature = prior ? String(prior.signature) : sign(bytes);
+    if (!prior) insert.run(update.deliveryId, artifact.kind, digest, signature);
+    return { ...artifact.draft, signature };
+  };
+}
+
 export function openVisorForumReporter(configFile: string) {
   const c = JSON.parse(readPrivateBotFile(configFile, 24576).toString("utf8")) as Config;
   if (!c || c.version !== 1 || !validId(c.tenant) || !validId(c.botId) ||
@@ -57,7 +122,7 @@ export function openVisorForumReporter(configFile: string) {
   if (peer.protocol !== "https:" || peer.username || peer.password || peer.search || peer.hash) {
     throw Error("An explicit HTTPS Gun peer is required");
   }
-  const session = createBotSession({ origin: c.origin, pair });
+  const session = createBotSession({ origin: c.origin, pair, timeoutMs: 6500 });
   const authority = createForumAuthority(c.authority);
   const reader = createHttpForumAuthorityReader({ endpoint: "/api/squad/pilot/authority",
     squad: { forumId: c.forumId, owner: c.owner, label: "Visor forum" }, fetch: session.fetch });
@@ -68,28 +133,32 @@ export function openVisorForumReporter(configFile: string) {
 
   const db = new DatabaseSync(join(c.stateDirectory, "visor-reports.sqlite"), { timeout: 1000 });
   db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS reports (delivery TEXT PRIMARY KEY, binding TEXT NOT NULL, envelope TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0)");
+  const sign = (bytes: Uint8Array) => Buffer.from(p256.sign(bytes, Buffer.from(pair.priv, "base64url"),
+    { prehash: true, format: "compact" })).toString("base64url");
+  const signArtifact = openArtifactSignatures(db, sign);
   const signRow = (kind: AuthorityKind, fields: object) => {
     const record = { ...fields, sig: "pending" };
     const parsed = parseForumAuthority(kind, record);
     if (!parsed) throw Error("Invalid forum report grant");
-    record.sig = Buffer.from(p256.sign(parsed.bytes, Buffer.from(pair.priv, "base64url"),
-      { prehash: true, format: "compact" })).toString("base64url");
+    record.sig = sign(parsed.bytes);
     return { kind, soul: parsed.soul, record };
   };
   let busy = false;
 
   return {
     socket: join(c.stateDirectory, "reporter.sock"),
-    async report(value: unknown, stopped: AbortSignal) {
-      const r = parseVisorForumReport(value);
-      if (busy || !r || r.tenant !== c.tenant || r.forumId !== c.forumId ||
-          r.botId !== c.botId || r.principal !== c.principal) throw Error("Forum report binding differs");
+    async report(value: unknown, stopped: AbortSignal): Promise<ArtifactResult | undefined> {
+      const request = parseVisorReporterRequest(value);
+      if (busy || !request || request.report.tenant !== c.tenant || request.report.forumId !== c.forumId ||
+          request.report.botId !== c.botId || request.report.principal !== c.principal)
+        throw Error("Forum report binding differs");
+      const { report: r, artifact } = request;
       busy = true;
       try {
         const binding = JSON.stringify([r.tenant, r.forumId, r.botId, r.assignmentId, r.sessionId, r.taskId, r.status]);
         const prior = db.prepare("SELECT binding,envelope,sent FROM reports WHERE delivery=?").get(r.deliveryId);
         if (prior && prior.binding !== binding) throw Error("Forum report delivery changed");
-        if (prior?.sent === 1) return;
+        if (prior?.sent === 1 && !artifact) return;
         stopped.throwIfAborted();
         if (!await refresh(true)) throw Error("Forum authority unavailable");
         const at = Math.floor(Date.now() / 1000);
@@ -111,34 +180,44 @@ export function openVisorForumReporter(configFile: string) {
             taskId: r.taskId, deliveryId: r.deliveryId, sequence: 1, signature: sig };
           const attested = forumUpdateTranscript({ ...proof, tenant: c.tenant, forumId: c.forumId,
             statementId: item.id, principal: c.principal, status: r.status });
-          const attestation = Buffer.from(p256.sign(attested, Buffer.from(pair.priv, "base64url"),
-            { prehash: true, format: "compact" })).toString("base64url");
+          const attestation = sign(attested);
           envelope = { node: { ...data, sig }, rows, update: { ...proof, attestation } };
           db.prepare("INSERT INTO reports(delivery,binding,envelope) VALUES(?,?,?)")
             .run(r.deliveryId, binding, JSON.stringify(envelope));
         }
 
         stopped.throwIfAborted();
-        const signal = AbortSignal.any([stopped, AbortSignal.timeout(1500)]);
-        const response = await session.fetch("/api/squad/pilot/plane/update", { method: "POST", signal,
+        const content = artifact ? { [artifact.kind]: signArtifact(artifact, {
+          ...envelope.update, tenant: r.tenant, forumId: r.forumId, statementId: envelope.node.id,
+          principal: r.principal, status: r.status,
+        }) } : {};
+        const signal = AbortSignal.any([stopped, AbortSignal.timeout(artifact ? 6500 : 1500)]);
+        const response = await session.fetch("/api/squad/pilot/plane/" + (artifact?.kind ?? "update"), { method: "POST", signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ version: 1, forumId: c.forumId, owner: c.owner, evaluatedAt: at,
-            rows: envelope.rows, update: envelope.update }) });
+            rows: envelope.rows, update: envelope.update, ...content }) });
         if (!response.ok) {
           await response.body?.cancel();
           throw Error("Forum report admission unavailable");
         }
         const outcome = await readBoundedIdentityJson(response, 1024, signal) as { ok?: unknown } | null;
         if (outcome?.ok !== true) throw Error("Forum report admission refused");
-        gun ??= Gun({ peers: [peer.href], radisk: false, localStorage: false, axe: false });
-        await new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => reject(Error("Forum report acknowledgment unavailable")), 1000);
-          gun.get("s3rch").get("items").get(envelope.node.id).put(envelope.node, (ack: { err?: unknown }) => {
-            clearTimeout(timer);
-            if (ack?.err) reject(Error("Forum report transport refused")); else resolve();
+        if (prior?.sent !== 1) {
+          stopped.throwIfAborted();
+          gun ??= Gun({ peers: [peer.href], radisk: false, localStorage: false, axe: false });
+          await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => reject(Error("Forum report acknowledgment unavailable")), 1000);
+            gun.get("s3rch").get("items").get(envelope.node.id).put(envelope.node, (ack: { err?: unknown }) => {
+              clearTimeout(timer);
+              if (ack?.err) reject(Error("Forum report transport refused")); else resolve();
+            });
           });
-        });
-        db.prepare("UPDATE reports SET sent=1 WHERE delivery=?").run(r.deliveryId);
+          db.prepare("UPDATE reports SET sent=1 WHERE delivery=?").run(r.deliveryId);
+        }
+        if (artifact) {
+          const { taskId, artifactId, revisionId } = artifact.draft;
+          return { version: 1, taskId, artifactId, revisionId };
+        }
       } finally {
         busy = false;
       }

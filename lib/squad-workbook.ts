@@ -18,12 +18,18 @@ const digest = (inputs: PricingInputs) => createHash("sha256").update(JSON.strin
   "pricing-v1", pricingSheet, pricingTotalCell, pricingFormula, inputs.quantity, inputs.unitPriceCents, inputs.discountBps,
 ])).digest("hex");
 
-export function parseSignedWorkbook(value: unknown): SignedWorkbook | null {
-  if (!exact(value, "artifactId,inputs,revisionId,signature,taskId") || !projectUuid(value.artifactId) ||
-      !projectUuid(value.revisionId) || !projectUuid(value.taskId) ||
-      typeof value.signature !== "string" || !/^[A-Za-z0-9_-]{86}$/.test(value.signature)) return null;
+export function parseWorkbookDraft(value: unknown): Omit<SignedWorkbook, "signature"> | null {
+  if (!exact(value, "artifactId,inputs,revisionId,taskId") || !projectUuid(value.artifactId) ||
+      !projectUuid(value.revisionId) || !projectUuid(value.taskId)) return null;
   const inputs = parsePricingInputs(value.inputs);
-  return inputs ? { artifactId: value.artifactId, revisionId: value.revisionId, taskId: value.taskId, inputs, signature: value.signature } : null;
+  return inputs ? { artifactId: value.artifactId, revisionId: value.revisionId, taskId: value.taskId, inputs } : null;
+}
+export function parseSignedWorkbook(value: unknown): SignedWorkbook | null {
+  if (!exact(value, "artifactId,inputs,revisionId,signature,taskId") ||
+      typeof value.signature !== "string" || !/^[A-Za-z0-9_-]{86}$/.test(value.signature)) return null;
+  const { signature, ...unsigned } = value;
+  const draft = parseWorkbookDraft(unsigned);
+  return draft ? { ...draft, signature } : null;
 }
 export function workbookDraftTranscript(update: VerifiedForumUpdate, draft: Omit<SignedWorkbook, "signature">) {
   return new TextEncoder().encode(JSON.stringify(["s3rch-squad-workbook-v1", update.tenant, update.forumId,
