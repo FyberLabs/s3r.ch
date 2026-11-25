@@ -75,6 +75,8 @@ export function applyDeliveredBrief(project: SquadProject, draft: SignedBriefDra
   if (!run || run.status !== "accepted" || run.delegate !== update.principal || run.botId !== update.botId ||
       run.assignmentId !== update.assignmentId || run.sessionId !== update.sessionId || run.planeTaskId !== update.taskId ||
       project.forum !== update.forumId || project.tenant !== update.tenant) return refuseBrief(403, "brief-run");
+  const first = project.briefs?.find(brief => brief.taskId === draft.taskId)?.revisions[0];
+  if (draft.base !== null || (first && first.id !== draft.revisionId)) return refuseBrief(409, "brief-initial-draft");
   return applyBriefRevision(project, {
     artifactId: draft.artifactId, taskId: draft.taskId,
     revision: { id: draft.revisionId, parent: draft.base, author: update.principal, createdAt, markdown: draft.markdown,

@@ -298,6 +298,11 @@ test("a delivered agent brief stays editable and reviewable by exact revision", 
   assert.equal(edited.selected.parent, draft.revisionId);
   assert.equal(edited.selected.run, null);
   assert.deepEqual(edited.annotations, []);
+  const anotherDraft = { ...draft, revisionId: randomUUID(), base: winner.revisionId };
+  const replacement = { ...anotherDraft, signature: sign(briefDraftTranscript(verified, anotherDraft)) };
+  assert.equal((await publish(replacement)).status, 409);
+  assert.equal((await publish(signedDraft)).status, 200);
+  assert.equal((await h.ok(read)).brief.current, winner.revisionId);
   const old = (await h.ok({ ...read, revisionId: draft.revisionId })).brief;
   assert.deepEqual(old.annotations[0].lines, [2, 2]);
   for (const version of [draft, winner]) {
