@@ -146,7 +146,9 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: squad-partner-brief
-          path: ${{ runner.temp }}/squad-partner-brief.png
+          path: |
+            ${{ runner.temp }}/squad-partner-brief.png
+            ${{ runner.temp }}/squad-partner-preview.png
           if-no-files-found: error
           retention-days: 7
       - name: Local ciphertext cache browser contracts (CI only)

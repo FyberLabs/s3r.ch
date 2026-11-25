@@ -126,6 +126,9 @@ try {
   assert.equal(await page.getByLabel("Pricing revision").inputValue(), ids.draft);
   await page.goto(`${origin}/?task=${ids.task}`);
   await page.frameLocator('iframe[title="Private partner one-pager"]').getByText("$1,080.00", { exact: true }).waitFor();
+  const previewPanel = page.getByRole("heading", { name: "Partner preview" }).locator("..");
+  await previewPanel.scrollIntoViewIfNeeded();
+  await previewPanel.screenshot({ path: path.join(process.env.RUNNER_TEMP, "squad-partner-preview.png") });
   await page.screenshot({ path: path.join(process.env.RUNNER_TEMP, "squad-partner-brief.png"), fullPage: true });
 } finally {
   await browser?.close();
