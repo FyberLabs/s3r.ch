@@ -99,8 +99,8 @@ export async function dispatchAndWatch(kind, env, fetchImpl = globalThis.fetch, 
     });
     if (!found) await sleep(INTERVAL_MS);
   }
-  if (kind === 'refresh' && env.S3RCH_REFRESH_RUN_FILE && RUN.test(String(found.id))) {
-    writeFileSync(env.S3RCH_REFRESH_RUN_FILE, String(found.id), { mode: 0o600 });
+  if ((kind === 'refresh' || kind === 'release') && env.DEPLOY_INFRA_RUN_FILE && RUN.test(String(found.id))) {
+    writeFileSync(env.DEPLOY_INFRA_RUN_FILE, String(found.id), { mode: 0o600 });
   }
   const watchLimit = kind === 'refresh' ? 12 * 60 * 1000 : WATCH_LIMIT_MS;
   const watchStarted = now();

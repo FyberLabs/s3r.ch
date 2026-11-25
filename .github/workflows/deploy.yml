@@ -147,7 +147,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RESTORED_REVISION: ${{ needs.deploy.outputs.rollback_revision }}
           STARTUP_DIAGNOSTICS: ${{ needs.deploy.outputs.startup_diagnostics }}
-        run: node scripts/report-test-rollout.mjs
+        run: node scripts/report-rollout.mjs
 
   publish:
     needs: deploy

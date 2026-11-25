@@ -39,7 +39,7 @@ export function startupConfiguration(env: Environment) {
     event: "s3rch.startup.configuration",
     release: color,
     revision: /^[a-f0-9]{40}$/.test(revision) ? revision : null,
-    missing: missing.sort(),
+    missing: missing.sort((a, b) => a.localeCompare(b)),
   };
 }
 

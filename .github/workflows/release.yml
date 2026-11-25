@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     environment: release
+    outputs:
+      rollback: ${{ steps.production.outputs.rollback }}
     permissions:
       contents: write
       packages: write
@@ -52,11 +54,28 @@ jobs:
           repositories: infra
           permission-actions: write
       - name: Publish the production static frontend
+        id: production
         env:
           GH_TOKEN: ${{ steps.static-dispatch.outputs.token }}
           DISPATCH_TAG: ${{ github.ref_name }}
           DISPATCH_RUN_ID: ${{ github.run_id }}
-        run: node scripts/dispatch-static-publish.mjs release
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d "$RUNNER_TEMP/s3rch-release-report.XXXXXXXX")
+          trap 'rm -rf -- "$work"' EXIT
+          export DEPLOY_INFRA_RUN_FILE="$work/run"
+          if node scripts/dispatch-static-publish.mjs release; then exit 0; fi
+          run=$(cat "$DEPLOY_INFRA_RUN_FILE" 2>/dev/null || true)
+          if [[ "$run" =~ ^[1-9][0-9]{0,18}$ ]] &&
+            gh run download "$run" -R FyberLabs/infra -n s3rch-production-rollback -D "$work/report"; then
+            revision=$(git rev-parse "$GITHUB_REF^{commit}")
+            report=$(jq -ce --arg revision "$revision" --arg tag "$GITHUB_REF_NAME" '
+              select(.environment == "production" and .candidate == $revision and .tag == $tag and
+                (.restored | type == "string" and test("^[a-f0-9]{40}$"))) |
+              {candidate, restored, startup}' "$work"/report/*.json)
+            printf 'rollback=%s\n' "$report" >> "$GITHUB_OUTPUT"
+          fi
+          exit 1
       - name: Mint a fresh token for TEST reconciliation
         id: static-reconcile
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
@@ -71,3 +90,23 @@ jobs:
           GH_TOKEN: ${{ steps.static-reconcile.outputs.token }}
           DISPATCH_RUN_ID: ${{ github.run_id }}
         run: node scripts/dispatch-static-publish.mjs reconcile
+  report-rollback:
+    needs: publish
+    if: always() && needs.publish.outputs.rollback != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Open one production rollback issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROLLOUT_ENV: production
+          CANDIDATE_REVISION: ${{ fromJSON(needs.publish.outputs.rollback).candidate }}
+          RESTORED_REVISION: ${{ fromJSON(needs.publish.outputs.rollback).restored }}
+          STARTUP_DIAGNOSTICS: ${{ toJSON(fromJSON(needs.publish.outputs.rollback).startup) }}
+        run: node scripts/report-rollout.mjs

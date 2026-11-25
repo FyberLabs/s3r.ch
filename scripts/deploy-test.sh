@@ -9,7 +9,7 @@ set -euo pipefail
 channel="$IMAGE:test"
 rollout_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/s3rch-rollout.XXXXXXXX")
 trap 'rm -rf -- "$rollout_dir"' EXIT
-export S3RCH_REFRESH_RUN_FILE="$rollout_dir/refresh-run"
+export DEPLOY_INFRA_RUN_FILE="$rollout_dir/refresh-run"
 
 
 channel_digest() {
@@ -66,7 +66,7 @@ prior_revision=$(docker buildx imagetools inspect "$IMAGE@$previous" --format '{
 if set_channel "$IMAGE_DIGEST" && [[ "$(channel_digest)" == "$IMAGE_DIGEST" ]] && refresh_candidate "$prior_revision"; then
   exit 0
 fi
-candidate_refresh=$(cat "$S3RCH_REFRESH_RUN_FILE" 2>/dev/null || true)
+candidate_refresh=$(cat "$DEPLOY_INFRA_RUN_FILE" 2>/dev/null || true)
 current=$(channel_digest)
 if [[ "$current" == "$IMAGE_DIGEST" ]]; then
   set_channel "$previous"
