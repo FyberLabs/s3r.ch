@@ -86,3 +86,18 @@ test("configured remote replay is passed into the existing issuer without constr
   const exchanged = await server.services.exchange(request({ challenge, signature }, "__Host-s3rch-squad-challenge=" + challenge));
   assert.equal(exchanged.status, 200); assert.equal(consumed, 1);
 });
+
+test("optional project records use the configured Plane tenant and keep the key server-side", () => {
+  const c = config();
+  const plane = { origin: "https://plane.example.test", tenant: "10000000-0000-4000-8000-000000000001",
+    roster: { "10000000-0000-4000-8000-000000000002": owner } };
+  const project = { recordOrigin: "https://records.example.test", recordKey: "project-record-fixture" };
+  assert.throws(() => parseSquadPilotConfig(JSON.stringify({ ...c, project })));
+  assert.throws(() => parseSquadPilotConfig(JSON.stringify({ ...c, plane, project: { ...project, recordOrigin: "http://records.example.test" } })));
+  const parsed = parseSquadPilotConfig(JSON.stringify({ ...c, plane, project }));
+  assert.ok(parsed);
+  const browser = publicSquadPilotConfig(parsed);
+  assert.equal(browser.projectEnabled, true);
+  assert.ok(!JSON.stringify(browser).includes(project.recordKey));
+  assert.ok(!JSON.stringify(browser).includes(project.recordOrigin));
+});

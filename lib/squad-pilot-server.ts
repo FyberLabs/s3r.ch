@@ -7,6 +7,9 @@ import { parseSquadPilotConfig, type SquadPilotConfig } from "./squad-pilot-conf
 import { createForumAuthority, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { createBotStatementAdmission } from "./forum-bot-statement-admission";
 import { createSquadPlaneForum } from "./squad-plane-forum";
+import { createSquadProjectStore } from "./squad-project";
+import { createSquadProjectService } from "./squad-project-service";
+import { createSpanopticonRecordStore } from "./spanopticon-record-store-server";
 import { createForumAuthorityService } from "./forum-authority-service";
 import { createIdentityTokenVerifier } from "./identity/sea-session-verifier";
 import { readSeaSessionCookie } from "./identity/sea-session-http";
@@ -36,9 +39,17 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
   const visorCompanion = tenant && typeof tenant === "string" && visorStore
     ? createVisorCompanionSquadService({ ...common, tenant, store: visorStore, read: source.read })
     : undefined;
+  const planeForum = config.plane ? createSquadPlaneForum({ siteOrigin: config.origin,
+    plane: config.plane, ...common, read: source.read }) : undefined;
+  const project = config.project && config.plane && planeForum && tenant
+    ? createSquadProjectService({ ...common, plane: config.plane, dispatch: planeForum, read: source.read,
+      store: createSquadProjectStore(createSpanopticonRecordStore({
+        origin: config.project.recordOrigin, apiKey: config.project.recordKey, tenant,
+      }), tenant, config.squad.forumId) })
+    : undefined;
   const services = Object.freeze({ authenticate,
-    ...(config.plane ? { planeForum: createSquadPlaneForum({ siteOrigin: config.origin, squad: config.squad,
-      plane: config.plane, config: config.authority, authenticate, read: source.read, clock }) } : {}),
+    ...(planeForum ? { planeForum } : {}),
+    ...(project ? { project } : {}),
     authority: createForumAuthorityService({ ...common, read: source.read }),
     statements: createBotStatementAdmission({ ...common, source: statements, planeUpdates }),
     rooms: createBotStatementAdmission({ ...common, source: statements, objectKind: "room" }),
