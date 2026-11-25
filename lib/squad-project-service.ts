@@ -4,7 +4,8 @@ import { createForumAuthority, type ForumAuthorityGraph, type ForumAuthoritySnap
 import { matchesBrowserOrigin, matchesRequestOrigin } from "./request-origin";
 import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { RecordConflict } from "./record-store";
-import { BriefRefusal } from "./squad-brief";
+import { ArtifactRefusal } from "./squad-artifact";
+import { handleWorkbookAction, isWorkbookAction, workbookReadAction } from "./squad-workbook";
 import { briefReadAction, handleBriefAction, isBriefAction } from "./squad-brief-editor";
 import { isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
 import { parseSquadPlaneCommand, type SquadPlaneConfig, type createSquadPlaneForum } from "./squad-plane-forum";
@@ -15,8 +16,9 @@ import {
 
 type Agent = { agent: string; principal: string; delegationId: string };
 type Actor = { principal: string; graph: ForumAuthorityGraph; at: number; agent: boolean };
+const artifactReadAction = (action: unknown) => briefReadAction(action) || workbookReadAction(action);
 const nativeRead = (request: Request, action: string) =>
-  action === "resume" || (briefReadAction(action) && request.headers.has("authorization"));
+  action === "resume" || (artifactReadAction(action) && request.headers.has("authorization"));
 class ProjectRefusal extends Error {
   constructor(readonly status: number, readonly reason: string) { super(reason); }
 }
@@ -73,7 +75,7 @@ export function createSquadProjectService(input: {
     if (agent && (agent.principal !== owner || !Object.values(input.plane.roster).includes(principal)))
       return refuse(403, "access");
     if (!isNative && Object.values(input.plane.roster).includes(principal)) return refuse(403, "access");
-    if ((isNative || (action !== "board" && !briefReadAction(action))) &&
+    if ((isNative || (action !== "board" && !artifactReadAction(action))) &&
         !graph.checkPost(forum, principal, at).allowed) return refuse(403, "access");
     if (action === "delegate" && principal !== owner) return refuse(403, "owner-required");
     return { principal, graph, at, agent: isNative };
@@ -224,10 +226,11 @@ export function createSquadProjectService(input: {
         if (refreshed.principal !== actor.principal) return refuse(403, "access");
         return resume(body, project, refreshed);
       }
-      if (isBriefAction(action)) {
+      if (isBriefAction(action) || isWorkbookAction(action)) {
         const checked = await authorize(request, signal, action);
         if (checked.principal !== actor.principal) return refuse(403, "access");
-        const result = handleBriefAction(body, project, checked, owner);
+        const handle = isBriefAction(action) ? handleBriefAction : handleWorkbookAction;
+        const result = handle(body, project, checked, owner);
         if (result.changed) {
           // Recheck after preparing the change and before the fenced write.
           const writer = await authorize(request, signal, action);
@@ -235,8 +238,8 @@ export function createSquadProjectService(input: {
           project.cursor++;
           await input.store.save(project, current.etag, signal);
         }
-        if (result.download) return new Response(result.download.markdown, { headers: {
-          "Content-Type": "text/markdown; charset=utf-8", "Cache-Control": "private, no-store",
+        if (result.download) return new Response(result.download.bytes, { headers: {
+          "Content-Type": result.download.contentType, "Cache-Control": "private, no-store",
           "Content-Disposition": `attachment; filename="${result.download.name}"`,
           "X-Content-Type-Options": "nosniff",
         } });
@@ -280,7 +283,7 @@ export function createSquadProjectService(input: {
       await input.store.save(project, current.etag, signal);
       return reply(200, projectBoard(project));
     } catch (error) {
-      if (error instanceof ProjectRefusal || error instanceof BriefRefusal) return reply(error.status, { error: error.message });
+      if (error instanceof ProjectRefusal || error instanceof ArtifactRefusal) return reply(error.status, { error: error.message });
       if (error instanceof RecordConflict) return reply(409, { error: "revision" });
       return reply(503, { error: "project-unavailable" });
     }

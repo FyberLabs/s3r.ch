@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import type { VerifiedForumUpdate } from "./forum-plane-update";
 import { verifyForumKeySignature } from "./identity/forum-key-signature";
-import { latestProjectDelegation, projectUuid, type createSquadProjectStore, type SquadProject } from "./squad-project";
+import { appendArtifactRevision, refuseArtifact as refuseBrief, requireDeliveredArtifactTask, type ArtifactRevision } from "./squad-artifact";
+export { refuseArtifact as refuseBrief } from "./squad-artifact";
+import { projectUuid, type createSquadProjectStore, type SquadProject } from "./squad-project";
 
-export type BriefRevision = {
-  id: string; parent: string | null; author: string; createdAt: number; markdown: string;
-  sha256: string; sources: string[]; run: { taskId: string; deliveryId: string } | null;
-};
+export type BriefRevision = ArtifactRevision & { markdown: string };
 export type BriefAnnotation = {
   id: string; revision: string; author: string; createdAt: number; text: string;
   kind: "comment" | "approve" | "request-changes"; lines: [number, number] | null;
@@ -18,10 +17,6 @@ export type SignedBriefDraft = {
   artifactId: string; revisionId: string; taskId: string; base: string | null; markdown: string; signature: string;
 };
 
-export class BriefRefusal extends Error {
-  constructor(readonly status: number, reason: string) { super(reason); }
-}
-export const refuseBrief = (status: number, reason: string): never => { throw new BriefRefusal(status, reason); };
 export const briefDigest = (markdown: string) => createHash("sha256").update(markdown, "utf8").digest("hex");
 export const isBriefMarkdown = (value: unknown): value is string => typeof value === "string" && !!value.trim() &&
   !value.includes("\0") && Buffer.byteLength(value, "utf8") <= 12 * 1024;
@@ -58,29 +53,17 @@ export function applyBriefRevision(project: SquadProject, input: {
     briefs.push(brief);
   }
   if (brief.id !== input.artifactId) return refuseBrief(409, "brief-id");
-  const prior = brief.revisions.find(row => row.id === revision.id);
-  if (prior) {
-    if (prior.parent !== revision.parent || prior.author !== revision.author || prior.sha256 !== revision.sha256 ||
-        JSON.stringify(prior.run) !== JSON.stringify(revision.run)) return refuseBrief(409, "brief-retry");
-    return { changed: false, brief };
-  }
-  if ((brief.revisions.at(-1)?.id ?? null) !== revision.parent) return refuseBrief(409, "brief-base");
-  if (brief.revisions.length >= 24) return refuseBrief(409, "brief-capacity");
-  brief.revisions.push(revision);
-  return { changed: true, brief };
+  return { changed: appendArtifactRevision(brief.revisions, revision, "brief"), brief };
 }
 
 export function applyDeliveredBrief(project: SquadProject, draft: SignedBriefDraft, update: VerifiedForumUpdate, createdAt: number) {
-  const run = latestProjectDelegation(project, draft.taskId);
-  if (!run || run.status !== "accepted" || run.delegate !== update.principal || run.botId !== update.botId ||
-      run.assignmentId !== update.assignmentId || run.sessionId !== update.sessionId || run.planeTaskId !== update.taskId ||
-      project.forum !== update.forumId || project.tenant !== update.tenant) return refuseBrief(403, "brief-run");
+  const task = requireDeliveredArtifactTask(project, draft.taskId, update, "brief");
   const first = project.briefs?.find(brief => brief.taskId === draft.taskId)?.revisions[0];
   if (draft.base !== null || (first && first.id !== draft.revisionId)) return refuseBrief(409, "brief-initial-draft");
   return applyBriefRevision(project, {
     artifactId: draft.artifactId, taskId: draft.taskId,
     revision: { id: draft.revisionId, parent: draft.base, author: update.principal, createdAt, markdown: draft.markdown,
-      sha256: briefDigest(draft.markdown), sources: run.context.task.sources,
+      sha256: briefDigest(draft.markdown), sources: task.sources,
       run: { taskId: update.taskId, deliveryId: update.deliveryId } },
   });
 }

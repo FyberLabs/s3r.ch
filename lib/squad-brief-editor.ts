@@ -22,7 +22,7 @@ export function handleBriefAction(body: Record<string, unknown>, project: SquadP
     if (body.action === "brief-export") {
       if (!body.revisionId || !view.brief) return refuseBrief(404, "brief-revision");
       const { id, selected } = view.brief;
-      return { changed: false, download: { name: `brief-${id}-${selected.id}.md`, markdown: selected.markdown } };
+      return { changed: false, download: { name: `brief-${id}-${selected.id}.md`, bytes: selected.markdown, contentType: "text/markdown; charset=utf-8" } };
     }
     return { changed: false, view };
   }

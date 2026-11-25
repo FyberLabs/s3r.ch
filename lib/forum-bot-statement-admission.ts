@@ -6,7 +6,9 @@ import { verifyForumKeySignature } from "./identity/forum-key-signature";
 import { matchesBrowserOrigin } from "./request-origin";
 import { parseForumUpdateProof, verifyForumUpdate, type VerifiedForumUpdate } from "./forum-plane-update";
 import type { LiveSquadSpec } from "./squad-view";
-import { BriefRefusal, parseSignedBriefDraft, verifyBriefDraft, type SignedBriefDraft } from "./squad-brief";
+import { ArtifactRefusal } from "./squad-artifact";
+import { parseSignedBriefDraft, verifyBriefDraft, type SignedBriefDraft } from "./squad-brief";
+import { parseSignedWorkbook, verifyWorkbookDraft, type SignedWorkbook } from "./squad-workbook";
 import { RecordConflict } from "./record-store";
 export type BotStatementSource = Readonly<{
   /** A provisioned primary snapshot and its opaque concurrency fence. Never Gun. */
@@ -31,11 +33,14 @@ export type PlaneForumUpdateAuthority = Readonly<{
 /** Additive provider interface. Deployment must explicitly supply its atomic
  * source; no missing provider falls back to the legacy assignment journal.
  */
+type SaveDraft<T> = (draft: T, update: VerifiedForumUpdate, signal: AbortSignal,
+  authorize: () => Promise<boolean>) => Promise<void>;
+
 export function createBotStatementAdmission(input: { origin: string; squad: LiveSquadSpec; config: ForumAuthorityConfig;
   authenticate(request: Request): Promise<{ key: string } | null>; source: BotStatementSource; clock?: () => number; objectKind?: "stmt" | "room";
   planeUpdates?: PlaneForumUpdateAuthority;
-  saveBrief?: (draft: SignedBriefDraft, update: VerifiedForumUpdate, signal: AbortSignal,
-    authorize: () => Promise<boolean>) => Promise<void>;
+  saveBrief?: SaveDraft<SignedBriefDraft>;
+  saveWorkbook?: SaveDraft<SignedWorkbook>;
 }) {
   const objectKind = input.objectKind ?? "stmt";
   const origin = new URL(input.origin), spec = Object.freeze({ ...input.squad }), config = structuredClone(input.config);
@@ -46,13 +51,14 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   const reply = (status: number) => Response.json({ ok: status === 200 }, { status, headers: { "Cache-Control": "no-store" } });
   const readers = new Map<string, number>(); let active = 0;
-  return async (request: Request, path: "statements" | "plane-update" | "plane-brief" = "statements") => {
-    const isBrief = path === "plane-brief";
-    const isUpdate = path === "plane-update" || isBrief;
-    if (isUpdate && (!planeUpdates || objectKind !== "stmt" || (isBrief && !input.saveBrief))) return reply(503);
+  return async (request: Request, path: "statements" | "plane-update" | "plane-brief" | "plane-workbook" = "statements") => {
+    const artifact = path === "plane-brief" ? "brief" : path === "plane-workbook" ? "workbook" : null;
+    const isUpdate = path === "plane-update" || artifact !== null;
+    if (isUpdate && (!planeUpdates || objectKind !== "stmt" ||
+        (artifact === "brief" && !input.saveBrief) || (artifact === "workbook" && !input.saveWorkbook))) return reply(503);
     let reserved: string | null = null;
     const deadline = new AbortController();
-    const timer = setTimeout(() => deadline.abort(), isBrief ? 6000 : 1500);
+    const timer = setTimeout(() => deadline.abort(), artifact ? 6000 : 1500);
     const signal = AbortSignal.any([request.signal, deadline.signal]);
     const bounded = <T>(operation: Promise<T>): Promise<T> => new Promise((resolve, reject) => {
       const abort = () => reject(new Error("Statement admission timed out"));
@@ -73,15 +79,16 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       } finally { clearTimeout(timer); reader.releaseLock(); }
       if (timedOut || clock() !== at) return reply(409);
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-      const keys = isBrief ? "brief,evaluatedAt,forumId,owner,rows,update,version"
-        : isUpdate ? "evaluatedAt,forumId,owner,rows,update,version" : "evaluatedAt,forumId,owner,rows,version";
+      const keys = ["evaluatedAt", "forumId", "owner", "rows", "version", ...(isUpdate ? ["update"] : []), ...(artifact ? [artifact] : [])]
+        .sort((left, right) => left.localeCompare(right, "en")).join();
       if (!body || Object.keys(body).sort((left, right) => left.localeCompare(right, "en")).join() !== keys || body.version !== 1 ||
           body.forumId !== spec.forumId || body.owner !== spec.owner || body.evaluatedAt !== at ||
           !Array.isArray(body.rows) || body.rows.length > 65) return reply(400);
       const proof = isUpdate ? parseForumUpdateProof(body.update) : null;
       if (isUpdate && (!proof || body.rows.length === 0)) return reply(400);
-      const brief = isBrief ? parseSignedBriefDraft(body.brief) : null;
-      if (isBrief && !brief) return reply(400);
+      const brief = artifact === "brief" ? parseSignedBriefDraft(body.brief) : null;
+      const workbook = artifact === "workbook" ? parseSignedWorkbook(body.workbook) : null;
+      if (artifact && !brief && !workbook) return reply(400);
       const held = await bounded(source.read(at, signal));
       if (typeof held.fence !== "string" || !held.fence || held.fence.length > 4096) return reply(503);
       const snapshot = structuredClone(held.snapshot);
@@ -126,7 +133,8 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
         verifiedUpdate = await bounded(verifyForumUpdate(proof, {
           tenant: planeUpdates.tenant, forumId: spec.forumId, principal, object, issuedAt, writerKey,
         }));
-        if (!verifiedUpdate || (brief && !verifyBriefDraft(brief, verifiedUpdate, writerKey))) return reply(403);
+        if (!verifiedUpdate || (brief && !verifyBriefDraft(brief, verifiedUpdate, writerKey)) ||
+            (workbook && !verifyWorkbookDraft(workbook, verifiedUpdate, writerKey))) return reply(403);
       }
       // Canonical signed meaning, not object key order or signature encoding,
       // identifies a retained row. Verify supplied signatures even on retries.
@@ -165,8 +173,8 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
           aclFence: held.fence, update: verifiedUpdate, rows: structuredClone(additions), guard, signal,
         }));
         if (result !== "committed") return reply(result === "conflict" ? 409 : 403);
-        if (brief && input.saveBrief) {
-          await bounded(input.saveBrief(brief, verifiedUpdate, signal, async () => {
+        if (artifact) {
+          const authorize = async () => {
             const current = await bounded(authenticate(request));
             if (current?.key !== session.key) return false;
             const evaluatedAt = clock();
@@ -179,14 +187,16 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
             return refreshed.ok && clock() === evaluatedAt && !roomAuthorityReadDiagnosticsBlock(refreshed.diagnostics, snapshot) &&
               graph.ownerOf(spec.forumId) === spec.owner && graph.principalForKey(current.key, evaluatedAt) === principal &&
               graph.checkForumSee(spec.forumId, principal, evaluatedAt).allowed && graph.checkPost(spec.forumId, principal, evaluatedAt).allowed;
-          }));
+          };
+          if (brief && input.saveBrief) await bounded(input.saveBrief(brief, verifiedUpdate, signal, authorize));
+          if (workbook && input.saveWorkbook) await bounded(input.saveWorkbook(workbook, verifiedUpdate, signal, authorize));
         }
         return reply(200);
       }
       if (additions.length === 0) return reply(200);
       return reply(await bounded(source.append(held.fence, structuredClone(additions), guard, signal)) ? 200 : 409);
     } catch (error) {
-      if (error instanceof BriefRefusal) return reply(error.status);
+      if (error instanceof ArtifactRefusal) return reply(error.status);
       if (error instanceof RecordConflict) return reply(409);
       return reply(503);
     } finally {
