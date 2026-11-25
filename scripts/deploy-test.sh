@@ -15,13 +15,24 @@ set_channel() {
   docker buildx imagetools create --prefer-index=false --tag "$channel" "$IMAGE@$1"
 }
 refresh() {
-  local digest=$1
+  local digest=$1 scope
   shift
-  GH_TOKEN="${REFRESH_TOKEN:?}" DISPATCH_REVISION="$GITHUB_SHA" DISPATCH_RUN_ID="$GITHUB_RUN_ID" \
+  scope=$(GH_TOKEN="${REFRESH_TOKEN:?}" DISPATCH_REVISION="$GITHUB_SHA" DISPATCH_RUN_ID="$GITHUB_RUN_ID" \
     DISPATCH_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT" DISPATCH_CHANNEL_DIGEST="$digest" \
-    node scripts/dispatch-static-publish.mjs refresh || return 1
-  node scripts/verify-deployed-release.mjs https://test.s3r.ch "$@" &&
-    node scripts/verify-deployed-release.mjs https://test.s3r.ch/_peer "$@"
+    node scripts/dispatch-static-publish.mjs refresh) || return 1
+  case "$scope" in
+    web-only)
+      node scripts/verify-deployed-release.mjs https://test.s3r.ch "$@" --web-only
+      ;;
+    web-and-peer)
+      node scripts/verify-deployed-release.mjs https://test.s3r.ch "$@" &&
+        node scripts/verify-deployed-release.mjs https://test.s3r.ch/_peer "$@"
+      ;;
+    *)
+      echo 'Unexpected TEST verification scope' >&2
+      return 1
+      ;;
+  esac
 }
 refresh_candidate() {
   local status=0 head digest

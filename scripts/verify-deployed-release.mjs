@@ -1,8 +1,11 @@
 import { setTimeout as delay } from 'node:timers/promises';
-const [origin, sha, priorRevision] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const webOnly = args.at(-1) === '--web-only';
+if (webOnly) args.pop();
+const [origin, sha, priorRevision] = args;
 const revisionPattern = /^[0-9a-f]{40}$/;
 const peer = origin === 'https://test.s3r.ch/_peer';
-if (!(peer || ['https://test.s3r.ch', 'https://s3r.ch'].includes(origin)) || !revisionPattern.test(sha ?? '') ||
+if (args.length > 3 || (webOnly && origin !== 'https://test.s3r.ch') || !(peer || ['https://test.s3r.ch', 'https://s3r.ch'].includes(origin)) || !revisionPattern.test(sha ?? '') ||
     (priorRevision !== undefined && (origin === 'https://s3r.ch' || priorRevision === sha || !revisionPattern.test(priorRevision)))) {
   throw Error('Fixed deployment origin and revision required');
 }
@@ -67,12 +70,12 @@ while (Date.now() < deadline) {
     // A prior revision identified by the rollout can still be restarting its dependencies.
     lastProbeSawPrior = health.status === 'ok' && (priorRevision !== undefined
       ? version.revision === priorRevision
-      : version.revision !== sha && revisionPattern.test(version.revision ?? '') && durableReady && configuredGun);
+      : version.revision !== sha && revisionPattern.test(version.revision ?? '') && durableReady && (webOnly || configuredGun));
     observation = JSON.stringify({ revision: version.revision, health: health.status,
       identity: health.dependencies?.identity?.status, writable: health.dependencies?.identity?.writable,
       identityFailure: identityFailure(health.dependencies?.identity?.reason),
       gun });
-    if (version.revision === sha && health.status === 'ok' && durableReady && await gunReady(gun)) { ready = true; break; }
+    if (version.revision === sha && health.status === 'ok' && durableReady && (webOnly || await gunReady(gun))) { ready = true; break; }
   } catch { /* Keep the last completed probe when either request fails. */ }
   await delay(3000);
 }
