@@ -6,6 +6,8 @@ import { verifyForumKeySignature } from "./identity/forum-key-signature";
 import { matchesBrowserOrigin } from "./request-origin";
 import { parseForumUpdateProof, verifyForumUpdate, type VerifiedForumUpdate } from "./forum-plane-update";
 import type { LiveSquadSpec } from "./squad-view";
+import { BriefRefusal, parseSignedBriefDraft, verifyBriefDraft, type SignedBriefDraft } from "./squad-brief";
+import { RecordConflict } from "./record-store";
 export type BotStatementSource = Readonly<{
   /** A provisioned primary snapshot and its opaque concurrency fence. Never Gun. */
   read(at: number, signal: AbortSignal): Promise<{ snapshot: ForumAuthoritySnapshot; fence: string }>;
@@ -32,6 +34,8 @@ export type PlaneForumUpdateAuthority = Readonly<{
 export function createBotStatementAdmission(input: { origin: string; squad: LiveSquadSpec; config: ForumAuthorityConfig;
   authenticate(request: Request): Promise<{ key: string } | null>; source: BotStatementSource; clock?: () => number; objectKind?: "stmt" | "room";
   planeUpdates?: PlaneForumUpdateAuthority;
+  saveBrief?: (draft: SignedBriefDraft, update: VerifiedForumUpdate, signal: AbortSignal,
+    authorize: () => Promise<boolean>) => Promise<void>;
 }) {
   const objectKind = input.objectKind ?? "stmt";
   const origin = new URL(input.origin), spec = Object.freeze({ ...input.squad }), config = structuredClone(input.config);
@@ -42,12 +46,13 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   const reply = (status: number) => Response.json({ ok: status === 200 }, { status, headers: { "Cache-Control": "no-store" } });
   const readers = new Map<string, number>(); let active = 0;
-  return async (request: Request, path: "statements" | "plane-update" = "statements") => {
-    const isUpdate = path === "plane-update";
-    if (isUpdate && (!planeUpdates || objectKind !== "stmt")) return reply(503);
+  return async (request: Request, path: "statements" | "plane-update" | "plane-brief" = "statements") => {
+    const isBrief = path === "plane-brief";
+    const isUpdate = path === "plane-update" || isBrief;
+    if (isUpdate && (!planeUpdates || objectKind !== "stmt" || (isBrief && !input.saveBrief))) return reply(503);
     let reserved: string | null = null;
     const deadline = new AbortController();
-    const timer = setTimeout(() => deadline.abort(), 1500);
+    const timer = setTimeout(() => deadline.abort(), isBrief ? 6000 : 1500);
     const signal = AbortSignal.any([request.signal, deadline.signal]);
     const bounded = <T>(operation: Promise<T>): Promise<T> => new Promise((resolve, reject) => {
       const abort = () => reject(new Error("Statement admission timed out"));
@@ -68,12 +73,15 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       } finally { clearTimeout(timer); reader.releaseLock(); }
       if (timedOut || clock() !== at) return reply(409);
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-      const keys = isUpdate ? "evaluatedAt,forumId,owner,rows,update,version" : "evaluatedAt,forumId,owner,rows,version";
+      const keys = isBrief ? "brief,evaluatedAt,forumId,owner,rows,update,version"
+        : isUpdate ? "evaluatedAt,forumId,owner,rows,update,version" : "evaluatedAt,forumId,owner,rows,version";
       if (!body || Object.keys(body).sort((left, right) => left.localeCompare(right, "en")).join() !== keys || body.version !== 1 ||
           body.forumId !== spec.forumId || body.owner !== spec.owner || body.evaluatedAt !== at ||
           !Array.isArray(body.rows) || body.rows.length > 65) return reply(400);
       const proof = isUpdate ? parseForumUpdateProof(body.update) : null;
       if (isUpdate && (!proof || body.rows.length === 0)) return reply(400);
+      const brief = isBrief ? parseSignedBriefDraft(body.brief) : null;
+      if (isBrief && !brief) return reply(400);
       const held = await bounded(source.read(at, signal));
       if (typeof held.fence !== "string" || !held.fence || held.fence.length > 4096) return reply(503);
       const snapshot = structuredClone(held.snapshot);
@@ -118,7 +126,7 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
         verifiedUpdate = await bounded(verifyForumUpdate(proof, {
           tenant: planeUpdates.tenant, forumId: spec.forumId, principal, object, issuedAt, writerKey,
         }));
-        if (!verifiedUpdate) return reply(403);
+        if (!verifiedUpdate || (brief && !verifyBriefDraft(brief, verifiedUpdate, writerKey))) return reply(403);
       }
       // Canonical signed meaning, not object key order or signature encoding,
       // identifies a retained row. Verify supplied signatures even on retries.
@@ -156,11 +164,32 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
         const result = await bounded(planeUpdates.commit({
           aclFence: held.fence, update: verifiedUpdate, rows: structuredClone(additions), guard, signal,
         }));
-        return reply(result === "committed" ? 200 : result === "conflict" ? 409 : 403);
+        if (result !== "committed") return reply(result === "conflict" ? 409 : 403);
+        if (brief && input.saveBrief) {
+          await bounded(input.saveBrief(brief, verifiedUpdate, signal, async () => {
+            const current = await bounded(authenticate(request));
+            if (current?.key !== session.key) return false;
+            const evaluatedAt = clock();
+            const { snapshot } = await bounded(source.read(evaluatedAt, signal));
+            if (!Array.isArray(snapshot.rows) || snapshot.rows.length > 1024) return false;
+            const authority = createForumAuthority(config, clock);
+            const refreshed = await authority.refresh(snapshot, evaluatedAt);
+            signal.throwIfAborted();
+            const graph = authority.graph;
+            return refreshed.ok && clock() === evaluatedAt && !roomAuthorityReadDiagnosticsBlock(refreshed.diagnostics, snapshot) &&
+              graph.ownerOf(spec.forumId) === spec.owner && graph.principalForKey(current.key, evaluatedAt) === principal &&
+              graph.checkForumSee(spec.forumId, principal, evaluatedAt).allowed && graph.checkPost(spec.forumId, principal, evaluatedAt).allowed;
+          }));
+        }
+        return reply(200);
       }
       if (additions.length === 0) return reply(200);
       return reply(await bounded(source.append(held.fence, structuredClone(additions), guard, signal)) ? 200 : 409);
-    } catch { return reply(503); } finally {
+    } catch (error) {
+      if (error instanceof BriefRefusal) return reply(error.status);
+      if (error instanceof RecordConflict) return reply(409);
+      return reply(503);
+    } finally {
       clearTimeout(timer); deadline.abort();
       if (reserved !== null) { active--; const count = (readers.get(reserved) ?? 1) - 1; if (count) readers.set(reserved, count); else readers.delete(reserved); }
     }

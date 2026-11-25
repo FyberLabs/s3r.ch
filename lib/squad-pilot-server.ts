@@ -8,6 +8,7 @@ import { createForumAuthority, type ForumAuthoritySnapshot } from "./identity/fo
 import { createBotStatementAdmission } from "./forum-bot-statement-admission";
 import { createSquadPlaneForum } from "./squad-plane-forum";
 import { createSquadProjectStore } from "./squad-project";
+import { createSquadBriefPublisher } from "./squad-brief";
 import { createSquadProjectService } from "./squad-project-service";
 import { createSpanopticonRecordStore } from "./spanopticon-record-store-server";
 import { createForumAuthorityService } from "./forum-authority-service";
@@ -41,17 +42,21 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
     : undefined;
   const planeForum = config.plane ? createSquadPlaneForum({ siteOrigin: config.origin,
     plane: config.plane, ...common, read: source.read }) : undefined;
-  const project = config.project && config.plane && planeForum && tenant
-    ? createSquadProjectService({ ...common, plane: config.plane, dispatch: planeForum, read: source.read,
-      store: createSquadProjectStore(createSpanopticonRecordStore({
-        origin: config.project.recordOrigin, apiKey: config.project.recordKey, tenant,
-      }), tenant, config.squad.forumId) })
+  const projectStore = config.project && tenant
+    ? createSquadProjectStore(createSpanopticonRecordStore({
+      origin: config.project.recordOrigin, apiKey: config.project.recordKey, tenant,
+    }), tenant, config.squad.forumId)
+    : undefined;
+  const project = projectStore && config.plane && planeForum
+    ? createSquadProjectService({ ...common, plane: config.plane, dispatch: planeForum, read: source.read, store: projectStore })
     : undefined;
   const services = Object.freeze({ authenticate,
     ...(planeForum ? { planeForum } : {}),
     ...(project ? { project } : {}),
     authority: createForumAuthorityService({ ...common, read: source.read }),
-    statements: createBotStatementAdmission({ ...common, source: statements, planeUpdates }),
+    statements: createBotStatementAdmission({ ...common, source: statements, planeUpdates,
+      ...(projectStore ? { saveBrief: createSquadBriefPublisher(projectStore, clock) } : {}),
+    }),
     rooms: createBotStatementAdmission({ ...common, source: statements, objectKind: "room" }),
     ...(visorCompanion ? { visorCompanion } : {}) });
   return { backend: "acl" as const, config, source, services, ...(visorCompanion ? { visorCompanionStore: visorStore } : {}) };

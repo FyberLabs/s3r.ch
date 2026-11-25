@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
+import { p256 } from "@noble/curves/nist.js";
+import { createBotStatementAdmission } from "./forum-bot-statement-admission";
+import { forumUpdateTranscript, VISOR_FORUM_STATUS_TEXT, type VerifiedForumUpdate } from "./forum-plane-update";
+import { parseForumAuthority } from "./identity/forum-authority-records";
+import { briefDigest, briefDraftTranscript, createSquadBriefPublisher } from "./squad-brief";
 import { forumBotFixture } from "./forum-bot-test-fixture";
 import { signForumRecord } from "./forum-sign";
 import { createIdentitySessions } from "./identity/sea-session";
@@ -27,11 +32,15 @@ async function fixture(t: test.TestContext) {
       consumed.add(id);
       return true;
     } });
-  const challenge = await sessions.challenge(f.owner.pub);
-  const signature = await signForumRecord(challenge, f.owner);
-  assert.ok(signature);
-  const browserSession = await sessions.exchange(challenge, signature);
-  assert.ok(browserSession);
+  const mintBrowserSession = async (pair: typeof f.owner) => {
+    const challenge = await sessions.challenge(pair.pub);
+    const signature = await signForumRecord(challenge, pair);
+    assert.ok(signature);
+    const session = await sessions.exchange(challenge, signature);
+    assert.ok(session);
+    return seaSessionCookieNames()[0] + "=" + session;
+  };
+  const browserSession = await mintBrowserSession(f.owner);
   const authenticate = (request: Request) => sessions.authenticate(readSeaSessionCookie(request) ?? "");
   let revoked = false, agentRevoked = false, fail = 0, loseResponse = false, active = true;
   let deliveries = 0;
@@ -70,8 +79,9 @@ async function fixture(t: test.TestContext) {
     return agent && !agentRevoked ? { principal: f.owner.pub, agent, delegationId: "fixture-grant" } : null;
   } });
   const call = (body: object, credential = "plane-owner-fixture", browser = true) => service(new Request(origin + "/api/squad/pilot/project", {
-    method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + credential,
-      ...(browser ? { Origin: origin, Cookie: seaSessionCookieNames()[0] + "=" + browserSession } : {}) },
+    method: "POST", headers: { "Content-Type": "application/json",
+      ...(!browser || ("action" in body && body.action === "delegate") ? { Authorization: "Bearer " + credential } : {}),
+      ...(browser ? { Origin: origin, Cookie: browserSession } : {}) },
     body: JSON.stringify({ forum: f.forum, ...body }),
   }));
   const ok = async (body: object) => {
@@ -93,7 +103,7 @@ async function fixture(t: test.TestContext) {
     assert.equal((await call({ ...add, outcome: "Different task" })).status, 409);
     return { root, child, taskId, cursor: result.cursor };
   }
-  return { f, call, ok, intent, project, deliveryCount: () => deliveries, submitted,
+  return { f, call, ok, intent, project, origin, authority, store, mintBrowserSession, deliveryCount: () => deliveries, submitted,
     removeAgentAccess: () => { revoked = true; }, revokeSession: () => { agentRevoked = true; },
     finishRun: () => { active = false; }, failWith: (status: number) => { fail = status; },
     dropReply: (drop: boolean) => { loseResponse = drop; },
@@ -197,4 +207,109 @@ test("refresh after a stale cursor rebuilds the request when no reservation exis
   assert.equal(refreshed.cursor, current.cursor);
   assert.equal((await h.ok(refreshed)).ledger[0].taskId, taskId);
   assert.equal(h.deliveryCount(), 1);
+});
+
+test("a delivered agent brief stays editable and reviewable by exact revision", async t => {
+  const h = await fixture(t);
+  const { taskId, cursor } = await h.project();
+  const intent = h.intent(h.f.botA);
+  const assigned = await h.ok({ action: "delegate", cursor, taskId, taskRevision: 0, intent });
+  const { planeTaskId } = assigned.ledger[0];
+  const { f } = h;
+  const offset = f.rows.length;
+  const statement = await f.signed(["update", f.tenant, planeTaskId, VISOR_FORUM_STATUS_TEXT.completed], f.a);
+  const sign = (bytes: Uint8Array) => Buffer.from(p256.sign(bytes, Buffer.from(f.a.priv, "base64url"),
+    { prehash: true, format: "compact" })).toString("base64url");
+  const object = { ...(f.rows[offset].record as object), issuedAt: statement.issuedAt, sig: "pending" };
+  const parsed = parseForumAuthority("object", object);
+  assert.ok(parsed);
+  object.sig = sign(parsed.bytes);
+  f.rows[offset] = { kind: "object", soul: parsed.soul, record: object };
+  const fields = { botId: f.botA, assignmentId: intent.assignment_id, sessionId: intent.session_id, taskId: planeTaskId,
+    deliveryId: randomUUID(), sequence: 1, signature: statement.signature };
+  const updateScope = { ...fields, tenant: f.tenant, forumId: f.forum, principal: f.a.pub,
+    statementId: statement.id, status: "completed" as const };
+  const proof = { ...fields, attestation: sign(forumUpdateTranscript(updateScope)) };
+  const verified = { ...updateScope, attestation: proof.attestation } satisfies VerifiedForumUpdate;
+  const draft = { artifactId: randomUUID(), revisionId: randomUUID(), taskId, base: null,
+    markdown: "# Partner brief\n10 seats for a 30-day pilot.\n" };
+  const signedDraft = { ...draft, signature: sign(briefDraftTranscript(verified, draft)) };
+  const reporterCookie = await h.mintBrowserSession(f.a);
+  let revokeBeforeSave = false, deliveryAllowed = false, aclRevoked = false, checked = 0;
+  const admission = createBotStatementAdmission({
+    ...h.authority, origin: h.origin,
+    source: { read: async at => {
+      const snapshot = await h.authority.read(at);
+      return { snapshot: aclRevoked ? { ...snapshot, rows: snapshot.rows.slice(0, 1) } : snapshot, fence: "fixture" };
+    }, append: async () => { throw Error("Unexpected unguarded append"); } },
+    planeUpdates: { tenant: f.tenant, roster: h.authority.plane.roster,
+      async commit({ update, guard }) {
+        guard();
+        assert.equal(update.deliveryId, proof.deliveryId);
+        checked++;
+        if (!deliveryAllowed) return "refused";
+        aclRevoked = revokeBeforeSave;
+        return "committed";
+      } },
+    saveBrief: createSquadBriefPublisher(h.store, f.now),
+  });
+  const publish = (brief: object) => admission(new Request(h.origin + "/api/squad/pilot/plane/brief", {
+    method: "POST", headers: { Origin: h.origin, "Content-Type": "application/json", Cookie: reporterCookie },
+    body: JSON.stringify({ version: 1, forumId: f.forum, owner: f.owner.pub, evaluatedAt: f.now(),
+      rows: f.rows.slice(offset), update: proof, brief }),
+  }), "plane-brief");
+  const read = { action: "brief-read", taskId, revisionId: null };
+  assert.equal((await publish({ ...signedDraft, markdown: "Modified without a signature" })).status, 403);
+  assert.equal(checked, 0);
+  assert.equal((await publish(signedDraft)).status, 403);
+  assert.equal((await h.ok(read)).brief, null);
+  deliveryAllowed = true;
+  revokeBeforeSave = true;
+  assert.equal((await publish(signedDraft)).status, 403);
+  assert.equal((await h.ok(read)).brief, null);
+  aclRevoked = false;
+  revokeBeforeSave = false;
+  assert.equal((await publish(signedDraft)).status, 200);
+  assert.equal((await publish(signedDraft)).status, 200);
+
+  const initial = (await h.ok(read)).brief;
+  assert.equal(initial.id, draft.artifactId);
+  assert.equal(initial.history.length, 1);
+  assert.equal(initial.selected.author, f.a.pub);
+  assert.equal(initial.selected.markdown, draft.markdown);
+  assert.equal(initial.selected.sha256, briefDigest(draft.markdown));
+  assert.deepEqual(initial.selected.sources, ["https://sources.example.test/notes"]);
+  assert.deepEqual(initial.selected.run, { taskId: planeTaskId, deliveryId: proof.deliveryId });
+
+  const note = { action: "brief-review", taskId, id: randomUUID(), revisionId: draft.revisionId,
+    kind: "approve", lines: [2, 2], text: "Confirm the supplied pilot facts." };
+  assert.equal((await h.ok(note)).brief.annotations.length, 1);
+  assert.equal((await h.ok(note)).brief.annotations.length, 1);
+  const revise = { action: "brief-revise", taskId, revisionId: randomUUID(), base: draft.revisionId,
+    markdown: draft.markdown + "\nOwner confirmed the pilot scope.\n" };
+  const concurrent = { ...revise, revisionId: randomUUID(), markdown: draft.markdown + "Another edit.\n" };
+  const results = await Promise.all([h.call(revise), h.call(concurrent)]);
+  assert.deepEqual(results.map(response => response.status).sort(), [200, 409]);
+  const winner = results[0].ok ? revise : concurrent;
+  const edited = (await h.ok(winner)).brief;
+  assert.equal(edited.history.length, 2);
+  assert.equal(edited.id, draft.artifactId);
+  assert.equal(edited.selected.author, f.owner.pub);
+  assert.equal(edited.selected.parent, draft.revisionId);
+  assert.equal(edited.selected.run, null);
+  assert.deepEqual(edited.annotations, []);
+  const old = (await h.ok({ ...read, revisionId: draft.revisionId })).brief;
+  assert.deepEqual(old.annotations[0].lines, [2, 2]);
+  for (const version of [draft, winner]) {
+    const response = await h.call({ ...read, action: "brief-export", revisionId: version.revisionId });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "text/markdown; charset=utf-8");
+    assert.match(response.headers.get("content-disposition") ?? "", new RegExp(version.revisionId));
+    assert.equal(await response.text(), version.markdown);
+  }
+  assert.equal((await h.call({ ...read, forum: "wrong-project" })).status, 404);
+  assert.equal((await h.call(read, "fixture-agent-a", false)).status, 200);
+  assert.equal((await h.call(read, "fixture-agent-b", false)).status, 404);
+  h.removeAgentAccess();
+  assert.equal((await h.call(read, "fixture-agent-a", false)).status, 403);
 });

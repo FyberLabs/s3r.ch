@@ -53,3 +53,21 @@ in place of `taskId`. The caller must be the currently delegated agent and still
 forum access. The response identifies the task, owner, delegate, run, branch,
 and source links from the assigned revision. Send the returned cursor on the
 next read. Linked URLs are references and require access at their own sources.
+
+## Partner briefs
+
+The existing Plane reporter can send a successful signed terminal update
+to `/api/squad/pilot/plane/brief` with an extra `brief` object. Use the same
+SEA session and signed ACL rows as the status route. The brief contains
+`taskId` (the canonical Squad task), `artifactId`, `revisionId`, `base`
+(null for a first draft), `markdown`, and `signature`. Sign
+`briefDraftTranscript` as defined in `lib/squad-brief.ts` with the current
+reporter key. The signed bytes bind the Markdown digest to the accepted
+delivery and target revision. The server admits the exact terminal update
+first, then checks current access and saves the revision conditionally.
+Retry with the same revision ID and signed content after an uncertain reply.
+
+From the Squad task, open the brief, select a revision, edit the current
+revision, or export the selected Markdown. Comments and review decisions
+are tied to one revision and can point to an inclusive range of lines.
+The task's source references remain linked on its draft and revisions.
