@@ -134,6 +134,9 @@ test("a connected owner maps, labels and delegates one canonical project task", 
   assert.equal(task.delegate, run.delegate);
   assert.equal(task.taskRevision, 0);
   assert.equal(task.planeTaskId, run.planeTaskId);
+  const delivered = { action: "resume", planeTaskId: run.planeTaskId, since: 0 };
+  assert.deepEqual(await (await h.call(delivered, enrolled, false)).json(), task);
+  assert.equal((await h.call(delivered, other, false)).status, 404);
   assert.deepEqual(task.branch.map((node: { id: string }) => node.id), [child]);
   assert.deepEqual(await (await h.call({ ...resume, since: task.cursor }, enrolled, false)).json(),
     { taskId, cursor: task.cursor, changed: false });
@@ -144,6 +147,7 @@ test("a connected owner maps, labels and delegates one canonical project task", 
   h.finishRun();
   await h.ok(reassign);
   assert.equal((await h.call(resume, enrolled, false)).status, 404);
+  assert.equal((await h.call(delivered, enrolled, false)).status, 404);
   assert.equal((await h.call(resume, other, false)).status, 200);
   h.removeAgentAccess();
   assert.equal((await h.call(resume, other, false)).status, 403);

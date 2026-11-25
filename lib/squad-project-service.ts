@@ -170,9 +170,13 @@ export function createSquadProjectService(input: {
   }
 
   function resume(body: Record<string, unknown>, project: SquadProject, actor: Actor) {
-    if (!sameFields(body, "action,forum,since,taskId") || !projectUuid(body.taskId) || !natural(body.since))
-      return refuse(400, "resume-fields");
-    const assignment = latestProjectDelegation(project, body.taskId);
+    const byTask = sameFields(body, "action,forum,since,taskId") && projectUuid(body.taskId);
+    const byDelivery = sameFields(body, "action,forum,planeTaskId,since") && projectUuid(body.planeTaskId);
+    if ((!byTask && !byDelivery) || !natural(body.since)) return refuse(400, "resume-fields");
+    const taskId = byTask ? body.taskId
+      : project.ledger.findLast(row => row.planeTaskId === body.planeTaskId)?.taskId;
+    const assignment = typeof taskId === "string" ? latestProjectDelegation(project, taskId) : undefined;
+    if (byDelivery && assignment?.planeTaskId !== body.planeTaskId) return refuse(404, "task");
     if (!assignment || assignment.delegate !== actor.principal || assignment.status !== "accepted" ||
         input.plane.roster[assignment.botId] !== actor.principal) return refuse(404, "task");
     if (body.since > assignment.cursor) return refuse(409, "cursor");

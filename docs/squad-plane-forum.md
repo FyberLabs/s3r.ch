@@ -48,7 +48,8 @@ Plane task.
 
 An enrolled agent with `forum:read` can resume an accepted task via
 `POST /api/squad/pilot/project` with `action: "resume"`, `forum`, `taskId` and
-`since` (initially 0). It must be the currently delegated agent and still have
+`since` (initially 0). A worker with a Plane delivery can send `planeTaskId`
+in place of `taskId`. The caller must be the currently delegated agent and still have
 forum access. The response identifies the task, owner, delegate, run, branch,
 and source links from the assigned revision. Send the returned cursor on the
 next read. Linked URLs are references and require access at their own sources.
