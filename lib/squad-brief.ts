@@ -23,7 +23,8 @@ export const isBriefMarkdown = (value: unknown): value is string => typeof value
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 
 export function parseSignedBriefDraft(value: unknown): SignedBriefDraft | null {
-  if (!record(value) || Object.keys(value).sort().join() !== "artifactId,base,markdown,revisionId,signature,taskId" ||
+  if (!record(value) ||
+      Object.keys(value).sort((left, right) => left.localeCompare(right, "en")).join() !== "artifactId,base,markdown,revisionId,signature,taskId" ||
       !projectUuid(value.artifactId) || !projectUuid(value.revisionId) || !projectUuid(value.taskId) ||
       !(value.base === null || projectUuid(value.base)) || !isBriefMarkdown(value.markdown) ||
       typeof value.signature !== "string" || !/^[A-Za-z0-9_-]{86}$/.test(value.signature)) return null;
