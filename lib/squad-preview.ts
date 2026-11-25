@@ -22,7 +22,8 @@ type PreviewDraft = {
 export type SignedPreview = PreviewDraft & { signature: string };
 
 const exact = (value: unknown, fields: string): value is Record<string, unknown> =>
-  !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join() === fields;
+  !!value && typeof value === "object" && !Array.isArray(value) &&
+  Object.keys(value).sort((left, right) => left.localeCompare(right, "en")).join() === fields;
 const text = (value: unknown, max: number): value is string =>
   typeof value === "string" && value.length <= max && value.trim() === value && !!value &&
   !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value);
