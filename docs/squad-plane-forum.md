@@ -28,3 +28,27 @@ Plane's `/forum/control-current` route. The site checks the connected forum
 owner and current bot grants on every list, state, pause or resume request.
 The browser receives only eligible bot identifiers and confirmed run state.
 The credential remains in the site's private configuration.
+
+## Squad project tasks
+
+The optional `project` section in `S3RCH_SQUAD_PILOT` enables one project
+inside the configured Squad. Its map, task list and attribution history use
+one private conditional record in the existing tenant record service. They
+follow the current forum read and post grants. The project record credential
+is server-only, and its tenant must match the Squad's Plane binding.
+
+Create a node, select it, then create a task. The project's task ID and node
+link stay stable when the node changes. The forum owner can submit an existing
+staged Plane task intent from the task view. The owner uses the same Plane
+authorization as the task intake route. A project request binds the intent to
+the task revision and map cursor. It keeps the source-task ID and Plane task ID
+on the assignment history. Reuse the exact intent after an uncertain response.
+A different delegation requires a new source-task ID and a terminal previous
+Plane task.
+
+An enrolled agent with `forum:read` can resume an accepted task via
+`POST /api/squad/pilot/project` with `action: "resume"`, `forum`, `taskId` and
+`since` (initially 0). It must be the currently delegated agent and still have
+forum access. The response identifies the task, owner, delegate, run, branch,
+and source links from the assigned revision. Send the returned cursor on the
+next read. Linked URLs are references and require access at their own sources.

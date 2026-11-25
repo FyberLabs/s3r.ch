@@ -9,6 +9,7 @@ export type SquadPilotConfig = Readonly<{
   version: 1; origin: string; squad: LiveSquadSpec; authority: ForumAuthorityConfig;
   reportParents?: ReportParents;
   plane?: SquadPlaneConfig;
+  project?: Readonly<{ recordOrigin: string; recordKey: string }>;
 }>;
 const exact = (x: unknown, keys: string): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).sort().join() === keys;
 const strings = (x: unknown): x is string[] => Array.isArray(x) && x.length <= 32 && x.every(s => typeof s === "string" && s.length > 0 && s.length <= 2048) && new Set(x).size === x.length;
@@ -33,23 +34,32 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
     if (typeof c.ownerSigningKey !== "string" || !/^[0-9a-f]{64}$/.test(c.ownerSigningKey)) throw Error("invalid obsolete owner key");
     delete (c as { ownerSigningKey?: unknown }).ownerSigningKey;
   }
-  if ((!exact(c, "authority,origin,squad,version") &&
-      !exact(c, "authority,origin,reportParents,squad,version") &&
-      !exact(c, "authority,origin,plane,squad,version") &&
-      !exact(c, "authority,origin,plane,reportParents,squad,version")) || c.version !== 1 ||
-      typeof c.origin !== "string" || new URL(c.origin).origin !== c.origin || !c.origin.startsWith("https://") ||
-      !exact(c.squad, "forumId,label,owner") || !exact(c.authority, "keys,pinnedIssuers,policy") ||
-      !exact(c.authority.policy, "allowedChainIds,allowedDomains,allowedUris") ||
-      !strings(c.authority.policy.allowedChainIds) || !strings(c.authority.policy.allowedDomains) || !strings(c.authority.policy.allowedUris) ||
-      !strings(c.authority.pinnedIssuers) || !Array.isArray(c.authority.keys) || c.authority.keys.length < 1 || c.authority.keys.length > 16) throw Error("invalid Squad pilot configuration");
+  if (!c || typeof c !== "object" || Array.isArray(c) ||
+      Object.keys(c).some(key => !["authority", "origin", "plane", "project", "reportParents", "squad", "version"].includes(key)))
+    throw Error("invalid Squad pilot configuration");
+  const row = c as Record<string, unknown>;
+  if (row.version !== 1 ||
+      typeof row.origin !== "string" || new URL(row.origin).origin !== row.origin || !row.origin.startsWith("https://") ||
+      !exact(row.squad, "forumId,label,owner") || !exact(row.authority, "keys,pinnedIssuers,policy") ||
+      !exact(row.authority.policy, "allowedChainIds,allowedDomains,allowedUris") ||
+      !strings(row.authority.policy.allowedChainIds) || !strings(row.authority.policy.allowedDomains) || !strings(row.authority.policy.allowedUris) ||
+      !strings(row.authority.pinnedIssuers) || !Array.isArray(row.authority.keys) || row.authority.keys.length < 1 || row.authority.keys.length > 16) throw Error("invalid Squad pilot configuration");
+  if ("project" in row) {
+    const project = row.project;
+    if (!("plane" in row) || !exact(project, "recordKey,recordOrigin") ||
+        typeof project.recordOrigin !== "string" || !project.recordOrigin.startsWith("https://") ||
+        new URL(project.recordOrigin).origin !== project.recordOrigin || new URL(project.recordOrigin).port ||
+        typeof project.recordKey !== "string" || !/^[\x21-\x7e]{1,4096}$/.test(project.recordKey))
+      throw Error("invalid Squad project configuration");
+  }
   const keys = new Set<string>(), material = new Set<string>();
-  for (const k of c.authority.keys) {
+  for (const k of row.authority.keys) {
     if (!exact(k, "crv,kid,kty,notAfter,notBefore,x,y") || k.kty !== "EC" || k.crv !== "P-256" ||
         typeof k.kid !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(k.kid) || keys.has(k.kid) ||
         typeof k.x !== "string" || typeof k.y !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(k.x) || !/^[A-Za-z0-9_-]{43}$/.test(k.y) ||
         !Number.isSafeInteger(k.notBefore) || !Number.isSafeInteger(k.notAfter) || (k.notBefore as number) < 0 || (k.notAfter as number) <= (k.notBefore as number)) throw Error("invalid Squad witness policy");
     const publicKey = k.x + "." + k.y;
-    if (material.has(publicKey) || publicKey === c.squad.owner) throw Error("pilot witness must have independent key material");
+    if (material.has(publicKey) || publicKey === row.squad.owner) throw Error("pilot witness must have independent key material");
     material.add(publicKey); keys.add(k.kid);
     p256.Point.fromBytes(Buffer.concat([Buffer.from([4]), Buffer.from(k.x, "base64url"), Buffer.from(k.y, "base64url")]));
   }
@@ -69,7 +79,7 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
   return structuredClone(typed);
 }
 export function publicSquadPilotConfig(c: SquadPilotConfig) {
-  return structuredClone({ ...(c.plane?.controlCredential ? { planeBotControls: true } : {}), ...(c.reportParents ? { reportParents: c.reportParents } : {}), origin: c.origin, squad: c.squad, config: c.authority,
+  return structuredClone({ ...(c.project ? { projectEnabled: true } : {}), ...(c.plane?.controlCredential ? { planeBotControls: true } : {}), ...(c.reportParents ? { reportParents: c.reportParents } : {}), origin: c.origin, squad: c.squad, config: c.authority,
     sessionBase: "/api/identity/sea", authorityEndpoint: "/api/squad/pilot/authority", statementEndpoint: "/api/squad/pilot/statement",
     visorCompanionEndpoint: "/api/squad/pilot/visor-companion" });
 }

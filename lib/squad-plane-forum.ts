@@ -46,7 +46,7 @@ export function squadPlaneTaskId(tenant: string, forum: string, sourceTask: stri
 type Action = "tasks" | "control";
 type PlaneRequest = Action | "bot-controls";
 
-function command(action: Action, json: unknown) {
+export function parseSquadPlaneCommand(action: Action, json: unknown) {
   if (!record(json) || json.version !== 1 || !uuid(json.bot_id) || !uuid(json.source_task_id) ||
       !uuid(json.assignment_id) || !uuid(json.session_id)) return null;
   const { bot_id, source_task_id, assignment_id, session_id } = json;
@@ -156,7 +156,7 @@ export function createSquadPlaneForum(input: {
       catch { return reply(400); }
       if (action === "bot-controls") return await browserControl(body, session.key, signal);
       if (!credential || credential.length > 8192 || !/^Bearer [A-Za-z0-9._~-]+$/.test(credential)) return reply(403);
-      const parsed = command(action, body);
+      const parsed = parseSquadPlaneCommand(action, body);
       if (!parsed) return reply(400);
       const principal = plane.roster[parsed.bot_id];
       if (!principal) return reply(403);
