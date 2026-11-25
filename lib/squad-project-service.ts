@@ -4,6 +4,8 @@ import { createForumAuthority, type ForumAuthorityGraph, type ForumAuthoritySnap
 import { matchesBrowserOrigin, matchesRequestOrigin } from "./request-origin";
 import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { RecordConflict } from "./record-store";
+import { BriefRefusal } from "./squad-brief";
+import { briefReadAction, handleBriefAction, isBriefAction } from "./squad-brief-editor";
 import { isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
 import { parseSquadPlaneCommand, type SquadPlaneConfig, type createSquadPlaneForum } from "./squad-plane-forum";
 import {
@@ -12,7 +14,9 @@ import {
 } from "./squad-project";
 
 type Agent = { agent: string; principal: string; delegationId: string };
-type Actor = { principal: string; graph: ForumAuthorityGraph; at: number };
+type Actor = { principal: string; graph: ForumAuthorityGraph; at: number; agent: boolean };
+const nativeRead = (request: Request, action: string) =>
+  action === "resume" || (briefReadAction(action) && request.headers.has("authorization"));
 class ProjectRefusal extends Error {
   constructor(readonly status: number, readonly reason: string) { super(reason); }
 }
@@ -50,8 +54,9 @@ export function createSquadProjectService(input: {
   } });
 
   async function authorize(request: Request, signal: AbortSignal, action: string): Promise<Actor> {
-    const agent = action === "resume" ? await agentSession(request) : null;
-    const session = action === "resume" ? null : await input.authenticate(request);
+    const isNative = nativeRead(request, action);
+    const agent = isNative ? await agentSession(request) : null;
+    const session = isNative ? null : await input.authenticate(request);
     if (!agent && !session) return refuse(403, "authentication");
     const at = clock();
     const snapshot = await input.read(at, signal);
@@ -67,10 +72,11 @@ export function createSquadProjectService(input: {
       return refuse(403, "access");
     if (agent && (agent.principal !== owner || !Object.values(input.plane.roster).includes(principal)))
       return refuse(403, "access");
-    if (action !== "resume" && Object.values(input.plane.roster).includes(principal)) return refuse(403, "access");
-    if (action !== "board" && !graph.checkPost(forum, principal, at).allowed) return refuse(403, "access");
+    if (!isNative && Object.values(input.plane.roster).includes(principal)) return refuse(403, "access");
+    if ((isNative || (action !== "board" && !briefReadAction(action))) &&
+        !graph.checkPost(forum, principal, at).allowed) return refuse(403, "access");
     if (action === "delegate" && principal !== owner) return refuse(403, "owner-required");
-    return { principal, graph, at };
+    return { principal, graph, at, agent: isNative };
   }
 
   function eligible(actor: Actor, principal: string) {
@@ -200,7 +206,7 @@ export function createSquadProjectService(input: {
       catch { return reply(400, { error: "request" }); }
       if (!record(body) || body.forum !== forum || typeof body.action !== "string") return reply(404, { error: "project" });
       const action = body.action;
-      if (action === "resume" ? request.headers.has("origin") && !matchesBrowserOrigin(request, site) : !matchesBrowserOrigin(request, site))
+      if (nativeRead(request, action) ? request.headers.has("origin") && !matchesBrowserOrigin(request, site) : !matchesBrowserOrigin(request, site))
         return reply(403, { error: "origin-or-type" });
       const actor = await authorize(request, signal, action);
       const current = await input.store.read(signal);
@@ -217,6 +223,27 @@ export function createSquadProjectService(input: {
         const refreshed = await authorize(request, signal, action);
         if (refreshed.principal !== actor.principal) return refuse(403, "access");
         return resume(body, project, refreshed);
+      }
+      if (isBriefAction(action)) {
+        const checked = await authorize(request, signal, action);
+        if (checked.principal !== actor.principal) return refuse(403, "access");
+        const result = handleBriefAction(body, project, checked, owner);
+        if (result.changed) {
+          // Recheck after preparing the change and before the fenced write.
+          const writer = await authorize(request, signal, action);
+          if (writer.principal !== checked.principal) return refuse(403, "access");
+          project.cursor++;
+          await input.store.save(project, current.etag, signal);
+        }
+        if (result.download) return new Response(result.download.markdown, { headers: {
+          "Content-Type": "text/markdown; charset=utf-8", "Cache-Control": "private, no-store",
+          "Content-Disposition": `attachment; filename="${result.download.name}"`,
+          "X-Content-Type-Options": "nosniff",
+        } });
+        const task = project.tasks.find(row => row.id === body.taskId);
+        const canReview = !checked.agent && checked.graph.checkPost(forum, checked.principal, checked.at).allowed;
+        return reply(200, { ...result.view, canReview,
+          canRevise: canReview && (checked.principal === owner || task?.owner === checked.principal) });
       }
       if (action === "delegate") return await delegate(body, request, signal, actor, current);
       if (action === "node") {
@@ -253,7 +280,7 @@ export function createSquadProjectService(input: {
       await input.store.save(project, current.etag, signal);
       return reply(200, projectBoard(project));
     } catch (error) {
-      if (error instanceof ProjectRefusal) return reply(error.status, { error: error.reason });
+      if (error instanceof ProjectRefusal || error instanceof BriefRefusal) return reply(error.status, { error: error.message });
       if (error instanceof RecordConflict) return reply(409, { error: "revision" });
       return reply(503, { error: "project-unavailable" });
     }
