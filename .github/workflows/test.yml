@@ -22,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 2
 
       - uses: actions/setup-node@v7.1.0
         with:
@@ -129,6 +131,24 @@ jobs:
         run: |
           npx playwright-core install --with-deps chromium
           sudo apt-get install -y ffmpeg
+      - name: Capture the Squad project and brief
+        if: github.event_name == 'pull_request'
+        id: squad-snapshot
+        timeout-minutes: 2
+        run: |
+          if git diff --quiet HEAD^ HEAD -- components/SquadBriefPanel.tsx components/SquadProjectPanel.tsx scripts/snapshot-squad-project.mjs; then
+            exit 0
+          fi
+          node scripts/snapshot-squad-project.mjs
+          echo 'captured=true' >> "$GITHUB_OUTPUT"
+      - name: Upload the Squad project screenshot
+        if: steps.squad-snapshot.outputs.captured == 'true'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: squad-partner-brief
+          path: ${{ runner.temp }}/squad-partner-brief.png
+          if-no-files-found: error
+          retention-days: 7
       - name: Local ciphertext cache browser contracts (CI only)
         timeout-minutes: 2
         run: node scripts/test-ipfs-cache-browser.mjs

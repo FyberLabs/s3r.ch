@@ -280,7 +280,7 @@ export function createSquadProjectService(input: {
       await input.store.save(project, current.etag, signal);
       return reply(200, projectBoard(project));
     } catch (error) {
-      if (error instanceof ProjectRefusal || error instanceof BriefRefusal) return reply(error.status, { error: error.reason });
+      if (error instanceof ProjectRefusal || error instanceof BriefRefusal) return reply(error.status, { error: error.message });
       if (error instanceof RecordConflict) return reply(409, { error: "revision" });
       return reply(503, { error: "project-unavailable" });
     }
