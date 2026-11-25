@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { RecordStore } from "./record-store";
 import type { ProjectBrief } from "./squad-brief";
 import type { ProjectWorkbook } from "./squad-workbook";
+import type { ProjectPreview } from "./squad-preview";
 
 export const squadProjectLabels = ["partner-pilot", "pricing"] as const;
 export type ProjectLabel = typeof squadProjectLabels[number];
@@ -18,7 +19,7 @@ export type ProjectDelegation = {
 };
 export type SquadProject = {
   version: 1; forum: string; tenant: string; cursor: number;
-  nodes: ProjectNode[]; tasks: ProjectTask[]; ledger: ProjectDelegation[]; briefs?: ProjectBrief[]; workbooks?: ProjectWorkbook[];
+  nodes: ProjectNode[]; tasks: ProjectTask[]; ledger: ProjectDelegation[]; briefs?: ProjectBrief[]; workbooks?: ProjectWorkbook[]; previews?: ProjectPreview[];
 };
 
 export const projectUuid = (value: unknown): value is string => typeof value === "string" &&
@@ -61,7 +62,8 @@ export function createSquadProjectStore(records: RecordStore, tenant: string, fo
           !Number.isSafeInteger(project.cursor) || project.cursor < 0 ||
           !Array.isArray(project.nodes) || !Array.isArray(project.tasks) || !Array.isArray(project.ledger) ||
           (project.briefs !== undefined && !Array.isArray(project.briefs)) ||
-          (project.workbooks !== undefined && !Array.isArray(project.workbooks))) {
+          (project.workbooks !== undefined && !Array.isArray(project.workbooks)) ||
+          (project.previews !== undefined && !Array.isArray(project.previews))) {
         throw Error("Invalid Squad project record");
       }
       return { project, etag: row.revision };

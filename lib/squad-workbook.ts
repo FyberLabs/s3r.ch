@@ -12,7 +12,8 @@ export type ProjectWorkbook = { id: string; taskId: string; format: "pricing-v1"
 export type SignedWorkbook = { artifactId: string; revisionId: string; taskId: string; inputs: PricingInputs; signature: string };
 
 const exact = (value: unknown, fields: string): value is Record<string, unknown> =>
-  !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join() === fields;
+  !!value && typeof value === "object" && !Array.isArray(value) &&
+  Object.keys(value).sort((left, right) => left.localeCompare(right, "en")).join() === fields;
 const digest = (inputs: PricingInputs) => createHash("sha256").update(JSON.stringify([
   "pricing-v1", pricingSheet, pricingTotalCell, pricingFormula, inputs.quantity, inputs.unitPriceCents, inputs.discountBps,
 ])).digest("hex");

@@ -3,7 +3,8 @@ import { latestProjectDelegation, projectUuid, type SquadProject } from "./squad
 
 export const briefReadAction = (action: unknown) => action === "brief-read" || action === "brief-export";
 export const isBriefAction = (action: unknown) => briefReadAction(action) || action === "brief-revise" || action === "brief-review";
-const exact = (body: Record<string, unknown>, fields: string) => Object.keys(body).sort().join() === fields;
+const exact = (body: Record<string, unknown>, fields: string) =>
+  Object.keys(body).sort((left, right) => left.localeCompare(right, "en")).join() === fields;
 
 export function handleBriefAction(body: Record<string, unknown>, project: SquadProject,
   actor: { principal: string; agent: boolean; at: number }, forumOwner: string) {

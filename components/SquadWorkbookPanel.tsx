@@ -13,7 +13,7 @@ const toFields = (inputs: PricingInputs): Fields => ({ quantity: String(inputs.q
   unitPrice: (inputs.unitPriceCents / 100).toFixed(2), discount: (inputs.discountBps / 100).toFixed(2) });
 
 function hundredths(value: string) {
-  if (!/^\d{1,9}(?:\.\d{1,2})?$/.test(value)) return NaN;
+  if (!/^\d{1,9}(?:\.\d{1,2})?$/.test(value)) return Number.NaN;
   const [whole, fraction = ""] = value.split(".");
   return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
 }
@@ -36,7 +36,8 @@ export function SquadWorkbookPanel({ forum, taskId }: { forum: string; taskId: s
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
-    void post(forum, taskId, { action: "workbook-read", revisionId: null }, controller.signal)
+    const revisionId = new URLSearchParams(window.location.search).get("workbookRevision");
+    void post(forum, taskId, { action: "workbook-read", revisionId }, controller.signal)
       .then(response => response.json() as Promise<WorkbookResponse>)
       .then(result => { if (!controller.signal.aborted) apply(result); }, () => {
         if (!controller.signal.aborted) setMessage("The workbook could not be loaded.");
@@ -69,7 +70,7 @@ export function SquadWorkbookPanel({ forum, taskId }: { forum: string; taskId: s
 
   const workbook = view?.workbook;
   const canEdit = !!workbook && view?.canRevise && workbook.selected.id === workbook.current;
-  const inputs = parsePricingInputs({ quantity: /^\d{1,6}$/.test(draft.quantity) ? Number(draft.quantity) : NaN,
+  const inputs = parsePricingInputs({ quantity: /^\d{1,6}$/.test(draft.quantity) ? Number(draft.quantity) : Number.NaN,
     unitPriceCents: hundredths(draft.unitPrice), discountBps: hundredths(draft.discount) });
   const total = canEdit ? (inputs ? pricingTotalCents(inputs) : undefined) : workbook?.totalCents;
 
@@ -138,7 +139,7 @@ export function SquadWorkbookPanel({ forum, taskId }: { forum: string; taskId: s
           </tbody>
         </table>
         <p className="break-all text-sm"><code>={workbook.selected.formula}</code></p>
-        {canEdit && <button className={btnSecondary} disabled={busy || !inputs ||
+        {canEdit && <button type="submit" className={btnSecondary} disabled={busy || !inputs ||
           JSON.stringify(inputs) === JSON.stringify(workbook.selected.inputs)}>Save pricing revision</button>}
       </form>
       {workbook.selected.sources.length > 0 && <ul className="text-sm">{workbook.selected.sources.map(url =>
@@ -149,7 +150,7 @@ export function SquadWorkbookPanel({ forum, taskId }: { forum: string; taskId: s
       {view?.canReview && <form className="grid gap-2" onSubmit={comment}>
         <label>Cell or range <input className={field} value={range} maxLength={5} required onChange={event => setRange(event.currentTarget.value)} /></label>
         <label>Pricing comment <textarea className={field} value={text} maxLength={1000} required onChange={event => setText(event.currentTarget.value)} /></label>
-        <button className={btnSecondary} disabled={busy}>Add pricing comment</button>
+        <button type="submit" className={btnSecondary} disabled={busy}>Add pricing comment</button>
       </form>}
     </>}
     <p role="status" className="text-sm">{busy ? "Updating workbook…" : message}</p>

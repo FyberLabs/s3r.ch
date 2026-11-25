@@ -6,7 +6,7 @@ export const pricingTotalCell = "B5";
 
 export function parsePricingInputs(value: unknown): PricingInputs | null {
   if (!value || typeof value !== "object" || Array.isArray(value) ||
-      Object.keys(value).sort().join() !== "discountBps,quantity,unitPriceCents") return null;
+      Object.keys(value).sort((left, right) => left.localeCompare(right, "en")).join() !== "discountBps,quantity,unitPriceCents") return null;
   const inputs = value as PricingInputs;
   const integer = (n: number, min: number, max: number) => Number.isSafeInteger(n) && n >= min && n <= max;
   if (!integer(inputs.quantity, 1, 100_000) || !integer(inputs.unitPriceCents, 0, 100_000_000) ||

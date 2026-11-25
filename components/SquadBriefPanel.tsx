@@ -29,7 +29,8 @@ export function SquadBriefPanel({ forum, taskId }: { forum: string; taskId: stri
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
-    void post(forum, taskId, { action: "brief-read", revisionId: null }, controller.signal)
+    const revisionId = new URLSearchParams(window.location.search).get("briefRevision");
+    void post(forum, taskId, { action: "brief-read", revisionId }, controller.signal)
       .then(response => response.json() as Promise<BriefResponse>)
       .then(value => { if (!controller.signal.aborted) apply(value); }, () => {
         if (!controller.signal.aborted) setMessage("The brief could not be loaded.");
@@ -135,7 +136,7 @@ export function SquadBriefPanel({ forum, taskId }: { forum: string; taskId: stri
       {canEdit ? <form className="grid gap-2" onSubmit={save}>
         <label>Brief Markdown <textarea className={`${field} block w-full font-mono`} rows={10} required
           value={markdown} onChange={event => setMarkdown(event.currentTarget.value)} /></label>
-        <button className={btnSecondary} disabled={busy || markdown === brief.selected.markdown}>Save revision</button>
+        <button type="submit" className={btnSecondary} disabled={busy || markdown === brief.selected.markdown}>Save revision</button>
       </form> : <pre className="whitespace-pre-wrap break-words text-sm">{brief.selected.markdown}</pre>}
       {brief.annotations.length > 0 && <ul className="space-y-1 text-sm">{brief.annotations.map(note => <li key={note.id}>
         {reviewNames[note.kind]} · {shortSea(note.author)}
@@ -153,7 +154,7 @@ export function SquadBriefPanel({ forum, taskId }: { forum: string; taskId: stri
           <label>First line <input type="number" min="1" className={field} value={start} onChange={event => setStart(event.currentTarget.value)} /></label>
           <label>Last line <input type="number" min="1" className={field} value={end} onChange={event => setEnd(event.currentTarget.value)} /></label>
         </div>
-        <button className={btnSecondary} disabled={busy}>Record review</button>
+        <button type="submit" className={btnSecondary} disabled={busy}>Record review</button>
       </form>}
     </>}
     <p role="status" className="text-sm">{busy ? "Updating brief…" : message}</p>

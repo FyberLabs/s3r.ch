@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createSquadWorkbookPublisher, workbookDraftTranscript } from "./squad-workbook";
+import { createSquadPreviewPublisher, previewDraftTranscript } from "./squad-preview";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
@@ -218,21 +219,26 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
   const assigned = await h.ok({ action: "delegate", cursor, taskId, taskRevision: 0, intent });
   const { planeTaskId } = assigned.ledger[0];
   const { f } = h;
-  const offset = f.rows.length;
-  const statement = await f.signed(["update", f.tenant, planeTaskId, VISOR_FORUM_STATUS_TEXT.completed], f.a);
   const sign = (bytes: Uint8Array) => Buffer.from(p256.sign(bytes, Buffer.from(f.a.priv, "base64url"),
     { prehash: true, format: "compact" })).toString("base64url");
-  const object = { ...(f.rows[offset].record as object), issuedAt: statement.issuedAt, sig: "pending" };
-  const parsed = parseForumAuthority("object", object);
-  assert.ok(parsed);
-  object.sig = sign(parsed.bytes);
-  f.rows[offset] = { kind: "object", soul: parsed.soul, record: object };
-  const fields = { botId: f.botA, assignmentId: intent.assignment_id, sessionId: intent.session_id, taskId: planeTaskId,
-    deliveryId: randomUUID(), sequence: 1, signature: statement.signature };
-  const updateScope = { ...fields, tenant: f.tenant, forumId: f.forum, principal: f.a.pub,
-    statementId: statement.id, status: "completed" as const };
-  const proof = { ...fields, attestation: sign(forumUpdateTranscript(updateScope)) };
-  const verified = { ...updateScope, attestation: proof.attestation } satisfies VerifiedForumUpdate;
+  async function deliveryFor(binding: typeof intent, deliveryTaskId: string) {
+    const offset = f.rows.length;
+    const statement = await f.signed(["update", f.tenant, deliveryTaskId, VISOR_FORUM_STATUS_TEXT.completed], f.a);
+    const object = { ...(f.rows[offset].record as object), issuedAt: statement.issuedAt, sig: "pending" };
+    const parsed = parseForumAuthority("object", object);
+    assert.ok(parsed);
+    object.sig = sign(parsed.bytes);
+    f.rows[offset] = { kind: "object", soul: parsed.soul, record: object };
+    const fields = { botId: f.botA, assignmentId: binding.assignment_id, sessionId: binding.session_id, taskId: deliveryTaskId,
+      deliveryId: randomUUID(), sequence: 1, signature: statement.signature };
+    const updateScope = { ...fields, tenant: f.tenant, forumId: f.forum, principal: f.a.pub,
+      statementId: statement.id, status: "completed" as const };
+    const proof = { ...fields, attestation: sign(forumUpdateTranscript(updateScope)) };
+    return { proof, verified: { ...updateScope, attestation: proof.attestation } satisfies VerifiedForumUpdate, rows: f.rows.slice(offset) };
+  }
+  const first = await deliveryFor(intent, planeTaskId);
+  const { proof, verified } = first;
+  const deliveries = new Set<string>([proof.deliveryId]);
   const draft = { artifactId: randomUUID(), revisionId: randomUUID(), taskId, base: null,
     markdown: "# Partner brief\n10 seats for a 30-day pilot.\n" };
   const signedDraft = { ...draft, signature: sign(briefDraftTranscript(verified, draft)) };
@@ -247,7 +253,7 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
     planeUpdates: { tenant: f.tenant, roster: h.authority.plane.roster,
       async commit({ update, guard }) {
         guard();
-        assert.equal(update.deliveryId, proof.deliveryId);
+        assert.ok(deliveries.has(update.deliveryId));
         checked++;
         if (!deliveryAllowed) return "refused";
         aclRevoked = revokeBeforeSave;
@@ -255,12 +261,13 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
       } },
     saveBrief: createSquadBriefPublisher(h.store, f.now),
     saveWorkbook: createSquadWorkbookPublisher(h.store, f.now),
+    savePreview: createSquadPreviewPublisher(h.store, f.now),
   });
-  const publishArtifact = (kind: "brief" | "workbook", value: object) => admission(new Request(h.origin + "/api/squad/pilot/plane/" + kind, {
+  const publishArtifact = (kind: "brief" | "workbook" | "preview", value: object, delivery = first) => admission(new Request(h.origin + "/api/squad/pilot/plane/" + kind, {
     method: "POST", headers: { Origin: h.origin, "Content-Type": "application/json", Cookie: reporterCookie },
     body: JSON.stringify({ version: 1, forumId: f.forum, owner: f.owner.pub, evaluatedAt: f.now(),
-      rows: f.rows.slice(offset), update: proof, [kind]: value }),
-  }), kind === "brief" ? "plane-brief" : "plane-workbook");
+      rows: delivery.rows, update: delivery.proof, [kind]: value }),
+  }), kind === "brief" ? "plane-brief" : kind === "workbook" ? "plane-workbook" : "plane-preview");
   const publish = (brief: object) => publishArtifact("brief", brief);
   const read = { action: "brief-read", taskId, revisionId: null };
   assert.equal((await publish({ ...signedDraft, markdown: "Modified without a signature" })).status, 403);
@@ -343,6 +350,33 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
   assert.equal((await h.ok(comment)).workbook.comments.length, 1);
   assert.equal((await h.ok(comment)).workbook.comments.length, 1);
 
+  const readPreview = { action: "preview-read", taskId, revisionId: null };
+  const preview = { artifactId: randomUUID(), revisionId: randomUUID(), taskId, base: null,
+    briefRevisionId: winner.revisionId, workbookRevisionId: workbook.revisionId,
+    copy: { title: "Partner pilot", summary: "Plan for 10 seats & a 30-day pilot.",
+      highlights: ["Treat <em> as text."], nextStep: "Confirm the pilot scope." } };
+  const signedPreview = { ...preview, signature: sign(previewDraftTranscript(verified, preview)) };
+  const wrongInput = { ...preview, workbookRevisionId: randomUUID() };
+  assert.equal((await publishArtifact("preview", { ...wrongInput, signature: sign(previewDraftTranscript(verified, wrongInput)) })).status, 404);
+  assert.equal((await publishArtifact("preview", { ...signedPreview, copy: { ...preview.copy, title: "Changed copy" } })).status, 403);
+  revokeBeforeSave = true;
+  assert.equal((await publishArtifact("preview", signedPreview)).status, 403);
+  assert.equal((await h.ok(readPreview)).preview, null);
+  aclRevoked = false;
+  revokeBeforeSave = false;
+  assert.equal((await publishArtifact("preview", signedPreview)).status, 200);
+  const originalPreview = (await h.ok(readPreview)).preview;
+  assert.equal(originalPreview.newerBrief, false);
+  assert.equal(originalPreview.newerWorkbook, false);
+  assert.equal(originalPreview.owner, f.owner.pub);
+  assert.equal(originalPreview.selected.author, f.a.pub);
+  assert.deepEqual(originalPreview.selected.inputs.workbook, { artifactId: workbook.artifactId,
+    revisionId: workbook.revisionId, author: f.a.pub, sheet: "Pricing", cell: "B5", assumptions: pricing, cents: 120_000 });
+  assert.equal(originalPreview.selected.inputs.brief.revisionId, winner.revisionId);
+  assert.match(originalPreview.selected.html, /id="quote">\$1,200\.00/);
+  assert.match(originalPreview.selected.html, /Treat &lt;em&gt; as text/);
+  assert.match(originalPreview.selected.html, /content="default-src 'none';.*form-action 'none'/);
+
   const priceEdit = { action: "workbook-revise", taskId, revisionId: randomUUID(), base: workbook.revisionId,
     inputs: { ...pricing, discountBps: 1000 } };
   for (const inputs of [{ ...pricing, quantity: 0 }, { ...pricing, unitPriceCents: 1.5 },
@@ -379,9 +413,48 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
     assert.deepEqual(reopened, { B2: ["10", null], B3: ["120.00", null], B4: [discount, null],
       B5: [total, "ROUND(B2*B3*(1-B4),2)"] });
   }
+  const newerBrief = { ...revise, base: winner.revisionId, revisionId: randomUUID(), markdown: "# Confirmed pilot scope" };
+  await h.ok(newerBrief);
+  const outdated = (await h.ok(readPreview)).preview;
+  assert.equal(outdated.newerBrief, true);
+  assert.equal(outdated.newerWorkbook, true);
+  assert.equal(outdated.selected.html, originalPreview.selected.html);
+  const next = { ...preview, base: preview.revisionId, revisionId: randomUUID(),
+    briefRevisionId: newerBrief.revisionId, workbookRevisionId: savedPrice.revisionId };
+  assert.equal((await publishArtifact("preview", { ...next, signature: sign(previewDraftTranscript(verified, next)) })).status, 409);
+
+  const board = await h.ok({ action: "board" });
+  const nextIntent = h.intent(f.botA);
+  h.finishRun();
+  const nextAssignment = await h.ok({ action: "delegate", cursor: board.cursor, taskId,
+    taskRevision: board.tasks[0].revision, intent: nextIntent });
+  const second = await deliveryFor(nextIntent, nextAssignment.ledger.at(-1).planeTaskId);
+  deliveries.add(second.proof.deliveryId);
+  const signedSecond = { ...next, signature: sign(previewDraftTranscript(second.verified, next)) };
+  assert.equal((await publishArtifact("preview", signedSecond, second)).status, 200);
+  assert.equal((await publishArtifact("preview", signedSecond, second)).status, 200);
+  const refreshed = (await h.ok(readPreview)).preview;
+  assert.equal(refreshed.history.length, 2);
+  assert.equal(refreshed.current, next.revisionId);
+  assert.equal(refreshed.newerBrief, false);
+  assert.equal(refreshed.newerWorkbook, false);
+  assert.equal(refreshed.selected.parent, preview.revisionId);
+  assert.equal(refreshed.selected.inputs.brief.revisionId, newerBrief.revisionId);
+  assert.deepEqual(refreshed.selected.inputs.workbook, { artifactId: workbook.artifactId,
+    revisionId: savedPrice.revisionId, author: f.owner.pub, sheet: "Pricing", cell: "B5", assumptions: savedPrice.inputs, cents: 108_000 });
+  assert.match(refreshed.selected.html, /id="quote">\$1,080\.00/);
+  assert.equal((await h.ok({ ...readPreview, revisionId: preview.revisionId })).preview.selected.html, originalPreview.selected.html);
+  const html = await h.call({ ...readPreview, revisionId: preview.revisionId, action: "preview-export" });
+  assert.equal(html.status, 200);
+  assert.match(html.headers.get("content-disposition") ?? "", /^attachment;/);
+  assert.match(html.headers.get("content-security-policy") ?? "", /^sandbox; default-src 'none';.*form-action 'none'/);
+  assert.equal(await html.text(), originalPreview.selected.html);
+  assert.equal((await h.call(readPreview, "fixture-agent-b", false)).status, 404);
+  assert.equal((await h.call({ ...readPreview, forum: "another-project" })).status, 404);
   h.removeAgentAccess();
   assert.equal((await h.call(read, "fixture-agent-a", false)).status, 403);
   assert.equal((await h.call(readWorkbook, "fixture-agent-a", false)).status, 403);
+  assert.equal((await h.call(readPreview, "fixture-agent-a", false)).status, 403);
 });
 
 const inspectWorkbook = `

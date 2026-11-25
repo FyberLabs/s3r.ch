@@ -7,6 +7,7 @@ import { matchesBrowserOrigin } from "./request-origin";
 import { parseForumUpdateProof, verifyForumUpdate, type VerifiedForumUpdate } from "./forum-plane-update";
 import type { LiveSquadSpec } from "./squad-view";
 import { ArtifactRefusal } from "./squad-artifact";
+import { parseSignedPreview, verifyPreviewDraft, type SignedPreview } from "./squad-preview";
 import { parseSignedBriefDraft, verifyBriefDraft, type SignedBriefDraft } from "./squad-brief";
 import { parseSignedWorkbook, verifyWorkbookDraft, type SignedWorkbook } from "./squad-workbook";
 import { RecordConflict } from "./record-store";
@@ -41,6 +42,7 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
   planeUpdates?: PlaneForumUpdateAuthority;
   saveBrief?: SaveDraft<SignedBriefDraft>;
   saveWorkbook?: SaveDraft<SignedWorkbook>;
+  savePreview?: SaveDraft<SignedPreview>;
 }) {
   const objectKind = input.objectKind ?? "stmt";
   const origin = new URL(input.origin), spec = Object.freeze({ ...input.squad }), config = structuredClone(input.config);
@@ -51,11 +53,12 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   const reply = (status: number) => Response.json({ ok: status === 200 }, { status, headers: { "Cache-Control": "no-store" } });
   const readers = new Map<string, number>(); let active = 0;
-  return async (request: Request, path: "statements" | "plane-update" | "plane-brief" | "plane-workbook" = "statements") => {
-    const artifact = path === "plane-brief" ? "brief" : path === "plane-workbook" ? "workbook" : null;
+  return async (request: Request, path: "statements" | "plane-update" | "plane-brief" | "plane-workbook" | "plane-preview" = "statements") => {
+    const artifact = path === "plane-brief" ? "brief" : path === "plane-workbook" ? "workbook" : path === "plane-preview" ? "preview" : null;
     const isUpdate = path === "plane-update" || artifact !== null;
     if (isUpdate && (!planeUpdates || objectKind !== "stmt" ||
-        (artifact === "brief" && !input.saveBrief) || (artifact === "workbook" && !input.saveWorkbook))) return reply(503);
+        (artifact === "brief" && !input.saveBrief) || (artifact === "workbook" && !input.saveWorkbook) ||
+        (artifact === "preview" && !input.savePreview))) return reply(503);
     let reserved: string | null = null;
     const deadline = new AbortController();
     const timer = setTimeout(() => deadline.abort(), artifact ? 6000 : 1500);
@@ -88,7 +91,8 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       if (isUpdate && (!proof || body.rows.length === 0)) return reply(400);
       const brief = artifact === "brief" ? parseSignedBriefDraft(body.brief) : null;
       const workbook = artifact === "workbook" ? parseSignedWorkbook(body.workbook) : null;
-      if (artifact && !brief && !workbook) return reply(400);
+      const preview = artifact === "preview" ? parseSignedPreview(body.preview) : null;
+      if (artifact && !brief && !workbook && !preview) return reply(400);
       const held = await bounded(source.read(at, signal));
       if (typeof held.fence !== "string" || !held.fence || held.fence.length > 4096) return reply(503);
       const snapshot = structuredClone(held.snapshot);
@@ -134,7 +138,8 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
           tenant: planeUpdates.tenant, forumId: spec.forumId, principal, object, issuedAt, writerKey,
         }));
         if (!verifiedUpdate || (brief && !verifyBriefDraft(brief, verifiedUpdate, writerKey)) ||
-            (workbook && !verifyWorkbookDraft(workbook, verifiedUpdate, writerKey))) return reply(403);
+            (workbook && !verifyWorkbookDraft(workbook, verifiedUpdate, writerKey)) ||
+            (preview && !verifyPreviewDraft(preview, verifiedUpdate, writerKey))) return reply(403);
       }
       // Canonical signed meaning, not object key order or signature encoding,
       // identifies a retained row. Verify supplied signatures even on retries.
@@ -190,6 +195,7 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
           };
           if (brief && input.saveBrief) await bounded(input.saveBrief(brief, verifiedUpdate, signal, authorize));
           if (workbook && input.saveWorkbook) await bounded(input.saveWorkbook(workbook, verifiedUpdate, signal, authorize));
+          if (preview && input.savePreview) await bounded(input.savePreview(preview, verifiedUpdate, signal, authorize));
         }
         return reply(200);
       }

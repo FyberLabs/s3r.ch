@@ -136,17 +136,19 @@ jobs:
         id: squad-snapshot
         timeout-minutes: 2
         run: |
-          if git diff --quiet HEAD^ HEAD -- components/SquadBriefPanel.tsx components/SquadProjectPanel.tsx components/SquadWorkbookPanel.tsx scripts/snapshot-squad-project.mjs; then
+          if git diff --quiet HEAD^ HEAD -- components/SquadBriefPanel.tsx components/SquadProjectPanel.tsx components/SquadWorkbookPanel.tsx components/SquadPreviewPanel.tsx scripts/snapshot-squad-project.mjs; then
             exit 0
           fi
-          node scripts/snapshot-squad-project.mjs
+          node --import tsx scripts/snapshot-squad-project.mjs
           echo 'captured=true' >> "$GITHUB_OUTPUT"
       - name: Upload the Squad project screenshot
         if: steps.squad-snapshot.outputs.captured == 'true'
         uses: actions/upload-artifact@v7.0.1
         with:
           name: squad-partner-brief
-          path: ${{ runner.temp }}/squad-partner-brief.png
+          path: |
+            ${{ runner.temp }}/squad-partner-brief.png
+            ${{ runner.temp }}/squad-partner-preview.png
           if-no-files-found: error
           retention-days: 7
       - name: Local ciphertext cache browser contracts (CI only)
