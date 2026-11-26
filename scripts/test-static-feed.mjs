@@ -142,6 +142,7 @@ try {
   await page.getByRole("button", { name: "Public", exact: true }).click();
   assert.deepEqual(await feedRows.allTextContents(), anonymousRows);
   assert.equal(requests.filter(url => url === "/feed-cache/snapshot.json").length, 1);
+  await page.getByRole("button", { name: "Account and posting", exact: true }).click();
   await signOut.click();
   await signOut.waitFor({ state: "hidden" });
   await page.getByText(body, { exact: true }).waitFor();
