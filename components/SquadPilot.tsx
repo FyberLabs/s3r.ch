@@ -5,7 +5,7 @@ import { readSingleUnlockedIdentity, subscribeUnlockedMeshPair } from "@/lib/ide
 import type { SeaPair } from "@/lib/identity/sea";
 import type { publicSquadPilotConfig } from "@/lib/squad-pilot-config";
 
-type Props = ReturnType<typeof publicSquadPilotConfig>;
+type Props = ReturnType<typeof publicSquadPilotConfig> & { agentEnrollmentEnabled?: boolean };
 export function SquadPilot(props: Props) {
   const [pair, setPair] = useState<SeaPair | null>(null);
   useLayoutEffect(() => {
