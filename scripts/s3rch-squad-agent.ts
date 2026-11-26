@@ -1,12 +1,13 @@
 import { createSquadAgentMcp, openSquadAgentClient } from "../lib/squad-agent-client";
 import { generateSquadAgentKey, openSquadAgentIdentity } from "../lib/squad-agent-identity";
+import { SQUAD_ARTIFACT_BYTES, SQUAD_ARTIFACT_FRAME_BYTES } from "../lib/squad-agent-artifacts";
 
 async function readToolInput() {
   const chunks: Buffer[] = [];
   let bytes = 0;
   for await (const chunk of process.stdin) {
     bytes += chunk.length;
-    if (bytes > 65_536) throw Error("Squad tool input exceeds its limit");
+    if (bytes > SQUAD_ARTIFACT_BYTES) throw Error("Squad tool input exceeds its limit");
     chunks.push(chunk);
   }
   return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)));
@@ -40,14 +41,15 @@ async function main() {
   const closed = new AbortController();
   const dispatch = createSquadAgentMcp(client.submit, client.artifacts, closed.signal);
   const pending = new Set<Promise<void>>();
+  const frameLimit = client.artifacts ? SQUAD_ARTIFACT_FRAME_BYTES : 8192;
   process.stdin.setEncoding("utf8");
   let line = "";
   for await (const chunk of process.stdin) {
     const frames = (line + String(chunk)).split("\n");
     line = frames.pop() ?? "";
-    if (line.length > 8192) throw Error("MCP frame too large");
+    if (Buffer.byteLength(line) > frameLimit) throw Error("MCP frame too large");
     for (const frame of frames) {
-      if (frame.length > 8192 || pending.size >= 64) throw Error("MCP input exceeds limits");
+      if (Buffer.byteLength(frame) > frameLimit || pending.size >= 64) throw Error("MCP input exceeds limits");
       const operation = dispatch(frame).then(result => {
         if (result) process.stdout.write(JSON.stringify(result) + "\n");
       });

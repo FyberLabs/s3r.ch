@@ -82,6 +82,7 @@ test("managed MCP and CLI reuse the admitted operation and current native Squad 
   const visorBinary = "/usr/local/bin/hypermesh-visor-headless";
   const calls: Array<{ args: string[]; input: string }> = [];
   let revoked = false;
+  let mismatched = false;
   const tools = openSquadArtifactTools({ forum, identityFile, visorBinary }, requested => {
     if (requested !== operationId) throw Error("Operation is not admitted");
     return planeTask;
@@ -97,6 +98,11 @@ test("managed MCP and CLI reuse the admitted operation and current native Squad 
   }, async (path, args, input) => {
     assert.equal(path, visorBinary);
     calls.push({ args, input });
+    if (args[0] === "squad-publish") {
+      const { draft } = JSON.parse(input);
+      return JSON.stringify({version: 1, taskId, artifactId: draft.artifactId,
+        revisionId: mismatched ? randomUUID() : draft.revisionId});
+    }
     return JSON.stringify({ taskId });
   });
   const dispatch = createSquadAgentMcp(async () => "Conductor fixture output", tools);
@@ -113,8 +119,14 @@ test("managed MCP and CLI reuse the admitted operation and current native Squad 
   await tools.publish(operationId, artifact);
   assert.deepEqual(calls[1], { args: ["squad-resume", origin, forum, planeTask, pair.pub, "0", taskId], input: "token.one\n" });
   assert.deepEqual(calls[2], { args: ["squad-publish", planeTask], input: JSON.stringify(artifact) });
+  assert.equal(await tools.publish(operationId, artifact), JSON.stringify({version: 1,
+    taskId, artifactId: artifact.draft.artifactId, revisionId: artifact.draft.revisionId}));
+  assert.deepEqual(calls[4], calls[2]);
   await assert.rejects(tools.publish(randomUUID(), artifact));
+  await assert.rejects(tools.publish(operationId, { ...artifact, draft: { ...artifact.draft, signature: "fixture" } }));
+  mismatched = true;
+  await assert.rejects(tools.publish(operationId, artifact), /different artifact coordinates/);
   revoked = true;
   await assert.rejects(tools.publish(operationId, artifact));
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 7);
 });

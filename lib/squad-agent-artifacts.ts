@@ -4,6 +4,8 @@ import { openSquadAgentIdentity } from "./squad-agent-identity";
 
 const uuidPattern = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 const uuid = new RegExp(uuidPattern);
+export const SQUAD_ARTIFACT_BYTES = 65_536;
+export const SQUAD_ARTIFACT_FRAME_BYTES = 96 * 1024;
 export const validSquadOperationId = (value: unknown): value is string =>
   typeof value === "string" && uuid.test(value) && value !== "00000000-0000-0000-0000-000000000000";
 export const squadObject = (value: unknown): value is Record<string, unknown> =>
@@ -78,14 +80,24 @@ export function openSquadArtifactTools(config: unknown, planeTask: (operation: s
     },
     async publish(operation: string, artifact: unknown, parent?: AbortSignal) {
       if (!squadObject(artifact) || squadFields(artifact) !== "draft,kind" ||
-          !["brief", "workbook", "preview"].includes(String(artifact.kind)) || !squadObject(artifact.draft) ||
-          !validSquadOperationId(artifact.draft.taskId)) throw Error("Unsigned Squad artifact required");
+          typeof artifact.kind !== "string" || !["brief", "workbook", "preview"].includes(artifact.kind) ||
+          !squadObject(artifact.draft)) throw Error("Unsigned Squad artifact required");
+      const draft = artifact.draft;
+      if (Object.hasOwn(draft, "signature") || !validSquadOperationId(draft.taskId) ||
+          !validSquadOperationId(draft.artifactId) || !validSquadOperationId(draft.revisionId))
+        throw Error("Unsigned Squad artifact coordinates required");
       const raw = JSON.stringify(artifact);
-      if (Buffer.byteLength(raw) > 65_536) throw Error("Squad artifact exceeds its limit");
+      if (Buffer.byteLength(raw) > SQUAD_ARTIFACT_BYTES) throw Error("Squad artifact exceeds its limit");
       const task = planeTask(operation), signal = deadline(parent);
-      await resume(task, ["0", artifact.draft.taskId], signal);
+      await resume(task, ["0", draft.taskId], signal);
       signal.throwIfAborted();
-      return execute(visorBinary, ["squad-publish", task], raw, signal);
+      const reply = await execute(visorBinary, ["squad-publish", task], raw, signal);
+      const published: unknown = JSON.parse(reply);
+      if (!squadObject(published) || squadFields(published) !== "artifactId,revisionId,taskId,version" ||
+          published.version !== 1 || published.taskId !== draft.taskId ||
+          published.artifactId !== draft.artifactId || published.revisionId !== draft.revisionId)
+        throw Error("Visor returned different artifact coordinates");
+      return reply;
     },
   });
 }
