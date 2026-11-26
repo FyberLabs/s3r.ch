@@ -1,9 +1,18 @@
 import { createSquadAgentMcp, openSquadAgentClient } from "../lib/squad-agent-client";
+import { generateSquadAgentKey, openSquadAgentIdentity } from "../lib/squad-agent-identity";
 
 async function main() {
   const [config, mode, operation, ...extra] = process.argv.slice(2);
+  if (config && !operation && !extra.length && mode === "keygen") {
+    process.stdout.write(await generateSquadAgentKey(config) + "\n");
+    return;
+  }
+  if (config && !operation && !extra.length && mode === "session") {
+    process.stdout.write(await openSquadAgentIdentity(config).session() + "\n");
+    return;
+  }
   if (!config || extra.length || (mode === "submit" ? !operation : mode !== "mcp" || !!operation)) {
-    throw Error("Usage: s3rch-squad-agent CONFIG submit OPERATION_ID | CONFIG mcp");
+    throw Error("Usage: s3rch-squad-agent CONFIG submit OPERATION_ID | CONFIG mcp | IDENTITY_CONFIG session | KEY_FILE keygen");
   }
   const client = openSquadAgentClient(config);
   if (mode === "submit") {

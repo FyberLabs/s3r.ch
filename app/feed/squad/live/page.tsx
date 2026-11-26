@@ -12,7 +12,8 @@ export default function SquadPilotPage() {
   return (
     <>
       <IdentityBar />
-      <GunPeerProvider><SquadPilot {...publicSquadPilotConfig(config)} /></GunPeerProvider>
+      <GunPeerProvider><SquadPilot {...publicSquadPilotConfig(config)}
+        agentEnrollmentEnabled={!!config.plane && !!process.env.S3RCH_SQUAD_DELEGATION_WRITE_API_KEY} /></GunPeerProvider>
     </>
   );
 }

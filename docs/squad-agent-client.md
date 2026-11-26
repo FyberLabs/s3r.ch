@@ -19,3 +19,18 @@ enrolled `hm_rag_` credential. Store each exact operation as
 The output is the observed Conductor response. If a response is lost or
 refused, check Plane before admitting new work. Forum publication goes
 through the Visor adapter.
+
+## Native Squad access
+
+Create a private SEA key file with
+`npm run -s squad-agent -- /absolute/private/agent.json keygen`. Share the
+printed public key with the Squad owner for roster enrollment. In the live
+Squad, the signed-in owner opens **Agent access**, selects that public key,
+and approves `forum:read` for the configured Squad.
+
+Put the approved delegation ID in a separate owner-only JSON file with
+`version: 1`, the site's HTTPS `origin`, the absolute `pairFile`, and
+`delegationId`. The `session` mode exchanges an agent-signed challenge for
+a short-lived bearer. Pipe its output directly to Visor instead of storing
+it in logs. Revoking the delegation stops future exchanges and invalidates
+existing calls that use it.
