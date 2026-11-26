@@ -4,6 +4,7 @@ import type { ChatMessage } from "@/lib/chat";
 import { composeRoomMedia, parseRoomMedia } from "@/lib/room-media";
 import { createMediaLibrary, type MediaLibraryState } from "@/lib/media-library";
 import { mediaPreviewKind } from "@/lib/media-preview";
+import { IpfsPlaybackEndpoint } from "./IpfsPlaybackEndpoint";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 import { btnSecondary } from "@/lib/brand-ui";
 
@@ -11,6 +12,7 @@ export type PanelProps={roomId:string;messages:readonly ChatMessage[];canRead:(m
 
 /** Only admitted room rows reach this view; each open independently checks file access. */
 export function RoomMediaPanel({tenant,roomId,messages,canRead,send}:PanelProps&{tenant:string}) {
+  const [ipfsEndpoint,setIpfsEndpoint]=useState("");
   const [state,setState]=useState<MediaLibraryState|null>(null);
   const [selected,setSelected]=useState<{object:string;message?:ChatMessage}|null>(null);
   const [sending,setSending]=useState(false),[notice,setNotice]=useState("");
@@ -31,8 +33,8 @@ export function RoomMediaPanel({tenant,roomId,messages,canRead,send}:PanelProps&
   async function open(object:string,message?:ChatMessage) {
     if(!library.current || state?.busy || busy.current || (message && !current.current.canRead(message)))return;
     generation.current++;setNotice("");setSelected({object,...(message?{message}:{})});
-    if(message)await library.current.openReference(object,tenant);
-    else await library.current.open(object,tenant);
+    if(message)await library.current.openReference(object,tenant,ipfsEndpoint.trim()||undefined);
+    else await library.current.open(object,tenant,ipfsEndpoint.trim()||undefined);
   }
   async function submit() {
     const body=selected && !selected.message && composeRoomMedia(selected.object);
@@ -43,6 +45,7 @@ export function RoomMediaPanel({tenant,roomId,messages,canRead,send}:PanelProps&
     finally {busy.current=false;setSending(false);}
   }
   return <div className="space-y-3">
+    <IpfsPlaybackEndpoint value={ipfsEndpoint} onChange={setIpfsEndpoint} disabled={state?.busy}/>
     <p className="text-sm text-ink-muted">Room references do not share files. Each listener needs their own current file access. A publicly shared room exposes the reference, but not the encrypted file or its key.</p>
     {!!references.length && <ul className="space-y-2">{references.map((message,index)=><li key={message.id}>
       <button type="button" className={btnSecondary} disabled={state?.busy||sending} onClick={()=>void open(parseRoomMedia(message.body)!,message)}>Open room file {index+1}</button>

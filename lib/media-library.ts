@@ -12,6 +12,7 @@ import { isCanonicalObjectId } from "./identity/object-id";
 import type { MediaCleanupItem } from "./media-catalog";
 import type { MediaDeletionIntent } from "./media-deletion";
 import { readMemePngTags } from "./meme-png-tags";
+import { IPFS_RECORDING_TYPE } from "./ipfs-recording";
 import { mediaPreviewKind } from "./media-preview";
 import { createPrivateMediaBrowser } from "./media-browser-session";
 import { readBoundedIdentityJson } from "./identity/bounded-json";
@@ -100,15 +101,18 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
       if(!disposed && attempt===generation){pending=null;publish({...state,busy:false});}
     }
   }
-  function openAuthorized(object: string, tenant: string) {
+  function openAuthorized(object: string, tenant: string, ipfsEndpoint?: string) {
       return operation(async(signal,current)=>{
         if(state.objects.includes(object)) {
           if (!owner) throw Error("Media owner unavailable");
           await browser.status(object,owner,signal);
         }
-        const file=await browser.open(object,tenant,signal);
+        const file=await browser.open(object,tenant,signal,ipfsEndpoint);
         try {
           if(!current())return;
+          if(file.description.mediaType===IPFS_RECORDING_TYPE) {
+            publish({...state,message:"This is an IPFS recording. Enter an approved IPFS endpoint and open the file again."});return;
+          }
           if(!mediaPreviewKind(file.description.mediaType)) {
             publish({...state,message:"This file format cannot be previewed."});return;
           }
@@ -515,15 +519,15 @@ export function createMediaLibrary(changed: (state: MediaLibraryState)=>void, op
         if(current())publish({...state,audience:null,message:"Sharing stopped for this identity. Copies already saved cannot be removed."});
       });
     },
-    open(object: string, tenant: string) {
+    open(object: string, tenant: string, ipfsEndpoint?: string) {
       if(state.deletion || (!state.objects.includes(object) && !state.granted?.objects.includes(object)))return Promise.resolve();
-      return openAuthorized(object,tenant);
+      return openAuthorized(object,tenant,ipfsEndpoint);
     },
     /** A signed room reference is a locator, never read authority. The browser's
      * existing read-wrap path checks current access before fetching ciphertext. */
-    openReference(object: string, tenant: string) {
+    openReference(object: string, tenant: string, ipfsEndpoint?: string) {
       if(state.deletion || !object.startsWith("media_") || !isCanonicalObjectId(object))return Promise.resolve();
-      return openAuthorized(object,tenant);
+      return openAuthorized(object,tenant,ipfsEndpoint);
     },
     dispose() { if(disposed)return;disposed=true;unsubscribe();reset(); },
   });

@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { createMediaLibrary, type MediaLibraryState } from "@/lib/media-library";
 import { btnSecondary } from "@/lib/brand-ui";
+import { IpfsPlaybackEndpoint } from "./IpfsPlaybackEndpoint";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 /** Granted navigation uses the same current authorization and cleanup as My media. */
 export function GrantedMediaPanel({tenant}: {tenant:string}) {
+  const [ipfsEndpoint,setIpfsEndpoint]=useState("");
   const [state,setState]=useState<MediaLibraryState|null>(null);
   const library=useRef<ReturnType<typeof createMediaLibrary>|null>(null);
   useEffect(()=>{
@@ -31,7 +33,7 @@ export function GrantedMediaPanel({tenant}: {tenant:string}) {
       <p className="text-xs text-ink-muted">Page {page.page+1} of 16.</p>
       {!page.objects.length && <p>No currently available shared files on this page.</p>}
       <ul className="space-y-3">{page.objects.map((object,index)=><li key={object}>
-        <button type="button" disabled={state?.busy} className={btnSecondary} onClick={()=>void library.current?.open(object,tenant)}>Open shared file {page.page*4+index+1}</button>
+        <button type="button" disabled={state?.busy} className={btnSecondary} onClick={()=>void library.current?.open(object,tenant,ipfsEndpoint.trim()||undefined)}>Open shared file {page.page*4+index+1}</button>
       </li>)}</ul>
       {page.page>0 && <button type="button" disabled={state?.busy} className={btnSecondary} onClick={()=>void library.current?.loadGranted(page.page-1)}>Previous granted page</button>}
       {page.nextPage!==null && <button type="button" disabled={state?.busy} className={btnSecondary} onClick={()=>void library.current?.loadGranted(page.nextPage!)}>Next granted page</button>}
