@@ -96,7 +96,12 @@ else {
         assignment: original, latest: () => evaluations.at(-1), now: Date.now,
         offline: value => context.setOffline(value), wait: milliseconds => page.waitForTimeout(milliseconds),
         label: async variant => {
-          await hero.getByText(variant === "create" ? "Create a post or start a room from the feed." : "Catch up on posts and rooms in the feed.", { exact: true }).waitFor({ state: "visible", timeout: 5000 });
+          const copy = hero.getByText(variant === "create" ? "Create a post or start a room from the feed." : "Catch up on posts and rooms in the feed.", { exact: true });
+          // The authenticated display can expire at the same time as the offline session.
+          const expected = variant === "control"
+            ? copy.or(hero.getByRole("heading", { name: "Where humans and AI create together.", exact: true }))
+            : copy;
+          await expected.waitFor({ state: "visible", timeout: 5000 });
         },
         recover: async before => {
           await until(() => evaluations.at(-1)?.expiresAt > before.expiresAt && evaluations.at(-1)?.cohort === original.cohort);
