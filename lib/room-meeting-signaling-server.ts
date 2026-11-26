@@ -37,7 +37,8 @@ type RoomAuthority = {
 const makeId = () => randomBytes(16).toString("hex");
 const headers = { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" };
 const deny = (status: number) => Response.json({ error: "meeting-signaling-unavailable" }, { status, headers });
-const exact = (row: Record<string, unknown>, keys: string) => Object.keys(row).sort().join(",") === keys;
+const exact = (row: Record<string, unknown>, ...keys: string[]) =>
+  Object.keys(row).length === keys.length && keys.every(key => Object.hasOwn(row, key));
 const sameProof = (a: Proof, b: Proof) => a.id === b.id && a.key === b.key && a.expiresAt === b.expiresAt;
 const validAck = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= MEETING_SEQUENCE_MAX;
@@ -116,11 +117,11 @@ export function createRoomMeetingSignaling(input: {
       if (typeof room !== "string" || !isForumObjectId(room, "room") ||
           typeof peer !== "string" || !isSeaPubkey(peer)) return deny(400);
       if (operation === "admit") {
-        if (!exact(command, "operation,peer,room")) return deny(400);
+        if (!exact(command, "operation", "peer", "room")) return deny(400);
       } else if (operation === "send") {
-        if (!exact(command, "frame,operation,peer,room")) return deny(400);
+        if (!exact(command, "frame", "operation", "peer", "room")) return deny(400);
       } else if (operation === "read") {
-        if (!exact(command, "after,generation,operation,peer,room") ||
+        if (!exact(command, "after", "generation", "operation", "peer", "room") ||
             !validAck(after) || typeof command.generation !== "string") return deny(400);
       } else return deny(400);
 
@@ -128,7 +129,7 @@ export function createRoomMeetingSignaling(input: {
       signal.throwIfAborted();
       const principal = authority.principal(proof.key);
       if (!authority.current() || !principal || peer === principal) return deny(403);
-      const key = JSON.stringify([room, ...[principal, peer].sort()]);
+      const key = JSON.stringify(principal < peer ? [room, principal, peer] : [room, peer, principal]);
       const current = rooms.get(key);
       const time = observe();
       if (proof.expiresAt <= time || !authority.mayJoin(principal) || !authority.mayJoin(peer)) {
@@ -148,12 +149,7 @@ export function createRoomMeetingSignaling(input: {
         return Response.json({ state: "waiting", expiresAt }, { headers });
       }
       const isFirst = principal === row.first.principal;
-      const own = isFirst ? row.first : row.second;
       const other = isFirst ? row.second : row.first;
-      if (own && !sameProof(own.proof, proof)) {
-        close(key, row);
-        return deny(409);
-      }
       if (other) {
         let otherProof: Proof;
         try { otherProof = await input.verify(other.token); }
@@ -168,6 +164,12 @@ export function createRoomMeetingSignaling(input: {
           close(key, row);
           return deny(403);
         }
+      }
+      // The second member may have been set by a concurrent successful join.
+      const own = isFirst ? row.first : row.second;
+      if (own && !sameProof(own.proof, proof)) {
+        close(key, row);
+        return deny(409);
       }
       if (operation === "admit") {
         if (!isFirst && !row.lease) {

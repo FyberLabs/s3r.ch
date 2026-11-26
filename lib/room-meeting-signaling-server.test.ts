@@ -11,7 +11,7 @@ const otherRoom = "room_p_" + "a".repeat(128) + "_" + "c".repeat(32);
 const first = vectors.seaPubkey;
 const second = vectors.secondPubkey;
 
-function fixture() {
+function fixture(onVerify?: (token: string) => Promise<void>) {
   const allowed = new Set([first, second]);
   const sessions = new Map([["first", first], ["second", second], ["replacement", second]]);
   let time = 1000;
@@ -19,6 +19,7 @@ function fixture() {
     origin, tenant: "11111111-1111-4111-8111-111111111111",
     clock: () => time,
     async verify(token) {
+      await onVerify?.(token);
       const key = sessions.get(token);
       if (!key) throw Error("Session unavailable");
       return { key, id: token, expiresAt: 60_000 };
@@ -97,4 +98,28 @@ test("current grant withdrawal, proof withdrawal and session replacement close t
     const body = await response.json();
     assert.deepEqual(body, { error: "meeting-signaling-unavailable" });
   }
+});
+
+test("concurrent replacement during admission retires the generation", async () => {
+  let joins = 0;
+  let pause = false;
+  let release: () => void = () => {};
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const f = fixture(async token => {
+    if (!pause || token !== "first") return;
+    if (++joins === 2) release();
+    await gate;
+  });
+  assert.equal((await f.post("first", second, { operation: "admit" })).status, 200);
+  pause = true;
+  const responses = await Promise.all([
+    f.post("second", first, { operation: "admit" }),
+    f.post("replacement", first, { operation: "admit" }),
+  ]);
+  pause = false;
+  assert.equal(responses.filter(response => response.status === 200).length, 1);
+  assert.equal(responses.filter(response => response.status === 409).length, 1);
+  const result = await responses.find(response => response.status === 200)!.json();
+  assert.equal(result.state, "ready");
+  assert.equal((await f.post("first", second, { operation: "send", frame: offer(result.lease) })).status, 409);
 });
