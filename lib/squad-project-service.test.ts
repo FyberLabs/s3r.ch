@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
+import { parseAgentDelegation, type ResolutionContext } from "sociacl-ids";
 import { createBotStatementAdmission } from "./forum-bot-statement-admission";
 import { forumUpdateTranscript, VISOR_FORUM_STATUS_TEXT, type VerifiedForumUpdate } from "./forum-plane-update";
 import { parseForumAuthority } from "./identity/forum-authority-records";
@@ -17,6 +18,8 @@ import { createIdentitySessions } from "./identity/sea-session";
 import { readSeaSessionCookie, seaSessionCookieNames } from "./identity/sea-session-http";
 import vectors from "./identity/vectors/forum-authority.json";
 import { createSquadPlaneForum, squadPlaneTaskId } from "./squad-plane-forum";
+import { approveSquadAgent, revokeSquadAgent, SQUAD_AGENT_SCOPE, type SquadAgentEnrollment } from "./squad-agent-enrollment";
+import { createSquadAgentEnrollmentService } from "./squad-agent-enrollment-service";
 import { createSquadProjectService } from "./squad-project-service";
 import { squadProjectDelegationRequest } from "./squad-project-client";
 import { createSquadProjectStore } from "./squad-project";
@@ -31,12 +34,24 @@ async function fixture(t: test.TestContext) {
   const squad = { forumId: f.forum, owner: f.owner.pub, label: "Partner pilot" };
   const config = { keys: [], pinnedIssuers: [], policy: vectors.context.policy };
   const consumed = new Set<string>();
+  const signedEnrollments: { kind: string; record: unknown }[] = [];
+  const context: Omit<ResolutionContext, "now"> = { jwks: { keys: [] }, links: new Map(), revocations: [],
+    pinnedIss: new Set(), policy: { ...config.policy, clockSkewSeconds: 0 }, history: () => ({ ok: false, reason: "missing-history" }) };
   const sessions = createIdentitySessions({ origin, secret: "squad-project-fixture-key".repeat(2), clock: f.now,
     consume: async id => {
       if (consumed.has(id)) return false;
       consumed.add(id);
       return true;
-    } });
+    },
+    delegationSource: async (id, at) => {
+      for (const row of signedEnrollments) {
+        const parsed = row.kind === "delegation" && parseAgentDelegation(row.record);
+        if (parsed && parsed.ok && parsed.value.id === id) return { completeThrough: at, delegation: parsed.value.delegation,
+          rotations: [], context, revocations: signedEnrollments.filter(row => row.kind === "revocation").map(row => row.record) };
+      }
+      return null;
+    },
+  });
   const mintBrowserSession = async (pair: typeof f.owner) => {
     const challenge = await sessions.challenge(pair.pub);
     const signature = await signForumRecord(challenge, pair);
@@ -47,7 +62,7 @@ async function fixture(t: test.TestContext) {
   };
   const browserSession = await mintBrowserSession(f.owner);
   const authenticate = (request: Request) => sessions.authenticate(readSeaSessionCookie(request) ?? "");
-  let revoked = false, agentRevoked = false, fail = 0, loseResponse = false, active = true;
+  let revoked = false, fail = 0, loseResponse = false, active = true;
   let deliveries = 0;
   const submitted = new Set<string>();
   const authority = {
@@ -56,6 +71,40 @@ async function fixture(t: test.TestContext) {
       history: { completeThrough: at, links: [], accounts: [f.owner, f.a, f.b].map(pair =>
         ({ principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) } }),
   };
+  const enrollment = createSquadAgentEnrollmentService({
+    pilot: { version: 1, origin, squad, plane, authority: config }, authenticate, clock: f.now, read: authority.read,
+    journal: {
+      read: async at => ({ fence: String(signedEnrollments.length), snapshot: { audience: origin, rows: [...signedEnrollments],
+        completeThrough: at, history: { completeThrough: at, links: [], accounts: [] } } }),
+      async append(fence, rows, guard) {
+        guard();
+        if (fence !== String(signedEnrollments.length)) return false;
+        signedEnrollments.push(...rows as typeof signedEnrollments);
+        return true;
+      },
+    },
+  });
+  async function manage<T>(body: object): Promise<T> {
+    const response = await enrollment(new Request(origin + "/api/squad/pilot/enrollment", {
+      method: "POST", headers: { Origin: origin, Cookie: browserSession, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, forum: f.forum }),
+    }));
+    assert.equal(response.status, 200);
+    return response.json();
+  }
+  async function enroll(agent: typeof f.a) {
+    const state = await manage<SquadAgentEnrollment>({ action: "list" });
+    const record = approveSquadAgent(f.owner, state, origin, agent.pub);
+    const { id } = await manage<{ id: string }>({ action: "approve", record });
+    const challenge = await sessions.agentChallenge(id, [SQUAD_AGENT_SCOPE]);
+    assert.ok(challenge);
+    const proof = await signForumRecord(challenge, agent);
+    assert.ok(proof);
+    const token = await sessions.exchangeAgent(challenge, proof);
+    assert.ok(token);
+    return token;
+  }
+  const nativeTokens: Record<string, string> = { "fixture-agent-a": await enroll(f.a), "fixture-agent-b": await enroll(f.b) };
   const dispatch = createSquadPlaneForum({ ...authority, siteOrigin: origin, fetch: async (url, init) => {
     const endpoint = new URL(String(url));
     assert.equal(endpoint.origin, plane.origin);
@@ -79,13 +128,12 @@ async function fixture(t: test.TestContext) {
   } });
   const store = createSquadProjectStore(createSimulatedRecordStore(), f.tenant, f.forum);
   const service = createSquadProjectService({ ...authority, origin, store, dispatch, authenticateAgent: async request => {
-    const token = request.headers.get("authorization");
-    const agent = token === "Bearer fixture-agent-a" ? f.a.pub : token === "Bearer fixture-agent-b" ? f.b.pub : null;
-    return agent && !agentRevoked ? { principal: f.owner.pub, agent, delegationId: "fixture-grant" } : null;
+    const token = request.headers.get("authorization")?.slice("Bearer ".length);
+    return token ? sessions.authenticateAgent(token, [SQUAD_AGENT_SCOPE]) : null;
   } });
   const call = (body: object, credential = "plane-owner-fixture", browser = true) => service(new Request(origin + "/api/squad/pilot/project", {
     method: "POST", headers: { "Content-Type": "application/json",
-      ...(!browser || ("action" in body && body.action === "delegate") ? { Authorization: "Bearer " + credential } : {}),
+      ...(!browser || ("action" in body && body.action === "delegate") ? { Authorization: "Bearer " + (browser ? credential : nativeTokens[credential] ?? credential) } : {}),
       ...(browser ? { Origin: origin, Cookie: browserSession } : {}) },
     body: JSON.stringify({ forum: f.forum, ...body }),
   }));
@@ -109,7 +157,12 @@ async function fixture(t: test.TestContext) {
     return { root, child, taskId, cursor: result.cursor };
   }
   return { f, call, ok, intent, project, origin, authority, store, mintBrowserSession, deliveryCount: () => deliveries, submitted,
-    removeAgentAccess: () => { revoked = true; }, revokeSession: () => { agentRevoked = true; },
+    removeAgentAccess: () => { revoked = true; },
+    revokeSession: async () => {
+      const state = await manage<SquadAgentEnrollment>({ action: "list" });
+      for (const grant of state.grants)
+        await manage({ action: "revoke", record: revokeSquadAgent(f.owner, state, grant.id) });
+    },
     finishRun: () => { active = false; }, failWith: (status: number) => { fail = status; },
     dropReply: (drop: boolean) => { loseResponse = drop; },
   };
@@ -167,7 +220,7 @@ test("a connected owner maps, labels and delegates one canonical project task", 
   assert.equal((await h.call(resume, other, false)).status, 200);
   h.removeAgentAccess();
   assert.equal((await h.call(resume, other, false)).status, 403);
-  h.revokeSession();
+  await h.revokeSession();
   assert.equal((await h.call(resume, other, false)).status, 403);
 });
 
