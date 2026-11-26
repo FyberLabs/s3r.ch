@@ -7,6 +7,7 @@ import type { ReportParents } from "./forum-report-forward";
 
 export type SquadPilotConfig = Readonly<{
   version: 1; origin: string; squad: LiveSquadSpec; authority: ForumAuthorityConfig;
+  meetingSignaling?: true;
   reportParents?: ReportParents;
   plane?: SquadPlaneConfig;
   project?: Readonly<{ recordOrigin: string; recordKey?: string; fixtureCleanup?: true }>;
@@ -35,10 +36,10 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
     delete (c as { ownerSigningKey?: unknown }).ownerSigningKey;
   }
   if (!c || typeof c !== "object" || Array.isArray(c) ||
-      Object.keys(c).some(key => !["authority", "origin", "plane", "project", "reportParents", "squad", "version"].includes(key)))
+      Object.keys(c).some(key => !["authority", "meetingSignaling", "origin", "plane", "project", "reportParents", "squad", "version"].includes(key)))
     throw Error("invalid Squad pilot configuration");
   const row = c as Record<string, unknown>;
-  if (row.version !== 1 ||
+  if (row.version !== 1 || ("meetingSignaling" in row && row.meetingSignaling !== true) ||
       typeof row.origin !== "string" || new URL(row.origin).origin !== row.origin || !row.origin.startsWith("https://") ||
       !exact(row.squad, "forumId,label,owner") || !exact(row.authority, "keys,pinnedIssuers,policy") ||
       !exact(row.authority.policy, "allowedChainIds,allowedDomains,allowedUris") ||

@@ -1,26 +1,13 @@
-# Meeting admission and signaling contract proposal
+# Meeting admission and signaling
 
-Status: inactive consumer proposal for #527, not a deployed or accepted service
-contract. The validators in `lib/meeting-signaling-contract.ts` are not imported
-by a route, room UI, or the transport controller. They validate shape, binding
-and ordering only. They do not authenticate any response, resolve a session,
-check room access, or create `MeetingAuthority`.
-
-## Ownership and remaining decisions
-
-s3r.ch owns the consumer proposal and existing `controlMeetingTransport`.
-The admission/signaling runtime owner and endpoint have not been declared.
-Infra has been asked to coordinate the scheduled two-browser fixture and identify
-any existing service contract. This proposal does not select a new control plane
-or provision a service. Before #527 can close, its runtime owner must accept or
-revise these limits, authentication profile, admission/revocation implementation
-and fixture contract. #153 remains open until that implementation, UI and CI
-scenario are complete. Missing owner inputs are unavailable states, never an
-invitation to fabricate grants, identities or a signaling URL.
+s3r.ch owns the signaling route inside its existing web runtime. A declared
+single-replica deployment can enable `meetingSignaling: true` in its existing
+Squad pilot document. The route uses the native SEA site session and current
+signed room and parent forum Check. The route is disabled by default.
 
 ## Admission
 
-The proposed first profile has exactly two participants. An owner-authenticated
+The first profile has exactly two participants. An owner-authenticated
 lease contains version 1, tenant UUID, existing room ID (bounded to 512 UTF-8
 bytes), opaque meeting and generation IDs, issued/expiry times in epoch
 milliseconds, two distinct stable SEA principals with their current signing
@@ -35,7 +22,7 @@ parents. Consent to capture and publish local tracks is separate from membership
 Neither a TURN allocation nor the browser's one-second graph is an admission
 lease. Parsed data is not evidence that the source performed these checks.
 
-The eventual same-origin consumer must authenticate the source and bind every
+The same-origin consumer must authenticate the source and bind every
 response to its exact requested tenant, room, meeting, participant and session
 generation before constructing the existing transport authority adapter. No
 browser-supplied lease is accepted as a bearer capability. The runtime must
@@ -46,6 +33,15 @@ A renewal or key/session/participant replacement creates a new generation and
 a new authorized connection. It cannot mutate the existing controller's fixed
 deadline. The old controller closes before replacement; old SDP/ICE, timers,
 capture tracks and queued work cannot transfer to the new generation.
+
+Each participant posts `{operation:"admit",room,peer}` to
+`/api/squad/pilot/meeting` with the site session cookie and its canonical Origin.
+Both independently opt in using the other participant’s canonical SEA principal.
+The first authenticated participant becomes the offerer. Waiting admission returns
+`{state:"waiting",expiresAt}`. Once both sessions qualify, the route returns
+`{state:"ready",lease}`. The second join establishes the fixed lease. An admitted
+participant presenting a replacement session retires that lease. The same origin
+must handle every request for the generation. Process loss retires all generations.
 
 ## Signaling frames and ordering
 
@@ -76,10 +72,13 @@ The source must cap outstanding delivery to 32 frames per direction and reject
 overflow; it must never silently discard accepted messages and imply complete
 delivery. Sequence exhaustion requires teardown/new admission.
 
-The source must provide idempotent write acknowledgement bound to generation,
-sender, sequence and payload, plus resumable bounded reads after the last
-acknowledged sequence. Transport encoding, endpoint paths, acknowledgement
-schema and service ownership remain owner decisions, not implemented APIs here.
+Post `{operation:"send",room,peer,frame}` to write a frame. Its acknowledgement
+contains the generation and accepted sequence. A retry of the last exact frame
+returns the same acknowledgement. Read with
+`{operation:"read",room,peer,generation,after}`. The response carries the generation
+and ordered incoming frames after the acknowledged cursor. A cursor cannot commit a
+frame before delivery. Each direction holds at most 32 frames and 192 KiB.
+Leave or loss of the generation returns a closed/unavailable response to the peer.
 
 ## Privacy, expiry and teardown
 
@@ -119,7 +118,6 @@ Fixtures must identify every service/browser substitution and preserve TEST
 data. Registration awaits declared inputs; no manual shared-host run, reader
 registration, activation, tag or publication operation is part of this work.
 
-The current unit tests use synthetic lease/frame data, existing SEA public-key shape
-validation and an injected clock. They prove only parser and sequencing
-properties. They are not evidence of authenticated admission, WebRTC exchange,
-TURN routing, runtime revocation, deployment or two-browser acceptance.
+Unit contracts exercise frame sequencing and the HTTP handler with controlled
+identity and room snapshots. The scheduled fixture still needs two independently
+authenticated browsers on the real owner route and the transport consumer.
