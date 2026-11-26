@@ -28,7 +28,8 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
   identitySecret = getIdentitySecret({ IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production" }),
   planeUpdates?: PlaneForumUpdateAuthority,
   tenant = process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID,
-  visorStore?: VisorCompanionSetStore) {
+  visorStore?: VisorCompanionSetStore,
+  fixtureRecord?: Readonly<{ origin?: string; apiKey?: string }>) {
   if (!statements) throw Error("ACL statement source is required");
   if (!replay) throw Error("ACL authority requires configured identity replay");
   const config = structuredClone(c);
@@ -44,9 +45,12 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
     : undefined;
   const planeForum = config.plane ? createSquadPlaneForum({ siteOrigin: config.origin,
     plane: config.plane, ...common, read: source.read }) : undefined;
-  const projectStore = config.project && tenant
+  const recordKey = config.project?.recordKey ?? (config.project?.fixtureCleanup && config.origin === "https://test.s3r.ch" &&
+    config.project.recordOrigin === fixtureRecord?.origin ? fixtureRecord?.apiKey : undefined);
+  if (config.project && !recordKey) throw Error("Scoped Squad project record credential required");
+  const projectStore = config.project && tenant && recordKey
     ? createSquadProjectStore(createSpanopticonRecordStore({
-      origin: config.project.recordOrigin, apiKey: config.project.recordKey, tenant,
+      origin: config.project.recordOrigin, apiKey: recordKey, tenant,
     }), tenant, config.squad.forumId)
     : undefined;
   const project = projectStore && config.plane && planeForum
@@ -69,7 +73,7 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
 // statement source resolves its key only when Squad calls the owner API.
 let cached: { identity: string; server: ReturnType<typeof createSquadPilotServer> } | undefined;
 export function getSquadPilotServer() {
-  const identity = JSON.stringify([process.env.IDENTITY_SESSION_SECRET, process.env.S3RCH_SQUAD_PILOT, process.env.S3RCH_IDENTITY_REPLAY_BACKEND, process.env.S3RCH_IDENTITY_REPLAY_ORIGIN, process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID, process.env.S3RCH_IDENTITY_REPLAY_API_KEY, process.env.S3RCH_AUTHORITY_BACKEND, process.env.S3RCH_STATEMENT_SOURCE_ORIGIN, process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID, process.env.S3RCH_STATEMENT_SOURCE_SCOPE, process.env.S3RCH_STATEMENT_SOURCE_API_KEY, process.env.S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI, process.env.AZURE_CLIENT_ID, process.env.S3RCH_VISOR_COMPANION_RECORD_ORIGIN, process.env.S3RCH_VISOR_COMPANION_RECORD_TENANT_ID, process.env.S3RCH_VISOR_COMPANION_RECORD_API_KEY]);
+  const identity = JSON.stringify([process.env.IDENTITY_SESSION_SECRET, process.env.S3RCH_SQUAD_PILOT, process.env.S3RCH_IDENTITY_REPLAY_BACKEND, process.env.S3RCH_IDENTITY_REPLAY_ORIGIN, process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID, process.env.S3RCH_IDENTITY_REPLAY_API_KEY, process.env.S3RCH_AUTHORITY_BACKEND, process.env.S3RCH_STATEMENT_SOURCE_ORIGIN, process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID, process.env.S3RCH_STATEMENT_SOURCE_SCOPE, process.env.S3RCH_STATEMENT_SOURCE_API_KEY, process.env.S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI, process.env.AZURE_CLIENT_ID, process.env.S3RCH_VISOR_COMPANION_RECORD_ORIGIN, process.env.S3RCH_VISOR_COMPANION_RECORD_TENANT_ID, process.env.S3RCH_VISOR_COMPANION_RECORD_API_KEY, process.env.S3RCH_SQUAD_PROJECT_RECORD_API_KEY]);
   if (cached?.identity === identity) return cached.server;
   cached = undefined;
   const config = parseSquadPilotConfig(process.env.S3RCH_SQUAD_PILOT);
@@ -88,7 +92,9 @@ export function getSquadPilotServer() {
   const tenant = process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID;
   if (!tenant) throw Error("Squad pilot tenant binding required");
   const visorStore = configuredVisorCompanionSetStore(process.env, config.squad.forumId);
-  const server = createSquadPilotServer(config, statements, replay, undefined, undefined, updates, tenant, visorStore);
+  const fixtureRecord = { origin: process.env.S3RCH_STATEMENT_SOURCE_ORIGIN,
+    apiKey: process.env.S3RCH_SQUAD_PROJECT_RECORD_API_KEY };
+  const server = createSquadPilotServer(config, statements, replay, undefined, undefined, updates, tenant, visorStore, fixtureRecord);
   cached = { identity, server }; return server;
 }
 
