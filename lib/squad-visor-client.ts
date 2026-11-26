@@ -9,6 +9,8 @@ const maxDraftBytes = 65536;
 const maxReplyBytes = 800 * 1024;
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
+const fields = (value: unknown, keys: string[]): value is Record<string, unknown> =>
+  record(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 
 export const squadArtifactTools = {
   resume: "resume_squad_task",
@@ -58,7 +60,7 @@ function invokeVisor(scope: VisorScope, args: string[], stdin: Buffer, signal: A
 }
 
 function parseScope(value: unknown): VisorScope {
-  if (!record(value) || Object.keys(value).sort().join() !== "agent,forum,runtimeDirectory,sessionFile,siteOrigin,visorPath" ||
+  if (!fields(value, ["agent", "forum", "runtimeDirectory", "sessionFile", "siteOrigin", "visorPath"]) ||
       typeof value.agent !== "string" || !isSeaPubkey(value.agent) ||
       typeof value.forum !== "string" || !isForumObjectId(value.forum, "forum") ||
       typeof value.siteOrigin !== "string" || !value.siteOrigin.startsWith("https://") ||
@@ -72,8 +74,8 @@ function parseScope(value: unknown): VisorScope {
 
 function sources(value: unknown): string[] {
   if (value === undefined) return [];
-  if (!record(value) || !["briefRevisionId,workbookRevisionId", "briefRevisionId,previewRevisionId,workbookRevisionId"]
-      .includes(Object.keys(value).sort().join()) || !projectUuid(value.briefRevisionId) ||
+  if (!(fields(value, ["briefRevisionId", "workbookRevisionId"]) ||
+        fields(value, ["briefRevisionId", "workbookRevisionId", "previewRevisionId"])) || !projectUuid(value.briefRevisionId) ||
       !projectUuid(value.workbookRevisionId)) throw Error("Invalid source revisions");
   const args = ["--sources", value.briefRevisionId, value.workbookRevisionId];
   if ("previewRevisionId" in value) {
@@ -107,14 +109,13 @@ export function openSquadVisorTools(
     ? AbortSignal.any([signal, AbortSignal.timeout(85000)]) : AbortSignal.timeout(85000);
   return Object.freeze({
     async resume(input: unknown, signal?: AbortSignal) {
-      if (!record(input) || !projectUuid(input.taskId) ||
-          !["operationId,taskId", "operationId,sources,taskId"].includes(Object.keys(input).sort().join()))
+      if (!(fields(input, ["operationId", "taskId"]) || fields(input, ["operationId", "taskId", "sources"])) ||
+          !projectUuid(input.taskId))
         throw Error("Invalid Squad resume arguments");
       return resume(planeTask(input.operationId), input.taskId, sources(input.sources), deadline(signal));
     },
     async publish(input: unknown, signal?: AbortSignal) {
-      if (!record(input) || Object.keys(input).sort().join() !== "artifact,operationId" ||
-          !record(input.artifact) || Object.keys(input.artifact).sort().join() !== "draft,kind" ||
+      if (!fields(input, ["artifact", "operationId"]) || !fields(input.artifact, ["draft", "kind"]) ||
           typeof input.artifact.kind !== "string" || !["brief", "workbook", "preview"].includes(input.artifact.kind))
         throw Error("Invalid Squad artifact arguments");
       const draft = input.artifact.draft;
@@ -127,7 +128,7 @@ export function openSquadVisorTools(
       await resume(delivery, draft.taskId, [], bounded);
       bounded.throwIfAborted();
       const reply = await invoke(scope, ["squad-publish", delivery], bytes, bounded);
-      if (!record(reply) || Object.keys(reply).sort().join() !== "artifactId,revisionId,taskId,version" ||
+      if (!fields(reply, ["artifactId", "revisionId", "taskId", "version"]) ||
           reply.version !== 1 || reply.taskId !== draft.taskId || reply.artifactId !== draft.artifactId ||
           reply.revisionId !== draft.revisionId) throw Error("Squad artifact acknowledgement differs");
       return reply;

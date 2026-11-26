@@ -14,7 +14,8 @@ export function openSquadAgentClient(configPath: string, send: typeof fetch = fe
   if (!isAbsolute(configPath)) throw Error("Private absolute config path required");
   const config: unknown = JSON.parse(readPrivateBotFile(configPath, 8192).toString("utf8"));
   if (!object(config) || !["bot,credentialFile,operationsDirectory,origin,tenant,version",
-    "artifactTools,bot,credentialFile,operationsDirectory,origin,tenant,version"].includes(Object.keys(config).sort().join()) ||
+    "artifactTools,bot,credentialFile,operationsDirectory,origin,tenant,version"].includes(
+    Object.keys(config).sort((left, right) => left.localeCompare(right, "en")).join()) ||
       config.version !== 1 || !validId(config.bot) || !validId(config.tenant) ||
       typeof config.credentialFile !== "string" || !isAbsolute(config.credentialFile) ||
       typeof config.operationsDirectory !== "string" || typeof config.origin !== "string" ||
