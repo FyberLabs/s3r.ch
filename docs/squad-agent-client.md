@@ -34,3 +34,20 @@ Put the approved delegation ID in a separate owner-only JSON file with
 a short-lived bearer. Pipe its output directly to Visor instead of storing
 it in logs. Revoking the delegation stops future exchanges and invalidates
 existing calls that use it.
+
+## Managed project artifacts
+
+To enable the artifact tools, add a `squadArtifacts` object to the existing
+Conductor client configuration. Set `forum`, the absolute `identityFile`
+for the enrolled worker, and the absolute `visorBinary` on the same machine.
+
+Use `resume_squad_project` with the admitted operation ID and its Squad
+task ID. For a handoff, include the exact brief and workbook revision IDs,
+and the preview base revision ID when the worker is updating a one-pager.
+Use `publish_squad_artifact` with the same operation ID and the unsigned
+draft. Visor checks the completed delivery and its original local consent.
+The artifact operation first establishes current native Squad access.
+
+The `resume OPERATION_ID` and `publish OPERATION_ID` CLI modes take the
+checkpoint and artifact JSON respectively on stdin. Keep the same artifact
+and revision IDs when retrying an uncertain publication.
