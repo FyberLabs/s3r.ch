@@ -49,5 +49,8 @@ async function verifyPublicTestFooter(revision) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  await verifyPublicTestFooter(process.argv[2] ?? "");
+  verifyPublicTestFooter(process.argv[2] ?? "").catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
 }
