@@ -8,6 +8,8 @@ export const validSquadOperationId = (value: unknown): value is string =>
   typeof value === "string" && uuid.test(value) && value !== "00000000-0000-0000-0000-000000000000";
 export const squadObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
+export const squadFields = (value: object) =>
+  Object.keys(value).sort((left, right) => left.localeCompare(right, "en")).join();
 
 type RunVisor = (path: string, args: string[], input: string, signal: AbortSignal) => Promise<string>;
 
@@ -39,7 +41,7 @@ const runVisor: RunVisor = (path, args, input, signal) => new Promise((resolve, 
 function resumeArgs(value: unknown) {
   if (!squadObject(value) || !validSquadOperationId(value.taskId)) throw Error("Squad task ID required");
   const base = ["0", value.taskId];
-  const fields = Object.keys(value).sort().join();
+  const fields = squadFields(value);
   if (fields === "taskId") return base;
   if (!["briefRevisionId,taskId,workbookRevisionId", "briefRevisionId,previewBaseRevisionId,taskId,workbookRevisionId"].includes(fields) ||
       !validSquadOperationId(value.briefRevisionId) || !validSquadOperationId(value.workbookRevisionId))
@@ -54,7 +56,7 @@ function resumeArgs(value: unknown) {
 
 export function openSquadArtifactTools(config: unknown, planeTask: (operation: string) => string,
   send: typeof fetch, execute = runVisor) {
-  if (!squadObject(config) || Object.keys(config).sort().join() !== "forum,identityFile,visorBinary" ||
+  if (!squadObject(config) || squadFields(config) !== "forum,identityFile,visorBinary" ||
       typeof config.forum !== "string" || !/^forum_[A-Za-z0-9_-]{1,249}$/.test(config.forum) ||
       typeof config.identityFile !== "string" || !isAbsolute(config.identityFile) ||
       typeof config.visorBinary !== "string" || !isAbsolute(config.visorBinary))
@@ -75,7 +77,7 @@ export function openSquadArtifactTools(config: unknown, planeTask: (operation: s
       return resume(planeTask(operation), resumeArgs(input), deadline(parent));
     },
     async publish(operation: string, artifact: unknown, parent?: AbortSignal) {
-      if (!squadObject(artifact) || Object.keys(artifact).sort().join() !== "draft,kind" ||
+      if (!squadObject(artifact) || squadFields(artifact) !== "draft,kind" ||
           !["brief", "workbook", "preview"].includes(String(artifact.kind)) || !squadObject(artifact.draft) ||
           !validSquadOperationId(artifact.draft.taskId)) throw Error("Unsigned Squad artifact required");
       const raw = JSON.stringify(artifact);

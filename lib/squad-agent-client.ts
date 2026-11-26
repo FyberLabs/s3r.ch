@@ -1,7 +1,7 @@
 import { isAbsolute, join } from "node:path";
 import { readBoundedIdentityJson } from "./identity/bounded-json";
 import { privateBotDirectory, readPrivateBotFile } from "./forum-bot-local-access";
-import { openSquadArtifactTools, SQUAD_ARTIFACT_TOOLS, squadObject as object,
+import { openSquadArtifactTools, SQUAD_ARTIFACT_TOOLS, squadFields, squadObject as object,
   validSquadOperationId as validId, type SquadArtifactTools } from "./squad-agent-artifacts";
 
 const uuidPattern = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
@@ -9,7 +9,7 @@ export function openSquadAgentClient(configPath: string, send: typeof fetch = fe
   if (!isAbsolute(configPath)) throw Error("Private absolute config path required");
   const config: unknown = JSON.parse(readPrivateBotFile(configPath, 8192).toString("utf8"));
   if (!object(config) || !["bot,credentialFile,operationsDirectory,origin,tenant,version",
-    "bot,credentialFile,operationsDirectory,origin,squadArtifacts,tenant,version"].includes(Object.keys(config).sort().join()) ||
+    "bot,credentialFile,operationsDirectory,origin,squadArtifacts,tenant,version"].includes(squadFields(config)) ||
       config.version !== 1 || !validId(config.bot) || !validId(config.tenant) ||
       typeof config.credentialFile !== "string" || !isAbsolute(config.credentialFile) ||
       typeof config.operationsDirectory !== "string" || typeof config.origin !== "string" ||
@@ -85,7 +85,7 @@ type Submit = (id: string, signal?: AbortSignal) => Promise<string>;
 function toolCall(params: unknown, submit: Submit, artifacts?: SquadArtifactTools) {
   if (!object(params) || !object(params.arguments) || !validId(params.arguments.operationId)) return null;
   const { operationId, checkpoint, artifact } = params.arguments;
-  const fields = Object.keys(params.arguments).sort().join();
+  const fields = squadFields(params.arguments);
   if (params.name === tool.name && fields === "operationId") return (signal: AbortSignal) => submit(operationId, signal);
   if (artifacts && params.name === "resume_squad_project" && fields === "checkpoint,operationId")
     return (signal: AbortSignal) => artifacts.resume(operationId, checkpoint, signal);
@@ -94,7 +94,7 @@ function toolCall(params: unknown, submit: Submit, artifacts?: SquadArtifactTool
   return null;
 }
 
-export function createSquadAgentMcp(submit: Submit, artifacts?: SquadArtifactTools) {
+export function createSquadAgentMcp(submit: Submit, artifacts?: SquadArtifactTools, stopped?: AbortSignal) {
   let initialized = false, ready = false;
   const pending = new Map<string | number, AbortController>();
   return async (line: string) => {
@@ -133,7 +133,7 @@ export function createSquadAgentMcp(submit: Submit, artifacts?: SquadArtifactToo
     const controller = new AbortController();
     pending.set(id, controller);
     try {
-      const text = await invoke(controller.signal);
+      const text = await invoke(stopped ? AbortSignal.any([stopped, controller.signal]) : controller.signal);
       return response({ content: [{ type: "text", text }] });
     } catch {
       return response({ isError: true, content: [{ type: "text", text: "Operation unavailable. Check Plane for its status." }] });

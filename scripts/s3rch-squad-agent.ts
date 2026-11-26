@@ -38,8 +38,7 @@ async function main() {
     return;
   }
   const closed = new AbortController();
-  const dispatch = createSquadAgentMcp((id, signal) =>
-    client.submit(id, signal ? AbortSignal.any([signal, closed.signal]) : closed.signal), client.artifacts);
+  const dispatch = createSquadAgentMcp(client.submit, client.artifacts, closed.signal);
   const pending = new Set<Promise<void>>();
   process.stdin.setEncoding("utf8");
   let line = "";
