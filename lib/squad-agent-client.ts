@@ -1,18 +1,15 @@
 import { isAbsolute, join } from "node:path";
 import { readBoundedIdentityJson } from "./identity/bounded-json";
 import { privateBotDirectory, readPrivateBotFile } from "./forum-bot-local-access";
+import { openSquadArtifactTools, SQUAD_ARTIFACT_TOOLS, squadObject as object,
+  validSquadOperationId as validId, type SquadArtifactTools } from "./squad-agent-artifacts";
 
 const uuidPattern = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
-const uuid = new RegExp(uuidPattern);
-const validId = (id: unknown): id is string => typeof id === "string" &&
-  uuid.test(id) && id !== "00000000-0000-0000-0000-000000000000";
-const object = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === "object" && !Array.isArray(value);
-
 export function openSquadAgentClient(configPath: string, send: typeof fetch = fetch) {
   if (!isAbsolute(configPath)) throw Error("Private absolute config path required");
   const config: unknown = JSON.parse(readPrivateBotFile(configPath, 8192).toString("utf8"));
-  if (!object(config) || Object.keys(config).sort((left, right) => left.localeCompare(right, "en")).join() !== "bot,credentialFile,operationsDirectory,origin,tenant,version" ||
+  if (!object(config) || !["bot,credentialFile,operationsDirectory,origin,tenant,version",
+    "bot,credentialFile,operationsDirectory,origin,squadArtifacts,tenant,version"].includes(Object.keys(config).sort().join()) ||
       config.version !== 1 || !validId(config.bot) || !validId(config.tenant) ||
       typeof config.credentialFile !== "string" || !isAbsolute(config.credentialFile) ||
       typeof config.operationsDirectory !== "string" || typeof config.origin !== "string" ||
@@ -24,20 +21,29 @@ export function openSquadAgentClient(configPath: string, send: typeof fetch = fe
   const endpoint = new URL("/v1/remote-agent/prompt-submit", origin);
   let active = false;
 
+  function admittedOperation(operationId: string) {
+    if (!validId(operationId)) throw Error("Operation unavailable");
+    privateBotDirectory(operationsDirectory);
+    const raw = readPrivateBotFile(join(operationsDirectory, operationId + ".json"), 512 * 1024);
+    const operation: unknown = JSON.parse(raw.toString("utf8"));
+    if (!object(operation) || operation.version !== 1 || operation.operation_id !== operationId ||
+        operation.tenant_id !== tenant || operation.bot_id !== bot ||
+        !validId(operation.task_id) || !validId(operation.assignment_id) ||
+        !validId(operation.device_id) || !validId(operation.enrollment_id) || !validId(operation.session_id))
+      throw Error("Operation binding differs");
+    return { raw, task: operation.task_id };
+  }
+  const artifacts = "squadArtifacts" in config
+    ? openSquadArtifactTools(config.squadArtifacts, id => admittedOperation(id).task, send)
+    : undefined;
+
   return Object.freeze({
+    artifacts,
     async submit(operationId: string, externalSignal?: AbortSignal): Promise<string> {
       if (!validId(operationId) || active) throw Error("Operation unavailable");
       active = true;
       try {
-        privateBotDirectory(operationsDirectory);
-        const raw = readPrivateBotFile(join(operationsDirectory, operationId + ".json"), 512 * 1024);
-        const operation: unknown = JSON.parse(raw.toString("utf8"));
-        if (!object(operation) || operation.version !== 1 || operation.operation_id !== operationId ||
-            operation.tenant_id !== tenant || operation.bot_id !== bot ||
-            !validId(operation.task_id) || !validId(operation.assignment_id) ||
-            !validId(operation.device_id) || !validId(operation.enrollment_id) || !validId(operation.session_id)) {
-          throw Error("Operation binding differs");
-        }
+        const { raw } = admittedOperation(operationId);
         const credential = readPrivateBotFile(credentialFile, 128).toString("utf8").trim();
         if (!/^hm_rag_[a-f0-9]{64}$/.test(credential)) throw Error("Enrolled remote credential required");
         const limit = AbortSignal.timeout(310000);
@@ -74,7 +80,21 @@ const tool = {
   },
 };
 
-export function createSquadAgentMcp(submit: (id: string, signal?: AbortSignal) => Promise<string>) {
+type Submit = (id: string, signal?: AbortSignal) => Promise<string>;
+
+function toolCall(params: unknown, submit: Submit, artifacts?: SquadArtifactTools) {
+  if (!object(params) || !object(params.arguments) || !validId(params.arguments.operationId)) return null;
+  const { operationId, checkpoint, artifact } = params.arguments;
+  const fields = Object.keys(params.arguments).sort().join();
+  if (params.name === tool.name && fields === "operationId") return (signal: AbortSignal) => submit(operationId, signal);
+  if (artifacts && params.name === "resume_squad_project" && fields === "checkpoint,operationId")
+    return (signal: AbortSignal) => artifacts.resume(operationId, checkpoint, signal);
+  if (artifacts && params.name === "publish_squad_artifact" && fields === "artifact,operationId")
+    return (signal: AbortSignal) => artifacts.publish(operationId, artifact, signal);
+  return null;
+}
+
+export function createSquadAgentMcp(submit: Submit, artifacts?: SquadArtifactTools) {
   let initialized = false, ready = false;
   const pending = new Map<string | number, AbortController>();
   return async (line: string) => {
@@ -105,17 +125,15 @@ export function createSquadAgentMcp(submit: (id: string, signal?: AbortSignal) =
     }
     if (method === "ping") return response({});
     if (!ready) return error(-32002, "Server not initialized");
-    if (method === "tools/list") return response({ tools: [tool] });
+    if (method === "tools/list") return response({ tools: artifacts ? [tool, ...SQUAD_ARTIFACT_TOOLS] : [tool] });
     if (method !== "tools/call") return error(-32601, "Method unavailable");
-    if (!object(params) || params.name !== tool.name || !object(params.arguments) ||
-        Object.keys(params.arguments).join() !== "operationId" || !validId(params.arguments.operationId)) {
-      return error(-32602, "Invalid tool arguments");
-    }
+    const invoke = toolCall(params, submit, artifacts);
+    if (!invoke) return error(-32602, "Invalid tool arguments");
     if (pending.size) return error(-32000, "Agent is busy");
     const controller = new AbortController();
     pending.set(id, controller);
     try {
-      const text = await submit(params.arguments.operationId, controller.signal);
+      const text = await invoke(controller.signal);
       return response({ content: [{ type: "text", text }] });
     } catch {
       return response({ isError: true, content: [{ type: "text", text: "Operation unavailable. Check Plane for its status." }] });
