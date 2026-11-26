@@ -158,9 +158,10 @@ test("configured MCP keeps a supported large brief in the tool protocol", { time
     params: { protocolVersion: "2025-06-18" } }) + "\n");
   child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   child.stdin.write(request + "\n");
-  let reply: { id: number; result?: { isError?: boolean } } | undefined;
+  type ToolReply = { id: number; result?: { isError?: boolean } };
+  let reply: ToolReply | undefined;
   for await (const line of output) {
-    const message = JSON.parse(line) as NonNullable<typeof reply>;
+    const message = JSON.parse(line) as ToolReply;
     if (message.id === 2) {
       reply = message;
       child.stdin.end();
