@@ -28,6 +28,7 @@ export function GrantedMediaPanel({tenant}: {tenant:string}) {
   return <section aria-label="Granted private media" className="mt-8 space-y-3">
     <h2 className="text-base font-semibold">Private media</h2>
     <p className="text-sm text-ink-muted">Open files shared with your current identity. Access is checked again when you open a file.</p>
+    <IpfsPlaybackEndpoint value={ipfsEndpoint} onChange={setIpfsEndpoint} disabled={state?.busy}/>
     <button type="button" disabled={state?.busy} className={btnSecondary} onClick={()=>void library.current?.loadGranted(0)}>Refresh granted media</button>
     {page && <>
       <p className="text-xs text-ink-muted">Page {page.page+1} of 16.</p>

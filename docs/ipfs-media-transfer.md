@@ -26,7 +26,7 @@ Use the same current callback and abort signal for composition and Kubo client. 
 
 Kubo lifetime and rolling-minute budgets still apply, including failed attempts. Configure adequate explicitly approved budgets for the transfer. If a recording exceeds the remaining rate allowance, it fails without a hidden queue or automatic retry, potentially after partial upload. Account-wide/cross-tab scheduling and persistent restart recovery remain open work. This API does not label data replicated merely because CIDs exist.
 
-Twenty-six focused unit cases use real encryption and cover multi-block round trip, partial provider failure, revocation, tampering/key/binding rejection, malformed grants, cancellation, snapshots and overlapping whole-file operations. PR CI extends the real Chromium distinct-origin Kubo fixture with a two-block composed encrypted upload and authenticated download. The provider remains a protocol substitute; this is not live Kubo/provider qualification, native UI integration or scheduled multi-client acceptance.
+Twenty-six focused unit cases use real encryption and cover multi-block round trip, partial provider failure, revocation, tampering/key/binding rejection, malformed grants, cancellation, snapshots and overlapping whole-file operations. PR CI extends the real Chromium distinct-origin Kubo fixture with a two-block composed encrypted upload and authenticated download. The browser contract uses a protocol substitute. Scheduled multi-client acceptance with a real Kubo provider remains open.
 
 
 ## Explicit prepared upload recovery
