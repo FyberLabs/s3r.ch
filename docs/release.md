@@ -30,7 +30,7 @@ Merge and apply the companion infra change first. It creates the separate test A
 
 The test app has its own credentials and identity storage, and does not inherit production Panopticon API credentials. Optional authenticated Panopticon services require separately scoped test credentials. Test OAuth redirects must be registered in the identity provider. Existing production tenant/configuration remains provisioned independently of releases.
 
-`SOURCE_REVISION` is a Docker build argument baked into `APP_BUILD_REVISION`; it is not a new runtime secret or operator input. `/api/version` exposes only this public commit identifier.
+`SOURCE_REVISION` is a Docker build argument baked into `APP_BUILD_REVISION`. `/api/version` exposes this public commit identifier. The shared footer shows the package version and the first 12 characters of the revision, including in the exported static pages. TEST CI checks that label on the public homepage.
 
 Install guides: [core](install-minimal.md), [optional Panopticon](install-panopticon.md), [configuration](configuration.md).
 

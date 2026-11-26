@@ -1,4 +1,8 @@
+import appPackage from "../package.json";
+import { buildRevision } from "../lib/build-revision";
+
 export function SiteFooter() {
+  const revision = buildRevision();
   return (
     <footer className="mt-20 border-t border-rule py-10 text-center text-sm text-ink-muted">
       <p className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
@@ -23,6 +27,7 @@ export function SiteFooter() {
         <a href="/terms" className="underline hover:text-ink">Terms of Use</a>
         <a href="mailto:legal@s3r.ch" className="underline hover:text-ink">Contact</a>
       </p>
+      <p className="mt-2">Version {appPackage.version}{revision && ` · Build ${revision.slice(0, 12)}`}</p>
     </footer>
   );
 }
