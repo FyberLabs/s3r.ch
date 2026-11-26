@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { seaToPrincipalKey } from "./identity/forum-check";
+import vectors from "./identity/vectors/forums.json";
 import { rawMediaBlockCid } from "./ipfs-media-blocks";
 import { openIpfsRecording, uploadIpfsRecording } from "./ipfs-recording";
 
 const binding = { tenant: "11111111-1111-4111-8111-111111111111",
-  object: "media_p_" + "a".repeat(128) + "_" + "b".repeat(32) };
+  object: "media_" + seaToPrincipalKey(vectors.seaPubkey) + "_" + "b".repeat(32) };
 
 function fixture() {
   const blocks = new Map<string, Uint8Array>();
