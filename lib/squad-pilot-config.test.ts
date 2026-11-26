@@ -101,3 +101,14 @@ test("optional project records use the configured Plane tenant and keep the key 
   assert.ok(!JSON.stringify(browser).includes(project.recordKey));
   assert.ok(!JSON.stringify(browser).includes(project.recordOrigin));
 });
+
+test("project fixture teardown is configured privately and only for TEST", () => {
+  const c = config();
+  const plane = { origin: "https://plane.example.test", tenant: "10000000-0000-4000-8000-000000000001",
+    roster: { "10000000-0000-4000-8000-000000000002": owner } };
+  const project = { recordOrigin: "https://records.example.test", recordKey: "test-record-key", fixtureCleanup: true };
+  assert.throws(() => parseSquadPilotConfig(JSON.stringify({ ...c, plane, project })));
+  const test = parseSquadPilotConfig(JSON.stringify({ ...c, origin: "https://test.s3r.ch", plane, project }));
+  assert.equal(test?.project?.fixtureCleanup, true);
+  assert.ok(!JSON.stringify(publicSquadPilotConfig(test!)).includes("fixtureCleanup"));
+});

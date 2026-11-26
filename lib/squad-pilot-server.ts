@@ -50,7 +50,8 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
     }), tenant, config.squad.forumId)
     : undefined;
   const project = projectStore && config.plane && planeForum
-    ? createSquadProjectService({ ...common, plane: config.plane, dispatch: planeForum, read: source.read, store: projectStore })
+    ? createSquadProjectService({ ...common, plane: config.plane, dispatch: planeForum, read: source.read, store: projectStore,
+      fixtureCleanup: config.project?.fixtureCleanup })
     : undefined;
   const services = Object.freeze({ authenticate,
     ...(planeForum ? { planeForum } : {}),

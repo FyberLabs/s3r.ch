@@ -48,6 +48,7 @@ export function createSquadProjectService(input: {
   authenticateAgent?: (request: Request) => Promise<Agent | null>;
   read(at: number, signal: AbortSignal): Promise<ForumAuthoritySnapshot>;
   clock?: () => number;
+  fixtureCleanup?: true;
 }) {
   const site = new URL(input.origin), { forumId: forum, owner } = input.squad;
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
@@ -78,7 +79,8 @@ export function createSquadProjectService(input: {
     if (!isNative && Object.values(input.plane.roster).includes(principal)) return refuse(403, "access");
     if ((isNative || (action !== "board" && !artifactReadAction(action))) &&
         !graph.checkPost(forum, principal, at).allowed) return refuse(403, "access");
-    if (action === "delegate" && principal !== owner) return refuse(403, "owner-required");
+    if ((action === "delegate" || action === "cleanup-fixture") && principal !== owner)
+      return refuse(403, "owner-required");
     return { principal, graph, at, agent: isNative };
   }
 
@@ -178,6 +180,30 @@ export function createSquadProjectService(input: {
     return reply(200, projectBoard(refreshed.project));
   }
 
+  async function cleanupFixture(body: Record<string, unknown>, request: Request, signal: AbortSignal,
+    current: Awaited<ReturnType<typeof input.store.read>>) {
+    if (!input.fixtureCleanup || site.origin !== "https://test.s3r.ch") return refuse(404, "action");
+    if (!sameFields(body, "action,cursor,forum,nodeId,runId,taskId") || !natural(body.cursor) ||
+        !projectUuid(body.nodeId) || !projectUuid(body.taskId) || body.nodeId === body.taskId ||
+        typeof body.runId !== "string" || !/^[1-9][0-9]{0,19}-[1-9][0-9]{0,19}-gateway-test$/.test(body.runId))
+      return refuse(400, "fixture-fields");
+    if (current.etag === null) return reply(200, { removed: true });
+    const { project } = current;
+    if (project.cursor !== body.cursor) return refuse(409, "revision");
+    const [node] = project.nodes;
+    if (project.nodes.length !== 1 || node.id !== body.nodeId || node.parentId !== null ||
+        node.title !== "Squad CI " + body.runId)
+      return refuse(409, "fixture-ownership");
+    if (project.tasks.length > 1 || project.tasks.some(task => task.id !== body.taskId ||
+        task.nodeId !== node.id || task.owner !== owner || task.label !== "partner-pilot") ||
+        [project.ledger, project.briefs ?? [], project.workbooks ?? [], project.previews ?? []]
+          .some(rows => rows.some(row => row.taskId !== body.taskId)))
+      return refuse(409, "fixture-ownership");
+    await authorize(request, signal, "cleanup-fixture");
+    await input.store.remove(current.etag, signal);
+    return reply(200, { removed: true });
+  }
+
   function resume(body: Record<string, unknown>, project: SquadProject, actor: Actor) {
     const byTask = sameFields(body, "action,forum,since,taskId") && projectUuid(body.taskId);
     const byDelivery = sameFields(body, "action,forum,planeTaskId,since") && projectUuid(body.planeTaskId);
@@ -252,6 +278,7 @@ export function createSquadProjectService(input: {
           canRevise: canReview && (checked.principal === owner || task?.owner === checked.principal) });
       }
       if (action === "delegate") return await delegate(body, request, signal, actor, current);
+      if (action === "cleanup-fixture") return await cleanupFixture(body, request, signal, current);
       if (action === "node") {
         if (!sameFields(body, "action,cursor,forum,id,parentId,title") || !projectUuid(body.id) ||
             (body.parentId !== null && !projectUuid(body.parentId)) || !text(body.title, 120) || !natural(body.cursor))

@@ -68,6 +68,9 @@ export function createSquadProjectStore(records: RecordStore, tenant: string, fo
       }
       return { project, etag: row.revision };
     },
+    async remove(etag: string, signal: AbortSignal) {
+      await records.delete("cache", name, etag, signal);
+    },
     async save(project: SquadProject, etag: string | null, signal: AbortSignal) {
       const bytes = new TextEncoder().encode(JSON.stringify(project));
       if (bytes.byteLength > maxBytes) throw Error("Squad project capacity");

@@ -25,9 +25,9 @@ import { squadProjectDelegationRequest } from "./squad-project-client";
 import { createSquadProjectStore } from "./squad-project";
 import { createSimulatedRecordStore } from "./visor-companion-set-store";
 
-async function fixture(t: test.TestContext) {
+async function fixture(t: test.TestContext, fixtureCleanup?: true) {
   const f = await forumBotFixture(t);
-  const origin = "https://forum.example.test";
+  const origin = fixtureCleanup ? "https://test.s3r.ch" : "https://forum.example.test";
   const plane = { origin: "https://plane.example.test", tenant: f.tenant, roster: {
     [f.botA]: f.a.pub, [f.botB]: f.b.pub,
   } };
@@ -127,7 +127,7 @@ async function fixture(t: test.TestContext) {
       desired: "running", status: isControl && !active ? "completed" : "queued" });
   } });
   const store = createSquadProjectStore(createSimulatedRecordStore(), f.tenant, f.forum);
-  const service = createSquadProjectService({ ...authority, origin, store, dispatch, authenticateAgent: async request => {
+  const service = createSquadProjectService({ ...authority, origin, store, dispatch, fixtureCleanup, authenticateAgent: async request => {
     const token = request.headers.get("authorization")?.slice("Bearer ".length);
     return token ? sessions.authenticateAgent(token, [SQUAD_AGENT_SCOPE]) : null;
   } });
@@ -144,11 +144,12 @@ async function fixture(t: test.TestContext) {
   };
   const intent = (bot: string) => ({ version: 1, bot_id: bot, source_task_id: randomUUID(), assignment_id: randomUUID(),
     session_id: randomUUID(), kind: "remote-agent", request_sha256: "1".repeat(64) });
-  async function project() {
-    const root = randomUUID(), child = randomUUID(), taskId = randomUUID();
-    await ok({ action: "node", id: root, title: "Partner", parentId: null, cursor: 0 });
-    await ok({ action: "node", id: child, title: "Requirements", parentId: root, cursor: 1 });
-    const add = { action: "create-task", id: taskId, nodeId: child, outcome: "Confirm 10 pilot seats", label: "pricing",
+  async function project(runId?: string) {
+    const root = randomUUID(), child = runId ? root : randomUUID(), taskId = randomUUID();
+    await ok({ action: "node", id: root, title: runId ? "Squad CI " + runId : "Partner", parentId: null, cursor: 0 });
+    if (!runId) await ok({ action: "node", id: child, title: "Requirements", parentId: root, cursor: 1 });
+    const add = { action: "create-task", id: taskId, nodeId: child, outcome: "Confirm 10 pilot seats",
+      label: runId ? "partner-pilot" : "pricing",
       issue: "https://github.com/example/work/issues/1", sources: ["https://sources.example.test/notes"] };
     const result = await ok(add);
     assert.equal(result.tasks[0].id, taskId);
@@ -268,8 +269,9 @@ test("refresh after a stale cursor rebuilds the request when no reservation exis
 });
 
 test("delivered agent artifacts stay editable and reviewable by exact revision", async t => {
-  const h = await fixture(t);
-  const { taskId, cursor } = await h.project();
+  const h = await fixture(t, true);
+  const runId = "42-1-gateway-test";
+  const { taskId, cursor, root } = await h.project(runId);
   const intent = h.intent(h.f.botA);
   const assigned = await h.ok({ action: "delegate", cursor, taskId, taskRevision: 0, intent });
   const { planeTaskId } = assigned.ledger[0];
@@ -525,6 +527,30 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
   assert.equal((await h.call(read, "fixture-agent-a", false)).status, 403);
   assert.equal((await h.call(readWorkbook, "fixture-agent-a", false)).status, 403);
   assert.equal((await h.call(readPreview, "fixture-agent-a", false)).status, 403);
+
+  const final = await h.ok({ action: "board" });
+  const cleanup = { action: "cleanup-fixture", runId, cursor: final.cursor, nodeId: root, taskId };
+  assert.equal((await h.call({ ...cleanup, runId: "43-1-gateway-test" })).status, 409);
+  assert.equal((await h.call({ ...cleanup, cursor })).status, 409);
+  assert.equal((await h.call(cleanup, "fixture-agent-b", false)).status, 403);
+  assert.equal((await h.ok(readPreview)).preview.history.length, 2);
+  assert.deepEqual(await h.ok(cleanup), { removed: true });
+  assert.deepEqual(await h.ok(cleanup), { removed: true });
+  const removed = await h.store.read(new AbortController().signal);
+  assert.equal(removed.etag, null);
+  assert.equal(removed.project.cursor, 0);
+});
+
+test("fixture teardown refuses a project with unrelated data and requires explicit TEST setup", async t => {
+  const h = await fixture(t, true);
+  const runId = "42-1-gateway-test";
+  const { root, taskId, cursor } = await h.project(runId);
+  const state = await h.ok({ action: "node", id: randomUUID(), title: "Retained work", parentId: null, cursor });
+  const cleanup = { action: "cleanup-fixture", runId, cursor: state.cursor, nodeId: root, taskId };
+  assert.equal((await h.call(cleanup)).status, 409);
+  assert.deepEqual((await h.ok({ action: "board" })).nodes, state.nodes);
+  const ordinary = await fixture(t);
+  assert.equal((await ordinary.call(cleanup)).status, 404);
 });
 
 const inspectWorkbook = `
