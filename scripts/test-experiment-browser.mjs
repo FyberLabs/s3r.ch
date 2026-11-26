@@ -32,6 +32,8 @@ else {
     });
     async function until(check) { const end = Date.now() + 45000; while (!check()) { if (Date.now() >= end) throw Error("Product observation unavailable"); await page.waitForTimeout(100); } }
     await page.goto(fixture.site_origin);
+    const hero = page.getByTestId("experiment-hero");
+    await hero.getByRole("link", { name: "Join s3r.ch", exact: true }).waitFor();
     await page.getByRole("button", { name: "Allow page experiments and product analytics", exact: true }).click();
     await until(() => evaluations.length && events.some(e => e.event_type === "experiment.exposure.v1"));
     const original = evaluations.at(-1); assert.match(original.cohort, /^[a-f0-9]{64}$/); assert.equal(original.authenticated, false);
@@ -69,6 +71,9 @@ else {
     const count = evaluations.length; await page.goto(fixture.site_origin);
     await until(() => evaluations.length > count && evaluations.at(-1).authenticated === true);
     assert.equal(evaluations.at(-1).cohort, original.cohort); assert.equal(evaluations.at(-1).variant, original.variant);
+    await hero.getByRole("heading", { name: "Welcome back.", exact: true }).waitFor();
+    await hero.getByRole("link", { name: "View your session", exact: true }).waitFor();
+    assert.equal(await hero.getByRole("link", { name: "Join s3r.ch", exact: true }).count(), 0);
     cases.push({ name: "sea-signin-preserves-assignment", status: "passed" });
     await page.getByTestId("experiment-hero").getByRole("link", { name: "Explore the public feed", exact: true }).click();
     await until(() => events.some(e => e.event_type === "experiment.conversion.v2"));
@@ -91,7 +96,7 @@ else {
         assignment: original, latest: () => evaluations.at(-1), now: Date.now,
         offline: value => context.setOffline(value), wait: milliseconds => page.waitForTimeout(milliseconds),
         label: async variant => {
-          await page.getByTestId("experiment-hero").getByRole("heading", { level: 1, name: variant === "create" ? "Create together, with people and AI." : "Where humans and AI create together.", exact: true }).waitFor({ state: "visible", timeout: 5000 });
+          await hero.getByText(variant === "create" ? "Create a post or start a room from the feed." : "Catch up on posts and rooms in the feed.", { exact: true }).waitFor({ state: "visible", timeout: 5000 });
         },
         recover: async before => {
           await until(() => evaluations.at(-1)?.expiresAt > before.expiresAt && evaluations.at(-1)?.cohort === original.cohort);
