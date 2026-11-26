@@ -7,6 +7,7 @@ import { handleSeed as seed } from "../lib/seed-request";
 import { attachGunWeb, snapshotPath } from "../lib/gun-server";
 import { restoreTenantFeedCache } from "../lib/tenant-feed-cache-server";
 import { restorePublicFeed } from "../public-feed-cache.cjs";
+import { publicFeedTelemetry } from "../lib/feed-telemetry";
 import { testOriginAllowed } from "../lib/test-origin-guard";
 
 const snapshot = "public/feed-cache/snapshot.json";
@@ -41,7 +42,15 @@ async function serve(request: IncomingMessage, response: ServerResponse) {
     }
     if (url.pathname === "/api/health") {
       response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-      response.end('{"status":"ok","dependencies":{"gun":{"status":"ok"}}}');
+      if (request.method === "HEAD") {
+        response.end();
+        return;
+      }
+      response.end(JSON.stringify({
+        status: "ok",
+        dependencies: { gun: { status: "ok" } },
+        telemetry: { version: 1, feed: publicFeedTelemetry() },
+      }));
       return;
     }
     if (url.pathname === "/feed-cache/snapshot.json" || url.pathname === "/api/feed") {

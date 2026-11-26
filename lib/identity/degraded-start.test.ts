@@ -246,10 +246,11 @@ describe("identity writes while storage is unavailable", () => {
 describe("health", () => {
   it("returns 200 with per-dependency status while identity storage is down", async () => {
     monitor.setIdentityHealth("unavailable", "s3r.ch: identity blob storage is unreachable");
-    const response = await health();
+    const response = await health(new Request("https://example.invalid/api/health"));
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.status, "ok");
+    assert.equal(body.telemetry, undefined);
     assert.equal(body.dependencies.identity.status, "unavailable");
     assert.equal(body.dependencies.identity.writable, false);
     assert.equal(body.dependencies.gun.status, "external");
