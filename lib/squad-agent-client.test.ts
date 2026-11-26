@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { createSquadAgentMcp, openSquadAgentClient } from "./squad-agent-client";
 import { openSquadArtifactTools } from "./squad-agent-artifacts";
 import { createSeaPair } from "./identity/sea";
@@ -129,4 +133,41 @@ test("managed MCP and CLI reuse the admitted operation and current native Squad 
   revoked = true;
   await assert.rejects(tools.publish(operationId, artifact));
   assert.equal(calls.length, 7);
+});
+
+test("configured MCP keeps a supported large brief in the tool protocol", { timeout: 15000 }, async t => {
+  const dir = mkdtempSync(join(tmpdir(), "squad-mcp-frame-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const config = join(dir, "config.json");
+  writeFileSync(config, JSON.stringify({ version: 1, origin: "https://conductor.fixture.test",
+    tenant: randomUUID(), bot: randomUUID(), operationsDirectory: dir, credentialFile: join(dir, "credential"),
+    squadArtifacts: { forum: "forum_partner_pilot", identityFile: join(dir, "identity"), visorBinary: join(dir, "visor") },
+  }), { mode: 0o600 });
+  const script = fileURLToPath(new URL("../scripts/s3rch-squad-agent.ts", import.meta.url));
+  const child = spawn(process.execPath, ["--import", "tsx", script, config, "mcp"],
+    { stdio: ["pipe", "pipe", "ignore"] });
+  t.after(() => { child.kill(); });
+  const exited = once(child, "close");
+  const output = createInterface({ input: child.stdout });
+  const draft = { taskId: randomUUID(), artifactId: randomUUID(), revisionId: randomUUID(), base: null,
+    markdown: "Partner pilot details. ".repeat(430).trimEnd() };
+  const request = JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call",
+    params: { name: "publish_squad_artifact", arguments: { operationId: randomUUID(), artifact: { kind: "brief", draft } } } });
+  assert.ok(Buffer.byteLength(request) > 8192);
+  child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize",
+    params: { protocolVersion: "2025-06-18" } }) + "\n");
+  child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
+  child.stdin.write(request + "\n");
+  let reply: { id: number; result?: { isError?: boolean } } | undefined;
+  for await (const line of output) {
+    const message = JSON.parse(line) as NonNullable<typeof reply>;
+    if (message.id === 2) {
+      reply = message;
+      child.stdin.end();
+      break;
+    }
+  }
+  assert.deepEqual(await exited, [0, null]);
+  assert.equal(reply?.id, 2);
+  assert.equal(reply?.result?.isError, true, "the missing admitted operation is refused at tool dispatch");
 });
