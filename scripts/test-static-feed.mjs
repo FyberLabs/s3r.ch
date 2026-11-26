@@ -13,6 +13,7 @@ const root = await mkdtemp(path.join(tmpdir(), "s3rch-static-feed-"));
 const port = process.env.STATIC_FEED_TEST_PORT || "3927";
 const origin = "http://127.0.0.1:" + port;
 const body = "A cached public feed row";
+const liveBody = "A delayed revision from the mesh";
 let server;
 let browser;
 try {
@@ -45,9 +46,24 @@ try {
   }
   browser = await chromium.launch();
   const page = await browser.newPage();
-  // This test covers opt-in and cleanup; the peer restart test exercises Gun.
+  // Identity and Gun are controlled fixture endpoints for this browser check.
+  const feedRows = page.locator("[data-feed-item]");
+  let signedIn = false;
+  await page.route("**/api/identity/session", route => signedIn
+    ? route.fulfill({ json: {
+      address: "0x0000000000000000000000000000000000000735", chainId: 1,
+      owner: "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+    } })
+    : route.fulfill({ status: 401, json: {} }));
+  await page.route("**/api/identity/logout", route => {
+    signedIn = false;
+    return route.fulfill({ json: {} });
+  });
+  await page.route("**/api/turn/allocate", route => route.fulfill({ status: 401, json: {} }));
   const requests = [];
   const sockets = [];
+  let subscribed;
+  const subscription = new Promise(resolve => { subscribed = resolve; });
   let connectSocket, closeSocket;
   const connected = new Promise(resolve => { connectSocket = resolve; });
   const closed = new Promise(resolve => { closeSocket = resolve; });
@@ -55,12 +71,21 @@ try {
     sockets.push(socket);
     socket.onClose(closeSocket);
     connectSocket();
+    if (sockets.length === 2) {
+      socket.onMessage(message => {
+        if (typeof message === "string" && message.includes('"get"') && message.includes('"s3rch"')) {
+          subscribed(socket);
+        }
+      });
+    }
   });
   page.on("request", req => requests.push(new URL(req.url()).pathname));
   const snapshot = page.waitForResponse(res => res.url() === origin + "/feed-cache/snapshot.json");
   await page.goto(origin + "/feed");
   assert.match((await snapshot).headers()["cache-control"], /public.*max-age=[1-9]/);
   await page.getByText(body, { exact: true }).waitFor();
+  const anonymousRows = await feedRows.allTextContents();
+  assert.equal(anonymousRows.length, 1);
   await page.getByRole("button", { name: /cached/i }).click();
   assert.equal(new URL(page.url()).searchParams.get("tag"), "cached");
   // Longer than two of the former four-second session polling intervals.
@@ -80,9 +105,48 @@ try {
   assert.equal(sockets.length, 1);
   assert.deepEqual(requests.slice(returned).filter(url => url.startsWith("/api/")), []);
   assert.equal(requests.includes("/api/turn/allocate"), false);
+  signedIn = true;
   const accountRequest = page.waitForRequest(request => new URL(request.url()).pathname === "/api/identity/session");
   await page.getByRole("button", { name: "Account and posting", exact: true }).click();
   await accountRequest;
+  const signOut = page.getByRole("button", { name: "Sign out", exact: true });
+  await signOut.waitFor();
+  await page.getByText(body, { exact: true }).waitFor();
+  assert.deepEqual(await feedRows.allTextContents(), anonymousRows);
+
+  const privateBody = "A post visible only in Mine";
+  await page.getByLabel("Body", { exact: true }).fill(privateBody);
+  await page.getByRole("button", { name: "Post to Mine", exact: true }).click();
+  await page.getByText("Saved.", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Mine", exact: true }).click();
+  await page.getByText(privateBody, { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Network", exact: true }).click();
+
+  const socket = await Promise.race([
+    subscription, delay(10000).then(() => { throw Error("Gun did not subscribe"); }),
+  ]);
+  const state = Date.now() - 1000;
+  const graphNode = (soul, fields) => ({
+    _: { "#": soul, ">": Object.fromEntries(Object.keys(fields).map(key => [key, state])) },
+    ...fields,
+  });
+  socket.send(JSON.stringify({ "#": "public-feed-parity", put: {
+    s3rch: graphNode("s3rch", { items: { "#": "fixture/items" } }),
+    "fixture/items": graphNode("fixture/items", { cached: { "#": "fixture/items/cached" } }),
+    "fixture/items/cached": graphNode("fixture/items/cached", {
+      id: "rss:cached", source: "rss", kind: "post", author: "Reader", body: liveBody,
+      ts: 1, tags: "cached", provenance: "RSS", permalink: "https://example.org/post",
+    }),
+  } }));
+  await page.getByText(liveBody, { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Public", exact: true }).click();
+  assert.deepEqual(await feedRows.allTextContents(), anonymousRows);
+  assert.equal(requests.filter(url => url === "/feed-cache/snapshot.json").length, 1);
+  await signOut.click();
+  await signOut.waitFor({ state: "hidden" });
+  await page.getByText(body, { exact: true }).waitFor();
+  assert.deepEqual(await feedRows.allTextContents(), anonymousRows);
+
   const forumReads = () => requests.filter(url => url === "/api/forum").length;
   await page.route("**/api/forum", route => route.fulfill({ status: 401, json: {} }));
   await page.goto(origin + "/forum");
@@ -92,7 +156,7 @@ try {
   await delay(8500);
   assert.equal(forumReads(), reads);
   assert.equal(requests.filter(url => url === "/api/identity/session").length, identityReads);
-  console.log("Signed-out public browsing, live opt-in, and disconnect passed.");
+  console.log("Public snapshot parity across account changes and delayed mesh traffic passed.");
 } finally {
   await browser?.close();
   if (server && server.exitCode === null && server.signalCode === null) {
