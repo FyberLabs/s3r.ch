@@ -41,7 +41,12 @@ test("footer identifies the running package and ignores malformed build revision
   assert.equal(assertReleaseFooter(html, packageVersion, revision),
     `Version ${packageVersion} · Build ${revision.slice(0, 12)}`);
   assert.throws(() => assertReleaseFooter(html, packageVersion, "f".repeat(40)));
-  assert.throws(() => assertReleaseFooter(`<script>${html}</script>`, packageVersion, revision));
+  for (const hidden of [`<script>${html}</script >`, `<!--${html}-->`, `<template>${html}</template>`]) {
+    assert.throws(() => assertReleaseFooter(hidden, packageVersion, revision));
+  }
+  const streamed = html.replace("Version ", "Version <!-- -->");
+  assert.equal(assertReleaseFooter(streamed, packageVersion, revision),
+    `Version ${packageVersion} · Build ${revision.slice(0, 12)}`);
 
   process.env.APP_BUILD_REVISION = "invalid";
   const local = renderToStaticMarkup(createElement(SiteFooter));

@@ -12,14 +12,57 @@ function releaseLabel(version, revision) {
   return `Version ${version} · Build ${revision.slice(0, 12)}`;
 }
 
+function* footerParagraphs(html) {
+  const tags = /<!--|<(\/?)([a-z][a-z0-9:-]*)(?=[\s/>])(?:[^<>"']|"[^"]*"|'[^']*')*>/gi;
+  const rawEnds = new Map([
+    ["script", /<\/script(?=[\s/>])[^>]*>/gi],
+    ["style", /<\/style(?=[\s/>])[^>]*>/gi],
+    ["textarea", /<\/textarea(?=[\s/>])[^>]*>/gi],
+    ["title", /<\/title(?=[\s/>])[^>]*>/gi],
+  ]);
+  let offset = 0;
+  let inFooter = false;
+  let templateDepth = 0;
+  let paragraph = null;
+
+  for (let token; (token = tags.exec(html)); offset = tags.lastIndex) {
+    if (paragraph !== null && templateDepth === 0) paragraph += html.slice(offset, token.index);
+    const [markup, closing, name] = token;
+    if (markup === "<!--") {
+      const end = html.indexOf("-->", tags.lastIndex);
+      if (end === -1) return;
+      tags.lastIndex = end + 3;
+      continue;
+    }
+
+    const tag = name.toLowerCase();
+    const endTag = closing ? undefined : rawEnds.get(tag);
+    if (endTag) {
+      endTag.lastIndex = tags.lastIndex;
+      if (!endTag.exec(html)) return;
+      tags.lastIndex = endTag.lastIndex;
+      continue;
+    }
+    if (tag === "template") {
+      templateDepth = Math.max(0, templateDepth + (closing ? -1 : 1));
+      continue;
+    }
+    if (templateDepth > 0) continue;
+
+    if (tag === "footer") {
+      inFooter = !closing;
+      paragraph = null;
+    } else if (tag === "p" && inFooter) {
+      if (closing && paragraph !== null) yield paragraph.trim();
+      paragraph = closing ? null : "";
+    }
+  }
+}
+
 export function assertReleaseFooter(html, version, revision) {
   const expected = releaseLabel(version, revision);
-  const markup = html.replace(/<!--[^]*?-->|<script\b[^>]*>[^]*?<\/script>/gi, "");
-  const footers = markup.matchAll(/<footer\b[^>]*>([^]*?)<\/footer>/gi);
-  for (const [, footer] of footers) {
-    for (const [, paragraph] of footer.matchAll(/<p\b[^>]*>([^<]*)<\/p>/gi)) {
-      if (paragraph.trim() === expected) return expected;
-    }
+  for (const paragraph of footerParagraphs(html)) {
+    if (paragraph === expected) return expected;
   }
   assert.fail(`The footer did not render ${expected}.`);
 }
