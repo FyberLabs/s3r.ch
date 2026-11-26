@@ -1,4 +1,4 @@
-import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
+import { roomAuthorityDiagnosticsBlock, roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { configuredAclStatementSource, StatementSourceConflict } from "./acl-statement-source-server";
 import type { BotStatementSource, PlaneForumUpdateAuthority } from "./forum-bot-statement-admission";
 import { configuredIdentityReplay, type IdentityReplay } from "./identity/spanopticon-replay-server";
@@ -18,6 +18,7 @@ import { createIdentityTokenVerifier } from "./identity/sea-session-verifier";
 import { readSeaSessionCookie } from "./identity/sea-session-http";
 import { identitySessionNamespace } from "./identity/replay-namespace";
 import type { VisorCompanionSetStore } from "./visor-companion-set-store";
+import { createRoomMeetingSignaling } from "./room-meeting-signaling-server";
 import { configuredVisorCompanionSetStore } from "./visor-companion-set-store";
 import { createVisorCompanionSquadService } from "./visor-companion-squad-service";
 export { identitySessionNamespace } from "./identity/replay-namespace";
@@ -57,7 +58,48 @@ export function createSquadPilotServer(c: SquadPilotConfig, statements: BotState
     ? createSquadProjectService({ ...common, plane: config.plane, dispatch: planeForum, read: source.read, store: projectStore,
       fixtureCleanup: config.project?.fixtureCleanup })
     : undefined;
+  const meeting = config.meetingSignaling && tenant
+    ? createRoomMeetingSignaling({
+      origin: config.origin,
+      tenant,
+      async verify(token) {
+        const proof = await verifier.claims(token, "s3rch-identity-session-v1", 300);
+        return { ...proof, expiresAt: proof.expiresAt * 1000 };
+      },
+      async authority(room, signal) {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const at = clock();
+          let snapshot;
+          try { snapshot = await source.read(at, signal); }
+          catch (error) {
+            if (error instanceof StatementSourceConflict && clock() > at) continue;
+            throw error;
+          }
+          const authority = createForumAuthority(config.authority, clock);
+          const verified = await authority.refresh(snapshot, at);
+          signal.throwIfAborted();
+          if (clock() > at) continue;
+          const { graph } = authority;
+          if (clock() !== at || !verified.ok || graph.ownerOf(config.squad.forumId) !== config.squad.owner ||
+              roomAuthorityDiagnosticsBlock(verified.diagnostics, snapshot, graph, room)) break;
+          return {
+            current: () => clock() === at && !signal.aborted,
+            principal(key) {
+              const principal = graph.principalForKey(key, at);
+              return principal && graph.writerKey(principal, at, at) === key ? principal : null;
+            },
+            mayJoin(principal) {
+              return graph.checkForumSee(config.squad.forumId, principal, at).allowed &&
+                graph.checkForumSee(room, principal, at).allowed;
+            },
+          };
+        }
+        throw Error("Meeting room authority unavailable");
+      },
+    })
+    : undefined;
   const services = Object.freeze({ authenticate,
+    ...(meeting ? { meeting } : {}),
     ...(planeForum ? { planeForum } : {}),
     ...(project ? { project } : {}),
     authority: createForumAuthorityService({ ...common, read: source.read }),

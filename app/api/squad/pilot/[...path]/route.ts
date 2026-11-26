@@ -46,6 +46,7 @@ async function nativePOST(request: Request, context: { params: Promise<{ path: s
     }
     if (path.length === 1 && path[0] === "statement") return pilot.services.statements ? pilot.services.statements(request) : reply(503);
     if (path.length === 1 && path[0] === "room") return pilot.services.rooms(request);
+    if (path.length === 1 && path[0] === "meeting") return pilot.services.meeting?.(request) ?? reply(404);
     if (path.length === 1 && path[0] === "authority") return pilot.services.authority(request);
     if (path.length === 1 && path[0] === "visor-companion") {
       return pilot.services.visorCompanion ? pilot.services.visorCompanion(request) : reply(503);
