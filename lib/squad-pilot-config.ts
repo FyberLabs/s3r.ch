@@ -9,7 +9,7 @@ export type SquadPilotConfig = Readonly<{
   version: 1; origin: string; squad: LiveSquadSpec; authority: ForumAuthorityConfig;
   reportParents?: ReportParents;
   plane?: SquadPlaneConfig;
-  project?: Readonly<{ recordOrigin: string; recordKey: string; fixtureCleanup?: true }>;
+  project?: Readonly<{ recordOrigin: string; recordKey?: string; fixtureCleanup?: true }>;
 }>;
 const exact = (x: unknown, keys: string): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).sort().join() === keys;
 const strings = (x: unknown): x is string[] => Array.isArray(x) && x.length <= 32 && x.every(s => typeof s === "string" && s.length > 0 && s.length <= 2048) && new Set(x).size === x.length;
@@ -46,12 +46,14 @@ function parse(raw: string | undefined): SquadPilotConfig | null {
       !strings(row.authority.pinnedIssuers) || !Array.isArray(row.authority.keys) || row.authority.keys.length < 1 || row.authority.keys.length > 16) throw Error("invalid Squad pilot configuration");
   if ("project" in row) {
     const project = row.project;
-    const fixture = exact(project, "fixtureCleanup,recordKey,recordOrigin") &&
+    const fixture = (exact(project, "fixtureCleanup,recordOrigin") ||
+      exact(project, "fixtureCleanup,recordKey,recordOrigin")) &&
       project.fixtureCleanup === true && row.origin === "https://test.s3r.ch";
     if (!("plane" in row) || (!fixture && !exact(project, "recordKey,recordOrigin")) ||
         typeof project.recordOrigin !== "string" || !project.recordOrigin.startsWith("https://") ||
         new URL(project.recordOrigin).origin !== project.recordOrigin || new URL(project.recordOrigin).port ||
-        typeof project.recordKey !== "string" || !/^[\x21-\x7e]{1,4096}$/.test(project.recordKey))
+        ("recordKey" in project && (typeof project.recordKey !== "string" ||
+          !/^[\x21-\x7e]{1,4096}$/.test(project.recordKey))))
       throw Error("invalid Squad project configuration");
   }
   const keys = new Set<string>(), material = new Set<string>();

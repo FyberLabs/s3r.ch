@@ -88,7 +88,7 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `S3RCH_SQUAD_PILOT` | Empty (disabled) | Key Vault-backed JSON scope and verification policy for the configured Squad. Contains a fixed HTTPS origin, forum/owner and explicit witness policy; it contains no owner signing key. Requires the ACL statement source and separate Spanopticon identity replay settings below. Missing configuration fails closed. The shared site issuer reads `IDENTITY_SESSION_SECRET`. The optional `project` object enables the Squad mind map and tasks. It requires a Plane binding and contains the existing private tenant record service HTTPS `recordOrigin` and an authorized `recordKey` for the project records in the same tenant. |
+| `S3RCH_SQUAD_PILOT` | Empty (disabled) | Key Vault-backed JSON scope and verification policy for the configured Squad. Contains a fixed HTTPS origin, forum/owner and explicit witness policy; it contains no owner signing key. Requires the ACL statement source and separate Spanopticon identity replay settings below. Missing configuration fails closed. The shared site issuer reads `IDENTITY_SESSION_SECRET`. The optional `project` object enables the Squad mind map and tasks. It requires a Plane binding and contains the existing private tenant record service HTTPS `recordOrigin` and an authorized `recordKey` for the project records in the same tenant. A TEST project with `fixtureCleanup: true` can instead use the hosted record credential below. |
 | `S3RCH_SQUAD_BLOB_ACCOUNT` | Ignored | Retired from application runtime. Existing configuration cannot select a Blob authority backend. |
 | `S3RCH_SQUAD_BLOB_CONTAINER` | Ignored | Retired from application runtime. The old synthetic fixture remains confined to CI/operator tooling. |
 
@@ -265,6 +265,7 @@ owner does not lend its object grants to the bot. A token alone is not an object
 | `S3RCH_AGENT_SESSION_CONFIG` | Unset (disabled) | Private JSON with exact `origin`, `source` (`origin`, `tenant`, `scope`) and `authority` (`jwks`, `policy`, `pinnedIss`) fields. `policy` contains `allowedDomains`, `allowedUris`, `allowedChainIds`, and explicit `clockSkewSeconds` (0–300). Witness keys are independently trusted configuration; source responses cannot install them. |
 | `S3RCH_DELEGATION_SOURCE_API_KEY` | Unset | Dedicated service key with `acl:delegations:read` and the operator-bound tenant/subject/scope. It is never sent to the client. |
 | `S3RCH_SQUAD_DELEGATION_WRITE_API_KEY` | Unset | Separate server credential with `acl:delegations:write` for the same delegation journal scope and tenant as the native reader. Enables signed-in Squad owner enrollment for the configured Plane roster. |
+| `S3RCH_SQUAD_PROJECT_RECORD_API_KEY` | Unset | Server-only record credential for the isolated TEST Squad project. The project origin must match the existing TEST ACL statement-source origin. Infra supplies the named Key Vault reference. |
 
 The origin must match the configured s3r.ch deployment. The delegation source and
 existing Spanopticon identity replay settings must name the same tenant. The

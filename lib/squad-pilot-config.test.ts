@@ -112,3 +112,26 @@ test("project fixture teardown is configured privately and only for TEST", () =>
   assert.equal(test?.project?.fixtureCleanup, true);
   assert.ok(!JSON.stringify(publicSquadPilotConfig(test!)).includes("fixtureCleanup"));
 });
+
+test("a TEST fixture can use the hosted record credential for its exact storage origin", async () => {
+  const { createSquadPilotServer } = await import("./squad-pilot-server");
+  const origin = "https://api.test.hyperme.sh", c = config();
+  const plane = { origin, tenant: "10000000-0000-4000-8000-000000000001",
+    roster: { "10000000-0000-4000-8000-000000000002": owner } };
+  const project = { recordOrigin: origin, fixtureCleanup: true };
+  assert.throws(() => parseSquadPilotConfig(JSON.stringify({ ...c, plane, project })));
+  const pilot = parseSquadPilotConfig(JSON.stringify({ ...c, plane, project, origin: "https://test.s3r.ch" }));
+  assert.ok(pilot);
+  const statementSource = {
+    read: async (at: number) => ({ snapshot: { rows: [], completeThrough: at,
+      history: { accounts: [], links: [], completeThrough: at } }, fence: "fixture" }),
+    append: async () => false,
+  };
+  const replay = { challengeDomain: "c".repeat(64), consume: async () => false };
+  const configured = (fixture?: { origin: string; apiKey: string }) => createSquadPilotServer(
+    pilot, statementSource, replay, () => 100, "secret-fixture".repeat(4), undefined, plane.tenant, undefined, fixture);
+  assert.throws(() => configured(), /Scoped Squad project record credential required/);
+  assert.throws(() => configured({ origin: "https://foreign.example.test", apiKey: "fixture-credential" }),
+    /Scoped Squad project record credential required/);
+  assert.ok(configured({ origin, apiKey: "fixture-credential" }).services.project);
+});
