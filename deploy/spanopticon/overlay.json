@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "tenant_version": "0.1.0",
   "product": "s3r.ch",
   "plane_overlay": "s3rch",
   "display_name": "s3r.ch",
