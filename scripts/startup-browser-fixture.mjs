@@ -9,10 +9,20 @@ const hash = value => typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
 function origin(value) { const url = new URL(value); return url.protocol === "https:" && url.origin === value; }
 const text = value => typeof value === "string" && value.length > 0 && value.length <= 2048;
 export function scheduledStartupBrowser(env) {
-  return env.GITHUB_ACTIONS === "true" && env.GITHUB_EVENT_NAME === "schedule" &&
-    env.GITHUB_WORKFLOW_REF === "FyberLabs/infra/.github/workflows/nightly-integration.yml@refs/heads/main" &&
-    env.NIGHTLY_SUITE === "startup-linked-browser" &&
-    env.GITHUB_REPOSITORY === "FyberLabs/s3r.ch" && env.GITHUB_REF === "refs/heads/master";
+  if (env.GITHUB_ACTIONS !== "true" || env.NIGHTLY_SUITE !== "startup-linked-browser" ||
+      env.GITHUB_REPOSITORY !== "FyberLabs/s3r.ch" || env.GITHUB_REF !== "refs/heads/master") return false;
+  if (env.GITHUB_EVENT_NAME === "schedule") {
+    return env.GITHUB_WORKFLOW_REF === "FyberLabs/infra/.github/workflows/nightly-integration.yml@refs/heads/main";
+  }
+  return env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
+    env.GITHUB_WORKFLOW_REF === "FyberLabs/infra/.github/workflows/external-scheduled.yml@refs/heads/main" &&
+    env.GITHUB_RUN_ATTEMPT === "1" &&
+    env.CI_SCHEDULER_ENABLED === "true" &&
+    env.CI_SCHEDULER_LANE === "nightly-shared-test" &&
+    /^nightly-shared-test-[0-9]{8}T0527Z$/.test(env.CI_SCHEDULER_OCCURRENCE ?? "") &&
+    /^[1-9][0-9]*$/.test(env.CI_SCHEDULER_ACTOR_ID ?? "") &&
+    env.GITHUB_ACTOR_ID === env.CI_SCHEDULER_ACTOR_ID &&
+    Boolean(env.GITHUB_ACTOR) && env.GITHUB_ACTOR === env.GITHUB_TRIGGERING_ACTOR;
 }
 
 export const nightlyLoginDriver = "startup-nightly-oidc-v1";
