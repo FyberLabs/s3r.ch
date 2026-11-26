@@ -43,9 +43,9 @@ test("the signed-in Squad owner grants and revokes native access through the del
   }
   const ownerCookie = await cookie(f.owner);
   let conflict = false;
-  const service = createSquadAgentEnrollmentService({
+  const makeService = (roster: Record<string, string>) => createSquadAgentEnrollmentService({
     pilot: { version: 1, origin, squad: { forumId: f.forum, label: "Partner pilot", owner: f.owner.pub }, authority,
-      plane: { origin: "https://plane.example.test", tenant: f.tenant, roster: { [f.botA]: f.a.pub } } },
+      plane: { origin: "https://plane.example.test", tenant: f.tenant, roster } },
     clock: f.now,
     authenticate: request => sessions.authenticate(readSeaSessionCookie(request) ?? ""),
     read: async at => ({ completeThrough: at, rows: f.rows, history: { completeThrough: at, links: [],
@@ -61,6 +61,7 @@ test("the signed-in Squad owner grants and revokes native access through the del
       },
     },
   });
+  let service = makeService({ [f.botA]: f.a.pub });
   const call = (body: object, viewer = ownerCookie, site = origin) => service(new Request(origin + "/api/squad/pilot/enrollment", {
     method: "POST", headers: { "Content-Type": "application/json", Origin: site, Cookie: viewer },
     body: JSON.stringify({ forum: f.forum, ...body }),
@@ -106,7 +107,11 @@ test("the signed-in Squad owner grants and revokes native access through the del
   const token = await identity.session();
   assert.equal((await sessions.authenticateAgent(token, [SQUAD_AGENT_SCOPE]))?.agent, f.a.pub);
   f.tick();
-  const revoke = { action: "revoke", record: revokeSquadAgent(f.owner, await list(), id) };
+  service = makeService({});
+  const removed = await list();
+  assert.deepEqual(removed.agents, []);
+  assert.equal(removed.grants[0].id, id);
+  const revoke = { action: "revoke", record: revokeSquadAgent(f.owner, removed, id) };
   assert.equal((await call(revoke)).status, 200);
   assert.deepEqual(await (await call(revoke)).json(), { id });
   assert.equal((await list()).grants[0].status, "revoked");

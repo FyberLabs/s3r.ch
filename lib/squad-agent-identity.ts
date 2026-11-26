@@ -17,7 +17,7 @@ export async function generateSquadAgentKey(path: string) {
 export function openSquadAgentIdentity(path: string, send: typeof fetch = fetch) {
   privateBotDirectory(dirname(path));
   const config = JSON.parse(readPrivateBotFile(path, 4096).toString("utf8"));
-  if (!config || Object.keys(config).sort().join() !== "delegationId,origin,pairFile,version" ||
+  if (!config || Object.keys(config).sort((left, right) => left.localeCompare(right, "en")).join() !== "delegationId,origin,pairFile,version" ||
       config.version !== 1 || typeof config.delegationId !== "string" || !/^[a-f0-9]{64}$/.test(config.delegationId) ||
       typeof config.origin !== "string" || !config.origin.startsWith("https://") || new URL(config.origin).origin !== config.origin ||
       typeof config.pairFile !== "string" || !isAbsolute(config.pairFile))

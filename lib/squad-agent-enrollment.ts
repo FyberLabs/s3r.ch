@@ -14,6 +14,7 @@ export type SquadAgentGrant = {
 export type SquadAgentEnrollment = {
   owner: string;
   evaluatedAt: number;
+  noncePrefix: string;
   agents: string[];
   grants: SquadAgentGrant[];
 };
@@ -31,8 +32,10 @@ function signature(pair: SeaPair, bytes: Uint8Array) {
 
 export function approveSquadAgent(pair: SeaPair, state: SquadAgentEnrollment, origin: string, agentKey: string) {
   const principal = parsePrincipalId(state.owner), agent = parsePrincipalId(agentKey);
-  if (!principal.ok || !agent.ok || !state.agents.includes(agent.value)) throw Error("Choose a Squad agent");
-  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, "0")).join("");
+  if (!principal.ok || !agent.ok || !state.agents.includes(agent.value) || !/^[a-f0-9]{32}$/.test(state.noncePrefix))
+    throw Error("Choose a Squad agent");
+  const entropy = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join("");
+  const nonce = state.noncePrefix + entropy;
   const record = { v: 1 as const, principal: principal.value, agent: agent.value, audience: origin,
     scopes: [SQUAD_AGENT_SCOPE], nonce, issuedAt: state.evaluatedAt, expiresAt: state.evaluatedAt + SQUAD_AGENT_GRANT_SECONDS };
   return { ...record, sig: signature(pair, agentDelegationBytes(record)) };

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { parseAgentDelegation, parseAgentRevocation } from "sociacl-ids";
 import { createAclGraphSource, StatementSourceConflict, type ProtectedGraphSnapshot } from "./acl-graph-source-server";
 import { agentSessionConfig } from "./identity/agent-session-config";
@@ -15,9 +16,10 @@ type Journal = Pick<ReturnType<typeof createAclGraphSource>, "read" | "append">;
 type Authenticator = (request: Request) => Promise<{ key: string } | null>;
 type ForumReader = (at: number, signal: AbortSignal) => Promise<ForumAuthoritySnapshot>;
 const exact = (row: unknown, keys: string): row is Record<string, unknown> =>
-  !!row && typeof row === "object" && !Array.isArray(row) && Object.keys(row).sort().join() === keys;
+  !!row && typeof row === "object" && !Array.isArray(row) &&
+  Object.keys(row).sort((left, right) => left.localeCompare(right, "en")).join() === keys;
 
-function rosteredGrants(snapshot: ProtectedGraphSnapshot, owner: string, origin: string, roster: ReadonlySet<string>, at: number) {
+function squadGrants(snapshot: ProtectedGraphSnapshot, owner: string, origin: string, noncePrefix: string, at: number) {
   if (snapshot.audience !== origin) throw Error("Wrong delegation audience");
   const grants: SquadAgentGrant[] = [];
   const cancelled = new Set<string>();
@@ -32,7 +34,7 @@ function rosteredGrants(snapshot: ProtectedGraphSnapshot, owner: string, origin:
     const parsed = row.kind === "delegation" && parseAgentDelegation(row.record);
     if (!parsed || !parsed.ok) throw Error("Invalid delegation");
     const { id, delegation } = parsed.value;
-    if (delegation.principal !== owner || delegation.audience !== origin || !roster.has(delegation.agent) ||
+    if (delegation.principal !== owner || delegation.audience !== origin || !delegation.nonce.startsWith(noncePrefix) ||
         delegation.scopes.length !== 1 || delegation.scopes[0] !== SQUAD_AGENT_SCOPE) continue;
     grants.push({ id, agent: delegation.agent, expiresAt: delegation.expiresAt,
       status: delegation.expiresAt > at ? "active" : "expired" });
@@ -50,6 +52,9 @@ export function createSquadAgentEnrollmentService(input: {
   const { pilot, journal, authenticate, read } = input;
   const { forumId, owner } = pilot.squad;
   const origin = new URL(pilot.origin);
+  // The owner signs this nonce as part of the existing delegation format.
+  // It identifies the Squad's approvals even when the current roster changes.
+  const noncePrefix = createHash("sha256").update(JSON.stringify(["s3rch-squad-enrollment-v1", forumId])).digest("hex").slice(0, 32);
   const roster = new Set(Object.values(pilot.plane?.roster ?? {}).filter(key => key !== owner && !isPublicSquadPrincipal(key)));
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   const reply = (status: number, body: object) => Response.json(body, { status, headers: {
@@ -83,15 +88,16 @@ export function createSquadAgentEnrollmentService(input: {
       const agents = [...roster].filter(key => authority.graph.checkForumSee(forumId, key, at).allowed &&
         authority.graph.checkPost(forumId, key, at).allowed);
       const current = await journal.read(at, signal);
-      const grants = rosteredGrants(current.snapshot, owner, origin.origin, roster, at);
+      const grants = squadGrants(current.snapshot, owner, origin.origin, noncePrefix, at);
       const guard = () => { signal.throwIfAborted(); if (clock() !== at) throw new StatementSourceConflict(); };
       guard();
-      if (list) return reply(200, { owner, evaluatedAt: at, agents, grants });
+      if (list) return reply(200, { owner, evaluatedAt: at, noncePrefix, agents, grants });
       if (body.action === "approve") {
         const signed = parseAgentDelegation(body.record);
         if (!signed.ok) return reply(400, { error: "delegation" });
         const { delegation, bytes, id } = signed.value;
         if (delegation.principal !== owner || !agents.includes(delegation.agent) || delegation.audience !== origin.origin ||
+            !delegation.nonce.startsWith(noncePrefix) ||
             delegation.scopes.length !== 1 || delegation.scopes[0] !== SQUAD_AGENT_SCOPE ||
             !verifyForumKeySignature(session.key, delegation.sig, bytes)) return reply(403, { error: "delegation" });
         if (grants.some(row => row.id === id)) return reply(200, { id });
