@@ -1,6 +1,22 @@
 # Encrypted IPFS media transfer composition (#570)
 
-`createIpfsMediaTransfer({blocks, current, signal})` connects `sealMedia`, raw block manifests, the existing Kubo client, complete-block verification and `openMedia`. This is an unmounted browser API. The caller must obtain provider selection, explicit consent, and authenticated current private grants from their existing owners. It does not create or distribute grants, authenticate users, register reader cases, pin data or provide a cloud fallback.
+## Record and play a private IPFS recording
+
+On the recording page, select direct IPFS transfer and enter the approved
+HTTPS block endpoint. The first recorder path accepts up to 7 MiB, so the
+encrypted blocks fit a finite per-minute allowance. Only the encrypted
+manifest and key descriptor use the existing private upload and grant flow.
+s3r.ch retains the encrypted descriptor for sharing. The browser sends the
+recording payload straight to the chosen endpoint.
+
+An owner or explicitly granted reader enters their own trusted endpoint in the
+private media panel before opening the recording. The browser checks the file
+grant before contacting the endpoint, before each IPFS block request, and
+before showing plaintext. Endpoint selection stays in the tab. It never
+comes from the recording descriptor. Provider availability and retention
+depend on the chosen endpoint.
+
+`createIpfsMediaTransfer({blocks, current, signal})` connects `sealMedia`, raw block manifests, the existing Kubo client, complete-block verification and `openMedia`. The recording draft and private reader use this browser API after explicit endpoint selection and authenticated private access. It does not create or distribute grants, authenticate users, register reader cases, pin data or provide a cloud fallback.
 
 `upload(plaintext, binding)` encrypts locally with a fresh key, uploads ordered ciphertext blocks, verifies each returned CID and returns `{manifest, key}` only after every acknowledgement and a current-consent check. Put the key and authenticated manifest in the existing private grant channel; never public metadata. The manifest contains no key. A receipt is not durable availability. If a later block fails or consent is revoked, no grant is returned and the local key is overwritten. Earlier ciphertext blocks may remain at the provider. This does not erase peers' copies, roll back uploads, or retry/resume them.
 
@@ -10,7 +26,7 @@ Use the same current callback and abort signal for composition and Kubo client. 
 
 Kubo lifetime and rolling-minute budgets still apply, including failed attempts. Configure adequate explicitly approved budgets for the transfer. If a recording exceeds the remaining rate allowance, it fails without a hidden queue or automatic retry, potentially after partial upload. Account-wide/cross-tab scheduling and persistent restart recovery remain open work. This API does not label data replicated merely because CIDs exist.
 
-Twenty-six focused unit cases use real encryption and cover multi-block round trip, partial provider failure, revocation, tampering/key/binding rejection, malformed grants, cancellation, snapshots and overlapping whole-file operations. PR CI extends the real Chromium distinct-origin Kubo fixture with a two-block composed encrypted upload and authenticated download. The provider remains a protocol substitute; this is not live Kubo/provider qualification, native UI integration or scheduled multi-client acceptance.
+Twenty-six focused unit cases use real encryption and cover multi-block round trip, partial provider failure, revocation, tampering/key/binding rejection, malformed grants, cancellation, snapshots and overlapping whole-file operations. PR CI extends the real Chromium distinct-origin Kubo fixture with a two-block composed encrypted upload and authenticated download. The browser contract uses a protocol substitute. Scheduled multi-client acceptance with a real Kubo provider remains open.
 
 
 ## Explicit prepared upload recovery

@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { createMediaLibrary, type MediaLibraryState } from "@/lib/media-library";
 import { IdentityBar } from "./IdentityBar";
 import { PrivateMediaUpload } from "./PrivateMediaUpload";
+import { IpfsPlaybackEndpoint } from "./IpfsPlaybackEndpoint";
 import { PrivateMediaPreview } from "./PrivateMediaPreview";
 
 export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
+  const [ipfsEndpoint,setIpfsEndpoint]=useState("");
   const [state,setState]=useState<MediaLibraryState>({busy:false,objects:[],page:0,nextPage:null,loaded:false,message:"",preview:null,audience:null,deletion:null,cleanup:null,granted:null,groupGranted:null,sharing:null,consent:null,groupCommand:null,groupKey:null,itemGrant:null,itemEpoch:null,itemWrap:null,itemStatus:null,groups:null});
   const [abandon,setAbandon]=useState(false);
   useEffect(()=>{setAbandon(false);},[state.sharing?.token]);
@@ -34,6 +36,7 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
     <IdentityBar />
     {!tenant ? <p role="status">Private media is not available on this site yet.</p> : <>
       <PrivateMediaUpload tenant={tenant} />
+      <IpfsPlaybackEndpoint value={ipfsEndpoint} onChange={setIpfsEndpoint} disabled={state.busy}/>
       <div className="flex gap-4">
         <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.load(0)}>Refresh my media</button>
         {state.loaded && state.page>0 && <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.load(state.page-1)}>Previous page</button>}
@@ -43,7 +46,7 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
       {state.loaded && <p className="text-sm text-ink-muted">Page {state.page+1} of 16. New or removed files may change the pages.</p>}
       {state.loaded && !state.objects.length && <p>No media on this page.</p>}
       <ul className="space-y-2">{state.objects.map((object,index)=><li key={object}>
-        <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.open(object,tenant)}>Open file {state.page*4+index+1}</button>
+        <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.open(object,tenant,ipfsEndpoint.trim()||undefined)}>Open file {state.page*4+index+1}</button>
         <button type="button" disabled={state.busy || !!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.recipients(object)}>Manage sharing</button>
         <button type="button" disabled={state.busy || !!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>library.current?.requestDeletion(object)}>Delete file</button>
       </li>)}</ul>
@@ -55,7 +58,7 @@ export function PrivateMediaLibrary({tenant}: {tenant: string|null}) {
           <p>Page {state.granted.page+1} of 16. Empty pages are valid.</p>
           {!state.granted.objects.length && <p>No currently available shared files on this page.</p>}
           <ul>{state.granted.objects.map((object,index)=><li key={object}>
-            <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.open(object,tenant)}>Open shared file {state.granted!.page*4+index+1}</button>
+            <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.open(object,tenant,ipfsEndpoint.trim()||undefined)}>Open shared file {state.granted!.page*4+index+1}</button>
           </li>)}</ul>
           {state.granted.page>0 && <button type="button" disabled={state.busy || !!state.deletion} className="underline disabled:opacity-50" onClick={()=>void library.current?.loadGranted(state.granted!.page-1)}>Previous granted page</button>}
           {state.granted.nextPage!==null && <button type="button" disabled={state.busy || !!state.deletion} className="ml-4 underline disabled:opacity-50" onClick={()=>void library.current?.loadGranted(state.granted!.nextPage!)}>Next granted page</button>}

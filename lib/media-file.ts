@@ -1,3 +1,4 @@
+import { IPFS_RECORDING_TYPE } from "./ipfs-recording";
 import { privateMediaTags } from "./media-tags";
 /** Private file metadata is encrypted with its bytes, never public post metadata.
  * These helpers do not establish reader enrollment, Check, or current epoch state. */
@@ -7,7 +8,7 @@ import { openMediaForReader, sealMediaForReaders, type MediaReader } from "./med
 
 export type MediaFileDescription = Readonly<{ name: string; mediaType: string; tags?:readonly string[] }>;
 const types = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif",
-  "audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/mp4", "video/mp4", "video/webm", "video/ogg"]);
+  "audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/mp4", "video/mp4", "video/webm", "video/ogg", IPFS_RECORDING_TYPE]);
 const magic = [0x73, 0x33, 0x66, 1];
 const encoder = new TextEncoder();
 const descriptorMax = 4096;

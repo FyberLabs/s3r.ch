@@ -16,7 +16,7 @@ export function createMediaUploadPanel(tenant:string,changed:(state:UploadPanelS
   function reset(){if(expiry)clearTimeout(expiry);expiry=undefined;generation++;controller?.abort();controller=null;key=null;expires=0;publish({busy:false,message:"Upload stopped. Unlock the original identity to resume its encrypted draft.",allocationConfirmed:false,pending:null});}
   const unsubscribe=subscribeUnlockedMeshPair(reset);
   async function operation(work:(signal:AbortSignal,progress:(message:string)=>void,allocated:()=>void)=>Promise<void>) {
-    if(disposed||state.busy)return;
+    if(disposed||state.busy)return false;
     const attempt=++generation;controller=new AbortController();
     const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(120000)]);
     const current=()=>!disposed&&generation===attempt&&!signal.aborted;
@@ -33,23 +33,27 @@ export function createMediaUploadPanel(tenant:string,changed:(state:UploadPanelS
       signal.throwIfAborted();if(!current())return;key=session.principal;expires=session.expiresAt as number;
       if(expiry)clearTimeout(expiry);expiry=setTimeout(reset,Math.max(0,expires-clock()));
       await work(signal,progress,()=>{signal.throwIfAborted();if(current())publish({...state,allocationConfirmed:true});});
+      return current();
     } catch (error) {
       if(current())publish({...state,message:error instanceof MediaQuotaExceeded
         ? "Storage quota reached. Upload did not complete. Your encrypted draft is retained; resume it after capacity is available."
         :"Upload stopped. Your encrypted recovery draft is retained if it was saved. Unlock the same identity and check the pending upload before retrying."});
+      return false;
     } finally {if(!disposed&&attempt===generation){controller=null;key=null;expires=0;publish({...state,busy:false});}}
   }
   return Object.freeze({
     reset,
     inspect:()=>operation(async(signal,progress)=>{const pending=await browser.pendingUpload(tenant,signal);signal.throwIfAborted();publish({...state,pending});progress(pending?"Encrypted draft ready to resume.":"No pending upload in this browser.");}),
-    upload:(file:File,tags:readonly string[]=[])=>{const heldTags=[...tags];return operation(async(signal,progress,allocated)=>{
+    upload:(file:File,tags:readonly string[]=[],ipfsEndpoint?:string)=>{const heldTags=[...tags];return operation(async(signal,progress,allocated)=>{
       const metadataTags=privateMediaTags(heldTags);
       if(metadataTags.length&&!file.type.startsWith("audio/"))throw Error("Audio tags require audio");
       if(!file.size||file.size>63*1024*1024)throw Error("File too large");
       const bytes=new Uint8Array(await file.arrayBuffer());
-      try {signal.throwIfAborted();await browser.upload(tenant,{bytes,description:{name:file.name,mediaType:file.type,...(metadataTags.length?{tags:metadataTags}:{})}},signal,progress,allocated);}
+      try {signal.throwIfAborted();await browser.upload(tenant,{bytes,description:{name:file.name,mediaType:file.type,...(metadataTags.length?{tags:metadataTags}:{})},...(ipfsEndpoint!==undefined?{ipfsEndpoint}:{})},signal,progress,allocated);}
       finally {bytes.fill(0);}
-      signal.throwIfAborted();publish({...state,pending:null});progress("Uploaded privately. Refresh My media. New files open after the one-hour settlement period.");
+      signal.throwIfAborted();publish({...state,pending:null});progress(ipfsEndpoint
+        ? "IPFS upload acknowledged. The private recording reference opens after the one-hour settlement period. Retention is controlled by your endpoint."
+        : "Uploaded privately. Refresh My media. New files open after the one-hour settlement period.");
     });},
     resume:()=>operation(async(signal,progress,allocated)=>{
       await browser.upload(tenant,undefined,signal,progress,allocated);signal.throwIfAborted();publish({...state,pending:null});

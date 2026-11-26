@@ -329,7 +329,7 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
     pendingShare(tenant:string,signal?:AbortSignal){
       return run((pair,_transport,deadline)=>pendingMediaShare(createShareJournal(),tenant,pair,deadline),signal);
     },
-    upload(tenant:string,file?:{bytes:Uint8Array;description:MediaFileDescription},signal?:AbortSignal,progress?:(message:string)=>void,allocationConfirmed?:()=>void){
+    upload(tenant:string,file?:{bytes:Uint8Array;description:MediaFileDescription;ipfsEndpoint?:string},signal?:AbortSignal,progress?:(message:string)=>void,allocationConfirmed?:()=>void){
       return locked(()=>run((pair,transport,deadline)=>uploadMedia({tenant,pair,fetcher:transport,signal:deadline,journal:createUploadJournal(),file,progress,allocationConfirmed}),signal));
     },
     pendingUpload(tenant:string,signal?:AbortSignal){
@@ -395,8 +395,8 @@ export function createPrivateMediaBrowser(sessionKey: () => string | null, fetch
       return run((pair,transport,deadline)=>openGroupMediaFile({object,tenant,principal,scope:held,epriv:pair.epriv,epub:pair.epub,
         fetcher:transport,signal:deadline}),signal,result=>result.bytes.fill(0));
     },
-    open(object:string,tenant:string,signal?:AbortSignal){
-      return run((pair,transport,deadline)=>createPrivateMediaReader(transport).open(object,tenant,pair.epriv,pair.epub,deadline),signal,
+    open(object:string,tenant:string,signal?:AbortSignal,ipfsEndpoint?:string){
+      return run((pair,transport,deadline)=>createPrivateMediaReader(transport).open(object,tenant,pair.epriv,pair.epub,deadline,ipfsEndpoint),signal,
         result=>result.bytes.fill(0));
     },
   });

@@ -4,6 +4,7 @@ import { seaToPrincipalKey, isSeaPubkey } from "./identity/forum-check";
 import type { SeaPair } from "./identity/sea";
 import { createPrivateMediaOwner, PrivateMediaConflict } from "./media-owner-client";
 import { createMediaHttpClient, type MediaCiphertextReference } from "./media-client";
+import { IPFS_RECORDING_TYPE, uploadIpfsRecording } from "./ipfs-recording";
 import { prepareMediaFile, mediaFileDescription, type MediaFileDescription } from "./media-file";
 import { decryptUploadJournal, encryptUploadJournal, uploadDigest, type UploadEntry, type UploadJournal } from "./media-upload-journal";
 
@@ -48,7 +49,7 @@ export async function discardMediaUpload(journal:UploadJournal,tenant:string,exp
 /** Explicit user invocation only. A failure retains the encrypted journal and
  * immutable signed intents. Resume probes them before any replacement write. */
 export async function uploadMedia(input:{tenant:string;pair:SeaPair;fetcher:typeof fetch;signal:AbortSignal;journal:UploadJournal;
-  file?:{bytes:Uint8Array;description:MediaFileDescription};progress?:(message:string)=>void;allocationConfirmed?:()=>void}) {
+  file?:{bytes:Uint8Array;description:MediaFileDescription;ipfsEndpoint?:string};progress?:(message:string)=>void;allocationConfirmed?:()=>void}) {
   const {tenant,pair,fetcher,signal,journal}=input,ownerClient=createPrivateMediaOwner(fetcher),media=createMediaHttpClient(fetcher);
   let entry=await journal.read(signal),draft:Draft|undefined,key:Uint8Array|undefined,scalar:Uint8Array|undefined;
   const progress=(message:string)=>{signal.throwIfAborted();input.progress?.(message);};
@@ -69,8 +70,19 @@ export async function uploadMedia(input:{tenant:string;pair:SeaPair;fetcher:type
       const catalog=await ownerClient.catalog(0,signal),owner=catalog.principal;
       const object=`media_${seaToPrincipalKey(owner)}_${hex(crypto.getRandomValues(new Uint8Array(16)))}`;
       const record=await ownership(object,owner,catalog.at,pair);
-      const description=mediaFileDescription(input.file.description);
-      const sealed=await prepareMediaFile(input.file.bytes,description,{tenant,object});key=sealed.key;
+      let description=mediaFileDescription(input.file.description);
+      const binding={tenant,object};
+      let descriptor: Uint8Array|undefined;
+      if(input.file.ipfsEndpoint!==undefined) {
+        progress("Sending encrypted recording to your IPFS endpoint…");
+        descriptor=await uploadIpfsRecording(input.file.bytes,description.mediaType,{
+          endpoint:input.file.ipfsEndpoint,binding,signal,transport:fetcher,
+        });
+        description=mediaFileDescription({name:description.name,mediaType:IPFS_RECORDING_TYPE});
+      }
+      const sealed=await prepareMediaFile(descriptor??input.file.bytes,description,binding)
+        .finally(()=>descriptor?.fill(0));
+      key=sealed.key;
       draft={version:1,tenant,owner,record,fileKey:Array.from(key),description,reference:{sha256:sealed.sha256,length:sealed.bytes.length}};
       // Saving recovery must succeed before the first remote mutation.
       entry={revision:0,tenant,object,ciphertext:sealed.bytes,encrypted:new Uint8Array(),sha256:"",wrap:null as unknown as ItemReaderWrap};

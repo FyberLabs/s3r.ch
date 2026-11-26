@@ -10,6 +10,7 @@ import { parseMediaSharePlan } from "./media-share";
 import { uploadDigest } from "./media-upload-journal";
 import type { ItemReaderWrap, ItemWrapContext } from "sociacl-ids";
 import { createMediaHttpClient, type MediaCiphertextReference } from "./media-client";
+import { IPFS_RECORDING_TYPE, openIpfsRecording } from "./ipfs-recording";
 import { openMediaFile } from "./media-file";
 import { isCanonicalObjectId } from "./identity/object-id";
 
@@ -133,7 +134,7 @@ export function createPrivateMediaReader(fetcher: typeof fetch = fetch, clock = 
         return {document,finalization,wraps:wrapped.value,reference:current.reference};
       } finally {key.fill(0);dek?.fill(0);}
     },
-    async open(object: string, tenant: string, epriv: string, epub: string, signal?: AbortSignal) {
+    async open(object: string, tenant: string, epriv: string, epub: string, signal?: AbortSignal, ipfsEndpoint?: string) {
     if (!object.startsWith("media_") || !isCanonicalObjectId(object)) throw Error("Invalid media object");
     const deadline = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(120_000)]);
     // The first authorization supplies the private ciphertext reference. Fetch
@@ -154,7 +155,26 @@ export function createPrivateMediaReader(fetcher: typeof fetch = fetch, clock = 
           final.context.revisionId !== current.context.revisionId) throw Error("Private media changed");
       deadline.throwIfAborted();
       if (clock() >= final.expiresAt) throw Error("Private media expired");
-      return opened;
+      if(opened.description.mediaType!==IPFS_RECORDING_TYPE || !ipfsEndpoint) return opened;
+      const recheck = async (operation: AbortSignal) => {
+        const proof=await delivery(object,epub,operation);
+        if(proof.encoded!==final.encoded || proof.context.epoch!==final.context.epoch ||
+            proof.context.revisionId!==final.context.revisionId || clock()>=proof.expiresAt)
+          throw Error("Private media changed");
+        operation.throwIfAborted();
+      };
+      const recording=await openIpfsRecording(opened.bytes,{
+        endpoint:ipfsEndpoint,binding:{tenant,object},signal:deadline,
+        transport:async (url,init)=>{
+          const operation=AbortSignal.any([deadline,...(init?.signal?[init.signal]:[])]);
+          await recheck(operation);
+          return fetcher(url,{...init,signal:operation});
+        },
+      }).finally(()=>opened.bytes.fill(0));
+      try {
+        await recheck(deadline);
+        return {bytes:recording.bytes,description:{name:opened.description.name,mediaType:recording.mediaType}};
+      } catch(error) { recording.bytes.fill(0); throw error; }
     } catch (error) { opened.bytes.fill(0); throw error; }
   } });
 }
