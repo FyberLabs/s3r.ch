@@ -3,6 +3,7 @@ import { readSeaRequestSession } from "@/lib/identity/sea-request-session";
 import { parseSquadPilotConfig, publicSquadPilotConfig } from "@/lib/squad-pilot-config";
 import { siteSeaSession } from "@/lib/identity/site-sea-session-server";
 import { getSquadPilotServer, squadPilotReady } from "@/lib/squad-pilot-server";
+import { configuredSquadAgentEnrollment } from "@/lib/squad-agent-enrollment-service";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 async function nativeGET(request: Request, context: { params: Promise<{ path: string[] }> }) {
@@ -39,6 +40,10 @@ async function nativePOST(request: Request, context: { params: Promise<{ path: s
       }
     }
     if (path.length === 1 && path[0] === "project") return pilot.services.project ? pilot.services.project(request) : reply(404);
+    if (path.length === 1 && path[0] === "enrollment") {
+      const enroll = configuredSquadAgentEnrollment(pilot.config, pilot.services.authenticate, pilot.source.read);
+      return enroll ? enroll(request) : reply(404);
+    }
     if (path.length === 1 && path[0] === "statement") return pilot.services.statements ? pilot.services.statements(request) : reply(503);
     if (path.length === 1 && path[0] === "room") return pilot.services.rooms(request);
     if (path.length === 1 && path[0] === "authority") return pilot.services.authority(request);

@@ -4,7 +4,7 @@ import type { SeaPair } from "./identity/sea";
 /** A fresh in-memory cookie jar belongs only to this independent SEA bot key.
  * Nothing is imported from a browser or wallet session, and redirects are denied.
  */
-export function createBotSession(input: { origin: string; pair: SeaPair; fetch?: typeof fetch }) {
+export function createBotSession(input: { origin: string; pair: SeaPair; fetch?: typeof fetch; timeoutMs?: number }) {
   const origin = new URL(input.origin);
   if (origin.origin !== input.origin || origin.protocol !== "https:") throw Error("Explicit HTTPS bot origin required");
   const names = new Set<string>(seaSessionCookieNames());
@@ -15,7 +15,7 @@ export function createBotSession(input: { origin: string; pair: SeaPair; fetch?:
     headers.delete("Cookie"); headers.delete("Authorization");
     if (cookies.size) headers.set("Cookie", [...cookies].map(([name, value]) => name + "=" + value).join("; "));
     const response = await fetcher(origin.origin + target, { ...init, headers, redirect: "error", cache: "no-store",
-      signal: AbortSignal.any([AbortSignal.timeout(1500), ...(init?.signal ? [init.signal] : [])]) });
+      signal: AbortSignal.any([AbortSignal.timeout(input.timeoutMs ?? 1500), ...(init?.signal ? [init.signal] : [])]) });
     if (response.redirected) { await response.body?.cancel(); throw Error("Bot session redirect refused"); }
     for (const cookie of response.headers.getSetCookie()) {
       const [first, ...attributes] = cookie.split(";"), at = first.indexOf("="), name = first.slice(0, at), value = first.slice(at + 1);

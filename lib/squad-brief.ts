@@ -22,14 +22,20 @@ export const isBriefMarkdown = (value: unknown): value is string => typeof value
   !value.includes("\0") && Buffer.byteLength(value, "utf8") <= 12 * 1024;
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 
-export function parseSignedBriefDraft(value: unknown): SignedBriefDraft | null {
+export function parseBriefDraft(value: unknown): Omit<SignedBriefDraft, "signature"> | null {
   if (!record(value) ||
-      Object.keys(value).sort((left, right) => left.localeCompare(right, "en")).join() !== "artifactId,base,markdown,revisionId,signature,taskId" ||
+      Object.keys(value).sort((left, right) => left.localeCompare(right, "en")).join() !== "artifactId,base,markdown,revisionId,taskId" ||
       !projectUuid(value.artifactId) || !projectUuid(value.revisionId) || !projectUuid(value.taskId) ||
-      !(value.base === null || projectUuid(value.base)) || !isBriefMarkdown(value.markdown) ||
-      typeof value.signature !== "string" || !/^[A-Za-z0-9_-]{86}$/.test(value.signature)) return null;
+      !(value.base === null || projectUuid(value.base)) || !isBriefMarkdown(value.markdown)) return null;
   return { artifactId: value.artifactId, revisionId: value.revisionId, taskId: value.taskId,
-    base: value.base, markdown: value.markdown, signature: value.signature };
+    base: value.base, markdown: value.markdown };
+}
+
+export function parseSignedBriefDraft(value: unknown): SignedBriefDraft | null {
+  if (!record(value) || typeof value.signature !== "string" || !/^[A-Za-z0-9_-]{86}$/.test(value.signature)) return null;
+  const { signature, ...unsigned } = value;
+  const draft = parseBriefDraft(unsigned);
+  return draft ? { ...draft, signature } : null;
 }
 
 export function briefDraftTranscript(update: VerifiedForumUpdate, draft: Omit<SignedBriefDraft, "signature">) {

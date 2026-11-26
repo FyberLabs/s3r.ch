@@ -264,6 +264,7 @@ owner does not lend its object grants to the bot. A token alone is not an object
 | --- | --- | --- |
 | `S3RCH_AGENT_SESSION_CONFIG` | Unset (disabled) | Private JSON with exact `origin`, `source` (`origin`, `tenant`, `scope`) and `authority` (`jwks`, `policy`, `pinnedIss`) fields. `policy` contains `allowedDomains`, `allowedUris`, `allowedChainIds`, and explicit `clockSkewSeconds` (0–300). Witness keys are independently trusted configuration; source responses cannot install them. |
 | `S3RCH_DELEGATION_SOURCE_API_KEY` | Unset | Dedicated service key with `acl:delegations:read` and the operator-bound tenant/subject/scope. It is never sent to the client. |
+| `S3RCH_SQUAD_DELEGATION_WRITE_API_KEY` | Unset | Separate server credential with `acl:delegations:write` for the same delegation journal scope and tenant as the native reader. Enables signed-in Squad owner enrollment for the configured Plane roster. |
 
 The origin must match the configured s3r.ch deployment. The delegation source and
 existing Spanopticon identity replay settings must name the same tenant. The

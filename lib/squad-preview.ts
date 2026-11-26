@@ -29,18 +29,24 @@ const text = (value: unknown, max: number): value is string =>
   !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value);
 const digest = (value: readonly unknown[]) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
-export function parseSignedPreview(value: unknown): SignedPreview | null {
-  if (!exact(value, "artifactId,base,briefRevisionId,copy,revisionId,signature,taskId,workbookRevisionId") ||
+export function parsePreviewDraft(value: unknown): PreviewDraft | null {
+  if (!exact(value, "artifactId,base,briefRevisionId,copy,revisionId,taskId,workbookRevisionId") ||
       !projectUuid(value.artifactId) || !projectUuid(value.revisionId) || !projectUuid(value.taskId) ||
       !(value.base === null || projectUuid(value.base)) || !projectUuid(value.briefRevisionId) || !projectUuid(value.workbookRevisionId) ||
-      typeof value.signature !== "string" || !/^[A-Za-z0-9_-]{86}$/.test(value.signature) ||
       !exact(value.copy, "highlights,nextStep,summary,title")) return null;
   const { title, summary, highlights, nextStep } = value.copy;
   if (!text(title, 120) || !text(summary, 1400) || !text(nextStep, 400) || !Array.isArray(highlights) ||
       highlights.length > 4 || !highlights.every(item => text(item, 240))) return null;
   return { artifactId: value.artifactId, revisionId: value.revisionId, taskId: value.taskId, base: value.base,
     briefRevisionId: value.briefRevisionId, workbookRevisionId: value.workbookRevisionId,
-    copy: { title, summary, highlights, nextStep }, signature: value.signature };
+    copy: { title, summary, highlights, nextStep } };
+}
+export function parseSignedPreview(value: unknown): SignedPreview | null {
+  if (!exact(value, "artifactId,base,briefRevisionId,copy,revisionId,signature,taskId,workbookRevisionId") ||
+      typeof value.signature !== "string" || !/^[A-Za-z0-9_-]{86}$/.test(value.signature)) return null;
+  const { signature, ...unsigned } = value;
+  const draft = parsePreviewDraft(unsigned);
+  return draft ? { ...draft, signature } : null;
 }
 export function previewDraftTranscript(update: VerifiedForumUpdate, draft: PreviewDraft) {
   const { title, summary, highlights, nextStep } = draft.copy;

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { createSquadWorkbookPublisher, workbookDraftTranscript } from "./squad-workbook";
+import { createSquadWorkbookPublisher } from "./squad-workbook";
 import { createSquadPreviewPublisher, previewDraftTranscript } from "./squad-preview";
 import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
 import { createBotStatementAdmission } from "./forum-bot-statement-admission";
@@ -10,6 +11,7 @@ import { forumUpdateTranscript, VISOR_FORUM_STATUS_TEXT, type VerifiedForumUpdat
 import { parseForumAuthority } from "./identity/forum-authority-records";
 import { briefDigest, briefDraftTranscript, createSquadBriefPublisher } from "./squad-brief";
 import { forumBotFixture } from "./forum-bot-test-fixture";
+import { openArtifactSignatures } from "./forum-visor-reporter";
 import { signForumRecord } from "./forum-sign";
 import { createIdentitySessions } from "./identity/sea-session";
 import { readSeaSessionCookie, seaSessionCookieNames } from "./identity/sea-session-http";
@@ -219,21 +221,26 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
   const assigned = await h.ok({ action: "delegate", cursor, taskId, taskRevision: 0, intent });
   const { planeTaskId } = assigned.ledger[0];
   const { f } = h;
-  const sign = (bytes: Uint8Array) => Buffer.from(p256.sign(bytes, Buffer.from(f.a.priv, "base64url"),
+  const signFor = (privateKey: string, bytes: Uint8Array) => Buffer.from(p256.sign(bytes, Buffer.from(privateKey, "base64url"),
     { prehash: true, format: "compact" })).toString("base64url");
+  const sign = (bytes: Uint8Array) => signFor(f.a.priv, bytes);
+  const journal = new DatabaseSync(":memory:");
+  t.after(() => journal.close());
+  const signArtifact = openArtifactSignatures(journal, sign);
   async function deliveryFor(binding: typeof intent, deliveryTaskId: string) {
+    const actor = binding.bot_id === f.botA ? f.a : f.b;
     const offset = f.rows.length;
-    const statement = await f.signed(["update", f.tenant, deliveryTaskId, VISOR_FORUM_STATUS_TEXT.completed], f.a);
+    const statement = await f.signed(["update", f.tenant, deliveryTaskId, VISOR_FORUM_STATUS_TEXT.completed], actor);
     const object = { ...(f.rows[offset].record as object), issuedAt: statement.issuedAt, sig: "pending" };
     const parsed = parseForumAuthority("object", object);
     assert.ok(parsed);
-    object.sig = sign(parsed.bytes);
+    object.sig = signFor(actor.priv, parsed.bytes);
     f.rows[offset] = { kind: "object", soul: parsed.soul, record: object };
-    const fields = { botId: f.botA, assignmentId: binding.assignment_id, sessionId: binding.session_id, taskId: deliveryTaskId,
+    const fields = { botId: binding.bot_id, assignmentId: binding.assignment_id, sessionId: binding.session_id, taskId: deliveryTaskId,
       deliveryId: randomUUID(), sequence: 1, signature: statement.signature };
-    const updateScope = { ...fields, tenant: f.tenant, forumId: f.forum, principal: f.a.pub,
+    const updateScope = { ...fields, tenant: f.tenant, forumId: f.forum, principal: actor.pub,
       statementId: statement.id, status: "completed" as const };
-    const proof = { ...fields, attestation: sign(forumUpdateTranscript(updateScope)) };
+    const proof = { ...fields, attestation: signFor(actor.priv, forumUpdateTranscript(updateScope)) };
     return { proof, verified: { ...updateScope, attestation: proof.attestation } satisfies VerifiedForumUpdate, rows: f.rows.slice(offset) };
   }
   const first = await deliveryFor(intent, planeTaskId);
@@ -241,7 +248,7 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
   const deliveries = new Set<string>([proof.deliveryId]);
   const draft = { artifactId: randomUUID(), revisionId: randomUUID(), taskId, base: null,
     markdown: "# Partner brief\n10 seats for a 30-day pilot.\n" };
-  const signedDraft = { ...draft, signature: sign(briefDraftTranscript(verified, draft)) };
+  const signedDraft = signArtifact({ kind: "brief", draft }, verified);
   const reporterCookie = await h.mintBrowserSession(f.a);
   let revokeBeforeSave = false, deliveryAllowed = false, aclRevoked = false, checked = 0;
   const admission = createBotStatementAdmission({
@@ -263,8 +270,8 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
     saveWorkbook: createSquadWorkbookPublisher(h.store, f.now),
     savePreview: createSquadPreviewPublisher(h.store, f.now),
   });
-  const publishArtifact = (kind: "brief" | "workbook" | "preview", value: object, delivery = first) => admission(new Request(h.origin + "/api/squad/pilot/plane/" + kind, {
-    method: "POST", headers: { Origin: h.origin, "Content-Type": "application/json", Cookie: reporterCookie },
+  const publishArtifact = (kind: "brief" | "workbook" | "preview", value: object, delivery = first, cookie = reporterCookie) => admission(new Request(h.origin + "/api/squad/pilot/plane/" + kind, {
+    method: "POST", headers: { Origin: h.origin, "Content-Type": "application/json", Cookie: cookie },
     body: JSON.stringify({ version: 1, forumId: f.forum, owner: f.owner.pub, evaluatedAt: f.now(),
       rows: delivery.rows, update: delivery.proof, [kind]: value }),
   }), kind === "brief" ? "plane-brief" : kind === "workbook" ? "plane-workbook" : "plane-preview");
@@ -328,7 +335,7 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
   assert.equal((await h.call(read, "fixture-agent-b", false)).status, 404);
   const pricing = { quantity: 10, unitPriceCents: 12_000, discountBps: 0 };
   const workbook = { artifactId: randomUUID(), revisionId: randomUUID(), taskId, inputs: pricing };
-  const signedWorkbook = { ...workbook, signature: sign(workbookDraftTranscript(verified, workbook)) };
+  const signedWorkbook = signArtifact({ kind: "workbook", draft: workbook }, verified);
   const readWorkbook = { action: "workbook-read", taskId, revisionId: null };
   assert.equal((await publishArtifact("workbook", { ...signedWorkbook, inputs: { ...pricing, discountBps: 1 } })).status, 403);
   revokeBeforeSave = true;
@@ -355,7 +362,7 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
     briefRevisionId: winner.revisionId, workbookRevisionId: workbook.revisionId,
     copy: { title: "Partner pilot", summary: "Plan for 10 seats & a 30-day pilot.",
       highlights: ["Treat <em> as text."], nextStep: "Confirm the pilot scope." } };
-  const signedPreview = { ...preview, signature: sign(previewDraftTranscript(verified, preview)) };
+  const signedPreview = signArtifact({ kind: "preview", draft: preview }, verified);
   const wrongInput = { ...preview, workbookRevisionId: randomUUID() };
   assert.equal((await publishArtifact("preview", { ...wrongInput, signature: sign(previewDraftTranscript(verified, wrongInput)) })).status, 404);
   assert.equal((await publishArtifact("preview", { ...signedPreview, copy: { ...preview.copy, title: "Changed copy" } })).status, 403);
@@ -424,15 +431,24 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
   assert.equal((await publishArtifact("preview", { ...next, signature: sign(previewDraftTranscript(verified, next)) })).status, 409);
 
   const board = await h.ok({ action: "board" });
-  const nextIntent = h.intent(f.botA);
+  const nextIntent = h.intent(f.botB);
   h.finishRun();
   const nextAssignment = await h.ok({ action: "delegate", cursor: board.cursor, taskId,
     taskRevision: board.tasks[0].revision, intent: nextIntent });
   const second = await deliveryFor(nextIntent, nextAssignment.ledger.at(-1).planeTaskId);
   deliveries.add(second.proof.deliveryId);
-  const signedSecond = { ...next, signature: sign(previewDraftTranscript(second.verified, next)) };
-  assert.equal((await publishArtifact("preview", signedSecond, second)).status, 200);
-  assert.equal((await publishArtifact("preview", signedSecond, second)).status, 200);
+  const secondJournal = new DatabaseSync(":memory:");
+  t.after(() => secondJournal.close());
+  const secondSigner = openArtifactSignatures(secondJournal, bytes => signFor(f.b.priv, bytes));
+  const signedSecond = secondSigner({ kind: "preview", draft: next }, second.verified);
+  const secondCookie = await h.mintBrowserSession(f.b);
+  assert.equal((await h.call({ ...readWorkbook, revisionId: savedPrice.revisionId }, "fixture-agent-a", false)).status, 404);
+  const successorRead = await h.call({ ...readWorkbook, revisionId: savedPrice.revisionId }, "fixture-agent-b", false);
+  assert.equal(successorRead.status, 200);
+  assert.equal((await successorRead.json()).workbook.selected.id, savedPrice.revisionId);
+  assert.equal((await publishArtifact("preview", signedSecond, second)).status, 403);
+  assert.equal((await publishArtifact("preview", signedSecond, second, secondCookie)).status, 200);
+  assert.equal((await publishArtifact("preview", signedSecond, second, secondCookie)).status, 200);
   const refreshed = (await h.ok(readPreview)).preview;
   assert.equal(refreshed.history.length, 2);
   assert.equal(refreshed.current, next.revisionId);
@@ -449,7 +465,8 @@ test("delivered agent artifacts stay editable and reviewable by exact revision",
   assert.match(html.headers.get("content-disposition") ?? "", /^attachment;/);
   assert.match(html.headers.get("content-security-policy") ?? "", /^sandbox; default-src 'none';.*form-action 'none'/);
   assert.equal(await html.text(), originalPreview.selected.html);
-  assert.equal((await h.call(readPreview, "fixture-agent-b", false)).status, 404);
+  assert.equal(refreshed.selected.author, f.b.pub);
+  assert.equal((await h.call(readPreview, "fixture-agent-a", false)).status, 404);
   assert.equal((await h.call({ ...readPreview, forum: "another-project" })).status, 404);
   h.removeAgentAccess();
   assert.equal((await h.call(read, "fixture-agent-a", false)).status, 403);
