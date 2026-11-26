@@ -31,7 +31,7 @@ export type InvokeVisor = (
 function invokeVisor(scope: VisorScope, args: string[], stdin: Buffer, signal: AbortSignal) {
   return new Promise<unknown>((resolve, reject) => {
     const child = spawn(scope.visorPath, args, {
-      env: { HYPERMESH_RUNTIME_DIR: scope.runtimeDirectory },
+      env: { NODE_ENV: "production", HYPERMESH_RUNTIME_DIR: scope.runtimeDirectory },
       stdio: ["pipe", "pipe", "ignore"], signal,
     });
     const chunks: Buffer[] = [];
