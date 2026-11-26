@@ -20,6 +20,19 @@ test("browser qualification is restricted to the central scheduled main context"
   assert.equal(scheduledStartupBrowser(env), true);
   for (const key of Object.keys(env)) assert.equal(scheduledStartupBrowser({ ...env, [key]: "wrong" }), false);
 });
+test("the external TEST schedule requires the exact App, occurrence and owner checkout", () => {
+  const env = {
+    GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: "workflow_dispatch",
+    GITHUB_WORKFLOW_REF: "FyberLabs/infra/.github/workflows/external-scheduled.yml@refs/heads/main",
+    NIGHTLY_SUITE: "startup-linked-browser", GITHUB_REPOSITORY: "FyberLabs/s3r.ch", GITHUB_REF: "refs/heads/master",
+    GITHUB_RUN_ATTEMPT: "1", GITHUB_ACTOR: "scheduler[bot]", GITHUB_TRIGGERING_ACTOR: "scheduler[bot]",
+    GITHUB_ACTOR_ID: "42", CI_SCHEDULER_ACTOR_ID: "42", CI_SCHEDULER_ENABLED: "true",
+    CI_SCHEDULER_LANE: "nightly-shared-test", CI_SCHEDULER_OCCURRENCE: "nightly-shared-test-20261126T0527Z",
+  };
+  assert.equal(scheduledStartupBrowser(env), true);
+  for (const key of Object.keys(env)) assert.equal(scheduledStartupBrowser({ ...env, [key]: "wrong" }), false);
+  assert.equal(scheduledStartupBrowser({ ...env, CI_SCHEDULER_OCCURRENCE: "nightly-shared-test-20261126T0627Z" }), false);
+});
 test("browser projection snapshots explicit scopes and rejects credential injection", () => {
   const input = fixture(), result = validateStartupBrowserFixture(input);
   input.login.credentials.username = "changed";

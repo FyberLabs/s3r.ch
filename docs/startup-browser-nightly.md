@@ -2,7 +2,7 @@
 
 The central Infra nightly matrix owns execution and private fixture staging. Registration is tracked by FyberLabs/infra#942 and #923. Run `node scripts/test-startup-linked-login.mjs` only in that scheduled matrix; do not dispatch it manually or run it on a workstation. The script returns exit 78 with a redacted blocked result when context or private inputs are absent.
 
-The guard requires `GITHUB_ACTIONS=true`, `GITHUB_EVENT_NAME=schedule`, `GITHUB_WORKFLOW_REF=FyberLabs/infra/.github/workflows/nightly-integration.yml@refs/heads/main`, `NIGHTLY_SUITE=startup-linked-browser`, and the owner checkout metadata `GITHUB_REPOSITORY=FyberLabs/s3r.ch`, `GITHUB_REF=refs/heads/master`.
+The guard requires `GITHUB_ACTIONS=true`, `NIGHTLY_SUITE=startup-linked-browser` and the owner checkout `FyberLabs/s3r.ch@refs/heads/master`. It accepts the native Infra nightly schedule and the authenticated Infra `nightly-shared-test` occurrence at 05:27 UTC. The external path checks the enabled lane, configured App actor and original run attempt.
 
 `NIGHTLY_STARTUP_BROWSER_FIXTURE_FILE` points to a private owned regular file (0600, no symlink or additional hard link, at most 64 KiB). Infra stages it from the separate browser secret and removes it afterward. `PLAYWRIGHT_CHROMIUM_EXECUTABLE` may select the central runner's Chromium. The raw owner orchestration bundle must not enter this browser case or the frontend build.
 
