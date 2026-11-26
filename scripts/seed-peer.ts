@@ -46,11 +46,10 @@ async function serve(request: IncomingMessage, response: ServerResponse) {
         response.end();
         return;
       }
-      const includeTelemetry = url.searchParams.get("telemetry") === "1";
       response.end(JSON.stringify({
         status: "ok",
         dependencies: { gun: { status: "ok" } },
-        ...(includeTelemetry ? { telemetry: { version: 1, feed: publicFeedTelemetry() } } : {}),
+        telemetry: { version: 1, feed: publicFeedTelemetry() },
       }));
       return;
     }
