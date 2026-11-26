@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { btnPrimary, btnSecondary } from "@/lib/brand-ui";
 import { experimentHeadingVisible } from "@/lib/experiment-visibility";
+import { useIdentitySession } from "@/components/useIdentitySession";
 import { sendFeedConversion } from "@/lib/experiment-navigation";
 type Display = { authenticated: boolean; variant: string; cohort: string; display: string; expiresAt: number };
 async function request(body: { action: string; allowed?: boolean; display?: string; eventId?: string }) {
@@ -21,6 +22,8 @@ export function ExperimentHero() {
   return <HeroScope key={revision} />;
 }
 function HeroScope() {
+  const signedIn = Boolean(useIdentitySession());
+  const variantCopy = useRef<HTMLElement>(null);
   const [display, setDisplay] = useState<Display | null>(null), [consented, setConsented] = useState(false), [enabled, setEnabled] = useState(false);
   const [busy, setBusy] = useState(false), [message, setMessage] = useState("");
   const heading = useRef<HTMLHeadingElement>(null), generation = useRef(0), alive = useRef(true);
@@ -53,7 +56,8 @@ function HeroScope() {
     return () => clearTimeout(timer);
   }, [display]);
   useEffect(() => {
-    if (!display || !heading.current || !consented) return;
+    const target = signedIn ? variantCopy.current : heading.current;
+    if (!display || !target || !consented) return;
     const identity = `${display.cohort}:${display.variant}`;
     const action = ids.current.get(identity) ?? { exposure: crypto.randomUUID(), conversion: crypto.randomUUID() };
     ids.current.set(identity, action);
@@ -69,9 +73,9 @@ function HeroScope() {
       });
     };
     const observer = new IntersectionObserver(entries => { visible = experimentHeadingVisible(entries); attempt(); }, { threshold: 0.5 });
-    observer.observe(heading.current); document.addEventListener("visibilitychange", attempt);
+    observer.observe(target); document.addEventListener("visibilitychange", attempt);
     return () => { cancelled = true; observer.disconnect(); document.removeEventListener("visibilitychange", attempt); };
-  }, [display, consented]);
+  }, [display, consented, signedIn]);
   async function consent() {
     generation.current++; setDisplay(null); setBusy(true); setMessage("");
     const allowed = !consented;
@@ -86,10 +90,13 @@ function HeroScope() {
     });
   }
   return <div data-testid="experiment-hero">
-    <h1 ref={heading} className="max-w-xl text-4xl font-semibold tracking-tight text-ink sm:text-6xl">{display?.variant === "create" ? "Create together, with people and AI." : "Where humans and AI create together."}</h1>
-    <p className="mt-6 max-w-xl text-lg text-ink-muted sm:text-xl">One network for the work behind today's media, and the real moments in between.</p>
+    <h1 ref={heading} className="max-w-xl text-4xl font-semibold tracking-tight text-ink sm:text-6xl">{signedIn ? "Welcome back." : display?.variant === "create" ? "Create together, with people and AI." : "Where humans and AI create together."}</h1>
+    <p className="mt-6 max-w-xl text-lg text-ink-muted sm:text-xl">{signedIn ? <>
+      You’re signed in.{" "}
+      <span ref={variantCopy}>{display?.variant === "create" ? "Create a post or start a room from the feed." : "Catch up on posts and rooms in the feed."}</span>
+    </> : "One network for the work behind today's media, and the real moments in between."}</p>
     <p className="mt-8 flex flex-wrap gap-3">
-      <a href="#sign-in" className={`inline-flex ${btnPrimary}`}>Join s3r.ch</a>
+      <a href="#sign-in" className={`inline-flex ${btnPrimary}`}>{signedIn ? "View your session" : "Join s3r.ch"}</a>
       <a href="/feed" className={`inline-flex ${btnSecondary}`} onClick={event => {
         if (!display?.authenticated || !consented || Date.now() >= display.expiresAt * 1000 || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
@@ -100,6 +107,6 @@ function HeroScope() {
       {consented ? "Turn off page experiments and delete pending events" : "Allow page experiments and product analytics"}
     </button>}
     {message && <p role="status">{message}</p>}
-    <p className="mt-4 max-w-xl text-sm text-ink-muted">Live today: posts, rooms, forums and squads. Media, meetings and more are coming in v1.</p>
+    {!signedIn && <p className="mt-4 max-w-xl text-sm text-ink-muted">Live today: posts, rooms, forums and squads. Media, meetings and more are coming in v1.</p>}
   </div>;
 }
