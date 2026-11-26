@@ -116,6 +116,30 @@ export function FeedStream() {
   const observingIdentity = tab !== "public" || accountOpen || openRoomId !== null;
   const identity = useIdentitySessionState(observingIdentity);
   const [owner, setOwner] = useState<string | null>(null);
+  // Keep the published snapshot across account and peer transitions.
+  const [publicSnapshot, setPublicSnapshot] = useState<FeedItem[]>([]);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+  useEffect(() => {
+    if (new URLSearchParams(location.search).has("oauth")) setAccountOpen(true);
+    const controller = new AbortController();
+    async function load() {
+      try {
+        const response = await fetch("/feed-cache/snapshot.json", { signal: controller.signal });
+        if (!response.ok) throw new Error("Snapshot unavailable");
+        const snapshot: FeedSnapshot = await response.json();
+        if (!Array.isArray(snapshot.items)) throw new Error("Invalid snapshot");
+        const rows = snapshot.items.map(item => fromGunNode(item)).filter(item => item !== null);
+        if (controller.signal.aborted) return;
+        setPublicSnapshot(mergeItems([], rows));
+        setSnapshotError(snapshot.error);
+      } catch {
+        if (!controller.signal.aborted) setSnapshotError("Could not load the public feed.");
+      }
+    }
+    void load();
+    return () => controller.abort();
+  }, []);
+
   const observedOwner = identity === undefined ? undefined : identity?.owner || null;
   if (mineOwnerChanged(owner, observedOwner)) {
     setOwner(observedOwner!);
@@ -129,6 +153,7 @@ export function FeedStream() {
     <div hidden={observingIdentity && identity === undefined && owner !== null}>
     <RoomAuthorityProvider session={observingIdentity ? identity : null}>
     <FeedStreamBody key={owner ?? "signed-out"} identity={identity}
+      publicSnapshot={publicSnapshot} snapshotError={snapshotError}
       tab={tab} setTab={setTab} accountOpen={accountOpen} setAccountOpen={setAccountOpen}
       sharePeers={sharePeers} setSharePeers={setSharePeers}
       openRoomId={openRoomId} setOpenRoomId={setOpenRoomId} />
@@ -137,9 +162,11 @@ export function FeedStream() {
   </div>;
 }
 
-function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
+function FeedStreamBody({ identity, publicSnapshot, snapshotError, tab, setTab, accountOpen, setAccountOpen,
   sharePeers, setSharePeers, openRoomId, setOpenRoomId }: {
   identity: IdentitySession | null | undefined;
+  publicSnapshot: readonly FeedItem[];
+  snapshotError: string | null;
   tab: FeedTab; setTab: Dispatch<SetStateAction<FeedTab>>;
   accountOpen: boolean; setAccountOpen: Dispatch<SetStateAction<boolean>>;
   sharePeers: boolean; setSharePeers: Dispatch<SetStateAction<boolean>>;
@@ -169,11 +196,9 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     sessionRef.current?.owner === mutationOwner;
   const registerGunRef = useRef(registerGun);
   registerGunRef.current = registerGun;
-  const [seed, setSeed] = useState<FeedItem[]>([]);
   const [overlay, setOverlay] = useState<FeedItem[]>([]);
   const [meshItems, setMeshItems] = useState<FeedItem[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
-  const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [sharedIds, setSharedIds] = useState<string[]>([]);
   const [confirmShareId, setConfirmShareId] = useState<string | null>(null);
   const [confirmUnshareId, setConfirmUnshareId] = useState<string | null>(null);
@@ -203,38 +228,11 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
   const [gunReady, setGunReady] = useState(false);
   const [seedWsUp, setSeedWsUp] = useState(false);
   const seedWsUpRef = useRef(false);
-  const pendingSnapshotChanges = useRef<Set<string> | null>(null);
   const heardItemsRef = useRef<FeedItem[]>([]);
   const heardRoomsRef = useRef<Room[]>([]);
 
   const live = tab === "network" || (tab === "granted" && Boolean(session)) || sharePeers ||
     (openRoomId !== null && publicRooms.some(room => room.id === openRoomId));
-
-  useEffect(() => {
-    if (new URLSearchParams(location.search).has("oauth")) setAccountOpen(true);
-    const controller = new AbortController();
-    const changes = new Set<string>();
-    pendingSnapshotChanges.current = changes;
-    async function load() {
-      try {
-        const response = await fetch("/feed-cache/snapshot.json", { signal: controller.signal });
-        if (!response.ok) throw new Error("Snapshot unavailable");
-        const snapshot: FeedSnapshot = await response.json();
-        if (!Array.isArray(snapshot.items)) throw new Error("Invalid snapshot");
-        const rows = snapshot.items.map(item => fromGunNode(item)).filter(item => item !== null);
-        if (controller.signal.aborted) return;
-        const untouched = rows.filter(item => !changes.has(item.id) && !changes.has(encodeKey(item.id)));
-        setSeed(prev => mergeItems(prev, untouched));
-        setSnapshotError(snapshot.error);
-      } catch {
-        if (!controller.signal.aborted) setSnapshotError("Could not load the public feed.");
-      } finally {
-        if (pendingSnapshotChanges.current === changes) pendingSnapshotChanges.current = null;
-      }
-    }
-    void load();
-    return () => controller.abort();
-  }, []);
 
   useEffect(() => {
     if (!live || !sessionResolved) return;
@@ -259,9 +257,6 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
         if (cancelled) return;
         const unsharedId = readUnshareId(data, key);
         if (unsharedId) {
-          pendingSnapshotChanges.current?.add(unsharedId);
-          pendingSnapshotChanges.current?.add(key);
-          setSeed((prev) => dropFeedItems(prev, unsharedId));
           heardItemsRef.current = dropFeedItems(heardItemsRef.current, unsharedId);
           if (acceptLiveMeshWrite(seedWsUpRef.current)) {
             setMeshItems(heardItemsRef.current);
@@ -275,8 +270,6 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
           data as Parameters<typeof fromGunNode>[0],
         );
         if (!item) return;
-        pendingSnapshotChanges.current?.add(item.id);
-        setSeed((prev) => mergeItems([item], dropFeedItems(prev, item.id)));
         heardItemsRef.current = mergeItems([item], dropFeedItems(heardItemsRef.current, item.id));
         if (acceptLiveMeshWrite(seedWsUpRef.current)) {
           setMeshItems(heardItemsRef.current);
@@ -352,7 +345,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
   useEffect(() => {
     seedWsUpRef.current = seedWsUp;
     if (!acceptLiveMeshWrite(seedWsUp)) return;
-    // Promote Gun-heard rows (not snapshot-only seed) once the wire is up.
+    // Promote Gun-heard rows (not snapshot rows) once the wire is up.
     setMeshItems(heardItemsRef.current);
     setMeshRooms(heardRoomsRef.current);
   }, [seedWsUp]);
@@ -459,8 +452,8 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
   );
 
   const tabItems = useMemo(
-    () => itemsForTab(tab, seed, overlay, meshItems, grantedItems),
-    [tab, seed, overlay, meshItems, grantedItems],
+    () => itemsForTab(tab, publicSnapshot, overlay, meshItems, grantedItems),
+    [tab, publicSnapshot, overlay, meshItems, grantedItems],
   );
   const hasMeshRows = meshItems.length > 0 || meshRooms.length > 0;
   const hasGrantedRows =
@@ -482,16 +475,16 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
 
   const discovery = useMemo(() => {
     const corpus = discoverCorpus({
-      publicItems: itemsForTab("public", seed, overlay, meshItems),
+      publicItems: itemsForTab("public", publicSnapshot, overlay, meshItems),
       publicRooms: roomsForTab("public", publicRooms, mineRooms, meshRooms),
-      networkItems: itemsForTab("network", seed, overlay, meshItems),
+      networkItems: itemsForTab("network", publicSnapshot, overlay, meshItems),
       networkRooms: roomsForTab("network", publicRooms, mineRooms, meshRooms),
     });
     return {
       tags: aggregateDiscoverTags(corpus.items, corpus.rooms),
       rooms: rankRooms(corpus.rooms, selected),
     };
-  }, [seed, overlay, meshItems, publicRooms, mineRooms, meshRooms, selected]);
+  }, [publicSnapshot, overlay, meshItems, publicRooms, mineRooms, meshRooms, selected]);
 
   const visible = useMemo(
     () => rankFeedItems(threadItems, selected),
@@ -500,9 +493,9 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
 
   const published = useMemo(() => {
     const ids = new Set(sharedIds);
-    for (const item of seed) ids.add(item.id);
+    for (const item of meshItems) ids.add(item.id);
     return ids;
-  }, [seed, sharedIds]);
+  }, [meshItems, sharedIds]);
 
   const publishedRooms = useMemo(() => {
     const ids = new Set(sharedRoomIds);
@@ -629,7 +622,7 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     if (tab === "mine") setTab("public");
   }
 
-  async function shareToPublic(item: FeedItem) {
+  async function shareToNetwork(item: FeedItem) {
     if (!canMutate()) return;
     setShareMessage(null);
     if (!session || !see?.acl) {
@@ -654,11 +647,11 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     gun.get("s3rch").get("items").get(prepared.key).put(prepared.node);
     setSharedIds((prev) => (prev.includes(item.id) ? prev : [...prev, item.id]));
     setConfirmShareId(null);
-    setShareMessage("Published. Unshare removes this from public.");
+    setShareMessage("Shared on Network.");
     await see.persist();
   }
 
-  async function unshareFromPublic(item: FeedItem) {
+  async function unshareFromNetwork(item: FeedItem) {
     if (!canMutate()) return;
     setShareMessage(null);
     if (!session || !see?.acl) {
@@ -683,12 +676,10 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
     }
     gun.get("s3rch").get("items").get(prepared.key).put(prepared.tombstone);
     setSharedIds((prev) => prev.filter((id) => id !== item.id));
-    pendingSnapshotChanges.current?.add(item.id);
-    setSeed((prev) => dropFeedItems(prev, item.id));
     heardItemsRef.current = dropFeedItems(heardItemsRef.current, item.id);
     setMeshItems(heardItemsRef.current);
     setConfirmUnshareId(null);
-    setShareMessage("Unshare removes this from public.");
+    setShareMessage("Removed from Network.");
   }
 
   async function shareRoomToPublic(room: Room) {
@@ -999,8 +990,8 @@ function FeedStreamBody({ identity, tab, setTab, accountOpen, setAccountOpen,
           published={published}
           confirmShareId={confirmShareId}
           confirmUnshareId={confirmUnshareId}
-          onShare={(item) => void shareToPublic(item)}
-          onUnshare={(item) => void unshareFromPublic(item)}
+          onShare={(item) => void shareToNetwork(item)}
+          onUnshare={(item) => void unshareFromNetwork(item)}
         />
       )}
 
@@ -1222,7 +1213,7 @@ function FeedItems({
               const ownNative = mine && ownsNativePost(item, sessionAddress);
               const shared = published.has(item.id);
               return (
-                <tr key={item.id}>
+                <tr key={item.id} data-feed-item={item.id}>
                   <td className="font-data">{item.author || ""}</td>
                   <td>{item.kind}</td>
                   <td className="whitespace-normal">{item.body}<FeedConversation key={`${item.source}:${item.id}`} item={item} /><PublicFeedMedia media={item.media} /></td>
@@ -1287,7 +1278,7 @@ function FeedItems({
   return (
     <ul className="mt-8 space-y-3">
       {items.map((item) => (
-        <li key={item.id}>
+        <li key={item.id} data-feed-item={item.id}>
           <FeedCard
             item={item}
             mine={mine}
@@ -1342,27 +1333,27 @@ function FeedCard({
           {shared ? (
             <>
               <p className="text-xs text-ink-muted">
-                This post is public.
+                This post is shared on Network.
               </p>
               <button
                 type="button"
                 onClick={onUnshare}
                 className={`mt-2 ${btnSecondary}`}
               >
-                {confirmUnshare ? "Confirm unshare" : "Unshare from public"}
+                {confirmUnshare ? "Confirm unshare" : "Unshare from Network"}
               </button>
             </>
           ) : (
             <>
               <p className="text-xs text-ink-muted">
-                Share this post to make it public.
+                Share this post publicly on Network.
               </p>
               <button
                 type="button"
                 onClick={onShare}
                 className={`mt-2 ${btnSecondary}`}
               >
-                {confirmShare ? "Confirm share" : "Share to public"}
+                {confirmShare ? "Confirm share" : "Share to Network"}
               </button>
             </>
           )}

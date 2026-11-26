@@ -1,5 +1,5 @@
 /**
- * Public = seed (Gun snapshot / shared native posts).
+ * Public = published feed snapshot.
  * Mine = overlay (ingest + native posts). Unshared native stays mine.
  * Network = live Gun mesh (`s3rch/items` via `.map().on`), not snapshot
  * hydrate and not Mine overlay / ingest.
@@ -17,13 +17,13 @@ export const GRANTED_NEEDS_PEER_COPY = "Nothing here yet.";
 
 export function itemsForTab(
   tab: FeedTab,
-  seed: readonly FeedItem[],
+  publicSnapshot: readonly FeedItem[],
   overlay: readonly FeedItem[],
   mesh: readonly FeedItem[] = [],
   granted: readonly FeedItem[] = [],
 ): FeedItem[] {
   if (tab === "mine") return overlay.slice();
-  if (tab === "public") return seed.slice();
+  if (tab === "public") return publicSnapshot.slice();
   if (tab === "network") return mesh.slice();
   if (tab === "granted") return granted.slice();
   return [];
