@@ -217,3 +217,5 @@ jobs:
           DISPATCH_REVISION: ${{ github.sha }}
           DISPATCH_RUN_ID: ${{ github.run_id }}
         run: node scripts/dispatch-static-publish.mjs test
+      - name: Verify the public TEST release footer
+        run: node scripts/verify-release-footer.mjs "$GITHUB_SHA"

@@ -1,6 +1,7 @@
 // Produce only browser-facing documents and dependencies from a production build.
 import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { assertReleaseFooter, packageVersion } from "./verify-release-footer.mjs";
 
 const output = ".next/public-pages";
 const staging = await mkdtemp(".next/public-pages-");
@@ -15,7 +16,11 @@ try {
     const name = route === "/" ? "index" : route.slice(1);
     const destination = path.join(staging, name + ".html");
     await mkdir(path.dirname(destination), { recursive: true });
-    await cp(path.join(".next/server/app", name + ".html"), destination);
+    const source = path.join(".next/server/app", name + ".html");
+    if (route === "/" && process.env.APP_BUILD_REVISION) {
+      assertReleaseFooter(await readFile(source, "utf8"), packageVersion, process.env.APP_BUILD_REVISION);
+    }
+    await cp(source, destination);
   }
   await cp(".next/server/app/_not-found.html", path.join(staging, "404.html"));
   await cp(".next/static", path.join(staging, "_next/static"), { recursive: true });
