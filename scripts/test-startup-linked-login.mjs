@@ -160,6 +160,15 @@ if (!scheduledStartupBrowser(process.env)) {
       });
       assert.equal(feedSession.owner, fixture.expected.sea_public_key);
       stage = "private-feed";
+      const home = await page.goto(fixture.site_origin + "/");
+      assert.ok(home?.ok());
+      const hero = page.getByTestId("experiment-hero");
+      await hero.getByRole("heading", { name: "Welcome back.", exact: true }).waitFor();
+      await hero.getByText("You’re signed in.", { exact: false }).waitFor();
+      await hero.getByRole("link", { name: "View your session", exact: true }).waitFor();
+      assert.equal(await hero.getByRole("link", { name: "Join s3r.ch", exact: true }).count(), 0);
+      await openFeed();
+      stage = "private-feed";
       await page.getByRole("button", { name: "Mine", exact: true }).click();
       const body = "Scheduled private feed ownership check";
       await page.getByRole("textbox", { name: "Body", exact: true }).fill(body);
