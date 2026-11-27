@@ -177,7 +177,13 @@ The alarm chip is on when a tile state is `emergency`, or when the alarm soul pi
 
 ## This page
 
-The board lists only ACL-admitted agents and needs from the mesh. Mesh rows at the souls above install or update a tile only when a Gun signature on that row checks out and the principal passes Check admission. Unsigned puts are ignored. An admitted owner stays the owner when a mesh ACL edge names another pubkey. A grant does not replace that owner. An unsigned mesh grant is not Check see on a need.
+The board lists only ACL-admitted agents and needs from the mesh. Here, ACL-admitted
+means the forum owner signed the agent's status row or a role membership at
+`roles/<roleToken>/<seaPubkey>` that names the principal. Mesh rows at the souls
+above install or update a tile only when a Gun signature on that row checks out
+and the principal passes Check admission. Unsigned puts are ignored. An admitted
+owner stays the owner when a mesh ACL edge names another pubkey. A grant does not
+replace that owner. An unsigned mesh grant is not Check see on a need.
 
 The signer of a status row is the agent pubkey, when that pubkey is already on the roster, or the forum owner. The Gun map key is the agent pubkey on the signed row. A self-signed status does not add a new pubkey. Owning the status id does not admit one either: an unsigned ACL edge can name that owner. The forum owner admits one by signing that status, or by signing a role membership at `roles/<roleToken>/<seaPubkey>`. An unsigned `null` does not remove a verified status or its alarm contribution. A removal is a signed record (`removed` is 1 and `action` is `remove`) by that agent or the forum owner, bound to that forum, that status id, and that map key.
 
@@ -240,9 +246,11 @@ the displayed revision as well as the current clock, preserving an immediate
 override at the agent's accepted boundary. This only changes displayed status. These are squad admission limits;
 shape-valid signatures alone do not authorize an extreme revision.
 
-ACL-admitted agents subscribe to their signed removal children immediately through
-the bounded listener registry. A signed removal can be processed once the agent
-is admitted, without requiring a separate live status row first.
+An agent's signed removal and admission children are watched, through the bounded
+listener registry, as soon as a status row naming that agent arrives, including a
+pending self-signed row that is still awaiting admission. An agent enrolled only by
+role membership is not watched until its status row arrives; a retained removal is
+delivered when that watch opens.
 
 A subject closure may carry a newer owner-signed open admission than this browser
 remembers. Verification selects that newer matching admission, then checks the
@@ -318,8 +326,9 @@ parent need. Any independently authenticated object admission stays unchanged.
 A received mesh status installs without drawer child records until authenticated
 child records load. The drawer labels this as status-only data until subtasks,
 updates, prompt attribution, and artifact notes verify through the mesh path. A
-status signature does not authenticate child records by itself. Display labels
-come from verified mesh rows only.
+status signature does not authenticate child records by itself. Display labels are
+a short form of the verified agent's Gun SEA public key (see `shortSea` in
+`lib/forum-squad.ts`).
 
 On reload, the unsigned status cache restores only replay high-water limits. It
 does not populate the live roster or alarm state. Status rows become displayable
