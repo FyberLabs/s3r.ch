@@ -90,11 +90,10 @@ if (origin && tenant && scope && apiKey) {
       method: "GET",
       headers: { authorization: `Bearer ${apiKey}`, accept: "application/json" },
     });
-    const body = await response.text();
     if (!response.ok) {
-      const snippet = body.replaceAll(/[\r\n]/g, " ").slice(0, 200);
-      console.error(`statement source HTTP ${response.status}: ${snippet}`);
+      console.error(`statement source HTTP ${response.status} from ${url.origin}`);
     } else {
+      const body = await response.text();
       scanJson(body, `GET ${url.origin}${url.pathname}`);
     }
   } catch (error) {
