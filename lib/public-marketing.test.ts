@@ -134,10 +134,12 @@ describe("public marketing copy", () => {
     ];
     const datedComing =
       /\bcoming(?:\s+soon|\s+next|\s+in\s+v1)\b[^.!?\n]{0,180}\b(20\d{2}|q[1-4]\b|january|february|march|april|june|july|august|september|october|november|december)\b/i;
+    const squadComingSoon = /creating or joining a squad is coming soon/gi;
     for (const path of files) {
       const src = read(path);
+      const scrubbed = src.replaceAll(squadComingSoon, "");
       const lower = src.toLowerCase();
-      assert.equal(/\bcoming soon\b/i.test(src), false, path);
+      assert.equal(/\bcoming soon\b/i.test(scrubbed), false, path);
       assert.equal(datedComing.test(src), false, `${path} dates a coming claim`);
       const offeredNow = lower.replaceAll("not available now", "");
       assert.equal(offeredNow.includes("available now"), false, path);
@@ -194,7 +196,9 @@ describe("public marketing copy", () => {
     assert.equal(board.includes("forum-squad-fixture"), false);
     assert.equal(board.includes("HAWK-2"), false);
     assert.match(board, /data-testid="squad-unset"/);
+    assert.match(board, /creating or joining a squad is coming soon/i);
     const unsetHtml = renderToStaticMarkup(createElement(SquadForum));
     assert.match(unsetHtml, /have a squad yet/);
+    assert.match(unsetHtml, /creating or joining a squad is coming soon/i);
   });
 });

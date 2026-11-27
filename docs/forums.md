@@ -107,8 +107,8 @@ the assignment-replacement guard. Product sessions and live coordination no long
 apply a deny-list to them; Check and signed ACL evidence remain the gates. Shared
 pilot ACL teardown is still open in
 [FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860); this
-repository does not assume those rows are already deleted. Run
-`scripts/check-vector-keys-in-acl.mjs` against deployment config before rollout.
+repository does not assume those rows are already deleted. Live ACL verification
+for vector pubkeys is handled out of band for that infra issue.
 Product UI does not import the synthetic roster in `forum-squad-fixture.ts`.
 `PILOT_MESH_ENABLED` is hard-disabled: the unset public route does not mount a
 fixture board. Live squads require a separate owner, `ForumAuthorityProvider`

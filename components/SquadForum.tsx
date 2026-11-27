@@ -65,7 +65,7 @@ function SquadForumUnset() {
         You don&apos;t have a squad yet. Squads are shared boards where your group tracks needs, offers, and chat.
       </p>
       <p className="mt-4 text-sm text-ink-muted">
-        Creating or joining a squad is coming in v1.{" "}
+        Creating or joining a squad is coming soon.{" "}
         <Link href="/feed" className="font-semibold text-ink hover:text-signal">
           Sign in on the feed
         </Link>

@@ -554,8 +554,9 @@ not import it. The former session deny-list for shared check-vector keys is
 removed in product code; assignment replacement still refuses those pubkeys.
 Pilot ACL rows and grants may still exist in shared infrastructure until
 [FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860)
-completes teardown. Use `scripts/check-vector-keys-in-acl.mjs` to scan
-deployment config for live references to the vector pubkeys.
+completes teardown. Verifying that live ACL rows, grants, delegations, terminal
+config, and Plane rosters name no vector pubkeys is handled out of band for that
+infra issue, not by an in-repo scanner.
 
 The application Squad runtime has no Blob assignment journal or assignment HTTP
 executor. It requires the independently provisioned ACL statement source and a
