@@ -2,7 +2,7 @@ import { matchesBrowserOrigin, matchesRequestOrigin } from "./request-origin";
 import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { authenticateAgentRequest } from "./identity/site-agent-session-server";
-import type { LiveSquadSpec } from "./squad-view";
+import { isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
 import {
   parseVisorCompanionResolveRequest,
   resolveVisorCompanionSquad,
@@ -69,7 +69,7 @@ export function createVisorCompanionSquadService(input: {
       if (agentRequest && !agent) return reply(403, { error: "authentication" });
       const browser = agentRequest ? null : await authenticate(request);
       const ownerKey = agent?.principal ?? browser?.key;
-      if (!ownerKey) return reply(403, { error: "authentication" });
+      if (!ownerKey || isPublicSquadPrincipal(ownerKey)) return reply(403, { error: "authentication" });
       const evaluatedAt = clock();
       if (!visorCompanionEvaluatedAtWithinSkew(parsed.evaluatedAt, evaluatedAt)) return reply(409, { error: "scope-or-time" });
       request.signal.throwIfAborted();

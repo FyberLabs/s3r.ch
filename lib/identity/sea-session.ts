@@ -5,6 +5,7 @@ import { parseAgentDelegation, parsePrincipalId, verifyAgentDelegation, type Res
 import { randomBytes } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { readForumSignature } from "../forum-sign";
+import { isPublicSquadPrincipal } from "../squad-view";
 import { isSeaPubkey } from "./forum-check";
 
 /** Trusted service adapter, never a request body or unverified mesh response.
@@ -72,7 +73,8 @@ export function createIdentitySessions(input: {
     const at = clock(), snapshot = await delegationSource(id, at);
     if (!snapshot || !Number.isSafeInteger(snapshot.completeThrough) || snapshot.completeThrough < at || clock() !== at) throw Error("Stale delegation source");
     const parsed = parseAgentDelegation(snapshot.delegation);
-    if (!parsed.ok || parsed.value.id !== id) throw Error("Invalid delegation");
+    if (!parsed.ok || parsed.value.id !== id || isPublicSquadPrincipal(parsed.value.delegation.principal) ||
+        isPublicSquadPrincipal(parsed.value.delegation.agent)) throw Error("Invalid delegation");
     const result = verifyAgentDelegation(parsed.value.delegation, snapshot.rotations, { ...snapshot.context, now: at },
       { audience, agent: parsed.value.delegation.agent, scopes, revocations: snapshot.revocations });
     if (!result.ok || clock() !== at) throw Error("Invalid delegation authority");
@@ -164,7 +166,7 @@ export function createIdentitySessions(input: {
       } catch { return null; }
     },
     async challenge(key: string) {
-      if (!isSeaPubkey(key)) throw Error("Private SEA key required");
+      if (!isSeaPubkey(key) || isPublicSquadPrincipal(key)) throw Error("Private SEA key required");
       // Sign this exact opaque string with signForumRecord(token, pair).
       return token(challengeType, key, 60);
     },

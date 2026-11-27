@@ -62,14 +62,13 @@ function SquadForumUnset() {
     <div className="border border-rule bg-panel p-6" data-testid="squad-unset">
       <h1 className="text-2xl font-semibold tracking-tight text-ink">Squad</h1>
       <p className="mt-2 text-sm text-ink-muted" role="status">
-        No squad is selected. A live board requires a forum you own and current Check authority.
-        The public route does not load test-vector rosters or fixture identities.
+        You don&apos;t have a squad yet. Squads are shared boards where your group tracks needs, offers, and chat.
       </p>
       <p className="mt-4 text-sm text-ink-muted">
         <Link href="/feed" className="font-semibold text-ink hover:text-signal">
-          Unlock an identity on the feed
+          Sign in on the feed
         </Link>
-        {" "}to prepare for squad creation, or open a provisioned live squad wrapper when your operator supplies one.
+        {" "}to create or join one, or open a squad link you were given.
       </p>
     </div>
   );

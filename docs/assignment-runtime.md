@@ -3,8 +3,8 @@
 `createDelegationRuntime` connects the signed recovery components to one
 conditional journal. `SquadDelegationControls` uses the explicitly supplied
 `ForumAuthoritySource.assignments` client. There is no default service endpoint
-or synthetic identity in the application. The public Squad remains a demo;
-production provisioning and deployed acceptance remain #190.
+or synthetic identity in the application. The public `/feed/squad` route stays unset
+without a live spec; production provisioning and deployed acceptance remain #190.
 
 ## Mutation and authority boundaries
 

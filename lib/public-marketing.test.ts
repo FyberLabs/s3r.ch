@@ -31,7 +31,6 @@ const marketing = [
   "../components/SquadForum.tsx",
   "../lib/use-squad-forum-coordination.ts",
   "../components/SquadDelegationControls.tsx",
-  "../components/ForumHierarchyPreview.tsx",
   "../lib/features.ts",
   "../public/llms.txt",
   "../public/llms-full.txt",
@@ -188,7 +187,7 @@ describe("public marketing copy", () => {
     const smoke = read("../scripts/smoke-standalone.sh");
     const board = read("../components/SquadForum.tsx");
     assert.equal(smoke.includes("local demonstration"), false);
-    assert.match(smoke, /No squad is selected/);
+    assert.match(smoke, /don.t have a squad yet/);
     assert.equal(board.includes("forum-squad-fixture"), false);
     assert.equal(board.includes("HAWK-2"), false);
     assert.match(board, /data-testid="squad-unset"/);

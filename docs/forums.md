@@ -16,7 +16,7 @@ and [signed-link admission status](linked-session-admission.md). Older wallet-er
 implementation descriptions below are historical where they describe ownership.
 
 
-`/feed/squad` is the squad board: contributor tiles, chat, and a drawer. The board stays in this browser until mesh publish.
+`/feed/squad` is the squad board: contributor tiles, chat, and a drawer. Without a live squad configuration it shows an unset prompt; a provisioned wrapper supplies forum id, owner, and authority.
 
 The live drawer uses [authenticated child records](forum-drawer.md) for subtasks,
 updates, prompt attribution and artifact references. Missing evidence remains
@@ -101,20 +101,17 @@ modifying the separate concept mock.
 
 ## Current isolation boundary
 
-The fixture owner is a public cryptographic test-vector identity, not a secret
-operator key. `PILOT_MESH_ENABLED` is hard-disabled: the squad component does not
-create/register a Gun connection, subscribe to forum data, publish records or ACL
-changes, or restore earlier mesh high-water snapshots. Local chat remains usable
-and the page says the board stays in this browser until mesh publish. Other app routes are unaffected.
-The sample owner must never authorize live forum messages.
+Public check-vector SEA pubkeys (shared forum test vectors with known private scalars)
+stay on the application deny-list for sessions, live coordination, and namespace
+selection until pilot ACL teardown completes ([FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860)).
+Product UI does not import the synthetic roster in `forum-squad-fixture.ts`.
+`PILOT_MESH_ENABLED` is hard-disabled: the unset public route does not mount a
+fixture board. Live squads require a separate owner, `ForumAuthorityProvider`
+evidence, and owner-signed ACL ingestion.
 
 The contract and receive-path descriptions below document the retained,
-unit-tested implementation, not an enabled deployment. Re-enabling live forums
-requires a separately provisioned owner, a new forum namespace, removal of sample
-authority from the live graph, and owner-signed, soul-bound ACL ingestion. Merely
-flipping the isolation constant is not a supported deployment procedure.
-Unauthenticated primary ACL ownership and grants fail closed for every object,
-including non-fixture needs; there is no unsigned fallback.
+unit-tested implementation. Unauthenticated primary ACL ownership and grants fail
+closed for every object; there is no unsigned fallback.
 
 Identity is the GunDB SEA pubkey. A wallet and a Panopticon OAuth subject are linked header credentials. They are not the forum principal.
 
@@ -322,7 +319,7 @@ those details. Local display labels are retained for recognition.
 On reload, the unsigned status cache restores only replay high-water limits. It
 does not populate the live roster or alarm state. Status rows become displayable
 only after the existing mesh signature and admission path accepts them again.
-An offline reload therefore shows the sample board rather than cached live rows.
+An offline reload therefore shows an empty or stale roster rather than cached live rows.
 The cache remains a local replay floor, not authenticated ownership or child data.
 
 Need-cache reload follows the same boundary: saved rows restore replay limits

@@ -1,6 +1,8 @@
 import { verifyTerminalToken } from "./terminal-run";
 import { jwtVerify } from "jose";
 import { isSeaPubkey } from "./forum-check";
+import { isPublicSquadPrincipal } from "../squad-view";
+
 /** Verification only: shares the existing issuer's wire contract and holds no
  * challenge, exchange, replay-store or token-signing capability. */
 export function createIdentityTokenVerifier(input: { origin: string; secret: string; clock?: () => number }) {
@@ -15,7 +17,7 @@ export function createIdentityTokenVerifier(input: { origin: string; secret: str
     if (!Number.isSafeInteger(now) || now < 0) throw Error("Invalid session time");
     const { payload } = await jwtVerify(value, secret, { algorithms: ["HS256"], typ: type,
       issuer: origin.origin, audience: origin.origin, currentDate: new Date(now * 1000), requiredClaims: ["iat", "exp", "jti"] });
-    if (typeof payload.sub !== "string" || !isSeaPubkey(payload.sub) ||
+    if (typeof payload.sub !== "string" || !isSeaPubkey(payload.sub) || isPublicSquadPrincipal(payload.sub) ||
         !Number.isSafeInteger(payload.iat) || !Number.isSafeInteger(payload.exp) || payload.iat! > now ||
         payload.exp! - payload.iat! !== ttl || typeof payload.jti !== "string" || !/^[0-9a-f]{64}$/.test(payload.jti)) throw Error("Invalid session");
     await verifyTerminalToken(payload, { kind: type, subject: payload.sub });

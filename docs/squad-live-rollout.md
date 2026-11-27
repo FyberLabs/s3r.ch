@@ -11,15 +11,19 @@ importing test vectors into product code.
 `SquadForum` accepts an optional `LiveSquadSpec` (`forumId`, stable SEA `owner`,
 `label`) from its provisioned application wrapper (for example `LiveSquadForum`).
 Omitting it selects an **unset** namespace: the board is empty and shows a short
-prompt. Malformed live configuration throws instead of falling back to fixture
-identities in product UI. The forum ID must embed its declared owner. There is
-no principal or forum-id deny-list for retired pilot keys: removed pilot forums
-and grants carry no authority, and a vector pubkey that signs in later is an
-ordinary user with no extra application state.
+prompt. Malformed live configuration throws instead of mounting fixture roster data
+in product UI. The forum ID must embed its declared owner, and neither the public
+check vector forum id nor any known public check-vector principal can be used as a
+live owner.
 
 Live mode starts with empty roster, chat, needs and alarm state. It never creates
 a sample ACL, admits a fixture roster, uses sample labels, or restores sample
-keys for signing. A separately provisioned `ForumAuthorityProvider` must supply
+keys for signing. Known public check-vector principals remain on the session
+deny-list and are excluded from proof verification and signing even if a source
+supplies records for them. Pilot ACL teardown is tracked in
+[FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860); the
+deny-list stays until that work completes. A separately provisioned
+`ForumAuthorityProvider` must supply
 complete authenticated history and signed ACL evidence; namespace selection
 itself grants nothing. Receive readiness also requires that verified forum
 ownership matches the configured owner.

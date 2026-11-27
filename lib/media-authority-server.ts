@@ -2,6 +2,7 @@ import { objectPrincipal } from "./identity/forum-authority-records";
 import { mediaRegistration } from "./media-registration-store";
 import type { UnverifiedObjectRecord } from "./identity/forum-object-record";
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
+import { isPublicSquadPrincipal } from "./squad-view";
 /** Only a deployment-provisioned complete primary source may implement read.
  * This adapter never treats a caller snapshot or Gun peers as complete history. */
 export function createMediaAuthority(input: {
@@ -19,7 +20,7 @@ export function createMediaAuthority(input: {
     if (request.headers.has("authorization")) return false;
     const at = clock(), session = await input.authenticate(request);
     signal.throwIfAborted();
-    if (clock() !== at || !session) return false;
+    if (clock() !== at || !session || isPublicSquadPrincipal(session.key)) return false;
     const source = structuredClone(await input.read(at, signal));
     const registration = candidate ?? (action === "register" ? null : await input.registration?.(object, signal));
     if (candidate && action !== "write") return false;
@@ -31,7 +32,7 @@ export function createMediaAuthority(input: {
     signal.throwIfAborted();
     if (!result.ok || result.diagnostics.length || clock() !== at) return false;
     const principal = authority.graph.principalForKey(session.key, at);
-    if (!principal) return false;
+    if (!principal || isPublicSquadPrincipal(principal)) return false;
     if (action === "register") return object.startsWith("media_") && objectPrincipal(object) === principal;
     return action === "write" ? authority.graph.ownerOf(object) === principal : authority.graph.checkDirectSee(object, principal, at).allowed;
   };

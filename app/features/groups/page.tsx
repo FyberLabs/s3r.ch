@@ -50,7 +50,7 @@ export default function GroupsFeaturePage() {
           people. The board shows the group&apos;s needs, offers, and chat.
         </p>
         <p>
-          The public squad board stays in this browser until mesh publish.
+          The public squad page stays empty until you sign in and open a squad you own or were invited to.
         </p>
       </FeatureSection>
 

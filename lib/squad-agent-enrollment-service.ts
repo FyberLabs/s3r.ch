@@ -10,6 +10,7 @@ import { matchesBrowserOrigin } from "./request-origin";
 import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { SQUAD_AGENT_GRANT_SECONDS, SQUAD_AGENT_SCOPE, type SquadAgentGrant } from "./squad-agent-enrollment";
 import type { SquadPilotConfig } from "./squad-pilot-config";
+import { isPublicSquadPrincipal } from "./squad-view";
 
 type Journal = Pick<ReturnType<typeof createAclGraphSource>, "read" | "append">;
 type Authenticator = (request: Request) => Promise<{ key: string } | null>;
@@ -54,7 +55,7 @@ export function createSquadAgentEnrollmentService(input: {
   // The owner signs this nonce as part of the existing delegation format.
   // It identifies the Squad's approvals even when the current roster changes.
   const noncePrefix = createHash("sha256").update(JSON.stringify(["s3rch-squad-enrollment-v1", forumId])).digest("hex").slice(0, 32);
-  const roster = new Set(Object.values(pilot.plane?.roster ?? {}).filter(key => key !== owner));
+  const roster = new Set(Object.values(pilot.plane?.roster ?? {}).filter(key => key !== owner && !isPublicSquadPrincipal(key)));
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   const reply = (status: number, body: object) => Response.json(body, { status, headers: {
     "Cache-Control": "private, no-store", Vary: "Cookie, Origin", "X-Content-Type-Options": "nosniff",

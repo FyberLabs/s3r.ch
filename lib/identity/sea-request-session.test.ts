@@ -8,6 +8,7 @@ import { readSeaRequestSession } from "./sea-request-session";
 import { signSessionToken } from "./session";
 import { signForumRecord } from "../forum-sign";
 import { sessionGatedAllocate } from "../turn-allocate";
+import { PILOT_OWNER } from "./vectors/forum-squad-fixture";
 import type { SeaPair } from "./sea";
 const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
 const secret = "s".repeat(40), now = 1800000000, origin = "https://s3r.ch";
@@ -41,9 +42,9 @@ test("wallet, linked metadata, duplicate cookie, wrong origin and invalid secret
   assert.equal(await readSeaRequestSession(new Request(origin, { headers: { cookie: `__Host-s3rch-squad-session=${h.token}; __Host-s3rch-squad-session=${h.token}` } }), env, () => now), null);
   assert.equal(await readSeaRequestSession(new Request(origin), env, () => now), null);
 });
-test("malformed signed claims fail at the shared verifier", async () => {
+test("malformed signed claims and public demo principals fail at the shared verifier", async () => {
   const h = await setup(), reader = createIdentityTokenVerifier({ origin, secret, clock: () => now });
-  for (const override of [{ sub: "0x" + "a".repeat(40) }, { exp: now + 301 }, { iat: now + 1 }, { jti: "short" }]) {
+  for (const override of [{ sub: "0x" + "a".repeat(40) }, { sub: PILOT_OWNER }, { exp: now + 301 }, { iat: now + 1 }, { jti: "short" }]) {
     const token = await new SignJWT({ sub: h.pair.pub, iss: origin, aud: origin, iat: now, exp: now + 300, jti: "a".repeat(64), ...override })
       .setProtectedHeader({ alg: "HS256", typ: "s3rch-identity-session-v1" }).sign(new TextEncoder().encode(secret));
     assert.equal(await reader.authenticate(token), null);
@@ -52,8 +53,8 @@ test("malformed signed claims fail at the shared verifier", async () => {
   assert.equal(await createIdentityTokenVerifier({ origin, secret, clock: () => NaN }).authenticate(h.token), null);
   await assert.rejects(reader.claims(h.token, "other", 300));
 });
-test("allocation refuses wallet and OIDC labels before any provider or static fallback", async () => {
-  for (const principal of [null, "0x" + "a".repeat(40), "oidc-subject"]) {
+test("allocation refuses wallet/OIDC/demo labels before any provider or static fallback", async () => {
+  for (const principal of [null, "0x" + "a".repeat(40), "oidc-subject", PILOT_OWNER]) {
     const result = await sessionGatedAllocate({ sessionPrincipal: principal, env: { S3RCH_TURN_URLS: "stun:stun.example.org" },
       fetchImpl: async () => { assert.fail("no provider call"); } });
     assert.equal(result.status, 401);
