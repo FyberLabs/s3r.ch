@@ -2,9 +2,9 @@
 
 The live Squad drawer reads child records through `createForumDrawer` in
 `lib/forum-drawer.ts`. `components/ForumDrawerRecords.tsx` owns its subscriptions
-and publication controls; `SquadForum` mounts it only for the mesh path. The local
-sample presentation stays separate. An unavailable authority source or signing
-identity leaves the drawer status-only.
+and publication controls; `SquadForum` mounts it only for the mesh path on live
+squads. Product UI does not mount fixture drawer content. An unavailable authority
+source or signing identity leaves the drawer status-only.
 
 ## Identity and admission
 
@@ -54,7 +54,7 @@ Displaying a row requires current direct see for the viewer, current child-write
 authority for its signer, and a current signing key. An artifact additionally
 requires independent direct see on its target for both writer and viewer; no
 target body is fetched and no target ID is treated as a grant. Last-prompt
-attribution comes from the signed prompt's writer, not from sample role labels.
+attribution comes from the signed prompt's writer, not from fixture role labels.
 
 Signing is asynchronous. The publisher rechecks authority, target access,
 signing key, current publication identity, revision and connection generation
