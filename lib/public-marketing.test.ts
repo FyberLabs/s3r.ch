@@ -188,6 +188,7 @@ describe("public marketing copy", () => {
     const smoke = read("../scripts/smoke-standalone.sh");
     const board = read("../components/SquadForum.tsx");
     assert.equal(smoke.includes("local demonstration"), false);
+    assert.match(smoke, /No squad is selected/);
     assert.equal(board.includes("forum-squad-fixture"), false);
     assert.equal(board.includes("HAWK-2"), false);
     assert.match(board, /data-testid="squad-unset"/);

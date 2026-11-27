@@ -27,7 +27,7 @@ const unsetView: SquadView = Object.freeze({
 export function squadView(live?: LiveSquadSpec): SquadView {
   if (live === undefined) return unsetView;
   if (!live || typeof live !== "object" || Array.isArray(live) ||
-      Object.keys(live).sort().join() !== "forumId,label,owner") throw Error("Invalid live Squad configuration");
+      Object.keys(live).sort((a, b) => a.localeCompare(b)).join() !== "forumId,label,owner") throw Error("Invalid live Squad configuration");
   const spec = { forumId: live.forumId, owner: live.owner, label: live.label };
   if (!isForumObjectId(spec.forumId, "forum") || !isSeaPubkey(spec.owner) ||
       !sameEmbeddedPrincipal(spec.owner, spec.forumId) || typeof spec.label !== "string" || !spec.label.trim() || spec.label.length > 80)

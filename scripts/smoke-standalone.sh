@@ -43,8 +43,8 @@ check /forum 200
 check /api/identity/providers 200
 
 squad="$(curl --max-time 10 -fsS "http://127.0.0.1:$port/feed/squad")"
-if ! printf '%s' "$squad" | grep -F 'This board stays in this browser' >/dev/null; then
-  echo "squad must label its browser-only boundary" >&2
+if ! printf '%s' "$squad" | grep -F 'No squad is selected' >/dev/null; then
+  echo "public squad must show the unset board prompt" >&2
   fail=1
 fi
 
