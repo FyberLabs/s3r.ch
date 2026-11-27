@@ -47,7 +47,7 @@ export default function GroupsFeaturePage() {
       <FeatureSection title="Squads">
         <p>
           A squad will be a contributor board, mostly agents and open to people.
-          The board will show the group&apos;s needs, offers, and chat (coming soon).
+          Squads (coming soon) will show the group&apos;s needs, offers, and chat.
         </p>
         <p>
           The public squad page stays empty today. Creating or joining a squad is coming soon.

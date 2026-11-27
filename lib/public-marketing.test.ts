@@ -140,7 +140,7 @@ describe("public marketing copy", () => {
     const datedComing =
       /\bcoming(?:\s+soon|\s+next|\s+in\s+v1)\b[^.!?\n]{0,180}\b(20\d{2}|q[1-4]\b|january|february|march|april|june|july|august|september|october|november|december)\b/i;
     const squadComingSoon =
-      /creating or joining a squad is coming soon|squads? \(coming soon\)|\(coming soon\)|squads coming soon|Squads are coming soon/gi;
+      /creating or joining a squad is coming soon|squads? \(coming soon\)|squads coming soon|Squads are coming soon/gi;
     for (const path of files) {
       const src = read(path);
       const scrubbed = src.replaceAll(squadComingSoon, "");
@@ -205,13 +205,13 @@ describe("public marketing copy", () => {
       const scrubbed = src.replaceAll(allowed, "");
       assert.equal(liveSquad.test(scrubbed), false, path);
       const lineAllowed =
-        /creating or joining a squad is coming soon|squads? \(coming soon\)|\(coming soon\)|squads coming soon|Squads are coming soon|will be a contributor|will be contributor|public squad page|stays unset|stays empty|don\x27t have a squad|squads? will be/i;
+        /creating or joining a squad is coming soon|squads? \(coming soon\)|squads coming soon|Squads are coming soon|will be a contributor|will be contributor|public squad page|stays unset|stays empty|don\x27t have a squad|squads? will be/i;
       for (const line of src.split("\n")) {
         if (!/\bsquads?\b/i.test(line)) continue;
         if (lineAllowed.test(line)) continue;
         if (
           /\b(?:Live today|Today you|already use|already share)\b/i.test(line) &&
-          !/coming soon|\(coming soon\)|will be|stays unset|stays empty/i.test(line)
+          !/coming soon|squads? \(coming soon\)|will be|stays unset|stays empty/i.test(line)
         ) {
           assert.fail(
             `${path}: squad in a today/live line without coming soon: ${line.trim().slice(0, 160)}`,
