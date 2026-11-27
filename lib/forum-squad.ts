@@ -953,10 +953,10 @@ export function offerRowShouldQueue(input: {
  * A local row shows only until that mesh row arrives.
  */
 export function mergeForumChat(input: {
-  pilot: readonly FeedItem[];
   mesh: readonly FeedItem[];
-  local: readonly FeedItem[];
   hidden: readonly string[];
+  pilot?: readonly FeedItem[];
+  local?: readonly FeedItem[];
 }): FeedItem[] {
   const map = new Map<string, FeedItem>();
   const put = (item: FeedItem) => {
@@ -965,8 +965,8 @@ export function mergeForumChat(input: {
     }
     map.set(item.id, item);
   };
-  for (const item of withoutChatIds(input.pilot, input.hidden)) put(item);
-  for (const item of withoutChatIds(input.local, input.hidden)) put(item);
+  for (const item of withoutChatIds(input.pilot ?? [], input.hidden)) put(item);
+  for (const item of withoutChatIds(input.local ?? [], input.hidden)) put(item);
   for (const item of withoutChatIds(input.mesh, input.hidden)) put(item);
   return [...map.values()].filter(forumChatFits)
     .sort((a, b) => (chatDeliveryOrder.get(a) ?? 0) - (chatDeliveryOrder.get(b) ?? 0))
@@ -1297,13 +1297,13 @@ export function commitForumAlarm(
 
 /** Sample, mesh, and local rows. A verified removal drops every copy of that id. */
 export function composeForumNeeds(input: {
-  pilot: readonly ForumNeed[];
   mesh: readonly ForumNeed[];
-  local: readonly ForumNeed[];
   removed: ReadonlySet<string>;
+  pilot?: readonly ForumNeed[];
+  local?: readonly ForumNeed[];
 }): Map<string, ForumNeed> {
   const map = new Map<string, ForumNeed>();
-  for (const need of input.pilot) {
+  for (const need of input.pilot ?? []) {
     if (input.removed.has(need.id)) continue;
     map.set(need.id, need);
   }
@@ -1312,7 +1312,7 @@ export function composeForumNeeds(input: {
     const base = map.get(need.id);
     if (!base || need.hamState >= base.hamState) map.set(need.id, need);
   }
-  for (const need of input.local) {
+  for (const need of input.local ?? []) {
     if (input.removed.has(need.id)) continue;
     const base = map.get(need.id);
     if (!base || need.hamState > base.hamState) map.set(need.id, need);
@@ -1401,12 +1401,12 @@ export function authorizeForumMeshRemoval(input: {
 
 /** Sample roster plus mesh rows. A verified removal drops that pubkey, including a fixture. */
 export function composeForumRoster(input: {
-  sample: readonly SquadAgent[];
   mesh: readonly ForumAgentStatus[];
-  admitted?: ReadonlySet<string>;
   removed: ReadonlySet<string>;
+  sample?: readonly SquadAgent[];
+  admitted?: ReadonlySet<string>;
 }): SquadAgent[] {
-  return mergeAgents(input.sample, input.mesh, input.admitted).filter(
+  return mergeAgents(input.sample ?? [], input.mesh, input.admitted).filter(
     (agent) => !input.removed.has(agent.status.seaPubkey),
   );
 }

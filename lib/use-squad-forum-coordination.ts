@@ -1243,9 +1243,7 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const receivedNeeds = useMemo(
     () =>
       composeForumNeeds({
-        pilot: [],
         mesh: [...authenticatedNeeds.values(), ...meshNeeds.values()].filter(row => !liveEnabled || (proofs.valid(row) && !!graph?.hasObject(row.id))),
-        local: [],
         removed: removedNeeds,
       }),
     [meshNeeds, authenticatedNeeds, removedNeeds, aclRev, proofs, graph],
@@ -1275,7 +1273,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
 
   const roster = useMemo(() => {
     const merged = composeForumRoster({
-      sample: [],
       mesh: [...meshStatus.values()].filter(row => !liveEnabled || (mayReadSquad && proofs.valid(row) && proofs.enrolled(row.seaPubkey))),
       admitted,
       removed: new Set(removedAgents.keys()),
@@ -1300,10 +1297,10 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const active = roster.find((agent) => agent.status.seaPubkey === selected) ?? null;
 
   const chat = useMemo(
-    () => mergeForumChat({ pilot: [],
+    () => mergeForumChat({
       mesh: liveEnabled ? readableForumChat(meshChat, forumId, sessionKey, authority?.graph, proofs.valid,
         Math.floor(Date.now() / 1000)) : [],
-      local: [], hidden: hiddenChat }),
+      hidden: hiddenChat }),
     [hiddenChat, meshChat, aclRev, proofs, authority, liveEnabled, forumId, sessionKey],
   );
 

@@ -548,9 +548,10 @@ or replace the signed-record and client Check requirements.
 The public `/feed/squad` route mounts `SquadForum` without a `LiveSquadSpec`.
 That path shows an empty unset board (no fixture roster, chat, or needs). Live
 squads mount through wrappers such as `LiveSquadForum` with a user-owned forum
-id and current `ForumAuthorityProvider` evidence. Shared forum check vectors and
-the synthetic roster in `lib/identity/vectors/forum-squad-fixture.ts` are for
-tests only; product UI does not import them. Pilot ACL rows and grants may still
+id and current `ForumAuthorityProvider` evidence. The synthetic roster in
+`lib/identity/vectors/forum-squad-fixture.ts` is for tests only; product UI does
+not import it. `lib/squad-public-principals.ts` still reads shared check-vector
+keys from `lib/identity/vectors/forums.json` for the session deny-list. Pilot ACL rows and grants may still
 exist in shared infrastructure until [FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860)
 completes teardown; sessions and live coordination keep a deny-list for known
 public check-vector keys until that work finishes.

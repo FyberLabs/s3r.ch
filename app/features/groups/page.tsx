@@ -50,7 +50,7 @@ export default function GroupsFeaturePage() {
           people. The board shows the group&apos;s needs, offers, and chat.
         </p>
         <p>
-          The public squad page stays empty until you sign in and open a squad you own or were invited to.
+          The public squad page stays empty today. Creating or joining a squad is coming in v1.
         </p>
       </FeatureSection>
 

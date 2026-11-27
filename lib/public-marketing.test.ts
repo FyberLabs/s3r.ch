@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { describe, it } from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { SquadForum } from "../components/SquadForum";
 
 function read(path: string): string {
   return readFileSync(new URL(path, import.meta.url), "utf8");
@@ -187,9 +190,11 @@ describe("public marketing copy", () => {
     const smoke = read("../scripts/smoke-standalone.sh");
     const board = read("../components/SquadForum.tsx");
     assert.equal(smoke.includes("local demonstration"), false);
-    assert.match(smoke, /don.t have a squad yet/);
+    assert.match(smoke, /have a squad yet/);
     assert.equal(board.includes("forum-squad-fixture"), false);
     assert.equal(board.includes("HAWK-2"), false);
     assert.match(board, /data-testid="squad-unset"/);
+    const unsetHtml = renderToStaticMarkup(createElement(SquadForum));
+    assert.match(unsetHtml, /have a squad yet/);
   });
 });

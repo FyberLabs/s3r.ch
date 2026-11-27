@@ -5,8 +5,7 @@ import vector from "@/lib/identity/vectors/forums.json";
 export const PUBLIC_SQUAD_FORUM_ID = vector.forumId;
 
 function b64url(bytes: Uint8Array): string {
-  let bin = "";
-  for (const byte of bytes) bin += String.fromCharCode(byte);
+  const bin = Array.from(bytes, (byte) => String.fromCodePoint(byte)).join("");
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 

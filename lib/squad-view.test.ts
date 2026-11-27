@@ -6,7 +6,8 @@ import { p256 } from "@noble/curves/nist.js";
 import { squadView, isPublicSquadPrincipal } from "./squad-view";
 import { PILOT_AGENTS, PILOT_OWNER, PILOT_FORUM_ID, PILOT_FORUM_LABEL } from "./identity/vectors/forum-squad-fixture";
 import { seaToPrincipalKey } from "./identity/forum-check";
-import { checkForumSee, type SeeGraph } from "./identity/check";
+import { checkForumSee } from "./identity/check";
+import { createMemorySeeAcl } from "./identity/see-acl";
 import { SquadForum } from "../components/SquadForum";
 const key = p256.getPublicKey(new Uint8Array(32).fill(53), false);
 const owner = Buffer.from(key.slice(1, 33)).toString("base64url") + "." + Buffer.from(key.slice(33)).toString("base64url");
@@ -31,7 +32,10 @@ test("without live spec the product namespace stays unset, never the public fixt
 
 test("Check refuses a public vector key with no grant", () => {
   const now = 1000;
-  const graph: SeeGraph = { hasObject: () => true, ownerOf: () => owner, seeGrants: () => [] };
+  const graph = createMemorySeeAcl();
+  graph.putObject(PILOT_FORUM_ID, owner);
+  graph.stateSeeGrant(owner, { claimId: PILOT_FORUM_ID, accessor: owner, from: 0, until: now + 1000 });
+  assert.equal(checkForumSee(graph, PILOT_FORUM_ID, owner, now).allowed, true);
   assert.equal(checkForumSee(graph, PILOT_FORUM_ID, PILOT_OWNER, now).allowed, false);
   assert.equal(isPublicSquadPrincipal(PILOT_OWNER), true);
 });
@@ -55,4 +59,5 @@ test("public route renders no fixture roster; live component stays empty until A
   assert.ok(!unset.includes(PILOT_FORUM_LABEL));
   assert.ok(!unset.includes("HAWK-2"));
   assert.doesNotMatch(unset, /aria-label="Forum hierarchy"/);
+  assert.match(unset, /have a squad yet/);
 });
