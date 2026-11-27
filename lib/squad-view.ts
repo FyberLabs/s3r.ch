@@ -29,8 +29,10 @@ export const isPublicSquadPrincipal = (principal: string) => publicSquadPrincipa
  * query-string switch that mounts test-vector roster data in product UI. */
 export function squadView(live?: LiveSquadSpec): SquadView {
   if (live === undefined) return unsetView;
+  const liveKeys = Object.keys(live);
   if (!live || typeof live !== "object" || Array.isArray(live) ||
-      Object.keys(live).sort().join() !== "forumId,label,owner") throw Error("Invalid live Squad configuration");
+      liveKeys.length !== 3 || liveKeys.some(k => k !== "forumId" && k !== "label" && k !== "owner"))
+    throw Error("Invalid live Squad configuration");
   const spec = { forumId: live.forumId, owner: live.owner, label: live.label };
   if (!isForumObjectId(spec.forumId, "forum") || !isSeaPubkey(spec.owner) ||
       !sameEmbeddedPrincipal(spec.owner, spec.forumId) || spec.forumId === PUBLIC_SQUAD_FORUM_ID ||
