@@ -7,7 +7,7 @@ export const FEATURES = [
   {
     href: "/features/groups",
     title: "Groups",
-    copy: "Rooms, see-grants, forum groups, and squads for people and agents.",
+    copy: "Rooms, see-grants, forum groups, and squads (coming soon) for people and agents.",
   },
   {
     href: "/features/sociacl",

@@ -93,7 +93,12 @@ describe("public marketing copy", () => {
     assert.equal(home.includes("One network for the work behind today's media, and the real moments in between."), true);
     assert.equal(home.includes("Join s3r.ch"), true);
     assert.equal(home.includes("Explore the public feed"), true);
-    assert.equal(home.includes("Live today: posts, rooms, forums and squads."), true);
+    assert.equal(
+      home.includes(
+        "Live today: posts, rooms, and forums. Squads (coming soon).",
+      ),
+      true,
+    );
     assert.equal(home.includes("Tagged posts and rooms."), true);
     assert.equal(home.includes("Post to Mine, create a room, and share what you choose."), true);
     assert.equal(home.includes("What you can do today"), true);
@@ -134,7 +139,8 @@ describe("public marketing copy", () => {
     ];
     const datedComing =
       /\bcoming(?:\s+soon|\s+next|\s+in\s+v1)\b[^.!?\n]{0,180}\b(20\d{2}|q[1-4]\b|january|february|march|april|june|july|august|september|october|november|december)\b/i;
-    const squadComingSoon = /creating or joining a squad is coming soon/gi;
+    const squadComingSoon =
+      /creating or joining a squad is coming soon|squads? \(coming soon\)|\(coming soon\)|squads coming soon|Squads are coming soon/gi;
     for (const path of files) {
       const src = read(path);
       const scrubbed = src.replaceAll(squadComingSoon, "");
@@ -186,6 +192,33 @@ describe("public marketing copy", () => {
     assert.equal(workspace.includes("Coming in v1"), true);
     assert.equal(workspace.includes("s3r.ch utilizes public posts to improve services."), true);
     assert.equal(read("../lib/features.ts").includes('href: "/features/workspace"'), true);
+  });
+
+  it("does not present squads as live or usable today without coming soon", () => {
+    const allowed =
+      /creating or joining a squad is coming soon|squads? \(coming soon\)|squads coming soon|Squads are coming soon|will be a contributor|will be contributor|Open squad|\/feed\/squad|data-testid="squad|have a squad yet|stays unset|stays empty|don\x27t have a squad|squads? will be/gi;
+    const files = [...new Set(marketing)];
+    const liveSquad =
+      /\b(?:live today[^.!?\n]{0,120}\bsquads?\b(?![^.!?\n]{0,40}coming soon)|today you[^.!?\n]{0,120}\bwork on a squad\b|already use[^.!?\n]{0,80}\bsquad\b|posts, rooms, forums and squads\.|forums and squads\.(?![^.!?\n]*coming soon))/i;
+    for (const path of files) {
+      const src = read(path);
+      const scrubbed = src.replaceAll(allowed, "");
+      assert.equal(liveSquad.test(scrubbed), false, path);
+      const lineAllowed =
+        /creating or joining a squad is coming soon|squads? \(coming soon\)|\(coming soon\)|squads coming soon|Squads are coming soon|will be a contributor|will be contributor|public squad page|stays unset|stays empty|don\x27t have a squad|squads? will be/i;
+      for (const line of src.split("\n")) {
+        if (!/\bsquads?\b/i.test(line)) continue;
+        if (lineAllowed.test(line)) continue;
+        if (
+          /\b(?:Live today|Today you|already use|already share)\b/i.test(line) &&
+          !/coming soon|\(coming soon\)|will be|stays unset|stays empty/i.test(line)
+        ) {
+          assert.fail(
+            `${path}: squad in a today/live line without coming soon: ${line.trim().slice(0, 160)}`,
+          );
+        }
+      }
+    }
   });
 
   it("keeps the squad product route free of fixture demo copy", () => {

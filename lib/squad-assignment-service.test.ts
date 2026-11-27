@@ -106,17 +106,21 @@ test("browser WebCrypto signs through authenticated HTTP while the server has no
   assert.ok((await h.source.load()).journal.operation?.signedMaterial);
   assert.deepEqual(await h.client.resume(scope, operationId, replacement), result);
 });
-const assignmentReplacementActions = ["plan", "start", "resume"] as const;
+const assignmentReplacementActions = ["plan", "start-signed", "start", "resume"] as const;
 assert.equal(PUBLIC_FORUM_VECTOR_PUBKEYS.length, 12);
 for (const [index, replacement] of PUBLIC_FORUM_VECTOR_PUBKEYS.entries()) {
   for (const action of assignmentReplacementActions) {
     test(`assignment ${action} refuses public forum vector key #${index + 1}`, async () => {
-      const h = await setup();
+      const h = await setup(action === "start-signed");
       const operationId = "a".repeat(32);
       const body = action === "resume"
         ? { ...scope, operationId, replacement }
-        : { ...scope, operationId, replacement, revision: 0 };
-      assert.equal((await h.service(action, request(body))).status, 400);
+        : action === "start-signed"
+          ? { ...scope, operationId, replacement, revision: 0, material: {} }
+          : { ...scope, operationId, replacement, revision: 0 };
+      const res = await h.service(action, request(body));
+      assert.equal(res.status, 400);
+      assert.deepEqual(await res.json(), { error: "replacement" });
       assert.equal((await h.source.load()).journal.operation, null);
     });
   }
