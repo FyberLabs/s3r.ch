@@ -24,14 +24,6 @@ import { useForumAuthority } from "@/components/ForumAuthorityProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
 import { toGunNode, type FeedItem } from "@/lib/feed-types";
 import {
-  PILOT_AGENTS,
-  PILOT_ALARM,
-  PILOT_CHAT,
-  PILOT_LABELS,
-  PILOT_NEEDS,
-  admitPilotRoster,
-} from "@/lib/forum-squad-fixture";
-import {
   freshestOfferParent, retainForumOffer, forumOfferFits,
   pendingClosureDominates, retainChatTombstone, pruneChatTombstones, CHAT_TOMBSTONE_TTL_MS, authorizeStatusAdmission,
   retainForumChat, forumChatFits,
@@ -104,7 +96,6 @@ import {
   parseForumNeed,
   parseForumOffer,
   parseForumRoleMembership,
-  pickDisplayedStatus,
   shortSea,
   buildForumStatement,
   withoutChatIds,
@@ -132,7 +123,6 @@ import {
   type ForumOffer,
   type SeeGraph,
 } from "@/lib/identity/check";
-import { createMemorySeeAcl } from "@/lib/identity/see-acl";
 
 import { isPublicSquadPrincipal, type SquadView } from "@/lib/squad-view";
 
@@ -155,7 +145,7 @@ function entropy(): string {
 export function useSquadForumCoordination({ view, sessionKey, reportParents }: { view: SquadView; reportParents?: ReportParents; sessionKey: string | null }) {
   const { forumId, label: forumLabel, live: liveEnabled, storage } = view;
   function authorLabel(pub: string): string {
-    return liveEnabled ? shortSea(pub) : PILOT_LABELS.get(pub) ?? shortSea(pub);
+    return shortSea(pub);
   }
   // Linked wallet metadata is display-only; signing uses the unlocked SEA key.
   const session = useIdentitySession();
@@ -204,9 +194,7 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const [removedOffers, setRemovedOffers] = useState<ReadonlySet<string>>(() => new Set());
   const [removedAgents, setRemovedAgents] = useState<ReadonlyMap<string, number>>(() => new Map());
   const [chatTombs, setChatTombs] = useState<ReadonlyMap<string, number>>(() => new Map());
-  const [admitted, setAdmitted] = useState<ReadonlySet<string>>(
-    () => new Set(liveEnabled ? [] : PILOT_AGENTS.map((agent) => agent.status.seaPubkey)),
-  );
+  const [admitted, setAdmitted] = useState<ReadonlySet<string>>(() => new Set());
   const gunRef = useRef<FeedGun | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const signerRef = useRef<ReturnType<typeof observeUnlockedForumSigner> | null>(null);
@@ -249,13 +237,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const admittedRef = useRef(admitted);
   const pendingStatusRef = useRef<Map<string, PendingStatus>>(new Map());
   const statusHighWaterRef = useRef<Map<string, ForumAgentStatus>>(new Map());
-  const sampleAcl = useMemo(() => {
-    if (liveEnabled) return null;
-    const acl = createMemorySeeAcl();
-    admitPilotRoster(acl);
-    return acl;
-  }, []);
-
   useLayoutEffect(() => {
     const signer = observeUnlockedForumSigner(
       pub => !liveEnabled || (pub === sessionKey && !isPublicSquadPrincipal(pub)), setSeaPub);
@@ -1148,10 +1129,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
           }),
         );
       };
-      for (const need of (liveEnabled ? [] : PILOT_NEEDS)) {
-        watchOffers(need.id);
-        watchNeedRemoval(need.id);
-      }
       const statusWatches = new Map<string, number>();
       function expireStatuses() {
         const now = Date.now();
@@ -1183,7 +1160,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
         });
         statusOffs.set(pub, { off() { removalOff?.off?.(); admissionOff?.off?.(); } });
       }
-      for (const agent of (liveEnabled ? [] : PILOT_AGENTS)) watchStatusRemoval(agent.status.seaPubkey);
       statusTimer = setInterval(expireStatuses, 30_000);
       offAgents = transport.agents((data, key) => {
         if (cancelled || typeof key !== "string" || !statusWatchCandidate(key, data)) return;
@@ -1306,17 +1282,17 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [selected]);
 
-  const graph: SeeGraph | null = liveEnabled ? authority?.graph ?? null : sampleAcl;
+  const graph: SeeGraph | null = liveEnabled ? authority?.graph ?? null : null;
   graphRef.current = graph;
-  chatRowsRef.current = liveEnabled ? meshChat.filter(row => proofs.valid(row)) : [...PILOT_CHAT, ...meshChat, ...localChat];
+  chatRowsRef.current = liveEnabled ? meshChat.filter(row => proofs.valid(row)) : [];
   chatIdsRef.current = chatRowsRef.current.map((item) => item.id);
 
   const receivedNeeds = useMemo(
     () =>
       composeForumNeeds({
-        pilot: liveEnabled ? [] : PILOT_NEEDS,
+        pilot: [],
         mesh: [...authenticatedNeeds.values(), ...meshNeeds.values()].filter(row => !liveEnabled || (proofs.valid(row) && !!graph?.hasObject(row.id))),
-        local: liveEnabled ? [] : [...localNeeds.values()],
+        local: [],
         removed: removedNeeds,
       }),
     [localNeeds, meshNeeds, authenticatedNeeds, removedNeeds, aclRev, proofs, graph],
@@ -1331,10 +1307,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const offers = useMemo(() => {
     const map = new Map([...meshOffers].filter(([, row]) => !liveEnabled || (proofs.valid(row) &&
       (row.stated === 0 || !!authority?.graph.checkForumSee(row.need, row.helper, Math.floor(Date.now() / 1000)).allowed))));
-    for (const offer of (liveEnabled ? [] : localOffers.values())) {
-      const seen = map.get(forumOfferCacheKey(offer.need, offer.id));
-      if (!seen || (offer.stated === 0 && seen.stated === 1)) map.set(forumOfferCacheKey(offer.need, offer.id), offer);
-    }
     for (const [id, offer] of map) {
       if (removedOffers.has(id)) {
         map.delete(id);
@@ -1350,16 +1322,12 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
 
   const roster = useMemo(() => {
     const merged = composeForumRoster({
-      sample: liveEnabled ? [] : PILOT_AGENTS,
+      sample: [],
       mesh: [...meshStatus.values()].filter(row => !liveEnabled || (mayReadSquad && proofs.valid(row) && proofs.enrolled(row.seaPubkey))),
       admitted,
       removed: new Set(removedAgents.keys()),
     });
-    return merged.map((agent) => {
-      const over = liveEnabled ? undefined : localStatus.get(agent.status.seaPubkey);
-      const status = pickDisplayedStatus(agent.status, over);
-      return status === agent.status ? agent : { ...agent, status };
-    });
+    return merged;
   }, [admitted, localStatus, meshStatus, removedAgents, aclRev, proofs, mayReadSquad]);
 
   const visible = useMemo(
@@ -1367,7 +1335,7 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
     [filters, query, roster],
   );
 
-  const alarm = liveEnabled ? (mayReadSquad && proofs.valid(meshAlarm) ? meshAlarm : null) : meshAlarm ?? (alarmHeard ? null : PILOT_ALARM);
+  const alarm = liveEnabled && mayReadSquad && proofs.valid(meshAlarm) ? meshAlarm : null;
   const pinnedNeed = alarm ? (needs.get(alarm.need) ?? null) : null;
   const alarmOn = forumEmergencyAlarm(
     roster.map((agent) => agent.status.state),
@@ -1379,15 +1347,15 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const active = roster.find((agent) => agent.status.seaPubkey === selected) ?? null;
 
   const chat = useMemo(
-    () => mergeForumChat({ pilot: liveEnabled ? [] : PILOT_CHAT,
+    () => mergeForumChat({ pilot: [],
       mesh: liveEnabled ? readableForumChat(meshChat, forumId, sessionKey, authority?.graph, proofs.valid,
-        Math.floor(Date.now() / 1000)) : meshChat,
-      local: liveEnabled ? [] : localChat, hidden: hiddenChat }),
+        Math.floor(Date.now() / 1000)) : [],
+      local: [], hidden: hiddenChat }),
     [hiddenChat, localChat, meshChat, aclRev, proofs, authority, liveEnabled, forumId, sessionKey],
   );
 
   function signingPrincipal() {
-    if (!liveEnabled) return seaPub;
+    if (!liveEnabled) return null;
     const principal = seaPub ? authority?.graph.principalForKey(seaPub, Math.floor(Date.now() / 1000)) ?? null : null;
     return principal && !isPublicSquadPrincipal(principal) ? principal : null;
   }
@@ -1425,7 +1393,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   }
 
   function meshNote(kind: string, wrote: "signed" | "offline" | "local" | "denied", okLine: string): string {
-    if (!liveEnabled) return `${kind} on this browser until mesh publish.`;
     if (wrote === "denied") return "Authority changed before publication. Refresh and try again.";
     if (wrote === "signed") return okLine;
     if (wrote === "offline") return "The mesh peer was not ready. Refresh before retrying the change.";
@@ -1460,9 +1427,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       return;
     }
     const offer = decision.offer;
-    if (!liveEnabled) setLocalOffers((prev) => {
-      return retainForumOffer(prev, offer);
-    });
     setOfferBody("");
     const wrote = await putAuthedRecord(
       forumOfferSoul(offer.forumId, offer.need, offer.id),
@@ -1510,11 +1474,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       return;
     }
     const next = decision.need;
-    if (!liveEnabled) setLocalNeeds((prev) => {
-      const map = new Map(prev);
-      map.set(next.id, next);
-      return map;
-    });
     const needOwner = current.ownerOf(open.id);
     const admit = needOwner && writer !== needOwner ? needAdmitRef.current.get(open.id) : undefined;
     const record = admit ? { ...next, admit } : next;
@@ -1552,15 +1511,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       return;
     }
     const next = decision.offer;
-    if (!liveEnabled && !offerCancelsRef.current.has(forumOfferCacheKey(next.need, next.id))) {
-      const ids = new Set(offerCancelsRef.current);
-      ids.add(forumOfferCacheKey(next.need, next.id));
-      offerCancelsRef.current = ids;
-      setOfferCancels(ids);
-    }
-    if (!liveEnabled) setLocalOffers((prev) => {
-      return retainForumOffer(prev, next);
-    });
     const authorized = (tail = false) => {
       const fresh = graphRef.current, need = needsRef.current.get(open.id);
       const check = tail ? continueForumOfferCancellation : declineForumOffer;
@@ -1595,11 +1545,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       return;
     }
     const next = decision.need;
-    if (!liveEnabled) setLocalNeeds((prev) => {
-      const map = new Map(prev);
-      map.set(next.id, next);
-      return map;
-    });
     const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), next, writer, () => {
       const fresh = graphRef.current, need = needsRef.current.get(listed.id);
       return !!fresh && !!need && (!liveEnabled || proofs.valid(need)) && need.hamState === listed.hamState && reopenForumNeed({ graph: fresh, writer: writer, need, now: Math.floor(Date.now() / 1000) }).ok;
@@ -1652,12 +1597,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
     });
     if (!item) {
       setNotice("Statement was not accepted.");
-      return false;
-    }
-    if (!liveEnabled) {
-      setLocalChat(prev => retainForumChat(prev, item));
-      setDraft("");
-      setNotice("Statement kept on this browser until mesh publish.");
       return false;
     }
     const node = toGunNode(item);

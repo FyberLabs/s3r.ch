@@ -184,12 +184,12 @@ describe("public marketing copy", () => {
     assert.equal(read("../lib/features.ts").includes('href: "/features/workspace"'), true);
   });
 
-  it("keeps the squad browser-only boundary in the smoke check and the board", () => {
+  it("keeps the squad product route free of fixture demo copy", () => {
     const smoke = read("../scripts/smoke-standalone.sh");
     const board = read("../components/SquadForum.tsx");
-    assert.equal(smoke.includes("This board stays in this browser"), true);
     assert.equal(smoke.includes("local demonstration"), false);
-    assert.equal(board.includes("This board stays in this browser until mesh publish."), true);
-    assert.equal(board.includes("sample board"), false);
+    assert.equal(board.includes("forum-squad-fixture"), false);
+    assert.equal(board.includes("HAWK-2"), false);
+    assert.match(board, /data-testid="squad-unset"/);
   });
 });

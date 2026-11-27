@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ForumHierarchyPreview } from "../components/ForumHierarchyPreview";
-import { PILOT_NEEDS } from "./forum-squad-fixture";
+import { PILOT_NEEDS } from "./identity/vectors/forum-squad-fixture";
 
 test("parent boards only show the current open revision escalated to that level", () => {
   for (const need of PILOT_NEEDS) {

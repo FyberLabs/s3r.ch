@@ -5,7 +5,7 @@ import { stripTypeScriptTypes } from "node:module";
 import * as business from "./forum-business-roles";
 import * as squad from "./forum-squad";
 import * as check from "./identity/check";
-import * as fixture from "./forum-squad-fixture";
+import * as fixture from "./identity/vectors/forum-squad-fixture";
 import { isPublicSquadPrincipal } from "./squad-view";
 import { signatureOf } from "./forum-sign";
 import { soulKeyMatches } from "./unshare";

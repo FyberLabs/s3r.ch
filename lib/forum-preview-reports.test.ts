@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ForumPreviewReports } from "../components/ForumPreviewReports";
-import { PILOT_CHAT } from "./forum-squad-fixture";
+import { PILOT_CHAT } from "./identity/vectors/forum-squad-fixture";
 import type { FeedItem } from "./feed-types";
 
 test("preview report forwarding follows the current tagged row through each destination", () => {

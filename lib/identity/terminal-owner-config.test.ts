@@ -1,7 +1,7 @@
 // Pure configuration decoding; no signing, HTTP, persistence or browser work.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PILOT_OWNER } from "../forum-squad-fixture";
+import { PILOT_OWNER } from "./vectors/forum-squad-fixture";
 import { parseTerminalScope } from "./terminal-run-client";
 import { uniqueJson } from "./forum-witness-json";
 import { parseTerminalOwnerConfig, terminalOwnerConfigName } from "./terminal-owner-config";

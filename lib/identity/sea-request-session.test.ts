@@ -8,7 +8,7 @@ import { readSeaRequestSession } from "./sea-request-session";
 import { signSessionToken } from "./session";
 import { signForumRecord } from "../forum-sign";
 import { sessionGatedAllocate } from "../turn-allocate";
-import { PILOT_OWNER } from "../forum-squad-fixture";
+import { PILOT_OWNER } from "./vectors/forum-squad-fixture";
 import type { SeaPair } from "./sea";
 const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
 const secret = "s".repeat(40), now = 1800000000, origin = "https://s3r.ch";

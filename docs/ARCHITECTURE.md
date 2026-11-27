@@ -545,6 +545,13 @@ Namespace-keyed remounts still discard subscriptions and pending proofs when
 the selected forum changes. This boundary does not make a cache authoritative
 or replace the signed-record and client Check requirements.
 
+The public `/feed/squad` route mounts `SquadForum` without a `LiveSquadSpec`.
+That path shows an empty unset board (no fixture roster, chat, or needs). Live
+squads mount through wrappers such as `LiveSquadForum` with a user-owned forum
+id and current `ForumAuthorityProvider` evidence. Shared forum check vectors and
+the synthetic roster in `lib/identity/vectors/forum-squad-fixture.ts` are for
+tests only; product UI does not import them.
+
 The application Squad runtime has no Blob assignment journal or assignment HTTP
 executor. It requires the independently provisioned ACL statement source and a
 separate identity replay store. The legacy synthetic Blob constructor lives only

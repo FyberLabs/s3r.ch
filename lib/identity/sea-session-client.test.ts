@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { createSeaSessionClient } from "./sea-session-client";
 import { createIdentitySessions } from "./sea-session";
 import type { SeaPair } from "./sea";
-import { PILOT_OWNER } from "../forum-squad-fixture";
+import { PILOT_OWNER } from "./vectors/forum-squad-fixture";
 const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
 const origin = "https://s3r.ch";
 

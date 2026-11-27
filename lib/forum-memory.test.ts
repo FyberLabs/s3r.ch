@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createForumMemory,type ForumMemoryState} from './forum-memory';
 import {encodeForumCollection,parseForumCollection,forumCollections} from './forum-collections';
-import {PILOT_CHAT} from './forum-squad-fixture';
+import {PILOT_CHAT} from './identity/vectors/forum-squad-fixture';
 import {seaToPrincipalKey} from './identity/forum-check';
 import type {createPrivateMediaBrowser} from './media-browser-session';
 const key=PILOT_CHAT[0].author;
