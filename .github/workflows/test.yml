@@ -143,7 +143,7 @@ jobs:
           echo 'captured=true' >> "$GITHUB_OUTPUT"
       - name: Upload the Squad project screenshot
         if: steps.squad-snapshot.outputs.captured == 'true'
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: squad-partner-brief
           path: |

@@ -127,7 +127,7 @@ test('workflows mint an infra-only Actions token and dispatch both surfaces for 
   const release = readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
   assert.equal(workflows(deploy).deploy, true);
   for (const text of [deploy, release]) {
-    assert.match(text, /actions\/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510/);
+    assert.match(text, /actions\/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc/);
     assert.match(text, /repositories: infra\r?\n\s+permission-actions: write/);
     assert.match(text, /vars\.S3RCH_STATIC_DISPATCH_APP_ID/);
     assert.match(text, /secrets\.S3RCH_STATIC_DISPATCH_APP_PRIVATE_KEY/);
