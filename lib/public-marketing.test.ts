@@ -221,6 +221,21 @@ describe("public marketing copy", () => {
     }
   });
 
+  it("keeps public llms notes free of demo squad board and mesh-publish claims", () => {
+    const llmsNotes = ["../public/llms.txt", "../public/llms-full.txt"];
+    const staleSquadBoard =
+      /published on the mesh|stays in (?:the |that )?browser until|mesh publish|stays in the browser until/i;
+    for (const path of llmsNotes) {
+      const src = read(path);
+      assert.equal(staleSquadBoard.test(src), false, path);
+      assert.match(
+        src,
+        /creating or joining a squad is coming soon|squads \(coming soon\)/i,
+        path,
+      );
+    }
+  });
+
   it("keeps the squad product route free of fixture demo copy", () => {
     const smoke = read("../scripts/smoke-standalone.sh");
     const board = read("../components/SquadForum.tsx");
