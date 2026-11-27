@@ -53,6 +53,7 @@ if (!scheduledStartupBrowser(process.env)) {
       }, fixture.sea_record);
       const panel = page.getByTestId("startup-linked-login");
       const linkedAccount = panel.getByRole("link", { name: "Sign in with your linked organization account" });
+      const openFeedAccount = () => page.getByRole("button", { name: "Account and posting", exact: true }).click();
       const hasFormAction = async (input, path) => input.evaluate((element, target) =>
         element.form?.method === "post" && element.form?.action && new URL(element.form.action).origin === target.origin &&
         new URL(element.form.action).pathname === target.path, { origin: nightlyLoginOrigin, path });
@@ -91,6 +92,7 @@ if (!scheduledStartupBrowser(process.env)) {
       async function login() {
         await openFeed();
         stage = "linked-sign-in-control";
+        await openFeedAccount();
         if (fixture.login.driver === nightlyLoginDriver) await loginWithNightlyBroker();
         else await linkedAccount.click();
         stage = "provider-login-steps";
@@ -107,6 +109,7 @@ if (!scheduledStartupBrowser(process.env)) {
         stage = "linked-callback";
         await page.waitForURL(url => url.origin === fixture.site_origin && url.searchParams.get("startup") === "linked");
         stage = "linked-identity-panel";
+        await openFeedAccount();
         await panel.getByText("Connected existing identity", { exact: false }).waitFor();
         stage = "linked-session-contract";
         const view = await page.evaluate(async () => {
