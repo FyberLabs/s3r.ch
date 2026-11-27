@@ -550,7 +550,9 @@ That path shows an empty unset board (no fixture roster, chat, or needs). Live
 squads mount through wrappers such as `LiveSquadForum` with a user-owned forum
 id and current `ForumAuthorityProvider` evidence. Shared forum check vectors and
 the synthetic roster in `lib/identity/vectors/forum-squad-fixture.ts` are for
-tests only; product UI does not import them.
+tests only; product UI does not import them. Retired pilot ACL rows are deleted
+without migration; sessions and live coordination do not maintain a deny-list for
+old vector keys.
 
 The application Squad runtime has no Blob assignment journal or assignment HTTP
 executor. It requires the independently provisioned ACL statement source and a

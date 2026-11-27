@@ -1,8 +1,6 @@
 import { decodeJwt, decodeProtectedHeader } from "jose";
 import { signForumRecord } from "../forum-sign";
 import type { SeaPair } from "./sea";
-import { isPublicSquadPrincipal } from "../squad-view";
-
 /** Explicit same-origin endpoints only. Session cookies remain HttpOnly; this
  * client never reads or persists bearer tokens. Callers must invalidate their
  * authority source on logout/key changes and renew via a fresh sign-in. */
@@ -38,7 +36,6 @@ export function createSeaSessionClient(input: { base: string; origin: string; fe
         // Snapshot the selected key before network awaits; a later UI selection
         // must not change which key signs this exchange.
         const signingPair = { ...pair };
-        if (isPublicSquadPrincipal(signingPair.pub)) return false;
         const reply = await post("challenge", { key: signingPair.pub }, signal);
         if (!reply || Object.keys(reply).join() !== "challenge" || typeof reply.challenge !== "string" || reply.challenge.length > 4096) return false;
         const header = decodeProtectedHeader(reply.challenge), claims = decodeJwt(reply.challenge), now = clock();

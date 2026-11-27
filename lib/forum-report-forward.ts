@@ -2,7 +2,7 @@ import { sha256, stringToHex } from "viem";
 import { toGunNode, type FeedItem } from "./feed-types";
 import type { ForumAuthorityGraph } from "./identity/forum-authority";
 import { forumChatTag, isSeaPubkey, type ForumNeed } from "./identity/forum-check";
-import { isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
+import type { LiveSquadSpec } from "./squad-view";
 
 export type ReportParents = Readonly<{ fleet: LiveSquadSpec; command: LiveSquadSpec }>;
 export type ForwardHop = "fleet" | "command";
@@ -23,7 +23,7 @@ export const sourceRevision = (row: BoardSource) => isNeed(row) ? reportHash(JSO
 
 export function canReadBoard(graph: Pick<ForumAuthorityGraph, "ownerOf" | "checkForumSee">, path: ReportPath,
   level: BoardLevel, principal: string, now: number) {
-  if (!principal || isPublicSquadPrincipal(principal)) return false;
+  if (!principal) return false;
   const forums = level === "command" ? [path.squad, path.fleet, path.command] : level === "fleet" ? [path.squad, path.fleet] : [path.squad];
   return forums.every(f => graph.ownerOf(f.forumId) === f.owner && graph.checkForumSee(f.forumId, principal, now).allowed);
 }

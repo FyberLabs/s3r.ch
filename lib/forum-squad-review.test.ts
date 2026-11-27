@@ -365,7 +365,7 @@ test('accepted offer history is bounded per need and globally, including oversiz
   assert.equal(squad.forumOfferFits({ ...offer, sig: 'x'.repeat(squad.FORUM_OFFER_MAX_CHARS) }), false);
 });
 
-test('public-vector squad fixture cannot connect, publish, or restore former mesh authority', async () => {
+test('live coordination does not import test-vector roster data', async () => {
   const { PILOT_MESH_ENABLED } = await import('./identity/vectors/forum-squad-fixture');
   assert.equal(PILOT_MESH_ENABLED, false);
   const { readFileSync } = await import('node:fs');

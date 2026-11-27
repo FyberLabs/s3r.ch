@@ -2,7 +2,6 @@ import { matchesRequestOrigin } from "../request-origin";
 import { createHmac } from "node:crypto";
 import { uniqueJson } from "./forum-witness-json";
 import { isSeaPubkey } from "./forum-check";
-import { isPublicSquadPrincipal } from "../squad-view";
 import type { RunAdmission, RunToken, TerminalRunAuthority } from "./terminal-run";
 
 const refused = (): never => { throw Error("Terminal run authority unavailable"); };
@@ -29,7 +28,7 @@ export function parseTerminalScope(value: unknown) {
   if (!origins.some(value => value === "https://test.s3r.ch")) return refused();
   return Object.freeze({ suite: scope.suite, subject: scope.subject, tenant: scope.tenant, organization: scope.organization,
     realm: scope.realm, issuer: scope.issuer, clients: list(scope.clients, value => /^[A-Za-z0-9_-]{1,128}$/.test(value)), origins,
-    identities: Object.freeze({ sea: list(identities.sea, value => isSeaPubkey(value) && !isPublicSquadPrincipal(value), true) }) });
+    identities: Object.freeze({ sea: list(identities.sea, value => isSeaPubkey(value), true) }) });
 }
 /** One instance per admitted request. Configuration is deployment-owned; the
  * browser supplies only a grant, never scope, native identities or service keys.

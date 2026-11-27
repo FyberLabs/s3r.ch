@@ -5,7 +5,6 @@ import { linkId, parseEip55, parseOidcCredential, resolveWalletLinkNow, resolveO
   type Eip55, type ResolutionContext } from "sociacl-ids";
 import { verifyForumSiwe } from "./forum-siwe";
 import { isSeaPubkey } from "./forum-check";
-import { isPublicSquadPrincipal } from "../squad-view";
 
 export type LinkedCredential = Readonly<{ kind: "wallet"; address: string }> |
   Readonly<{ kind: "oidc"; iss: string; tenant: string; sub: string }>;
@@ -77,7 +76,7 @@ export function createLinkedSessionAdmission(input: { source: LinkedSessionSourc
         }
         if (principals.size !== 1) return null;
         const state = ctx.history(resolution.value.principal, resolution.value.issuedAt, at);
-        if (!state.ok || !isSeaPubkey(state.value.currentKey) || isPublicSquadPrincipal(state.value.currentKey)) return null;
+        if (!state.ok || !isSeaPubkey(state.value.currentKey)) return null;
         const id = linkId(resolution.value);
         return id.ok ? { key: state.value.currentKey, linkId: id.value } : null;
       } catch { return null; }

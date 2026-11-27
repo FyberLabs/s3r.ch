@@ -124,7 +124,7 @@ import {
   type SeeGraph,
 } from "@/lib/identity/check";
 
-import { isPublicSquadPrincipal, type SquadView } from "@/lib/squad-view";
+import type { SquadView } from "@/lib/squad-view";
 
 function forumStorage(): Storage | null {
   if (typeof window === "undefined") return null;
@@ -157,7 +157,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const proofs = useMemo(() => createForumReceiveProofs({
     key: principal => {
       const now = Math.floor(Date.now() / 1000);
-      if (liveEnabled && isPublicSquadPrincipal(principal)) return null;
       return authority?.graph.writerKey(principal, now, now) ?? null;
     },
     ready: () => connectedRef.current && authority?.graph.ownerOf(forumId) === view.owner,
@@ -239,7 +238,7 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const statusHighWaterRef = useRef<Map<string, ForumAgentStatus>>(new Map());
   useLayoutEffect(() => {
     const signer = observeUnlockedForumSigner(
-      pub => !liveEnabled || (pub === sessionKey && !isPublicSquadPrincipal(pub)), setSeaPub);
+      pub => !liveEnabled || pub === sessionKey, setSeaPub);
     signerRef.current = signer;
     return () => { signer.stop(); if (signerRef.current === signer) signerRef.current = null; };
   }, [sessionKey, liveEnabled]);
@@ -328,7 +327,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
         return chatIdsRef.current;
       }
       function enrollPub(pub: string, evidence: object) {
-        if (liveEnabled && isPublicSquadPrincipal(pub)) return;
         if (!proofs.enroll(pub, evidence)) return;
         if (!admittedRef.current.has(pub)) {
           const next = new Set(admittedRef.current);
@@ -344,7 +342,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
         commitMeshStatus(waiting.status);
       }
       function commitMeshStatus(status: ForumAgentStatus) {
-        if (liveEnabled && isPublicSquadPrincipal(status.seaPubkey)) return;
         if (!proofs.valid(status) || !proofs.enrolled(status.seaPubkey)) return;
         if (!cacheForumStatus(statusHighWaterRef.current, status)) return;
         try {
@@ -682,7 +679,7 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
         }
         const status = parseForumAgentStatus(payload);
         const forumOwner = graphRef.current?.ownerOf(forumId);
-        if (!status || (liveEnabled && isPublicSquadPrincipal(status.seaPubkey)) || fromRemoval || !proof.retain(status, () => signer === forumOwner
+        if (!status || fromRemoval || !proof.retain(status, () => signer === forumOwner
           ? graphRef.current?.ownerOf(forumId) === signer : signer === status.seaPubkey)) return;
         if (liveReplayBlocked(status.lastUpdate, removedAgentsRef.current.get(status.seaPubkey))) return;
         if (fromAdmission && !authorizeStatusAdmission(status, key, signer, forumOwner, forumId)) return;
@@ -961,7 +958,7 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
         if (cancelled || !proof.current() || !versions.current("role", `${roleToken}:${mapKey}`, gen) || !payload) return;
         if (!proofs.ready() || graphRef.current?.ownerOf(forumId) !== forumOwner) return;
         const membership = parseForumRoleMembership(payload);
-        if (!membership || (liveEnabled && isPublicSquadPrincipal(membership.principal))) return;
+        if (!membership) return;
         if (
           !authorizeForumRoleAdmission({
             membership,
@@ -1357,7 +1354,7 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   function signingPrincipal() {
     if (!liveEnabled) return null;
     const principal = seaPub ? authority?.graph.principalForKey(seaPub, Math.floor(Date.now() / 1000)) ?? null : null;
-    return principal && !isPublicSquadPrincipal(principal) ? principal : null;
+    return principal ?? null;
   }
 
   const requireGraph = useCallback((): SeeGraph | null => {
