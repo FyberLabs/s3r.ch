@@ -4,7 +4,9 @@ import vector from "@/lib/identity/vectors/forums.json";
 
 function b64url(bytes: Uint8Array): string {
   const bin = Array.from(bytes, (byte) => String.fromCodePoint(byte)).join("");
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  let encoded = btoa(bin).replace(/\+/g, "-").replace(/\//g, "_");
+  while (encoded.endsWith("=")) encoded = encoded.slice(0, -1);
+  return encoded;
 }
 
 function seaFromScalar(n: number): string {

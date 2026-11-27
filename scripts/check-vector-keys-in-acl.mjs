@@ -19,7 +19,9 @@ const vector = JSON.parse(readFileSync(path.join(root, "lib/identity/vectors/for
 
 function b64url(bytes) {
   const bin = Array.from(bytes, (byte) => String.fromCodePoint(byte)).join("");
-  return Buffer.from(bin, "binary").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  let encoded = Buffer.from(bin, "binary").toString("base64").replace(/\+/g, "-").replace(/\//g, "_");
+  while (encoded.endsWith("=")) encoded = encoded.slice(0, -1);
+  return encoded;
 }
 
 function seaFromScalar(n) {
@@ -90,7 +92,8 @@ if (origin && tenant && scope && apiKey) {
     });
     const body = await response.text();
     if (!response.ok) {
-      console.error(`statement source HTTP ${response.status}: ${body.slice(0, 200)}`);
+      const snippet = body.replaceAll(/[\r\n]/g, " ").slice(0, 200);
+      console.error(`statement source HTTP ${response.status}: ${snippet}`);
     } else {
       scanJson(body, `GET ${url.origin}${url.pathname}`);
     }
