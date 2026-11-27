@@ -63,7 +63,7 @@ function SquadForumUnset() {
       <h1 className="text-2xl font-semibold tracking-tight text-ink">Squad</h1>
       <p className="mt-2 text-sm text-ink-muted" role="status">
         No squad is selected. A live board requires a forum you own and current Check authority.
-        The public route does not load demo rosters or fixture identities.
+        The public route does not load test-vector rosters or fixture identities.
       </p>
       <p className="mt-4 text-sm text-ink-muted">
         <Link href="/feed" className="font-semibold text-ink hover:text-signal">
