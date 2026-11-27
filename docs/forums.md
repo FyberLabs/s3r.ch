@@ -102,8 +102,13 @@ modifying the separate concept mock.
 ## Current isolation boundary
 
 Public check-vector SEA pubkeys (shared forum test vectors with known private scalars)
-stay on the application deny-list for sessions, live coordination, and namespace
-selection until pilot ACL teardown completes ([FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860)).
+are listed in `lib/identity/vectors/public-forum-vector-pubkeys.ts` for tests and
+the assignment-replacement guard. Product sessions and live coordination no longer
+apply a deny-list to them; Check and signed ACL evidence remain the gates. Shared
+pilot ACL teardown is still open in
+[FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860); this
+repository does not assume those rows are already deleted. Run
+`scripts/check-vector-keys-in-acl.mjs` against deployment config before rollout.
 Product UI does not import the synthetic roster in `forum-squad-fixture.ts`.
 `PILOT_MESH_ENABLED` is hard-disabled: the unset public route does not mount a
 fixture board. Live squads require a separate owner, `ForumAuthorityProvider`

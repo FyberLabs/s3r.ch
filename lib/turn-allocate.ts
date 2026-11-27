@@ -31,7 +31,6 @@
  */
 
 import { isSeaPubkey } from "./identity/forum-check";
-import { isPublicSquadPrincipal } from "./squad-view";
 import { createHmac, randomBytes } from "node:crypto";
 import { iceServerUrls } from "./gun-webrtc";
 import { recordIntegrationHop } from "./dependency-health";
@@ -383,7 +382,7 @@ export async function sessionGatedAllocate(input: {
   fetchImpl?: typeof fetch;
   now?: number;
 }): Promise<AllocateRouteResult> {
-  if (!input.sessionPrincipal || !isSeaPubkey(input.sessionPrincipal) || isPublicSquadPrincipal(input.sessionPrincipal)) {
+  if (!input.sessionPrincipal || !isSeaPubkey(input.sessionPrincipal)) {
     return { status: 401, body: { error: "unauthorized" } };
   }
   const env = input.env ?? process.env;

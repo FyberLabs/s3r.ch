@@ -78,9 +78,9 @@ for other routes; they acquire no authority by copying their owner strings into
 the new source. Migration requires fetching signed source evidence and running
 normal admission. The separate `/forum` route is unchanged.
 
-Fixture roster data is not mounted in product UI. Known public check-vector keys
-remain on the session deny-list until pilot ACL teardown. Status, chat and needs
-do not mint grants.
+Fixture roster data is not mounted in product UI. The session deny-list for public
+check-vector keys is removed; Check and signed ACL evidence remain the gates.
+Status, chat and needs do not mint grants.
 
 ## Contract and tests
 

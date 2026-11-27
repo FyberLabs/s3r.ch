@@ -8,7 +8,7 @@ import { ArtifactRefusal } from "./squad-artifact";
 import { handlePreviewAction, previewReadAction } from "./squad-preview";
 import { handleWorkbookAction, isWorkbookAction, workbookReadAction } from "./squad-workbook";
 import { briefReadAction, handleBriefAction, isBriefAction } from "./squad-brief-editor";
-import { isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
+import type { LiveSquadSpec } from "./squad-view";
 import { parseSquadPlaneCommand, type SquadPlaneConfig, type createSquadPlaneForum } from "./squad-plane-forum";
 import {
   isProjectLabel, latestProjectDelegation, projectBoard, projectBranch, projectDigest, projectUuid,
@@ -72,7 +72,7 @@ export function createSquadProjectService(input: {
     if (!result.ok || clock() !== at || roomAuthorityReadDiagnosticsBlock(result.diagnostics, snapshot) ||
         graph.ownerOf(forum) !== owner) return refuse(503, "authority");
     const principal = agent?.agent ?? (session && graph.principalForKey(session.key, at));
-    if (!principal || isPublicSquadPrincipal(principal) || !graph.checkForumSee(forum, principal, at).allowed)
+    if (!principal || !graph.checkForumSee(forum, principal, at).allowed)
       return refuse(403, "access");
     if (agent && (agent.principal !== owner || !Object.values(input.plane.roster).includes(principal)))
       return refuse(403, "access");
@@ -85,7 +85,7 @@ export function createSquadProjectService(input: {
   }
 
   function eligible(actor: Actor, principal: string) {
-    return !isPublicSquadPrincipal(principal) && actor.graph.checkForumSee(forum, principal, actor.at).allowed &&
+    return actor.graph.checkForumSee(forum, principal, actor.at).allowed &&
       actor.graph.checkPost(forum, principal, actor.at).allowed;
   }
 

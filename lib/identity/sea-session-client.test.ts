@@ -4,7 +4,6 @@ import { createRequire } from "node:module";
 import { createSeaSessionClient } from "./sea-session-client";
 import { createIdentitySessions } from "./sea-session";
 import type { SeaPair } from "./sea";
-import { PILOT_OWNER } from "./vectors/forum-squad-fixture";
 const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
 const origin = "https://s3r.ch";
 
@@ -51,11 +50,10 @@ test("site client serializes sign-in/logout and snapshots the signing key", asyn
   assert.equal(await signing,true); assert.equal(signedFor,original.pub);
 });
 
-test("site client refuses public fixture keys and an invalid private half", async () => {
-  const pair = await sea.pair(); let calls = 0;
+test("site client refuses an invalid private half", async () => {
+  const pair = await sea.pair();
   const sessions = createIdentitySessions({origin,secret:"s".repeat(32),consume:async()=>true});
-  const client = createSeaSessionClient({base:"/session",origin,fetch:async () => {calls++;return Response.json({challenge:await sessions.challenge(pair.pub)});}});
-  assert.equal(await client.signIn({...pair,pub:PILOT_OWNER}),false); assert.equal(calls,0);
+  const client = createSeaSessionClient({base:"/session",origin,fetch:async () => Response.json({challenge:await sessions.challenge(pair.pub)})});
   assert.equal(await client.signIn({...pair,priv:"bad"}),false);
 });
 

@@ -1,7 +1,7 @@
 import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { matchesBrowserOrigin } from "./request-origin";
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
-import { squadView, isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
+import { squadView, type LiveSquadSpec } from "./squad-view";
 
 /** Server dependencies only. authenticate must prove possession of the session's
  * SEA key (a wallet address or caller-supplied pubkey is not authentication).
@@ -33,7 +33,7 @@ export function createForumAuthorityService(input: {
       const at = clock();
       const session = await authenticate(request);
       if (clock() !== at) return reply(409, { error: "scope-or-time" });
-      if (!session || typeof session.key !== "string" || isPublicSquadPrincipal(session.key)) return reply(403, { error: "authentication" });
+      if (!session || typeof session.key !== "string") return reply(403, { error: "authentication" });
       const key = session.key;
       if (!request.body) return reply(400, { error: "request" });
       const reader = request.body.getReader();
@@ -73,7 +73,7 @@ export function createForumAuthorityService(input: {
       const principal = authority.graph.principalForKey(key, at);
       if (!result.ok || roomAuthorityReadDiagnosticsBlock(result.diagnostics, snapshot) || clock() !== at || authority.graph.ownerOf(view.forumId) !== view.owner)
         return reply(503, { error: "authority-unavailable" });
-      if (!principal || isPublicSquadPrincipal(principal) || !authority.graph.checkForumSee(view.forumId, principal, at).allowed)
+      if (!principal || !authority.graph.checkForumSee(view.forumId, principal, at).allowed)
         return reply(403, { error: "access" });
       return new Response(encoded, { headers: { "Content-Type": "application/json", "Cache-Control": "no-store",
         Vary: "Cookie, Authorization, Origin", "X-Content-Type-Options": "nosniff" } });

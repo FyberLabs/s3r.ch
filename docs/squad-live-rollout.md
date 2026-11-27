@@ -12,17 +12,17 @@ importing test vectors into product code.
 `label`) from its provisioned application wrapper (for example `LiveSquadForum`).
 Omitting it selects an **unset** namespace: the board is empty and shows a short
 prompt. Malformed live configuration throws instead of mounting fixture roster data
-in product UI. The forum ID must embed its declared owner, and neither the public
-check vector forum id nor any known public check-vector principal can be used as a
-live owner.
+in product UI. The forum ID must embed its declared owner.
 
 Live mode starts with empty roster, chat, needs and alarm state. It never creates
 a sample ACL, admits a fixture roster, uses sample labels, or restores sample
-keys for signing. Known public check-vector principals remain on the session
-deny-list and are excluded from proof verification and signing even if a source
-supplies records for them. Pilot ACL teardown is tracked in
-[FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860); the
-deny-list stays until that work completes. A separately provisioned
+keys for signing. Product sessions and live coordination no longer keep a
+check-vector deny-list; Check and signed ACL evidence remain the gates. Assignment
+replacement still refuses the known public forum vector pubkeys. Pilot ACL
+teardown is tracked in
+[FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860); that
+issue remains open and does not assume the shared pilot rows are already gone. A
+separately provisioned
 `ForumAuthorityProvider` must supply
 complete authenticated history and signed ACL evidence; namespace selection
 itself grants nothing. Receive readiness also requires that verified forum
