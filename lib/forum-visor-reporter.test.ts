@@ -7,11 +7,22 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
 import { forumBotFixture } from "./forum-bot-test-fixture";
-import { openArtifactSignatures, parseVisorForumReport, parseVisorReporterRequest } from "./forum-visor-reporter";
+import { forumReportStatementAdmissionBody, openArtifactSignatures, parseVisorForumReport, parseVisorReporterRequest } from "./forum-visor-reporter";
 import type { VerifiedForumUpdate } from "./forum-plane-update";
 import { parseSignedBriefDraft, verifyBriefDraft } from "./squad-brief";
 import { parseSignedWorkbook, verifyWorkbookDraft } from "./squad-workbook";
 import { parseSignedPreview, verifyPreviewDraft } from "./squad-preview";
+
+test("status-only forum reports omit the retired plane update envelope", () => {
+  const rows = [{ kind: "object" }];
+  const envelope = { rows, update: { botId: "test", signature: "sig" } };
+  const body = forumReportStatementAdmissionBody(100, "forum_test", "owner.test", envelope, null);
+  assert.deepEqual(Object.keys(body).sort(), ["evaluatedAt", "forumId", "owner", "rows", "version"]);
+  const withArtifact = forumReportStatementAdmissionBody(100, "forum_test", "owner.test", envelope,
+    { kind: "brief", draft: { taskId: "00000000-0000-4000-8000-000000000001", artifactId: "00000000-0000-4000-8000-000000000002", revisionId: "00000000-0000-4000-8000-000000000003", base: null, markdown: "x", signature: "s" } },
+    { brief: { signature: "s" } });
+  assert.ok("update" in withArtifact);
+});
 
 test("Visor reporter only accepts a scoped terminal status projection", async t => {
   const f = await forumBotFixture(t);

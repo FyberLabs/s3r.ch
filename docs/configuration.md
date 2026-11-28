@@ -209,7 +209,7 @@ a separate migration. Runtime activation waits for its dedicated credential.
 | `S3RCH_STATEMENT_SOURCE_ORIGIN` | Unset | Fixed HTTPS gateway origin, without path, credentials or alternate port. |
 | `S3RCH_STATEMENT_SOURCE_TENANT_ID` | Unset | The s3r.ch tenant UUID bound by the ACL owner. |
 | `S3RCH_STATEMENT_SOURCE_SCOPE` | Unset | Explicit operator-provisioned graph scope; never selected by a browser. |
-| `S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI` | Unset | Optional versionless Azure Key Vault secret URI that overrides inline `S3RCH_SERVICE_CREDENTIAL` for statement reads/writes. Requires the configured `AZURE_CLIENT_ID` managed identity. |
+| `S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI` | Unset | Optional versionless Azure Key Vault secret URI for statement reads/writes. When set, the vault key is used for ACL statement traffic while `S3RCH_SERVICE_CREDENTIAL` remains the shared credential for identity replay. Requires the configured `AZURE_CLIENT_ID` managed identity. |
 | `S3RCH_VISOR_COMPANION_RECORD_ORIGIN` | Unset | Fixed HTTPS Spanopticon gateway origin for durable Visor companion-set fencing. Required with the companion record tenant and API key when the Squad pilot exposes `visor-companion`. |
 | `S3RCH_VISOR_COMPANION_RECORD_TENANT_ID` | Unset | Storage tenant UUID for companion-set records; must match the ACL statement-source tenant. |
 | `S3RCH_VISOR_COMPANION_RECORD_API_KEY` | Unset | Dedicated server-only key with `storage:records:read` and `storage:records:write`. Never reuse the statement-source graph key. |

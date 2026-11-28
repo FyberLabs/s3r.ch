@@ -43,11 +43,11 @@ export function configuredAclStatementSource(env: Record<string, string | undefi
   const backend = env.S3RCH_AUTHORITY_BACKEND;
   if (!backend || backend === "legacy") return undefined;
   if (backend !== "acl") throw Error("Unknown authority backend");
-  const key = env.S3RCH_SERVICE_CREDENTIAL;
+  const inlineKey = env.S3RCH_SERVICE_CREDENTIAL;
   const secretUri = env.S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI;
-  if (key && secretUri) throw Error("Configure only one statement source credential");
+  const statementKey = secretUri ? vaultStatementKey(secretUri, env.AZURE_CLIENT_ID, fetcher) : inlineKey;
   const config = { origin: env.S3RCH_STATEMENT_SOURCE_ORIGIN, tenant: env.S3RCH_STATEMENT_SOURCE_TENANT_ID,
-    scope: env.S3RCH_STATEMENT_SOURCE_SCOPE, apiKey: secretUri ? vaultStatementKey(secretUri, env.AZURE_CLIENT_ID, fetcher) : key };
+    scope: env.S3RCH_STATEMENT_SOURCE_SCOPE, apiKey: statementKey };
   if (Object.values(config).some(value => !value)) throw Error("Statement source not configured");
   return createAclStatementSource(config as AclStatementConfig, fetcher);
 }

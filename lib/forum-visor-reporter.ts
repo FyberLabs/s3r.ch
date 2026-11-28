@@ -70,6 +70,13 @@ function parseArtifact(value: unknown): Artifact | null {
   return null;
 }
 
+export function forumReportStatementAdmissionBody(at: number, forumId: string, owner: string,
+  envelope: { rows: unknown[]; update: unknown }, artifact: Artifact | null, artifactFields: object = {}) {
+  const body: Record<string, unknown> = { version: 1, forumId, owner, evaluatedAt: at, rows: envelope.rows };
+  if (artifact) Object.assign(body, { update: envelope.update, ...artifactFields });
+  return body;
+}
+
 export function parseVisorReporterRequest(value: unknown): ReportRequest | null {
   const legacy = parseVisorForumReport(value);
   if (legacy) return { report: legacy, artifact: null };
@@ -195,8 +202,7 @@ export function openVisorForumReporter(configFile: string) {
         if (artifact) throw Error("Plane artifact admission retired");
         const response = await session.fetch("/api/site/statement", { method: "POST", signal,
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ version: 1, forumId: c.forumId, owner: c.owner, evaluatedAt: at,
-            rows: envelope.rows, update: envelope.update, ...content }) });
+          body: JSON.stringify(forumReportStatementAdmissionBody(at, c.forumId, c.owner, envelope, artifact, content)) });
         if (!response.ok) {
           await response.body?.cancel();
           throw Error("Forum report admission unavailable");

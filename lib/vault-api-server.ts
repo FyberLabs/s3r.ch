@@ -8,6 +8,8 @@ import { createVaultApiService } from "./vault-api-service";
 
 let cached: { raw: string; site: unknown; service: ReturnType<typeof createVaultApiService> } | undefined;
 
+const vaultKeys = (value: object) => Object.keys(value).sort((left, right) => left.localeCompare(right, "en")).join();
+
 export function getVaultApiService() {
   const raw = process.env.S3RCH_VAULT_STORAGE;
   if (raw === undefined) { cached = undefined; return null; }
@@ -17,7 +19,7 @@ export function getVaultApiService() {
   cached = undefined;
   if (raw.length > 65536) throw Error("Invalid vault configuration");
   const config = JSON.parse(raw);
-  if (!config || !["apiKey,bindings,origin,tenant", "apiKey,authoritySource,bindings,origin,tenant"].includes(Object.keys(config).sort().join()) ||
+  if (!config || !["apiKey,bindings,origin,tenant", "apiKey,authoritySource,bindings,origin,tenant"].includes(vaultKeys(config)) ||
       !Array.isArray(config.bindings) || config.bindings.length > 128) {
     throw Error("Invalid vault configuration");
   }
@@ -39,7 +41,7 @@ export function getVaultApiService() {
 
 export function dedicatedTestVaultAuthority(input: unknown, tenant: string, site: SiteAclConfig) {
   if (site.origin !== "https://test.s3r.ch" || !input || typeof input !== "object" ||
-      Array.isArray(input) || Object.keys(input).sort().join() !== "apiKey,authority,origin,scope,tenant") {
+      Array.isArray(input) || vaultKeys(input) !== "apiKey,authority,origin,scope,tenant") {
     throw Error("Invalid dedicated vault authority source");
   }
   const settings = input as AclStatementConfig & { authority: unknown };

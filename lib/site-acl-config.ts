@@ -7,8 +7,9 @@ export type SiteAclConfig = Readonly<{
   authority: ForumAuthorityConfig;
 }>;
 
+const sortedKeys = (value: object) => Object.keys(value).sort((left, right) => left.localeCompare(right, "en")).join();
 const exact = (x: unknown, keys: string): x is Record<string, unknown> =>
-  !!x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).sort().join() === keys;
+  !!x && typeof x === "object" && !Array.isArray(x) && sortedKeys(x) === keys;
 
 const strings = (x: unknown): x is string[] =>
   Array.isArray(x) && x.length <= 32 && x.every(s => typeof s === "string" && s.length > 0 && s.length <= 2048) &&
