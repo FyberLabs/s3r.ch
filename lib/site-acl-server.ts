@@ -121,8 +121,8 @@ export async function siteAclReady(
       if (!snapshot.rows.length || snapshot.completeThrough < at) return false;
       const result = await authority.refresh(snapshot, at);
       signal.throwIfAborted();
-      if (!result.ok || roomAuthorityDiagnosticsBlock(result.diagnostics, snapshot, authority.graph)) return false;
-      if (clock() === at) return true;
+      if (roomAuthorityDiagnosticsBlock(result.diagnostics, snapshot, authority.graph)) return false;
+      if (clock() === at) return result.ok;
       if (!result.ok && result.reason !== "superseded" && result.reason !== "incomplete-authority") return false;
     } catch (error) {
       if (!(error instanceof StatementSourceConflict)) throw error;

@@ -221,10 +221,7 @@ export function openVisorForumReporter(configFile: string) {
           });
           db.prepare("UPDATE reports SET sent=1 WHERE delivery=?").run(r.deliveryId);
         }
-        if (artifact) {
-          const { taskId, artifactId, revisionId } = artifact.draft;
-          return { version: 1, taskId, artifactId, revisionId };
-        }
+        return undefined;
       } finally {
         busy = false;
       }

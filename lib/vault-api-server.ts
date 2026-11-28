@@ -23,9 +23,10 @@ export function getVaultApiService() {
       !Array.isArray(config.bindings) || config.bindings.length > 128) {
     throw Error("Invalid vault configuration");
   }
-  const stores = new Map(config.bindings.map((b: { vaultId: string }) =>
-    [b.vaultId, createVaultScopedStore(config, b.vaultId)]));
-  const transport = (vaultId: string) => {
+  type VaultStore = ReturnType<typeof createVaultScopedStore>;
+  const stores = new Map<string, VaultStore>(config.bindings.map((b: { vaultId: string }) =>
+    [b.vaultId, createVaultScopedStore(config, b.vaultId)] as const));
+  const transport = (vaultId: string): VaultStore => {
     const store = stores.get(vaultId);
     if (!store) throw Error("Unknown vault");
     return store;

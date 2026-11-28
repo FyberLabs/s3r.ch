@@ -1,6 +1,7 @@
 import { p256 } from "@noble/curves/nist.js";
 import { releaseColor } from "./crash-report";
 import type { ForumAuthorityConfig } from "./identity/forum-authority";
+import type { LiveSquadSpec } from "./squad-view";
 
 export type SiteAclConfig = Readonly<{
   origin: string;
@@ -76,7 +77,16 @@ export function parseSiteAclConfig(env: Record<string, string | undefined>): Sit
   return { origin, authority: parseForumAuthorityJson(authorityRaw) };
 }
 
-export function publicSiteClientConfig(c: SiteAclConfig) {
+export type PublicSiteClientConfig = {
+  origin: string;
+  config: ForumAuthorityConfig;
+  sessionBase: string;
+  authorityEndpoint: string;
+  statementEndpoint: string;
+  squad?: LiveSquadSpec;
+};
+
+export function publicSiteClientConfig(c: SiteAclConfig): PublicSiteClientConfig {
   return structuredClone({
     origin: c.origin,
     config: c.authority,

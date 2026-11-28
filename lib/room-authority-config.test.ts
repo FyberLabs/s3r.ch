@@ -7,6 +7,7 @@ const config = {
   sessionBase: "/api/identity/sea",
   origin: "https://s3r.ch",
   config: { keys: [], pinnedIssuers: [], policy: { allowedChainIds: [], allowedDomains: [], allowedUris: [] } },
+  squad: { forumId: "forum_fixture", owner: "owner.fixture", label: "Fixture" },
 };
 
 test("room authority config loader rejects stale pilot endpoints", async () => {

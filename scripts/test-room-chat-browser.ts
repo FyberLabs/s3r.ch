@@ -37,7 +37,7 @@ const rows = [sign("object", { object: squad.forumId, owner: owner.pub }), ...([
 const snapshot = () => ({ completeThrough: at, rows: revoked ? [...rows, sign("see", { object: squad.forumId, owner: owner.pub, accessor: writer.pub, stated: 0, from: at - 20, until: at + 1000, hamState: 2 })] : rows, history: { completeThrough: at, links: [], accounts: [owner, writer].map(pair =>
   ({ principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) } });
 let revision = 0, posts = 0, revoked = false;
-const service = createBotStatementAdmission({ origin: "https://fixture.example.test", squad, config, clock: () => at,
+const service = createBotStatementAdmission({ origin: "https://fixture.example.test", config, clock: () => at,
   objectKind: "room", authenticate: async () => ({ key: writer.pub }), source: { read: async () => ({ snapshot: snapshot(), fence: String(revision) }),
     append: async (fence, additions, guard) => { guard(); if (fence !== String(revision)) return false; rows.push(...additions as typeof rows); revision++; return true; } } });
 const bundle = await build({ stdin: { contents: `

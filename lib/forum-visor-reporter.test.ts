@@ -19,7 +19,7 @@ test("status-only forum reports omit the retired plane update envelope", () => {
   const body = forumReportStatementAdmissionBody(100, "forum_test", "owner.test", envelope, null);
   assert.deepEqual(Object.keys(body).sort(), ["evaluatedAt", "forumId", "owner", "rows", "version"]);
   const withArtifact = forumReportStatementAdmissionBody(100, "forum_test", "owner.test", envelope,
-    { kind: "brief", draft: { taskId: "00000000-0000-4000-8000-000000000001", artifactId: "00000000-0000-4000-8000-000000000002", revisionId: "00000000-0000-4000-8000-000000000003", base: null, markdown: "x", signature: "s" } },
+    { kind: "brief", draft: { taskId: "00000000-0000-4000-8000-000000000001", artifactId: "00000000-0000-4000-8000-000000000002", revisionId: "00000000-0000-4000-8000-000000000003", base: null, markdown: "x" } },
     { brief: { signature: "s" } });
   assert.ok("update" in withArtifact);
 });
