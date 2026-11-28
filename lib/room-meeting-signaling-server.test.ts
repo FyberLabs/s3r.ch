@@ -35,7 +35,7 @@ function fixture(onVerify?: (token: string) => Promise<void>) {
   function post(token: string | null, peer: string, fields: Record<string, unknown>, from = origin) {
     const headers = new Headers({ "origin": from, "content-type": "application/json" });
     if (token) headers.set("cookie", seaSessionCookieNames()[0] + "=" + token);
-    return route(new Request(origin + "/api/site/meeting", {
+    return route(new Request(origin + "/api/squad/meeting", {
       method: "POST", headers, body: JSON.stringify({ room, peer, ...fields }),
     }));
   }

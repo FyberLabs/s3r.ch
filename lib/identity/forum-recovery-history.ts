@@ -1,7 +1,7 @@
 import { seaToPrincipalKey } from "./forum-check";
 import { parseForumRotationCandidate, type UnverifiedForumRotation } from "./forum-rotation-record";
+import { FORUM_SEA_SELF_ROTATION_LINK } from "./forum-rotation-record";
 import { verifyForumRotationWitness } from "./forum-rotation-witness";
-import { verifyForumRotationProofBinding } from "./forum-rotation-proof-binding";
 import { parseForumWalletLinkRecord, type UnverifiedForumWalletLink } from "./forum-wallet-link-record";
 import { verifyForumWalletLinkWitness } from "./forum-wallet-link-proof";
 import { parseForumRevoke } from "./forum-revocation";
@@ -41,7 +41,7 @@ class Denied extends Error { constructor(readonly reason: Reason) { super(reason
  */
 export async function resolveForumRecoveryHistory(
   principal: string, input: ForumRecoverySnapshot, trustedKeys: readonly ForumWitnessKey[],
-  policyInput: ForumSiwePolicy, pinnedIssuers: readonly string[], at: number,
+  policyInput: ForumSiwePolicy, at: number,
 ) {
   const diagnostics: Diagnostic[] = [];
   const reported = new Set<string>();
@@ -62,8 +62,9 @@ export async function resolveForumRecoveryHistory(
     const strings = (x: unknown) => list(x).map(v => typeof v === "string" && v.length <= 2048 ? v : fail("bad-input"));
     const skew = p.clockSkewSeconds ?? 0;
     if (!recoveryInteger(skew) || skew > 300) fail("bad-input");
-    const policy: ForumSiwePolicy = { allowedDomains: strings(p.allowedDomains), allowedUris: strings(p.allowedUris), allowedChainIds: strings(p.allowedChainIds), clockSkewSeconds: skew as number };
-    const issuers = strings(pinnedIssuers);
+    const pinnedOidcIssuers = p.pinnedOidcIssuers === undefined ? undefined : strings(p.pinnedOidcIssuers);
+    const policy: ForumSiwePolicy = { allowedDomains: strings(p.allowedDomains), allowedUris: strings(p.allowedUris),
+      allowedChainIds: strings(p.allowedChainIds), clockSkewSeconds: skew as number, pinnedOidcIssuers };
     const keys = list(trustedKeys).map(raw => {
       const k = object(raw);
       if (k.key_ops !== undefined) k.key_ops = strings(k.key_ops);
@@ -109,7 +110,7 @@ export async function resolveForumRecoveryHistory(
       if (independent.has(link.index)) return independent.get(link.index)!;
       spend();
       const r = link.record;
-      const good = r.kind === "wallet" ? !!await verifyForumWalletLinkWitness(r, keys, policy, r.issuedAt) : verifyForumRecoveryWitness(r, keys, issuers);
+      const good = r.kind === "wallet" ? !!await verifyForumWalletLinkWitness(r, keys, policy, r.issuedAt) : verifyForumRecoveryWitness(r, keys, policy.pinnedOidcIssuers);
       independent.set(link.index, good);
       return good;
     }
@@ -132,7 +133,9 @@ export async function resolveForumRecoveryHistory(
       return revokes.revoked ? "revoked" : "valid";
     }
     async function transition(r: UnverifiedForumRotation, owner: string, history: readonly UnverifiedForumRotation[]): Promise<void> {
-      if (!await verifyForumRotationProofBinding(r, keys, r.issuedAt)) fail("missing-history");
+      if (!keys.length) fail("missing-history");
+      if (!verifyForumRotationWitness(r, keys, r.issuedAt)) fail("missing-history");
+      if (r.authorizer.link === FORUM_SEA_SELF_ROTATION_LINK && r.retainedLinks.length === 0 && !byId.has(r.authorizer.link)) return;
       const checked = new Map<string, Link>();
       for (const id of new Set([r.authorizer.link, ...r.retainedLinks])) {
         let valid: Link | undefined, revoked = false;
@@ -169,12 +172,13 @@ export async function resolveForumRecoveryHistory(
       const cached = memo.get(cacheKey); if (cached) return cached;
       if (active.has(cacheKey) || active.size >= 64) return fail("missing-history");
       const a = accounts.get(owner) ?? fail("missing-history");
+      if (!keys.length && a.rotations.some(p => p)) fail("missing-history");
       active.add(cacheKey);
       try {
         const bindings = new Map<string, { record: ForumGenesisEpub; index: number }>();
         for (const [index, p] of a.bindings.entries()) {
           spend();
-          if (!p || p.record.kind !== "genesis-epub" || p.record.principal !== owner || p.record.issuedAt > horizon || !verifyForumRecoveryWitness(p.record, keys, issuers)) {
+          if (!p || p.record.kind !== "genesis-epub" || p.record.principal !== owner || p.record.issuedAt > horizon || !verifyForumRecoveryWitness(p.record, keys, policy.pinnedOidcIssuers)) {
             report(owner, "genesis-epub", index, "bad-proof"); continue;
           }
           bindings.set(await recoveryId(p.bytes), { record: p.record, index });
@@ -184,7 +188,9 @@ export async function resolveForumRecoveryHistory(
           spend();
           if (!p || p.record.principal !== owner) { report(owner, "rotation", index, "bad-record"); continue; }
           if (p.record.issuedAt > horizon) { report(owner, "rotation", index, "future-record"); continue; }
-          if (!verifyForumRotationWitness(p.record, keys, horizon)) { report(owner, "rotation", index, "bad-proof"); continue; }
+          if (!keys.length) fail("missing-history");
+          const ok = verifyForumRotationWitness(p.record, keys, horizon);
+          if (!ok) { report(owner, "rotation", index, "bad-proof"); continue; }
           const group = groups.get(p.record.seq) ?? []; group.push({ record: p.record, bytes: p.bytes, index }); groups.set(p.record.seq, group);
         }
         const history: UnverifiedForumRotation[] = [];

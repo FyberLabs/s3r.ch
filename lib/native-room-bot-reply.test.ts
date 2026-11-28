@@ -8,6 +8,7 @@ import { createRoomChatAdmission, type SignedRoomChat } from "./room-chat-admiss
 import { createNativeRoomBotReply } from "./native-room-bot-reply";
 import { encodeKey } from "./identity/check";
 import { seaToPrincipalKey } from "./identity/forum-check";
+import { FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 import { parseForumAuthority } from "./identity/forum-authority-records";
 import vectors from "./identity/vectors/forum-authority.json";
 
@@ -33,7 +34,7 @@ test("native bot replies require delegation and room post rights and reach signe
   const reply = createNativeRoomBotReply({
     authenticate: async request => request.headers.get("authorization") === "Bearer room-scope"
       ? { agent: f.a.pub, principal: f.owner.pub, delegationId: "fixture" } : null,
-    authority: { keys: [], pinnedIssuers: [], policy: vectors.context.policy },
+    authority: FORUM_AUTHORITY_CONFIG,
     parent: { id: f.forum, owner: f.owner.pub },
     clock: f.now,
     read: async now => ({

@@ -7,6 +7,7 @@ import { p256 } from "@noble/curves/nist.js";
 import { build } from "esbuild";
 import { chromium } from "playwright-core";
 import { createBotStatementAdmission } from "../lib/forum-bot-statement-admission";
+import { FORUM_AUTHORITY_CONFIG } from "../lib/identity/forum-authority";
 import { parseForumAuthority } from "../lib/identity/forum-authority-records";
 import { seaToPrincipalKey } from "../lib/identity/forum-check";
 import type { SeaPair } from "../lib/identity/sea";
@@ -25,7 +26,7 @@ async function runCase(name: string, requires: string[], perform: () => Promise<
 async function main() {
 const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
 const [owner, writer] = await Promise.all([sea.pair(), sea.pair()]);
-const at = 1700000060, config = { keys: [], pinnedIssuers: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] } };
+const at = 1700000060, config = FORUM_AUTHORITY_CONFIG;
 const squad = { owner: owner.pub, forumId: `forum_${seaToPrincipalKey(owner.pub)}_${"a".repeat(32)}`, label: "Browser fixture" };
 const sign = (kind: "object" | "see" | "post", fields: Record<string, unknown>) => {
   const row = { ...fields, issuedAt: at - 10, sig: "pending" }, parsed = parseForumAuthority(kind, row)!;

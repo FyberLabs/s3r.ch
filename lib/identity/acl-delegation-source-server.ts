@@ -21,7 +21,7 @@ export function authenticatedHistoryContexts(snapshot: ForumRecoverySnapshot, tr
     budget();
     const principal = take(parsePrincipalId(account.principal));
     if (!Array.isArray(account.rotations) || !Array.isArray(account.revocations) || !Array.isArray(account.genesisEpubBindings) ||
-        account.rotations.length > 1024 || account.revocations.length > 1024 || account.genesisEpubBindings.length !== 1)
+        account.rotations.length > 1024 || account.revocations.length > 1024 || account.genesisEpubBindings.length > 1)
       throw Error("Invalid account");
     budget(account.rotations.length + account.revocations.length + 1);
     for (const row of [...account.rotations, ...account.revocations, ...account.genesisEpubBindings]) {
@@ -63,8 +63,8 @@ export function authenticatedHistoryContexts(snapshot: ForumRecoverySnapshot, tr
             budget(prior.length + 1);
             const result = resolveCurrentKey(owner, prior, contextFor(owner, until));
             budget();
-            if (!result.ok || !result.value.bindingEpub || result.value.rotations.length !== prior.length)
-              return { ok: false, reason: "missing-history" };
+            if (!result.ok || result.value.rotations.length !== prior.length) return { ok: false, reason: "missing-history" };
+            if (peer.genesisEpubBindings.length > 0 && !result.value.bindingEpub) return { ok: false, reason: "missing-history" };
             verified.set(key, result.value.rotations);
           } finally { visiting.delete(key); }
         }
@@ -75,8 +75,8 @@ export function authenticatedHistoryContexts(snapshot: ForumRecoverySnapshot, tr
     budget(account.rotations.length + 1);
     const resolved = resolveCurrentKey(principal, account.rotations, contextFor(principal, at));
     budget();
-    if (!resolved.ok || resolved.diagnostics.length || !resolved.value.bindingEpub ||
-        resolved.value.rotations.length !== account.rotations.length) throw Error("Invalid owner history");
+    if (!resolved.ok || resolved.diagnostics.length || resolved.value.rotations.length !== account.rotations.length) throw Error("Invalid owner history");
+    if (account.genesisEpubBindings.length === 1 && !resolved.value.bindingEpub) throw Error("Invalid owner history");
   }
   return { accounts, contextFor };
 }

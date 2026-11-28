@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
-import { siteAclReady } from "./site-acl-server";
+import { squadForumReady } from "./squad-forum-server";
 import { StatementSourceConflict } from "./acl-statement-source-server";
 import { createForumAuthorityService } from "./forum-authority-service";
 import { createHttpForumAuthorityReader } from "./forum-authority-http";
 import { seaToPrincipalKey } from "./identity/forum-check";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
-import type { ForumAuthoritySnapshot } from "./identity/forum-authority";
+import { FORUM_AUTHORITY_CONFIG, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 const secret = (n: number) => new Uint8Array(32).fill(n);
 const pub = (n: number) => { const p = p256.getPublicKey(secret(n), false); return Buffer.from(p.slice(1,33)).toString("base64url") + "." + Buffer.from(p.slice(33)).toString("base64url"); };
 const owner = pub(53), member = pub(54), outsider = pub(55), at = 1700000060;
 const squad = { owner, forumId: `forum_${seaToPrincipalKey(owner)}_${"a".repeat(32)}`, label: "Synthetic service Squad" };
-const config = { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] };
+const config = FORUM_AUTHORITY_CONFIG;
 const sign = (kind: AuthorityKind, fields: object) => {
   const record = { ...fields, issuedAt: at - 1, sig: "pending" };
   const parsed = parseForumAuthority(kind, record)!; assert.ok(parsed);
@@ -84,12 +84,12 @@ test("aborting a stalled request body cancels it without reading storage", async
   assert.equal((await result).status, 503); assert.equal(cancelled, true); assert.equal(h.reads(), 0);
 });
 
-test("site ACL health rereads the owner source after rollover and requires current ownership", async () => {
+test("squad forum health rereads the owner source after rollover and requires current ownership", async () => {
   const signal = new AbortController().signal;
   for (const outcome of ["valid", "stale", "missing-owner", "expired-again"]) {
     let now = at - 1;
     const reads: number[] = [];
-    const ready = await siteAclReady({ config: { authority: config }, source: {
+    const ready = await squadForumReady({ source: {
       async read(second) {
         reads.push(second);
         if (reads.length === 1 || outcome === "expired-again") {

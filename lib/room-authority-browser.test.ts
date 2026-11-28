@@ -5,11 +5,11 @@ import test from "node:test";
 import { forumBotFixture } from "./forum-bot-test-fixture";
 import { createBotStatementAdmission } from "./forum-bot-statement-admission";
 import { admitBrowserRoom } from "./room-authority-browser";
-import { createForumAuthority } from "./identity/forum-authority";
+import { createForumAuthority, FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 import { seaToPrincipalKey } from "./identity/forum-check";
 import vectors from "./identity/vectors/forum-authority.json";
 async function setup(t: test.TestContext) {
-  const f = await forumBotFixture(t), rows = [...f.rows], config = { keys: [], pinnedIssuers: [], policy: vectors.context.policy };
+  const f = await forumBotFixture(t), rows = [...f.rows], config = FORUM_AUTHORITY_CONFIG;
   const squad = { owner: f.owner.pub, forumId: f.forum, label: "Human statements" };
   const snapshot = () => structuredClone({ completeThrough: f.now(), rows, history: { completeThrough: f.now(), links: [],
     accounts: [f.owner, f.a, f.b].map(pair => ({ principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) } });
@@ -18,7 +18,7 @@ async function setup(t: test.TestContext) {
     objectKind: "room", authenticate: async () => ({ key: f.a.pub }), source: { read: async () => ({ snapshot: snapshot(), fence: String(revision) }),
       append: async (fence, additions, guard) => { guard(); if (fence !== String(revision)) return false; rows.push(...additions); revision++; return true; } } });
   const input = { share: true, item: { id: `room_${seaToPrincipalKey(f.a.pub)}_${"b".repeat(32)}`, author: f.a.pub, ts: f.now() },
-    pair: f.a, squad, config, endpoint: "/api/site/room", signal: new AbortController().signal, clock: f.now,
+    pair: f.a, squad, config, endpoint: "/api/squad/room", signal: new AbortController().signal, clock: f.now,
     read: async () => snapshot(), fetch: (async function (this: unknown, url, init) {
       assert.equal(this, undefined);
       calls++; posted = String(init?.body);

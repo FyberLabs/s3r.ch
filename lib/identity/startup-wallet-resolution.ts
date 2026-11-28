@@ -63,7 +63,7 @@ export function createStartupWalletResolver(source: StartupWalletSource | null, 
       if (principals.size > 64) return deny("invalid-evidence");
       const accounts = new Map<string, string>();
       for (const principal of principals) {
-        const history = await resolveForumRecoveryHistory(principal, snapshot, trust.keys, trust.policy, [...trust.pinnedIssuers], at);
+        const history = await resolveForumRecoveryHistory(principal, snapshot, trust.keys, trust.policy, at);
         if (!history.ok) return deny("missing-history");
         for (const candidate of candidates.filter(row => row.principal === principal)) {
           const eligible = await checkForumWalletLinkEligibility(candidate, history.provider, trust.keys, trust.policy, at, "present");

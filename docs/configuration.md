@@ -84,15 +84,14 @@ Settings outside this table (`SEED_SECRET`, `PORT`, `HOSTNAME`, `NODE_ENV`, and 
 
 `S3RCH_IDENTITY_STORAGE_ROOT` is not read. A user-assigned Azure identity also needs `AZURE_CLIENT_ID` (the client id, not a secret). The Azure SDK reads that name; this table does not, and the checker does not scan it.
 
-## Site ACL and session secrets
+## Session secrets and squad forums
 
 | Setting | Required | Default | Secret | What it does |
 | --- | --- | --- | --- | --- |
 | `S3RCH_SESSION_SIGNING_KEY` | yes in production | development fallback when unset and not production | yes | HMAC key for session and nonce cookies until asymmetric session tokens land. Minimum 32 characters. |
 | `S3RCH_MEDIA_SIGNING_KEY` | yes in production | development fallback when unset and not production | yes | Separate HMAC key for public feed media and conversation ticket signing. Minimum 32 characters. |
 | `S3RCH_SERVICE_CREDENTIAL` | for ACL backend | unset | yes | Single infrastructure credential for ACL statement reads/writes and identity replay consume. Replaces the retired per-hop API keys. |
-| `S3RCH_SITE_ORIGIN` | optional for site ACL | unset | no | Canonical HTTPS site origin for `/api/site/*`. When unset, the app infers it from `S3RCH_GUN_HEALTH_URL` (peer health URL host) or `S3RCH_RELEASE_COLOR` (`test` → `https://test.s3r.ch`, production aliases → `https://s3r.ch`). Startup does not treat a missing explicit value as a boot error. |
-| `S3RCH_FORUM_AUTHORITY` | required to enable site ACL | unset | no | JSON forum witness policy (`keys`, `pinnedIssuers`, `policy`). Same witness shape as the retired pilot blob authority section, without a fixed squad forum. While unset, `/api/site/*` and server paths that depend on site ACL fail closed with 503; the web process still boots. |
+| `S3RCH_SITE_ORIGIN` | optional | unset | no | Canonical HTTPS site origin for session CORS and browser clients. When unset, the app infers it from `S3RCH_GUN_HEALTH_URL` (peer health URL host) or `S3RCH_RELEASE_COLOR` (`test` → `https://test.s3r.ch`, production aliases → `https://s3r.ch`). This does not enable a site-wide forum witness policy. |
 
 ### Public feed storage migration
 
@@ -235,12 +234,22 @@ identity replay backend and does not construct a Blob ledger or replay store.
 Legacy assignment mutations return unavailable in this mode; they cannot write
 a second authority journal. Existing session wire formats remain unchanged.
 
-The application no longer exposes `/api/squad/pilot/*`. When
-`S3RCH_FORUM_AUTHORITY` and the ACL statement source are configured, forum
-statement admission, authority reads, room routing and meeting signaling use
-`/api/site/*` with forum scope taken from each request instead of a singleton
-pilot blob. Missing witness policy or statement-source settings leave those
-routes unavailable without blocking App Service startup.
+The application no longer exposes `/api/squad/pilot/*` or site-wide
+`/api/site/*` forum ACL (`503 site-forum-acl-retired`). Retired settings such as
+`S3RCH_FORUM_AUTHORITY` and `S3RCH_SQUAD_PILOT` are not read. Legacy
+`S3RCH_AGENT_SESSION_CONFIG` shapes that embedded an `authority` witness block are
+also rejected; agent admission uses SociACL owner-signed delegations only.
+
+SEA-owned squads use `/api/squad/*`. Each forum’s authority is the owner’s SEA
+public key: an `object` row on the forum id, plus `see` / `post` grants the owner
+signs in SociACL Check. There is no deployment JSON for witness keys or pinned
+issuers. `POST /api/squad/create` admits a signed bootstrap from the authenticated
+owner; statement and authority handlers take `forumId` and `owner` from each
+request and verify them against the current ACL snapshot.
+
+When `S3RCH_AUTHORITY_BACKEND=acl` and the ACL statement source are configured,
+squad routes can talk to the provisioned statement source. Missing statement-source
+settings leave squad forum routes unavailable without blocking App Service startup.
 
 Sessions use only `/api/identity/sea`. There is no squad session alias and no
 wallet-keyed session route.
@@ -257,8 +266,7 @@ owner does not lend its object grants to the bot. A token alone is not an object
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `S3RCH_AGENT_SESSION_CONFIG` | Unset (disabled) | Private JSON with exact `origin`, `source` (`origin`, `tenant`, `scope`) and `authority` (`jwks`, `policy`, `pinnedIss`) fields. `policy` contains `allowedDomains`, `allowedUris`, `allowedChainIds`, and explicit `clockSkewSeconds` (0–300). Witness keys are independently trusted configuration; source responses cannot install them. |
-| `S3RCH_DELEGATION_SOURCE_API_KEY` | Unset | Dedicated service key with `acl:delegations:read` and the operator-bound tenant/subject/scope. It is never sent to the client. |
+| `S3RCH_AGENT_SESSION_CONFIG` | Unset (disabled) | Private JSON with exact `origin` and `source` (`origin`, `tenant`, `scope`). Agent authority is verified only through SociACL owner-signed delegations from the source; embedded `authority` witness blocks are rejected. Requires `S3RCH_SERVICE_CREDENTIAL`. |
 
 The origin must match the configured s3r.ch deployment. The delegation source and
 existing Spanopticon identity replay settings must name the same tenant. The

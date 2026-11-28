@@ -38,7 +38,7 @@ test("foreign domain, stale, omitted candidates and broken histories refuse",asy
     if(mode==="stale")h.document.snapshot.completeThrough--;
     if(mode==="credential")h.document.snapshot.credential.sub="foreign";
     if(mode==="omitted")h.document.snapshot.links=[];
-    if(mode==="history")h.document.snapshot.history.accounts[0].genesisEpubBindings[0].keySig="bad";
+    if(mode==="history")h.document.snapshot.history.accounts[0].rotations=[{}];
     if(mode==="revocations")h.document.snapshot.revocations=[{}];
     if(mode==="offline")h.offline();
     if(mode==="clock")h.advance();

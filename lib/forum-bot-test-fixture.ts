@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
-import { createForumAuthority, type ForumAuthoritySnapshot } from "./identity/forum-authority";
+import { createForumAuthority, FORUM_AUTHORITY_CONFIG, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
 import { seaToPrincipalKey } from "./identity/forum-check";
 import vectors from "./identity/vectors/forum-authority.json";
@@ -23,7 +23,7 @@ export async function forumBotFixture(t: test.TestContext) {
   const tenant = randomUUID(), botA = randomUUID(), botB = randomUUID();
   const forum = `forum_${seaToPrincipalKey(owner.pub)}_${"a".repeat(32)}`;
   let at = 1700000060, consent = true, handles = true;
-  const auth = createForumAuthority({ keys: [], pinnedIssuers: [], policy: vectors.context.policy }, () => at);
+  const auth = createForumAuthority(FORUM_AUTHORITY_CONFIG, () => at);
   const sign = (kind: AuthorityKind, value: object, signer = owner) => {
     const row = { issuedAt: at - 10, ...value, sig: "pending" };
     const parsed = parseForumAuthority(kind, row); assert.ok(parsed);

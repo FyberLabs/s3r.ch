@@ -1,4 +1,4 @@
-import { getSiteAclServer } from "./site-acl-server";
+import { getSquadForumServer } from "./squad-forum-server";
 import { createForumAuthority } from "./identity/forum-authority";
 import { createMediaWrapService, parseMediaReaderConfig } from "./media-wrap-service";
 import { createMediaAgentRead } from "./media-agent-read";
@@ -51,8 +51,8 @@ function getMediaServices() {
   const testBinding = configuredTestMediaBinding(process.env);
   const raw = testBinding?.raw ?? process.env.S3RCH_MEDIA_READER_BINDINGS;
   if (raw === undefined) { cached = undefined; return null; }
-  const site = testBinding ? undefined : getSiteAclServer();
-  const siteOrigin = testBinding?.siteOrigin ?? site?.config.origin;
+  const site = testBinding ? undefined : getSquadForumServer();
+  const siteOrigin = testBinding?.siteOrigin ?? site?.origin;
   if (!siteOrigin) throw Error("Private media identity unavailable");
   const secret = testBinding ? getIdentitySecret({
     S3RCH_SESSION_SIGNING_KEY: process.env.S3RCH_SESSION_SIGNING_KEY, NODE_ENV: "production",
@@ -71,7 +71,7 @@ function getMediaServices() {
     const session = await site.services.authenticate(request);
     if (!session) return null;
     const snapshot = await site.source.read(at, signal);
-    const authority = createForumAuthority(site.config.authority, () => Math.floor(Date.now() / 1000));
+    const authority = createForumAuthority(site.config, () => Math.floor(Date.now() / 1000));
     const result = await authority.refresh(snapshot, at);
     signal.throwIfAborted();
     if (!result.ok || result.diagnostics.length || Math.floor(Date.now() / 1000) !== at) return null;

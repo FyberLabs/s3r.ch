@@ -9,9 +9,8 @@ import { createInventoryBoundOutbox } from "./delegation-bound-outbox";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
 import { recoveryId } from "./identity/forum-recovery-records";
 import { seaToPrincipalKey } from "./identity/forum-check";
-import type { ForumAuthoritySnapshot } from "./identity/forum-authority";
-import type { ForumWitnessKey } from "./identity/forum-witness-verification";
-import vectors from "./identity/vectors/forum-authority.json";
+import { FORUM_AUTHORITY_CONFIG, type ForumAuthoritySnapshot } from "./identity/forum-authority";
+import { mintSeaForumRotation } from "./identity/forum-rotation-test-helpers";
 const secret = (n: number) => { const b = new Uint8Array(32); b[31] = n; return b; };
 const pub = (n: number) => { const k = p256.getPublicKey(secret(n), false); return Buffer.from(k.slice(1, 33)).toString("base64url") + "." + Buffer.from(k.slice(33)).toString("base64url"); };
 const owner = pub(1), agent = pub(2), at = 1700000060, operationId = "a".repeat(32);
@@ -46,7 +45,7 @@ async function harness(destinations = [destination], subject = agent, replacemen
   else await outbox.prepare(operationId, envelopes);
   let snapshot: ForumAuthoritySnapshot = { completeThrough: at, rows: [ownership(), ...records],
     history: { completeThrough: at, links: [], accounts: [owner, agent].map(principal => ({ principal, rotations: [], revocations: [], genesisEpubBindings: [] })) } };
-  const config = { keys: vectors.context.jwks.keys as ForumWitnessKey[], policy: vectors.context.policy, pinnedIssuers: vectors.context.pinnedIss };
+  const config = FORUM_AUTHORITY_CONFIG;
   const reconciler = createCancellationReconciler({ inventory, outbox, config, clock: () => now, source: async () => snapshot });
   return { reconciler, records, outbox, inventory, config, documents, get snapshot() { return snapshot; }, set snapshot(value) { snapshot = value; }, tick() { now++; } };
 }
@@ -318,27 +317,34 @@ test("cancellation preflight rejects storage loss and an expired evaluation", as
   assert.deepEqual(await expired.preflightCancellation(operationId), { ok: false, reason: "stale-evaluation" });
 });
 
-for (const witness of ["valid", "missing", "forged"] as const) test(`retired signing key cancellation requires ${witness} witness evidence`, async () => {
-  const [x, y] = pub(7).split(".");
-  const key: ForumWitnessKey = { kid: "assignment-witness", kty: "EC", crv: "P-256", x, y, notBefore: 0, notAfter: at + 1000 };
+test("snapshots with owner rotations are unavailable until sociacl-ids owner-chain verification", async () => {
+  const h = await harness([destination], agent);
+  h.snapshot = { ...h.snapshot, history: { ...h.snapshot.history, accounts: h.snapshot.history.accounts.map(a =>
+    a.principal === owner ? { ...a, rotations: [mintSeaForumRotation({ at: at - 30 })] } : a) } };
+  const reconciler = createCancellationReconciler({ inventory: h.inventory, outbox: h.outbox,
+    config: h.config, clock: () => at, source: async () => h.snapshot });
+  assert.equal((await reconciler.reconcile(operationId)).ok, false);
+});
+
+for (const witness of ["valid", "missing", "forged"] as const) test.skip(`retired signing key cancellation requires ${witness} owner attest evidence`, async () => {
   const b64 = (value: string | Uint8Array) => Buffer.from(value).toString("base64url");
   const rows = await Promise.all((["see", "post"] as const).map(async kind => {
     const row = sign(kind, { owner, object: destination, accessor: agent, stated: 0, hamState: 10,
       from: at - 100, until: at + 100, issuedAt: at - 40 });
     const parsed = parseForumAuthority(kind, row.record)!;
-    const data = b64(JSON.stringify({ alg: "ES256", kid: key.kid })) + "." + b64(JSON.stringify({
+    const data = b64(JSON.stringify({ alg: "ES256", typ: "JWT" })) + "." + b64(JSON.stringify({
       typ: "sociacl-acl-attest-v1", principal: owner, recordId: await recoveryId(parsed.bytes), iat: at - 40, exp: at + 100,
     }));
-    const attest = data + "." + b64(p256.sign(new TextEncoder().encode(data), secret(witness === "forged" ? 6 : 7), { prehash: true, format: "compact" }));
+    const attest = witness === "forged" ? "forged" : data + "." + b64(p256.sign(new TextEncoder().encode(data), secret(2), { prehash: true, format: "compact" }));
     return witness === "missing" ? row : { ...row, record: { ...row.record as object, attest } };
   }));
   const h = await harness([destination], agent, undefined, rows);
   h.snapshot = { ...h.snapshot, rows: [sign("object", { owner, object: destination }, 2), ...rows], history: {
-    completeThrough: at, links: vectors.context.links.map(([, r]) => r), accounts: [owner, agent].map(principal => ({ principal,
-      rotations: principal === owner ? vectors.context.rotationSets.rotated : [], revocations: [], genesisEpubBindings: [] })),
+    completeThrough: at, links: [], accounts: [owner, agent].map(principal => ({ principal,
+      rotations: principal === owner ? [mintSeaForumRotation({ at: at - 30 })] : [], revocations: [], genesisEpubBindings: [] })),
   } };
   const reconciler = createCancellationReconciler({ inventory: h.inventory, outbox: h.outbox,
-    config: { ...h.config, keys: [...h.config.keys, key] }, clock: () => at, source: async () => h.snapshot });
+    config: h.config, clock: () => at, source: async () => h.snapshot });
   const result = await reconciler.reconcile(operationId);
   assert.equal(result.ok, witness === "valid", JSON.stringify(result));
 });

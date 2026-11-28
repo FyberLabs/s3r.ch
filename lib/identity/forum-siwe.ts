@@ -6,6 +6,8 @@ export type ForumSiwePolicy = Readonly<{
   allowedUris: readonly string[];
   allowedChainIds: readonly string[];
   clockSkewSeconds?: number;
+  /** When set, witnessed OIDC recovery links must use one of these issuer URLs. */
+  pinnedOidcIssuers?: readonly string[];
 }>;
 const integer = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n >= 0 && !Object.is(n, -0);
 function date(s: string): number {

@@ -7,7 +7,7 @@ and deployment remain #186 and #190; the public-fixture Squad mesh remains disab
 
 ## Input trust boundary
 
-`resolveForumRecoveryHistory(principal, snapshot, trustedKeys, policy, pinnedIssuers, at)`
+`resolveForumRecoveryHistory(principal, snapshot, trustedKeys, policy, at)`
 requires an independently trusted source to provide:
 
 - The complete wallet/OIDC candidate index through `snapshot.completeThrough`.

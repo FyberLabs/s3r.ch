@@ -64,7 +64,8 @@ export function parseForumRecoveryRecord(input: unknown): Readonly<{ record: For
     cred: Object.freeze({ iss: c.iss, tenant: c.tenant, sub: c.sub }) });
   return { record, bytes: recoveryBytes(["sociacl-link-oidc-v1", record.principal, record.cred.iss, record.cred.tenant, record.cred.sub, String(record.issuedAt), record.nonce]) };
 }
-export function verifyForumRecoveryWitness(record: ForumOidcLink | ForumGenesisEpub, keys: readonly ForumWitnessKey[], pinnedIssuers: readonly string[]): boolean {
+export function verifyForumRecoveryWitness(record: ForumOidcLink | ForumGenesisEpub, keys: readonly ForumWitnessKey[],
+  pinnedOidcIssuers?: readonly string[]): boolean {
   const c = verifyForumWitness(record.attest, keys, record.issuedAt);
   if (!c || c.principal !== record.principal || c.iat !== record.issuedAt) return false;
   if (record.kind === "genesis-epub") {
@@ -72,6 +73,7 @@ export function verifyForumRecoveryWitness(record: ForumOidcLink | ForumGenesisE
     return Object.keys(c).every(k => ["typ", "principal", "epub", "iat", "exp"].includes(k)) && c.typ === "sociacl-genesis-epub-attest-v1" && c.epub === record.epub &&
       verifyForumKeySignature(record.principal, record.keySig, parsed.bytes);
   }
-  return pinnedIssuers.includes(record.cred.iss) && Object.keys(c).every(k => ["typ", "iss", "tenant", "sub", "principal", "iat", "exp", "nonce"].includes(k)) &&
+  if (pinnedOidcIssuers !== undefined && !pinnedOidcIssuers.includes(record.cred.iss)) return false;
+  return c.iss === record.cred.iss && Object.keys(c).every(k => ["typ", "iss", "tenant", "sub", "principal", "iat", "exp", "nonce"].includes(k)) &&
     c.typ === "sociacl-oidc-attest-v1" && c.iss === record.cred.iss && c.tenant === record.cred.tenant && c.sub === record.cred.sub && c.nonce === record.nonce;
 }

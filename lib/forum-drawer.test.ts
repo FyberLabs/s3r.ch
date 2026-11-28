@@ -2,12 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
 import { createForumDrawer, drawerSoul, parseDrawerRecord, DRAWER_LIMIT, DRAWER_PENDING_MS, type DrawerRecord, type DrawerAuthority } from "./forum-drawer";
-import { createForumAuthority, type ForumAuthoritySnapshot } from "./identity/forum-authority";
+import { createForumAuthority, FORUM_AUTHORITY_CONFIG, type ForumAuthoritySnapshot } from "./identity/forum-authority";
+import { mintSeaForumRotation } from "./identity/forum-rotation-test-helpers";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
 import { seaToPrincipalKey, forumAgentSoul } from "./identity/forum-check";
 import type { FeedGun } from "../components/GunPeerProvider";
-import type { ForumWitnessKey } from "./identity/forum-witness-verification";
-import vectors from "./identity/vectors/forum-authority.json";
 import { readForumSignature, signForumRecord } from "./forum-sign";
 
 const b64 = (b: Uint8Array) => Buffer.from(b).toString("base64url");
@@ -16,7 +15,7 @@ const pub = (n: number) => { const b = p256.getPublicKey(secret(n), false); retu
 const owner = pub(1), writer = pub(2), outsider = pub(3), time = 1700000060;
 const id = (kind: string, key = 1, n = 1) => `${kind}_${seaToPrincipalKey(pub(key))}_${n.toString(16).padStart(32, "0")}`;
 const forum = id("forum"), child = id("update"), target = id("spec");
-const config = { keys: vectors.context.jwks.keys as ForumWitnessKey[], policy: vectors.context.policy, pinnedIssuers: vectors.context.pinnedIss };
+const config = FORUM_AUTHORITY_CONFIG;
 type Evidence = ForumAuthoritySnapshot["rows"][number];
 function proof(kind: AuthorityKind, fields: Record<string, unknown>, key = 1): Evidence {
   const row = { issuedAt: time - 10, ...fields, sig: "pending" };
@@ -202,23 +201,14 @@ test("disconnect fences an in-flight signature and publication", async () => {
   assert.equal(await publish, "denied"); await flush(); assert.equal(h.c.rows().length, 0);
   assert.equal(h.wire.puts.length, 0); h.c.dispose();
 });
-test("rotation hides old-key rows and accepts the new key without changing owner/path", async () => {
+test("unwitnessed owner-chain rotation keeps authority unavailable and clears dependent drawer rows", async () => {
   const h = await setup([owned()]);
   h.setViewer(owner);
   await h.send(record({ writer: owner }), { key: owner }); assert.equal(h.c.rows().length, 1);
-  const input = snapshot([owned(child, 2)]);
-  const rotated = { ...input, history: { completeThrough: time, links: vectors.context.links.map(([, r]) => r),
-    accounts: vectors.context.authenticatedAccounts.filter(principal => principal !== writer).map(principal => ({ principal,
-      rotations: principal === owner ? vectors.context.rotationSets.rotated : [], revocations: [], genesisEpubBindings: [] })) } };
-  assert.ok((await h.authority.refresh(rotated, time)).ok);
-  assert.equal(h.c.rows().length, 0);
-  assert.equal(h.authority.graph.principalForKey(writer, time), owner);
-  await h.send(record({ writer: owner, rev: 2 }), { key: writer });
-  assert.equal(h.c.rows()[0].agent, owner);
-  assert.equal(h.authority.graph.ownerOf(child), owner);
-  assert.equal(h.c.rows()[0].id, child);
-  await h.send(record({ writer: owner, rev: 3 }), { key: owner });
-  assert.equal(h.c.rows()[0].rev, 2);
+  const rotated = { ...snapshot([owned(child, 2)]), history: { completeThrough: time, links: [],
+    accounts: [{ principal: owner,
+      rotations: [mintSeaForumRotation({ at: time - 30 })], revocations: [], genesisEpubBindings: [] }] } };
+  assert.equal((await h.authority.refresh(rotated, time)).ok, false);
   h.c.dispose();
 });
 test("bounded pending hints expire without becoming display evidence", async () => {

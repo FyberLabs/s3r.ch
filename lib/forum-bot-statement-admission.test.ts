@@ -7,6 +7,7 @@ import { forumBotFixture } from "./forum-bot-test-fixture";
 import { createBotStatementAdmission } from "./forum-bot-statement-admission";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
 import { seaToPrincipalKey } from "./identity/forum-check";
+import { FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 import vectors from "./identity/vectors/forum-authority.json";
 async function setup(t: test.TestContext) {
   const f = await forumBotFixture(t), origin = "https://forum.example.test";
@@ -15,7 +16,7 @@ async function setup(t: test.TestContext) {
   const snapshot = () => ({ completeThrough: f.now(), rows,
     history: { completeThrough: f.now(), links: [], accounts: [f.owner, f.a, f.b].map(pair =>
       ({ principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) } });
-  const service = createBotStatementAdmission({ origin, config: { keys: [], pinnedIssuers: [], policy: vectors.context.policy }, clock: f.now,
+  const service = createBotStatementAdmission({ origin, config: FORUM_AUTHORITY_CONFIG, clock: f.now,
     authenticate: async request => request.headers.get("x-test-key") === "none" ? null : { key: request.headers.get("x-test-key") ?? f.b.pub },
     source: { read: async () => hung ? new Promise<never>(() => {}) : ({ snapshot: snapshot(), fence: String(revision) }),
       append: async (fence, additions, guard) => { if (changed) revision++; if (expired) f.tick(); guard();
@@ -124,7 +125,7 @@ test("Plane update admission verifies the bot and signed body and uses only the 
     history: { completeThrough: f.now(), links: [], accounts: [f.owner, f.a, f.b].map(pair =>
       ({ principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) } });
   let commits = 0, generic = 0, paused = true;
-  const service = createBotStatementAdmission({ origin, config: { keys: [], pinnedIssuers: [], policy: vectors.context.policy }, clock: f.now,
+  const service = createBotStatementAdmission({ origin, config: FORUM_AUTHORITY_CONFIG, clock: f.now,
     authenticate: async () => ({ key: f.b.pub }),
     source: { read: async () => ({ snapshot: snapshot(), fence: String(rows.length) }),
       append: async () => { generic++; return true; } },
@@ -148,7 +149,7 @@ test("Plane update admission verifies the bot and signed body and uses only the 
     principal: f.b.pub, statementId: signed.id, status: "completed" });
   const proof = { ...fields, attestation: Buffer.from(p256.sign(transcript,
     Buffer.from(f.b.priv, "base64url"), { prehash: true, format: "compact" })).toString("base64url") };
-  const request = (update?: object) => new Request(origin + "/api/site/statement", { method: "POST",
+  const request = (update?: object) => new Request(origin + "/api/squad/statement", { method: "POST",
     headers: { Origin: origin, "Content-Type": "application/json" },
     body: JSON.stringify({ version: 1, forumId: f.forum, owner: f.owner.pub,
       evaluatedAt: f.now(), rows: additions, ...(update ? { update } : {}) }) });
