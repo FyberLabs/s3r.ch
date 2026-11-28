@@ -13,7 +13,7 @@ if (process.env.GITHUB_ACTIONS !== "true") throw Error("Forum browser contracts 
 async function main() {
 const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
 const [owner, writer] = await Promise.all([sea.pair(), sea.pair()]);
-const at = 1700000060, config = { keys: [], pinnedIssuers: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] } };
+const at = 1700000060, config = { keys: [] };
 const squad = { owner: owner.pub, forumId: `forum_${seaToPrincipalKey(owner.pub)}_${"a".repeat(32)}`, label: "Browser fixture" };
 const sign = (kind: "object" | "see" | "post", fields: Record<string, unknown>) => {
   const row = { ...fields, issuedAt: at - 10, sig: "pending" }, parsed = parseForumAuthority(kind, row)!;

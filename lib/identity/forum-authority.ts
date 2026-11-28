@@ -5,6 +5,13 @@ import { verifyForumKeySignature } from "./forum-key-signature";
 import { verifyForumWitness, type ForumWitnessKey } from "./forum-witness-verification";
 import type { ForumKeyResolver } from "./forum-object-verification";
 import type { ForumSiwePolicy } from "./forum-siwe";
+
+/** Wallet-link SIWE verification is fail-closed without deployment sign-in policy on forum authority. */
+const FAIL_CLOSED_SIWE_POLICY: ForumSiwePolicy = Object.freeze({
+  allowedDomains: Object.freeze([]),
+  allowedUris: Object.freeze([]),
+  allowedChainIds: Object.freeze([]),
+});
 import { recoveryObject, recoveryList, recoveryInteger, recoveryId } from "./forum-recovery-records";
 import { parseForumAuthority, objectPrincipal, directGrantSoul, membershipRecordSoul,
   type AuthorityKind, type ParsedAuthority } from "./forum-authority-records";
@@ -18,7 +25,7 @@ export type ForumAuthoritySnapshot = Readonly<{
   history: ForumRecoverySnapshot;
   rows: readonly Readonly<{ kind: AuthorityKind; soul: string; record: unknown }>[];
 }>;
-export type ForumAuthorityConfig = Readonly<{ keys: readonly ForumWitnessKey[]; policy: ForumSiwePolicy; pinnedIssuers: readonly string[] }>;
+export type ForumAuthorityConfig = Readonly<{ keys: readonly ForumWitnessKey[] }>;
 export type ForumAuthorityGraph = SeeGraph & {
   groupMembership(object: string, accessor: string, now: number): Readonly<{ set: string; predicate: string; soul: string; setOwner: string }> | null;
   writerKey(principal: string, issuedAt: number, now: number): string | null;
@@ -142,10 +149,9 @@ export function createForumAuthority(config: ForumAuthorityConfig, clock: () => 
           if (p.row.issuedAt > at) { diagnostics.push({ index, reason: "future-record" }); return null; }
           return { p, index };
         });
-        const k = recoveryList(config.keys), policy = recoveryObject(config.policy), issuers = recoveryList(config.pinnedIssuers);
-        if (!k || !policy || !issuers) return fail("bad-config");
+        const k = recoveryList(config.keys);
+        if (!k) return fail("bad-config");
         const keys = k.map(raw => { const r = recoveryObject(raw); if (!r) throw Error("bad-key"); return { ...r, ...(r.key_ops === undefined ? {} : { key_ops: recoveryList(r.key_ops) }) } as unknown as ForumWitnessKey; });
-        const siwe = { ...policy, allowedDomains: recoveryList(policy.allowedDomains), allowedUris: recoveryList(policy.allowedUris), allowedChainIds: recoveryList(policy.allowedChainIds) } as unknown as ForumSiwePolicy;
         const signers = [...new Set(parsed.flatMap(r => r ? [r.p.signer] : []))];
         if (signers.length > 32) return fail("capacity");
         // Start all resolvers synchronously: each snapshots history and config
@@ -160,7 +166,8 @@ export function createForumAuthority(config: ForumAuthorityConfig, clock: () => 
             return account && typeof account.principal === "string" ? [account.principal] : [];
           })])];
         if (principals.length > 128) return fail("capacity");
-        const results = await Promise.all(principals.map(owner => resolveForumRecoveryHistory(owner, snapshot.history as ForumRecoverySnapshot, keys, siwe, issuers as string[], at)));
+        const results = await Promise.all(principals.map(owner =>
+          resolveForumRecoveryHistory(owner, snapshot.history as ForumRecoverySnapshot, keys, FAIL_CLOSED_SIWE_POLICY, [], at)));
         const histories = new Map(principals.map((owner, i) => [owner, results[i]]));
         // Missing/forked authority for any evidence signer invalidates the
         // entire snapshot, including previously admitted rows/cancels.

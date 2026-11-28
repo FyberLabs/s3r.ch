@@ -12,7 +12,7 @@ const vaultKeys = (value: object) => Object.keys(value).sort((left, right) => le
 /** Test-only vault witness JSON. Not a site-wide forum ACL setting. */
 function parseVaultWitnessAuthorityJson(raw: string): ForumAuthorityConfig {
   const c: unknown = JSON.parse(raw);
-  if (!c || typeof c !== "object" || Array.isArray(c) || vaultKeys(c) !== "keys,pinnedIssuers,policy") {
+  if (!c || typeof c !== "object" || Array.isArray(c) || vaultKeys(c) !== "keys") {
     throw Error("invalid vault witness configuration");
   }
   return structuredClone(c as ForumAuthorityConfig);

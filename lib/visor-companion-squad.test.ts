@@ -41,7 +41,7 @@ test("slice done check: Visor companion binding contract (#551)", async t => {
   const companion = randomUUID();
   const session = randomUUID();
   const generation = gen(1);
-  const common = { squad: { forumId: f.forum, owner: f.owner.pub, label: "Pilot" }, origin, authority: { keys: [], pinnedIssuers: [], policy: vectors.context.policy },
+  const common = { squad: { forumId: f.forum, owner: f.owner.pub, label: "Pilot" }, origin, authority: { keys: [] },
     tenant: f.tenant, ownerPrincipal: f.owner.pub, store, clock: f.now, evaluatedAt: f.now(), snapshot: snapshot() };
   const first = await resolveVisorCompanionSquad({ ...common,
     request: parseVisorCompanionResolveRequest(body(f, [

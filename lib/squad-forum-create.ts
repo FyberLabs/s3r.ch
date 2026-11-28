@@ -12,6 +12,17 @@ import { roomAuthorityDiagnosticsBlock } from "./room-authority-diagnostics";
 
 const labelPattern = /^[^\x00-\x1f\x7f]{1,80}$/;
 
+export type SquadCreateErrorCode = "exists" | "bootstrap" | "unavailable" | "invalid" | "not-enrolled" | "conflict";
+
+export class SquadCreateError extends Error {
+  readonly code: SquadCreateErrorCode;
+  constructor(code: SquadCreateErrorCode) {
+    super(code);
+    this.name = "SquadCreateError";
+    this.code = code;
+  }
+}
+
 export type SquadCreateRequest = Readonly<{
   version: 1;
   label: string;
@@ -82,25 +93,25 @@ export async function createSquadForum(input: {
   const clock = input.clock ?? (() => Math.floor(Date.now() / 1000));
   const at = clock();
   const forumId = input.body.forumId ?? mintSquadForumId(input.owner);
-  if (!isForumObjectId(forumId, "forum")) throw Error("Invalid forum");
-  if (!verifySquadBootstrapRows(input.owner, forumId, input.body.rows, at)) throw Error("Invalid bootstrap");
+  if (!isForumObjectId(forumId, "forum")) throw new SquadCreateError("invalid");
+  if (!verifySquadBootstrapRows(input.owner, forumId, input.body.rows, at)) throw new SquadCreateError("bootstrap");
   const spec = squadView({ forumId, owner: input.owner, label: input.body.label.trim() });
   const held = await input.source.read(at, AbortSignal.timeout(5000));
   const snapshot = structuredClone(held.snapshot);
   const authority = createForumAuthority(SEA_OWNED_FORUM_AUTHORITY, clock);
   const current = await authority.refresh(snapshot, at);
-  if (!current.ok) throw Error("Authority unavailable");
+  if (!current.ok) throw new SquadCreateError("unavailable");
   const enrolled = new Set((snapshot.history?.accounts ?? []).map(a => a.principal));
-  if (!enrolled.has(input.owner)) throw Error("Identity not enrolled");
-  if (authority.graph.ownerOf(forumId) === input.owner) throw Error("Forum exists");
+  if (!enrolled.has(input.owner)) throw new SquadCreateError("not-enrolled");
+  if (authority.graph.ownerOf(forumId) === input.owner) throw new SquadCreateError("exists");
   const additions = input.body.rows.map(row => ({ ...row }));
   const next = { ...snapshot, rows: [...snapshot.rows, ...additions] };
   const verified = await authority.refresh(next, at);
-  if (!verified.ok || roomAuthorityDiagnosticsBlock(verified.diagnostics, next, authority.graph)) throw Error("Bootstrap rejected");
-  if (authority.graph.ownerOf(forumId) !== input.owner) throw Error("Bootstrap rejected");
-  const guard = () => { if (clock() !== at) throw Error("Create expired"); };
+  if (!verified.ok || roomAuthorityDiagnosticsBlock(verified.diagnostics, next, authority.graph)) throw new SquadCreateError("bootstrap");
+  if (authority.graph.ownerOf(forumId) !== input.owner) throw new SquadCreateError("bootstrap");
+  const guard = () => { if (clock() !== at) throw new SquadCreateError("unavailable"); };
   const committed = await input.source.append(held.fence, additions, guard, AbortSignal.timeout(5000));
-  if (!committed) throw Error("Create conflict");
+  if (!committed) throw new SquadCreateError("conflict");
   return { forumId: spec.forumId, owner: spec.owner, label: spec.label };
 }
 
@@ -111,6 +122,14 @@ export function createSquadForumHandler(
 ) {
   const reply = (status: number, body?: unknown) =>
     Response.json(body ?? { error: "unavailable" }, { status, headers: { "Cache-Control": "no-store" } });
+  const statusFor: Record<SquadCreateErrorCode, number> = {
+    exists: 409,
+    bootstrap: 403,
+    invalid: 400,
+    "not-enrolled": 403,
+    conflict: 409,
+    unavailable: 503,
+  };
   return async (request: Request): Promise<Response> => {
     try {
       if (request.method !== "POST") return reply(405, { error: "method" });
@@ -118,11 +137,13 @@ export function createSquadForumHandler(
       if (!session) return reply(401, { error: "authentication" });
       const body = parseSquadCreateRequest(await request.json().catch(() => null));
       if (!body) return reply(400, { error: "request" });
-      const spec = await createSquadForum({ owner: session.key, body, source, clock });
+      const at = clock();
+      const spec = await createSquadForum({ owner: session.key, body, source, clock: () => at });
       return Response.json({ squad: spec }, { status: 201, headers: { "Cache-Control": "no-store" } });
     } catch (error) {
-      if (error instanceof Error && error.message === "Forum exists") return reply(409, { error: "exists" });
-      if (error instanceof Error && /Invalid|Bootstrap|rejected/i.test(error.message)) return reply(403, { error: "bootstrap" });
+      if (error instanceof SquadCreateError) {
+        return reply(statusFor[error.code], { error: error.code });
+      }
       return reply(503, { error: "unavailable" });
     }
   };

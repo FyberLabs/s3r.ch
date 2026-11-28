@@ -9,7 +9,7 @@ import { createForumAuthority } from "./identity/forum-authority";
 import { seaToPrincipalKey } from "./identity/forum-check";
 import vectors from "./identity/vectors/forum-authority.json";
 async function setup(t: test.TestContext) {
-  const f = await forumBotFixture(t), rows = [...f.rows], config = { keys: [], pinnedIssuers: [], policy: vectors.context.policy };
+  const f = await forumBotFixture(t), rows = [...f.rows], config = { keys: [] };
   const squad = { owner: f.owner.pub, forumId: f.forum, label: "Human statements" };
   const snapshot = () => structuredClone({ completeThrough: f.now(), rows, history: { completeThrough: f.now(), links: [],
     accounts: [f.owner, f.a, f.b].map(pair => ({ principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) } });

@@ -58,8 +58,11 @@ test("two owners cannot write each other's squad forums without a grant", async 
   const source = mockSource([...rowsA, ...rowsB], [ownerA.pub, ownerB.pub]);
   const origin = "https://s3r.ch";
   const auth = (key: string) => async () => ({ key });
-  const statements = createBotStatementAdmission({
+  const statementsA = createBotStatementAdmission({
     origin, config: SEA_OWNED_FORUM_AUTHORITY, authenticate: auth(ownerA.pub), source, clock: () => 100,
+  });
+  const statementsB = createBotStatementAdmission({
+    origin, config: SEA_OWNED_FORUM_AUTHORITY, authenticate: auth(ownerB.pub), source, clock: () => 100,
   });
   const authority = createForumAuthorityService({
     origin, config: SEA_OWNED_FORUM_AUTHORITY, authenticate: auth(ownerA.pub),
@@ -78,7 +81,7 @@ test("two owners cannot write each other's squad forums without a grant", async 
   assert.ok(parsed);
   row.sig = Buffer.from(p256.sign(parsed.bytes, Buffer.from(ownerB.priv, "base64url"), { prehash: true, format: "compact" })).toString("base64url");
   const stmtRow = { kind: "object" as const, soul: parsed.soul, record: row };
-  const bWriteA = await statements(new Request(origin + "/api/squad/statement", {
+  const bWriteA = await statementsB(new Request(origin + "/api/squad/statement", {
     method: "POST",
     headers: { Origin: origin, "Content-Type": "application/json" },
     body: JSON.stringify({ version: 1, forumId: forumA, owner: ownerA.pub, evaluatedAt: 100, rows: [stmtRow] }),

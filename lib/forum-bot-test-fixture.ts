@@ -23,7 +23,7 @@ export async function forumBotFixture(t: test.TestContext) {
   const tenant = randomUUID(), botA = randomUUID(), botB = randomUUID();
   const forum = `forum_${seaToPrincipalKey(owner.pub)}_${"a".repeat(32)}`;
   let at = 1700000060, consent = true, handles = true;
-  const auth = createForumAuthority({ keys: [], pinnedIssuers: [], policy: vectors.context.policy }, () => at);
+  const auth = createForumAuthority({ keys: [] }, () => at);
   const sign = (kind: AuthorityKind, value: object, signer = owner) => {
     const row = { issuedAt: at - 10, ...value, sig: "pending" };
     const parsed = parseForumAuthority(kind, row); assert.ok(parsed);

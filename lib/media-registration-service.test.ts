@@ -34,7 +34,7 @@ function setup() {
     }, async delete() { throw Error("No deletion"); },
   };
   const store = createMediaRegistrationStore(records);
-  const verify = createMediaAuthority({ config: { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] },
+  const verify = createMediaAuthority({ config: { keys: [] },
     clock: () => at, authenticate: async () => allowed ? { key: identity } : null,
     read: async () => ({ completeThrough: at, rows: [], history: { completeThrough: at, links: [], accounts: [...new Set([owner, identity])].map(principal => ({ principal, rotations: [], revocations: [], genesisEpubBindings: [] })) } }) });
   const service = createMediaRegistrationService({ origin: "https://s3r.ch", store,

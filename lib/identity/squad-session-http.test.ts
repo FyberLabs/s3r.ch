@@ -55,7 +55,7 @@ test("composed service admits the proven cookie key and still denies missing for
   record.sig = Buffer.from(p256.sign(parsed.bytes, Buffer.from(pair.priv, "base64url"), { prehash: true, format: "compact" })).toString("base64url");
   let present = true, used = false;
   const services = createSquadHttpServices({ origin: "https://s3r.ch", secret: "s".repeat(32), clock: () => at,
-    config: { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] },
+    config: { keys: [] },
     consume: async () => { if (used) return false; used = true; return true; },
     read: async () => ({ completeThrough: at, history: { completeThrough: at, links: [], accounts: [{ principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [] }] },
       rows: present ? [{ kind: "object", soul: parsed.soul, record }] : [] }) });

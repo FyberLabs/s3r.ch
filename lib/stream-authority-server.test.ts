@@ -40,7 +40,7 @@ async function setup() {
   };
   const handler=createStreamAuthority({tenant,forum,origin:"https://s3r.ch",sessionSecret:"s".repeat(32),
     serviceKey:"c".repeat(32),signingKey:key.privateKey,source:{origin:"https://acl.example",tenant,scope:"stream",apiKey:"fixture-key"},
-    authority:{keys:[],policy:{allowedDomains:[],allowedUris:[],allowedChainIds:[]},pinnedIssuers:[]}},fetcher,()=>now);
+    authority:{keys:[],}},fetcher,()=>now);
   const used=new Set<string>();
   const sessions=createIdentitySessions({origin:"https://s3r.ch",secret:"s".repeat(32),clock:()=>now,
     consume:async id=>{if(used.has(id))return false;used.add(id);return true;}});

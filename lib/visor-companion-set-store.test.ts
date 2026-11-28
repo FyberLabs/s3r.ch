@@ -38,7 +38,7 @@ test("durable store keeps generation fencing across separate instances", async t
   })!;
   const common = {
     squad: { forumId, owner: f.owner.pub, label: "Pilot" }, origin,
-    authority: { keys: [], pinnedIssuers: [], policy: vectors.context.policy },
+    authority: { keys: [] },
     tenant: f.tenant, ownerPrincipal: f.owner.pub, clock: f.now, evaluatedAt: f.now(), snapshot: snapshot(),
     request: body(gen(1)),
   };
@@ -81,7 +81,7 @@ test("resolve returns server evaluatedAt while honoring in-window client skew", 
   const result = await resolveVisorCompanionSquad({
     squad: { forumId: f.forum, owner: f.owner.pub, label: "Pilot" },
     origin: "https://pilot.example.test",
-    authority: { keys: [], pinnedIssuers: [], policy: vectors.context.policy },
+    authority: { keys: [] },
     tenant: f.tenant, ownerPrincipal: f.owner.pub, store, clock: () => serverAt, evaluatedAt: serverAt,
     snapshot: { completeThrough: serverAt, rows: f.rows,
       history: { completeThrough: serverAt, links: [], accounts: [f.owner, f.a, f.b].map(pair => ({

@@ -11,7 +11,7 @@ const secret = (n: number) => new Uint8Array(32).fill(n);
 const pair = (n: number) => { const key = p256.getPublicKey(secret(n), false); const pub = Buffer.from(key.slice(1,33)).toString("base64url") + "." + Buffer.from(key.slice(33)).toString("base64url"); return { pub, priv: Buffer.from(secret(n)).toString("base64url"), epub: pub, epriv: "unused" }; };
 const owner = pair(53), old = pair(54), replacement = pair(55), at = 1700000060;
 const forum = `forum_${seaToPrincipalKey(owner.pub)}_${"a".repeat(32)}`;
-const config = { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] };
+const config = { keys: [] };
 async function fixture() {
   const sign = (kind: AuthorityKind, fields: object) => { const record = { ...fields, sig: "pending" }, parsed = parseForumAuthority(kind, record)!;
     record.sig = Buffer.from(p256.sign(parsed.bytes, secret(parsed.signer === old.pub ? 54 : 53), { prehash: true, format: "compact" })).toString("base64url"); return { kind, soul: parsed.soul, record }; };

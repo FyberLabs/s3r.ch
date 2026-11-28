@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createForumAuthoritySource } from "./forum-authority-source";
 import type { ForumAuthoritySnapshot } from "./identity/forum-authority";
-const config = { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] };
+const config = { keys: [] };
 const snapshot = (at: number): ForumAuthoritySnapshot => ({ completeThrough: at, history: { completeThrough: at, accounts: [], links: [] }, rows: [] });
 const flush = async () => { for (let n = 0; n < 8; n++) await Promise.resolve(); };
 
@@ -43,13 +43,13 @@ test("incomplete history, failures and timeout remain denied; a later read recov
   t.mock.timers.tick(200); await flush(); assert.deepEqual(events.at(-1), snapshot(103)); stop();
 });
 
-test("source snapshots policy and independent subscriptions cancel separately", async t => {
+test("source snapshots config and independent subscriptions cancel separately", async t => {
   t.mock.timers.enable({ apis: ["Date", "setInterval", "setTimeout"], now: 100_000 });
   const policy = structuredClone(config);
   const signals: AbortSignal[] = [];
   const source = createForumAuthoritySource({ config: policy, read: async (at, signal) => { signals.push(signal); return snapshot(at); } });
-  policy.policy.allowedDomains.push("untrusted.example" as never);
-  assert.deepEqual(source.config.policy.allowedDomains, []);
+  (policy.keys as unknown[]).push({ kid: "forged" });
+  assert.deepEqual(source.config.keys, []);
   const a: unknown[] = [], b: unknown[] = [];
   const stopA = source.subscribe(s => a.push(s)), stopB = source.subscribe(s => b.push(s));
   await flush(); stopA(); assert.equal(signals[0].aborted, true); assert.equal(signals[1].aborted, false);

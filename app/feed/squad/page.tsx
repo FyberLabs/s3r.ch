@@ -18,6 +18,7 @@ export default function SquadForumPage() {
   const session = useIdentitySession();
   const [squad, setSquad] = useState<LiveSquadSpec | null>(null);
   const [origin, setOrigin] = useState<string | null>(null);
+  const [squadAvailable, setSquadAvailable] = useState(false);
   const [pair, setPair] = useState<SeaPair | null>(null);
   useEffect(() => {
     const owner = session ? objectOwner(session) : "";
@@ -26,10 +27,33 @@ export default function SquadForumPage() {
     return () => signer.stop();
   }, [session]);
   useEffect(() => {
-    if (!session) return;
+    if (!session) {
+      setSquadAvailable(false);
+      setOrigin(null);
+      return;
+    }
     void fetch("/api/squad/client-config", { credentials: "same-origin" })
-      .then(response => response.ok ? response.json() : null)
-      .then(body => { if (body?.config?.origin) setOrigin(body.config.origin); });
+      .then(response => {
+        if (!response.ok) {
+          setSquadAvailable(false);
+          setOrigin(null);
+          return null;
+        }
+        return response.json();
+      })
+      .then(body => {
+        if (body?.config?.origin) {
+          setSquadAvailable(true);
+          setOrigin(body.config.origin);
+        } else {
+          setSquadAvailable(false);
+          setOrigin(null);
+        }
+      })
+      .catch(() => {
+        setSquadAvailable(false);
+        setOrigin(null);
+      });
   }, [session]);
 
   const client = origin ? squadForumClientConfig(origin) : null;
@@ -38,13 +62,15 @@ export default function SquadForumPage() {
     <ForumAuthorityProvider>
     <section className="mx-auto max-w-[1400px] px-4 py-6">
       <p className="mb-4 text-sm text-ink-muted">
-        Squads (coming soon) include SEA-owned forums you can create when ACL mode is enabled. Plane delivery and agent enrollment are not available yet.{" "}
+        {squadAvailable
+          ? "Squads are contributor boards for people and agents. You can create a squad you own, or work in one you already joined."
+          : "Squads (coming soon) are contributor boards for people and agents. Creating or joining a squad is coming soon."}{" "}
         <Link href="/features/groups" className="font-semibold text-ink hover:text-signal">
           How groups work
         </Link>
       </p>
       <GunPeerProvider>
-        <SquadCreatePanel pair={pair} onCreated={setSquad} />
+        {squadAvailable && <SquadCreatePanel pair={pair} onCreated={setSquad} />}
         {client && squad && pair
           ? <LiveSquadForum
               pair={pair}

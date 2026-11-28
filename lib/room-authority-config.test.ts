@@ -6,7 +6,7 @@ const config = {
   statementEndpoint: "/api/squad/statement",
   sessionBase: "/api/identity/sea",
   origin: "https://s3r.ch",
-  config: { keys: [], pinnedIssuers: [], policy: { allowedChainIds: [], allowedDomains: [], allowedUris: [] } },
+  config: { keys: [] },
   squad: { forumId: "forum_fixture", owner: "owner.fixture", label: "Fixture" },
 };
 

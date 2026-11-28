@@ -7,7 +7,7 @@ import type { ForumAuthoritySource } from "@/lib/forum-authority-source";
 export type { ForumAuthoritySource } from "@/lib/forum-authority-source";
 import { createForumAuthority, type ForumAuthorityConfig } from "@/lib/identity/forum-authority";
 
-const denyConfig: ForumAuthorityConfig = { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] };
+const denyConfig: ForumAuthorityConfig = { keys: [] };
 const Context = createContext<(ReturnType<typeof createForumAuthority> & Pick<DrawerAuthority, "publishChild" | "readChild"> & { admitStatement?: (item: Parameters<NonNullable<ForumAuthoritySource["admitStatement"]>>[0]) => Promise<boolean> }) | null>(null);
 export function ForumAuthorityProvider({ children, source }: { children: ReactNode; source?: ForumAuthoritySource }) {
   const authority = useMemo(() => {

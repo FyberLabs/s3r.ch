@@ -33,7 +33,7 @@ test("native bot replies require delegation and room post rights and reach signe
   const reply = createNativeRoomBotReply({
     authenticate: async request => request.headers.get("authorization") === "Bearer room-scope"
       ? { agent: f.a.pub, principal: f.owner.pub, delegationId: "fixture" } : null,
-    authority: { keys: [], pinnedIssuers: [], policy: vectors.context.policy },
+    authority: { keys: [] },
     parent: { id: f.forum, owner: f.owner.pub },
     clock: f.now,
     read: async now => ({

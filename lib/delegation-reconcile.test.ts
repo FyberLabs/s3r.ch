@@ -46,7 +46,7 @@ async function harness(destinations = [destination], subject = agent, replacemen
   else await outbox.prepare(operationId, envelopes);
   let snapshot: ForumAuthoritySnapshot = { completeThrough: at, rows: [ownership(), ...records],
     history: { completeThrough: at, links: [], accounts: [owner, agent].map(principal => ({ principal, rotations: [], revocations: [], genesisEpubBindings: [] })) } };
-  const config = { keys: vectors.context.jwks.keys as ForumWitnessKey[], policy: vectors.context.policy, pinnedIssuers: vectors.context.pinnedIss };
+  const config = { keys: vectors.context.jwks.keys as ForumWitnessKey[] };
   const reconciler = createCancellationReconciler({ inventory, outbox, config, clock: () => now, source: async () => snapshot });
   return { reconciler, records, outbox, inventory, config, documents, get snapshot() { return snapshot; }, set snapshot(value) { snapshot = value; }, tick() { now++; } };
 }

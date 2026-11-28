@@ -18,7 +18,7 @@ function signed(kind: AuthorityKind, fields: Record<string, unknown>, n: number,
 const old = signed("object",{object:forum,owner},1,time-40), fresh = signed("object",{object:forum,owner},2,time-10);
 const snapshot = (rows: ForumAuthoritySnapshot["rows"]): ForumAuthoritySnapshot => ({completeThrough:time,rows,history:{completeThrough:time,
  links:vectors.context.links.map(([,row])=>row),accounts:[{principal:owner,rotations:vectors.context.rotationSets.rotated,revocations:[],genesisEpubBindings:[]}]}});
-const config = {keys:vectors.context.jwks.keys as ForumWitnessKey[],policy:vectors.context.policy,pinnedIssuers:vectors.context.pinnedIss};
+const config = { keys: vectors.context.jwks.keys as ForumWitnessKey[] };
 test("retained old ownership permits room admission only beside current verified ownership", async () => {
  for (const rows of [[old,fresh],[fresh,old]]) {
   const authority = createForumAuthority(config,()=>time), input = snapshot(rows), result = await authority.refresh(input,time);

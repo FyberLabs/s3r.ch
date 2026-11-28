@@ -6,7 +6,7 @@ import { createSquadBrowserSource } from "./squad-browser-source";
 const key = p256.getPublicKey(new Uint8Array(32).fill(53), false);
 const owner = Buffer.from(key.slice(1,33)).toString("base64url") + "." + Buffer.from(key.slice(33)).toString("base64url");
 const squad = { owner, forumId: `forum_${seaToPrincipalKey(owner)}_${"a".repeat(32)}`, label: "Browser source" }, scope = { owner, forum: squad.forumId };
-const config = { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] };
+const config = { keys: [] };
 const options = { squad, config, authorityEndpoint: "/api/squad/authority", assignmentBase: "/api/squad/assignment" };
 const flush = async () => { for (let n = 0; n < 20; n++) await Promise.resolve(); };
 test("disabled source performs no network IO and disable aborts/discards pending authority", async t => {

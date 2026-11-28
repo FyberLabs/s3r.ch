@@ -16,7 +16,7 @@ and [signed-link admission status](linked-session-admission.md). Older wallet-er
 implementation descriptions below are historical where they describe ownership.
 
 
-`/feed/squad` is the squad board: contributor tiles, chat, and a drawer. Without a live squad configuration it shows an unset prompt; a provisioned wrapper supplies forum id, owner, and authority.
+`/feed/squad` is the squad board: contributor tiles, chat, and a drawer. Without a squad it shows an unset prompt; creating or joining a squad is coming soon.
 
 The live drawer uses [authenticated child records](forum-drawer.md) for subtasks,
 updates, prompt attribution and artifact references. Missing evidence remains

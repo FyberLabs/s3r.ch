@@ -63,7 +63,7 @@ test("actual runtime cannot claim an assignment after its verified history is su
   const source = createSquadCommitStore(memory(), spec, () => 100); await source.initialize(journal, history);
   const view = await source.open(); let changed = false;
   const runtime = createDelegationRuntime({ ...view, clock: () => 100,
-    config: { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] },
+    config: { keys: [] },
     history: async at => {
       if (!changed) { changed = true; const before = await source.load(); await source.updateHistory(before.etag, { ...history, completeThrough: 101 }); }
       return view.history(at);

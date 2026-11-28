@@ -9,7 +9,7 @@ const secret = (n: number) => new Uint8Array(32).fill(n);
 const pub = (n: number) => { const p = p256.getPublicKey(secret(n), false); return Buffer.from(p.slice(1,33)).toString("base64url") + "." + Buffer.from(p.slice(33)).toString("base64url"); };
 const owner = pub(53), member = pub(54), outsider = pub(55), at = 1700000060;
 const squad = { owner, forumId: `media_${seaToPrincipalKey(owner)}_${"a".repeat(32)}`, label: "Synthetic service Squad" };
-const config = { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] };
+const config = { keys: [] };
 const sign = (kind: AuthorityKind, fields: object) => {
   const record = { ...fields, issuedAt: at - 1, sig: "pending" };
   const parsed = parseForumAuthority(kind, record)!; assert.ok(parsed);

@@ -13,7 +13,7 @@ const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPa
 async function setup() {
   const pair = await sea.pair(), squad = { owner: pair.pub, forumId: `forum_${seaToPrincipalKey(pair.pub)}_${"a".repeat(32)}`, label: "Connected test Squad" };
   const options = { squad, origin: "https://s3r.ch", sessionBase: "/api/squad/session", authorityEndpoint: "/api/squad/authority", assignmentBase: "/api/squad/assignment",
-    config: { keys: [], policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIssuers: [] } };
+    config: { keys: [] } };
   const sessions = createIdentitySessions({ ...options, secret: "s".repeat(32), consume: async () => true });
   const handlers = createSquadSessionHandlers({ ...options, sessions });
   const cookies = new Map<string, string>(), actions: string[] = [];

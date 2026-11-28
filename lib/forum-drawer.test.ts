@@ -16,7 +16,7 @@ const pub = (n: number) => { const b = p256.getPublicKey(secret(n), false); retu
 const owner = pub(1), writer = pub(2), outsider = pub(3), time = 1700000060;
 const id = (kind: string, key = 1, n = 1) => `${kind}_${seaToPrincipalKey(pub(key))}_${n.toString(16).padStart(32, "0")}`;
 const forum = id("forum"), child = id("update"), target = id("spec");
-const config = { keys: vectors.context.jwks.keys as ForumWitnessKey[], policy: vectors.context.policy, pinnedIssuers: vectors.context.pinnedIss };
+const config = { keys: vectors.context.jwks.keys as ForumWitnessKey[] };
 type Evidence = ForumAuthoritySnapshot["rows"][number];
 function proof(kind: AuthorityKind, fields: Record<string, unknown>, key = 1): Evidence {
   const row = { issuedAt: time - 10, ...fields, sig: "pending" };

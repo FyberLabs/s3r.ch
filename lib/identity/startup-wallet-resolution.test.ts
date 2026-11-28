@@ -8,7 +8,7 @@ import type { ForumRecoverySnapshot } from "./forum-recovery-history";
 import type { ForumWitnessKey } from "./forum-witness-verification";
 const link = wallet.wallet.input;
 const at = link.issuedAt + 10000;
-const trust = { keys: witnesses.keys as ForumWitnessKey[], policy: { allowedDomains: ["s3r.ch"], allowedUris: ["https://s3r.ch/identity/link"], allowedChainIds: ["1"] }, pinnedIssuers: [] };
+const trust = { keys: witnesses.keys as ForumWitnessKey[], policy: { allowedDomains: ["s3r.ch"], allowedUris: ["https://s3r.ch/identity/link"], allowedChainIds: ["1"] }, pinnedIssuers: [] as const };
 const snapshot = (links: unknown[] = [link]): ForumRecoverySnapshot => ({ completeThrough: at, links,
   accounts: [{ principal: link.principal, rotations: [], genesisEpubBindings: [], revocations: [] }] });
 const resolve = (value: ForumRecoverySnapshot | null, address = link.address) => createStartupWalletResolver({ read: async () => value }, trust, () => at)(address);
