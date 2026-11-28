@@ -14,7 +14,9 @@ export async function GET(request:Request){
  const release=await acquire(request.signal);
  if(!release)return new Response("Busy",{status:429,headers:{"retry-after":"5"}});
  try {
-  const rows=await authoritativePublicMediaSnapshot(),key=process.env.IDENTITY_SESSION_SECRET??"";
+  const rows=await authoritativePublicMediaSnapshot();
+  let key="";
+  try{const {getMediaSigningSecret}=await import("@/lib/identity/media-signing-secret");key=getMediaSigningSecret();}catch{key="";}
   const result=key.length>=32?await publicConversations(rows,source,id):cachedConversation(rows,source,id);
   if(!result)return new Response("Post unavailable",{status:404});
   const anchor=rows.find(row=>row.source===source&&row.id===id)!;

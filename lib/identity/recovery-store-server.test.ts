@@ -8,12 +8,12 @@ import {deviceServer} from './device-server';
 import {devicePersonCookie} from './device-cookies';
 const origin='https://s3r.ch',context='recovery-owner-context';
 const scope={sourceOrigin:origin,destinationOrigin:origin,application:'s3r.ch',tenant:'11111111-1111-1111-1111-111111111111',audience:'device'};
-const env={IDENTITY_SESSION_SECRET:'x'.repeat(40),S3RCH_RECOVERY_STORE_ENABLED:'true',S3RCH_OAUTH_ISSUER:'https://issuer.example/realm',S3RCH_DEVICE_TRANSFER_CONFIG:JSON.stringify({v:1,scope,auth:'https://auth.example/auth/sea-device-link/v1/',acl:'https://acl.example/api/v1/acl/sociacl/device-transfer/',provider:'panopticon'})};
+const env={S3RCH_SESSION_SIGNING_KEY:'x'.repeat(40),S3RCH_RECOVERY_STORE_ENABLED:'true',S3RCH_OAUTH_ISSUER:'https://issuer.example/realm',S3RCH_DEVICE_TRANSFER_CONFIG:JSON.stringify({v:1,scope,auth:'https://auth.example/auth/sea-device-link/v1/',acl:'https://acl.example/api/v1/acl/sociacl/device-transfer/',provider:'panopticon'})};
 const p='axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.T-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU';
 const row={principal:p,signingPub:p,epub:p,rotationSeq:0,bytesHex:'01'+'00'.repeat(60)};
 async function fixture(){
  const now=Math.floor(Date.now()/1000),config=deviceConfig(origin,env)!;
- const key=createHash('sha256').update('s3r.ch/device-person/v1\0'+env.IDENTITY_SESSION_SECRET).digest();
+ const key=createHash('sha256').update('s3r.ch/device-person/v1\0'+env.S3RCH_SESSION_SIGNING_KEY).digest();
  const token=await new EncryptJWT({config:config.digest,access:'person-bearer',sub:'person',context}).setProtectedHeader({alg:'dir',enc:'A256GCM',typ:'s3rch-device-person-v1'}).setIssuer(origin).setAudience(origin).setIssuedAt(now).setExpirationTime(now+300).encrypt(key);
  return (body:any,headers:Record<string,string>={})=>new Request(origin+'/api/identity/device/recovery-read',{method:'POST',headers:{origin,'content-type':'application/json','x-device-context':context,cookie:devicePersonCookie+'='+token,...headers},body:JSON.stringify(body)});
 }

@@ -239,10 +239,10 @@ describe("identity blob documents", () => {
       const links = openLinks(store);
       assert.equal(links.ownerForWallet("${WALLET}"), "${WALLET}");
       blob.text = null;
-      process.env.IDENTITY_SESSION_SECRET = "production-fixture-identity-secret-32-characters";
+      process.env.S3RCH_SESSION_SIGNING_KEY = "production-fixture-identity-secret-32-characters";
       const { signSessionToken } = await import(${JSON.stringify(new URL("./session.ts", import.meta.url).href)});
       const { sessionCookieName } = await import(${JSON.stringify(new URL("./cookies.ts", import.meta.url).href)});
-      const token = await signSessionToken({ address: "${WALLET}", chainId: 1 }, process.env.IDENTITY_SESSION_SECRET);
+      const token = await signSessionToken({ address: "${WALLET}", chainId: 1 }, process.env.S3RCH_SESSION_SIGNING_KEY);
       const request = new Request("https://s3rch.test/api", { headers: { cookie: sessionCookieName(true) + "=" + token } });
       const sessionRoute = await import(${JSON.stringify(new URL("../../app/api/identity/session/route.ts", import.meta.url).href)});
       const credentialResponse = await sessionRoute.GET(request);

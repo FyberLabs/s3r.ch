@@ -19,7 +19,7 @@ export const FIXTURE_CONFIRM_CODE = "000000";
 
 export const MIN_SECRET_LENGTH = 32;
 
-/** Used only when IDENTITY_SESSION_SECRET is unset and NODE_ENV is not production. */
+/** Used only when S3RCH_SESSION_SIGNING_KEY is unset and NODE_ENV is not production. */
 export const LOCAL_SESSION_SECRET = "s3rch-local-identity-session-secret";
 
 export const ALLOWED_SIWE_HOSTS = new Set(["s3r.ch", "www.s3r.ch", "test.s3r.ch", "localhost", "127.0.0.1"]);

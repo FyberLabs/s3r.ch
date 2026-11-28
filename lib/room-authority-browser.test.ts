@@ -18,7 +18,7 @@ async function setup(t: test.TestContext) {
     objectKind: "room", authenticate: async () => ({ key: f.a.pub }), source: { read: async () => ({ snapshot: snapshot(), fence: String(revision) }),
       append: async (fence, additions, guard) => { guard(); if (fence !== String(revision)) return false; rows.push(...additions); revision++; return true; } } });
   const input = { share: true, item: { id: `room_${seaToPrincipalKey(f.a.pub)}_${"b".repeat(32)}`, author: f.a.pub, ts: f.now() },
-    pair: f.a, squad, config, endpoint: "/api/squad/pilot/room", signal: new AbortController().signal, clock: f.now,
+    pair: f.a, squad, config, endpoint: "/api/site/room", signal: new AbortController().signal, clock: f.now,
     read: async () => snapshot(), fetch: (async function (this: unknown, url, init) {
       assert.equal(this, undefined);
       calls++; posted = String(init?.body);

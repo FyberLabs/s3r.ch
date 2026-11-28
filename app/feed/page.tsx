@@ -24,7 +24,7 @@ export default function FeedPage() {
         </Link>
         {" · "}
         <Link href="/feed/squad" className="font-semibold text-ink hover:text-signal">
-          Open squad
+          View squads
         </Link>
       </p>
 

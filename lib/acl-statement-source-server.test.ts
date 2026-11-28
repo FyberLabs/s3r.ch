@@ -37,7 +37,7 @@ test("configuration is explicit and rejects unsafe endpoints and partial activat
   for (const key of ["origin", "tenant", "scope", "apiKey"])
     assert.throws(() => createAclStatementSource({ ...config, [key]: undefined } as any));
   assert.ok(configuredAclStatementSource({ S3RCH_AUTHORITY_BACKEND: "acl", S3RCH_STATEMENT_SOURCE_ORIGIN: config.origin,
-    S3RCH_STATEMENT_SOURCE_TENANT_ID: config.tenant, S3RCH_STATEMENT_SOURCE_SCOPE: config.scope, S3RCH_STATEMENT_SOURCE_API_KEY: config.apiKey }));
+    S3RCH_STATEMENT_SOURCE_TENANT_ID: config.tenant, S3RCH_STATEMENT_SOURCE_SCOPE: config.scope, S3RCH_SERVICE_CREDENTIAL: config.apiKey }));
 });
 test("changed or unavailable source never triggers a retry or legacy fallback", async () => {
   let calls = 0;

@@ -34,7 +34,7 @@ function controller(config: Config, session: () => string | null) {
       if (!active || !pair) return false;
       try {
         const result = await admitBrowserRoom({ item: { id: room.id, author: room.owner, ts: room.ts }, share,
-          pair, squad: config.squad, config: config.config, endpoint: "/api/squad/pilot/room", read,
+          pair, squad: config.squad, config: config.config, endpoint: "/api/site/room", read,
           fetch, signal: pending.signal });
         if (!active || epoch !== generation || signer.current() !== pair) return false;
         const refreshed = await authority.refresh(result.snapshot, result.at);

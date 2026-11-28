@@ -17,17 +17,17 @@ import type { SeaPair } from "./sea";
 const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
 const origin = "https://test.s3r.ch", issuer = "https://auth.test.hyperme.sh/realms/controlplane", tenant = "22222222-2222-2222-2222-222222222222";
 async function fixture() {
-  const pair = await sea.pair(), signing = generateKeyPairSync("ed25519"), oldSecret = process.env.IDENTITY_SESSION_SECRET;
+  const pair = await sea.pair(), signing = generateKeyPairSync("ed25519"), oldSecret = process.env.S3RCH_SESSION_SIGNING_KEY;
   const common = { subject: "11111111-1111-1111-1111-111111111111", tenant, organization: "", realm: "controlplane", issuer, clients: ["s3rch-web"], origins: [origin], identities: { sea: [pair.pub] } };
   const scopes = { "flags-s3rch-browser": { ...common, suite: "flags-s3rch-browser" }, "s3rch-device-transfer": { ...common, suite: "s3rch-device-transfer", tenant: "33333333-3333-3333-3333-333333333333", subject: "44444444-4444-4444-4444-444444444444" } };
   const config = { version: 1, owner: "s3rch", origin, authOrigin: "https://api.test.hyperme.sh", controllerKey: "a".repeat(64), ownerKey: "b".repeat(64), scopes };
-  const env = { IDENTITY_SESSION_SECRET: "s".repeat(40), S3RCH_OAUTH_ISSUER: issuer, S3RCH_OAUTH_CLIENT_ID: "s3rch-web",
+  const env = { S3RCH_SESSION_SIGNING_KEY: "s".repeat(40), S3RCH_OAUTH_ISSUER: issuer, S3RCH_OAUTH_CLIENT_ID: "s3rch-web",
     S3RCH_DEVICE_TRANSFER_CONFIG: JSON.stringify({ v: 1, scope: { sourceOrigin: origin, destinationOrigin: origin, application: "s3r.ch", tenant: scopes["s3rch-device-transfer"].tenant, audience: "device" }, auth: "https://api.test.hyperme.sh/auth/sea-device-link/v1/", acl: "https://api.test.hyperme.sh/api/v1/acl/sociacl/device-transfer/", provider: "panopticon" }),
-    S3RCH_IDENTITY_REPLAY_BACKEND: "spanopticon", S3RCH_IDENTITY_REPLAY_ORIGIN: "https://api.test.hyperme.sh", S3RCH_IDENTITY_REPLAY_TENANT_ID: "55555555-5555-5555-5555-555555555555", S3RCH_IDENTITY_REPLAY_API_KEY: "dedicated-replay",
+    S3RCH_IDENTITY_REPLAY_BACKEND: "spanopticon", S3RCH_IDENTITY_REPLAY_ORIGIN: "https://api.test.hyperme.sh", S3RCH_IDENTITY_REPLAY_TENANT_ID: "55555555-5555-5555-5555-555555555555", S3RCH_SERVICE_CREDENTIAL: "dedicated-replay",
     S3RCH_EXPERIMENT_ORIGIN: origin, S3RCH_EXPERIMENT_TENANT: "66666666-6666-6666-6666-666666666666", S3RCH_EXPERIMENT_SECRET: "d".repeat(64), S3RCH_EXPERIMENT_STORAGE_ORIGIN: "https://api.test.hyperme.sh",
     S3RCH_EXPERIMENT_CACHE_KEY: "cache-key-1234567890", S3RCH_EXPERIMENT_OUTBOX_KEY: "outbox-key-1234567890", S3RCH_EXPERIMENT_PUBLIC_KEY: signing.publicKey.export({ type: "spki", format: "pem" }).toString(),
     APPLICATIONINSIGHTS_CONNECTION_STRING: "InstrumentationKey=11111111-1111-4111-8111-111111111111" };
-  process.env.IDENTITY_SESSION_SECRET = env.IDENTITY_SESSION_SECRET;
+  process.env.S3RCH_SESSION_SIGNING_KEY = env.S3RCH_SESSION_SIGNING_KEY;
   const state = { suite: "flags-s3rch-browser" as keyof typeof scopes, admitted: 0, complete: 0, network: 0, legacy: 0, active: true };
   const records = new Map<string, { value: string; revision: string }>(); let revision = 0;
   const now = Math.floor(Date.now() / 1000), payload = JSON.stringify({ version: 1, audience: "s3r.ch", sequence: 1, issuedAt: now, expiresAt: now + 300,
@@ -64,7 +64,7 @@ async function fixture() {
     for (const cookie of response.headers.getSetCookie()) { const [key, ...values] = cookie.split(";")[0].split("="); const value = values.join("="); if (value) jar.set(key, value); else jar.delete(key); }
     return response;
   }
-  return { router, pair, env, state, jar, records, request, async close() { await router.close(); if (oldSecret === undefined) delete process.env.IDENTITY_SESSION_SECRET; else process.env.IDENTITY_SESSION_SECRET = oldSecret; } };
+  return { router, pair, env, state, jar, records, request, async close() { await router.close(); if (oldSecret === undefined) delete process.env.S3RCH_SESSION_SIGNING_KEY; else process.env.S3RCH_SESSION_SIGNING_KEY = oldSecret; } };
 }
 test("both SEA suites use one admission and the actual auxiliary session route", async () => {
   const h = await fixture();
@@ -100,13 +100,13 @@ test("absent-grant anonymous consent and withdrawal cannot touch native fixture 
 test("old fixture and wallet credentials cannot become SEA owners; unrelated SEA remains usable", async () => {
   const h = await fixture(), unrelated = await sea.pair();
   try {
-    h.jar.clear(); const sessions = createIdentitySessions({ origin, secret: h.env.IDENTITY_SESSION_SECRET, consume: async () => true });
+    h.jar.clear(); const sessions = createIdentitySessions({ origin, secret: h.env.S3RCH_SESSION_SIGNING_KEY, consume: async () => true });
     async function legacy(pair: SeaPair) { const challenge = await sessions.challenge(pair.pub); return sessions.exchange(challenge, (await signForumRecord(challenge, pair))!); }
     const old = await legacy(h.pair); assert.ok(old); h.jar.set(seaSessionCookieNames()[0], old);
     assert.equal((await h.request("/api/identity/session")).status, 401);
     const other = await legacy(unrelated); assert.ok(other); h.jar.set(seaSessionCookieNames()[0], other);
     assert.equal((await (await h.request("/api/identity/session")).json()).owner, unrelated.pub);
-    h.jar.clear(); h.jar.set(sessionCookieName(true), await signSessionToken({ address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", chainId: 1 }, h.env.IDENTITY_SESSION_SECRET));
+    h.jar.clear(); h.jar.set(sessionCookieName(true), await signSessionToken({ address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", chainId: 1 }, h.env.S3RCH_SESSION_SIGNING_KEY));
     assert.equal((await (await h.request("/api/identity/session")).json()).owner, "");
     for (const path of ["/api/identity/verify", "/api/identity/oauth/link", "/api/identity/sea/linked-exchange", "/api/identity/agent/exchange"])
       assert.equal((await h.request(path, {})).status, 503);

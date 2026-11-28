@@ -68,7 +68,7 @@ describe("nonce cookie", () => {
   });
 });
 
-describe("IDENTITY_SESSION_SECRET", () => {
+describe("S3RCH_SESSION_SIGNING_KEY", () => {
   it("falls back locally when unset", () => {
     assert.equal(getIdentitySecret({ NODE_ENV: "development" }), LOCAL_SESSION_SECRET);
   });
@@ -82,13 +82,13 @@ describe("IDENTITY_SESSION_SECRET", () => {
 
   it("rejects a short secret", () => {
     assert.throws(
-      () => getIdentitySecret({ IDENTITY_SESSION_SECRET: "too-short", NODE_ENV: "development" }),
+      () => getIdentitySecret({ S3RCH_SESSION_SIGNING_KEY: "too-short", NODE_ENV: "development" }),
       IdentitySecretError,
     );
   });
 
   it("accepts a long secret", () => {
     const secret = "x".repeat(32);
-    assert.equal(getIdentitySecret({ IDENTITY_SESSION_SECRET: secret }), secret);
+    assert.equal(getIdentitySecret({ S3RCH_SESSION_SIGNING_KEY: secret }), secret);
   });
 });

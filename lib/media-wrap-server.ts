@@ -1,4 +1,4 @@
-import { getSquadPilotServer } from "./squad-pilot-server";
+import { getSiteAclServer } from "./site-acl-server";
 import { createForumAuthority } from "./identity/forum-authority";
 import { createMediaWrapService, parseMediaReaderConfig } from "./media-wrap-service";
 import { createMediaAgentRead } from "./media-agent-read";
@@ -51,13 +51,13 @@ function getMediaServices() {
   const testBinding = configuredTestMediaBinding(process.env);
   const raw = testBinding?.raw ?? process.env.S3RCH_MEDIA_READER_BINDINGS;
   if (raw === undefined) { cached = undefined; return null; }
-  const pilot = testBinding ? undefined : getSquadPilotServer();
-  const siteOrigin = testBinding?.siteOrigin ?? pilot?.config.origin;
+  const site = testBinding ? undefined : getSiteAclServer();
+  const siteOrigin = testBinding?.siteOrigin ?? site?.config.origin;
   if (!siteOrigin) throw Error("Private media identity unavailable");
   const secret = testBinding ? getIdentitySecret({
-    IDENTITY_SESSION_SECRET: process.env.IDENTITY_SESSION_SECRET, NODE_ENV: "production",
+    S3RCH_SESSION_SIGNING_KEY: process.env.S3RCH_SESSION_SIGNING_KEY, NODE_ENV: "production",
   }) : undefined;
-  const identity = secret ?? pilot;
+  const identity = secret ?? site;
   if (cached?.raw === raw && cached.identity === identity) return cached;
   cached = undefined;
   const config = parseMediaReaderConfig(raw);
@@ -66,11 +66,12 @@ function getMediaServices() {
     throw Error("Private media tenant mismatch");
   const resolveReader = testBinding && secret ? createTestMediaReader(testBinding.principal, secret) : async (request: Request, signal: AbortSignal) => {
     // A rejected bearer must never fall back to an ambient browser owner cookie.
-    if (request.headers.has("authorization") || !pilot) return null;
-    const at = Math.floor(Date.now() / 1000), session = await pilot.services.authenticate(request);
+    if (request.headers.has("authorization") || !site) return null;
+    const at = Math.floor(Date.now() / 1000);
+    const session = await site.services.authenticate(request);
     if (!session) return null;
-    const snapshot = await pilot.source.read(at, signal);
-    const authority = createForumAuthority(pilot.config.authority, () => Math.floor(Date.now() / 1000));
+    const snapshot = await site.source.read(at, signal);
+    const authority = createForumAuthority(site.config.authority, () => Math.floor(Date.now() / 1000));
     const result = await authority.refresh(snapshot, at);
     signal.throwIfAborted();
     if (!result.ok || result.diagnostics.length || Math.floor(Date.now() / 1000) !== at) return null;

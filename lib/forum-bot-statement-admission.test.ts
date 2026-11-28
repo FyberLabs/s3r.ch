@@ -15,8 +15,7 @@ async function setup(t: test.TestContext) {
   const snapshot = () => ({ completeThrough: f.now(), rows,
     history: { completeThrough: f.now(), links: [], accounts: [f.owner, f.a, f.b].map(pair =>
       ({ principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) } });
-  const service = createBotStatementAdmission({ origin, squad: { owner: f.owner.pub, forumId: f.forum, label: "Bot admission" },
-    config: { keys: [], pinnedIssuers: [], policy: vectors.context.policy }, clock: f.now,
+  const service = createBotStatementAdmission({ origin, config: { keys: [], pinnedIssuers: [], policy: vectors.context.policy }, clock: f.now,
     authenticate: async request => request.headers.get("x-test-key") === "none" ? null : { key: request.headers.get("x-test-key") ?? f.b.pub },
     source: { read: async () => hung ? new Promise<never>(() => {}) : ({ snapshot: snapshot(), fence: String(revision) }),
       append: async (fence, additions, guard) => { if (changed) revision++; if (expired) f.tick(); guard();
@@ -47,7 +46,7 @@ test("owner impersonation, forged signatures, wrong scope and stale source fence
   const s = await setup(t);
   assert.equal((await s.service(s.request({}, "none"))).status, 403);
   assert.equal((await s.service(s.request({}, s.f.owner.pub))).status, 403);
-  assert.equal((await s.service(s.request({ forumId: "other-thread" }))).status, 400);
+  assert.equal((await s.service(s.request({ forumId: "other-thread" }))).status, 403);
   const forged = structuredClone(s.additions); forged[0].record.sig = "forged";
   assert.notEqual((await s.service(s.request({ rows: forged }))).status, 200);
   s.change(); assert.equal((await s.service(s.request())).status, 409); assert.equal(s.writes(), 0);
@@ -125,9 +124,7 @@ test("Plane update admission verifies the bot and signed body and uses only the 
     history: { completeThrough: f.now(), links: [], accounts: [f.owner, f.a, f.b].map(pair =>
       ({ principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) } });
   let commits = 0, generic = 0, paused = true;
-  const service = createBotStatementAdmission({
-    origin, squad: { owner: f.owner.pub, forumId: f.forum, label: "Bot admission" },
-    config: { keys: [], pinnedIssuers: [], policy: vectors.context.policy }, clock: f.now,
+  const service = createBotStatementAdmission({ origin, config: { keys: [], pinnedIssuers: [], policy: vectors.context.policy }, clock: f.now,
     authenticate: async () => ({ key: f.b.pub }),
     source: { read: async () => ({ snapshot: snapshot(), fence: String(rows.length) }),
       append: async () => { generic++; return true; } },
@@ -151,7 +148,7 @@ test("Plane update admission verifies the bot and signed body and uses only the 
     principal: f.b.pub, statementId: signed.id, status: "completed" });
   const proof = { ...fields, attestation: Buffer.from(p256.sign(transcript,
     Buffer.from(f.b.priv, "base64url"), { prehash: true, format: "compact" })).toString("base64url") };
-  const request = (update?: object) => new Request(origin + "/api/squad/pilot", { method: "POST",
+  const request = (update?: object) => new Request(origin + "/api/site/statement", { method: "POST",
     headers: { Origin: origin, "Content-Type": "application/json" },
     body: JSON.stringify({ version: 1, forumId: f.forum, owner: f.owner.pub,
       evaluatedAt: f.now(), rows: additions, ...(update ? { update } : {}) }) });

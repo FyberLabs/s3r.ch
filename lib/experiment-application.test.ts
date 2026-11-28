@@ -11,7 +11,7 @@ import { createExperimentPrivacy } from "./experiment-privacy";
 const signing=generateKeyPairSync("ed25519"), site="https://s3r.ch", tenant="12345678-1234-4234-8234-123456789abc";
 const env={S3RCH_EXPERIMENT_ORIGIN:site,S3RCH_EXPERIMENT_TENANT:tenant,S3RCH_EXPERIMENT_SECRET:"a".repeat(64),
   S3RCH_EXPERIMENT_STORAGE_ORIGIN:"https://storage.example.test",S3RCH_EXPERIMENT_CACHE_KEY:"cache-key-1234567890",S3RCH_EXPERIMENT_OUTBOX_KEY:"outbox-key-1234567890",
-  S3RCH_EXPERIMENT_PUBLIC_KEY:signing.publicKey.export({type:"spki",format:"pem"}).toString(),IDENTITY_SESSION_SECRET:"private-unit-identity-root-1234567890",
+  S3RCH_EXPERIMENT_PUBLIC_KEY:signing.publicKey.export({type:"spki",format:"pem"}).toString(),S3RCH_SESSION_SIGNING_KEY:"private-unit-identity-root-1234567890",
   APPLICATIONINSIGHTS_CONNECTION_STRING:"InstrumentationKey=11111111-1111-4111-8111-111111111111",S3RCH_EXPERIMENT_PRIMARY_V2:"1"};
 for(const mode of ["disabled","active","withdrawn","invalid","failed"]) test(`native product operation with measurements ${mode}`,async()=>{
   const dir=await mkdtemp(join(tmpdir(),"s3rch-measurement-"));
@@ -67,7 +67,7 @@ for(const mode of ["disabled","active","withdrawn","invalid","failed"]) test(`na
     const response=await app.post(new Request(site+"/api/experiments",{method:"POST",headers:{origin:site,"content-type":"application/json",cookie:cookie()},body:JSON.stringify(body)}),enabled);
     for(const row of response.headers.getSetCookie()){const pair=row.split(";")[0],at=pair.indexOf("=");if(row.includes("Max-Age=0"))jar.delete(pair.slice(0,at));else jar.set(pair.slice(0,at),pair.slice(at+1));}return response;
   }
-  const native=async(subject:string)=>new SignJWT({}).setProtectedHeader({alg:"HS256",typ:"s3rch-identity-session-v1"}).setSubject(subject).setIssuer(site).setAudience(site).setIssuedAt(now).setExpirationTime(now+300).setJti("b".repeat(64)).sign(new TextEncoder().encode(env.IDENTITY_SESSION_SECRET));
+  const native=async(subject:string)=>new SignJWT({}).setProtectedHeader({alg:"HS256",typ:"s3rch-identity-session-v1"}).setSubject(subject).setIssuer(site).setAudience(site).setIssuedAt(now).setExpirationTime(now+300).setJti("b".repeat(64)).sign(new TextEncoder().encode(env.S3RCH_SESSION_SIGNING_KEY));
   try{
     const ingress={host:"s3r.ch","x-forwarded-proto":"https"};
     assert.equal((await app.get(new Request("http://localhost:3000/api/experiments",{headers:ingress}))).status,200);

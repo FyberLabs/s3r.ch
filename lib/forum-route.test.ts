@@ -35,8 +35,8 @@ async function read(cookie: string) {
 }
 test("forum grants and revocation use the SEA principal across credential metadata", async () => {
   const dir = mkdtempSync(join(tmpdir(), "s3rch-forum-route-"));
-  const before = { forum: process.env.S3RCH_FORUM, secret: process.env.IDENTITY_SESSION_SECRET };
-  process.env.S3RCH_FORUM = join(dir, "forum.json"); process.env.IDENTITY_SESSION_SECRET = secret;
+  const before = { forum: process.env.S3RCH_FORUM, secret: process.env.S3RCH_SESSION_SIGNING_KEY };
+  process.env.S3RCH_FORUM = join(dir, "forum.json"); process.env.S3RCH_SESSION_SIGNING_KEY = secret;
   try {
     const alice = await cookie(ALICE, "wallet-a"), linked = await cookie(ALICE, "oidc-b"), bob = await cookie(BOB, "wallet-c");
     assert.equal((await GET(req())).status, 401);
@@ -78,11 +78,11 @@ test("forum grants and revocation use the SEA principal across credential metada
       for (const action of ["post", "invite", "token", "desktop"])
         assert.equal((await post(alice, { action }, headers)).status, 401);
     }
-    process.env.IDENTITY_SESSION_SECRET = "wrong-secret-".repeat(4);
+    process.env.S3RCH_SESSION_SIGNING_KEY = "wrong-secret-".repeat(4);
     assert.equal((await GET(req(alice))).status, 401);
   } finally {
     if (before.forum === undefined) delete process.env.S3RCH_FORUM; else process.env.S3RCH_FORUM = before.forum;
-    if (before.secret === undefined) delete process.env.IDENTITY_SESSION_SECRET; else process.env.IDENTITY_SESSION_SECRET = before.secret;
+    if (before.secret === undefined) delete process.env.S3RCH_SESSION_SIGNING_KEY; else process.env.S3RCH_SESSION_SIGNING_KEY = before.secret;
     rmSync(dir, { recursive: true, force: true });
   }
 });

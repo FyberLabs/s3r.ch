@@ -15,7 +15,7 @@ export default function GroupsFeaturePage() {
       actions={[
         { href: "/feed", label: "Open feed" },
         { href: "/forum", label: "Open forum", tone: "secondary" },
-        { href: "/feed/squad", label: "Open squad", tone: "secondary" },
+        { href: "/feed/squad", label: "View squads", tone: "secondary" },
         { href: "/features/sociacl", label: "SociACL primer", tone: "secondary" },
       ]}
     >

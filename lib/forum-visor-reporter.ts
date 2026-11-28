@@ -124,7 +124,7 @@ export function openVisorForumReporter(configFile: string) {
   }
   const session = createBotSession({ origin: c.origin, pair, timeoutMs: 6500 });
   const authority = createForumAuthority(c.authority);
-  const reader = createHttpForumAuthorityReader({ endpoint: "/api/squad/pilot/authority",
+  const reader = createHttpForumAuthorityReader({ endpoint: "/api/site/authority",
     squad: { forumId: c.forumId, owner: c.owner, label: "Visor forum" }, fetch: session.fetch });
   const refresh = createBotAuthorityRefresh({ authority, reader, signIn: session.signIn,
     forum: c.forumId, owner: c.owner, principal: c.principal, key: pair.pub });
@@ -192,7 +192,8 @@ export function openVisorForumReporter(configFile: string) {
           principal: r.principal, status: r.status,
         }) } : {};
         const signal = AbortSignal.any([stopped, AbortSignal.timeout(artifact ? 6500 : 1500)]);
-        const response = await session.fetch("/api/squad/pilot/plane/" + (artifact?.kind ?? "update"), { method: "POST", signal,
+        if (artifact) throw Error("Plane artifact admission retired");
+        const response = await session.fetch("/api/site/statement", { method: "POST", signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ version: 1, forumId: c.forumId, owner: c.owner, evaluatedAt: at,
             rows: envelope.rows, update: envelope.update, ...content }) });

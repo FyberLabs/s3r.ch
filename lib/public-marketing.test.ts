@@ -196,7 +196,7 @@ describe("public marketing copy", () => {
 
   it("does not present squads as live or usable today without coming soon", () => {
     const allowed =
-      /creating or joining a squad is coming soon|squads? \(coming soon\)|squads coming soon|Squads are coming soon|will be a contributor|will be contributor|Open squad|\/feed\/squad|data-testid="squad|have a squad yet|stays unset|stays empty|don\x27t have a squad|squads? will be/gi;
+      /creating or joining a squad is coming soon|squads? \(coming soon\)|squads coming soon|Squads are coming soon|will be a contributor|will be contributor|\/feed\/squad\/live|data-testid="squad|have a squad yet|stays unset|stays empty|don\x27t have a squad|squads? will be/gi;
     const files = [...new Set(marketing)];
     const liveSquad =
       /\b(?:live today[^.!?\n]{0,120}\bsquads?\b(?![^.!?\n]{0,40}coming soon)|today you[^.!?\n]{0,120}\bwork on a squad\b|already use[^.!?\n]{0,80}\bsquad\b|posts, rooms, forums and squads\.|forums and squads\.(?![^.!?\n]*coming soon))/i;

@@ -5,7 +5,6 @@ import { isForumObjectId, sameEmbeddedPrincipal } from "./identity/forum-check";
 import { verifyForumKeySignature } from "./identity/forum-key-signature";
 import { matchesBrowserOrigin } from "./request-origin";
 import { parseForumUpdateProof, verifyForumUpdate, type VerifiedForumUpdate } from "./forum-plane-update";
-import type { LiveSquadSpec } from "./squad-view";
 import { ArtifactRefusal } from "./squad-artifact";
 import { parseSignedPreview, verifyPreviewDraft, type SignedPreview } from "./squad-preview";
 import { parseSignedBriefDraft, verifyBriefDraft, type SignedBriefDraft } from "./squad-brief";
@@ -37,7 +36,7 @@ export type PlaneForumUpdateAuthority = Readonly<{
 type SaveDraft<T> = (draft: T, update: VerifiedForumUpdate, signal: AbortSignal,
   authorize: () => Promise<boolean>) => Promise<void>;
 
-export function createBotStatementAdmission(input: { origin: string; squad: LiveSquadSpec; config: ForumAuthorityConfig;
+export function createBotStatementAdmission(input: { origin: string; config: ForumAuthorityConfig;
   authenticate(request: Request): Promise<{ key: string } | null>; source: BotStatementSource; clock?: () => number; objectKind?: "stmt" | "room";
   planeUpdates?: PlaneForumUpdateAuthority;
   saveBrief?: SaveDraft<SignedBriefDraft>;
@@ -45,7 +44,7 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
   savePreview?: SaveDraft<SignedPreview>;
 }) {
   const objectKind = input.objectKind ?? "stmt";
-  const origin = new URL(input.origin), spec = Object.freeze({ ...input.squad }), config = structuredClone(input.config);
+  const origin = new URL(input.origin), config = structuredClone(input.config);
   if (origin.origin !== input.origin || origin.protocol !== "https:") throw Error("HTTPS statement origin required");
   const { authenticate, source, planeUpdates } = input;
   const roster = planeUpdates ? { ...planeUpdates.roster } : {};
@@ -85,8 +84,9 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       const keys = ["evaluatedAt", "forumId", "owner", "rows", "version", ...(isUpdate ? ["update"] : []), ...(artifact ? [artifact] : [])]
         .sort((left, right) => left.localeCompare(right, "en")).join();
       if (!body || Object.keys(body).sort((left, right) => left.localeCompare(right, "en")).join() !== keys || body.version !== 1 ||
-          body.forumId !== spec.forumId || body.owner !== spec.owner || body.evaluatedAt !== at ||
+          typeof body.forumId !== "string" || typeof body.owner !== "string" || body.evaluatedAt !== at ||
           !Array.isArray(body.rows) || body.rows.length > 65) return reply(400);
+      const forumId = body.forumId as string, owner = body.owner as string;
       const proof = isUpdate ? parseForumUpdateProof(body.update) : null;
       if (isUpdate && (!proof || body.rows.length === 0)) return reply(400);
       const brief = artifact === "brief" ? parseSignedBriefDraft(body.brief) : null;
@@ -97,12 +97,13 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
       if (typeof held.fence !== "string" || !held.fence || held.fence.length > 4096) return reply(503);
       const snapshot = structuredClone(held.snapshot);
       const responseSize = (value: ForumAuthoritySnapshot) => Buffer.byteLength(JSON.stringify({ version: 1,
-        forumId: spec.forumId, owner: spec.owner, evaluatedAt: at, snapshot: value }), "utf8");
+        forumId, owner, evaluatedAt: at, snapshot: value }), "utf8");
       if (!Array.isArray(snapshot.rows) || snapshot.rows.length > 1024 || responseSize(snapshot) > 4 * 1024 * 1024) return reply(507);
       const authority = createForumAuthority(config, clock), verified = await authority.refresh(snapshot, at);
       const principal = authority.graph.principalForKey(session.key, at);
-      if (!verified.ok || roomAuthorityReadDiagnosticsBlock(verified.diagnostics, snapshot) || !principal || authority.graph.ownerOf(spec.forumId) !== spec.owner ||
-          !authority.graph.checkForumSee(spec.forumId, principal, at).allowed || !authority.graph.checkPost(spec.forumId, principal, at).allowed)
+      if (!verified.ok || roomAuthorityReadDiagnosticsBlock(verified.diagnostics, snapshot) || !principal ||
+          authority.graph.ownerOf(forumId) !== owner ||
+          !authority.graph.checkForumSee(forumId, principal, at).allowed || !authority.graph.checkPost(forumId, principal, at).allowed)
         return reply(403);
       if (body.rows.length === 0) return reply(roomAuthorityReadDiagnosticsBlock(verified.diagnostics, snapshot) ? 403 : 200); // Authenticated provider readiness; no mutation.
       if (!isUpdate && objectKind === "stmt" && planePrincipals.has(principal)) return reply(403);
@@ -125,8 +126,8 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
         const key = authority.graph.writerKey(principal, row.issuedAt, at);
         if (!key || !verifyForumKeySignature(key, row.sig, p.bytes)) return reply(403);
         if ((p.kind === "see" || p.kind === "post") && (p.row.until > at + 3600 || (p.row.stated === 1 &&
-            (!authority.graph.checkForumSee(spec.forumId, p.row.accessor, at).allowed ||
-             (p.kind === "post" && !authority.graph.checkPost(spec.forumId, p.row.accessor, at).allowed))))) return reply(403);
+            (!authority.graph.checkForumSee(forumId, p.row.accessor, at).allowed ||
+             (p.kind === "post" && !authority.graph.checkPost(forumId, p.row.accessor, at).allowed))))) return reply(403);
       }
       let verifiedUpdate: VerifiedForumUpdate | null = null;
       if (proof && planeUpdates) {
@@ -135,7 +136,7 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
         const issuedAt = objectRow.row.issuedAt, writerKey = authority.graph.writerKey(principal, issuedAt, at);
         if (!writerKey) return reply(403);
         verifiedUpdate = await bounded(verifyForumUpdate(proof, {
-          tenant: planeUpdates.tenant, forumId: spec.forumId, principal, object, issuedAt, writerKey,
+          tenant: planeUpdates.tenant, forumId, principal, object, issuedAt, writerKey,
         }));
         if (!verifiedUpdate || (brief && !verifyBriefDraft(brief, verifiedUpdate, writerKey)) ||
             (workbook && !verifyWorkbookDraft(workbook, verifiedUpdate, writerKey)) ||
@@ -190,8 +191,8 @@ export function createBotStatementAdmission(input: { origin: string; squad: Live
             signal.throwIfAborted();
             const graph = authority.graph;
             return refreshed.ok && clock() === evaluatedAt && !roomAuthorityReadDiagnosticsBlock(refreshed.diagnostics, snapshot) &&
-              graph.ownerOf(spec.forumId) === spec.owner && graph.principalForKey(current.key, evaluatedAt) === principal &&
-              graph.checkForumSee(spec.forumId, principal, evaluatedAt).allowed && graph.checkPost(spec.forumId, principal, evaluatedAt).allowed;
+              graph.ownerOf(forumId) === owner && graph.principalForKey(current.key, evaluatedAt) === principal &&
+              graph.checkForumSee(forumId, principal, evaluatedAt).allowed && graph.checkPost(forumId, principal, evaluatedAt).allowed;
           };
           if (brief && input.saveBrief) await bounded(input.saveBrief(brief, verifiedUpdate, signal, authorize));
           if (workbook && input.saveWorkbook) await bounded(input.saveWorkbook(workbook, verifiedUpdate, signal, authorize));

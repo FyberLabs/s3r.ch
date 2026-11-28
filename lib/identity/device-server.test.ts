@@ -5,7 +5,7 @@ import {deviceServer} from './device-server';
 import {sameScope,publicRelayPayload,publicBinding} from './device-public';
 const origin='https://s3r.ch',scope={sourceOrigin:origin,destinationOrigin:origin,application:'s3r.ch',tenant:'11111111-1111-1111-1111-111111111111',audience:'device'};
 const configured={v:1,scope,auth:'https://auth.example/auth/sea-device-link/v1/',acl:'https://acl.example/api/v1/acl/sociacl/device-transfer/',provider:'panopticon'};
-const env={S3RCH_DEVICE_TRANSFER_CONFIG:JSON.stringify(configured),S3RCH_OAUTH_ISSUER:'https://issuer.example/realm',IDENTITY_SESSION_SECRET:'x'.repeat(40)};
+const env={S3RCH_DEVICE_TRANSFER_CONFIG:JSON.stringify(configured),S3RCH_OAUTH_ISSUER:'https://issuer.example/realm',S3RCH_SESSION_SIGNING_KEY:'x'.repeat(40)};
 test('exact configured origins and endpoints required',()=>{
  assert.ok(deviceConfig(origin,env));for(const change of [{scope:{...scope,application:'other'}},{auth:'http://auth.example/auth/sea-device-link/v1/'},{scope:{...scope,private:'secret'}},{provider:'missing'}])assert.equal(deviceConfig(origin,{...env,S3RCH_DEVICE_TRANSFER_CONFIG:JSON.stringify({...configured,...change})}),null);
  assert.equal(deviceConfig('https://other.example',env),null);assert.equal(deviceConfig(origin,{}),null);

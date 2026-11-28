@@ -502,9 +502,9 @@ jobs:
           node --import tsx --test --test-isolation=none --experimental-test-coverage
           --test-coverage-include=lib/acl-statement-source-server.ts
           --test-coverage-include=lib/acl-graph-source-server.ts
-          --test-coverage-include=lib/squad-pilot-server.ts
-          lib/acl-statement-source-server.test.ts lib/squad-acl-source.test.ts
-          lib/squad-pilot-config.test.ts lib/forum-authority-service.test.ts lib/squad-http-services.test.ts
+          --test-coverage-include=lib/site-acl-server.ts
+          lib/acl-statement-source-server.test.ts lib/site-acl-server.test.ts
+          lib/site-acl-server.test.ts lib/forum-authority-service.test.ts lib/retired-env-vars.test.ts
 
       - name: Delegation consumer coverage (CI only)
         run: >-

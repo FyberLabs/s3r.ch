@@ -11,7 +11,7 @@ import { startupPendingName, startupCredentialName } from "./startup-login-cooki
 const origin = "https://test.s3r.ch", issuer = "https://auth.test.hyperme.sh/realms/controlplane";
 const subject = "11111111-1111-1111-1111-111111111111", generation = "a".repeat(64), grant = "b".repeat(64);
 const pub = "axfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpY.sBy9HAHlgGVxGBS1g_Bh6dQxzKmUzqExNEm_l8hArgo";
-const env = { NODE_ENV: "production", IDENTITY_SESSION_SECRET: "s".repeat(40), S3RCH_STARTUP_LOGIN_PROVIDER: "panopticon",
+const env = { NODE_ENV: "production", S3RCH_SESSION_SIGNING_KEY: "s".repeat(40), S3RCH_STARTUP_LOGIN_PROVIDER: "panopticon",
   S3RCH_STARTUP_AUTH_URL: "https://api.test.hyperme.sh/auth/startup/identity", S3RCH_OAUTH_ISSUER: issuer, S3RCH_OAUTH_CLIENT_ID: "s3rch-web" };
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";

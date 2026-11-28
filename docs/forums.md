@@ -54,10 +54,10 @@ readable transcript. The authenticated session key must resolve to a current
 reader with see access on both the Squad and the statement. The author must
 still have direct see and post rights on the signed statement. With no configured parent forums, live Reports is read-only.
 
-To enable forwarding, add an optional `reportParents` object to the existing
-pilot deployment JSON. Its `fleet` and `command` entries each contain a
-`forumId`, stable `owner`, and display `label`, in the same format as `squad`.
-All three must be distinct admitted forums in the pilot authority ledger.
+To enable forwarding, add an optional `reportParents` object to the deployment
+forum-authority configuration. Its `fleet` and `command` entries each contain a
+`forumId`, stable `owner`, and display `label`.
+All three must be distinct admitted forums in the site ACL authority ledger.
 Configure signed ownership and the desired see/post grants in that ledger.
 Setting a forum ID grants no access.
 
@@ -84,7 +84,7 @@ situation reports and skill publishes. No source is connected yet. Shared memory
 roadmap, ledger and directed-message views show explicit unavailable states and
 mount no data. Wiring a source requires current destination Check permission;
 navigation, labels and an empty panel do not supply that permission. This shell
-does not enable the live pilot or change the separate `/forum` page.
+does not enable live squad coordination or change the separate `/forum` page.
 
 ## Tile layout
 
@@ -101,14 +101,11 @@ modifying the separate concept mock.
 
 ## Current isolation boundary
 
-Public check-vector SEA pubkeys (shared forum test vectors with known private scalars)
-are listed in `lib/identity/vectors/public-forum-vector-pubkeys.ts` for tests and
-the assignment-replacement guard. Product sessions and live coordination no longer
-apply a deny-list to them; Check and signed ACL evidence remain the gates. Shared
-pilot ACL teardown is still open in
-[FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860); this
-repository does not assume those rows are already deleted. Live ACL verification
-for vector pubkeys is handled out of band for that infra issue.
+Public check-vector SEA pubkeys remain in shared forum test vectors with known
+private scalars for unit tests only. Product sessions and live coordination do not
+apply a deny-list to them; Check and signed ACL evidence remain the gates.
+Operator provisioning for the new site ACL secrets is tracked in
+[FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860).
 Product UI does not import the synthetic roster in `forum-squad-fixture.ts`.
 `PILOT_MESH_ENABLED` is hard-disabled: the unset public route does not mount a
 fixture board. Live squads require a separate owner, `ForumAuthorityProvider`
@@ -465,6 +462,6 @@ or sign with IndexedDB material directly. Publishing rechecks the current signer
 writer key and destination permission after signing, immediately before transport.
 `putForumSoul` handles Gun path traversal only and grants no authority.
 
-This extraction is part of #279. The pilot's authoritative journal and server
-assignment path still require replacement with complete signed Gun history; this
-change does not claim that migration is complete.
+This extraction is part of #279. The site ACL authority source replaces the retired
+squad pilot journal. Complete signed Gun history for every object remains the
+admission contract; this change does not claim unfinished client migrations are done.
