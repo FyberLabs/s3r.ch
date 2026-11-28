@@ -236,7 +236,9 @@ a second authority journal. Existing session wire formats remain unchanged.
 
 The application no longer exposes `/api/squad/pilot/*` or site-wide
 `/api/site/*` forum ACL (`503 site-forum-acl-retired`). Retired settings such as
-`S3RCH_FORUM_AUTHORITY` and `S3RCH_SQUAD_PILOT` are not read.
+`S3RCH_FORUM_AUTHORITY` and `S3RCH_SQUAD_PILOT` are not read. Legacy
+`S3RCH_AGENT_SESSION_CONFIG` shapes that embedded an `authority` witness block are
+also rejected; agent admission uses SociACL owner-signed delegations only.
 
 SEA-owned squads use `/api/squad/*`. Each forum’s authority is the owner’s SEA
 public key: an `object` row on the forum id, plus `see` / `post` grants the owner
@@ -264,7 +266,7 @@ owner does not lend its object grants to the bot. A token alone is not an object
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `S3RCH_AGENT_SESSION_CONFIG` | Unset (disabled) | Private JSON with exact `origin`, `source` (`origin`, `tenant`, `scope`) and `authority` (`jwks`, `policy`, `pinnedIss`) fields. `policy` contains `allowedDomains`, `allowedUris`, `allowedChainIds`, and explicit `clockSkewSeconds` (0–300). Witness keys are independently trusted configuration; source responses cannot install them. |
+| `S3RCH_AGENT_SESSION_CONFIG` | Unset (disabled) | Private JSON with exact `origin` and `source` (`origin`, `tenant`, `scope`). Agent authority is verified only through SociACL owner-signed delegations from the source; embedded `authority` witness blocks are rejected. Requires `S3RCH_DELEGATION_SOURCE_API_KEY`. |
 | `S3RCH_DELEGATION_SOURCE_API_KEY` | Unset | Dedicated service key with `acl:delegations:read` and the operator-bound tenant/subject/scope. It is never sent to the client. |
 
 The origin must match the configured s3r.ch deployment. The delegation source and

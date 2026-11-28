@@ -1,6 +1,6 @@
 import { createAclStatementSource, type AclStatementConfig } from "./acl-statement-source-server";
 import { getSquadForumServer } from "./squad-forum-server";
-import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
+import { createForumAuthority, FORUM_AUTHORITY_CONFIG, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { createVaultScopedStore } from "./vault-scoped-store-server";
 import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { createVaultApiService } from "./vault-api-service";
@@ -12,10 +12,10 @@ const vaultKeys = (value: object) => Object.keys(value).sort((left, right) => le
 /** Test-only vault witness JSON. Not a site-wide forum ACL setting. */
 function parseVaultWitnessAuthorityJson(raw: string): ForumAuthorityConfig {
   const c: unknown = JSON.parse(raw);
-  if (!c || typeof c !== "object" || Array.isArray(c) || vaultKeys(c) !== "keys") {
+  if (!c || typeof c !== "object" || Array.isArray(c) || vaultKeys(c) !== "") {
     throw Error("invalid vault witness configuration");
   }
-  return structuredClone(c as ForumAuthorityConfig);
+  return FORUM_AUTHORITY_CONFIG;
 }
 
 export function getVaultApiService() {

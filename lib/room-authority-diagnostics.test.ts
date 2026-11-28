@@ -1,11 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { p256 } from "@noble/curves/nist.js";
-import { createForumAuthority, type ForumAuthoritySnapshot } from "./identity/forum-authority";
+import { createForumAuthority, FORUM_AUTHORITY_CONFIG, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
 import { seaToPrincipalKey } from "./identity/forum-check";
-import type { ForumWitnessKey } from "./identity/forum-witness-verification";
-import vectors from "./identity/vectors/forum-authority.json";
+import { mintSeaForumRotation, forumRotationTestPub } from "./identity/forum-rotation-test-helpers";
 import { roomAuthorityDiagnosticsBlock } from "./room-authority-diagnostics";
 const secret = (n: number) => { const bytes = new Uint8Array(32); bytes[31] = n; return bytes; };
 const key = (n: number) => { const bytes = p256.getPublicKey(secret(n), false); return Buffer.from(bytes.slice(1,33)).toString("base64url") + "." + Buffer.from(bytes.slice(33)).toString("base64url"); };
@@ -16,9 +15,10 @@ function signed(kind: AuthorityKind, fields: Record<string, unknown>, n: number,
  return {kind,soul:parsed.soul,record};
 }
 const old = signed("object",{object:forum,owner},1,time-40), fresh = signed("object",{object:forum,owner},2,time-10);
-const snapshot = (rows: ForumAuthoritySnapshot["rows"]): ForumAuthoritySnapshot => ({completeThrough:time,rows,history:{completeThrough:time,
- links:vectors.context.links.map(([,row])=>row),accounts:[{principal:owner,rotations:vectors.context.rotationSets.rotated,revocations:[],genesisEpubBindings:[]}]}});
-const config = { keys: vectors.context.jwks.keys as ForumWitnessKey[] };
+const ownerRotation = () => mintSeaForumRotation({ at: time - 30 });
+const snapshot = (rows: ForumAuthoritySnapshot["rows"]): ForumAuthoritySnapshot => ({ completeThrough: time, rows, history: { completeThrough: time,
+  links: [], accounts: [{ principal: owner, rotations: [ownerRotation()], revocations: [], genesisEpubBindings: [] }] } });
+const config = FORUM_AUTHORITY_CONFIG;
 test("retained old ownership permits room admission only beside current verified ownership", async () => {
  for (const rows of [[old,fresh],[fresh,old]]) {
   const authority = createForumAuthority(config,()=>time), input = snapshot(rows), result = await authority.refresh(input,time);
@@ -142,16 +142,16 @@ test("room readiness rejects grant, cancellation and malformed diagnostics", asy
 test("retired room ownership cannot deny unrelated statement writes or squad health", async () => {
  const {createBotStatementAdmission}=await import("./forum-bot-statement-admission");
  const {squadForumReady}=await import("./squad-forum-server");
- const {SEA_OWNED_FORUM_AUTHORITY}=await import("./sea-owned-forum-policy");
+ const {FORUM_AUTHORITY_CONFIG}=await import("./identity/forum-authority");
  const room=`room_${seaToPrincipalKey(owner)}_${"8".repeat(32)}`;
  const statement=`stmt_${seaToPrincipalKey(owner)}_${"9".repeat(32)}`;
  const retired=signed("object",{object:room,owner},1,time-40);
- const renewed=signed("object",{object:room,owner},1,time-10);
- const target=signed("object",{object:statement,owner},1,time);
- const forumCurrent=signed("object",{object:forum,owner},1,time-10);
+ const renewed=signed("object",{object:room,owner},2,time-10);
+ const target=signed("object",{object:statement,owner},2,time);
+ const forumCurrent=signed("object",{object:forum,owner},2,time-10);
  let held=snapshot([forumCurrent,retired,renewed]),appends=0;
- const service=createBotStatementAdmission({origin:"https://room.test",config:SEA_OWNED_FORUM_AUTHORITY,clock:()=>time,
-  authenticate:async()=>({key:owner}),source:{read:async()=>({snapshot:held,fence:"held"}),
+ const service=createBotStatementAdmission({origin:"https://room.test",config:FORUM_AUTHORITY_CONFIG,clock:()=>time,
+  authenticate:async()=>({key:key(2)}),source:{read:async()=>({snapshot:held,fence:"held"}),
    append:async(_fence,rows,guard)=>{guard();appends++;held={...held,rows:[...held.rows,...rows]};return true;}}});
  const request=(rows:unknown[])=>new Request("https://room.test/statement",{method:"POST",headers:{Origin:"https://room.test","Content-Type":"application/json"},
   body:JSON.stringify({version:1,forumId:forum,owner,evaluatedAt:time,rows})});

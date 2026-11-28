@@ -4,7 +4,7 @@ import type { BotStatementSource } from "./forum-bot-statement-admission";
 import { configuredIdentityReplay, type IdentityReplay } from "./identity/spanopticon-replay-server";
 import { getIdentitySecret } from "./identity/secret";
 import { resolveSiteOrigin } from "./site-origin";
-import { SEA_OWNED_FORUM_AUTHORITY } from "./sea-owned-forum-policy";
+import { FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 import { createForumAuthority, type ForumAuthoritySnapshot } from "./identity/forum-authority";
 import { createBotStatementAdmission } from "./forum-bot-statement-admission";
 import { createForumAuthorityService } from "./forum-authority-service";
@@ -16,7 +16,7 @@ import { createRoomMeetingSignaling } from "./room-meeting-signaling-server";
 export type SquadForumServer = Readonly<{
   backend: "acl";
   origin: string;
-  config: typeof SEA_OWNED_FORUM_AUTHORITY;
+  config: typeof FORUM_AUTHORITY_CONFIG;
   source: { read(at: number, signal: AbortSignal): Promise<ForumAuthoritySnapshot> };
   statements: BotStatementSource;
   services: Readonly<{
@@ -47,7 +47,7 @@ export function createSquadForumServer(
     const token = readSeaSessionCookie(request);
     return token ? verifier.authenticate(token) : null;
   };
-  const common = { origin, config: SEA_OWNED_FORUM_AUTHORITY, clock, authenticate };
+  const common = { origin, config: FORUM_AUTHORITY_CONFIG, clock, authenticate };
   const meeting = tenant
     ? createRoomMeetingSignaling({
       origin,
@@ -65,7 +65,7 @@ export function createSquadForumServer(
             if (error instanceof StatementSourceConflict && clock() > at) continue;
             throw error;
           }
-          const authority = createForumAuthority(SEA_OWNED_FORUM_AUTHORITY, clock);
+          const authority = createForumAuthority(FORUM_AUTHORITY_CONFIG, clock);
           const verified = await authority.refresh(snapshot, at);
           signal.throwIfAborted();
           if (clock() > at) continue;
@@ -94,7 +94,7 @@ export function createSquadForumServer(
     statements: createBotStatementAdmission({ ...common, source: statements }),
     rooms: createBotStatementAdmission({ ...common, source: statements, objectKind: "room" }),
   });
-  return Object.freeze({ backend: "acl", origin, config: SEA_OWNED_FORUM_AUTHORITY, source, statements, services, ...(meeting ? { meeting } : {}) });
+  return Object.freeze({ backend: "acl", origin, config: FORUM_AUTHORITY_CONFIG, source, statements, services, ...(meeting ? { meeting } : {}) });
 }
 
 let cached: { identity: string; server: SquadForumServer } | undefined;
@@ -133,7 +133,7 @@ export async function squadForumReady(
   signal: AbortSignal,
   clock = () => Math.floor(Date.now() / 1000),
 ) {
-  const authority = createForumAuthority(SEA_OWNED_FORUM_AUTHORITY, clock);
+  const authority = createForumAuthority(FORUM_AUTHORITY_CONFIG, clock);
   for (let attempt = 0; attempt < 2; attempt++) {
     signal.throwIfAborted();
     const at = clock();

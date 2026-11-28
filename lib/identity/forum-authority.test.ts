@@ -2,7 +2,8 @@ import { offerForumHelp, acceptForumOffer, declineForumOffer, continueForumOffer
 import assert from "node:assert/strict";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
-import { createForumAuthority, type ForumAuthoritySnapshot } from "./forum-authority";
+import { createForumAuthority, FORUM_AUTHORITY_CONFIG, type ForumAuthoritySnapshot } from "./forum-authority";
+import { mintSeaForumRotation } from "./forum-rotation-test-helpers";
 import { parseForumAuthority, type AuthorityKind } from "./forum-authority-records";
 import { seaToPrincipalKey, type ForumNeed } from "./forum-check";
 import { checkSee, checkForumSee } from "./check";
@@ -19,7 +20,7 @@ const pub = (n: number) => { const b = p256.getPublicKey(secret(n), false); retu
 const owner = pub(1), helper = pub(2), outsider = pub(3);
 const id = (kind: string, n = 1, tail = "1") => `${kind}_${seaToPrincipalKey(pub(n))}_${tail.repeat(32)}`;
 const object = id("need"), forum = id("forum"), setId = id("set");
-const config = { keys: vectors.context.jwks.keys as ForumWitnessKey[] };
+const config = FORUM_AUTHORITY_CONFIG;
 const time = 1700000060;
 const sign = (kind: AuthorityKind, row: Record<string, unknown>, key = 1): ForumAuthoritySnapshot["rows"][number] => {
   const r = { issuedAt: time - 10, ...row, sig: "pending" };
@@ -168,23 +169,35 @@ test("Squad uses the isolated provider, not legacy ACL hydration or implicit cha
 });
 
 import { recoveryId } from "./forum-recovery-records";
-async function attest(row: ForumAuthoritySnapshot["rows"][number]) {
+const rotatedSnapshot = (rows: ForumAuthoritySnapshot["rows"]): ForumAuthoritySnapshot => {
+  const rotation = mintSeaForumRotation({ at: time - 30 });
+  return { ...snapshot(rows), history: { completeThrough: time, links: [], accounts: [owner, helper].map(principal => ({
+    principal, rotations: principal === owner ? [rotation] : [], revocations: [], genesisEpubBindings: [] })) } };
+};
+async function attest(row: ForumAuthoritySnapshot["rows"][number], signingKey = 2) {
   const p = parseForumAuthority(row.kind, row.record)!;
-  const [x, y] = pub(7).split(".");
-  const key: ForumWitnessKey = { kid: "test-witness", kty: "EC", crv: "P-256", x, y, notBefore: 0, notAfter: time + 1000 };
-  const input = b64(JSON.stringify({ alg: "ES256", kid: key.kid })) + "." + b64(JSON.stringify({ typ: "sociacl-acl-attest-v1", principal: p.signer,
+  const input = b64(JSON.stringify({ alg: "ES256", typ: "JWT" })) + "." + b64(JSON.stringify({ typ: "sociacl-acl-attest-v1", principal: p.signer,
     recordId: await recoveryId(p.bytes), iat: p.row.issuedAt, exp: p.row.issuedAt + 600 }));
-  const token = input + "." + b64(p256.sign(new TextEncoder().encode(input), secret(7), { prehash: true, format: "compact" }));
-  return { key, row: { ...row, record: { ...(row.record as object), attest: token } } };
+  const token = input + "." + b64(p256.sign(new TextEncoder().encode(input), secret(signingKey), { prehash: true, format: "compact" }));
+  return { row: { ...row, record: { ...(row.record as object), attest: token } } };
 }
-const rotatedSnapshot = (rows: ForumAuthoritySnapshot["rows"]): ForumAuthoritySnapshot => ({ ...snapshot(rows), history: {
-  completeThrough: time, links: [], accounts: [owner, helper].map(principal => ({ principal,
-    rotations: principal === owner ? vectors.context.rotationSets.rotated : [], revocations: [], genesisEpubBindings: [] })),
-} });
-test.skip("retired-key live grants are rejected while witnessed cancellation still constrains fresh rows", async () => {
+
+test("after owner key rotation, retired-key grants reject and current-key grants accept", async () => {
+  const a = createForumAuthority(config, () => time);
+  const currentObject = sign("object", { object, owner }, 2);
+  const newGrant = sign("see", { owner, object, accessor: helper, stated: 1, hamState: 1, from: time - 1, until: time + 100 }, 2);
+  const oldGrant = sign("see", { owner, object, accessor: helper, stated: 1, hamState: 1, from: time - 1, until: time + 100, issuedAt: time - 20 }, 1);
+  assert.ok((await a.refresh(rotatedSnapshot([currentObject, newGrant]), time)).ok);
+  assert.equal(checkForumSee(a.graph, object, helper, time).allowed, true);
+  assert.equal(a.graph.writerKey(owner, time, time), pub(2));
+  await a.refresh(rotatedSnapshot([currentObject, oldGrant]), time);
+  assert.equal(checkForumSee(a.graph, object, helper, time).allowed, false);
+});
+
+test("retired-key live grants are rejected while owner-attested cancellation still constrains fresh rows", async () => {
   const oldCancel = sign("see", { owner, object, accessor: helper, stated: 0, hamState: 10, from: 0, until: time + 100, issuedAt: time - 40 });
   const witnessed = await attest(oldCancel);
-  const a = createForumAuthority({ ...config, keys: [...config.keys, witnessed.key] }, () => time);
+  const a = createForumAuthority(config, () => time);
   const newObject = sign("object", { object, owner }, 2), newGrant = sign("see", { owner, object, accessor: helper, stated: 1, hamState: 9, from: 0, until: time + 100 }, 2);
   assert.ok((await a.refresh(rotatedSnapshot([newObject, newGrant]), time)).ok);
   assert.equal(checkForumSee(a.graph, object, helper, time).allowed, true);

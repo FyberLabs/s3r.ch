@@ -10,8 +10,7 @@ const request=(action:string,body:unknown,headers:Record<string,string>={})=>new
 async function harness() {
   const fixture=await setup(), used=new Set<string>(); let reads=0;
   const env:Record<string,string|undefined>={S3RCH_SESSION_SIGNING_KEY:"s".repeat(32),S3RCH_DELEGATION_SOURCE_API_KEY:fixture.sourceConfig.apiKey,
-    S3RCH_AGENT_SESSION_CONFIG:JSON.stringify({origin,source:{origin:fixture.sourceConfig.origin,tenant:fixture.sourceConfig.tenant,scope:"agents"},
-      authority:{jwks:fixture.trust.jwks,policy:{...fixture.trust.policy,clockSkewSeconds:0},pinnedIss:[...fixture.trust.pinnedIss]}}),
+    S3RCH_AGENT_SESSION_CONFIG:JSON.stringify({origin,source:{origin:fixture.sourceConfig.origin,tenant:fixture.sourceConfig.tenant,scope:"agents"}}),
     S3RCH_IDENTITY_REPLAY_BACKEND:"spanopticon",S3RCH_IDENTITY_REPLAY_ORIGIN:"https://gateway.example",
     S3RCH_IDENTITY_REPLAY_TENANT_ID:fixture.sourceConfig.tenant,S3RCH_SERVICE_CREDENTIAL:"private-replay-key"};
   const fetcher:typeof fetch=async(url,options)=>{
@@ -26,6 +25,19 @@ async function harness() {
   const call=(action:string,body:unknown,headers:Record<string,string>={})=>siteAgentSession(request(action,body,headers),action,env,fetcher,()=>f.now);
   return {...fixture,env,fetcher,call,reads:()=>reads};
 }
+test("without owner-signed delegation the agent session is rejected", async () => {
+  const h = await harness();
+  assert.equal((await h.call("challenge", { delegationId: "b".repeat(64), scopes: ["forum:read"] })).status, 403);
+  const row = h.document.snapshot.rows[0];
+  h.document.snapshot.rows[0] = { ...row, record: { ...(row.record as object), sig: "forged" } };
+  assert.equal((await h.call("challenge", { delegationId: h.id, scopes: ["forum:read"] })).status, 403);
+});
+
+test("with a valid owner-signed delegation the agent session is accepted", async () => {
+  const h = await harness();
+  assert.equal((await h.call("challenge", { delegationId: h.id, scopes: ["forum:read"] })).status, 200);
+});
+
 test("native agent challenge exchanges once and every bearer use rechecks cancellation",async()=>{
   const h=await harness();
   const response=await h.call("challenge",{delegationId:h.id,scopes:["forum:read"]});assert.equal(response.status,200);

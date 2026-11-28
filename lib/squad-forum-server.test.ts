@@ -4,7 +4,7 @@ import { createAclStatementSource } from "./acl-statement-source-server";
 import { createSpanopticonIdentityReplay } from "./identity/spanopticon-replay-server";
 import { identitySessionNamespace } from "./identity/replay-namespace";
 import { createSquadForumServer } from "./squad-forum-server";
-import { SEA_OWNED_FORUM_AUTHORITY } from "./sea-owned-forum-policy";
+import { FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 
 test("createSquadForumServer uses empty deployment witness policy", () => {
   const statements = createAclStatementSource({
@@ -17,7 +17,7 @@ test("createSquadForumServer uses empty deployment witness policy", () => {
   });
   const server = createSquadForumServer("https://s3r.ch", statements, replay, () => 100, "s".repeat(40));
   assert.equal(server.backend, "acl");
-  assert.deepEqual(server.config, SEA_OWNED_FORUM_AUTHORITY);
+  assert.deepEqual(server.config, FORUM_AUTHORITY_CONFIG);
   assert.throws(() => createSquadForumServer("https://s3r.ch", statements, undefined as never, () => 100, "s".repeat(40)),
     /requires configured identity replay/);
 });

@@ -5,9 +5,9 @@ import type { DrawerAuthority } from "@/lib/forum-drawer";
 import { SquadDelegationProvider } from "./SquadDelegationProvider";
 import type { ForumAuthoritySource } from "@/lib/forum-authority-source";
 export type { ForumAuthoritySource } from "@/lib/forum-authority-source";
-import { createForumAuthority, type ForumAuthorityConfig } from "@/lib/identity/forum-authority";
+import { createForumAuthority, FORUM_AUTHORITY_CONFIG, type ForumAuthorityConfig } from "@/lib/identity/forum-authority";
 
-const denyConfig: ForumAuthorityConfig = { keys: [] };
+const denyConfig = FORUM_AUTHORITY_CONFIG;
 const Context = createContext<(ReturnType<typeof createForumAuthority> & Pick<DrawerAuthority, "publishChild" | "readChild"> & { admitStatement?: (item: Parameters<NonNullable<ForumAuthoritySource["admitStatement"]>>[0]) => Promise<boolean> }) | null>(null);
 export function ForumAuthorityProvider({ children, source }: { children: ReactNode; source?: ForumAuthoritySource }) {
   const authority = useMemo(() => {

@@ -6,7 +6,7 @@ import { createForumAuthority, type ForumAuthoritySnapshot } from "./identity/fo
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
 import { createBotStatementAdmission } from "./forum-bot-statement-admission";
 import { createForumAuthorityService } from "./forum-authority-service";
-import { SEA_OWNED_FORUM_AUTHORITY } from "./sea-owned-forum-policy";
+import { FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 import { seaToPrincipalKey } from "./identity/forum-check";
 import { mintSquadForumId } from "./squad-forum-mint";
 import type { SeaPair } from "./identity/sea";
@@ -59,16 +59,16 @@ test("two owners cannot write each other's squad forums without a grant", async 
   const origin = "https://s3r.ch";
   const auth = (key: string) => async () => ({ key });
   const statementsA = createBotStatementAdmission({
-    origin, config: SEA_OWNED_FORUM_AUTHORITY, authenticate: auth(ownerA.pub), source, clock: () => 100,
+    origin, config: FORUM_AUTHORITY_CONFIG, authenticate: auth(ownerA.pub), source, clock: () => 100,
   });
   const statementsB = createBotStatementAdmission({
-    origin, config: SEA_OWNED_FORUM_AUTHORITY, authenticate: auth(ownerB.pub), source, clock: () => 100,
+    origin, config: FORUM_AUTHORITY_CONFIG, authenticate: auth(ownerB.pub), source, clock: () => 100,
   });
   const authority = createForumAuthorityService({
-    origin, config: SEA_OWNED_FORUM_AUTHORITY, authenticate: auth(ownerA.pub),
+    origin, config: FORUM_AUTHORITY_CONFIG, authenticate: auth(ownerA.pub),
     read: async at => (await source.read(at, new AbortController().signal)).snapshot, clock: () => 100,
   });
-  const graph = createForumAuthority(SEA_OWNED_FORUM_AUTHORITY, () => 100);
+  const graph = createForumAuthority(FORUM_AUTHORITY_CONFIG, () => 100);
   const verified = await graph.refresh((await source.read(100, new AbortController().signal)).snapshot, 100);
   assert.ok(verified.ok);
   assert.equal(graph.graph.ownerOf(forumA), ownerA.pub);

@@ -1,5 +1,5 @@
 import type { ForumAuthorityConfig } from "./identity/forum-authority";
-import { SEA_OWNED_FORUM_AUTHORITY } from "./sea-owned-forum-policy";
+import { FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 
 export type SquadForumClientConfig = Readonly<{
   origin: string;
@@ -12,7 +12,7 @@ export type SquadForumClientConfig = Readonly<{
 export function squadForumClientConfig(origin: string): SquadForumClientConfig {
   return Object.freeze({
     origin,
-    config: SEA_OWNED_FORUM_AUTHORITY,
+    config: FORUM_AUTHORITY_CONFIG,
     sessionBase: "/api/identity/sea",
     authorityEndpoint: "/api/squad/authority",
     statementEndpoint: "/api/squad/statement",

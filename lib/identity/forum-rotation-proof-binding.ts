@@ -1,5 +1,4 @@
-import { verifyForumRotationWitness } from "./forum-rotation-witness";
-import type { ForumWitnessKey } from "./forum-witness-verification";
+import { verifyForumRotationTransition } from "./forum-sociacl-rotation";
 
 /** Direct recovery's witness/proof binding, separate from conflict evidence.
  * This does NOT validate SIWE wallet signatures, recovery-link eligibility,
@@ -8,9 +7,9 @@ import type { ForumWitnessKey } from "./forum-witness-verification";
  * Consumer copy of SociACL b7f9bc59 rotationClaimsMatch/siweProofHash.
  */
 export async function verifyForumRotationProofBinding(
-  input: unknown, trustedKeys: readonly ForumWitnessKey[], now: number,
-): Promise<ReturnType<typeof verifyForumRotationWitness>> {
-  const evidence = verifyForumRotationWitness(input, trustedKeys, now);
+  input: unknown, now: number,
+): Promise<import("./forum-sociacl-rotation").ForumRotationTransitionEvidence | null> {
+  const evidence = verifyForumRotationTransition(input, now);
   if (!evidence || evidence.recoveryProof === "malformed") return null;
   const r = evidence.record;
   if (!Object.hasOwn(r, "nextEpub") || r.authorizer.kind !== "wallet") return evidence;

@@ -1,5 +1,6 @@
 import { seaToPrincipalKey } from "./forum-check";
 import { parseForumRotationCandidate, type UnverifiedForumRotation } from "./forum-rotation-record";
+import { FORUM_SEA_SELF_ROTATION_LINK, verifyForumRotationTransition } from "./forum-sociacl-rotation";
 import { verifyForumRotationWitness } from "./forum-rotation-witness";
 import { verifyForumRotationProofBinding } from "./forum-rotation-proof-binding";
 import { parseForumWalletLinkRecord, type UnverifiedForumWalletLink } from "./forum-wallet-link-record";
@@ -132,7 +133,10 @@ export async function resolveForumRecoveryHistory(
       return revokes.revoked ? "revoked" : "valid";
     }
     async function transition(r: UnverifiedForumRotation, owner: string, history: readonly UnverifiedForumRotation[]): Promise<void> {
-      if (!await verifyForumRotationProofBinding(r, keys, r.issuedAt)) fail("missing-history");
+      if (keys.length) {
+        if (!verifyForumRotationWitness(r, keys, r.issuedAt)) fail("missing-history");
+      } else if (!await verifyForumRotationProofBinding(r, r.issuedAt)) fail("missing-history");
+      if (r.authorizer.link === FORUM_SEA_SELF_ROTATION_LINK && r.retainedLinks.length === 0 && !byId.has(r.authorizer.link)) return;
       const checked = new Map<string, Link>();
       for (const id of new Set([r.authorizer.link, ...r.retainedLinks])) {
         let valid: Link | undefined, revoked = false;
@@ -184,7 +188,11 @@ export async function resolveForumRecoveryHistory(
           spend();
           if (!p || p.record.principal !== owner) { report(owner, "rotation", index, "bad-record"); continue; }
           if (p.record.issuedAt > horizon) { report(owner, "rotation", index, "future-record"); continue; }
-          if (!verifyForumRotationWitness(p.record, keys, horizon)) { report(owner, "rotation", index, "bad-proof"); continue; }
+          const linkMap = new Map(byId);
+          const ok = keys.length
+            ? !!verifyForumRotationWitness(p.record, keys, horizon)
+            : !!verifyForumRotationTransition(p.record, horizon, linkMap, issuers);
+          if (!ok) { report(owner, "rotation", index, "bad-proof"); continue; }
           const group = groups.get(p.record.seq) ?? []; group.push({ record: p.record, bytes: p.bytes, index }); groups.set(p.record.seq, group);
         }
         const history: UnverifiedForumRotation[] = [];

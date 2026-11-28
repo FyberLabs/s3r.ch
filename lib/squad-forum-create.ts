@@ -7,7 +7,7 @@ import type { LiveSquadSpec } from "./squad-view";
 import { squadView } from "./squad-view";
 import type { BotStatementSource } from "./forum-bot-statement-admission";
 import { createForumAuthority } from "./identity/forum-authority";
-import { SEA_OWNED_FORUM_AUTHORITY } from "./sea-owned-forum-policy";
+import { FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 import { roomAuthorityDiagnosticsBlock } from "./room-authority-diagnostics";
 
 const labelPattern = /^[^\x00-\x1f\x7f]{1,80}$/;
@@ -98,7 +98,7 @@ export async function createSquadForum(input: {
   const spec = squadView({ forumId, owner: input.owner, label: input.body.label.trim() });
   const held = await input.source.read(at, AbortSignal.timeout(5000));
   const snapshot = structuredClone(held.snapshot);
-  const authority = createForumAuthority(SEA_OWNED_FORUM_AUTHORITY, clock);
+  const authority = createForumAuthority(FORUM_AUTHORITY_CONFIG, clock);
   const current = await authority.refresh(snapshot, at);
   if (!current.ok) throw new SquadCreateError("unavailable");
   const enrolled = new Set((snapshot.history?.accounts ?? []).map(a => a.principal));
