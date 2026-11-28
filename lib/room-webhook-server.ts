@@ -2,7 +2,7 @@ import { createRoomWebhookDelivery, type RoomWebhookSubscription } from "./room-
 import { roomWebhookCallback } from "./room-webhook-callback";
 import { createSpanopticonRecordStore } from "./spanopticon-record-store-server";
 import { StatementSourceConflict } from "./acl-statement-source-server";
-import { getSiteAclServer } from "./site-acl-server";
+import { getSquadForumServer } from "./squad-forum-server";
 import { createForumAuthority } from "./identity/forum-authority";
 import { roomAuthorityDiagnosticsBlock } from "./room-authority-diagnostics";
 import { readSeaRequestSession } from "./identity/sea-request-session";
@@ -19,7 +19,7 @@ import { encodeKey } from "./identity/check";
 
 const collectionHistorySeconds = 3_600;
 const clock = () => Math.floor(Date.now() / 1000);
-type SiteAcl = NonNullable<ReturnType<typeof getSiteAclServer>>;
+type SiteAcl = NonNullable<ReturnType<typeof getSquadForumServer>>;
 const reply = (status: number, body: unknown) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
 async function authorityFor(site: SiteAcl, room: string, signal: AbortSignal, freezeSnapshot = false) {
@@ -33,7 +33,7 @@ async function authorityFor(site: SiteAcl, room: string, signal: AbortSignal, fr
       if (error instanceof StatementSourceConflict) continue;
       throw error;
     }
-    const authority = createForumAuthority(site.config.authority, freezeSnapshot ? () => at : clock);
+    const authority = createForumAuthority(site.config, freezeSnapshot ? () => at : clock);
     const verified = await authority.refresh(snapshot, at);
     if (clock() !== at) continue;
     if (verified.ok && !roomAuthorityDiagnosticsBlock(verified.diagnostics, snapshot, authority.graph, room)) {
@@ -51,14 +51,14 @@ function runtime() {
   const apiKey = process.env.S3RCH_ROOM_WEBHOOK_RECORD_API_KEY;
   if (!secret || !origin || !tenant || !apiKey) return;
   if (secret.length < 32 || tenant !== process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID) throw Error("Invalid room webhook configuration");
-  const site = getSiteAclServer();
+  const site = getSquadForumServer();
   if (!site) return;
-  const callback = roomWebhookCallback(site.config.origin);
+  const callback = roomWebhookCallback(site.origin);
   if (!callback) return;
   const delivery = createRoomWebhookDelivery({
     records: createSpanopticonRecordStore({ origin, tenant, apiKey }), secret,
     async canDeliver(subscription, signal, event) {
-      if (!await nativeRoomBotGun(site.config.origin).isShared(subscription.room, subscription.owner, signal)) return false;
+      if (!await nativeRoomBotGun(site.origin).isShared(subscription.room, subscription.owner, signal)) return false;
       for (let attempt = 0; attempt < 2; attempt++) {
         const { at, graph } = await authorityFor(site, subscription.room, signal);
         const author = event?.type === "room.message.created" ? event.message.author : event?.object.author;
@@ -92,7 +92,7 @@ export async function roomWebhookRequest(request: Request, action: "manage" | "r
     const enabled = runtime();
     if (!enabled) return reply(503, { error: "webhooks-unavailable" });
     const { site, delivery, callback } = enabled;
-    const origin = new URL(site.config.origin);
+    const origin = new URL(site.origin);
     if (!matchesRequestOrigin(request, origin)) return reply(403, { error: "origin" });
     if (action === "inbox") {
       const bot = await authenticateAgentRequest(request, ["room:webhook:read"]);
@@ -153,7 +153,7 @@ async function collectRoomEvents(enabled: NonNullable<ReturnType<typeof runtime>
     observed.delete(room);
   }
   if (!rooms.length) return;
-  const mesh = nativeRoomBotGun(site.config.origin);
+  const mesh = nativeRoomBotGun(site.origin);
   const [room, owner] = rooms[cursor++ % rooms.length];
   if (!await mesh.isShared(room, owner, signal)) return;
   const snapshot = await authorityFor(site, room, signal, true);

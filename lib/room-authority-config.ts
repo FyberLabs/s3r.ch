@@ -14,8 +14,8 @@ export type RoomAuthorityConfig = {
 function parseRoomAuthorityConfig(value: unknown): RoomAuthorityConfig | null {
   if (!value || typeof value !== "object") return null;
   const config = value as Record<string, unknown>;
-  if (config.authorityEndpoint !== "/api/site/authority" ||
-      config.statementEndpoint !== "/api/site/statement" ||
+  if (config.authorityEndpoint !== "/api/squad/authority" ||
+      config.statementEndpoint !== "/api/squad/statement" ||
       config.sessionBase !== "/api/identity/sea" ||
       typeof config.origin !== "string" || !config.config || !config.squad ||
       typeof config.squad !== "object") return null;
@@ -25,7 +25,7 @@ function parseRoomAuthorityConfig(value: unknown): RoomAuthorityConfig | null {
 /** Runtime-only public projection; the static feed never embeds deployment config. */
 export async function readRoomAuthorityConfig(signal: AbortSignal, fetcher: typeof fetch = fetch): Promise<RoomAuthorityConfig | null> {
   signal.throwIfAborted();
-  const response = await fetcher("/api/site/room-config", { method: "GET", mode: "same-origin", credentials: "same-origin",
+  const response = await fetcher("/api/squad/client-config", { method: "GET", mode: "same-origin", credentials: "same-origin",
     redirect: "error", cache: "no-store", signal });
   if (!response.ok || response.redirected ||
       response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {

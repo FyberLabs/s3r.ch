@@ -2,7 +2,7 @@
 
 **Retired.** The `S3RCH_SQUAD_PILOT` environment variable and `/api/squad/pilot/*`
 routes are removed. Forum statement admission, authority, and meeting signaling
-now use `/api/site/*` when ACL mode is configured ([configuration.md](configuration.md)).
+now use `/api/squad/*` when ACL mode is configured ([configuration.md](configuration.md)). `/api/site/*` forum ACL is retired.
 The sections below describe the historical pilot contract for archival reference.
 
 The Squad pilot could route owner intents to Plane's bot registry. Configure the

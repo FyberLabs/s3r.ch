@@ -84,14 +84,14 @@ Settings outside this table (`SEED_SECRET`, `PORT`, `HOSTNAME`, `NODE_ENV`, and 
 
 `S3RCH_IDENTITY_STORAGE_ROOT` is not read. A user-assigned Azure identity also needs `AZURE_CLIENT_ID` (the client id, not a secret). The Azure SDK reads that name; this table does not, and the checker does not scan it.
 
-## Site ACL and session secrets
+## Session secrets and squad forums
 
 | Setting | Required | Default | Secret | What it does |
 | --- | --- | --- | --- | --- |
 | `S3RCH_SESSION_SIGNING_KEY` | yes in production | development fallback when unset and not production | yes | HMAC key for session and nonce cookies until asymmetric session tokens land. Minimum 32 characters. |
 | `S3RCH_MEDIA_SIGNING_KEY` | yes in production | development fallback when unset and not production | yes | Separate HMAC key for public feed media and conversation ticket signing. Minimum 32 characters. |
 | `S3RCH_SERVICE_CREDENTIAL` | for ACL backend | unset | yes | Single infrastructure credential for ACL statement reads/writes and identity replay consume. Replaces the retired per-hop API keys. |
-| `S3RCH_SITE_ORIGIN` | optional for site ACL | unset | no | Canonical HTTPS site origin for `/api/site/*`. When unset, the app infers it from `S3RCH_GUN_HEALTH_URL` (peer health URL host) or `S3RCH_RELEASE_COLOR` (`test` → `https://test.s3r.ch`, production aliases → `https://s3r.ch`). Startup does not treat a missing explicit value as a boot error. |
+| `S3RCH_SITE_ORIGIN` | optional | unset | no | Canonical HTTPS site origin for session CORS and browser clients. When unset, the app infers it from `S3RCH_GUN_HEALTH_URL` (peer health URL host) or `S3RCH_RELEASE_COLOR` (`test` → `https://test.s3r.ch`, production aliases → `https://s3r.ch`). This does not enable a site-wide forum witness policy. |
 
 ### Public feed storage migration
 
@@ -234,14 +234,20 @@ identity replay backend and does not construct a Blob ledger or replay store.
 Legacy assignment mutations return unavailable in this mode; they cannot write
 a second authority journal. Existing session wire formats remain unchanged.
 
-The application no longer exposes `/api/squad/pilot/*`. When
-`S3RCH_AUTHORITY_BACKEND=acl` and the ACL statement source are configured, forum
-statement admission, authority reads, room routing and meeting signaling use
-`/api/site/*` with forum scope taken from each request instead of a singleton
-pilot blob. SEA-owned forums derive local SIWE bounds from the resolved site
-origin; witness keys remain in ACL history, not a site-wide deployment JSON.
-Missing ACL statement-source settings leave those routes unavailable without
-blocking App Service startup.
+The application no longer exposes `/api/squad/pilot/*` or site-wide
+`/api/site/*` forum ACL (`503 site-forum-acl-retired`). Retired settings such as
+`S3RCH_FORUM_AUTHORITY` and `S3RCH_SQUAD_PILOT` are not read.
+
+SEA-owned squads use `/api/squad/*`. Each forum’s authority is the owner’s SEA
+public key: an `object` row on the forum id, plus `see` / `post` grants the owner
+signs in SociACL Check. There is no deployment JSON for witness keys or pinned
+issuers. `POST /api/squad/create` admits a signed bootstrap from the authenticated
+owner; statement and authority handlers take `forumId` and `owner` from each
+request and verify them against the current ACL snapshot.
+
+When `S3RCH_AUTHORITY_BACKEND=acl` and the ACL statement source are configured,
+squad routes can talk to the provisioned statement source. Missing statement-source
+settings leave squad forum routes unavailable without blocking App Service startup.
 
 Sessions use only `/api/identity/sea`. There is no squad session alias and no
 wallet-keyed session route.

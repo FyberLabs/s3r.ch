@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
-import { siteAclReady } from "./site-acl-server";
+import { squadForumReady } from "./squad-forum-server";
 import { StatementSourceConflict } from "./acl-statement-source-server";
 import { createForumAuthorityService } from "./forum-authority-service";
 import { createHttpForumAuthorityReader } from "./forum-authority-http";
@@ -84,12 +84,12 @@ test("aborting a stalled request body cancels it without reading storage", async
   assert.equal((await result).status, 503); assert.equal(cancelled, true); assert.equal(h.reads(), 0);
 });
 
-test("site ACL health rereads the owner source after rollover and requires current ownership", async () => {
+test("squad forum health rereads the owner source after rollover and requires current ownership", async () => {
   const signal = new AbortController().signal;
   for (const outcome of ["valid", "stale", "missing-owner", "expired-again"]) {
     let now = at - 1;
     const reads: number[] = [];
-    const ready = await siteAclReady({ config: { authority: config }, source: {
+    const ready = await squadForumReady({ source: {
       async read(second) {
         reads.push(second);
         if (reads.length === 1 || outcome === "expired-again") {

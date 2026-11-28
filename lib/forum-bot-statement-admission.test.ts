@@ -148,7 +148,7 @@ test("Plane update admission verifies the bot and signed body and uses only the 
     principal: f.b.pub, statementId: signed.id, status: "completed" });
   const proof = { ...fields, attestation: Buffer.from(p256.sign(transcript,
     Buffer.from(f.b.priv, "base64url"), { prehash: true, format: "compact" })).toString("base64url") };
-  const request = (update?: object) => new Request(origin + "/api/site/statement", { method: "POST",
+  const request = (update?: object) => new Request(origin + "/api/squad/statement", { method: "POST",
     headers: { Origin: origin, "Content-Type": "application/json" },
     body: JSON.stringify({ version: 1, forumId: f.forum, owner: f.owner.pub,
       evaluatedAt: f.now(), rows: additions, ...(update ? { update } : {}) }) });

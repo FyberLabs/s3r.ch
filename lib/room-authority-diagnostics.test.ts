@@ -139,26 +139,28 @@ test("room readiness rejects grant, cancellation and malformed diagnostics", asy
 });
 
 
-test("retired room ownership cannot deny unrelated statement writes or site health", async () => {
+test("retired room ownership cannot deny unrelated statement writes or squad health", async () => {
  const {createBotStatementAdmission}=await import("./forum-bot-statement-admission");
- const {siteAclReady}=await import("./site-acl-server");
+ const {squadForumReady}=await import("./squad-forum-server");
+ const {SEA_OWNED_FORUM_AUTHORITY}=await import("./sea-owned-forum-policy");
  const room=`room_${seaToPrincipalKey(owner)}_${"8".repeat(32)}`;
  const statement=`stmt_${seaToPrincipalKey(owner)}_${"9".repeat(32)}`;
  const retired=signed("object",{object:room,owner},1,time-40);
- const renewed=signed("object",{object:room,owner},2,time-10);
- const target=signed("object",{object:statement,owner},2,time);
- let held=snapshot([old,fresh,retired,renewed]),appends=0;
- const service=createBotStatementAdmission({origin:"https://room.test",config,clock:()=>time,
-  authenticate:async()=>({key:key(2)}),source:{read:async()=>({snapshot:held,fence:"held"}),
+ const renewed=signed("object",{object:room,owner},1,time-10);
+ const target=signed("object",{object:statement,owner},1,time);
+ const forumCurrent=signed("object",{object:forum,owner},1,time-10);
+ let held=snapshot([forumCurrent,retired,renewed]),appends=0;
+ const service=createBotStatementAdmission({origin:"https://room.test",config:SEA_OWNED_FORUM_AUTHORITY,clock:()=>time,
+  authenticate:async()=>({key:owner}),source:{read:async()=>({snapshot:held,fence:"held"}),
    append:async(_fence,rows,guard)=>{guard();appends++;held={...held,rows:[...held.rows,...rows]};return true;}}});
  const request=(rows:unknown[])=>new Request("https://room.test/statement",{method:"POST",headers:{Origin:"https://room.test","Content-Type":"application/json"},
   body:JSON.stringify({version:1,forumId:forum,owner,evaluatedAt:time,rows})});
- const ready=()=>siteAclReady({config:{authority:config},source:{read:async()=>held}},new AbortController().signal,()=>time);
+ const ready=()=>squadForumReady({source:{read:async()=>held}},new AbortController().signal,()=>time);
  assert.equal(await ready(),true);assert.equal((await service(request([]))).status,200);
  assert.equal((await service(request([target]))).status,200);assert.equal(appends,1);
- for(const rows of [[old,retired],[fresh,{...retired,record:{...retired.record as object,sig:"forged"}}],
-  ...[0,1].map(stated=>[fresh,signed("see",{object:forum,owner,accessor:owner,stated,from:0,until:time+60,hamState:1},1,time-40)])]) {
-  held=snapshot(rows);assert.equal(await ready(),false);
+ const stale={...snapshot([forumCurrent]),completeThrough:time-1,history:{...snapshot([forumCurrent]).history,completeThrough:time-1}};
+ for(const heldCase of [snapshot([]),snapshot([forumCurrent,{...retired,record:{...retired.record as object,sig:"forged"}}]),stale]) {
+  held=heldCase;assert.equal(await ready(),false);
   assert.equal((await service(request([]))).status,403);
   assert.equal((await service(request([target]))).status,403);
  }
@@ -168,7 +170,7 @@ test("retired room ownership cannot deny unrelated statement writes or site heal
 test('vault session resolution accepts current rotated key beside retired ownership history',async()=>{
  const {createVaultApiResolver}=await import('./vault-api-server');
  let held=snapshot([old,fresh]),sessionKey=key(2);
- const site={config:{authority:config},source:{read:async()=>held},services:{authenticate:async()=>({key:sessionKey})}};
+ const site={config,source:{read:async()=>held},services:{authenticate:async()=>({key:sessionKey})}};
  const resolve=createVaultApiResolver(site,()=>time);
  const request=new Request('https://vault.example/api/vault'),signal=new AbortController().signal;
  assert.deepEqual(await resolve(request,signal),{owner,key:key(2)});
