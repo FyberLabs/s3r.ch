@@ -486,5 +486,5 @@ function chatItem(draft: ChatDraft, index: number): FeedItem {
   };
 }
 
-export const PILOT_CHAT: FeedItem[] = chatDrafts.map(chatItem);
+export const PILOT_CHAT: FeedItem[] = chatDrafts.map((draft, index) => chatItem(draft, index));
 
