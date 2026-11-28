@@ -27,7 +27,7 @@ export function parseSquadCreateRequest(body: unknown): SquadCreateRequest | nul
   if (!Array.isArray(row.rows) || row.rows.length < 1 || row.rows.length > 8) return null;
   for (const envelope of row.rows) {
     if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) return null;
-    const keys = Object.keys(envelope).sort().join();
+    const keys = Object.keys(envelope).sort((left, right) => left.localeCompare(right, "en")).join();
     if (keys !== "kind,record,soul") return null;
   }
   return row as SquadCreateRequest;
@@ -109,8 +109,8 @@ export function createSquadForumHandler(
   source: BotStatementSource,
   clock = () => Math.floor(Date.now() / 1000),
 ) {
-  const reply = (status: number, body: unknown = { error: "unavailable" }) =>
-    Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
+  const reply = (status: number, body?: unknown) =>
+    Response.json(body ?? { error: "unavailable" }, { status, headers: { "Cache-Control": "no-store" } });
   return async (request: Request): Promise<Response> => {
     try {
       if (request.method !== "POST") return reply(405, { error: "method" });
