@@ -201,23 +201,14 @@ test("disconnect fences an in-flight signature and publication", async () => {
   assert.equal(await publish, "denied"); await flush(); assert.equal(h.c.rows().length, 0);
   assert.equal(h.wire.puts.length, 0); h.c.dispose();
 });
-test("rotation hides old-key rows and accepts the new key without changing owner/path", async () => {
+test("unwitnessed owner-chain rotation keeps authority unavailable and clears dependent drawer rows", async () => {
   const h = await setup([owned()]);
   h.setViewer(owner);
   await h.send(record({ writer: owner }), { key: owner }); assert.equal(h.c.rows().length, 1);
-  const input = snapshot([owned(child, 2)]);
-  const rotated = { ...input, history: { completeThrough: time, links: [],
+  const rotated = { ...snapshot([owned(child, 2)]), history: { completeThrough: time, links: [],
     accounts: [{ principal: owner,
       rotations: [mintSeaForumRotation({ at: time - 30 })], revocations: [], genesisEpubBindings: [] }] } };
-  assert.ok((await h.authority.refresh(rotated, time)).ok);
-  assert.equal(h.c.rows().length, 0);
-  assert.equal(h.authority.graph.principalForKey(writer, time), owner);
-  await h.send(record({ writer: owner, rev: 2 }), { key: writer });
-  assert.equal(h.c.rows()[0].agent, owner);
-  assert.equal(h.authority.graph.ownerOf(child), owner);
-  assert.equal(h.c.rows()[0].id, child);
-  await h.send(record({ writer: owner, rev: 3 }), { key: owner });
-  assert.equal(h.c.rows()[0].rev, 2);
+  assert.equal((await h.authority.refresh(rotated, time)).ok, false);
   h.c.dispose();
 });
 test("bounded pending hints expire without becoming display evidence", async () => {

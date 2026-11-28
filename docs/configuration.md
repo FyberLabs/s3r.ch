@@ -266,8 +266,7 @@ owner does not lend its object grants to the bot. A token alone is not an object
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `S3RCH_AGENT_SESSION_CONFIG` | Unset (disabled) | Private JSON with exact `origin` and `source` (`origin`, `tenant`, `scope`). Agent authority is verified only through SociACL owner-signed delegations from the source; embedded `authority` witness blocks are rejected. Requires `S3RCH_DELEGATION_SOURCE_API_KEY`. |
-| `S3RCH_DELEGATION_SOURCE_API_KEY` | Unset | Dedicated service key with `acl:delegations:read` and the operator-bound tenant/subject/scope. It is never sent to the client. |
+| `S3RCH_AGENT_SESSION_CONFIG` | Unset (disabled) | Private JSON with exact `origin` and `source` (`origin`, `tenant`, `scope`). Agent authority is verified only through SociACL owner-signed delegations from the source; embedded `authority` witness blocks are rejected. Requires `S3RCH_SERVICE_CREDENTIAL`. |
 
 The origin must match the configured s3r.ch deployment. The delegation source and
 existing Spanopticon identity replay settings must name the same tenant. The

@@ -1,3 +1,6 @@
+/** Self-authorized SEA rotation when no recovery authorizer link row is present. */
+export const FORUM_SEA_SELF_ROTATION_LINK = "0".repeat(64);
+
 /** Consumer copy of SociACL rotation wire/signing contracts (b7f9bc59).
  * This is parsing, not authenticated history. A next-key signature alone cannot
  * authorize recovery: link eligibility, SIWE/OIDC, timestamp witnesses, retained

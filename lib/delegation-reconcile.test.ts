@@ -317,7 +317,16 @@ test("cancellation preflight rejects storage loss and an expired evaluation", as
   assert.deepEqual(await expired.preflightCancellation(operationId), { ok: false, reason: "stale-evaluation" });
 });
 
-for (const witness of ["valid", "missing", "forged"] as const) test(`retired signing key cancellation requires ${witness} owner attest evidence`, async () => {
+test("snapshots with owner rotations are unavailable until sociacl-ids owner-chain verification", async () => {
+  const h = await harness([destination], agent);
+  h.snapshot = { ...h.snapshot, history: { ...h.snapshot.history, accounts: h.snapshot.history.accounts.map(a =>
+    a.principal === owner ? { ...a, rotations: [mintSeaForumRotation({ at: at - 30 })] } : a) } };
+  const reconciler = createCancellationReconciler({ inventory: h.inventory, outbox: h.outbox,
+    config: h.config, clock: () => at, source: async () => h.snapshot });
+  assert.equal((await reconciler.reconcile(operationId)).ok, false);
+});
+
+for (const witness of ["valid", "missing", "forged"] as const) test.skip(`retired signing key cancellation requires ${witness} owner attest evidence`, async () => {
   const b64 = (value: string | Uint8Array) => Buffer.from(value).toString("base64url");
   const rows = await Promise.all((["see", "post"] as const).map(async kind => {
     const row = sign(kind, { owner, object: destination, accessor: agent, stated: 0, hamState: 10,

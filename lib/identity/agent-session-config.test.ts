@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { agentSessionConfig } from "./agent-session-config";
 const origin = "https://s3r.ch";
 const config = () => ({ origin, source: { origin: "https://acl.example", tenant: "tenant", scope: "agents" } });
-const env = (value: unknown) => ({ S3RCH_AGENT_SESSION_CONFIG: JSON.stringify(value), S3RCH_DELEGATION_SOURCE_API_KEY: "private-key" });
+const env = (value: unknown) => ({ S3RCH_AGENT_SESSION_CONFIG: JSON.stringify(value), S3RCH_SERVICE_CREDENTIAL: "private-key" });
 
 test("agent session configuration is absent by default and explicit when supplied", () => {
   assert.equal(agentSessionConfig(origin, {}), undefined);
@@ -15,7 +15,7 @@ test("agent session configuration is absent by default and explicit when supplie
 });
 
 test("partial, oversized, duplicate and wrong-origin configurations deny", () => {
-  for (const value of [{ S3RCH_DELEGATION_SOURCE_API_KEY: "private-key" }, { S3RCH_AGENT_SESSION_CONFIG: "{}" },
+  for (const value of [{ S3RCH_SERVICE_CREDENTIAL: "private-key" }, { S3RCH_AGENT_SESSION_CONFIG: "{}" },
     { ...env(config()), S3RCH_AGENT_SESSION_CONFIG: " ".repeat(65537) },
     { ...env(config()), S3RCH_AGENT_SESSION_CONFIG: '{"origin":"a","origin":"b"}' },
     env({ ...config(), origin: "https://foreign.example" }), env({})]) {

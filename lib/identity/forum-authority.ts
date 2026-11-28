@@ -4,7 +4,6 @@ import { resolveForumRecoveryHistory, type ForumRecoverySnapshot } from "./forum
 import { verifyForumKeySignature } from "./forum-key-signature";
 import type { ForumKeyResolver } from "./forum-object-verification";
 import type { ForumSiwePolicy } from "./forum-siwe";
-import { verifyForumAclAttestByOwner } from "./forum-sociacl-rotation";
 import { recoveryObject, recoveryList, recoveryInteger, recoveryId } from "./forum-recovery-records";
 
 /** Wallet-link SIWE verification is fail-closed without deployment sign-in policy on forum authority. */
@@ -167,7 +166,7 @@ export function createForumAuthority(config: ForumAuthorityConfig = FORUM_AUTHOR
           })])];
         if (principals.length > 128) return fail("capacity");
         const results = await Promise.all(principals.map(owner =>
-          resolveForumRecoveryHistory(owner, snapshot.history as ForumRecoverySnapshot, [], FAIL_CLOSED_SIWE_POLICY, [], at)));
+          resolveForumRecoveryHistory(owner, snapshot.history as ForumRecoverySnapshot, [], FAIL_CLOSED_SIWE_POLICY, at)));
         const histories = new Map(principals.map((owner, i) => [owner, results[i]]));
         // Missing/forked authority for any evidence signer invalidates the
         // entire snapshot, including previously admitted rows/cancels.
@@ -183,12 +182,7 @@ export function createForumAuthority(config: ForumAuthorityConfig = FORUM_AUTHOR
           const key = resolver(p.signer, r.issuedAt, at);
           if (!key || !validRowSignature(key.keyAtIssuedAt, r.sig, p.bytes)) { diagnostics.push({ index, reason: "bad-proof" }); continue; }
           if (key.keyAtIssuedAt !== key.currentKey) {
-            const claims = p.cancellation && "attest" in r && typeof r.attest === "string"
-              ? verifyForumAclAttestByOwner(r.attest, key.currentKey, r.issuedAt, at) : null;
-            if (!claims || Object.keys(claims).some(k => !["typ", "principal", "recordId", "iat", "exp"].includes(k)) || claims.typ !== "sociacl-acl-attest-v1" ||
-              claims.principal !== p.signer || claims.iat !== r.issuedAt || claims.recordId !== await recoveryId(p.bytes)) {
-              diagnostics.push({ index, reason: "retired-key" }); continue;
-            }
+            diagnostics.push({ index, reason: "retired-key" }); continue;
           }
           if (p.kind === "cancel") {
             cancelEvidence.push(p);

@@ -1,5 +1,5 @@
 import { p256 } from "@noble/curves/nist.js";
-import { FORUM_SEA_SELF_ROTATION_LINK } from "./forum-sociacl-rotation";
+import { FORUM_SEA_SELF_ROTATION_LINK } from "./forum-rotation-record";
 import { parseForumRotationCandidate } from "./forum-rotation-record";
 
 const b64 = (value: string | Uint8Array) => Buffer.from(value).toString("base64url");

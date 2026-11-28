@@ -182,35 +182,19 @@ async function attest(row: ForumAuthoritySnapshot["rows"][number], signingKey = 
   return { row: { ...row, record: { ...(row.record as object), attest: token } } };
 }
 
-test("after owner key rotation, retired-key grants reject and current-key grants accept", async () => {
+test("snapshots with owner rotations are unavailable until sociacl-ids owner-chain verification", async () => {
   const a = createForumAuthority(config, () => time);
-  const currentObject = sign("object", { object, owner }, 2);
-  const newGrant = sign("see", { owner, object, accessor: helper, stated: 1, hamState: 1, from: time - 1, until: time + 100 }, 2);
-  const oldGrant = sign("see", { owner, object, accessor: helper, stated: 1, hamState: 1, from: time - 1, until: time + 100, issuedAt: time - 20 }, 1);
-  assert.ok((await a.refresh(rotatedSnapshot([currentObject, newGrant]), time)).ok);
-  assert.equal(checkForumSee(a.graph, object, helper, time).allowed, true);
-  assert.equal(a.graph.writerKey(owner, time, time), pub(2));
-  await a.refresh(rotatedSnapshot([currentObject, oldGrant]), time);
-  assert.equal(checkForumSee(a.graph, object, helper, time).allowed, false);
+  const currentObject = sign("object", { object, owner }, 1);
+  const newGrant = sign("see", { owner, object, accessor: helper, stated: 1, hamState: 1, from: time - 1, until: time + 100 }, 1);
+  assert.equal((await a.refresh(rotatedSnapshot([currentObject, newGrant]), time)).ok, false);
+  assert.equal(a.graph.ownerOf(object), undefined);
 });
 
-test("retired-key live grants are rejected while owner-attested cancellation still constrains fresh rows", async () => {
-  const oldCancel = sign("see", { owner, object, accessor: helper, stated: 0, hamState: 10, from: 0, until: time + 100, issuedAt: time - 40 });
-  const witnessed = await attest(oldCancel);
+test("snapshots carrying unwitnessed owner rotations never admit grants", async () => {
   const a = createForumAuthority(config, () => time);
-  const newObject = sign("object", { object, owner }, 2), newGrant = sign("see", { owner, object, accessor: helper, stated: 1, hamState: 9, from: 0, until: time + 100 }, 2);
-  assert.ok((await a.refresh(rotatedSnapshot([newObject, newGrant]), time)).ok);
-  assert.equal(checkForumSee(a.graph, object, helper, time).allowed, true);
-  await a.refresh(rotatedSnapshot([newObject, newGrant, witnessed.row]), time);
-  assert.equal(a.graph.ownerOf(object), owner); assert.equal(checkForumSee(a.graph, object, helper, time).allowed, false);
-  await a.refresh(rotatedSnapshot([newObject, newGrant, oldCancel]), time);
-  assert.equal(checkForumSee(a.graph, object, helper, time).allowed, true);
-  const oldAllow = sign("see", { owner, object, accessor: helper, stated: 1, hamState: 20, from: 0, until: time + 100, issuedAt: time - 40 });
-  const witnessedAllow = await attest(oldAllow);
-  await a.refresh(rotatedSnapshot([newObject, witnessedAllow.row]), time);
+  const newGrant = sign("see", { owner, object, accessor: helper, stated: 1, hamState: 1, from: time - 1, until: time + 100 }, 1);
+  assert.equal((await a.refresh(rotatedSnapshot([owned(), newGrant]), time)).ok, false);
   assert.equal(checkForumSee(a.graph, object, helper, time).allowed, false);
-  await a.refresh(rotatedSnapshot([owned(), newGrant]), time);
-  assert.equal(a.graph.ownerOf(object), undefined);
 });
 
 test.skip("missing recovery evidence denies ownership and forged witness cannot preserve an old cancellation", async () => {

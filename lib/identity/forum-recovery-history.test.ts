@@ -23,7 +23,9 @@ function setup(v: Vector) {
       revocations: (v.revocations ?? []).map(i => records[i]),
     })),
   };
-  return { owner, at, input, keys: (v.jwks ?? ctx.jwks).keys as ForumWitnessKey[], policy: v.policy ?? ctx.policy, issuers: v.pinnedIss ?? ctx.pinnedIss };
+  const pinnedOidcIssuers = v.pinnedIss ?? ctx.pinnedIss;
+  const policy = { ...(v.policy ?? ctx.policy), pinnedOidcIssuers };
+  return { owner, at, input, keys: (v.jwks ?? ctx.jwks).keys as ForumWitnessKey[], policy };
 }
 // Deliberate consumer restrictions: authenticated sequence/key-reuse evidence
 // denies the entire projection instead of returning the preceding key. Future
@@ -35,8 +37,8 @@ const stricterConflicts = new Set([
   "probe-v3-v2-v3-reuses-first-epub", "binding-reused-by-later-next-epub", "probe-genesis-epub-at-seq-2",
 ]);
 for (const v of cases) test(`upstream recovery: ${v.name}`, async () => {
-  const { owner, at, input, keys, policy, issuers } = setup(v);
-  const result = await resolveForumRecoveryHistory(owner, input, keys, policy, issuers, at);
+  const { owner, at, input, keys, policy } = setup(v);
+  const result = await resolveForumRecoveryHistory(owner, input, keys, policy, at);
   const override = stricterConflicts.has(v.name) ? "rotation-conflict" :
     v.name === "sequence-gap" || v.name === "rotated-external-owner-blocks-recovery" ? "missing-history" : null;
   // Upstream's foreign-history case supplies a trusted projection without its
@@ -109,7 +111,8 @@ async function mintRevoke(link: string, at: number, key: number, attested: boole
 function bundle(rotations: readonly unknown[], links: readonly unknown[], revocations: readonly unknown[] = [], bindings: readonly unknown[] = []): ForumRecoverySnapshot {
   return { completeThrough: 200, links, accounts: [{ principal: pub(1), rotations, revocations, genesisEpubBindings: bindings }] };
 }
-const run = (input: ForumRecoverySnapshot, at = 200) => resolveForumRecoveryHistory(pub(1), input, trust, ctx.policy, ctx.pinnedIss, at);
+const witnessPolicy = { ...ctx.policy, pinnedOidcIssuers: ctx.pinnedIss };
+const run = (input: ForumRecoverySnapshot, at = 200) => resolveForumRecoveryHistory(pub(1), input, trust, witnessPolicy, at);
 function denied(result: Awaited<ReturnType<typeof run>>, reason: string) { assert.equal(result.ok, false); if (!result.ok) assert.equal(result.reason, reason); }
 
 test("raw snapshot absence, stale completeness, missing lists and duplicate accounts deny", async () => {
@@ -127,14 +130,14 @@ test("list, aggregate, and policy limits fail without truncation", async () => {
   denied(await run(bundle([], new Array(1025))), "bad-input");
   const accounts = Array.from({ length: 5 }, (_, i) => ({ principal: pub(i + 1), rotations: new Array(900), revocations: [], genesisEpubBindings: [] }));
   denied(await run({ ...bundle([], []), accounts }), "resource-limit");
-  denied(await resolveForumRecoveryHistory(pub(1), bundle([], []), trust, { ...ctx.policy, clockSkewSeconds: 301 }, ctx.pinnedIss, 200), "bad-input");
+  denied(await resolveForumRecoveryHistory(pub(1), bundle([], []), trust, { ...ctx.policy, clockSkewSeconds: 301 }, 200), "bad-input");
 });
 
 test("async proof verification uses detached records, policies, witnesses and revocations", async () => {
   const w = await mintWallet(), r = await mintRotation(w.id);
   const input = structuredClone(bundle([r], [w.row]));
   const keys = structuredClone(trust), policy = structuredClone(ctx.policy);
-  const pending = resolveForumRecoveryHistory(pub(1), input, keys, policy, ctx.pinnedIss, 200);
+  const pending = resolveForumRecoveryHistory(pub(1), input, keys, policy, 200);
   (input.links as unknown[]).length = 0; (input.accounts as unknown[]).length = 0;
   keys[0] = { ...keys[0], notAfter: 0 }; policy.allowedDomains.length = 0;
   const result = await pending; assert.ok(result.ok); assert.equal(result.currentKey, pub(2));
@@ -192,7 +195,7 @@ test("OIDC fallback requires pinned link and exact transition witness; active wa
   const o = await mintOidc(), w = await mintWallet(), r = await mintRotation(o.id, { oidc: true });
   assert.ok((await run(bundle([r], [o.row]))).ok);
   denied(await run(bundle([r], [o.row, w.row])), "rotation-conflict");
-  denied(await resolveForumRecoveryHistory(pub(1), bundle([r], [o.row]), trust, ctx.policy, [], 200), "missing-history");
+  denied(await resolveForumRecoveryHistory(pub(1), bundle([r], [o.row]), trust, { ...ctx.policy, pinnedOidcIssuers: [] }, 200), "missing-history");
   const unsigned = await run(bundle([{ ...r, attest: "bad" }], [o.row]));
   assert.ok(unsigned.ok); assert.equal(unsigned.currentKey, pub(1));
 });

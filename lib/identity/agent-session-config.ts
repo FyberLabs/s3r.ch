@@ -16,7 +16,7 @@ const DELEGATION_TRUST: DelegationTrust = Object.freeze({
 
 /** Deployment source binding only. Never accepts request configuration or witness trust. */
 export function agentSessionConfig(origin: string, env: Readonly<Record<string, string | undefined>>) {
-  const raw = env.S3RCH_AGENT_SESSION_CONFIG, apiKey = env.S3RCH_DELEGATION_SOURCE_API_KEY;
+  const raw = env.S3RCH_AGENT_SESSION_CONFIG, apiKey = env.S3RCH_SERVICE_CREDENTIAL;
   if (!raw && !apiKey) return undefined;
   if (!raw || !apiKey || Buffer.byteLength(raw) > 65536) throw Error("Incomplete agent session configuration");
   const config = object(uniqueJson(raw), "origin,source");
