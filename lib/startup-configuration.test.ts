@@ -13,7 +13,6 @@ test("startup reports names only and recognizes unresolved Key Vault references"
     S3RCH_SERVICE_CREDENTIAL: "private-service",
     S3RCH_AUTHORITY_BACKEND: "acl",
     S3RCH_SITE_ORIGIN: "private-origin",
-    S3RCH_FORUM_AUTHORITY: "private-authority",
     S3RCH_STATEMENT_SOURCE_ORIGIN: "private-origin",
     S3RCH_STATEMENT_SOURCE_TENANT_ID: "private-tenant",
     S3RCH_STATEMENT_SOURCE_SCOPE: "private-scope",

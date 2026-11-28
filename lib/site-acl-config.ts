@@ -66,15 +66,27 @@ export function resolveSiteOrigin(env: Record<string, string | undefined>): stri
   return undefined;
 }
 
-/** Witness policy alone enables site ACL; origin is optional and inferred when absent. */
-export function parseSiteAclConfig(env: Record<string, string | undefined>): SiteAclConfig | null {
-  const authorityRaw = env.S3RCH_FORUM_AUTHORITY?.trim();
-  if (!authorityRaw) return null;
-  const origin = resolveSiteOrigin(env);
-  if (!origin) return null;
+/** SEA-owned forums use deployment-local SIWE bounds only; witness keys ship in ACL history. */
+export function deriveSiteForumAuthority(origin: string): ForumAuthorityConfig {
   const url = new URL(origin);
   if (url.origin !== origin || url.protocol !== "https:") throw Error("invalid site origin");
-  return { origin, authority: parseForumAuthorityJson(authorityRaw) };
+  return Object.freeze({
+    keys: Object.freeze([]),
+    pinnedIssuers: Object.freeze([]),
+    policy: Object.freeze({
+      allowedDomains: Object.freeze([url.hostname]),
+      allowedUris: Object.freeze([url.origin]),
+      allowedChainIds: Object.freeze([]),
+    }),
+  });
+}
+
+/** Site ACL requires the ACL statement backend and a resolvable HTTPS origin. */
+export function parseSiteAclConfig(env: Record<string, string | undefined>): SiteAclConfig | null {
+  if (env.S3RCH_AUTHORITY_BACKEND !== "acl") return null;
+  const origin = resolveSiteOrigin(env);
+  if (!origin) return null;
+  return { origin, authority: deriveSiteForumAuthority(origin) };
 }
 
 export type PublicSiteClientConfig = {

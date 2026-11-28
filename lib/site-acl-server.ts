@@ -83,7 +83,7 @@ let cached: { identity: string; server: ReturnType<typeof createSiteAclServer> }
 
 export function getSiteAclServer() {
   const identity = JSON.stringify([
-    process.env.S3RCH_SESSION_SIGNING_KEY, process.env.S3RCH_SITE_ORIGIN, process.env.S3RCH_FORUM_AUTHORITY,
+    process.env.S3RCH_SESSION_SIGNING_KEY, process.env.S3RCH_SITE_ORIGIN, process.env.S3RCH_AUTHORITY_BACKEND,
     process.env.S3RCH_IDENTITY_REPLAY_BACKEND, process.env.S3RCH_IDENTITY_REPLAY_ORIGIN,
     process.env.S3RCH_IDENTITY_REPLAY_TENANT_ID, process.env.S3RCH_SERVICE_CREDENTIAL,
     process.env.S3RCH_AUTHORITY_BACKEND, process.env.S3RCH_STATEMENT_SOURCE_ORIGIN,

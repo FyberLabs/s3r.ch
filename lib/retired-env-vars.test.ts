@@ -8,6 +8,7 @@ const retired = [
   "S3RCH_SQUAD_PILOT",
   "S3RCH_STATEMENT_SOURCE_API_KEY",
   "S3RCH_IDENTITY_REPLAY_API_KEY",
+  "S3RCH_FORUM_AUTHORITY",
 ];
 
 test("retired deployment settings are not read by application code", () => {

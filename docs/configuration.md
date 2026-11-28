@@ -92,7 +92,6 @@ Settings outside this table (`SEED_SECRET`, `PORT`, `HOSTNAME`, `NODE_ENV`, and 
 | `S3RCH_MEDIA_SIGNING_KEY` | yes in production | development fallback when unset and not production | yes | Separate HMAC key for public feed media and conversation ticket signing. Minimum 32 characters. |
 | `S3RCH_SERVICE_CREDENTIAL` | for ACL backend | unset | yes | Single infrastructure credential for ACL statement reads/writes and identity replay consume. Replaces the retired per-hop API keys. |
 | `S3RCH_SITE_ORIGIN` | optional for site ACL | unset | no | Canonical HTTPS site origin for `/api/site/*`. When unset, the app infers it from `S3RCH_GUN_HEALTH_URL` (peer health URL host) or `S3RCH_RELEASE_COLOR` (`test` → `https://test.s3r.ch`, production aliases → `https://s3r.ch`). Startup does not treat a missing explicit value as a boot error. |
-| `S3RCH_FORUM_AUTHORITY` | required to enable site ACL | unset | no | JSON forum witness policy (`keys`, `pinnedIssuers`, `policy`). Same witness shape as the retired pilot blob authority section, without a fixed squad forum. While unset, `/api/site/*` and server paths that depend on site ACL fail closed with 503; the web process still boots. |
 
 ### Public feed storage migration
 
@@ -236,11 +235,13 @@ Legacy assignment mutations return unavailable in this mode; they cannot write
 a second authority journal. Existing session wire formats remain unchanged.
 
 The application no longer exposes `/api/squad/pilot/*`. When
-`S3RCH_FORUM_AUTHORITY` and the ACL statement source are configured, forum
+`S3RCH_AUTHORITY_BACKEND=acl` and the ACL statement source are configured, forum
 statement admission, authority reads, room routing and meeting signaling use
 `/api/site/*` with forum scope taken from each request instead of a singleton
-pilot blob. Missing witness policy or statement-source settings leave those
-routes unavailable without blocking App Service startup.
+pilot blob. SEA-owned forums derive local SIWE bounds from the resolved site
+origin; witness keys remain in ACL history, not a site-wide deployment JSON.
+Missing ACL statement-source settings leave those routes unavailable without
+blocking App Service startup.
 
 Sessions use only `/api/identity/sea`. There is no squad session alias and no
 wallet-keyed session route.
