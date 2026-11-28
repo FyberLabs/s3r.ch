@@ -9,7 +9,7 @@ async function nativePOST(request: Request, context: { params: Promise<{ path: s
   try {
     const { path } = await context.params;
     const site = getSiteAclServer();
-    if (!site) return reply(404);
+    if (!site) return reply(503);
     if (path.length === 1 && path[0] === "statement") return site.services.statements(request);
     if (path.length === 1 && path[0] === "room") return site.services.rooms(request);
     if (path.length === 1 && path[0] === "meeting") return site.services.meeting?.(request) ?? reply(404);

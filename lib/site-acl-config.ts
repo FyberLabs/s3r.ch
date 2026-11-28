@@ -1,4 +1,5 @@
 import { p256 } from "@noble/curves/nist.js";
+import { releaseColor } from "./crash-report";
 import type { ForumAuthorityConfig } from "./identity/forum-authority";
 
 export type SiteAclConfig = Readonly<{
@@ -44,11 +45,31 @@ export function parseForumAuthorityJson(raw: string): ForumAuthorityConfig {
   return structuredClone(c as ForumAuthorityConfig);
 }
 
+/** Infer the browser-facing HTTPS origin from infrastructure wiring that predates site ACL. */
+export function resolveSiteOrigin(env: Record<string, string | undefined>): string | undefined {
+  const explicit = env.S3RCH_SITE_ORIGIN?.trim();
+  if (explicit) return explicit;
+  const health = env.S3RCH_GUN_HEALTH_URL?.trim();
+  if (health) {
+    try {
+      const peer = new URL(health);
+      if (peer.protocol === "https:" && peer.pathname.startsWith("/_peer/") && peer.port === "") {
+        return "https://" + peer.hostname;
+      }
+    } catch { /* ignore */ }
+  }
+  const color = env.S3RCH_RELEASE_COLOR === "staging" ? "production" : env.S3RCH_RELEASE_COLOR;
+  if (color === "test") return "https://test.s3r.ch";
+  if (releaseColor(color)) return "https://s3r.ch";
+  return undefined;
+}
+
+/** Witness policy alone enables site ACL; origin is optional and inferred when absent. */
 export function parseSiteAclConfig(env: Record<string, string | undefined>): SiteAclConfig | null {
-  const origin = env.S3RCH_SITE_ORIGIN?.trim();
   const authorityRaw = env.S3RCH_FORUM_AUTHORITY?.trim();
-  if (!origin && !authorityRaw) return null;
-  if (!origin || !authorityRaw) throw Error("Site ACL requires S3RCH_SITE_ORIGIN and S3RCH_FORUM_AUTHORITY");
+  if (!authorityRaw) return null;
+  const origin = resolveSiteOrigin(env);
+  if (!origin) return null;
   const url = new URL(origin);
   if (url.origin !== origin || url.protocol !== "https:") throw Error("invalid site origin");
   return { origin, authority: parseForumAuthorityJson(authorityRaw) };
