@@ -1,8 +1,32 @@
 // Trusted HTTP/history/cryptographic contracts: run only in CI.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseAgentDelegation } from "sociacl-ids";
+import { importJWK, SignJWT } from "jose";
+import { parseAgentDelegation, parsePrincipalId, signingBytes, signWithKeyring } from "sociacl-ids";
+import { authenticatedHistoryContexts } from "./acl-delegation-source-server";
 import { setup, f } from "./fixtures/agent-delegation";
+
+const emptyTrust = () => structuredClone({ jwks: { keys: [] as const[] }, policy: { allowedDomains: [] as const[], allowedUris: [] as const[], allowedChainIds: [] as const[] }, pinnedIss: new Set<string>() });
+
+async function ownerGenesisBinding(principal: string): Promise<{ binding: Record<string, unknown>; jwk: Record<string, unknown> }> {
+  const key = new Uint8Array(32); key[31] = 103;
+  const parsed = parsePrincipalId(principal); assert.ok(parsed.ok);
+  const witness = new Uint8Array(32); witness[31] = 101;
+  const epubKey = new Uint8Array(32); epubKey[31] = 107;
+  const { p256 } = await import("@noble/curves/nist.js");
+  const witnessPoint = p256.getPublicKey(witness, false), epubPoint = p256.getPublicKey(epubKey, false);
+  const jwk = { kty: "EC" as const, crv: "P-256" as const, kid: "ci-genesis", x: Buffer.from(witnessPoint.slice(1, 33)).toString("base64url"),
+    y: Buffer.from(witnessPoint.slice(33)).toString("base64url"), notBefore: f.now - 1000, notAfter: f.now + 1000 };
+  const epub = parsePrincipalId(Buffer.from(epubPoint.slice(1, 33)).toString("base64url") + "." + Buffer.from(epubPoint.slice(33)).toString("base64url"));
+  assert.ok(epub.ok);
+  const genesis = { v: 1 as const, kind: "genesis-epub" as const, principal: parsed.value, epub: epub.value, issuedAt: f.now };
+  const bytes = signingBytes(genesis); assert.ok(bytes.ok);
+  const sign = (value: Uint8Array) => { const r = signWithKeyring(key, value, parsed.value); assert.ok(r.ok); return r.value; };
+  const attest = await new SignJWT({ typ: "sociacl-genesis-epub-attest-v1", principal: parsed.value, epub: epub.value })
+    .setProtectedHeader({ alg: "ES256", kid: jwk.kid }).setIssuedAt(f.now).setExpirationTime(f.now + 60)
+    .sign(await importJWK({ ...jwk, d: Buffer.from(witness).toString("base64url") }, "ES256"));
+  return { binding: { ...genesis, keySig: sign(bytes.value), attest }, jwk };
+}
 test("authenticated owner snapshot supplies the existing agent issuer and retains cancellations", async () => {
   const h=await setup();
   assert.ok(await h.source(h.id,f.now));
@@ -57,4 +81,30 @@ test("malformed, foreign and future link indexes deny", async () => {
     const h = await setup(); h.document.snapshot.history.links.push(row);
     await assert.rejects(h.source(h.id, f.now));
   }
+});
+
+test("duplicate authenticated links deny", async () => {
+  const h = await setup();
+  const owner = parseAgentDelegation(h.document.snapshot.rows[0].record).value!.delegation.principal;
+  const link = { v: 1, kind: "wallet", principal: owner, address: "0x2222222222222222222222222222222222222222",
+    nonce: "d".repeat(16), issuedAt: f.now - 60, keySig: "k", attest: "a" };
+  h.document.snapshot.history.links = [link, structuredClone(link)];
+  await assert.rejects(h.source(h.id, f.now), /Duplicate link/);
+});
+
+test("genesis-bound owners require resolved epub in peer history", async () => {
+  const h = await setup();
+  const owner = parseAgentDelegation(h.document.snapshot.rows[0].record).value!.delegation.principal;
+  const { binding, jwk } = await ownerGenesisBinding(owner);
+  const history = structuredClone(h.document.snapshot.history);
+  history.accounts[0].genesisEpubBindings = [binding];
+  const trust = emptyTrust();
+  trust.jwks.keys.push(jwk);
+  const { contextFor } = authenticatedHistoryContexts(history, trust, f.now);
+  const resolved = contextFor(owner, f.now).history!(owner, f.now, f.now);
+  assert.ok(resolved.ok);
+  assert.throws(() => authenticatedHistoryContexts({
+    ...history,
+    accounts: [{ ...history.accounts[0], genesisEpubBindings: [{ ...binding, attest: "broken" }] }],
+  }, trust, f.now), /Invalid owner history/);
 });
