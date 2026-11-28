@@ -43,7 +43,7 @@ matrix does not claim a deployed multi-client run.
 | Same-key async races, rotation and connection loss | `forum-receive.test.ts`: old callback generation cannot commit; late verification cannot cross rotation/reset; disconnect fences pending work; inherited keys retire dependent rows. `forum-drawer.test.ts`: disconnect/publication race and actual authenticated rotation history without changing stable owner/path. |
 | Reloaded unsigned caches | `forum-squad-review.test.ts`: unsigned status cache never populates live roster; restored need floors never become admitted content; corrupt/foreign cache tests. `forum-receive.test.ts`: deserialized signed-looking rows have no receipt. Alarm storage restores only a veto floor, never a pin or emergency. |
 | Child subscription/publication paths | `forum-drawer.test.ts` and `forum-drawer-render.test.ts`; the full case map is in [forum-drawer.md](forum-drawer.md). |
-| Public fixture isolation | `forum-squad-review.test.ts`: public-vector fixture cannot connect, publish or restore former mesh authority. `PILOT_MESH_ENABLED` remains false. |
+| No fixture data in product UI | `forum-squad-review.test.ts`: live coordination source does not import test-vector roster data. `PILOT_MESH_ENABLED` remains false. |
 
 ## Bounds and persistence
 

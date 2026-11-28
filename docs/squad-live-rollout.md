@@ -2,35 +2,40 @@
 
 PR #218 completed assignment/access integration and isolated synthetic acceptance
 for #188. Production rollout remains separate. The public `/feed/squad` route
-continues to render the demo; it does not obtain live authority by changing a
-fixture constant or URL parameter.
+does **not** mount the historical fixture roster (HAWK-2 and related demo
+identities). It cannot obtain live authority by changing a URL parameter or
+importing test vectors into product code.
 
 ## Namespace isolation
 
 `SquadForum` accepts an optional `LiveSquadSpec` (`forumId`, stable SEA `owner`,
-`label`) from its provisioned application wrapper. Omitting it selects the demo.
-Malformed live configuration throws instead of falling back to demo identities.
-The forum ID must embed its declared owner, and neither the public demo namespace
-nor any known fixture principal can be used as a live owner.
+`label`) from its provisioned application wrapper (for example `LiveSquadForum`).
+Omitting it selects an **unset** namespace: the board is empty and shows a short
+prompt. Malformed live configuration throws instead of mounting fixture roster data
+in product UI. The forum ID must embed its declared owner.
 
 Live mode starts with empty roster, chat, needs and alarm state. It never creates
-the sample ACL, admits the sample roster, uses sample labels, or restores sample
-keys for signing. Known fixture principals are excluded from proof verification
-and signing even if a source supplies records for them. A separately provisioned
-`ForumAuthorityProvider` must supply complete authenticated history and signed
-ACL evidence; namespace selection itself grants nothing. Receive readiness also
-requires that verified forum ownership matches the configured owner.
+a sample ACL, admits a fixture roster, uses sample labels, or restores sample
+keys for signing. Product sessions and live coordination no longer keep a
+check-vector deny-list; Check and signed ACL evidence remain the gates. Assignment
+replacement still refuses the known public forum vector pubkeys. Pilot ACL
+teardown is tracked in
+[FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860); that
+issue remains open and does not assume the shared pilot rows are already gone. A
+separately provisioned
+`ForumAuthorityProvider` must supply
+complete authenticated history and signed ACL evidence; namespace selection
+itself grants nothing. Receive readiness also requires that verified forum
+ownership matches the configured owner.
 
 The component remounts on a change of mode, forum or owner. This disposes prior
 subscriptions, proof generations, pending work and drawer state. Need/status
-high-water marks and alarm floors use separate `s3rch:squad:v2:<mode>:<forum>:<owner>`
-keys. The old global cache keys are not imported into a live namespace. Cached
-rows remain replay hints, never authenticated content or ownership.
+high-water marks and alarm floors use separate `s3rch:squad:v2:live:<forum>:<owner>`
+keys (unset uses `s3rch:squad:v2:unset:*`). Cached rows remain replay hints, never
+authenticated content or ownership.
 
-No production route or environment setting selects a live namespace yet. There
-are no new deployment variables in this step. The existing public demo is the
-rollback/default path; returning to it mounts fresh demo state rather than
-carrying live state into a fixture view.
+Check-vector fixture data lives under `lib/identity/vectors/forum-squad-fixture.ts`
+for unit tests only; application UI must not import it.
 
 ## Remaining production gates
 
@@ -330,7 +335,7 @@ still supply this service with trusted stores and an authenticated history impor
 `LiveSquadForum` composes the actual live forum with the authority provider and
 `createSquadConnection`. It accepts a locally unlocked SEA pair and explicit
 Squad/trust/endpoint configuration. Never pass private pairs through server props
-or deployment configuration. The public demo route does not mount this component.
+or deployment configuration. The public `/feed/squad` unset route does not mount this component.
 
 The connection serializes sign-in/logout, disables authority synchronously before
 key changes or disconnect, aborts superseded exchanges and ignores stale success.

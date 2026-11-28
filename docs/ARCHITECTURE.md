@@ -545,6 +545,19 @@ Namespace-keyed remounts still discard subscriptions and pending proofs when
 the selected forum changes. This boundary does not make a cache authoritative
 or replace the signed-record and client Check requirements.
 
+The public `/feed/squad` route mounts `SquadForum` without a `LiveSquadSpec`.
+That path shows an empty unset board (no fixture roster, chat, or needs). Live
+squads mount through wrappers such as `LiveSquadForum` with a user-owned forum
+id and current `ForumAuthorityProvider` evidence. The synthetic roster in
+`lib/identity/vectors/forum-squad-fixture.ts` is for tests only; product UI does
+not import it. The former session deny-list for shared check-vector keys is
+removed in product code; assignment replacement still refuses those pubkeys.
+Pilot ACL rows and grants may still exist in shared infrastructure until
+[FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860)
+completes teardown. Verifying that live ACL rows, grants, delegations, terminal
+config, and Plane rosters name no vector pubkeys is handled out of band for that
+infra issue, not by an in-repo scanner.
+
 The application Squad runtime has no Blob assignment journal or assignment HTTP
 executor. It requires the independently provisioned ACL statement source and a
 separate identity replay store. The legacy synthetic Blob constructor lives only

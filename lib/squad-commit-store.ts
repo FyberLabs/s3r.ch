@@ -2,7 +2,7 @@ import type { InventoryStore } from "./delegation-inventory";
 import { createAssignmentJournal, type AssignmentJournalState } from "./delegation-journal";
 import { createForumAuthoritySnapshotStore } from "./forum-authority-store";
 import type { ForumAuthoritySnapshot } from "./identity/forum-authority";
-import { squadView, isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
+import { squadView, type LiveSquadSpec } from "./squad-view";
 
 export class LedgerEvaluationExpired extends Error {}
 
@@ -37,7 +37,6 @@ export function createSquadCommitStore(store: InventoryStore, spec: LiveSquadSpe
     const journal = await createAssignmentJournal(fixed(JSON.stringify(doc.journal)), clock).load();
     if (journal.forum !== view.forumId || journal.owner !== view.owner) throw Error("combined scope mismatch");
     await createForumAuthoritySnapshotStore(fixed(sourceText(doc)), spec).load();
-    if (ledger && doc.history.accounts.some(account => isPublicSquadPrincipal(account.principal))) throw Error("public fixture account in pilot ledger");
     return doc;
   }
   async function load(signal?: AbortSignal) {

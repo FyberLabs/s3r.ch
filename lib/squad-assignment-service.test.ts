@@ -7,6 +7,7 @@ import { createHttpAssignmentClient } from "./assignment-client";
 import { createSquadCommitStore } from "./squad-commit-store";
 import { createAssignmentJournal } from "./delegation-journal";
 import { seaToPrincipalKey } from "./identity/forum-check";
+import { PUBLIC_FORUM_VECTOR_PUBKEYS } from "./identity/vectors/public-forum-vector-pubkeys";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
 import type { InventoryStore } from "./delegation-inventory";
 const secret = (n: number) => new Uint8Array(32).fill(n);
@@ -105,6 +106,26 @@ test("browser WebCrypto signs through authenticated HTTP while the server has no
   assert.ok((await h.source.load()).journal.operation?.signedMaterial);
   assert.deepEqual(await h.client.resume(scope, operationId, replacement), result);
 });
+const assignmentReplacementActions = ["plan", "start-signed", "start", "resume"] as const;
+assert.equal(PUBLIC_FORUM_VECTOR_PUBKEYS.length, 12);
+for (const [index, replacement] of PUBLIC_FORUM_VECTOR_PUBKEYS.entries()) {
+  for (const action of assignmentReplacementActions) {
+    test(`assignment ${action} refuses public forum vector key #${index + 1}`, async () => {
+      const h = await setup(action === "start-signed");
+      const operationId = "a".repeat(32);
+      const body = action === "resume"
+        ? { ...scope, operationId, replacement }
+        : action === "start-signed"
+          ? { ...scope, operationId, replacement, revision: 0, material: {} }
+          : { ...scope, operationId, replacement, revision: 0 };
+      const res = await h.service(action, request(body));
+      assert.equal(res.status, 400);
+      assert.deepEqual(await res.json(), { error: "replacement" });
+      assert.equal((await h.source.load()).journal.operation, null);
+    });
+  }
+}
+
 test("planning and signed submission enforce owner, origin and exact request fields", async () => {
   const h = await setup(true), command = { ...scope, operationId: "a".repeat(32), replacement, revision: 0 };
   for (const action of ["plan", "start-signed"] as const) {

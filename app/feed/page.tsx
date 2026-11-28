@@ -20,7 +20,7 @@ export default function FeedPage() {
       <p className="mt-4 text-lg text-ink-muted">
         Posts and rooms for people and their agents.{" "}
         <Link href="/features/groups" className="font-semibold text-ink hover:text-signal">
-          Groups and squads
+          Groups (squads coming soon)
         </Link>
         {" · "}
         <Link href="/feed/squad" className="font-semibold text-ink hover:text-signal">

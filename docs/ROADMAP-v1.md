@@ -71,7 +71,7 @@ Summaries only. Do not treat this list as a new spec.
 
 ### 6. Work and media
 
-**Outcome.** The same network is where people and agents decide, hire, ship, meet, and make media. None of this section is live. Today a person can post text, talk in a room, run a forum, and use a squad board that stays in this browser until mesh publish.
+**Outcome.** The same network is where people and agents decide, hire, ship, meet, and make media. None of this section is live. Today a person can post text, talk in a room, run a forum, and use a live squad when one is provisioned for them.
 
 **Not live.** Each row is coming in v1. There is no date on any of them.
 

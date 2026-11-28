@@ -99,7 +99,7 @@ import {
   PILOT_NEEDS,
   PILOT_OWNER,
   admitPilotRoster,
-} from "@/lib/forum-squad-fixture";
+} from "@/lib/identity/vectors/forum-squad-fixture";
 
 function agent(label: string, state: SquadAgent["status"]["state"]): SquadAgent {
   const base = PILOT_AGENTS[0];

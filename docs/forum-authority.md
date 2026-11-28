@@ -1,10 +1,10 @@
 # Squad authority integration
 
 `ForumAuthorityProvider` connects Squad's live read/write gates to the signed
-P-256 authority graph in `lib/identity/forum-authority.ts`. The demo remains
-browser-local. No production source is configured and the public-fixture mesh
-remains disabled. Source provisioning, completeness guarantees and deployment
-acceptance are tracked in #190.
+P-256 authority graph in `lib/identity/forum-authority.ts`. The public `/feed/squad`
+route mounts without a live spec until a wrapper supplies one. No production
+source is configured for anonymous visitors. Source provisioning, completeness
+guarantees and deployment acceptance are tracked in #190.
 
 ## Source and time boundary
 
@@ -78,8 +78,9 @@ for other routes; they acquire no authority by copying their owner strings into
 the new source. Migration requires fetching signed source evidence and running
 normal admission. The separate `/forum` route is unchanged.
 
-Sample ACL ownership is used only on the hard-disabled browser-local branch. It
-is never overlaid onto the live graph. Status, chat and needs do not mint grants.
+Fixture roster data is not mounted in product UI. The session deny-list for public
+check-vector keys is removed; Check and signed ACL evidence remain the gates.
+Status, chat and needs do not mint grants.
 
 ## Contract and tests
 

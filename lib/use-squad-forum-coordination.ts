@@ -13,7 +13,6 @@ import { createForumReceiveProofs } from "@/lib/forum-receive-proofs";
 import { businessTemplateRetryKey, createBusinessRoles, parseBusinessTemplate } from "@/lib/forum-business-roles";
 import { forwardFields, isNeed, type BoardSource, type ReportParents } from "@/lib/forum-report-forward";
 import { readableForumChat } from "@/lib/forum-readable-chat";
-import type { PreviewLevel } from "@/components/ForumHierarchyPreview";
 import type { ForumTab } from "@/components/ForumShell";
 import { putForumSoul } from "@/lib/forum-transport";
 import { createForumSubscriptions } from "@/lib/forum-subscriptions";
@@ -23,14 +22,6 @@ import { observeUnlockedForumSigner, publishBrowserForumRecord } from "@/lib/ide
 import { useForumAuthority } from "@/components/ForumAuthorityProvider";
 import { useIdentitySession } from "@/components/useIdentitySession";
 import { toGunNode, type FeedItem } from "@/lib/feed-types";
-import {
-  PILOT_AGENTS,
-  PILOT_ALARM,
-  PILOT_CHAT,
-  PILOT_LABELS,
-  PILOT_NEEDS,
-  admitPilotRoster,
-} from "@/lib/forum-squad-fixture";
 import {
   freshestOfferParent, retainForumOffer, forumOfferFits,
   pendingClosureDominates, retainChatTombstone, pruneChatTombstones, CHAT_TOMBSTONE_TTL_MS, authorizeStatusAdmission,
@@ -63,7 +54,6 @@ import {
   raiseNeedHighWater,
   retainPendingNeed,
   retainPendingOffer,
-  retireLocalChat,
   serializeNeedHighWater,
   takeExpiredChatRemovalWatches,
   takeExpiredOfferTailWatches,
@@ -104,7 +94,6 @@ import {
   parseForumNeed,
   parseForumOffer,
   parseForumRoleMembership,
-  pickDisplayedStatus,
   shortSea,
   buildForumStatement,
   withoutChatIds,
@@ -132,9 +121,8 @@ import {
   type ForumOffer,
   type SeeGraph,
 } from "@/lib/identity/check";
-import { createMemorySeeAcl } from "@/lib/identity/see-acl";
 
-import { isPublicSquadPrincipal, type SquadView } from "@/lib/squad-view";
+import type { SquadView } from "@/lib/squad-view";
 
 function forumStorage(): Storage | null {
   if (typeof window === "undefined") return null;
@@ -155,7 +143,7 @@ function entropy(): string {
 export function useSquadForumCoordination({ view, sessionKey, reportParents }: { view: SquadView; reportParents?: ReportParents; sessionKey: string | null }) {
   const { forumId, label: forumLabel, live: liveEnabled, storage } = view;
   function authorLabel(pub: string): string {
-    return liveEnabled ? shortSea(pub) : PILOT_LABELS.get(pub) ?? shortSea(pub);
+    return shortSea(pub);
   }
   // Linked wallet metadata is display-only; signing uses the unlocked SEA key.
   const session = useIdentitySession();
@@ -167,7 +155,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const proofs = useMemo(() => createForumReceiveProofs({
     key: principal => {
       const now = Math.floor(Date.now() / 1000);
-      if (liveEnabled && isPublicSquadPrincipal(principal)) return null;
       return authority?.graph.writerKey(principal, now, now) ?? null;
     },
     ready: () => connectedRef.current && authority?.graph.ownerOf(forumId) === view.owner,
@@ -177,10 +164,7 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const [seaPub, setSeaPub] = useState<string | null>(null);
   const [oauthLinked, setOauthLinked] = useState(false);
   const [vitals, setVitals] = useState<VitalsMode>("auto");
-  const [escalations, setEscalations] = useState<ReadonlyMap<string, { revision: number; command: boolean }>>(new Map());
-  const [sharedReports, setSharedReports] = useState<ReadonlyMap<FeedItem, "Fleet" | "Command">>(new Map());
   const [readReports, setReadReports] = useState(new Set<string>());
-  const [previewLevel, setPreviewLevel] = useState<PreviewLevel>("Squad");
   const [tab, setTab] = useState<ForumTab>("board");
   const [filters, setFilters] = useState<Set<ForumAgentState>>(() => new Set());
   const [query, setQuery] = useState("");
@@ -193,20 +177,13 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const [offerCancels, setOfferCancels] = useState<ReadonlySet<string>>(() => new Set());
   const [offerBody, setOfferBody] = useState("");
   const [meshAlarm, setMeshAlarm] = useState<ForumAlarm | null>(null);
-  const [alarmHeard, setAlarmHeard] = useState(false);
   const [meshChat, setMeshChat] = useState<FeedItem[]>([]);
-  const [localStatus, setLocalStatus] = useState<Map<string, ForumAgentStatus>>(() => new Map());
-  const [localNeeds, setLocalNeeds] = useState<Map<string, ForumNeed>>(() => new Map());
-  const [localOffers, setLocalOffers] = useState<Map<string, ForumOffer>>(() => new Map());
-  const [localChat, setLocalChat] = useState<FeedItem[]>([]);
   const [hiddenChat, setHiddenChat] = useState<readonly string[]>([]);
   const [removedNeeds, setRemovedNeeds] = useState<ReadonlySet<string>>(() => new Set());
   const [removedOffers, setRemovedOffers] = useState<ReadonlySet<string>>(() => new Set());
   const [removedAgents, setRemovedAgents] = useState<ReadonlyMap<string, number>>(() => new Map());
   const [chatTombs, setChatTombs] = useState<ReadonlyMap<string, number>>(() => new Map());
-  const [admitted, setAdmitted] = useState<ReadonlySet<string>>(
-    () => new Set(liveEnabled ? [] : PILOT_AGENTS.map((agent) => agent.status.seaPubkey)),
-  );
+  const [admitted, setAdmitted] = useState<ReadonlySet<string>>(() => new Set());
   const gunRef = useRef<FeedGun | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const signerRef = useRef<ReturnType<typeof observeUnlockedForumSigner> | null>(null);
@@ -249,16 +226,9 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const admittedRef = useRef(admitted);
   const pendingStatusRef = useRef<Map<string, PendingStatus>>(new Map());
   const statusHighWaterRef = useRef<Map<string, ForumAgentStatus>>(new Map());
-  const sampleAcl = useMemo(() => {
-    if (liveEnabled) return null;
-    const acl = createMemorySeeAcl();
-    admitPilotRoster(acl);
-    return acl;
-  }, []);
-
   useLayoutEffect(() => {
     const signer = observeUnlockedForumSigner(
-      pub => !liveEnabled || (pub === sessionKey && !isPublicSquadPrincipal(pub)), setSeaPub);
+      pub => !liveEnabled || pub === sessionKey, setSeaPub);
     signerRef.current = signer;
     return () => { signer.stop(); if (signerRef.current === signer) signerRef.current = null; };
   }, [sessionKey, liveEnabled]);
@@ -347,7 +317,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
         return chatIdsRef.current;
       }
       function enrollPub(pub: string, evidence: object) {
-        if (liveEnabled && isPublicSquadPrincipal(pub)) return;
         if (!proofs.enroll(pub, evidence)) return;
         if (!admittedRef.current.has(pub)) {
           const next = new Set(admittedRef.current);
@@ -363,7 +332,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
         commitMeshStatus(waiting.status);
       }
       function commitMeshStatus(status: ForumAgentStatus) {
-        if (liveEnabled && isPublicSquadPrincipal(status.seaPubkey)) return;
         if (!proofs.valid(status) || !proofs.enrolled(status.seaPubkey)) return;
         if (!cacheForumStatus(statusHighWaterRef.current, status)) return;
         try {
@@ -376,23 +344,10 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
           next.set(status.seaPubkey, status);
           return next;
         });
-        setLocalStatus((prev) => {
-          const local = prev.get(status.seaPubkey);
-          if (!local || status.lastUpdate < local.lastUpdate) return prev;
-          const next = new Map(prev);
-          next.delete(status.seaPubkey);
-          return next;
-        });
       }
       function dropMeshStatus(pub: string) {
         pendingStatusRef.current.delete(pub);
         setMeshStatus((prev) => {
-          if (!prev.has(pub)) return prev;
-          const next = new Map(prev);
-          next.delete(pub);
-          return next;
-        });
-        setLocalStatus((prev) => {
           if (!prev.has(pub)) return prev;
           const next = new Map(prev);
           next.delete(pub);
@@ -408,7 +363,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
           }
         }
         setMeshChat((prev) => withoutChatIds(prev, ids));
-        setLocalChat((prev) => withoutChatIds(prev, ids));
       }
       function noteOfferCancel(need: string, offer: string) {
         const id = forumOfferCacheKey(need, offer);
@@ -637,14 +591,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
           if (!mergeForumOffer(existing, offer)) return prev;
           return retainForumOffer(prev, offer);
         });
-        setLocalOffers((prev) => {
-          const local = prev.get(forumOfferCacheKey(offer.need, offer.id));
-          if (!local) return prev;
-          if (local.stated === 0 && offer.stated === 1) return prev;
-          const next = new Map(prev);
-          next.delete(forumOfferCacheKey(offer.need, offer.id));
-          return next;
-        });
         watchOfferTails(parentNeedId, offer.id);
         return true;
       }
@@ -701,7 +647,7 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
         }
         const status = parseForumAgentStatus(payload);
         const forumOwner = graphRef.current?.ownerOf(forumId);
-        if (!status || (liveEnabled && isPublicSquadPrincipal(status.seaPubkey)) || fromRemoval || !proof.retain(status, () => signer === forumOwner
+        if (!status || fromRemoval || !proof.retain(status, () => signer === forumOwner
           ? graphRef.current?.ownerOf(forumId) === signer : signer === status.seaPubkey)) return;
         if (liveReplayBlocked(status.lastUpdate, removedAgentsRef.current.get(status.seaPubkey))) return;
         if (fromAdmission && !authorizeStatusAdmission(status, key, signer, forumOwner, forumId)) return;
@@ -815,12 +761,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
             next.delete(removal.id);
             return next;
           });
-          setLocalNeeds((prev) => {
-            if (!prev.has(removal.id)) return prev;
-            const next = new Map(prev);
-            next.delete(removal.id);
-            return next;
-          });
           return;
         }
         const need = parseForumNeed(payload);
@@ -913,13 +853,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
           next.set(need.id, need);
           return next;
         });
-        setLocalNeeds((prev) => {
-          const local = prev.get(need.id);
-          if (!local || need.hamState < local.hamState) return prev;
-          const next = new Map(prev);
-          next.delete(need.id);
-          return next;
-        });
       }
       acceptNeedRef.current = acceptNeed;
       acceptOfferRef.current = acceptOffer;
@@ -945,7 +878,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
         alarmFloorRef.current = update;
         try { forumStorage()?.setItem(storage.alarm, JSON.stringify(update.kind === "pin"
           ? { ...update.alarm, rev: update.rev } : { forumId: update.forumId, pinned: 0, rev: update.rev })); } catch { /* Keep the in-memory floor. */ }
-        setAlarmHeard(true);
         setMeshAlarm(committed.alarm);
       }
       async function acceptTemplate(data: unknown, knownRetryId?: string) {
@@ -980,7 +912,7 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
         if (cancelled || !proof.current() || !versions.current("role", `${roleToken}:${mapKey}`, gen) || !payload) return;
         if (!proofs.ready() || graphRef.current?.ownerOf(forumId) !== forumOwner) return;
         const membership = parseForumRoleMembership(payload);
-        if (!membership || (liveEnabled && isPublicSquadPrincipal(membership.principal))) return;
+        if (!membership) return;
         if (
           !authorizeForumRoleAdmission({
             membership,
@@ -1047,7 +979,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
           retries.forget(retryId);
           if (item.tags.includes("report")) forwards.current.set(item, forwardFields(data));
           setMeshChat((prev) => retainForumChat(prev, item));
-          setLocalChat((prev) => retireLocalChat(prev, item.id));
           watchChatRemoval(key);
           return true;
         }
@@ -1148,10 +1079,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
           }),
         );
       };
-      for (const need of (liveEnabled ? [] : PILOT_NEEDS)) {
-        watchOffers(need.id);
-        watchNeedRemoval(need.id);
-      }
       const statusWatches = new Map<string, number>();
       function expireStatuses() {
         const now = Date.now();
@@ -1183,7 +1110,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
         });
         statusOffs.set(pub, { off() { removalOff?.off?.(); admissionOff?.off?.(); } });
       }
-      for (const agent of (liveEnabled ? [] : PILOT_AGENTS)) watchStatusRemoval(agent.status.seaPubkey);
       statusTimer = setInterval(expireStatuses, 30_000);
       offAgents = transport.agents((data, key) => {
         if (cancelled || typeof key !== "string" || !statusWatchCandidate(key, data)) return;
@@ -1295,7 +1221,7 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       prunePendingOffers(pendingOffersRef.current, at);
     }, Math.max(0, earliest - Date.now()) + 5);
     return () => clearTimeout(timer);
-  }, [aclRev, localNeeds, localOffers, meshNeeds, meshOffers]);
+  }, [aclRev, meshNeeds, meshOffers]);
 
   useEffect(() => {
     if (!selected) return;
@@ -1306,20 +1232,18 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [selected]);
 
-  const graph: SeeGraph | null = liveEnabled ? authority?.graph ?? null : sampleAcl;
+  const graph: SeeGraph | null = liveEnabled ? authority?.graph ?? null : null;
   graphRef.current = graph;
-  chatRowsRef.current = liveEnabled ? meshChat.filter(row => proofs.valid(row)) : [...PILOT_CHAT, ...meshChat, ...localChat];
+  chatRowsRef.current = liveEnabled ? meshChat.filter(row => proofs.valid(row)) : [];
   chatIdsRef.current = chatRowsRef.current.map((item) => item.id);
 
   const receivedNeeds = useMemo(
     () =>
       composeForumNeeds({
-        pilot: liveEnabled ? [] : PILOT_NEEDS,
         mesh: [...authenticatedNeeds.values(), ...meshNeeds.values()].filter(row => !liveEnabled || (proofs.valid(row) && !!graph?.hasObject(row.id))),
-        local: liveEnabled ? [] : [...localNeeds.values()],
         removed: removedNeeds,
       }),
-    [localNeeds, meshNeeds, authenticatedNeeds, removedNeeds, aclRev, proofs, graph],
+    [meshNeeds, authenticatedNeeds, removedNeeds, aclRev, proofs, graph],
   );
   needsRef.current = receivedNeeds;
   const readAt = Math.floor(Date.now() / 1000);
@@ -1331,10 +1255,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const offers = useMemo(() => {
     const map = new Map([...meshOffers].filter(([, row]) => !liveEnabled || (proofs.valid(row) &&
       (row.stated === 0 || !!authority?.graph.checkForumSee(row.need, row.helper, Math.floor(Date.now() / 1000)).allowed))));
-    for (const offer of (liveEnabled ? [] : localOffers.values())) {
-      const seen = map.get(forumOfferCacheKey(offer.need, offer.id));
-      if (!seen || (offer.stated === 0 && seen.stated === 1)) map.set(forumOfferCacheKey(offer.need, offer.id), offer);
-    }
     for (const [id, offer] of map) {
       if (removedOffers.has(id)) {
         map.delete(id);
@@ -1345,29 +1265,24 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
     let bounded = new Map<string, ForumOffer>();
     for (const offer of map.values()) bounded = retainForumOffer(bounded, offer);
     return bounded;
-  }, [localOffers, meshOffers, offerCancels, removedOffers, aclRev, proofs, authority]);
+  }, [meshOffers, offerCancels, removedOffers, aclRev, proofs, authority]);
   offersRef.current = offers;
 
   const roster = useMemo(() => {
     const merged = composeForumRoster({
-      sample: liveEnabled ? [] : PILOT_AGENTS,
       mesh: [...meshStatus.values()].filter(row => !liveEnabled || (mayReadSquad && proofs.valid(row) && proofs.enrolled(row.seaPubkey))),
       admitted,
       removed: new Set(removedAgents.keys()),
     });
-    return merged.map((agent) => {
-      const over = liveEnabled ? undefined : localStatus.get(agent.status.seaPubkey);
-      const status = pickDisplayedStatus(agent.status, over);
-      return status === agent.status ? agent : { ...agent, status };
-    });
-  }, [admitted, localStatus, meshStatus, removedAgents, aclRev, proofs, mayReadSquad]);
+    return merged;
+  }, [admitted, meshStatus, removedAgents, aclRev, proofs, mayReadSquad]);
 
   const visible = useMemo(
     () => filterAgents(roster, filters, query),
     [filters, query, roster],
   );
 
-  const alarm = liveEnabled ? (mayReadSquad && proofs.valid(meshAlarm) ? meshAlarm : null) : meshAlarm ?? (alarmHeard ? null : PILOT_ALARM);
+  const alarm = liveEnabled && mayReadSquad && proofs.valid(meshAlarm) ? meshAlarm : null;
   const pinnedNeed = alarm ? (needs.get(alarm.need) ?? null) : null;
   const alarmOn = forumEmergencyAlarm(
     roster.map((agent) => agent.status.state),
@@ -1379,17 +1294,17 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const active = roster.find((agent) => agent.status.seaPubkey === selected) ?? null;
 
   const chat = useMemo(
-    () => mergeForumChat({ pilot: liveEnabled ? [] : PILOT_CHAT,
+    () => mergeForumChat({
       mesh: liveEnabled ? readableForumChat(meshChat, forumId, sessionKey, authority?.graph, proofs.valid,
-        Math.floor(Date.now() / 1000)) : meshChat,
-      local: liveEnabled ? [] : localChat, hidden: hiddenChat }),
-    [hiddenChat, localChat, meshChat, aclRev, proofs, authority, liveEnabled, forumId, sessionKey],
+        Math.floor(Date.now() / 1000)) : [],
+      hidden: hiddenChat }),
+    [hiddenChat, meshChat, aclRev, proofs, authority, liveEnabled, forumId, sessionKey],
   );
 
   function signingPrincipal() {
-    if (!liveEnabled) return seaPub;
+    if (!liveEnabled) return null;
     const principal = seaPub ? authority?.graph.principalForKey(seaPub, Math.floor(Date.now() / 1000)) ?? null : null;
-    return principal && !isPublicSquadPrincipal(principal) ? principal : null;
+    return principal;
   }
 
   const requireGraph = useCallback((): SeeGraph | null => {
@@ -1425,7 +1340,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   }
 
   function meshNote(kind: string, wrote: "signed" | "offline" | "local" | "denied", okLine: string): string {
-    if (!liveEnabled) return `${kind} on this browser until mesh publish.`;
     if (wrote === "denied") return "Authority changed before publication. Refresh and try again.";
     if (wrote === "signed") return okLine;
     if (wrote === "offline") return "The mesh peer was not ready. Refresh before retrying the change.";
@@ -1460,9 +1374,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       return;
     }
     const offer = decision.offer;
-    if (!liveEnabled) setLocalOffers((prev) => {
-      return retainForumOffer(prev, offer);
-    });
     setOfferBody("");
     const wrote = await putAuthedRecord(
       forumOfferSoul(offer.forumId, offer.need, offer.id),
@@ -1510,11 +1421,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       return;
     }
     const next = decision.need;
-    if (!liveEnabled) setLocalNeeds((prev) => {
-      const map = new Map(prev);
-      map.set(next.id, next);
-      return map;
-    });
     const needOwner = current.ownerOf(open.id);
     const admit = needOwner && writer !== needOwner ? needAdmitRef.current.get(open.id) : undefined;
     const record = admit ? { ...next, admit } : next;
@@ -1552,15 +1458,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       return;
     }
     const next = decision.offer;
-    if (!liveEnabled && !offerCancelsRef.current.has(forumOfferCacheKey(next.need, next.id))) {
-      const ids = new Set(offerCancelsRef.current);
-      ids.add(forumOfferCacheKey(next.need, next.id));
-      offerCancelsRef.current = ids;
-      setOfferCancels(ids);
-    }
-    if (!liveEnabled) setLocalOffers((prev) => {
-      return retainForumOffer(prev, next);
-    });
     const authorized = (tail = false) => {
       const fresh = graphRef.current, need = needsRef.current.get(open.id);
       const check = tail ? continueForumOfferCancellation : declineForumOffer;
@@ -1595,11 +1492,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       return;
     }
     const next = decision.need;
-    if (!liveEnabled) setLocalNeeds((prev) => {
-      const map = new Map(prev);
-      map.set(next.id, next);
-      return map;
-    });
     const wrote = await putAuthedRecord(forumNeedSoul(next.forumId, next.id), next, writer, () => {
       const fresh = graphRef.current, need = needsRef.current.get(listed.id);
       return !!fresh && !!need && (!liveEnabled || proofs.valid(need)) && need.hamState === listed.hamState && reopenForumNeed({ graph: fresh, writer: writer, need, now: Math.floor(Date.now() / 1000) }).ok;
@@ -1654,12 +1546,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
       setNotice("Statement was not accepted.");
       return false;
     }
-    if (!liveEnabled) {
-      setLocalChat(prev => retainForumChat(prev, item));
-      setDraft("");
-      setNotice("Statement kept on this browser until mesh publish.");
-      return false;
-    }
     const node = toGunNode(item);
     stagedStatement.current = item;
     statementSending.current = true;
@@ -1696,21 +1582,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
     ? `${session.address.slice(0, 6)}…${session.address.slice(-4)}`
     : "not linked";
 
-  function toggleEscalation(need: ForumNeed, destination: "Fleet" | "Command") {
-    if (liveEnabled || need.stated !== 1) return;
-    setEscalations(previous => {
-      const next = new Map(previous);
-      const entry = previous.get(need.id);
-      if (destination === "Fleet") {
-        if (entry?.revision === need.hamState) next.delete(need.id);
-        else next.set(need.id, { revision: need.hamState, command: false });
-      } else if (entry?.revision === need.hamState && need.severity === "emergency") {
-        next.set(need.id, { ...entry, command: !entry.command });
-      }
-      return next;
-    });
-  }
-
   const liveReports = chat.filter(row => row.tags.includes("report"));
   const boardProps = liveEnabled && reportParents && authority && sessionKey && gunPeer?.gun ? {
     path: { squad: view, ...reportParents }, graph: authority.graph, gun: gunPeer.gun, sessionKey, read: readReports,
@@ -1724,19 +1595,6 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
         authority.graph.checkPost(row.id, row.author, now).allowed;
     },
   } : null;
-  function toggleSharedReport(row: FeedItem) {
-    setSharedReports(previous => {
-      // Bind forwarding to the exact row. Replacement/retraction loses selection.
-      const next = new Map([...previous].filter(([item]) => chat.includes(item)));
-      if (previewLevel === "Squad") {
-        if (next.has(row)) next.delete(row);
-        else next.set(row, "Fleet");
-      } else if (previewLevel === "Fleet" && next.has(row)) {
-        next.set(row, next.get(row) === "Command" ? "Fleet" : "Command");
-      }
-      return next;
-    });
-  }
   const viewer = liveEnabled ? signingPrincipal() : null;
   const prepareCancel = liveEnabled && !draft ? (body: string) => {
     setDraft(body);
@@ -1753,12 +1611,12 @@ export function useSquadForumCoordination({ view, sessionKey, reportParents }: {
   const ledgerWritable = !!(ledgerReadable && viewer && authority?.graph.checkPost(forumId, viewer, Math.floor(Date.now()/1000)).allowed);
   const memoryCurrent = () => !!(sessionKey && proofs.ready() && viewer && signingPrincipal() === viewer && authority?.graph.checkForumSee(forumId, viewer, Math.floor(Date.now()/1000)).allowed);
   return { memoryCurrent, sendCollection: (body: string) => onSend(false, body), ledgerReadable, ledgerWritable, sendLedger: (body: string) => onSend(false, body), forumId, forumLabel, liveEnabled, authorLabel, seaPub, oauthLinked,
-    vitals, setVitals, escalations, sharedReports, previewLevel, setPreviewLevel,
+    vitals, setVitals,
     tab, setTab, filters, query, setQuery, setSelected, notice, draft, setDraft,
     offerBody, setOfferBody, roster, visible, active, chat, needs, offers,
     alarmOn, needsCount, emergencyCount, wallet, boardProps, liveReports,
-    toggleEscalation, toggleFilter, onSend: async (report = false) => { await onSend(report); }, onOffer, onAccept, onDecline, onReopen, onReply,
-    composerRef, viewer, prepareCancel, drawerProps, toggleSharedReport,
+    toggleFilter, onSend: async (report = false) => { await onSend(report); }, onOffer, onAccept, onDecline, onReopen, onReply,
+    composerRef, viewer, prepareCancel, drawerProps,
     roleView: businessRoles.view(), walletAddress: session?.address ?? "",
   };
 }

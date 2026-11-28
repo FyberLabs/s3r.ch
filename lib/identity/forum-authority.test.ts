@@ -158,7 +158,8 @@ test("Squad uses the isolated provider, not legacy ACL hydration or implicit cha
   assert.match(component, /useSquadForumCoordination/);
   assert.doesNotMatch(component, /publishBrowserForumRecord|observeUnlockedForumSigner|putForumSoul|useGunPeer/);
   assert.doesNotMatch(coordination, /admitFeedNode|see\.acl|see\.persist|overlaySeeGraph/);
-  assert.match(coordination, /liveEnabled \? authority\?\.graph \?\? null : sampleAcl/);
+  assert.doesNotMatch(coordination, /sampleAcl|admitPilotRoster|forum-squad-fixture/);
+  assert.match(coordination, /liveEnabled \? authority\?\.graph \?\? null : null/);
   assert.match(coordination, /publishBrowserForumRecord/);
   const signer = readFileSync("lib/identity/browser-forum-signer.ts", "utf8");
   assert.match(signer, /publishForumAuthorized/);

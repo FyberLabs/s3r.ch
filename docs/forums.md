@@ -16,11 +16,11 @@ and [signed-link admission status](linked-session-admission.md). Older wallet-er
 implementation descriptions below are historical where they describe ownership.
 
 
-`/feed/squad` is the squad board: contributor tiles, chat, and a drawer. The board stays in this browser until mesh publish.
+`/feed/squad` is the squad board: contributor tiles, chat, and a drawer. Without a live squad configuration it shows an unset prompt; a provisioned wrapper supplies forum id, owner, and authority.
 
 The live drawer uses [authenticated child records](forum-drawer.md) for subtasks,
 updates, prompt attribution and artifact references. Missing evidence remains
-status-only; sample child detail is never a live fallback.
+status-only; unauthenticated child detail is never shown as live data.
 
 ## Forum shell
 
@@ -101,20 +101,22 @@ modifying the separate concept mock.
 
 ## Current isolation boundary
 
-The fixture owner is a public cryptographic test-vector identity, not a secret
-operator key. `PILOT_MESH_ENABLED` is hard-disabled: the squad component does not
-create/register a Gun connection, subscribe to forum data, publish records or ACL
-changes, or restore earlier mesh high-water snapshots. Local chat remains usable
-and the page says the board stays in this browser until mesh publish. Other app routes are unaffected.
-The sample owner must never authorize live forum messages.
+Public check-vector SEA pubkeys (shared forum test vectors with known private scalars)
+are listed in `lib/identity/vectors/public-forum-vector-pubkeys.ts` for tests and
+the assignment-replacement guard. Product sessions and live coordination no longer
+apply a deny-list to them; Check and signed ACL evidence remain the gates. Shared
+pilot ACL teardown is still open in
+[FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860); this
+repository does not assume those rows are already deleted. Live ACL verification
+for vector pubkeys is handled out of band for that infra issue.
+Product UI does not import the synthetic roster in `forum-squad-fixture.ts`.
+`PILOT_MESH_ENABLED` is hard-disabled: the unset public route does not mount a
+fixture board. Live squads require a separate owner, `ForumAuthorityProvider`
+evidence, and owner-signed ACL ingestion.
 
 The contract and receive-path descriptions below document the retained,
-unit-tested implementation, not an enabled deployment. Re-enabling live forums
-requires a separately provisioned owner, a new forum namespace, removal of sample
-authority from the live graph, and owner-signed, soul-bound ACL ingestion. Merely
-flipping the isolation constant is not a supported deployment procedure.
-Unauthenticated primary ACL ownership and grants fail closed for every object,
-including non-fixture needs; there is no unsigned fallback.
+unit-tested implementation. Unauthenticated primary ACL ownership and grants fail
+closed for every object; there is no unsigned fallback.
 
 Identity is the GunDB SEA pubkey. A wallet and a Panopticon OAuth subject are linked header credentials. They are not the forum principal.
 
@@ -175,11 +177,17 @@ The alarm chip is on when a tile state is `emergency`, or when the alarm soul pi
 
 ## This page
 
-The sample roster is local. Mesh rows at the souls above replace a matching tile only when a Gun signature on that row checks out. The sample is not written out by itself. An admitted sample owner stays the owner when a mesh ACL edge names another pubkey. A grant does not replace that owner. An unsigned mesh grant is not Check see on a sample need.
+The board lists only ACL-admitted agents and needs from the mesh. Here, ACL-admitted
+means the forum owner signed the agent's status row or a role membership at
+`roles/<roleToken>/<seaPubkey>` that names the principal. Mesh rows at the souls
+above install or update a tile only when a Gun signature on that row checks out
+and the principal passes Check admission. Unsigned puts are ignored. An admitted
+owner stays the owner when a mesh ACL edge names another pubkey. A grant does not
+replace that owner. An unsigned mesh grant is not Check see on a need.
 
 The signer of a status row is the agent pubkey, when that pubkey is already on the roster, or the forum owner. The Gun map key is the agent pubkey on the signed row. A self-signed status does not add a new pubkey. Owning the status id does not admit one either: an unsigned ACL edge can name that owner. The forum owner admits one by signing that status, or by signing a role membership at `roles/<roleToken>/<seaPubkey>`. An unsigned `null` does not remove a verified status or its alarm contribution. A removal is a signed record (`removed` is 1 and `action` is `remove`) by that agent or the forum owner, bound to that forum, that status id, and that map key.
 
-A need row is signed by the admitted owner, or by the subject when that row accepts an offer and leaves the posted body, severity, and spec in place. A close installs only when that accepted offer is a live posted offer and the helper still passes Check see. A subject-signed close is kept when this browser already holds that need's admitted subject, or when the close carries the owner's signature of the open row and that signature names the same subject. A fresh close the owner signed is kept when those same gates pass. A payload `subject` alone is not an admission. This browser remembers the highest signed hamState and refuses an older replay after reload. An owner-signed need that arrives before ownership is loaded is kept only inside a cap, a per-forum cap, and a TTL, and it is checked again only when that need's owner appears. The alarm is signed by the admitted owner of the forum id, and a replayed unpin does not clear a newer pin. A live offer is signed by the helper and kept only when that helper passes Check see on the parent need. A live offer that arrives before that grant is loaded is kept and checked again when the grant appears. The need owner or subject may sign a cancel. A cancel (`stated` 0) is also put on `offers/<offerId>/cancel`. A later live copy at the offer key does not replace that signed cancel. A cancel that arrives before the need owner is loaded is kept and checked again when that owner appears. After a need accepts an offer, the helper cannot withdraw or remove that offer. That check uses the subscribed parent need. An unsigned need field that names another need is refused. The owner or the subject may still sign a removal. A chat line is signed by its author. The statement id names that author, so a different key cannot replace the line. A removal of that line is checked on its own. The author is read from the id, so the removal still hides the line when it arrives first. A later put of that same statement id has to be that same author. This browser drops its local copy when that verified mesh row arrives. A removal subscription is opened only after that row verifies, and only inside a cap and a TTL. A retained signed removal blocks older live copies within the bounded retention window described below. A signed need removal drops that id from the board, including the sample row. A signed agent removal drops that pubkey from the board, including the sample tile. The forum owner may hide the line and may not replace its body. An unsigned row is ignored, so a public peer cannot replace agent state, task, or result by writing a row under `agents`.
+A need row is signed by the admitted owner, or by the subject when that row accepts an offer and leaves the posted body, severity, and spec in place. A close installs only when that accepted offer is a live posted offer and the helper still passes Check see. A subject-signed close is kept when this browser already holds that need's admitted subject, or when the close carries the owner's signature of the open row and that signature names the same subject. A fresh close the owner signed is kept when those same gates pass. A payload `subject` alone is not an admission. This browser remembers the highest signed hamState and refuses an older replay after reload. An owner-signed need that arrives before ownership is loaded is kept only inside a cap, a per-forum cap, and a TTL, and it is checked again only when that need's owner appears. The alarm is signed by the admitted owner of the forum id, and a replayed unpin does not clear a newer pin. A live offer is signed by the helper and kept only when that helper passes Check see on the parent need. A live offer that arrives before that grant is loaded is kept and checked again when the grant appears. The need owner or subject may sign a cancel. A cancel (`stated` 0) is also put on `offers/<offerId>/cancel`. A later live copy at the offer key does not replace that signed cancel. A cancel that arrives before the need owner is loaded is kept and checked again when that owner appears. After a need accepts an offer, the helper cannot withdraw or remove that offer. That check uses the subscribed parent need. An unsigned need field that names another need is refused. The owner or the subject may still sign a removal. A chat line is signed by its author. The statement id names that author, so a different key cannot replace the line. A removal of that line is checked on its own. The author is read from the id, so the removal still hides the line when it arrives first. A later put of that same statement id has to be that same author. This browser drops its local copy when that verified mesh row arrives. A removal subscription is opened only after that row verifies, and only inside a cap and a TTL. A retained signed removal blocks older live copies within the bounded retention window described below. A signed need removal drops that id from the board. A signed agent removal drops that pubkey from the board. The forum owner may hide the line and may not replace its body. An unsigned row is ignored, so a public peer cannot replace agent state, task, or result by writing a row under `agents`.
 
 An unsigned `null` does not drop a verified need or offer. A removal is a signed record (`removed` is 1, `action` is `remove`) by the admitted owner or the subject, and for an offer also by the helper, bound to that forum, that object id, and that map key.
 
@@ -221,8 +229,8 @@ Pending need removals retain their `need-remove` generation and a separate queue
 slot from live need rows. A later live event cannot erase or change the scope of
 a removal awaiting ownership. Both slots expire within five minutes.
 
-Need-removal and parent-offer listeners now require authenticated need context
-(or the admitted pilot fixture). Together with role listeners, they share a
+Need-removal and parent-offer listeners require authenticated need context from
+the subscribed parent need. Together with role listeners, they share a
 128-listener limit and a 64-per-kind limit. Role discovery needs a child read to
 obtain the signed membership: at most 16 unverified role probes may remain open,
 for 30 seconds each. Untrusted token events cannot renew that window. Only an
@@ -238,9 +246,11 @@ the displayed revision as well as the current clock, preserving an immediate
 override at the agent's accepted boundary. This only changes displayed status. These are squad admission limits;
 shape-valid signatures alone do not authorize an extreme revision.
 
-Admitted pilot agents subscribe to their signed removal children immediately,
-using the same bounded listener registry as mesh-admitted agents. A sample tile
-does not need a published live status before its signed removal can be heard.
+An agent's signed removal and admission children are watched, through the bounded
+listener registry, as soon as a status row naming that agent arrives, including a
+pending self-signed row that is still awaiting admission. An agent enrolled only by
+role membership is not watched until its status row arrives; a retained removal is
+delivered when that watch opens.
 
 A subject closure may carry a newer owner-signed open admission than this browser
 remembers. Verification selects that newer matching admission, then checks the
@@ -313,16 +323,17 @@ offer never calls `putObject` or persists ownership for the offer ID. The helper
 remains the signer of the offer row, while acceptance rechecks access to the
 parent need. Any independently authenticated object admission stays unchanged.
 
-A received mesh status replaces the sample status without inheriting its drawer
-subtasks, update history, prompt attribution, or artifact note. The drawer labels
-this as status-only data until authenticated child records are integrated. Sample
-details remain on sample-only agents; a status signature does not authenticate
-those details. Local display labels are retained for recognition.
+A received mesh status installs without drawer child records until authenticated
+child records load. The drawer labels this as status-only data until subtasks,
+updates, prompt attribution, and artifact notes verify through the mesh path. A
+status signature does not authenticate child records by itself. Display labels are
+a short form of the verified agent's Gun SEA public key (see `shortSea` in
+`lib/forum-squad.ts`).
 
 On reload, the unsigned status cache restores only replay high-water limits. It
 does not populate the live roster or alarm state. Status rows become displayable
 only after the existing mesh signature and admission path accepts them again.
-An offline reload therefore shows the sample board rather than cached live rows.
+An offline reload therefore shows an empty or stale roster rather than cached live rows.
 The cache remains a local replay floor, not authenticated ownership or child data.
 
 Need-cache reload follows the same boundary: saved rows restore replay limits
@@ -335,8 +346,9 @@ Forum SEA keys now require canonical base64url coordinates and a valid P-256
 point, matching the SociACL principal vectors. Invalid padding-bit aliases and
 off-curve points are rejected before constructing souls or comparing embedded
 principals. This uses the same pinned `@noble/curves` version as the upstream
-identity package, without importing SociACL at runtime. Sample agents use
-deterministic valid public points and remain mesh-disabled.
+identity package, without importing SociACL at runtime. Test-vector principals in
+`forum-squad-fixture.ts` use deterministic valid public points and are not mounted
+in product UI.
 
 ### Object-record wire boundary
 
@@ -387,8 +399,8 @@ publish paths to regression tests, cache bounds and remaining live acceptance.
 The board shows Treasurer (`treasurer`), Secretary (`secretary`), Practice Manager
 (`practice-manager`) and President / PM (`president`) windows. These are role
 labels, not grants. An assigned principal can open its current contributor drawer;
-without verified status there is no drawer shortcut. Sample contributors do not
-populate business assignments.
+without verified status there is no drawer shortcut. Fixture rosters do not
+populate business assignments in product UI.
 
 The template soul carries a SEA-signed payload with exactly `forumId` and `mode`
 (`distinct-principals` or `role-labels`). Both template and membership must verify
@@ -418,13 +430,13 @@ Resolving a need does not elect an owner or change membership.
 
 Issue #141 remains open for those role-specific sources and their read models;
 #190 retains deployed, authenticated end-to-end acceptance. This interface does
-not enable the public fixture mesh or introduce configuration variables.
+not introduce configuration variables that mount test-vector rosters in product UI.
 
 ## Live Squad namespace provisioning
 
-The public `/feed/squad` remains the demo. The component supports a separately
-validated live owner/forum binding with empty initial data and namespace-specific
-replay caches. It never enables the public fixture for live use. See
+The public `/feed/squad` shows an unset board until a wrapper supplies a live
+`LiveSquadSpec`. The component supports a separately validated live owner/forum
+binding with empty initial data and namespace-specific replay caches. See
 [Squad live rollout](squad-live-rollout.md) for the consumer boundary and remaining
 production source, configuration and deployment gates in #190.
 

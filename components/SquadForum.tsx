@@ -12,8 +12,7 @@ import { BusinessRoleStrips } from "@/components/BusinessRoleStrips";
 import { LiveForumReports } from "./LiveForumReports";
 import { ForumBotMessage } from "@/components/ForumBotMessage";
 import { parseBotMessage } from "@/lib/forum-bot-protocol";
-import { ReportList, ForumPreviewReports } from "./ForumPreviewReports";
-import { ForumHierarchyPreview } from "@/components/ForumHierarchyPreview";
+import { ReportList } from "./ForumPreviewReports";
 import { ForumShell } from "@/components/ForumShell";
 import { ForumDrawerRecords } from "@/components/ForumDrawerRecords";
 import { SquadDelegationControls } from "@/components/SquadDelegationControls";
@@ -58,39 +57,50 @@ function ChatBody({ body }: { body: string }) {
   );
 }
 
+function SquadForumUnset() {
+  return (
+    <div className="border border-rule bg-panel p-6" data-testid="squad-unset">
+      <h1 className="text-2xl font-semibold tracking-tight text-ink">Squad</h1>
+      <p className="mt-2 text-sm text-ink-muted" role="status">
+        You don&apos;t have a squad yet. Squads are shared boards where your group tracks needs, offers, and chat.
+      </p>
+      <p className="mt-4 text-sm text-ink-muted">
+        Creating or joining a squad is coming soon.{" "}
+        <Link href="/feed" className="font-semibold text-ink hover:text-signal">
+          Sign in on the feed
+        </Link>
+        {" "}to use forums and the rest of your workspace today.
+      </p>
+    </div>
+  );
+}
+
 /** Namespace changes remount every subscription, cache floor and pending proof. */
 export function SquadForum({ live, reportParents, sessionKey = null }: { live?: LiveSquadSpec; reportParents?: ReportParents; sessionKey?: string | null }) {
   const view = squadView(live);
+  if (!view.live) return <SquadForumUnset />;
   return <SquadForumView key={view.key} view={view} reportParents={reportParents} sessionKey={sessionKey} />;
 }
 function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; reportParents?: ReportParents; sessionKey: string | null }) {
-  const { memoryCurrent, sendCollection, ledgerReadable, ledgerWritable, sendLedger, forumId, forumLabel, liveEnabled, authorLabel, seaPub, oauthLinked,
-    vitals, setVitals, escalations, sharedReports, previewLevel, setPreviewLevel,
+  const { memoryCurrent, sendCollection, ledgerReadable, ledgerWritable, sendLedger, forumId, forumLabel, authorLabel, seaPub, oauthLinked,
+    vitals, setVitals,
     tab, setTab, filters, query, setQuery, setSelected, notice, draft, setDraft,
     offerBody, setOfferBody, roster, visible, active, chat, needs, offers,
     alarmOn, needsCount, emergencyCount, wallet, boardProps, liveReports,
-    toggleEscalation, toggleFilter, onSend, onOffer, onAccept, onDecline, onReopen, onReply,
-    composerRef, viewer, prepareCancel, drawerProps, toggleSharedReport, roleView, walletAddress } = useSquadForumCoordination({ view, sessionKey, reportParents });
-  const liveReportPanel = boardProps ? <LiveForumReports key={sessionKey} {...boardProps} reportsOnly rows={liveReports} />
+    toggleFilter, onSend, onOffer, onAccept, onDecline, onReopen, onReply,
+    composerRef, viewer, prepareCancel, drawerProps, roleView, walletAddress } = useSquadForumCoordination({ view, sessionKey, reportParents });
+  const reports = boardProps ? <LiveForumReports key={sessionKey} {...boardProps} reportsOnly rows={liveReports} />
     : <ReportList reports={liveReports} authorLabel={authorLabel} />;
-  const reports = liveEnabled ? liveReportPanel : <ForumPreviewReports level={previewLevel} chat={chat}
-    shared={sharedReports} authorLabel={authorLabel} onToggle={toggleSharedReport} />;
-  const hierarchy = liveEnabled ? null : <ForumHierarchyPreview level={previewLevel} onSelect={setPreviewLevel}
-    squadLabel={forumLabel} members={roster.length} needingHelp={needsCount} emergencies={emergencyCount} alarm={alarmOn}
-    reports={reports} needs={needs} escalations={escalations} onToggleCommand={need => toggleEscalation(need, "Command")} />;
-  if (!liveEnabled && previewLevel !== "Squad") return hierarchy;
   const shell = (
     <div>
-      {hierarchy}
       <ForumShell memory={ledgerReadable ? <div className="space-y-4" key={JSON.stringify([forumId, sessionKey, viewer])}>{sessionKey && <ForumMemoryMap sessionKey={sessionKey} current={memoryCurrent} collections={forumCollections(chat)} writable={ledgerWritable} send={sendCollection}/>}<ForumLedger rows={chat} writable={ledgerWritable} send={sendLedger}/></div> : undefined} reports={reports} tab={tab} onTab={setTab} forum={{ label: forumLabel, href: "/feed/squad" }}
         header={<>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">{liveEnabled ? forumLabel : "Squad forum"}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">{forumLabel}</h1>
           <p className="mt-1 text-sm text-ink-muted">
             {forumLabel}. Your identity is the key on this browser. A wallet and
-            a sign-in are linked credentials.{" "}
-            {liveEnabled ? "Only verified records appear here." : "This board stays in this browser until mesh publish."}
+            a sign-in are linked credentials. Only verified records appear here.
           </p>
         </div>
         {alarmOn ? (
@@ -176,7 +186,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
               </div>
         </>}
         board={<div data-testid="squad-board">
-              <BusinessRoleStrips view={roleView} roster={liveEnabled ? roster : []} onOpen={setSelected} onLedger={ledgerReadable ? () => setTab("memory") : undefined} />
+              <BusinessRoleStrips view={roleView} roster={roster} onOpen={setSelected} onLedger={ledgerReadable ? () => setTab("memory") : undefined} />
               <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3">
                 {!visible.length ? <p role="status" className="text-sm text-ink-muted">No contributors match these filters.</p> : null}
                 {visible.map((agent) => {
@@ -256,7 +266,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
             onSend={onSend}
             viewer={viewer}
             onPrepareCancel={prepareCancel}
-            onReport={liveEnabled ? undefined : () => onSend(true)}
+            onReport={undefined}
             composerRef={composerRef}
             seaLabel={seaPub ? shortSea(seaPub) : "no mesh key"}
           />
@@ -300,42 +310,11 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
           <div className="mt-2 h-1 bg-rule">
             <div className="h-1 bg-signal" style={{ width: `${clampProgress(active.status.progress)}%` }} />
           </div>
-          {liveEnabled ? (drawerProps ? (
+          {drawerProps ? (
             <ForumDrawerRecords key={active.status.seaPubkey} {...drawerProps} />
-          ) : <p role="status">Waiting for current drawer authority.</p>) : (
-            <>
-          {active.drawerSource === "status-only" ? (
-            <p role="note" className="mt-3 text-xs text-ink-muted">
-              Only status data is available. Subtasks, update history, and artifact records
-              have not been loaded. Sample details are omitted.
-            </p>
-          ) : null}
-          <h3 className="mt-4 text-xs font-semibold uppercase text-ink-muted">Subtasks</h3>
-          <ul className="mt-2 space-y-1 text-sm text-ink">
-            {active.subtasks.map((task) => (
-              <li key={task.id}>
-                <span className="text-xs uppercase text-ink-muted">{task.state}</span> {task.label}
-              </li>
-            ))}
-          </ul>
-          <h3 className="mt-4 text-xs font-semibold uppercase text-ink-muted">Last prompt</h3>
-          <p className="mt-1 text-sm text-ink">
-            {active.status.lastPrompt}
-            {active.promptBy ? <span className="text-ink-muted"> · {active.promptBy}</span> : null}
-          </p>
-          <h3 className="mt-4 text-xs font-semibold uppercase text-ink-muted">Updates</h3>
-          <ul className="mt-2 space-y-1 text-sm text-ink">
-            {active.updates.map((update) => (
-              <li key={update.id}>
-                <span className="font-data text-xs text-ink-muted">{formatClock(update.ts)}</span> {update.body}
-              </li>
-            ))}
-          </ul>
-            </>
-          )}
+          ) : <p role="status">Waiting for current drawer authority.</p>}
           <h3 className="mt-4 text-xs font-semibold uppercase text-ink-muted">Results</h3>
           <p className="mt-1 text-sm text-ink">{active.status.result}</p>
-          {!liveEnabled && active.artifactNote ? <p className="mt-1 text-xs text-ink-muted">{active.artifactNote}</p> : null}
           <h3 className="mt-4 text-xs font-semibold uppercase text-ink-muted">Needs</h3>
           <ul className="mt-2 space-y-1 text-sm text-ink">
             {needIds(active.status.needs).map((id) => {
@@ -345,10 +324,6 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
                 <li key={id}>
                   {need.severity} · stated {need.stated} · {need.body}
                   {need.acceptedOffer ? ` · offer ${need.acceptedOffer.slice(0, 12)}` : ""}
-                  {!liveEnabled && need.stated === 1 && <button type="button" className={btnSecondary}
-                    onClick={() => toggleEscalation(need, "Fleet")}>
-                    {escalations.get(id)?.revision === need.hamState ? "Withdraw from Fleet" : "Escalate to Fleet"}
-                  </button>}
                 </li>
               );
             })}
@@ -410,7 +385,7 @@ function SquadForumView({ view, sessionKey, reportParents }: { view: SquadView; 
               Reply in chat
             </button>
           </div>
-          <SquadDelegationControls scope={liveEnabled ? { forum: forumId, owner: active.status.seaPubkey } : undefined} />
+          <SquadDelegationControls scope={{ forum: forumId, owner: active.status.seaPubkey }} />
           <p className="mt-3 text-xs text-ink-muted">Tag {forumChatTag(forumId)}</p>
         </div>
       ) : null}

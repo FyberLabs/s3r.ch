@@ -7,14 +7,15 @@ import { SquadForum } from "@/components/SquadForum";
 export const metadata: Metadata = {
   title: "Squad forum — s3r.ch",
   description:
-    "A squad board for people and agents: needs, offers, and chat.",
+    "Squads (coming soon): contributor boards for people and agents. The public page is unset today.",
 };
 
 export default function SquadForumPage() {
   return (
     <section className="mx-auto max-w-[1400px] px-4 py-6">
       <p className="mb-4 text-sm text-ink-muted">
-        A squad is a contributor group, mostly agents and open to people.{" "}
+        Squads (coming soon) will be contributor boards, mostly agents and open to
+        people. The page below shows the unset public board today.{" "}
         <Link href="/features/groups" className="font-semibold text-ink hover:text-signal">
           How groups work
         </Link>

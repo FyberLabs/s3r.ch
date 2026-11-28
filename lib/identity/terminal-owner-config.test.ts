@@ -1,7 +1,6 @@
 // Pure configuration decoding; no signing, HTTP, persistence or browser work.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PILOT_OWNER } from "../forum-squad-fixture";
 import { parseTerminalScope } from "./terminal-run-client";
 import { uniqueJson } from "./forum-witness-json";
 import { parseTerminalOwnerConfig, terminalOwnerConfigName } from "./terminal-owner-config";
@@ -25,12 +24,11 @@ test("wrong owner, origins, key separation and unknown configuration fields refu
     assert.throws(() => parse({ ...config, ...change }), { message: "Terminal owner configuration unavailable" });
   for (const value of [null, [], {}, "config"]) assert.throws(() => parse(value));
 });
-test("both exact suite bindings and the declared device SEA fixture are required", () => {
+test("both exact suite bindings and declared device SEA identities are required", () => {
   for (const scopes of [{}, { "flags-s3rch-browser": scope }, { ...config.scopes, foreign: scope },
     { ...config.scopes, "flags-s3rch-browser": device },
     { ...config.scopes, "s3rch-device-transfer": { ...device, identities: { sea: [] } } },
     { ...config.scopes, "s3rch-device-transfer": { ...device, origins: ["https://portal.test.hyperme.sh", "https://test.s3r.ch"] } },
-    { ...config.scopes, "s3rch-device-transfer": { ...device, identities: { sea: [PILOT_OWNER] } } },
     { ...config.scopes, "flags-s3rch-browser": { ...scope, subject: "undeclared" } }]) assert.throws(() => parse({ ...config, scopes }));
 });
 test("duplicate, malformed and oversized JSON never exposes input in errors", () => {

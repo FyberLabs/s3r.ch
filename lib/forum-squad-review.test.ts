@@ -1,7 +1,7 @@
 import { reopenForumNeed } from "./identity/forum-transitions";
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PILOT_AGENTS, PILOT_NEEDS, PILOT_OWNER, PILOT_FORUM_ID } from './forum-squad-fixture';
+import { PILOT_AGENTS, PILOT_NEEDS, PILOT_OWNER, PILOT_FORUM_ID } from './identity/vectors/forum-squad-fixture';
 import { applySeeGrant, seaToPrincipalKey, type ForumOffer } from './identity/check';
 import { createMemorySeeAcl } from './identity/see-acl';
 import {
@@ -365,8 +365,8 @@ test('accepted offer history is bounded per need and globally, including oversiz
   assert.equal(squad.forumOfferFits({ ...offer, sig: 'x'.repeat(squad.FORUM_OFFER_MAX_CHARS) }), false);
 });
 
-test('public-vector squad fixture cannot connect, publish, or restore former mesh authority', async () => {
-  const { PILOT_MESH_ENABLED } = await import('./forum-squad-fixture');
+test('live coordination does not import test-vector roster data', async () => {
+  const { PILOT_MESH_ENABLED } = await import('./identity/vectors/forum-squad-fixture');
   assert.equal(PILOT_MESH_ENABLED, false);
   const { readFileSync } = await import('node:fs');
   const source = readFileSync('lib/use-squad-forum-coordination.ts', 'utf8');
@@ -375,7 +375,8 @@ test('public-vector squad fixture cannot connect, publish, or restore former mes
   const signer = readFileSync('lib/identity/browser-forum-signer.ts', 'utf8');
   assert.match(source, /putForumSoul\(gunRef\.current, soul, (?:data|value), liveEnabled\)/);
   assert.match(transport, /if \(!live \|\| !gun\) return false;/);
-  assert.match(source, /if \(!liveEnabled\) return;\s+const loaded = restoreForumNeedCache/);
+  assert.match(source, /if \(!liveEnabled\) return;[\s\S]*restoreForumNeedCache/);
+  assert.doesNotMatch(source, /forum-squad-fixture|PILOT_/);
   assert.match(source, /publishBrowserForumRecord\(\{ live: liveEnabled/);
   assert.match(signer, /if \(!input\.live\) return "local";/);
 });

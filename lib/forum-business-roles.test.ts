@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { BusinessRoleStrips } from "../components/BusinessRoleStrips";
 import { businessTemplateRetryKey, createBusinessRoles, parseBusinessTemplate } from "./forum-business-roles";
-import { PILOT_FORUM_ID as forumId, PILOT_AGENTS } from "./forum-squad-fixture";
+import { PILOT_FORUM_ID as forumId, PILOT_AGENTS } from "./identity/vectors/forum-squad-fixture";
 import type { ForumRoleMembership, ForumTemplate } from "./identity/forum-check";
 const a = PILOT_AGENTS[0].status.seaPubkey, b = PILOT_AGENTS[1].status.seaPubkey;
 function setup() {

@@ -1,24 +1,6 @@
 import type { ReactNode } from "react";
-import { btnSecondary } from "@/lib/brand-ui";
 import type { FeedItem } from "@/lib/feed-types";
 import { formatClock } from "@/lib/forum-squad";
-import type { PreviewLevel } from "./ForumHierarchyPreview";
-
-export function ForumPreviewReports({ level, chat, shared, authorLabel, onToggle }: {
-  level: PreviewLevel;
-  chat: readonly FeedItem[];
-  shared: ReadonlyMap<FeedItem, "Fleet" | "Command">;
-  authorLabel: (author: string) => string;
-  onToggle: (report: FeedItem) => void;
-}) {
-  const reports = chat.filter(row => row.tags.includes("report") &&
-    (level === "Squad" || shared.get(row) === "Command" || (level === "Fleet" && shared.has(row))));
-  return <ReportList reports={reports} authorLabel={authorLabel} action={level === "Command" ? undefined : row =>
-    <button className={btnSecondary} type="button" onClick={() => onToggle(row)}>
-      {level === "Squad" ? (shared.has(row) ? "Withdraw from Fleet" : "Send to Fleet")
-        : (shared.get(row) === "Command" ? "Withdraw from Command" : "Send to Command")}
-    </button>} />;
-}
 
 export function ReportList({ reports, authorLabel, action }: {
   reports: readonly FeedItem[];

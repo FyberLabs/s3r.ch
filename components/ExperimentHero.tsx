@@ -107,6 +107,6 @@ function HeroScope() {
       {consented ? "Turn off page experiments and delete pending events" : "Allow page experiments and product analytics"}
     </button>}
     {message && <p role="status">{message}</p>}
-    {!signedIn && <p className="mt-4 max-w-xl text-sm text-ink-muted">Live today: posts, rooms, forums and squads. Media, meetings and more are coming in v1.</p>}
+    {!signedIn && <p className="mt-4 max-w-xl text-sm text-ink-muted">Live today: posts, rooms, and forums. Squads (coming soon). Media, meetings and more are coming in v1.</p>}
   </div>;
 }

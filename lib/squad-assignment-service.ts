@@ -3,7 +3,8 @@ import { createDelegationRuntime } from "./delegation-runtime";
 import type { createSquadCommitStore } from "./squad-commit-store";
 import { createForumAuthority } from "./identity/forum-authority";
 import { isSeaPubkey, isForumObjectId } from "./identity/forum-check";
-import { squadView, isPublicSquadPrincipal, type LiveSquadSpec } from "./squad-view";
+import { isPublicForumVectorPubkey } from "./identity/vectors/public-forum-vector-pubkeys";
+import { squadView, type LiveSquadSpec } from "./squad-view";
 
 type Action = "plan" | "start-signed" | "read" | "start" | "resume" | "abort" | "read-child" | "child";
 const fields = { plan: "forum,operationId,owner,replacement,revision", "start-signed": "forum,material,operationId,owner,replacement,revision", read: "forum,owner", start: "forum,operationId,owner,replacement,revision", resume: "forum,operationId,owner,replacement",
@@ -33,7 +34,7 @@ export function createSquadAssignmentService(input: {
       const evaluationClock = () => { request.signal.throwIfAborted(); if (clock() !== at) throw Error("evaluation expired"); return at; };
       const session = await authenticate(request);
       evaluationClock();
-      if (!session || !isSeaPubkey(session.key) || isPublicSquadPrincipal(session.key)) return reply(403, { error: "authentication" });
+      if (!session || !isSeaPubkey(session.key)) return reply(403, { error: "authentication" });
       const sessionKey = session.key;
       if (!request.body) return reply(400, { error: "request" });
       const reader = request.body.getReader(), chunks: Uint8Array[] = []; let size = 0;
@@ -54,7 +55,8 @@ export function createSquadAssignmentService(input: {
       try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { return reply(400, { error: "request" }); }
       if (!body || Object.keys(body).sort().join() !== fields[action] || body.forum !== view.forumId || body.owner !== view.owner) return reply(400, { error: "scope-or-fields" });
       if (["plan", "start-signed", "start", "resume", "abort"].includes(action) && (typeof body.operationId !== "string" || !/^[0-9a-f]{32}$/.test(body.operationId))) return reply(400, { error: "operation" });
-      if (["plan", "start-signed", "start", "resume"].includes(action) && (!isSeaPubkey(body.replacement) || isPublicSquadPrincipal(body.replacement))) return reply(400, { error: "replacement" });
+      if (["plan", "start-signed", "start", "resume"].includes(action) &&
+          (!isSeaPubkey(body.replacement) || isPublicForumVectorPubkey(body.replacement))) return reply(400, { error: "replacement" });
       if (["plan", "start-signed", "start"].includes(action) && (!Number.isSafeInteger(body.revision) || body.revision < 0)) return reply(400, { error: "revision" });
       if (action === "read-child" && !isForumObjectId(body.id)) return reply(400, { error: "child" });
       if (action === "child" && (typeof body.signature !== "string" || body.signature.length > 32768)) return reply(400, { error: "signature" });
@@ -65,7 +67,7 @@ export function createSquadAssignmentService(input: {
       const verified = await authority.refresh({ completeThrough: at, rows: state.rows, history: await pinned.history(at) }, at);
       const actor = authority.graph.principalForKey(sessionKey, at);
       if (!verified.ok || verified.diagnostics.length || authority.graph.ownerOf(view.forumId) !== view.owner) return reply(503, { error: "authority" });
-      if (!actor || isPublicSquadPrincipal(actor)) return reply(403, { error: "principal" });
+      if (!actor) return reply(403, { error: "principal" });
       if (!["child", "read-child"].includes(action) && actor !== view.owner) return reply(403, { error: "owner" });
       // Do not re-resolve a retired session key as a stable actor in a later
       // evaluation second. New requests reauthenticate against a fresh view.
