@@ -70,6 +70,13 @@ function parseArtifact(value: unknown): Artifact | null {
   return null;
 }
 
+export function forumReportStatementAdmissionBody(at: number, forumId: string, owner: string,
+  envelope: { rows: unknown[]; update: unknown }, artifact: Artifact | null, artifactFields: object = {}) {
+  const body: Record<string, unknown> = { version: 1, forumId, owner, evaluatedAt: at, rows: envelope.rows };
+  if (artifact) Object.assign(body, { update: envelope.update, ...artifactFields });
+  return body;
+}
+
 export function parseVisorReporterRequest(value: unknown): ReportRequest | null {
   const legacy = parseVisorForumReport(value);
   if (legacy) return { report: legacy, artifact: null };
@@ -124,7 +131,7 @@ export function openVisorForumReporter(configFile: string) {
   }
   const session = createBotSession({ origin: c.origin, pair, timeoutMs: 6500 });
   const authority = createForumAuthority(c.authority);
-  const reader = createHttpForumAuthorityReader({ endpoint: "/api/squad/pilot/authority",
+  const reader = createHttpForumAuthorityReader({ endpoint: "/api/site/authority",
     squad: { forumId: c.forumId, owner: c.owner, label: "Visor forum" }, fetch: session.fetch });
   const refresh = createBotAuthorityRefresh({ authority, reader, signIn: session.signIn,
     forum: c.forumId, owner: c.owner, principal: c.principal, key: pair.pub });
@@ -192,10 +199,10 @@ export function openVisorForumReporter(configFile: string) {
           principal: r.principal, status: r.status,
         }) } : {};
         const signal = AbortSignal.any([stopped, AbortSignal.timeout(artifact ? 6500 : 1500)]);
-        const response = await session.fetch("/api/squad/pilot/plane/" + (artifact?.kind ?? "update"), { method: "POST", signal,
+        if (artifact) throw Error("Plane artifact admission retired");
+        const response = await session.fetch("/api/site/statement", { method: "POST", signal,
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ version: 1, forumId: c.forumId, owner: c.owner, evaluatedAt: at,
-            rows: envelope.rows, update: envelope.update, ...content }) });
+          body: JSON.stringify(forumReportStatementAdmissionBody(at, c.forumId, c.owner, envelope, artifact, content)) });
         if (!response.ok) {
           await response.body?.cancel();
           throw Error("Forum report admission unavailable");
@@ -214,10 +221,7 @@ export function openVisorForumReporter(configFile: string) {
           });
           db.prepare("UPDATE reports SET sent=1 WHERE delivery=?").run(r.deliveryId);
         }
-        if (artifact) {
-          const { taskId, artifactId, revisionId } = artifact.draft;
-          return { version: 1, taskId, artifactId, revisionId };
-        }
+        return undefined;
       } finally {
         busy = false;
       }

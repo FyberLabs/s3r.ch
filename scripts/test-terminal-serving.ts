@@ -22,15 +22,15 @@ const pair = await sea.pair(), other = await sea.pair(), unrelated = await sea.p
   const common = { subject: "11111111-1111-1111-1111-111111111111", tenant, organization: "", realm: "controlplane", issuer, clients: ["s3rch-web"], origins: [origin], identities: { sea: [pair.pub] } };
   const scopes = { "flags-s3rch-browser": { ...common, suite: "flags-s3rch-browser" }, "s3rch-device-transfer": { ...common, suite: "s3rch-device-transfer", tenant: "33333333-3333-3333-3333-333333333333", subject: "44444444-4444-4444-4444-444444444444" } };
   const config = { version: 1, owner: "s3rch", origin, authOrigin: "https://api.test.hyperme.sh", controllerKey: "a".repeat(64), ownerKey: "b".repeat(64), scopes };
-  const env: Record<string, string> = { IDENTITY_SESSION_SECRET: "s".repeat(40), S3RCH_OAUTH_ISSUER: issuer, S3RCH_OAUTH_CLIENT_ID: "s3rch-web",
+  const env: Record<string, string> = { S3RCH_SESSION_SIGNING_KEY: "s".repeat(40), S3RCH_OAUTH_ISSUER: issuer, S3RCH_OAUTH_CLIENT_ID: "s3rch-web",
     S3RCH_DEVICE_TRANSFER_CONFIG: JSON.stringify({ v: 1, scope: { sourceOrigin: origin, destinationOrigin: origin, application: "s3r.ch", tenant: scopes["s3rch-device-transfer"].tenant, audience: "device" }, auth: "https://api.test.hyperme.sh/auth/sea-device-link/v1/", acl: "https://api.test.hyperme.sh/api/v1/acl/sociacl/device-transfer/", provider: "panopticon" }),
-    S3RCH_IDENTITY_REPLAY_BACKEND: "spanopticon", S3RCH_IDENTITY_REPLAY_ORIGIN: "https://api.test.hyperme.sh", S3RCH_IDENTITY_REPLAY_TENANT_ID: "55555555-5555-5555-5555-555555555555", S3RCH_IDENTITY_REPLAY_API_KEY: "dedicated-replay",
+    S3RCH_IDENTITY_REPLAY_BACKEND: "spanopticon", S3RCH_IDENTITY_REPLAY_ORIGIN: "https://api.test.hyperme.sh", S3RCH_IDENTITY_REPLAY_TENANT_ID: "55555555-5555-5555-5555-555555555555", S3RCH_SERVICE_CREDENTIAL: "dedicated-replay",
     S3RCH_EXPERIMENTS_ENABLED: "1", S3RCH_EXPERIMENT_ORIGIN: origin, S3RCH_EXPERIMENT_TENANT: "66666666-6666-6666-6666-666666666666", S3RCH_EXPERIMENT_SECRET: "d".repeat(64), S3RCH_EXPERIMENT_STORAGE_ORIGIN: "https://api.test.hyperme.sh",
     S3RCH_EXPERIMENT_CACHE_KEY: "cache-key-1234567890", S3RCH_EXPERIMENT_OUTBOX_KEY: "outbox-key-1234567890", S3RCH_EXPERIMENT_PUBLIC_KEY: signing.publicKey.export({ type: "spki", format: "pem" }).toString(),
     APPLICATIONINSIGHTS_CONNECTION_STRING: "InstrumentationKey=11111111-1111-4111-8111-111111111111" };
 
 config.scopes["s3rch-device-transfer"].identities = { sea: [other.pub] };
-const sessions = createIdentitySessions({ origin, secret: env.IDENTITY_SESSION_SECRET, consume: async () => true });
+const sessions = createIdentitySessions({ origin, secret: env.S3RCH_SESSION_SIGNING_KEY, consume: async () => true });
 async function legacy(key: SeaPair) { const challenge = await sessions.challenge(key.pub); return (await sessions.exchange(challenge, (await signForumRecord(challenge, key))!))!; }
 const oldFixture = await legacy(pair), oldUnrelated = await legacy(unrelated);
 const port = "3939", local = "http://127.0.0.1:" + port;
@@ -128,7 +128,7 @@ try {
   consent.jar.delete("__Host-nightly-run-grant");
   assert.equal((await consent.request("/api/experiments", { action: "consent", allowed: false })).status, 503);
   const alias = browser("c".repeat(64));
-  const aliasClient = createSeaSessionClient({ origin, base: "/api/squad/pilot/session", fetch: async (url, init) => alias.request(new URL(String(url), origin).pathname, init?.body ? JSON.parse(String(init.body)) : undefined) });
+  const aliasClient = createSeaSessionClient({ origin, base: "/api/identity/sea", fetch: async (url, init) => alias.request(new URL(String(url), origin).pathname, init?.body ? JSON.parse(String(init.body)) : undefined) });
   assert.equal(await aliasClient.signIn(pair), true);
   assert.equal((await (await alias.request("/api/identity/session")).json()).owner, pair.pub);
   assert.equal((await browser("f".repeat(64)).request("/api/identity/device/authorize")).status, 302);

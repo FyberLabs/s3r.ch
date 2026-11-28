@@ -70,7 +70,7 @@ docker run --rm --network none --entrypoint node "$image" --input-type=module -e
   }'
 
 docker run -d --name "$name" -p "127.0.0.1:${port}:8080" \
-  -e "IDENTITY_SESSION_SECRET=${secret}" \
+  -e "S3RCH_SESSION_SIGNING_KEY=${secret}" \
   "$image" >/dev/null
 
 # The image must not carry Panopticon configuration.

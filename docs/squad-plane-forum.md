@@ -1,7 +1,12 @@
 # Squad forum task intake and bot control
 
-The Squad pilot can route owner intents to Plane's bot registry. Configure the
-optional `plane` object inside `S3RCH_SQUAD_PILOT` with an HTTPS `origin`, a
+**Retired.** The `S3RCH_SQUAD_PILOT` environment variable and `/api/squad/pilot/*`
+routes are removed. Forum statement admission, authority, and meeting signaling
+now use `/api/site/*` when ACL mode is configured ([configuration.md](configuration.md)).
+The sections below describe the historical pilot contract for archival reference.
+
+The Squad pilot could route owner intents to Plane's bot registry. Configure the
+optional `plane` object in the retired server-only pilot JSON with an HTTPS `origin`, a
 tenant UUID in `tenant`, and a `roster` of Plane bot UUIDs mapped to SEA
 principals. The server also checks current forum see and post permission for
 the selected bot. The Plane configuration stays on the server.
@@ -31,7 +36,7 @@ The credential remains in the site's private configuration.
 
 ## Squad project tasks
 
-The optional `project` section in `S3RCH_SQUAD_PILOT` enables one project
+The optional `project` section in that pilot configuration enabled one project
 inside the configured Squad. Its map, task list and attribution history use
 one private conditional record in the existing tenant record service. They
 follow the current forum read and post grants. The project record credential

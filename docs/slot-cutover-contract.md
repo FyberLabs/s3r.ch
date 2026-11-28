@@ -1,6 +1,6 @@
 # Web slot compatibility
 
-Both web colors use the same `IDENTITY_SESSION_SECRET` and canonical public
+Both web colors use the same `S3RCH_SESSION_SIGNING_KEY` and canonical public
 origin. The secret is shared configuration, not a slot-specific setting; a color
 switch must not rotate it. Keep cookie name, path, domain, secure flags, issuer
 and audience stable. Wallet cookie tests exercise both directions between two

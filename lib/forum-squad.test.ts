@@ -12,6 +12,7 @@ import {
   seaToPrincipalKey,
 } from "@/lib/identity/check";
 import { createMemorySeeAcl } from "@/lib/identity/see-acl";
+import type { SeeAcl } from "@/lib/identity/check";
 import vector from "@/lib/identity/vectors/forums.json";
 import {
   forumOfferCacheKey,
@@ -81,7 +82,6 @@ import {
   offerBlockedByCancel,
   offerCancelAwaitingKeys,
   offerSeeWait,
-  overlaySeeGraph,
   parseForumAgentRemoval,
   parseForumMeshRemoval,
   parseForumRoleMembership,
@@ -98,8 +98,13 @@ import {
   PILOT_FORUM_ID,
   PILOT_NEEDS,
   PILOT_OWNER,
-  admitPilotRoster,
-} from "@/lib/identity/vectors/forum-squad-fixture";
+} from "@/lib/forum-coordination-test-vectors";
+
+function admitPilotRoster(acl: SeeAcl): void {
+  acl.putObject(PILOT_FORUM_ID, PILOT_OWNER);
+  for (const agent of PILOT_AGENTS) acl.putObject(agent.status.id, PILOT_OWNER);
+  for (const need of PILOT_NEEDS) acl.putObject(need.id, PILOT_OWNER);
+}
 
 function agent(label: string, state: SquadAgent["status"]["state"]): SquadAgent {
   const base = PILOT_AGENTS[0];
@@ -530,26 +535,6 @@ describe("squad view", () => {
       }),
       false,
     );
-    const outsider = {
-      ...status,
-      seaPubkey: "strangerpub.strangerpub",
-      state: "emergency" as const,
-    };
-    assert.equal(
-      mergeAgents(PILOT_AGENTS, [outsider]).some((row) => row.status.seaPubkey === outsider.seaPubkey),
-      false,
-    );
-    assert.equal(
-      mergeAgents(PILOT_AGENTS, [outsider], new Set([outsider.seaPubkey])).some(
-        (row) => row.status.state === "emergency" && row.status.seaPubkey === outsider.seaPubkey,
-      ),
-      true,
-    );
-    const meshUpdate = { ...status, task: "from-mesh" };
-    assert.equal(
-      mergeAgents(PILOT_AGENTS, [meshUpdate]).find((row) => row.status.seaPubkey === status.seaPubkey)?.status.task,
-      "from-mesh",
-    );
   });
 
   it("requires the allowed signer on chat, need, alarm, and offer rows", () => {
@@ -734,7 +719,6 @@ describe("squad view", () => {
     const hawk = PILOT_AGENTS.find((row) => row.label === "HAWK-2");
     assert.ok(hawk);
     const roster = composeForumRoster({
-      sample: PILOT_AGENTS,
       mesh: [hawk.status],
       removed: new Set([hawk.status.seaPubkey]),
     });
@@ -820,51 +804,6 @@ describe("squad view", () => {
         false,
       );
     }
-  });
-
-  it("keeps the admitted sample owner when a mesh edge names another pubkey", () => {
-    const need = PILOT_NEEDS.find((row) => row.stated === 1 && row.subject !== PILOT_OWNER);
-    assert.ok(need);
-    const sample = createMemorySeeAcl();
-    admitPilotRoster(sample);
-    const primary = createMemorySeeAcl();
-    primary.putObject(need.id, need.subject);
-    applySeeGrant(primary, need.subject, {
-      claimId: need.id,
-      accessor: need.subject,
-      from: 0,
-      until: 10_000_000_000,
-    });
-    const graph = overlaySeeGraph(primary, sample);
-    assert.equal(graph.ownerOf(need.id), PILOT_OWNER);
-    assert.equal(checkSee(graph, need.id, need.subject, 1_000).allowed, false);
-    assert.equal(checkSee(graph, need.id, PILOT_OWNER, 1_000).reason, "owner");
-    const helper = PILOT_AGENTS.find((row) => row.status.seaPubkey !== PILOT_OWNER);
-    assert.ok(helper);
-    const matched = createMemorySeeAcl();
-    matched.putObject(need.id, PILOT_OWNER);
-    applySeeGrant(matched, PILOT_OWNER, {
-      claimId: need.id,
-      accessor: helper.status.seaPubkey,
-      from: 0,
-      until: 10_000_000_000,
-    });
-    const unsigned = overlaySeeGraph(matched, sample);
-    assert.equal(checkSee(unsigned, need.id, helper.status.seaPubkey, 1_000).allowed, false);
-    assert.equal(checkSee(unsigned, need.id, PILOT_OWNER, 1_000).reason, "owner");
-    applySeeGrant(sample, PILOT_OWNER, {
-      claimId: need.id,
-      accessor: helper.status.seaPubkey,
-      from: 0,
-      until: 10_000_000_000,
-    });
-    assert.equal(
-      checkSee(overlaySeeGraph(matched, sample), need.id, helper.status.seaPubkey, 1_000).allowed,
-      true,
-    );
-    assert.equal(graph.ownerOf("not-a-sample-object"), undefined);
-    primary.putObject("not-a-sample-object", need.subject);
-    assert.equal(overlaySeeGraph(primary, sample).ownerOf("not-a-sample-object"), undefined);
   });
 
   it("closes a mesh need only when the accepted offer is live and the helper can see", () => {
@@ -1529,37 +1468,21 @@ describe("squad view", () => {
 
 
 describe("live drawer provenance", () => {
-  it("does not attach sample details to a received status", () => {
-    const fixture: SquadAgent = {
-      ...PILOT_AGENTS[0], promptBy: "sample operator", artifactNote: "sample files",
-      subtasks: [{ id: "sample-task", label: "sample work", state: "done" }],
-      updates: [{ id: "sample-update", ts: 1, body: "sample history" }],
-    };
-    const before = structuredClone(fixture);
-    const status = { ...fixture.status, task: "live task", lastPrompt: "live prompt", result: "live result" };
-    const [agent] = mergeAgents([fixture], [status]);
+  it("does not attach historical details to a received status", () => {
+    const status = PILOT_AGENTS[0].status;
+    const [agent] = mergeAgents([{ ...status, task: "live task", lastPrompt: "live prompt", result: "live result" }]);
     assert.equal(agent.drawerSource, "status-only");
-    assert.equal(agent.status, status);
-    assert.equal(agent.label, fixture.label);
     assert.deepEqual(agent.subtasks, []);
     assert.deepEqual(agent.updates, []);
     assert.equal(agent.promptBy, "");
     assert.equal(agent.artifactNote, "");
-    assert.deepEqual(fixture, before);
-    // Repeated updates must not restore sample child records.
-    const [again] = mergeAgents([fixture], [{ ...status, lastUpdate: status.lastUpdate + 1 }]);
+    const [again] = mergeAgents([{ ...status, lastUpdate: status.lastUpdate + 1, task: "updated task" }]);
     assert.deepEqual(again.subtasks, []);
     assert.equal(again.drawerSource, "status-only");
   });
 
-  it("keeps sample-only details and removes an agent after a verified removal", () => {
-    const fixture = PILOT_AGENTS[0];
-    const [sample] = mergeAgents([fixture], []);
-    assert.equal(sample.drawerSource, "sample");
-    assert.deepEqual(sample.subtasks, fixture.subtasks);
-    assert.deepEqual(sample.updates, fixture.updates);
-    assert.equal(sample.promptBy, fixture.promptBy);
-    assert.deepEqual(composeForumRoster({ sample: [fixture], mesh: [fixture.status],
-      removed: new Set([fixture.status.seaPubkey]) }), []);
+  it("removes an agent after a verified removal", () => {
+    const status = PILOT_AGENTS[0].status;
+    assert.deepEqual(composeForumRoster({ mesh: [status], removed: new Set([status.seaPubkey]) }), []);
   });
 });

@@ -6,7 +6,7 @@ import {deviceConfig} from './device-config';
 import {devicePersonOAuth,readDevicePerson} from './device-person';
 import {devicePersonCookie,devicePendingCookie} from './device-cookies';
 import {deviceServer} from './device-server';
-const origin='https://s3r.ch',scope={sourceOrigin:origin,destinationOrigin:origin,application:'s3r.ch',tenant:'11111111-1111-1111-1111-111111111111',audience:'device'},env={IDENTITY_SESSION_SECRET:'x'.repeat(40),S3RCH_OAUTH_ISSUER:'https://issuer.example/realm',S3RCH_DEVICE_TRANSFER_CONFIG:JSON.stringify({v:1,scope,auth:'https://auth.example/auth/sea-device-link/v1/',acl:'https://acl.example/api/v1/acl/sociacl/device-transfer/',provider:'panopticon'})};
+const origin='https://s3r.ch',scope={sourceOrigin:origin,destinationOrigin:origin,application:'s3r.ch',tenant:'11111111-1111-1111-1111-111111111111',audience:'device'},env={S3RCH_SESSION_SIGNING_KEY:'x'.repeat(40),S3RCH_OAUTH_ISSUER:'https://issuer.example/realm',S3RCH_DEVICE_TRANSFER_CONFIG:JSON.stringify({v:1,scope,auth:'https://auth.example/auth/sea-device-link/v1/',acl:'https://acl.example/api/v1/acl/sociacl/device-transfer/',provider:'panopticon'})};
 const config=deviceConfig(origin,env)!;
 const cookie=(response:Response,name:string)=>response.headers.getSetCookie().find(c=>c.startsWith(name+'=')&&!c.startsWith(name+'=;'))?.split(';')[0]??'';
 test('PKCE authorization keeps bearer encrypted and rejects wrong state and changed configuration',async()=>{
@@ -25,7 +25,7 @@ test('PKCE authorization keeps bearer encrypted and rejects wrong state and chan
  assert.equal(await readDevicePerson(req,{...config,digest:'changed'},origin,env,now),null);
 });
 test('BFF confines bearer to owner calls, rejects switched context and strips owner errors',async()=>{
- const now=Math.floor(Date.now()/1000),context='a'.repeat(43),key=createHash('sha256').update('s3r.ch/device-person/v1\0'+env.IDENTITY_SESSION_SECRET).digest();
+ const now=Math.floor(Date.now()/1000),context='a'.repeat(43),key=createHash('sha256').update('s3r.ch/device-person/v1\0'+env.S3RCH_SESSION_SIGNING_KEY).digest();
  const token=await new EncryptJWT({config:config.digest,access:'person-bearer',sub:'person',context}).setProtectedHeader({alg:'dir',enc:'A256GCM',typ:'s3rch-device-person-v1'}).setIssuer(origin).setAudience(origin).setIssuedAt(now).setExpirationTime(now+300).encrypt(key);
  const req=(body:any,ctx=context)=>new Request(origin+'/api/identity/device/relay',{method:'POST',headers:{Origin:origin,Cookie:devicePersonCookie+'='+token,'X-Device-Context':ctx,'Content-Type':'application/json'},body:JSON.stringify(body)});
  const receiver={session:'a'.repeat(43),action:'offer',scope,payload:{},headers:{'X-Pairing-Role':'receiver','X-Pairing-Capability':'b'.repeat(43)}};
@@ -45,7 +45,7 @@ test('admitted native relay forwards only its original grant to Auth TEST',async
  const testOrigin='https://test.s3r.ch',testScope={...scope,sourceOrigin:testOrigin,destinationOrigin:testOrigin};
  const testEnv={...env,S3RCH_DEVICE_TRANSFER_CONFIG:JSON.stringify({v:1,scope:testScope,auth:'https://api.test.hyperme.sh/auth/sea-device-link/v1/',acl:'https://api.test.hyperme.sh/api/v1/acl/sociacl/device-transfer/',provider:'panopticon'})};
  const cfg=deviceConfig(testOrigin,testEnv)!,now=Math.floor(Date.now()/1000),ctx='a'.repeat(43),grant='b'.repeat(64),binding={run:'original',generation:'c'.repeat(64)};
- const key=createHash('sha256').update('s3r.ch/device-person/v1\0'+env.IDENTITY_SESSION_SECRET).digest();
+ const key=createHash('sha256').update('s3r.ch/device-person/v1\0'+env.S3RCH_SESSION_SIGNING_KEY).digest();
  const token=await new EncryptJWT({config:cfg.digest,access:'person-bearer',sub:'person',context:ctx,nightly_run:binding}).setProtectedHeader({alg:'dir',enc:'A256GCM',typ:'s3rch-device-person-v1'}).setIssuer(testOrigin).setAudience(testOrigin).setIssuedAt(now).setExpirationTime(now+300).encrypt(key);
  const value={session:'a'.repeat(43),action:'offer',scope:testScope,payload:{},headers:{'X-Pairing-Role':'receiver','X-Pairing-Capability':'b'.repeat(43)}};
  const request=new Request(testOrigin+'/api/identity/device/relay',{method:'POST',headers:{Origin:testOrigin,Cookie:devicePersonCookie+'='+token+'; __Host-nightly-run-grant='+grant,'X-Device-Context':ctx,'Content-Type':'application/json'},body:JSON.stringify(value)});

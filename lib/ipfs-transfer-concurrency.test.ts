@@ -64,8 +64,8 @@ test('Kubo holds shared slots through provider completion and saturation sends n
   await make().get(cid,1);assert.equal(calls,3);assert.equal(locks.held.size,0);
 });
 test('native lock manager admits a replacement while one other slot remains occupied',async()=>{
-  const gateA=deferred(),gateB=deferred(),enteredA=deferred(),enteredB=deferred();
-  const make=()=>createSharedTransferConcurrency({current:()=>true});
+  const locks=lockManager(),gateA=deferred(),gateB=deferred(),enteredA=deferred(),enteredB=deferred();
+  const make=()=>createSharedTransferConcurrency({locks,current:()=>true});
   const a=make().run(signal(),async()=>{enteredA.resolve();await gateA.promise;});await enteredA.promise;
   const b=make().run(signal(),async()=>{enteredB.resolve();await gateB.promise;});await enteredB.promise;
   try {

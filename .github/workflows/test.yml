@@ -131,26 +131,6 @@ jobs:
         run: |
           npx playwright-core install --with-deps chromium
           sudo apt-get install -y ffmpeg
-      - name: Capture the Squad project and brief
-        if: github.event_name == 'pull_request'
-        id: squad-snapshot
-        timeout-minutes: 2
-        run: |
-          if git diff --quiet HEAD^ HEAD -- components/SquadBriefPanel.tsx components/SquadProjectPanel.tsx components/SquadWorkbookPanel.tsx components/SquadPreviewPanel.tsx scripts/snapshot-squad-project.mjs; then
-            exit 0
-          fi
-          node --import tsx scripts/snapshot-squad-project.mjs
-          echo 'captured=true' >> "$GITHUB_OUTPUT"
-      - name: Upload the Squad project screenshot
-        if: steps.squad-snapshot.outputs.captured == 'true'
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: squad-partner-brief
-          path: |
-            ${{ runner.temp }}/squad-partner-brief.png
-            ${{ runner.temp }}/squad-partner-preview.png
-          if-no-files-found: error
-          retention-days: 7
       - name: Local ciphertext cache browser contracts (CI only)
         timeout-minutes: 2
         run: node scripts/test-ipfs-cache-browser.mjs
@@ -502,9 +482,9 @@ jobs:
           node --import tsx --test --test-isolation=none --experimental-test-coverage
           --test-coverage-include=lib/acl-statement-source-server.ts
           --test-coverage-include=lib/acl-graph-source-server.ts
-          --test-coverage-include=lib/squad-pilot-server.ts
-          lib/acl-statement-source-server.test.ts lib/squad-acl-source.test.ts
-          lib/squad-pilot-config.test.ts lib/forum-authority-service.test.ts lib/squad-http-services.test.ts
+          --test-coverage-include=lib/site-acl-server.ts
+          lib/acl-statement-source-server.test.ts lib/site-acl-server.test.ts
+          lib/site-acl-server.test.ts lib/forum-authority-service.test.ts lib/retired-env-vars.test.ts
 
       - name: Delegation consumer coverage (CI only)
         run: >-

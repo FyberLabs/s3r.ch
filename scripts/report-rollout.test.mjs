@@ -10,7 +10,7 @@ const base = {
   RESTORED_REVISION: restored,
   GITHUB_RUN_ID: "111",
   STARTUP_DIAGNOSTICS: JSON.stringify({
-    revision: candidate, observed: true, missing: ["IDENTITY_SESSION_SECRET", "PRIVATE_VALUE"], squad_key: "missing",
+    revision: candidate, observed: true, missing: ["S3RCH_SESSION_SIGNING_KEY", "PRIVATE_VALUE"], squad_key: "missing",
   }),
 };
 
@@ -19,7 +19,7 @@ test("a verified rollback creates one issue and repeats find the same issue", as
   const api = async (path, issue) => {
     assert.match(path, /^repos\/FyberLabs\/s3r\.ch\/issues/);
     if (!issue) return rows;
-    assert.match(issue.body, /IDENTITY_SESSION_SECRET/);
+    assert.match(issue.body, /S3RCH_SESSION_SIGNING_KEY/);
     assert.match(issue.body, /Squad statement key status: missing/);
     assert.doesNotMatch(issue.body, /PRIVATE_VALUE/);
     const row = { html_url: "https://github.com/FyberLabs/s3r.ch/issues/123", body: issue.body };

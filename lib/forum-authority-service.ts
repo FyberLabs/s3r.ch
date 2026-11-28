@@ -1,8 +1,6 @@
 import { roomAuthorityReadDiagnosticsBlock } from "./room-authority-diagnostics";
 import { matchesBrowserOrigin } from "./request-origin";
 import { createForumAuthority, type ForumAuthorityConfig, type ForumAuthoritySnapshot } from "./identity/forum-authority";
-import { squadView, type LiveSquadSpec } from "./squad-view";
-
 /** Server dependencies only. authenticate must prove possession of the session's
  * SEA key (a wallet address or caller-supplied pubkey is not authentication).
  * read must supply a complete atomic snapshot for this provisioned namespace,
@@ -10,15 +8,12 @@ import { squadView, type LiveSquadSpec } from "./squad-view";
  * from independently read histories and arbitrary Gun rows.
  */
 export function createForumAuthorityService(input: {
-  squad: LiveSquadSpec;
   origin: string;
   config: ForumAuthorityConfig;
   authenticate(request: Request): Promise<{ key: string } | null>;
   read(at: number, signal: AbortSignal): Promise<ForumAuthoritySnapshot>;
   clock?: () => number;
 }) {
-  const view = squadView(input.squad);
-  if (!view.live) throw Error("Live Squad required");
   const origin = new URL(input.origin);
   if (origin.origin !== input.origin || !["http:", "https:"].includes(origin.protocol)) throw Error("Canonical origin required");
   const config = structuredClone(input.config), { authenticate, read } = input;
@@ -58,22 +53,23 @@ export function createForumAuthorityService(input: {
       catch { return reply(400, { error: "request" }); }
       if (clock() !== at) return reply(409, { error: "scope-or-time" });
       if (!body || Object.keys(body).sort().join() !== "evaluatedAt,forumId,owner,version" || body.version !== 1 ||
-          body.forumId !== view.forumId || body.owner !== view.owner || !Number.isSafeInteger(body.evaluatedAt) ||
+          typeof body.forumId !== "string" || typeof body.owner !== "string" || !Number.isSafeInteger(body.evaluatedAt) ||
           body.evaluatedAt < 0 || Object.is(body.evaluatedAt, -0) || body.evaluatedAt !== at) return reply(409, { error: "scope-or-time" });
       request.signal.throwIfAborted();
       // Copy once: verify and return the identical evidence, even if the trusted
       // reader reuses mutable objects across concurrent calls.
       const snapshot = structuredClone(await read(at, request.signal));
-      const encoded = JSON.stringify({ version: 1, forumId: view.forumId, owner: view.owner, evaluatedAt: at, snapshot });
+      const encoded = JSON.stringify({ version: 1, forumId: body.forumId, owner: body.owner, evaluatedAt: at, snapshot });
       if (new TextEncoder().encode(encoded).byteLength > 4 * 1024 * 1024 || !Array.isArray(snapshot.rows) || snapshot.rows.length > 1024)
         return reply(503, { error: "capacity" });
       const authority = createForumAuthority(config, clock);
       const result = await authority.refresh(snapshot, at);
       request.signal.throwIfAborted();
       const principal = authority.graph.principalForKey(key, at);
-      if (!result.ok || roomAuthorityReadDiagnosticsBlock(result.diagnostics, snapshot) || clock() !== at || authority.graph.ownerOf(view.forumId) !== view.owner)
+      if (!result.ok || roomAuthorityReadDiagnosticsBlock(result.diagnostics, snapshot) || clock() !== at ||
+          authority.graph.ownerOf(body.forumId) !== body.owner)
         return reply(503, { error: "authority-unavailable" });
-      if (!principal || !authority.graph.checkForumSee(view.forumId, principal, at).allowed)
+      if (!principal || !authority.graph.checkForumSee(body.forumId, principal, at).allowed)
         return reply(403, { error: "access" });
       return new Response(encoded, { headers: { "Content-Type": "application/json", "Cache-Control": "no-store",
         Vary: "Cookie, Authorization, Origin", "X-Content-Type-Options": "nosniff" } });

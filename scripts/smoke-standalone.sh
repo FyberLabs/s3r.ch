@@ -10,7 +10,7 @@ log="$data/server.log"
 cd .next/standalone
 
 env -i PATH="$PATH" HOME="$data" NODE_ENV=production PORT="$port" HOSTNAME=127.0.0.1 \
-  IDENTITY_SESSION_SECRET=smoke-only-identity-session-secret-0123456789 \
+  S3RCH_SESSION_SIGNING_KEY=smoke-only-identity-session-secret-0123456789 \
   GUN_FILE="$data/radata" GUN_SNAPSHOT="$data/snapshot.json" \
   node server.js >"$log" 2>&1 &
 pid=$!

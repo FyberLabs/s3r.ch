@@ -17,7 +17,7 @@ npm ci
 cp .env.example .env.local
 ```
 
-Set `IDENTITY_SESSION_SECRET` in `.env.local` to a string of at least 32 characters. Then:
+Set `S3RCH_SESSION_SIGNING_KEY` in `.env.local` to a string of at least 32 characters. Then:
 
 ```bash
 npm run dev
@@ -35,11 +35,11 @@ A production-shaped web process (standalone Next):
 
 ```bash
 npm run build
-IDENTITY_SESSION_SECRET='replace-with-32-or-more-characters' \
+S3RCH_SESSION_SIGNING_KEY='replace-with-32-or-more-characters' \
   PORT=8080 HOSTNAME=0.0.0.0 npm start
 ```
 
-`npm start` runs `node .next/standalone/server.js`. It does not set `NODE_ENV`. Leave `NODE_ENV` unset on a workstation and the identity document stays the local file, same as `npm run dev`. The image sets `NODE_ENV=production`. Match that on a shared host with `NODE_ENV=production`; identity storage is then Azure Blob, under [Identity storage](#identity-storage), and `IDENTITY_SESSION_SECRET` is required.
+`npm start` runs `node .next/standalone/server.js`. It does not set `NODE_ENV`. Leave `NODE_ENV` unset on a workstation and the identity document stays the local file, same as `npm run dev`. The image sets `NODE_ENV=production`. Match that on a shared host with `NODE_ENV=production`; identity storage is then Azure Blob, under [Identity storage](#identity-storage), and `S3RCH_SESSION_SIGNING_KEY` is required.
 
 Start the peer in a separate terminal, then seed its public cache (live public sources only; an empty source writes nothing):
 
@@ -59,7 +59,7 @@ Build from this repo. The image listens on 8080, sets `NODE_ENV=production`, `GU
 ```bash
 docker build -t s3rch:local .
 docker run --rm -p 8080:8080 \
-  -e IDENTITY_SESSION_SECRET \
+  -e S3RCH_SESSION_SIGNING_KEY \
   s3rch:local
 # In another terminal, run the peer with its own storage:
 mkdir -p data && sudo chown 1001:1001 data
@@ -266,7 +266,7 @@ Secrets are server-side only. Never `NEXT_PUBLIC_*` for a secret. `NEXT_PUBLIC_W
 
 | Name | Required | Default | Secret |
 | --- | --- | --- | --- |
-| `IDENTITY_SESSION_SECRET` | yes in production | development fallback in `lib/identity/config.ts` when unset and not production; a short value is always rejected | yes |
+| `S3RCH_SESSION_SIGNING_KEY` | yes in production | development fallback in `lib/identity/config.ts` when unset and not production; a short value is always rejected | yes |
 | `SEED_SECRET` | yes in production if you call `/api/seed` | unset allows the call only outside production | yes |
 | `GUN_FILE` | no | `./data/radata` (`/app/data/radata` in the image) | no |
 | `GUN_SNAPSHOT` | no | `./data/snapshot.json` (`/app/data/snapshot.json` in the image) | no |

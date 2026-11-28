@@ -5,7 +5,7 @@ import { createForumReceiveRetry } from "./forum-receive-retry";
 import { commitForumAlarm, parseForumAlarmUpdate, createMeshEventVersions,
   parseForumAgentStatus, forumStatusAdmission,
   retainForumRemoval, cacheForumStatus, type ForumAlarmUpdate } from "./forum-squad";
-import { PILOT_AGENTS, PILOT_OWNER, PILOT_FORUM_ID, PILOT_NEEDS } from "./identity/vectors/forum-squad-fixture";
+import { PILOT_AGENTS, PILOT_OWNER, PILOT_FORUM_ID, PILOT_NEEDS } from "./forum-coordination-test-vectors";
 import { readForumSignature, signForumRecord } from "./forum-sign";
 import { p256 } from "@noble/curves/nist.js";
 

@@ -12,11 +12,11 @@ async function setup(t: test.TestContext) {
   const snapshot = () => structuredClone({ completeThrough: f.now(), rows, history: { completeThrough: f.now(), links: [],
     accounts: [f.owner, f.a, f.b].map(pair => ({ principal: pair.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) } });
   let revision = 0, calls = 0, posted = "";
-  const service = createBotStatementAdmission({ origin: "https://forum.example.test", squad, config, clock: f.now,
+  const service = createBotStatementAdmission({ origin: "https://forum.example.test", config, clock: f.now,
     authenticate: async () => ({ key: f.a.pub }), source: { read: async () => ({ snapshot: snapshot(), fence: String(revision) }),
       append: async (fence, additions, guard) => { guard(); if (fence !== String(revision)) return false; rows.push(...additions); revision++; return true; } } });
   const input = { item: { id: `stmt_${seaToPrincipalKey(f.a.pub)}_${"b".repeat(32)}`, author: f.a.pub, ts: f.now() },
-    pair: f.a, squad, config, endpoint: "/api/squad/pilot/statement", signal: new AbortController().signal, clock: f.now,
+    pair: f.a, squad, config, endpoint: "/api/site/statement", signal: new AbortController().signal, clock: f.now,
     read: async () => snapshot(), fetch: (async function (this: unknown, url, init) {
       assert.equal(this, undefined);
       calls++; posted = String(init?.body);

@@ -73,7 +73,7 @@ s3r.ch runs on [open-source software](https://github.com/hyperme-sh) and an open
 
 A running service follows a version tag. TEST uses `ghcr.io/fyberlabs/s3r.ch:test`, which advances when a new build is published. Any other running copy uses a minor tag such as `ghcr.io/fyberlabs/s3r.ch:1.4` and picks up patches on that line. Each code change is a new patch version, and a downloadable package uses that version. A digest may be recorded to verify which image a tag resolved to. It is not how you deploy. Details: https://github.com/FyberLabs/s3r.ch/blob/master/docs/release.md.
 
-The web process listens on port 8080 and expects `IDENTITY_SESSION_SECRET` (at least 32 characters). Gun runs as `node /app/seed-peer.cjs` with its own data volume. The forum file stays with the one web process that should own it. Production sign-in also needs the identity document settings in the deployment guide. Health is `GET /api/health`.
+The web process listens on port 8080 and expects `S3RCH_SESSION_SIGNING_KEY` (at least 32 characters). Gun runs as `node /app/seed-peer.cjs` with its own data volume. The forum file stays with the one web process that should own it. Production sign-in also needs the identity document settings in the deployment guide. Health is `GET /api/health`.
 
 https://github.com/FyberLabs/s3r.ch/blob/master/docs/deployment.md
 

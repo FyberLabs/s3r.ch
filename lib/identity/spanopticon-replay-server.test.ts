@@ -41,10 +41,14 @@ test("invalid IDs, expiry or clocks never call the network", async () => {
   assert.equal(calls, 0);
 });
 
+test("service credential alone does not enable replay when backend settings are unset", () => {
+  assert.equal(configuredIdentityReplay(config.namespace, { S3RCH_SERVICE_CREDENTIAL: config.apiKey }), undefined);
+});
+
 test("explicit deployment configuration is complete and cannot silently fall back", () => {
   assert.equal(configuredIdentityReplay(config.namespace, {}), undefined);
   const env = { S3RCH_IDENTITY_REPLAY_BACKEND: "spanopticon", S3RCH_IDENTITY_REPLAY_ORIGIN: config.origin,
-    S3RCH_IDENTITY_REPLAY_TENANT_ID: config.tenant, S3RCH_IDENTITY_REPLAY_API_KEY: config.apiKey };
+    S3RCH_IDENTITY_REPLAY_TENANT_ID: config.tenant, S3RCH_SERVICE_CREDENTIAL: config.apiKey };
   assert.ok(configuredIdentityReplay(config.namespace, env));
   for (const field of Object.keys(env)) {
     const partial = { ...env }; delete partial[field as keyof typeof partial];

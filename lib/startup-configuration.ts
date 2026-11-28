@@ -3,11 +3,11 @@ import { releaseColor } from "./crash-report";
 type Environment = Record<string, string | undefined>;
 
 const required = [
-  "IDENTITY_SESSION_SECRET", "S3RCH_IDENTITY_BLOB_ACCOUNT", "S3RCH_IDENTITY_BLOB_CONTAINER",
+  "S3RCH_SESSION_SIGNING_KEY", "S3RCH_MEDIA_SIGNING_KEY", "S3RCH_SERVICE_CREDENTIAL",
+  "S3RCH_IDENTITY_BLOB_ACCOUNT", "S3RCH_IDENTITY_BLOB_CONTAINER",
 ];
 const statementSource = [
-  "S3RCH_SQUAD_PILOT", "S3RCH_STATEMENT_SOURCE_ORIGIN",
-  "S3RCH_STATEMENT_SOURCE_TENANT_ID", "S3RCH_STATEMENT_SOURCE_SCOPE",
+  "S3RCH_STATEMENT_SOURCE_ORIGIN", "S3RCH_STATEMENT_SOURCE_TENANT_ID", "S3RCH_STATEMENT_SOURCE_SCOPE",
 ];
 
 function present(value: string | undefined) {
@@ -32,8 +32,8 @@ export function startupConfiguration(env: Environment) {
     missing.push(...statementSource.filter(name => !present(env[name])));
     if (present(env.S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI)) {
       if (!present(env.AZURE_CLIENT_ID)) missing.push("AZURE_CLIENT_ID");
-    } else if (!present(env.S3RCH_STATEMENT_SOURCE_API_KEY)) {
-      missing.push("S3RCH_STATEMENT_SOURCE_API_KEY");
+    } else if (!present(env.S3RCH_SERVICE_CREDENTIAL)) {
+      missing.push("S3RCH_SERVICE_CREDENTIAL");
     }
   }
   return {

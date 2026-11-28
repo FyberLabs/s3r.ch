@@ -19,7 +19,7 @@ function logStatementKeyStatus(status: KeyStatus) {
   console.info(JSON.stringify({
     event: "s3rch.squad.statement-key",
     revision: /^[a-f0-9]{40}$/.test(revision) ? revision : null,
-    setting: "S3RCH_STATEMENT_SOURCE_API_KEY",
+    setting: "S3RCH_SERVICE_CREDENTIAL",
     status,
   }));
 }
@@ -28,7 +28,7 @@ function logStatementKeyStatus(status: KeyStatus) {
 export async function observeStartupStatementKey(env = process.env, fetcher: typeof fetch = fetch) {
   const uri = env.S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI;
   if (env.S3RCH_AUTHORITY_BACKEND !== "acl" || !uri || !env.AZURE_CLIENT_ID ||
-      env.S3RCH_STATEMENT_SOURCE_API_KEY) return;
+      env.S3RCH_SERVICE_CREDENTIAL) return;
   const signal = AbortSignal.timeout(2500);
   let status: KeyStatus = "unavailable";
   try {
@@ -43,11 +43,11 @@ export function configuredAclStatementSource(env: Record<string, string | undefi
   const backend = env.S3RCH_AUTHORITY_BACKEND;
   if (!backend || backend === "legacy") return undefined;
   if (backend !== "acl") throw Error("Unknown authority backend");
-  const key = env.S3RCH_STATEMENT_SOURCE_API_KEY;
+  const inlineKey = env.S3RCH_SERVICE_CREDENTIAL;
   const secretUri = env.S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI;
-  if (key && secretUri) throw Error("Configure only one statement source credential");
+  const statementKey = secretUri ? vaultStatementKey(secretUri, env.AZURE_CLIENT_ID, fetcher) : inlineKey;
   const config = { origin: env.S3RCH_STATEMENT_SOURCE_ORIGIN, tenant: env.S3RCH_STATEMENT_SOURCE_TENANT_ID,
-    scope: env.S3RCH_STATEMENT_SOURCE_SCOPE, apiKey: secretUri ? vaultStatementKey(secretUri, env.AZURE_CLIENT_ID, fetcher) : key };
+    scope: env.S3RCH_STATEMENT_SOURCE_SCOPE, apiKey: statementKey };
   if (Object.values(config).some(value => !value)) throw Error("Statement source not configured");
   return createAclStatementSource(config as AclStatementConfig, fetcher);
 }

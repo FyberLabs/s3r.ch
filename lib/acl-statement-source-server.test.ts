@@ -37,7 +37,7 @@ test("configuration is explicit and rejects unsafe endpoints and partial activat
   for (const key of ["origin", "tenant", "scope", "apiKey"])
     assert.throws(() => createAclStatementSource({ ...config, [key]: undefined } as any));
   assert.ok(configuredAclStatementSource({ S3RCH_AUTHORITY_BACKEND: "acl", S3RCH_STATEMENT_SOURCE_ORIGIN: config.origin,
-    S3RCH_STATEMENT_SOURCE_TENANT_ID: config.tenant, S3RCH_STATEMENT_SOURCE_SCOPE: config.scope, S3RCH_STATEMENT_SOURCE_API_KEY: config.apiKey }));
+    S3RCH_STATEMENT_SOURCE_TENANT_ID: config.tenant, S3RCH_STATEMENT_SOURCE_SCOPE: config.scope, S3RCH_SERVICE_CREDENTIAL: config.apiKey }));
 });
 test("changed or unavailable source never triggers a retry or legacy fallback", async () => {
   let calls = 0;
@@ -162,4 +162,24 @@ test("Vault-backed configuration reads its one key lazily and keeps credentials 
   assert.deepEqual((await source.read(100, signal())).snapshot, snapshot);
   assert.equal(token.mock.callCount(), 2);
   assert.throws(() => configuredAclStatementSource({ ...env, S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI: "https://example.test/secrets/forum-key" }), /Key Vault configuration/);
+});
+
+test("Vault-backed statement reads coexist with the shared service credential", async (t) => {
+  t.mock.method(Date, "now", () => 100_000);
+  const token = t.mock.method(ManagedIdentityCredential.prototype, "getToken", async () =>
+    ({ token: "vault-token", expiresOnTimestamp: 200_000 }));
+  const secretUri = "https://squad-test.vault.azure.net/secrets/forum-key";
+  const fetcher = t.mock.fn<typeof fetch>(async (url) => {
+    if (String(url).startsWith(secretUri)) return Response.json({ value: config.apiKey });
+    return answer();
+  });
+  const env = {
+    S3RCH_AUTHORITY_BACKEND: "acl", S3RCH_STATEMENT_SOURCE_ORIGIN: config.origin,
+    S3RCH_STATEMENT_SOURCE_TENANT_ID: config.tenant, S3RCH_STATEMENT_SOURCE_SCOPE: config.scope,
+    S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI: secretUri, AZURE_CLIENT_ID: "managed-client",
+    S3RCH_SERVICE_CREDENTIAL: "shared-replay-credential",
+  };
+  const source = configuredAclStatementSource(env, fetcher)!;
+  assert.deepEqual((await source.read(100, signal())).snapshot, snapshot);
+  assert.equal(token.mock.callCount(), 1);
 });

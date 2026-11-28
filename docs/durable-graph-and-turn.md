@@ -160,7 +160,7 @@ TURN without auth is an open relay (abuse, cost). Static secrets in the client a
 | Rule | Why |
 | --- | --- |
 | Time-limited credentials (coturn `use-auth-secret` / TURN REST: username `expiry:id`, HMAC password) | A captured password dies. |
-| Shared secret in Key Vault only (`kv-fyber-cg47`, same habit as `SEED_SECRET` / `IDENTITY_SESSION_SECRET`) | Not git, not `NEXT_PUBLIC_*`, not Gun. |
+| Shared secret in Key Vault only (`kv-fyber-cg47`, same habit as `SEED_SECRET` / `S3RCH_SESSION_SIGNING_KEY`) | Not git, not `NEXT_PUBLIC_*`, not Gun. |
 | Mint against the **same** `POST /api/v1/turn/allocate` contract (Panopticon). SIWE-gated for s3r.ch | Browser receives `{ iceServers, expiresAt }` from Next. Product API key stays on the server. No second mint API. |
 | **Never put the long-lived TURN secret on a Gun node** | Graph is replicated. A secret there is public. |
 | Do not put allocate credentials on Gun | Graph is replicated. A credential there is public. |
@@ -283,7 +283,7 @@ Empty any of the three = STUN-only. Integrator contract: FyberLabs/panopticon [`
 
 ### Operator / infra habit (live TURN)
 
-Same style as `IDENTITY_SESSION_SECRET` / `SEED_SECRET` for the secret: App Service application settings. Key Vault secret name `s3rch-panopticon-api-key` and the `*_BASE` hostnames stay in Terraform in **FyberLabs/infra** `terraform/s3rch`. `PANOPTICON_TENANT_ID` is owned here: Deploy writes that App Service setting from the GitHub variable `S3RCH_PANOPTICON_TENANT_ID` (required repository variable, or the same name on the `prod` environment). It is the Panopticon marketplace tenant id the app uses, set as `PANOPTICON_TENANT_ID` on the App Service; it is an identifier, not a secret. The UUID is not in git. An unset variable fails deploy before checkout and image push and does not clear the live setting. This repo does not deploy coturn and does not add Terraform.
+Same style as `S3RCH_SESSION_SIGNING_KEY` / `SEED_SECRET` for the secret: App Service application settings. Key Vault secret name `s3rch-panopticon-api-key` and the `*_BASE` hostnames stay in Terraform in **FyberLabs/infra** `terraform/s3rch`. `PANOPTICON_TENANT_ID` is owned here: Deploy writes that App Service setting from the GitHub variable `S3RCH_PANOPTICON_TENANT_ID` (required repository variable, or the same name on the `prod` environment). It is the Panopticon marketplace tenant id the app uses, set as `PANOPTICON_TENANT_ID` on the App Service; it is an identifier, not a secret. The UUID is not in git. An unset variable fails deploy before checkout and image push and does not clear the live setting. This repo does not deploy coturn and does not add Terraform.
 
 Checklist for live TURN:
 

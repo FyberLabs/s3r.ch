@@ -168,7 +168,7 @@ and derived-object Check regressions cover this boundary.
 SEA proof-of-possession tokens are minted by `identity/sea-session.ts`, with
 `sub` set to the proven SEA key and issuer/audience set to the configured HTTPS
 origin. Squad consumes this identity and still evaluates its own current ACLs.
-The pilot uses `IDENTITY_SESSION_SECRET`; its configuration no longer uses a
+Squad session minting uses `S3RCH_SESSION_SIGNING_KEY`; its configuration no longer uses a
 separate `sessionSecret`. An existing valid obsolete property is discarded so
 moving-channel deployments remain compatible; new documents omit it.
 Replay storage is namespaced by the site origin, independent of the Squad owner

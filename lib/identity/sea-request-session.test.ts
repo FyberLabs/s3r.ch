@@ -11,7 +11,7 @@ import { sessionGatedAllocate } from "../turn-allocate";
 import type { SeaPair } from "./sea";
 const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
 const secret = "s".repeat(40), now = 1800000000, origin = "https://s3r.ch";
-const env = { NODE_ENV: "production", IDENTITY_SESSION_SECRET: secret };
+const env = { NODE_ENV: "production", S3RCH_SESSION_SIGNING_KEY: secret };
 const request = (token: string, url = origin, name = "__Host-s3rch-squad-session") =>
   new Request(url + "/api/turn/allocate", { headers: { cookie: `${name}=${token}` } });
 async function setup() {
@@ -37,7 +37,7 @@ test("wallet, linked metadata, duplicate cookie, wrong origin and invalid secret
   for (const url of ["https://foreign.invalid", "https://test.s3r.ch", "http://s3r.ch"])
     assert.equal(await readSeaRequestSession(request(h.token, url), env, () => now), null);
   assert.equal(await readSeaRequestSession(request(h.token), { NODE_ENV: "production" }, () => now), null);
-  assert.equal(await readSeaRequestSession(request(h.token), { ...env, IDENTITY_SESSION_SECRET: "x".repeat(40) }, () => now), null);
+  assert.equal(await readSeaRequestSession(request(h.token), { ...env, S3RCH_SESSION_SIGNING_KEY: "x".repeat(40) }, () => now), null);
   assert.equal(await readSeaRequestSession(new Request(origin, { headers: { cookie: `__Host-s3rch-squad-session=${h.token}; __Host-s3rch-squad-session=${h.token}` } }), env, () => now), null);
   assert.equal(await readSeaRequestSession(new Request(origin), env, () => now), null);
 });

@@ -138,7 +138,7 @@ The running app still treats a missing `PANOPTICON_TENANT_ID` as unconfigured. O
 | | Local (`npm run dev`) | Production image and the deploy workflow |
 | --- | --- | --- |
 | Identity document | `data/identity-links.json` (or `S3RCH_IDENTITY_LINKS`) | Azure Blob `identity-links.json` via `S3RCH_IDENTITY_BLOB_ACCOUNT` and `S3RCH_IDENTITY_BLOB_CONTAINER` |
-| `IDENTITY_SESSION_SECRET` | optional; unset uses the development fallback | required, 32 characters or more |
+| `S3RCH_SESSION_SIGNING_KEY` | optional; unset uses the development fallback | required, 32 characters or more |
 | `PANOPTICON_TENANT_ID` | set in `.env.local` when you want the hops | App Service setting. Prod Deploy requires `S3RCH_PANOPTICON_TENANT_ID` and writes this name. The process still starts when it is unset. |
 | `PANOPTICON_API_KEY` and base URLs | `.env.local`, server-side | runtime settings on the app, not Docker build-args |
 | OIDC redirect | `http://localhost:3000` and `http://127.0.0.1:3000` | `https://s3r.ch` and `https://www.s3r.ch` |
@@ -151,7 +151,7 @@ The running app still treats a missing `PANOPTICON_TENANT_ID` as unconfigured. O
 
 ## Secrets
 
-`PANOPTICON_API_KEY`, `S3RCH_TURN_SECRET`, `IDENTITY_SESSION_SECRET`, and `SEED_SECRET` stay in a secret store and in the server environment. They are not `NEXT_PUBLIC_*`, not Gun, not the browser, and not git. `PANOPTICON_TENANT_ID` and `S3RCH_PANOPTICON_TENANT_ID` are identifiers; keep them out of git anyway. OIDC access tokens are used for the code exchange and the optional wallet lookup, then dropped.
+`PANOPTICON_API_KEY`, `S3RCH_TURN_SECRET`, `S3RCH_SESSION_SIGNING_KEY`, and `SEED_SECRET` stay in a secret store and in the server environment. They are not `NEXT_PUBLIC_*`, not Gun, not the browser, and not git. `PANOPTICON_TENANT_ID` and `S3RCH_PANOPTICON_TENANT_ID` are identifiers; keep them out of git anyway. OIDC access tokens are used for the code exchange and the optional wallet lookup, then dropped.
 
 ## Storage, the public seed, and recovery
 

@@ -47,7 +47,7 @@ export async function createS3rchMeasurements(env: Record<string, string | undef
     throw Error("Measurement tenant binding required");
   const secret = await privateMeasurementSecret(env.S3RCH_MEASUREMENTS_SECRET_FILE ?? "");
   const relaySecret = await privateMeasurementSecret(env.S3RCH_MEASUREMENTS_RELAY_SECRET_FILE ?? "");
-  if (secret === relaySecret || [env.IDENTITY_SESSION_SECRET, env.S3RCH_EXPERIMENT_SECRET, ...(env.S3RCH_EXPERIMENT_PREVIOUS_SECRETS?.split(",") ?? []), env.S3RCH_EXPERIMENT_CACHE_KEY, env.S3RCH_EXPERIMENT_OUTBOX_KEY].some(key => key === secret || key === relaySecret))
+  if (secret === relaySecret || [env.S3RCH_SESSION_SIGNING_KEY, env.S3RCH_MEDIA_SIGNING_KEY, env.S3RCH_EXPERIMENT_SECRET, ...(env.S3RCH_EXPERIMENT_PREVIOUS_SECRETS?.split(",") ?? []), env.S3RCH_EXPERIMENT_CACHE_KEY, env.S3RCH_EXPERIMENT_OUTBOX_KEY].some(key => key === secret || key === relaySecret))
     throw Error("Separate measurement credentials required");
   const publisher = createMeasurementPublisher({ endpoint: env.S3RCH_MEASUREMENTS_INGESTION_ENDPOINT ?? "",
     rule: env.S3RCH_MEASUREMENTS_DCR_ID ?? "", directory: env.S3RCH_MEASUREMENTS_DIRECTORY ?? "",

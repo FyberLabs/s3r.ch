@@ -68,13 +68,13 @@ ghcr.io/fyberlabs/s3r.ch:1.4
 
 ```bash
 docker run --rm -p 8080:8080 \
-  -e IDENTITY_SESSION_SECRET \
+  -e S3RCH_SESSION_SIGNING_KEY \
   ghcr.io/fyberlabs/s3r.ch:test
 ```
 
 The command above is the web process for a test installation. Gun is a second process, `node /app/seed-peer.cjs`, with its own volume, using the same tag. See [docs/deployment.md](docs/deployment.md). For a production minor line, use `ghcr.io/fyberlabs/s3r.ch:1.4` in place of `:test`.
 
-Set `IDENTITY_SESSION_SECRET` in the shell first. It must be at least 32 characters. The web process listens on port 8080. Give the peer its own `/app/data` volume for Gun radisk and the seeder snapshot. The forum file stays on the web process. Replacing a container without its volume drops the files on that container. Production account links live in Azure Blob. The mesh key stays in the browser.
+Set `S3RCH_SESSION_SIGNING_KEY` in the shell first. It must be at least 32 characters. The web process listens on port 8080. Give the peer its own `/app/data` volume for Gun radisk and the seeder snapshot. The forum file stays on the web process. Replacing a container without its volume drops the files on that container. Production account links live in Azure Blob. The mesh key stays in the browser.
 
 ```bash
 curl -sS http://127.0.0.1:8080/api/health
@@ -104,7 +104,7 @@ npm ci
 cp .env.example .env.local
 ```
 
-Set `IDENTITY_SESSION_SECRET` in `.env.local` to at least 32 characters. Production returns 500 from verify when the secret is missing or short. Locally, an unset secret uses the fallback in [docs/identity.md](docs/identity.md). Wallet sign-in on the production image also needs `S3RCH_IDENTITY_BLOB_ACCOUNT` and `S3RCH_IDENTITY_BLOB_CONTAINER` ([docs/install-minimal.md](docs/install-minimal.md#identity-storage)).
+Set `S3RCH_SESSION_SIGNING_KEY` in `.env.local` to at least 32 characters. Production returns 500 from verify when the secret is missing or short. Locally, an unset secret uses the fallback in [docs/identity.md](docs/identity.md). Wallet sign-in on the production image also needs `S3RCH_IDENTITY_BLOB_ACCOUNT` and `S3RCH_IDENTITY_BLOB_CONTAINER` ([docs/install-minimal.md](docs/install-minimal.md#identity-storage)).
 
 Leave `S3RCH_OAUTH_ISSUER` and `S3RCH_LOGIN_PROVIDERS` unset for wallet sign-in only. Other names are in [docs/configuration.md](docs/configuration.md).
 
@@ -120,7 +120,7 @@ Standalone Next and the Gun preload, on one HTTP server:
 
 ```bash
 npm run build
-IDENTITY_SESSION_SECRET='replace-with-32-or-more-characters' \
+S3RCH_SESSION_SIGNING_KEY='replace-with-32-or-more-characters' \
   PORT=8080 HOSTNAME=0.0.0.0 npm start
 ```
 

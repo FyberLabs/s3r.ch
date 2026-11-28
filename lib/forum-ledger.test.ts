@@ -4,7 +4,7 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {encodeLedgerEntry,parseLedgerEntry,ledgerEntries,LEDGER_PREFIX} from './forum-ledger';
 import {readableForumChat} from './forum-readable-chat';
-import {PILOT_CHAT,PILOT_FORUM_ID} from './identity/vectors/forum-squad-fixture';
+import {PILOT_CHAT,PILOT_FORUM_ID} from './forum-coordination-test-vectors';
 import {ForumLedger} from '../components/ForumLedger';
 import {ForumShell} from '../components/ForumShell';
 import {publishBrowserForumRecord} from './identity/browser-forum-signer';

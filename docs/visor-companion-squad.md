@@ -4,7 +4,7 @@
 machine's current companion set to the provisioned Squad pilot forum. Visor sends
 the set identity, generation, and candidate members; the service rechecks forum
 authority and returns only admitted principals plus the canonical browser
-destination `https://{pilot}/feed/squad/live` without query strings or embedded
+destination `https://{site}/feed/squad` without query strings or embedded
 credentials.
 
 Native machines authenticate with agent bearer scope

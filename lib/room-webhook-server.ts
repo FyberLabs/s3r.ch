@@ -2,7 +2,7 @@ import { createRoomWebhookDelivery, type RoomWebhookSubscription } from "./room-
 import { roomWebhookCallback } from "./room-webhook-callback";
 import { createSpanopticonRecordStore } from "./spanopticon-record-store-server";
 import { StatementSourceConflict } from "./acl-statement-source-server";
-import { getSquadPilotServer } from "./squad-pilot-server";
+import { getSiteAclServer } from "./site-acl-server";
 import { createForumAuthority } from "./identity/forum-authority";
 import { roomAuthorityDiagnosticsBlock } from "./room-authority-diagnostics";
 import { readSeaRequestSession } from "./identity/sea-request-session";
@@ -19,25 +19,24 @@ import { encodeKey } from "./identity/check";
 
 const collectionHistorySeconds = 3_600;
 const clock = () => Math.floor(Date.now() / 1000);
-type Pilot = NonNullable<ReturnType<typeof getSquadPilotServer>>;
+type SiteAcl = NonNullable<ReturnType<typeof getSiteAclServer>>;
 const reply = (status: number, body: unknown) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
-async function authorityFor(pilot: Pilot, room: string, signal: AbortSignal, freezeSnapshot = false) {
+async function authorityFor(site: SiteAcl, room: string, signal: AbortSignal, freezeSnapshot = false) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const at = clock();
     signal.throwIfAborted();
     let snapshot;
     try {
-      snapshot = await pilot.source.read(at, signal);
+      snapshot = await site.source.read(at, signal);
     } catch (error) {
       if (error instanceof StatementSourceConflict) continue;
       throw error;
     }
-    const authority = createForumAuthority(pilot.config.authority, freezeSnapshot ? () => at : clock);
+    const authority = createForumAuthority(site.config.authority, freezeSnapshot ? () => at : clock);
     const verified = await authority.refresh(snapshot, at);
     if (clock() !== at) continue;
-    if (verified.ok && authority.graph.ownerOf(pilot.config.squad.forumId) === pilot.config.squad.owner &&
-      !roomAuthorityDiagnosticsBlock(verified.diagnostics, snapshot, authority.graph, room)) {
+    if (verified.ok && !roomAuthorityDiagnosticsBlock(verified.diagnostics, snapshot, authority.graph, room)) {
       return { at, graph: authority.graph };
     }
     break;
@@ -52,25 +51,22 @@ function runtime() {
   const apiKey = process.env.S3RCH_ROOM_WEBHOOK_RECORD_API_KEY;
   if (!secret || !origin || !tenant || !apiKey) return;
   if (secret.length < 32 || tenant !== process.env.S3RCH_STATEMENT_SOURCE_TENANT_ID) throw Error("Invalid room webhook configuration");
-  const pilot = getSquadPilotServer();
-  if (!pilot) return;
-  const callback = roomWebhookCallback(pilot.config.origin);
+  const site = getSiteAclServer();
+  if (!site) return;
+  const callback = roomWebhookCallback(site.config.origin);
   if (!callback) return;
   const delivery = createRoomWebhookDelivery({
     records: createSpanopticonRecordStore({ origin, tenant, apiKey }), secret,
     async canDeliver(subscription, signal, event) {
-      if (!await nativeRoomBotGun(pilot.config.origin).isShared(subscription.room, subscription.owner, signal)) return false;
+      if (!await nativeRoomBotGun(site.config.origin).isShared(subscription.room, subscription.owner, signal)) return false;
       for (let attempt = 0; attempt < 2; attempt++) {
-        const { at, graph } = await authorityFor(pilot, subscription.room, signal);
+        const { at, graph } = await authorityFor(site, subscription.room, signal);
         const author = event?.type === "room.message.created" ? event.message.author : event?.object.author;
         const authoredAt = event?.type === "room.message.created" ? event.message.createdAt : event?.object.changedAt;
         const allowed = (!author || (authoredAt !== undefined && !!graph.writerKey(author, authoredAt, at) &&
-          graph.checkForumSee(pilot.config.squad.forumId, author, at).allowed &&
-          graph.checkPost(pilot.config.squad.forumId, author, at).allowed &&
           graph.checkForumSee(subscription.room, author, at).allowed &&
           graph.checkPost(subscription.room, author, at).allowed)) &&
           graph.ownerOf(subscription.room) === subscription.owner &&
-          graph.checkForumSee(pilot.config.squad.forumId, subscription.bot, at).allowed &&
           graph.checkForumSee(subscription.room, subscription.bot, at).allowed;
         if (clock() === at) return allowed;
       }
@@ -87,7 +83,7 @@ function runtime() {
       return response.ok;
     },
   });
-  return { pilot, delivery, callback };
+  return { site, delivery, callback };
 }
 
 export async function roomWebhookRequest(request: Request, action: "manage" | "receive" | "inbox") {
@@ -95,8 +91,8 @@ export async function roomWebhookRequest(request: Request, action: "manage" | "r
   try {
     const enabled = runtime();
     if (!enabled) return reply(503, { error: "webhooks-unavailable" });
-    const { pilot, delivery, callback } = enabled;
-    const origin = new URL(pilot.config.origin);
+    const { site, delivery, callback } = enabled;
+    const origin = new URL(site.config.origin);
     if (!matchesRequestOrigin(request, origin)) return reply(403, { error: "origin" });
     if (action === "inbox") {
       const bot = await authenticateAgentRequest(request, ["room:webhook:read"]);
@@ -124,7 +120,7 @@ export async function roomWebhookRequest(request: Request, action: "manage" | "r
     const body = raw as Record<string, unknown>;
     if (typeof body.room !== "string" || !isForumObjectId(body.room, "room")) return reply(400, { error: "room" });
     const session = await readSeaRequestSession(request);
-    const { at, graph } = await authorityFor(pilot, body.room, signal);
+    const { at, graph } = await authorityFor(site, body.room, signal);
     const owner = session && graph.principalForKey(session.key, at);
     if (!owner || owner !== graph.ownerOf(body.room)) return reply(403, { error: "room-owner" });
     if (body.action === "list") return reply(200, { subscriptions: await delivery.list(body.room, owner, signal) });
@@ -132,8 +128,7 @@ export async function roomWebhookRequest(request: Request, action: "manage" | "r
       return reply(await delivery.remove(body.room, owner, body.id, signal) ? 200 : 404, {});
     }
     if (body.action !== "subscribe" || typeof body.bot !== "string" || !isSeaPubkey(body.bot)) return reply(400, { error: "body" });
-    if (!graph.checkForumSee(pilot.config.squad.forumId, body.bot, at).allowed ||
-      !graph.checkForumSee(body.room, body.bot, at).allowed) return reply(403, { error: "bot-see" });
+    if (!graph.checkForumSee(body.room, body.bot, at).allowed) return reply(403, { error: "bot-see" });
     return reply(201, await delivery.subscribe({ room: body.room, owner, bot: body.bot, url: callback }, signal));
   } catch {
     return reply(503, { error: "webhooks-unavailable" });
@@ -149,7 +144,7 @@ const observed = new Map<string, ObservedRoom>();
 let cursor = 0;
 
 async function collectRoomEvents(enabled: NonNullable<ReturnType<typeof runtime>>, signal: AbortSignal) {
-  const { pilot, delivery } = enabled;
+  const { site, delivery } = enabled;
   const rooms = await delivery.rooms(signal);
   const current = new Set(rooms.map(([room]) => room));
   for (const [room, watcher] of observed) {
@@ -158,10 +153,10 @@ async function collectRoomEvents(enabled: NonNullable<ReturnType<typeof runtime>
     observed.delete(room);
   }
   if (!rooms.length) return;
-  const mesh = nativeRoomBotGun(pilot.config.origin);
+  const mesh = nativeRoomBotGun(site.config.origin);
   const [room, owner] = rooms[cursor++ % rooms.length];
   if (!await mesh.isShared(room, owner, signal)) return;
-  const snapshot = await authorityFor(pilot, room, signal, true);
+  const snapshot = await authorityFor(site, room, signal, true);
   const { at, graph } = snapshot;
   if (graph.ownerOf(room) !== owner) return;
   let watcher = observed.get(room);
@@ -176,7 +171,7 @@ async function collectRoomEvents(enabled: NonNullable<ReturnType<typeof runtime>
         checkPost: (...args) => current.graph.checkPost(...args),
       },
       readerKey: () => current.graph.writerKey(owner, current.at, current.at),
-      parent: pilot.config.squad.forumId, clock: () => current.at,
+      clock: () => current.at,
     });
     const queue = createRoomChatReceiveQueue(admission, room, row => {
       rows.set(encodeKey(row.id), row);
@@ -213,7 +208,7 @@ async function collectRoomEvents(enabled: NonNullable<ReturnType<typeof runtime>
   }
   watcher.refresh(snapshot);
   const admission = createRoomChatAdmission({
-    graph, readerKey: () => graph.writerKey(owner, at, at), parent: pilot.config.squad.forumId, clock: () => at,
+    graph, readerKey: () => graph.writerKey(owner, at, at), clock: () => at,
   });
   const candidates = [...watcher.rows].filter(([, row]) => row.ts >= at - collectionHistorySeconds || isRoomTaskBody(row.body));
   const admitted: SignedRoomChat[] = [];

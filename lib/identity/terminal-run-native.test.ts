@@ -62,7 +62,7 @@ test("actual device callback refuses an old provider run and preserves original 
   const { devicePendingCookie, devicePersonCookie } = await import("./device-cookies");
   const h = fixture();
   const scope = { sourceOrigin: origin, destinationOrigin: origin, application: "s3r.ch", tenant: "11111111-1111-1111-1111-111111111111", audience: "device" };
-  const env = { IDENTITY_SESSION_SECRET: secret, S3RCH_OAUTH_ISSUER: "https://issuer.example/realm", S3RCH_DEVICE_TRANSFER_CONFIG: JSON.stringify({ v: 1, scope, auth: "https://auth.example/auth/sea-device-link/v1/", acl: "https://acl.example/api/v1/acl/sociacl/device-transfer/", provider: "panopticon" }) };
+  const env = { S3RCH_SESSION_SIGNING_KEY: secret, S3RCH_OAUTH_ISSUER: "https://issuer.example/realm", S3RCH_DEVICE_TRANSFER_CONFIG: JSON.stringify({ v: 1, scope, auth: "https://auth.example/auth/sea-device-link/v1/", acl: "https://acl.example/api/v1/acl/sociacl/device-transfer/", provider: "panopticon" }) };
   const config = deviceConfig(origin, env)!;
   const cookie = (response: Response, name: string) => response.headers.getSetCookie().find(value => value.startsWith(name + "=") && !value.startsWith(name + "=;"))?.split(";")[0] ?? "";
   const start = await h.run(() => devicePersonOAuth(new Request(origin), "authorize", config, origin, env, { now: () => now }));

@@ -7,10 +7,19 @@ import { createSeaSessionClient } from "./sea-session-client";
 import type { SeaPair } from "./sea";
 const sea = createRequire(import.meta.url)("gun/sea") as { pair(): Promise<SeaPair> };
 const origin = "https://test.s3r.ch", tenant = "22222222-2222-2222-2222-222222222222";
-const env = { IDENTITY_SESSION_SECRET: "s".repeat(40), S3RCH_IDENTITY_REPLAY_BACKEND: "spanopticon",
-  S3RCH_IDENTITY_REPLAY_ORIGIN: "https://api.test.hyperme.sh", S3RCH_IDENTITY_REPLAY_TENANT_ID: tenant, S3RCH_IDENTITY_REPLAY_API_KEY: "dedicated-replay" };
+const env = { S3RCH_SESSION_SIGNING_KEY: "s".repeat(40), S3RCH_IDENTITY_REPLAY_BACKEND: "spanopticon",
+  S3RCH_IDENTITY_REPLAY_ORIGIN: "https://api.test.hyperme.sh", S3RCH_IDENTITY_REPLAY_TENANT_ID: tenant, S3RCH_SERVICE_CREDENTIAL: "dedicated-replay" };
+test("replay storage is not implied by service credential alone", () => {
+  const scope = { suite: "flags-s3rch-browser", subject: "11111111-1111-1111-1111-111111111111", tenant, organization: "",
+    realm: "controlplane", issuer: "https://auth.test.hyperme.sh/realms/controlplane", clients: ["s3rch-web"],
+    origins: [origin], identities: { sea: ["pubkey.placeholder"] } };
+  assert.throws(() => createTerminalSeaRoute({ serviceKey: "a".repeat(64), scope, env: {
+    S3RCH_SERVICE_CREDENTIAL: "dedicated-replay", S3RCH_IDENTITY_REPLAY_ORIGIN: "https://api.test.hyperme.sh" } }),
+    /Terminal (SEA configuration|run authority) unavailable/);
+});
+
 test("native browser client exchanges admitted challenges through site and Squad aliases", async () => {
-  for (const path of ["/api/identity/sea", "/api/squad/pilot/session"]) {
+  for (const path of ["/api/identity/sea"]) {
     const pair = await sea.pair(), scope = { suite: "flags-s3rch-browser", subject: "11111111-1111-1111-1111-111111111111", tenant, organization: "", realm: "controlplane",
       issuer: "https://auth.test.hyperme.sh/realms/controlplane", clients: ["s3rch-web"], origins: [origin], identities: { sea: [pair.pub] } };
     const state = { run: "1-1-flags-s3rch-browser", active: true, completed: 0, replays: 0, loseReplay: false };

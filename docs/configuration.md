@@ -8,7 +8,7 @@ Panopticon is optional at runtime. With every `PANOPTICON_*` name unset, the pro
 
 Identity in the browser is a Gun SEA public key. Wallet addresses and OAuth subjects are linked credentials on the identity document. They are not that key. The document format is in [install-minimal.md](install-minimal.md#identity-storage).
 
-Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `HOSTNAME`, `NODE_ENV`, and the outbound and confirm names) are in the install guide. Production requires `IDENTITY_SESSION_SECRET` (32 characters or more) for session routes. The image sets `PORT=8080`, `HOSTNAME=0.0.0.0`, and `NODE_ENV=production`.
+Settings outside this table (`SEED_SECRET`, `PORT`, `HOSTNAME`, `NODE_ENV`, and the outbound and confirm names) are in the install guide. Production requires `S3RCH_SESSION_SIGNING_KEY` (32 characters or more) for session routes and `S3RCH_MEDIA_SIGNING_KEY` for public feed media admission. The image sets `PORT=8080`, `HOSTNAME=0.0.0.0`, and `NODE_ENV=production`.
 
 | Setting | Required | Default | Secret | What it does |
 | --- | --- | --- | --- | --- |
@@ -84,13 +84,15 @@ Settings outside this table (`IDENTITY_SESSION_SECRET`, `SEED_SECRET`, `PORT`, `
 
 `S3RCH_IDENTITY_STORAGE_ROOT` is not read. A user-assigned Azure identity also needs `AZURE_CLIENT_ID` (the client id, not a secret). The Azure SDK reads that name; this table does not, and the checker does not scan it.
 
-## Controlled Squad pilot
+## Site ACL and session secrets
 
-| Setting | Default | Purpose |
-| --- | --- | --- |
-| `S3RCH_SQUAD_PILOT` | Empty (disabled) | Key Vault-backed JSON scope and verification policy for the configured Squad. Contains a fixed HTTPS origin, forum/owner and explicit witness policy; it contains no owner signing key. Requires the ACL statement source and separate Spanopticon identity replay settings below. Missing configuration fails closed. The shared site issuer reads `IDENTITY_SESSION_SECRET`. The optional `project` object enables the Squad mind map and tasks. It requires a Plane binding and contains the existing private tenant record service HTTPS `recordOrigin` and an authorized `recordKey` for the project records in the same tenant. A TEST project with `fixtureCleanup: true` can instead use the hosted record credential below. |
-| `S3RCH_SQUAD_BLOB_ACCOUNT` | Ignored | Retired from application runtime. Existing configuration cannot select a Blob authority backend. |
-| `S3RCH_SQUAD_BLOB_CONTAINER` | Ignored | Retired from application runtime. The old synthetic fixture remains confined to CI/operator tooling. |
+| Setting | Required | Default | Secret | What it does |
+| --- | --- | --- | --- | --- |
+| `S3RCH_SESSION_SIGNING_KEY` | yes in production | development fallback when unset and not production | yes | HMAC key for session and nonce cookies until asymmetric session tokens land. Minimum 32 characters. |
+| `S3RCH_MEDIA_SIGNING_KEY` | yes in production | development fallback when unset and not production | yes | Separate HMAC key for public feed media and conversation ticket signing. Minimum 32 characters. |
+| `S3RCH_SERVICE_CREDENTIAL` | for ACL backend | unset | yes | Single infrastructure credential for ACL statement reads/writes and identity replay consume. Replaces the retired per-hop API keys. |
+| `S3RCH_SITE_ORIGIN` | optional for site ACL | unset | no | Canonical HTTPS site origin for `/api/site/*`. When unset, the app infers it from `S3RCH_GUN_HEALTH_URL` (peer health URL host) or `S3RCH_RELEASE_COLOR` (`test` → `https://test.s3r.ch`, production aliases → `https://s3r.ch`). Startup does not treat a missing explicit value as a boot error. |
+| `S3RCH_FORUM_AUTHORITY` | required to enable site ACL | unset | no | JSON forum witness policy (`keys`, `pinnedIssuers`, `policy`). Same witness shape as the retired pilot blob authority section, without a fixed squad forum. While unset, `/api/site/*` and server paths that depend on site ACL fail closed with 503; the web process still boots. |
 
 ### Public feed storage migration
 
@@ -190,7 +192,6 @@ public request parameters or from an email match.
 | `S3RCH_IDENTITY_REPLAY_BACKEND` | Unset | `spanopticon` enables the dedicated consume-only replay API. All four settings are required together; partial/unknown values fail closed. Unset preserves the existing pilot store. |
 | `S3RCH_IDENTITY_REPLAY_ORIGIN` | Unset | Fixed HTTPS storage gateway origin, with no path or alternate port. |
 | `S3RCH_IDENTITY_REPLAY_TENANT_ID` | Unset | The s3r.ch storage tenant UUID. |
-| `S3RCH_IDENTITY_REPLAY_API_KEY` | Unset | Private server-only key with only `storage:replays:consume`. Never reuse the feed/media key. |
 
 Challenges bind to the backend origin, tenant and issuer namespace. Challenges
 issued for the old store cannot be exchanged against the new store, or vice
@@ -208,8 +209,7 @@ a separate migration. Runtime activation waits for its dedicated credential.
 | `S3RCH_STATEMENT_SOURCE_ORIGIN` | Unset | Fixed HTTPS gateway origin, without path, credentials or alternate port. |
 | `S3RCH_STATEMENT_SOURCE_TENANT_ID` | Unset | The s3r.ch tenant UUID bound by the ACL owner. |
 | `S3RCH_STATEMENT_SOURCE_SCOPE` | Unset | Explicit operator-provisioned graph scope; never selected by a browser. |
-| `S3RCH_STATEMENT_SOURCE_API_KEY` | Unset | Dedicated private service key with `acl:statements:read` and `acl:statements:write`, bound to that graph's service subject. |
-| `S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI` | Unset | Optional versionless Azure Key Vault secret URI for the Squad statement key. Requires the configured `AZURE_CLIENT_ID` managed identity. Use in place of `S3RCH_STATEMENT_SOURCE_API_KEY`. An unavailable key disables Squad statement operations while the web service continues to serve. |
+| `S3RCH_STATEMENT_SOURCE_KEY_VAULT_URI` | Unset | Optional versionless Azure Key Vault secret URI for statement reads/writes. When set, the vault key is used for ACL statement traffic while `S3RCH_SERVICE_CREDENTIAL` remains the shared credential for identity replay. Requires the configured `AZURE_CLIENT_ID` managed identity. |
 | `S3RCH_VISOR_COMPANION_RECORD_ORIGIN` | Unset | Fixed HTTPS Spanopticon gateway origin for durable Visor companion-set fencing. Required with the companion record tenant and API key when the Squad pilot exposes `visor-companion`. |
 | `S3RCH_VISOR_COMPANION_RECORD_TENANT_ID` | Unset | Storage tenant UUID for companion-set records; must match the ACL statement-source tenant. |
 | `S3RCH_VISOR_COMPANION_RECORD_API_KEY` | Unset | Dedicated server-only key with `storage:records:read` and `storage:records:write`. Never reuse the statement-source graph key. |
@@ -235,20 +235,15 @@ identity replay backend and does not construct a Blob ledger or replay store.
 Legacy assignment mutations return unavailable in this mode; they cannot write
 a second authority journal. Existing session wire formats remain unchanged.
 
-The application no longer exposes `/api/squad/pilot/assignment/*` or constructs an
-assignment executor. The old Blob constructor is isolated in
-`scripts/squad-pilot-fixture.ts` for CI and explicitly invoked operator tooling.
-Old deployed pilot settings alone are insufficient: the application stays
-unavailable until its owner source and replay are explicitly configured. This
-change does not provision a graph, stage credentials, remove stored data or
-activate a replacement source. Retire the old infra container and role separately
-after confirming that no operator tool still uses them.
+The application no longer exposes `/api/squad/pilot/*`. When
+`S3RCH_FORUM_AUTHORITY` and the ACL statement source are configured, forum
+statement admission, authority reads, room routing and meeting signaling use
+`/api/site/*` with forum scope taken from each request instead of a singleton
+pilot blob. Missing witness policy or statement-source settings leave those
+routes unavailable without blocking App Service startup.
 
-Squad connects through the shared `/api/identity/sea` challenge/exchange/logout
-endpoint. Its runtime verifies the existing site cookie and exposes no token
-issuance actions. Existing `/api/squad/pilot/session/*` aliases forward to that shared handler
-for patch compatibility; they do not create a second issuer.
-The shared replay configuration remains required and dedicated to identity.
+Sessions use only `/api/identity/sea`. There is no squad session alias and no
+wallet-keyed session route.
 
 
 ### Native agent identity
@@ -264,8 +259,6 @@ owner does not lend its object grants to the bot. A token alone is not an object
 | --- | --- | --- |
 | `S3RCH_AGENT_SESSION_CONFIG` | Unset (disabled) | Private JSON with exact `origin`, `source` (`origin`, `tenant`, `scope`) and `authority` (`jwks`, `policy`, `pinnedIss`) fields. `policy` contains `allowedDomains`, `allowedUris`, `allowedChainIds`, and explicit `clockSkewSeconds` (0–300). Witness keys are independently trusted configuration; source responses cannot install them. |
 | `S3RCH_DELEGATION_SOURCE_API_KEY` | Unset | Dedicated service key with `acl:delegations:read` and the operator-bound tenant/subject/scope. It is never sent to the client. |
-| `S3RCH_SQUAD_DELEGATION_WRITE_API_KEY` | Unset | Separate server credential with `acl:delegations:write` for the same delegation journal scope and tenant as the native reader. Enables signed-in Squad owner enrollment for the configured Plane roster. |
-| `S3RCH_SQUAD_PROJECT_RECORD_API_KEY` | Unset | Server-only record credential for the isolated TEST Squad project. The project origin must match the existing TEST ACL statement-source origin. Infra supplies the named Key Vault reference. |
 
 The origin must match the configured s3r.ch deployment. The delegation source and
 existing Spanopticon identity replay settings must name the same tenant. The

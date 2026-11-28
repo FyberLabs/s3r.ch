@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createServer, request } from "node:http";
 import { once } from "node:events";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
@@ -37,15 +36,9 @@ async function main() {
     const login = await post("/api/identity/verify", { message, signature: await wallet.signMessage({ message }), ageConfirmed: true }, nonceCookie.split(";")[0]);
     assert.equal(login.status, 200);
     assert.equal((await login.json()).address, wallet.address);
-    const cookie = login.headers.getSetCookie().find(value => value.startsWith("__Host-s3rch-session="));
-    assert.ok(cookie);
-    const pilot = JSON.parse(readFileSync(process.argv[3], "utf8"));
-    const path = "/api/squad/pilot/session/challenge";
-    const challenge = await post(path, { key: pilot.squad.owner }, cookie.split(";")[0]);
+    const challenge = await post("/api/identity/sea/challenge", {}, login.headers.getSetCookie().find(value => value.startsWith("__Host-s3rch-session="))?.split(";")[0] ?? "");
     assert.equal(challenge.status, 200);
     assert.equal(typeof (await challenge.json()).challenge, "string");
-    assert.match(challenge.headers.getSetCookie()[0], /^__Host-s3rch-squad-challenge=.*; Secure/i);
-    assert.equal((await post(path, { key: pilot.squad.owner }, cookie.split(";")[0], "https://other.example")).status, 403);
   } finally {
     proxy.close();
     proxy.closeAllConnections();

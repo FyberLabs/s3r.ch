@@ -549,7 +549,7 @@ The public `/feed/squad` route mounts `SquadForum` without a `LiveSquadSpec`.
 That path shows an empty unset board (no fixture roster, chat, or needs). Live
 squads mount through wrappers such as `LiveSquadForum` with a user-owned forum
 id and current `ForumAuthorityProvider` evidence. The synthetic roster in
-`lib/identity/vectors/forum-squad-fixture.ts` is for tests only; product UI does
+`lib/forum-coordination-test-vectors.ts` is for tests only; product UI does
 not import it. The former session deny-list for shared check-vector keys is
 removed in product code; assignment replacement still refuses those pubkeys.
 Pilot ACL rows and grants may still exist in shared infrastructure until
@@ -561,7 +561,7 @@ infra issue, not by an in-repo scanner.
 The application Squad runtime has no Blob assignment journal or assignment HTTP
 executor. It requires the independently provisioned ACL statement source and a
 separate identity replay store. The legacy synthetic Blob constructor lives only
-under `scripts/squad-pilot-fixture.ts`; it is not imported by application routes.
+under test-only vectors such as `lib/forum-coordination-test-vectors.ts`; product UI does not import them.
 The remaining authority relay verifies signed records and reads sessions through
 the verification-only shared SEA token reader. Squad constructs no challenge, exchange or logout handlers; new clients use
 `/api/identity/sea`, while the old session URLs forward to that same shared

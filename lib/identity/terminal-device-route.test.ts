@@ -6,7 +6,7 @@ import { createTerminalDeviceRoute } from "./terminal-device-route";
 const origin = "https://test.s3r.ch", issuer = "https://auth.test.hyperme.sh/realms/controlplane";
 const scope = { suite: "s3rch-device-transfer", subject: "11111111-1111-1111-1111-111111111111", tenant: "22222222-2222-2222-2222-222222222222", organization: "", realm: "controlplane", issuer, clients: ["s3rch-web"], origins: [origin], identities: { sea: [] } };
 const deviceScope = { sourceOrigin: origin, destinationOrigin: origin, application: "s3r.ch", tenant: scope.tenant, audience: "device" };
-const env = { IDENTITY_SESSION_SECRET: "s".repeat(40), S3RCH_OAUTH_ISSUER: issuer, S3RCH_OAUTH_CLIENT_ID: "s3rch-web",
+const env = { S3RCH_SESSION_SIGNING_KEY: "s".repeat(40), S3RCH_OAUTH_ISSUER: issuer, S3RCH_OAUTH_CLIENT_ID: "s3rch-web",
   S3RCH_DEVICE_TRANSFER_CONFIG: JSON.stringify({ v: 1, scope: deviceScope, auth: "https://api.test.hyperme.sh/auth/sea-device-link/v1/", acl: "https://api.test.hyperme.sh/api/v1/acl/sociacl/device-transfer/", provider: "panopticon" }) };
 const key = "a".repeat(64), grant = "b".repeat(64), operation = "12345678-1234-1234-1234-123456789abc";
 const base = { version: 1, owner: "s3rch", run: "1-1-s3rch-device-transfer", generation: "c".repeat(64) };

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { p256 } from "@noble/curves/nist.js";
-import { squadPilotReady } from "./squad-pilot-server";
+import { siteAclReady } from "./site-acl-server";
 import { StatementSourceConflict } from "./acl-statement-source-server";
 import { createForumAuthorityService } from "./forum-authority-service";
 import { createHttpForumAuthorityReader } from "./forum-authority-http";
@@ -26,7 +26,7 @@ const body = { version: 1, forumId: squad.forumId, owner, evaluatedAt: at };
 const request = (value: unknown = body, origin = "https://s3r.ch") => new Request("https://s3r.ch/api/squad/authority", { method: "POST", headers: { origin, "Content-Type": "application/json" }, body: JSON.stringify(value) });
 function setup(key: string | null = member, data = snapshot()) {
   let reads = 0;
-  const handle = createForumAuthorityService({ squad, origin: "https://s3r.ch", config, clock: () => at,
+  const handle = createForumAuthorityService({ origin: "https://s3r.ch", config, clock: () => at,
     authenticate: async () => key ? { key } : null, read: async () => { reads++; return data; } });
   return { handle, reads: () => reads };
 }
@@ -44,10 +44,12 @@ test("no session, wrong origin and request scope never reach storage", async () 
   const missing = setup(null); assert.equal((await missing.handle(request())).status, 403); assert.equal(missing.reads(), 0);
   const h = setup();
   assert.equal((await h.handle(request(body, "https://evil.example"))).status, 403);
-  for (const b of [{ ...body, owner: outsider }, { ...body, forumId: "other" }, { ...body, evaluatedAt: at - 1 }, { ...body, actor: owner }])
-    assert.equal((await h.handle(request(b))).status, 409);
+  assert.equal((await h.handle(request({ ...body, evaluatedAt: at - 1 }))).status, 409);
+  assert.equal((await h.handle(request({ ...body, actor: owner }))).status, 409);
+  for (const b of [{ ...body, owner: outsider }, { ...body, forumId: "other" }])
+    assert.equal((await h.handle(request(b))).status, 503);
   assert.equal((await h.handle(request({ padding: "a".repeat(2049) }))).status, 413);
-  assert.equal(h.reads(), 0);
+  assert.equal(h.reads(), 2);
 });
 test("outsiders and cancelled members receive no authority snapshot", async () => {
   assert.equal((await setup(outsider).handle(request())).status, 403);
@@ -66,7 +68,7 @@ test("incomplete or forged source evidence fails closed", async () => {
 
 test("a snapshot arriving after the evaluation second cannot authorize a response", async () => {
   let now = at;
-  const handle = createForumAuthorityService({ squad, origin: "https://s3r.ch", config, clock: () => now,
+  const handle = createForumAuthorityService({ origin: "https://s3r.ch", config, clock: () => now,
     authenticate: async () => ({ key: member }), read: async () => { now++; return snapshot(); } });
   assert.equal((await handle(request())).status, 503);
 });
@@ -82,12 +84,12 @@ test("aborting a stalled request body cancels it without reading storage", async
   assert.equal((await result).status, 503); assert.equal(cancelled, true); assert.equal(h.reads(), 0);
 });
 
-test("pilot health rereads the owner source after rollover and requires current ownership", async () => {
+test("site ACL health rereads the owner source after rollover and requires current ownership", async () => {
   const signal = new AbortController().signal;
   for (const outcome of ["valid", "stale", "missing-owner", "expired-again"]) {
     let now = at - 1;
     const reads: number[] = [];
-    const ready = await squadPilotReady({ config: { squad, authority: config }, source: {
+    const ready = await siteAclReady({ config: { authority: config }, source: {
       async read(second) {
         reads.push(second);
         if (reads.length === 1 || outcome === "expired-again") {
@@ -117,7 +119,7 @@ for (const boundary of ["authentication", "body"] as const) test(`session evalua
   let now = at, reads = 0;
   const original = snapshot();
   const data = { ...original, completeThrough: at + 1, history: { ...original.history, completeThrough: at + 1 } };
-  const handle = createForumAuthorityService({ squad, origin: "https://s3r.ch", config, clock: () => now,
+  const handle = createForumAuthorityService({ origin: "https://s3r.ch", config, clock: () => now,
     authenticate: async () => { if (boundary === "authentication") now++; return { key: member }; },
     read: async () => { reads++; return data; } });
   const bytes = new TextEncoder().encode(JSON.stringify({ ...body, evaluatedAt: at + 1 }));

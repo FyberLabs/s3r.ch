@@ -102,7 +102,7 @@ export function parseVisorCompanionResolveRequest(body: unknown): VisorCompanion
 }
 
 export function squadForumDestination(origin: string): string {
-  const url = new URL("/feed/squad/live", origin);
+  const url = new URL("/feed/squad", origin);
   if (url.origin !== origin || url.protocol !== "https:" || url.search || url.hash || url.username || url.password) throw Error("Canonical squad destination required");
   return url.href;
 }

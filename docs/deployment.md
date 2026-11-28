@@ -26,7 +26,7 @@ This repository does not publish CPU or memory sizes. The constraint that is in 
 | Gun data | `GUN_FILE`, default `/app/data/radata` in the image. |
 | Public snapshot | `GUN_SNAPSHOT`, default `/app/data/snapshot.json`. Served at `/feed-cache/snapshot.json`. |
 | Forum ledger | `S3RCH_FORUM`, default `/app/data/forum.json`. |
-| Session secret | `IDENTITY_SESSION_SECRET`, at least 32 characters. Required in production. |
+| Session secret | `S3RCH_SESSION_SIGNING_KEY`, at least 32 characters. Required in production. |
 | Browser mesh key | Created in the visitor's browser after sign-in. It is not on the server disk. |
 | STUN | `stun:stun.l.google.com:19302` in the browser. STUN is not a relay. |
 
@@ -65,7 +65,7 @@ A running test installation:
 
 ```bash
 docker run --rm -p 8080:8080 \
-  -e IDENTITY_SESSION_SECRET \
+  -e S3RCH_SESSION_SIGNING_KEY \
   ghcr.io/fyberlabs/s3r.ch:test
 
 docker run --rm -p 8081:8080 \
@@ -77,7 +77,7 @@ docker run --rm -p 8081:8080 \
 
 For a production minor line, use `ghcr.io/fyberlabs/s3r.ch:1.4` in place of `:test` on both commands. The same tag on the web process and the peer picks up later patches together. Details are in [release.md](release.md).
 
-Set `IDENTITY_SESSION_SECRET` in the shell first. Then:
+Set `S3RCH_SESSION_SIGNING_KEY` in the shell first. Then:
 
 ```bash
 curl -sS http://127.0.0.1:8080/api/health
@@ -131,7 +131,7 @@ Components:
 
 ```bash
 docker run --rm -p 8080:8080 \
-  -e IDENTITY_SESSION_SECRET \
+  -e S3RCH_SESSION_SIGNING_KEY \
   -e S3RCH_IDENTITY_BLOB_ACCOUNT \
   -e S3RCH_IDENTITY_BLOB_CONTAINER \
   -e AZURE_CLIENT_ID \
@@ -184,7 +184,7 @@ flowchart TB
 
 **Gun peer.** The image includes `node /app/seed-peer.cjs`. That process serves `/gun`, `/feed-cache/snapshot.json`, `GET /api/feed`, `POST /api/seed`, and `GET /api/health`. Give it `SEED_SECRET` and its own writable Gun volume. The web process is `node server.js`. It does not attach Gun, and its health reports `dependencies.gun.status` as `external`. Route `/gun`, `/feed-cache/snapshot.json`, `/api/feed`, and `/api/seed` to the peer. Identity cookies stay on the web origin.
 
-**More than one web process**, behind a proxy you run, when every process uses the same identity blob and the same `IDENTITY_SESSION_SECRET`. The session is a signed cookie, so it does not stick to one process. This repository does not ship the proxy. `/api/forum` does not follow that spread. See the forum step below.
+**More than one web process**, behind a proxy you run, when every process uses the same identity blob and the same `S3RCH_SESSION_SIGNING_KEY`. The session is a signed cookie, so it does not stick to one process. This repository does not ship the proxy. `/api/forum` does not follow that spread. See the forum step below.
 
 **Directory sign-in.** `S3RCH_LOGIN_PROVIDERS` is the list. Include the wallet entry. Each OpenID Connect entry is public PKCE, issuer pinned on first success. Details: [install-minimal.md](install-minimal.md#login-providers) and [oauth-idp.md](oauth-idp.md).
 
@@ -208,7 +208,7 @@ flowchart TB
 ### Config steps for this shape
 
 1. Run one `seed-peer.cjs` with `SEED_SECRET` and a volume for `GUN_FILE` and `GUN_SNAPSHOT`.
-2. Run web processes with the image default `node server.js`, `IDENTITY_SESSION_SECRET`, and the two identity blob settings. Point every web process at the same blob.
+2. Run web processes with the image default `node server.js`, `S3RCH_SESSION_SIGNING_KEY`, and the two identity blob settings. Point every web process at the same blob.
 3. Route `/gun`, `/feed-cache/snapshot.json`, `/api/feed`, and `/api/seed` to the seed peer. Keep identity cookies on the web origin.
 4. Route every `/api/forum` request, including `GET /api/forum?snapshot=<handle>`, to the one web process that owns the forum file. Mount that file only on that process. Mounting the volume is not enough: `app/api/forum/route.ts` calls `getForum()` on whichever process receives the request, and a missing file is an empty forum. Posts, invites, and groups then differ between processes.
 5. Route the rest of the site across the web processes.
