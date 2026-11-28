@@ -48,8 +48,8 @@ test("source snapshots config and independent subscriptions cancel separately", 
   const policy = structuredClone(config);
   const signals: AbortSignal[] = [];
   const source = createForumAuthoritySource({ config: policy, read: async (at, signal) => { signals.push(signal); return snapshot(at); } });
-  (policy.keys as unknown[]).push({ kid: "forged" });
-  assert.deepEqual(source.config.keys, []);
+  (policy as Record<string, unknown>).keys = [{ kid: "forged" }];
+  assert.deepEqual(source.config, FORUM_AUTHORITY_CONFIG);
   const a: unknown[] = [], b: unknown[] = [];
   const stopA = source.subscribe(s => a.push(s)), stopB = source.subscribe(s => b.push(s));
   await flush(); stopA(); assert.equal(signals[0].aborted, true); assert.equal(signals[1].aborted, false);
