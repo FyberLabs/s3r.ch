@@ -36,11 +36,11 @@ Install guides: [core](install-minimal.md), [optional Panopticon](install-panopt
 
 ## Run with Panopticon unset
 
-The process listens on 8080 as user `nextjs` (uid 1001, group `nodejs`). No `PANOPTICON_*` setting is required. The only production secret the session routes require is `IDENTITY_SESSION_SECRET` (32 characters or more).
+The process listens on 8080 as user `nextjs` (uid 1001, group `nodejs`). No `PANOPTICON_*` setting is required. The only production secret the session routes require is `S3RCH_SESSION_SIGNING_KEY` (32 characters or more).
 
 ```bash
 docker run --rm -p 8080:8080 \
-  -e IDENTITY_SESSION_SECRET \
+  -e S3RCH_SESSION_SIGNING_KEY \
   ghcr.io/fyberlabs/s3r.ch:1.4
 ```
 

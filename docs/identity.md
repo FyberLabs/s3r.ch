@@ -162,7 +162,7 @@ WalletConnect is **gated**. Never commit a Reown project id to this repo or CI. 
 | Path | Job |
 | --- | --- |
 | `lib/identity/config.ts` | TTLs, statement, allowed SIWE hostnames, cookie name prefixes |
-| `lib/identity/secret.ts` | `IDENTITY_SESSION_SECRET` (min 32 chars). Local fallback only when unset and not production |
+| `lib/identity/secret.ts` | `S3RCH_SESSION_SIGNING_KEY` (min 32 chars). Local fallback only when unset and not production |
 | `lib/identity/cookies.ts` | `__Host-` on HTTPS, `Host-` on HTTP localhost. HttpOnly, SameSite=Lax, `Path=/` |
 | `lib/identity/nonce.ts` | Random SIWE nonce + signed cookie payload |
 | `lib/identity/session.ts` | Signed SIWE session `{ address, chainId, iat, exp }` |
@@ -264,14 +264,14 @@ Flags: HttpOnly, SameSite=Lax, Path=/, Secure on HTTPS.
 
 Do not set `rp.id` to a parent domain. That would be a different host than these cookies.
 
-## `IDENTITY_SESSION_SECRET`
+## `S3RCH_SESSION_SIGNING_KEY`
 
 HMAC key for both cookies. **Minimum 32 characters.**
 
 - **Production:** if missing or too short, `POST /api/identity/verify` (and the other identity routes that sign/read cookies) return **500** and log a clear error. Auth is not silently disabled.
 - **Non-production:** if the env var is unset, a documented local fallback is used so `next dev` works. Do not use that fallback in production.
 
-Production sets `IDENTITY_SESSION_SECRET` on the Azure App Service from Key Vault (`terraform/s3rch` in FyberLabs/infra). Build and CI must not require it and must not fake it. This wrap slice does not change that.
+Production sets `S3RCH_SESSION_SIGNING_KEY` on the Azure App Service from Key Vault (`terraform/s3rch` in FyberLabs/infra). Build and CI must not require it and must not fake it. This wrap slice does not change that.
 
 ## SIWE verify rules
 
@@ -545,7 +545,7 @@ Quiet `/feed` IdentityBar: grant see + revoke after SIWE on held claims. Publish
 - Operator: App Service WebSockets + HTTP/2 so the already-wired same-origin `/gun` peer can stay up (Cloudflare + Azure ARR can still drop the socket; snapshot stays on Public). `gun/lib/webrtc` + STUN, the session-gated TURN allocate hop, the Network tab, the Granted tab, the Gun user node, unshare, live mesh delivery, and signed-in browser pull (Mine until share) already ship. Empty `PANOPTICON_TURN_*` stays STUN. No TURN secrets on Gun. Durable graph stays requirements-only: [durable-graph-and-turn.md](durable-graph-and-turn.md). Product end-state is Panopticon. Optional time-boxed infra coturn only with the same URI contract and DNS/config cutover — not a second control plane, not WG/Tailscale for browsers. Still later: meetings/streams. Room presence already ships. Google STUN ≠ TURN. Long-term low/no server footprint, TURN-class relays, Panopticon-hosted needed services, oracles/validators, versioned Gun `v`, and later crypto (or optional fiat) payments: [ARCHITECTURE.md — Design decisions (2026-09-02)](ARCHITECTURE.md#design-decisions-2026-09-02). Do not grow s3r.ch Azure into that service in this PR.
 - SNS / Solana names (not this slice; ENS remains primary mainnet reverse+forward. Unstoppable is a held claim after SIWE, not login).
 - Live vendor send / KYC issuer after SIWE (not as login). Confirm already ships as a private held claim. Mesh-wide Check + hop factor ship; hop UI and friend-of-friend do not. Do not import `FyberLabs/SociACL`.
-- Azure Key Vault for `IDENTITY_SESSION_SECRET` (wired in FyberLabs/infra `terraform/s3rch`) and later `UNSTOPPABLE_API_KEY`.
+- Azure Key Vault for `S3RCH_SESSION_SIGNING_KEY` (wired in FyberLabs/infra `terraform/s3rch`) and later `UNSTOPPABLE_API_KEY`.
 - Contract verify on chains other than mainnet (this slice's 1271 RPC allowlist is mainnet only).
 
 This slice ships an Unstoppable held claim after SIWE (Polygon on-chain reverse+forward; optional server-only Resolution key), paper-backup UI for the wrap secondary KEK, ERC-1271 (and EIP-6492 via the same viem `verifyMessage` client), WalletConnect gated on `NEXT_PUBLIC_WC_PROJECT_ID`, Coinbase Smart Wallet as an **onramp then SIWE** (not email login, not Keycloak, not `@coinbase/cdp-wagmi`), light SociACL Check see-grants (consume contract in [s3rch-check.md](s3rch-check.md)), live mesh delivery of granted Gun-stored objects (Granted tab; not Public), a Gun user node keyed by the SIWE address (Mine until explicit share of the node or of a held claim), signed-in browser pull of the same documented public sources the seeder uses (same-origin `/api/ingest` or allowlisted extension/relay; Mine until share; CORS still blocks direct browser-to-source in a naked tab), native s3r.ch posts (mine by default), rooms as Gun threads (Mine by default, Check on rooms, explicit share of the room node, tags discovery), live room chat and presence over Gun subscriptions (Mine overlay until the room is shared; SIWE to send or announce), Public / Mine / Network / Granted tabs, a Discover browse of tags already on Public and the live Network mesh plus shared-user provenance (not Mine overlay, not Granted, not search, not Popular/Novel), Check on those post objects, explicit share-into-mesh, tags-first recency ranking, and `gun/lib/webrtc` with STUN ICE plus a session-gated allocate hop. Check is grants, not login. A grant is not share-into-mesh. Delivery is the grant inbox, not a public put. Holding a claim is not publishing it. Room share ≠ post share. Chat in a visible room is the live thread; it is not dumping Mine posts. Presence is who is in that room now; it is not WebRTC. Network is the live shared mesh view via seed peer / WebRTC; it is not a finished P2P mesh. STUN is not TURN. Unstoppable is never login. s3r.ch does not use Panopticon Keycloak as an IdP. Unshare retracts a prior mesh put when peers observe the tombstone; it is not instant everywhere and not a see-grant revoke. Delivery does not write those public paths. Allocate is not a public mesh. Email / phone / KYC stay private held claims until the holder shares that claim id from the user node.

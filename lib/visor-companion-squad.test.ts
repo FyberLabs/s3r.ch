@@ -111,7 +111,7 @@ test("parser rejects client roster forgery fields and tokenized destinations", (
   assert.equal(parseVisorCompanionResolveRequest(null), null);
   assert.equal(parseVisorCompanionResolveRequest({ version: 1 }), null);
   assert.throws(() => squadForumDestination("http://insecure.example"));
-  assert.equal(squadForumDestination("https://pilot.example.test"), "https://pilot.example.test/feed/squad/live");
+  assert.equal(squadForumDestination("https://pilot.example.test"), "https://pilot.example.test/feed/squad");
   const tenant = randomUUID();
   const valid = parseVisorCompanionResolveRequest({
     version: 1, evaluatedAt: 1, tenant, machineId, setId, setGeneration: gen(1),

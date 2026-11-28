@@ -14,13 +14,11 @@ import {
   type ForumAgentStatus,
   type ForumAlarm,
   type ForumNeed,
-  type SeeAcl,
 } from "@/lib/identity/check";
 import vector from "@/lib/identity/vectors/forums.json";
 import type { SquadAgent, SquadSubtask, SquadUpdate } from "@/lib/forum-squad";
 
-// Public vectors are fixture identities, never live authority.
-export const PILOT_MESH_ENABLED: boolean = false;
+// Public vectors are test identities, never live authority.
 export const PILOT_FORUM_ID = vector.forumId;
 export const PILOT_OWNER = vector.seaPubkey;
 export const PILOT_FORUM_LABEL = "Squad 3";
@@ -490,8 +488,3 @@ function chatItem(draft: ChatDraft, index: number): FeedItem {
 
 export const PILOT_CHAT: FeedItem[] = chatDrafts.map(chatItem);
 
-export function admitPilotRoster(acl: SeeAcl): void {
-  acl.putObject(PILOT_FORUM_ID, PILOT_OWNER);
-  for (const agent of PILOT_AGENTS) acl.putObject(agent.status.id, PILOT_OWNER);
-  for (const need of PILOT_NEEDS) acl.putObject(need.id, PILOT_OWNER);
-}

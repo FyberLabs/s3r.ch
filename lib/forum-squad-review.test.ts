@@ -1,7 +1,7 @@
 import { reopenForumNeed } from "./identity/forum-transitions";
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PILOT_AGENTS, PILOT_NEEDS, PILOT_OWNER, PILOT_FORUM_ID } from './identity/vectors/forum-squad-fixture';
+import { PILOT_AGENTS, PILOT_NEEDS, PILOT_OWNER, PILOT_FORUM_ID } from './forum-coordination-test-vectors';
 import { applySeeGrant, seaToPrincipalKey, type ForumOffer } from './identity/check';
 import { createMemorySeeAcl } from './identity/see-acl';
 import {
@@ -200,7 +200,7 @@ test('pilot removal listeners do not require a published mesh status', () => {
   const removal = { removed: 1 as const, action: 'remove' as const, forumId: PILOT_FORUM_ID, id: status.id, seaPubkey: status.seaPubkey };
   assert.equal(squad.authorizeForumAgentRemoval({ removal, mapKey: status.seaPubkey, signer: PILOT_OWNER,
     forumOwner: PILOT_OWNER, forumId: PILOT_FORUM_ID }), true);
-  const roster = squad.composeForumRoster({ sample: PILOT_AGENTS, mesh: [],
+  const roster = squad.composeForumRoster({ mesh: [],
     admitted: new Set(PILOT_AGENTS.map(a => a.status.seaPubkey)), removed: new Set([status.seaPubkey]) });
   assert.equal(roster.some(a => a.status.seaPubkey === status.seaPubkey), false);
 });
@@ -343,12 +343,11 @@ test('combined chat keeps recent local deliveries without trusting remote timest
 });
 
 test('unsigned graph cannot supply ownership or Check grants for non-fixture needs', () => {
-  const primary = graph(); const trusted = createMemorySeeAcl();
-  const overlay = squad.overlaySeeGraph(primary, trusted);
-  assert.equal(overlay.ownerOf(need.id), undefined);
-  assert.equal(overlay.hasObject(need.id), false);
+  const trusted = createMemorySeeAcl();
+  assert.equal(trusted.ownerOf(need.id), undefined);
+  assert.equal(trusted.hasObject(need.id), false);
   assert.equal(authorizeForumOffer(offer, helper, PILOT_FORUM_ID, undefined,
-    { graph: overlay, need, now: 1000 }), false);
+    { graph: trusted, need, now: 1000 }), false);
 });
 
 test('accepted offer history is bounded per need and globally, including oversized rows', () => {
@@ -366,8 +365,6 @@ test('accepted offer history is bounded per need and globally, including oversiz
 });
 
 test('live coordination does not import test-vector roster data', async () => {
-  const { PILOT_MESH_ENABLED } = await import('./identity/vectors/forum-squad-fixture');
-  assert.equal(PILOT_MESH_ENABLED, false);
   const { readFileSync } = await import('node:fs');
   const source = readFileSync('lib/use-squad-forum-coordination.ts', 'utf8');
   assert.match(source, /if \(!liveEnabled \|\| !register\) return;/);
@@ -382,12 +379,10 @@ test('live coordination does not import test-vector roster data', async () => {
 });
 
 test('unsigned cached status cannot populate the live roster on reload', () => {
-  const fixture = PILOT_AGENTS[0];
-  const cached = { ...fixture.status, task: 'unverified cached task', state: 'emergency' as const, lastUpdate: 20 };
+  const baseline = PILOT_AGENTS[0].status;
+  const cached = { ...baseline, task: 'unverified cached task', state: 'emergency' as const, lastUpdate: 20 };
   const restored = restoreForumStatusCache(JSON.stringify([cached]), PILOT_FORUM_ID);
-  const roster = squad.composeForumRoster({ sample: [fixture], mesh: [...restored.mesh.values()], removed: new Set() });
-  assert.equal(roster[0].status.task, fixture.status.task);
-  assert.equal(roster[0].drawerSource, 'sample');
+  assert.equal(squad.composeForumRoster({ mesh: [...restored.mesh.values()], removed: new Set() }).length, 0);
   assert.equal(restored.mesh.size, 0);
   // Replay protection survives even though cached content cannot be displayed.
   assert.equal(cacheForumStatus(restored.highWater, { ...cached, lastUpdate: 19 }), false);
@@ -396,7 +391,7 @@ test('unsigned cached status cannot populate the live roster on reload', () => {
   assert.equal(cacheForumStatus(restored.highWater, fresh), true);
   // Updating the floor is not itself display admission.
   assert.equal(restored.mesh.size, 0);
-  const admitted = squad.composeForumRoster({ sample: [fixture], mesh: [fresh], removed: new Set() });
+  const admitted = squad.composeForumRoster({ mesh: [fresh], removed: new Set() });
   assert.equal(admitted[0].status.task, fresh.task);
   assert.equal(admitted[0].drawerSource, 'status-only');
 });

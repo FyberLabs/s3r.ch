@@ -3,7 +3,7 @@
 For the initial 0.1 release, use the [configuration reference](https://github.com/FyberLabs/s3r.ch/blob/master/docs/configuration.md)
 and [minimal installation guide](https://github.com/FyberLabs/s3r.ch/blob/master/docs/install-minimal.md). Panopticon remains
 optional. Preserve `/app/data` across container replacements. Set
-`IDENTITY_SESSION_SECRET` to a stable secret of at least 32 characters.
+`S3RCH_SESSION_SIGNING_KEY` to a stable secret of at least 32 characters.
 
 Wallet sign-in also needs the durable identity storage configuration described in
 the installation guide. Without it, sign-in returns 503 while the feed, forum

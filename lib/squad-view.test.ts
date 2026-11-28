@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { p256 } from "@noble/curves/nist.js";
 import { squadView } from "./squad-view";
-import { PILOT_AGENTS, PILOT_FORUM_LABEL } from "./identity/vectors/forum-squad-fixture";
+import { PILOT_AGENTS, PILOT_FORUM_LABEL } from "./forum-coordination-test-vectors";
 import { seaToPrincipalKey } from "./identity/forum-check";
 import { SquadForum } from "../components/SquadForum";
 const key = p256.getPublicKey(new Uint8Array(32).fill(53), false);

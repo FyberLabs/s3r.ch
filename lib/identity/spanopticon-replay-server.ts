@@ -31,7 +31,7 @@ export function configuredIdentityReplay(namespace: string, env: Readonly<Record
   clock = () => Math.floor(Date.now() / 1000)): IdentityReplay | undefined {
   const backend = env.S3RCH_IDENTITY_REPLAY_BACKEND, origin = env.S3RCH_IDENTITY_REPLAY_ORIGIN,
     tenant = env.S3RCH_IDENTITY_REPLAY_TENANT_ID, apiKey = env.S3RCH_SERVICE_CREDENTIAL;
-  if (!backend && !origin && !tenant && !apiKey) return undefined;
+  if (!backend && !origin && !tenant) return undefined;
   if (backend !== "spanopticon" || !origin || !tenant || !apiKey) throw Error("Incomplete identity replay configuration");
   return createSpanopticonIdentityReplay({ origin, tenant, apiKey, namespace }, fetcher, clock);
 }

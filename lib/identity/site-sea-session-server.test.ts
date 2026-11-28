@@ -46,6 +46,8 @@ test("site identity is disabled without remote replay and rejects partial config
   const noIO: typeof fetch = async () => { assert.fail("no provider call"); };
   const get = new Request(origin+"/api/identity/sea/session");
   assert.deepEqual(await (await siteSeaSession(get,"session",{},noIO)).json(), { enabled:false, principal:null });
+  assert.deepEqual(await (await siteSeaSession(get,"session",{S3RCH_SERVICE_CREDENTIAL:"dedicated-key"},noIO)).json(),
+    { enabled:false, principal:null });
   const post = new Request(origin+"/api/identity/sea/challenge", { method:"POST", headers:{origin,"content-type":"application/json"}, body:"{}" });
   assert.equal((await siteSeaSession(post,"challenge",{},noIO)).status,503);
   assert.equal((await siteSeaSession(get,"session",{S3RCH_IDENTITY_REPLAY_BACKEND:"spanopticon"},noIO)).status,503);

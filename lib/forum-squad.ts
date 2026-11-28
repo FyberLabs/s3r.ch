@@ -54,8 +54,7 @@ export type SquadUpdate = {
 };
 
 export type SquadAgent = {
-  /** Sample details are never evidence for a received status row. */
-  drawerSource?: "sample" | "status-only";
+  drawerSource?: "status-only";
   label: string;
   promptBy: string;
   artifactNote: string;
@@ -392,26 +391,6 @@ export function parseForumOffer(value: unknown): ForumOffer | null {
   const artifacts = text(row.artifacts) ?? "";
   const offer: ForumOffer = { id, need, forumId, helper, body, artifacts, stated };
   return validateForumOffer(offer) ? offer : null;
-}
-
-/**
- * An admitted sample owner stays the owner. A mesh edge does not replace
- * that owner. An unsigned mesh grant is not Check see on a sample object:
- * the owner string is not a signature. Unknown objects fail closed too;
- * the primary graph contains unauthenticated mesh ACL edges.
- */
-export function overlaySeeGraph(_primary: SeeGraph, sample: SeeGraph): SeeGraph {
-  return {
-    hasObject(object) {
-      return sample.hasObject(object);
-    },
-    ownerOf(object) {
-      return sample.ownerOf(object);
-    },
-    seeGrants(object) {
-      return sample.seeGrants(object);
-    },
-  };
 }
 
 /**
@@ -1399,33 +1378,24 @@ export function authorizeForumMeshRemoval(input: {
   return !!input.subject && input.signer === input.subject;
 }
 
-/** Sample roster plus mesh rows. A verified removal drops that pubkey, including a fixture. */
+/** Mesh status rows with optional admission filtering. Verified removals drop pubkeys. */
 export function composeForumRoster(input: {
   mesh: readonly ForumAgentStatus[];
   removed: ReadonlySet<string>;
-  sample?: readonly SquadAgent[];
   admitted?: ReadonlySet<string>;
 }): SquadAgent[] {
-  return mergeAgents(input.sample ?? [], input.mesh, input.admitted).filter(
-    (agent) => !input.removed.has(agent.status.seaPubkey),
-  );
+  return mergeAgents(input.mesh, input.admitted).filter((agent) => !input.removed.has(agent.status.seaPubkey));
 }
 
-export function mergeAgents(
-  sample: readonly SquadAgent[],
-  mesh: readonly ForumAgentStatus[],
-  admitted?: ReadonlySet<string>,
-): SquadAgent[] {
-  const roster = admitted ?? new Set(sample.map((agent) => agent.status.seaPubkey));
-  const byPub = new Map<string, SquadAgent>(sample.map((agent) => [agent.status.seaPubkey, { ...agent, drawerSource: "sample" }]));
-  for (const status of mesh) {
-    const existing = byPub.get(status.seaPubkey);
-    if (!existing && !roster.has(status.seaPubkey)) continue;
-    // A status signature covers only status fields. Do not attach fixture
-    // task history, attribution, or artifact claims to a received status.
-    byPub.set(status.seaPubkey, {
+export function mergeAgents(mesh: readonly ForumAgentStatus[], admitted?: ReadonlySet<string>): SquadAgent[] {
+  const valid = mesh.filter((status) => validateForumStatus(status));
+  const roster = admitted ?? new Set(valid.map((status) => status.seaPubkey));
+  const agents: SquadAgent[] = [];
+  for (const status of valid) {
+    if (!roster.has(status.seaPubkey)) continue;
+    agents.push({
       drawerSource: "status-only",
-      label: existing?.label ?? shortSea(status.seaPubkey),
+      label: shortSea(status.seaPubkey),
       promptBy: "",
       artifactNote: "",
       status,
@@ -1433,7 +1403,7 @@ export function mergeAgents(
       updates: [],
     });
   }
-  return sortAgents([...byPub.values()]);
+  return sortAgents(agents);
 }
 
 

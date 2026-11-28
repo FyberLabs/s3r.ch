@@ -15,6 +15,9 @@ const canonical=(v:unknown)=>JSON.stringify(v,(_,x)=>x&&typeof x==='object'&&!Ar
 test('unconfigured broker routes remain unavailable without outbound IO',async()=>{
  const fetcher:typeof fetch=async()=>{assert.fail('no IO');};
  assert.equal(await configuredLinkedOidcFlow('https://s3r.ch',{},fetcher),undefined);
+ assert.equal(await configuredLinkedOidcFlow('https://s3r.ch',{S3RCH_SERVICE_CREDENTIAL:'private-replay-key'},fetcher),undefined);
+ const sessionOnly=new Request('https://s3r.ch/api/identity/sea/session');
+ assert.deepEqual(await (await siteSeaSession(sessionOnly,'session',{S3RCH_SERVICE_CREDENTIAL:'private-replay-key'},fetcher)).json(),{enabled:false,principal:null});
  for(const action of ['start','callback','finish','cancel']){
   const response=await siteSeaSession(new Request('https://s3r.ch/api/identity/sea/linked-oidc-'+action,{method:'POST'}),'linked-oidc-'+action,{},fetcher);
   assert.equal(response.status,503);

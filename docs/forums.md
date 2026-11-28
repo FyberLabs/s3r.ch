@@ -106,7 +106,7 @@ private scalars for unit tests only. Product sessions and live coordination do n
 apply a deny-list to them; Check and signed ACL evidence remain the gates.
 Operator provisioning for the new site ACL secrets is tracked in
 [FyberLabs/infra#3860](https://github.com/FyberLabs/infra/issues/3860).
-Product UI does not import the synthetic roster in `forum-squad-fixture.ts`.
+Product UI does not import the synthetic roster in `forum-coordination-test-vectors.ts`.
 `PILOT_MESH_ENABLED` is hard-disabled: the unset public route does not mount a
 fixture board. Live squads require a separate owner, `ForumAuthorityProvider`
 evidence, and owner-signed ACL ingestion.
@@ -344,7 +344,7 @@ point, matching the SociACL principal vectors. Invalid padding-bit aliases and
 off-curve points are rejected before constructing souls or comparing embedded
 principals. This uses the same pinned `@noble/curves` version as the upstream
 identity package, without importing SociACL at runtime. Test-vector principals in
-`forum-squad-fixture.ts` use deterministic valid public points and are not mounted
+`forum-coordination-test-vectors.ts` use deterministic valid public points and are not mounted
 in product UI.
 
 ### Object-record wire boundary
@@ -428,14 +428,6 @@ Resolving a need does not elect an owner or change membership.
 Issue #141 remains open for those role-specific sources and their read models;
 #190 retains deployed, authenticated end-to-end acceptance. This interface does
 not introduce configuration variables that mount test-vector rosters in product UI.
-
-## Live Squad namespace provisioning
-
-The public `/feed/squad` shows an unset board until a wrapper supplies a live
-`LiveSquadSpec`. The component supports a separately validated live owner/forum
-binding with empty initial data and namespace-specific replay caches. See
-[Squad live rollout](squad-live-rollout.md) for the consumer boundary and remaining
-production source, configuration and deployment gates in #190.
 
 ## Permission and transition boundaries
 

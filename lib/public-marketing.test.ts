@@ -241,7 +241,7 @@ describe("public marketing copy", () => {
     const board = read("../components/SquadForum.tsx");
     assert.equal(smoke.includes("local demonstration"), false);
     assert.match(smoke, /have a squad yet/);
-    assert.equal(board.includes("forum-squad-fixture"), false);
+    assert.equal(board.includes("forum-coordination-test-vectors"), false);
     assert.equal(board.includes("HAWK-2"), false);
     assert.match(board, /data-testid="squad-unset"/);
     assert.match(board, /creating or joining a squad is coming soon/i);

@@ -43,7 +43,7 @@ test("native agent challenge exchanges once and every bearer use rechecks cancel
 });
 test("disabled or cross-tenant configuration never calls providers",async()=>{
   const h=await harness();let calls=0;const fetcher:typeof fetch=async()=>{calls++;throw Error("unexpected");};
-  for(const env of [{},{...h.env,S3RCH_IDENTITY_REPLAY_TENANT_ID:"01234567-89ab-cdef-0123-456789abcdee"},
+  for(const env of [{},{S3RCH_SERVICE_CREDENTIAL:"private-replay-key"},{...h.env,S3RCH_IDENTITY_REPLAY_TENANT_ID:"01234567-89ab-cdef-0123-456789abcdee"},
     {...h.env,S3RCH_IDENTITY_REPLAY_BACKEND:undefined},{...h.env,S3RCH_SESSION_SIGNING_KEY:undefined}])
     assert.equal((await siteAgentSession(request("challenge",{delegationId:h.id,scopes:["forum:read"]}),"challenge",env,fetcher,()=>f.now)).status,503);
   assert.equal(calls,0);

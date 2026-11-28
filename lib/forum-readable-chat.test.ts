@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PILOT_CHAT, PILOT_FORUM_ID } from "./identity/vectors/forum-squad-fixture";
+import { PILOT_CHAT, PILOT_FORUM_ID } from "./forum-coordination-test-vectors";
 import { readableForumChat } from "./forum-readable-chat";
 
 test("live statement visibility requires current reader and author authority on every projection", () => {
