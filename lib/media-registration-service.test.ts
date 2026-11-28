@@ -8,6 +8,7 @@ import { RecordConflict, type RecordStore, type StoredRecord } from "./record-st
 import { seaToPrincipalKey } from "./identity/forum-check";
 import { parseForumObjectRecord } from "./identity/forum-object-record";
 import { createMediaAuthority } from "./media-authority-server";
+import { FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 
 const secret = new Uint8Array(32).fill(53), point = p256.getPublicKey(secret, false);
 const owner = Buffer.from(point.slice(1,33)).toString("base64url") + "." + Buffer.from(point.slice(33)).toString("base64url");
@@ -34,7 +35,7 @@ function setup() {
     }, async delete() { throw Error("No deletion"); },
   };
   const store = createMediaRegistrationStore(records);
-  const verify = createMediaAuthority({ config: { keys: [] },
+  const verify = createMediaAuthority({ config: FORUM_AUTHORITY_CONFIG,
     clock: () => at, authenticate: async () => allowed ? { key: identity } : null,
     read: async () => ({ completeThrough: at, rows: [], history: { completeThrough: at, links: [], accounts: [...new Set([owner, identity])].map(principal => ({ principal, rotations: [], revocations: [], genesisEpubBindings: [] })) } }) });
   const service = createMediaRegistrationService({ origin: "https://s3r.ch", store,

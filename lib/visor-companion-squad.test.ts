@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { forumBotFixture } from "./forum-bot-test-fixture";
+import { FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 import vectors from "./identity/vectors/forum-authority.json";
 import { createMemoryVisorCompanionSetStore } from "./visor-companion-set-store";
 import {
@@ -41,7 +42,7 @@ test("slice done check: Visor companion binding contract (#551)", async t => {
   const companion = randomUUID();
   const session = randomUUID();
   const generation = gen(1);
-  const common = { squad: { forumId: f.forum, owner: f.owner.pub, label: "Pilot" }, origin, authority: { keys: [] },
+  const common = { squad: { forumId: f.forum, owner: f.owner.pub, label: "Pilot" }, origin, authority: FORUM_AUTHORITY_CONFIG,
     tenant: f.tenant, ownerPrincipal: f.owner.pub, store, clock: f.now, evaluatedAt: f.now(), snapshot: snapshot() };
   const first = await resolveVisorCompanionSquad({ ...common,
     request: parseVisorCompanionResolveRequest(body(f, [

@@ -6,6 +6,7 @@ import { createDelegationRuntime } from "./delegation-runtime";
 import { parseForumAuthority } from "./identity/forum-authority-records";
 import { createAssignmentJournal } from "./delegation-journal";
 import { seaToPrincipalKey } from "./identity/forum-check";
+import { FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 import type { InventoryStore } from "./delegation-inventory";
 const pub = (n: number) => { const k = p256.getPublicKey(new Uint8Array(32).fill(n), false); return Buffer.from(k.slice(1,33)).toString("base64url") + "." + Buffer.from(k.slice(33)).toString("base64url"); };
 const owner = pub(53), old = pub(54), replacement = pub(55);
@@ -63,7 +64,7 @@ test("actual runtime cannot claim an assignment after its verified history is su
   const source = createSquadCommitStore(memory(), spec, () => 100); await source.initialize(journal, history);
   const view = await source.open(); let changed = false;
   const runtime = createDelegationRuntime({ ...view, clock: () => 100,
-    config: { keys: [] },
+    config: FORUM_AUTHORITY_CONFIG,
     history: async at => {
       if (!changed) { changed = true; const before = await source.load(); await source.updateHistory(before.etag, { ...history, completeThrough: 101 }); }
       return view.history(at);

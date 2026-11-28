@@ -5,13 +5,13 @@ import { signBrowserAssignment } from "./assignment-browser-sign";
 import { assignmentCancellationIntents, assignmentReplacementIntents } from "./assignment-signing-plan";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
 import { seaToPrincipalKey } from "./identity/forum-check";
-import { createForumAuthority } from "./identity/forum-authority";
+import { createForumAuthority, FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 import { verifyAssignmentSignedMaterial } from "./assignment-signed-material";
 const secret = (n: number) => new Uint8Array(32).fill(n);
 const pair = (n: number) => { const key = p256.getPublicKey(secret(n), false); const pub = Buffer.from(key.slice(1,33)).toString("base64url") + "." + Buffer.from(key.slice(33)).toString("base64url"); return { pub, priv: Buffer.from(secret(n)).toString("base64url"), epub: pub, epriv: "unused" }; };
 const owner = pair(53), old = pair(54), replacement = pair(55), at = 1700000060;
 const forum = `forum_${seaToPrincipalKey(owner.pub)}_${"a".repeat(32)}`;
-const config = { keys: [] };
+const config = FORUM_AUTHORITY_CONFIG;
 async function fixture() {
   const sign = (kind: AuthorityKind, fields: object) => { const record = { ...fields, sig: "pending" }, parsed = parseForumAuthority(kind, record)!;
     record.sig = Buffer.from(p256.sign(parsed.bytes, secret(parsed.signer === old.pub ? 54 : 53), { prehash: true, format: "compact" })).toString("base64url"); return { kind, soul: parsed.soul, record }; };

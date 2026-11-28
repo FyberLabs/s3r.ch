@@ -3,10 +3,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { importJWK, SignJWT } from "jose";
 import { parseAgentDelegation, parsePrincipalId, signingBytes, signWithKeyring } from "sociacl-ids";
-import { authenticatedHistoryContexts } from "./acl-delegation-source-server";
+import { authenticatedHistoryContexts, type DelegationTrust } from "./acl-delegation-source-server";
 import { setup, f } from "./fixtures/agent-delegation";
 
-const emptyTrust = () => structuredClone({ jwks: { keys: [] as const[] }, policy: { allowedDomains: [] as const[], allowedUris: [] as const[], allowedChainIds: [] as const[] }, pinnedIss: new Set<string>() });
+const emptyTrust = (): DelegationTrust => structuredClone({ jwks: { keys: [] }, policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIss: new Set<string>() });
 
 async function ownerGenesisBinding(principal: string): Promise<{ binding: Record<string, unknown>; jwk: Record<string, unknown> }> {
   const key = new Uint8Array(32); key[31] = 103;
@@ -47,7 +47,8 @@ test("wrong audience, stale source, duplicate accounts and untrusted binding den
     if(mode==="audience") h.document.snapshot.audience="https://other.example";
     if(mode==="stale") h.document.snapshot.completeThrough--;
     if(mode==="duplicate") h.document.snapshot.history.accounts.push(h.document.snapshot.history.accounts[0]);
-    if(mode==="binding") h.document.snapshot.history.accounts[0].genesisEpubBindings=[{v:1,kind:"genesis-epub",principal:"bad",epub:"bad",issuedAt:0,keySig:"bad",attest:"bad"}];
+    if (mode === "binding") (h.document.snapshot.history.accounts[0] as { genesisEpubBindings: unknown[] }).genesisEpubBindings =
+      [{ v: 1, kind: "genesis-epub", principal: "bad", epub: "bad", issuedAt: 0, keySig: "bad", attest: "bad" }];
     if(mode==="offline") h.offline();
     if(mode==="clock") h.advance();
     await assert.rejects(h.source(h.id,f.now),mode);
@@ -85,7 +86,8 @@ test("malformed, foreign and future link indexes deny", async () => {
 
 test("duplicate authenticated links deny", async () => {
   const h = await setup();
-  const owner = parseAgentDelegation(h.document.snapshot.rows[0].record).value!.delegation.principal;
+  const row = parseAgentDelegation(h.document.snapshot.rows[0].record); assert.ok(row.ok);
+  const owner = row.value.delegation.principal;
   const link = { v: 1, kind: "wallet", principal: owner, address: "0x2222222222222222222222222222222222222222",
     nonce: "d".repeat(16), issuedAt: f.now - 60, keySig: "k", attest: "a" };
   h.document.snapshot.history.links = [link, structuredClone(link)];
@@ -94,12 +96,12 @@ test("duplicate authenticated links deny", async () => {
 
 test("genesis-bound owners require resolved epub in peer history", async () => {
   const h = await setup();
-  const owner = parseAgentDelegation(h.document.snapshot.rows[0].record).value!.delegation.principal;
+  const row = parseAgentDelegation(h.document.snapshot.rows[0].record); assert.ok(row.ok);
+  const owner = row.value.delegation.principal;
   const { binding, jwk } = await ownerGenesisBinding(owner);
-  const history = structuredClone(h.document.snapshot.history);
+  const history = structuredClone(h.document.snapshot.history) as { completeThrough: number; links: unknown[]; accounts: { principal: string; rotations: unknown[]; revocations: unknown[]; genesisEpubBindings: unknown[] }[] };
   history.accounts[0].genesisEpubBindings = [binding];
-  const trust = emptyTrust();
-  trust.jwks.keys.push(jwk);
+  const trust: DelegationTrust = { jwks: { keys: [jwk as DelegationTrust["jwks"]["keys"][number]] }, policy: { allowedDomains: [], allowedUris: [], allowedChainIds: [] }, pinnedIss: new Set() };
   const { contextFor } = authenticatedHistoryContexts(history, trust, f.now);
   const resolved = contextFor(owner, f.now).history!(owner, f.now, f.now);
   assert.ok(resolved.ok);

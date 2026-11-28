@@ -6,14 +6,14 @@ import { p256 } from "@noble/curves/nist.js";
 import { createAssignmentJournal, MAX_ASSIGNMENT_DESTINATIONS } from "./delegation-journal";
 import { createDelegationRuntime } from "./delegation-runtime";
 import { parseForumAuthority, type AuthorityKind } from "./identity/forum-authority-records";
-import { createForumAuthority } from "./identity/forum-authority";
+import { createForumAuthority, FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 import { seaToPrincipalKey } from "./identity/forum-check";
 import type { InventoryStore } from "./delegation-inventory";
 const secret = (n: number) => { const b = new Uint8Array(32); b[31] = n; return b; };
 const pub = (n: number) => { const k = p256.getPublicKey(secret(n), false); return Buffer.from(k.slice(1, 33)).toString("base64url") + "." + Buffer.from(k.slice(33)).toString("base64url"); };
 const owner = pub(1), old = pub(2), replacement = pub(3), other = pub(4), at = 1700000060;
 const forum = `forum_${seaToPrincipalKey(owner)}_${"1".repeat(32)}`, destination = `need_${seaToPrincipalKey(owner)}_${"2".repeat(32)}`;
-const id = "a".repeat(32), config = { keys: [] };
+const id = "a".repeat(32), config = FORUM_AUTHORITY_CONFIG;
 function sign(kind: AuthorityKind, fields: Record<string, unknown>) {
   const record = { ...fields, sig: "pending" }, parsed = parseForumAuthority(kind, record)!;
   record.sig = Buffer.from(p256.sign(parsed.bytes, secret([owner, old, replacement, other].indexOf(parsed.signer) + 1), { prehash: true, format: "compact" })).toString("base64url");

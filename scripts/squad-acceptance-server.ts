@@ -12,7 +12,7 @@ import { p256 } from "@noble/curves/nist.js";
 import { createAssignmentJournal } from "../lib/delegation-journal";
 import { createDelegationRuntime } from "../lib/delegation-runtime";
 import { parseForumAuthority, type AuthorityKind } from "../lib/identity/forum-authority-records";
-import { createForumAuthority } from "../lib/identity/forum-authority";
+import { createForumAuthority, FORUM_AUTHORITY_CONFIG } from "../lib/identity/forum-authority";
 import { seaToPrincipalKey } from "../lib/identity/forum-check";
 import { signForumRecord } from "../lib/forum-sign";
 
@@ -59,7 +59,7 @@ async function main() {
     async read(id: string) { return (await store(`${prefix}/${id}`).read())?.text ?? null; },
     async create(id: string, text: string) { await store(`${prefix}/${id}`).compareAndSwap(null, text); },
   }; }
-  const config = { keys: [] };
+  const config = FORUM_AUTHORITY_CONFIG;
   const history = async (at: number) => ({ completeThrough: at, links: [], accounts: identities.map(i => ({ principal: i.pub, rotations: [], revocations: [], genesisEpubBindings: [] })) });
   function sign(kind: AuthorityKind, fields: Record<string, unknown>) {
     const record = { ...fields, sig: "pending" }, parsed = parseForumAuthority(kind, record); if (!parsed) throw Error("invalid signed row");

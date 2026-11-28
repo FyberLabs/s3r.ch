@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createForumAuthoritySource } from "./forum-authority-source";
-import type { ForumAuthoritySnapshot } from "./identity/forum-authority";
-const config = { keys: [] };
+import { FORUM_AUTHORITY_CONFIG, type ForumAuthoritySnapshot } from "./identity/forum-authority";
+const config = FORUM_AUTHORITY_CONFIG;
 const snapshot = (at: number): ForumAuthoritySnapshot => ({ completeThrough: at, history: { completeThrough: at, accounts: [], links: [] }, rows: [] });
 const flush = async () => { for (let n = 0; n < 8; n++) await Promise.resolve(); };
 

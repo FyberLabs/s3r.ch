@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { FORUM_AUTHORITY_CONFIG } from "./identity/forum-authority";
 
 const config = {
   authorityEndpoint: "/api/squad/authority",
   statementEndpoint: "/api/squad/statement",
   sessionBase: "/api/identity/sea",
   origin: "https://s3r.ch",
-  config: { keys: [] },
+  config: FORUM_AUTHORITY_CONFIG,
   squad: { forumId: "forum_fixture", owner: "owner.fixture", label: "Fixture" },
 };
 

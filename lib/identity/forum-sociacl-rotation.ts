@@ -31,7 +31,7 @@ function parseAttestClaims(token: string, signerKey: string): Readonly<Record<st
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
-    if (!verifyKeySignature(signerKey, parts[2], new TextEncoder().encode(parts[0] + "." + parts[1]))) return null;
+    if (!verifyKeySignature(signerKey as import("sociacl-ids").PrincipalId, parts[2], new TextEncoder().encode(parts[0] + "." + parts[1]))) return null;
     const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
     if (!claims || typeof claims !== "object" || Array.isArray(claims)) return null;
     return Object.freeze(claims as Record<string, unknown>);
@@ -44,7 +44,7 @@ function verifySelfRotationTransition(
   r: UnverifiedForumRotation, bytes: Uint8Array, recoveryProof: "unverified" | "malformed", now: number,
 ): ForumRotationTransitionEvidence | null {
   if (r.authorizer.link !== FORUM_SEA_SELF_ROTATION_LINK || r.retainedLinks.length !== 0 || r.issuedAt > now) return null;
-  if (!verifyKeySignature(r.nextKey, r.nextSig, bytes)) return null;
+  if (!verifyKeySignature(r.nextKey as import("sociacl-ids").PrincipalId, r.nextSig, bytes)) return null;
   const claims = parseAttestClaims(r.attest, r.prevKey);
   if (!claims || claims.typ !== "sociacl-rotate-attest-v2" || claims.principal !== r.principal || claims.nextKey !== r.nextKey ||
     claims.seq !== r.seq || claims.iat !== r.issuedAt) return null;
@@ -74,7 +74,7 @@ export function verifyForumRotationTransition(
     revocations: [],
     history: () => ({ ok: false, reason: "missing-history" }),
   };
-  const verified = verifyRotate(r, r.prevKey, ctx);
+  const verified = verifyRotate(r, r.prevKey as import("sociacl-ids").PrincipalId, ctx);
   if (!verified.ok) return null;
   const claims = parseAttestClaims(r.attest, r.prevKey);
   if (!claims) return null;
@@ -87,9 +87,9 @@ export function verifyForumAclAttestByOwner(
 ): Readonly<Record<string, unknown>> | null {
   const claims = typeof token === "string" ? parseAttestClaims(token, ownerKey) : null;
   if (!claims) return null;
-  const { iat, exp } = claims;
-  if (!Number.isSafeInteger(iat) || !Number.isSafeInteger(exp) || exp <= iat || iat !== issuedAt) return null;
-  if (iat > at && iat - at > skew) return null;
-  if (exp <= at && at - exp > skew) return null;
+  const iat = claims.iat, exp = claims.exp;
+  if (!Number.isSafeInteger(iat) || !Number.isSafeInteger(exp) || (exp as number) <= (iat as number) || iat !== issuedAt) return null;
+  if ((iat as number) > at && (iat as number) - at > skew) return null;
+  if ((exp as number) <= at && at - (exp as number) > skew) return null;
   return claims;
 }
